@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from kosong.chat_provider import MockChatProvider
-from pydantic import SecretStr
 
 from kimi_cli.agent import (
     DEFAULT_AGENT_FILE,
@@ -15,7 +14,7 @@ from kimi_cli.agent import (
     BuiltinSystemPromptArgs,
     _load_agent_spec,
 )
-from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
+from kimi_cli.config import Config, get_default_config
 from kimi_cli.llm import LLM
 from kimi_cli.metadata import Session, WorkDirMeta
 from kimi_cli.soul.approval import Approval
