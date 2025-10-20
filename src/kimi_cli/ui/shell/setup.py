@@ -1,10 +1,10 @@
 import asyncio
-import tempfile
 from enum import Enum
-from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 import aiohttp
+from prompt_toolkit import PromptSession
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider, load_config, save_config
@@ -87,85 +87,96 @@ class _SetupResult(NamedTuple):
 
 
 async def _setup() -> _SetupResult | None:
-    output_filepath = Path(tempfile.mktemp())
+    # select the API platform
+    platform_name = await _prompt_choice(
+        header="Select the API platform",
+        choices=[platform.name for platform in _PLATFORMS.values()],
+    )
+    if not platform_name:
+        console.print("[bold red]No platform selected[/bold red]")
+        return None
+
+    platform_kind = next(
+        platform_key
+        for platform_key, platform in _PLATFORMS.items()
+        if platform.name == platform_name
+    )
+    assert platform_kind is not None
+    platform = _PLATFORMS[platform_kind]
+
+    # enter the API key
+    api_key = await _prompt_text("Enter your API key", is_password=True)
+    if not api_key:
+        return None
+
+    # list models
+    models_url = f"{platform.base_url}/models"
     try:
-        # select the API platform
-        output_filepath.write_text("")
-        platform_choices = " ".join(f"'{platform.name}'" for platform in _PLATFORMS.values())
-        result = await asyncio.create_subprocess_shell(
-            (
-                f"gum choose --header 'Select the API platform' {platform_choices} "
-                f"| tee {output_filepath}"
-            ),
-        )
-        await result.wait()
-        platform_name = Path(output_filepath).read_text().strip()
-        if not platform_name:
-            console.print("[bold red]No platform selected[/bold red]")
-            return None
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(
+                models_url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                },
+                raise_for_status=True,
+            ) as response,
+        ):
+            json = await response.json()
+    except aiohttp.ClientError as e:
+        console.print(f"[bold red]Failed to get models: {e}[/bold red]")
+        return None
 
-        platform_kind = next(
-            platform_key
-            for platform_key, platform in _PLATFORMS.items()
-            if platform.name == platform_name
-        )
-        assert platform_kind is not None
-        platform = _PLATFORMS[platform_kind]
+    # select the model
+    if platform.allowed_models is None:
+        model_ids = [model["id"] for model in json["data"]]
+    else:
+        id_set = set(model["id"] for model in json["data"])
+        model_ids = [model_id for model_id in platform.allowed_models if model_id in id_set]
 
-        # enter the API key
-        api_key = SecretStr("")
-        while not api_key:
-            output_filepath.write_text("")
-            result = await asyncio.create_subprocess_shell(
-                f"gum input --header 'Enter your API key' | tee {output_filepath}",
+    if not model_ids:
+        console.print("[bold red]No models available for the selected platform[/bold red]")
+        return None
+
+    model_id = await _prompt_choice(
+        header="Select the model",
+        choices=model_ids,
+    )
+    if not model_id:
+        console.print("[bold red]No model selected[/bold red]")
+        return None
+
+    return _SetupResult(
+        platform_kind=platform_kind,
+        base_url=platform.base_url,
+        api_key=SecretStr(api_key),
+        model_id=model_id,
+        max_context_size=200_000,  # TODO: get from model
+    )
+
+
+async def _prompt_choice(*, header: str, choices: list[str]) -> str | None:
+    if not choices:
+        return None
+
+    try:
+        return await ChoiceInput(
+            message=header,
+            options=[(choice, choice) for choice in choices],
+            default=choices[0],
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+
+async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
+    session = PromptSession()
+    try:
+        return str(
+            await session.prompt_async(
+                f" {prompt}: ",
+                is_password=is_password,
             )
-            await result.wait()
-            api_key = SecretStr(Path(output_filepath).read_text().strip())
-            if not api_key:
-                console.print("[bold red]No API key entered[/bold red]")
-                return None
-
-        # list models
-        models_url = f"{platform.base_url}/models"
-        try:
-            async with (
-                aiohttp.ClientSession() as session,
-                session.get(
-                    models_url,
-                    headers={
-                        "Authorization": f"Bearer {api_key.get_secret_value()}",
-                    },
-                    raise_for_status=True,
-                ) as response,
-            ):
-                json = await response.json()
-        except aiohttp.ClientError as e:
-            console.print(f"[bold red]Failed to get models: {e}[/bold red]")
-            return None
-
-        # select the model
-        if platform.allowed_models is None:
-            model_ids = [model["id"] for model in json["data"]]
-        else:
-            id_set = set(model["id"] for model in json["data"])
-            model_ids = [model_id for model_id in platform.allowed_models if model_id in id_set]
-        model_choices = " ".join(f"'{model_id}'" for model_id in model_ids)
-        output_filepath.write_text("")
-        result = await asyncio.create_subprocess_shell(
-            f"gum choose --header 'Select the model' {model_choices} | tee {output_filepath}",
-        )
-        await result.wait()
-        model_id = Path(output_filepath).read_text().strip()
-        if not model_id:
-            console.print("[bold red]No model selected[/bold red]")
-            return None
-
-        return _SetupResult(
-            platform_kind=platform_kind,
-            base_url=platform.base_url,
-            api_key=api_key,
-            model_id=model_id,
-            max_context_size=200_000,  # TODO: get from model
-        )
-    finally:
-        output_filepath.unlink(missing_ok=True)
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
