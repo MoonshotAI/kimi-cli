@@ -45,7 +45,7 @@ class LoopControl(BaseModel):
 class MoonshotSearchConfig(BaseModel):
     """Moonshot Search configuration."""
 
-    base_url: str = "https://search.saas.moonshot.cn/v1/search"
+    base_url: str
     """Base URL for Moonshot Search service."""
     api_key: SecretStr
     """API key for Moonshot Search service."""

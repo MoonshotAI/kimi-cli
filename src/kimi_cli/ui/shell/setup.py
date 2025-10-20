@@ -7,7 +7,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
-from kimi_cli.config import LLMModel, LLMProvider, load_config, save_config
+from kimi_cli.config import LLMModel, LLMProvider, MoonshotSearchConfig, load_config, save_config
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
@@ -68,6 +68,16 @@ async def setup(app: "ShellApp", args: list[str]):
         max_context_size=result.max_context_size,
     )
     config.default_model = result.model_id
+
+    if result.platform_kind in [
+        _PlatformKind.KIMI_CODING,
+        _PlatformKind.MOONSHOT_CN,
+    ]:
+        config.services.moonshot_search = MoonshotSearchConfig(
+            base_url="https://search.saas.moonshot.cn/v1/search",
+            api_key=result.api_key,
+        )
+
     save_config(config)
     console.print("[bold green]✓[/bold green] Kimi CLI has been setup! Restarting...")
     await asyncio.sleep(1)
