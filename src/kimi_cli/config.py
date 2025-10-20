@@ -65,7 +65,7 @@ class Services(BaseModel):
 class Config(BaseModel):
     """Main configuration structure."""
 
-    default_model: str | None = Field(default=None, description="Default model to use")
+    default_model: str = Field(default="", description="Default model to use")
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"
@@ -98,7 +98,7 @@ def get_config_file() -> Path:
 def get_default_config() -> Config:
     """Get the default configuration."""
     return Config(
-        default_model=None,
+        default_model="",
         models={},
         providers={},
         services=Services(),
