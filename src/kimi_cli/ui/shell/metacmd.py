@@ -118,7 +118,7 @@ def meta_command(
 @meta_command(aliases=["quit"])
 def exit(app: "ShellApp", args: list[str]):
     """Exit the application"""
-    # should be handled by `App`
+    # should be handled by `ShellApp`
     raise NotImplementedError
 
 
@@ -155,7 +155,7 @@ def help(app: "ShellApp", args: list[str]):
     )
 
 
-@meta_command(name="version")
+@meta_command
 def version(app: "ShellApp", args: list[str]):
     """Show version information"""
     from kimi_cli import __version__
@@ -171,7 +171,7 @@ def release_notes(app: "ShellApp", args: list[str]):
         console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
 
 
-@meta_command(name="init")
+@meta_command
 async def init(app: "ShellApp", args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     soul_bak = app.soul
@@ -209,7 +209,7 @@ async def init(app: "ShellApp", args: list[str]):
     await app.soul._context.append_message(Message(role="user", content=[system_message]))
 
 
-@meta_command(name="clear", aliases=["reset"])
+@meta_command(aliases=["reset"])
 async def clear(app: "ShellApp", args: list[str]):
     """Clear the context"""
     if not isinstance(app.soul, KimiSoul):
@@ -224,7 +224,7 @@ async def clear(app: "ShellApp", args: list[str]):
     console.print("[bold green]✓[/bold green] Context has been cleared.")
 
 
-@meta_command(name="compact")
+@meta_command
 async def compact(app: "ShellApp", args: list[str]):
     """Compact the context"""
     if not isinstance(app.soul, KimiSoul):
