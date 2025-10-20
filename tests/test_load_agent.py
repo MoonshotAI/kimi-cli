@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 from inline_snapshot import snapshot
-from kosong.base.chat_provider import ChatProvider
 
 from kimi_cli.agent import (
     DEFAULT_AGENT_FILE,
@@ -21,7 +20,6 @@ from kimi_cli.agent import (
     load_agents_md,
 )
 from kimi_cli.config import Config
-from kimi_cli.llm import LLM
 from kimi_cli.metadata import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -141,8 +139,6 @@ def test_load_tools_valid(agent_globals: AgentGlobals):
         {
             AgentGlobals: agent_globals,
             Config: agent_globals.config,
-            LLM: agent_globals.llm,
-            ChatProvider: agent_globals.llm.chat_provider,
             BuiltinSystemPromptArgs: agent_globals.builtin_args,
             Session: agent_globals.session,
             DenwaRenji: agent_globals.denwa_renji,
@@ -164,8 +160,6 @@ def test_load_tools_invalid(agent_globals: AgentGlobals):
         {
             AgentGlobals: agent_globals,
             Config: agent_globals.config,
-            LLM: agent_globals.llm,
-            ChatProvider: agent_globals.llm.chat_provider,
             BuiltinSystemPromptArgs: agent_globals.builtin_args,
             Session: agent_globals.session,
             DenwaRenji: agent_globals.denwa_renji,
