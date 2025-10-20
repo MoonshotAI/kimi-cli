@@ -38,9 +38,7 @@ from kimi_cli.tools.web.search import SearchWeb
 @pytest.fixture
 def config() -> Config:
     """Create a Config instance."""
-    default_config = get_default_config()
-    default_config.services.moonshot_search = MoonshotSearchConfig(api_key=SecretStr("sk-abc"))
-    return default_config
+    return get_default_config()
 
 
 @pytest.fixture
