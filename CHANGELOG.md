@@ -13,7 +13,7 @@ Only write entries that are worth mentioning to users.
 
 ### Added
 
-- Add `/update` meta command to check for updates
+- Add `/update` meta command to check for updates and auto-update in background
 - Support running interactive shell commands in raw shell mode
 
 ## [0.33] - 2025-10-18
