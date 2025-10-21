@@ -6,9 +6,12 @@ from typing import Any
 from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
 from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolResult
+from rich.console import Group, RenderableType
 from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
-from kimi_cli.soul import MaxStepsReached, Soul, StatusSnapshot
+from kimi_cli.soul import MaxStepsReached, Soul
 from kimi_cli.soul.wire import (
     ApprovalRequest,
     ApprovalResponse,
@@ -38,30 +41,11 @@ class ShellApp:
             logger.info("Running agent with command: {command}", command=command)
             return await self._run(command)
 
-        def _status() -> StatusSnapshot:
-            return self.soul.status
-
-        welcome = f"[bold]Welcome to {self.soul.name or 'Kimi CLI'}![/bold]"
-        if self.welcome_info:
-            welcome += "\n\n" + "\n".join(
-                f"[grey50]{key}: {value}[/grey50]" for key, value in self.welcome_info.items()
-            )
-        welcome += "\n\n" + "[grey50]Send /help for help information.[/grey50]"
-
-        console.print()
-        console.print(
-            Panel(
-                welcome,
-                border_style="blue",
-                expand=False,
-                padding=(1, 2),
-            )
-        )
-        console.print()
-
         self._start_auto_update_task()
 
-        with CustomPromptSession(_status) as prompt_session:
+        _print_welcome_info(self.soul.name or "Kimi CLI", self.welcome_info)
+
+        with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:
                 try:
                     user_input = await prompt_session.prompt()
@@ -254,3 +238,41 @@ class ShellApp:
         ret = command.func(self, command_args)
         if isinstance(ret, Awaitable):
             await ret
+
+
+_LOGO = """\
+[bold blue]\
+▐[bold blue on white]█▛█▛█[/bold blue on white]▌
+▐█████▌\
+[/bold blue]\
+"""
+
+
+def _print_welcome_info(name: str, info_items: dict[str, str]) -> None:
+    head = Text.from_markup(f"[bold]Welcome to {name}![/bold]")
+    help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
+
+    # Use Table for precise width control
+    logo = Text.from_markup(_LOGO)
+    table = Table(show_header=False, show_edge=False, box=None, padding=(0, 1), expand=False)
+    table.add_column(justify="left")
+    table.add_column(justify="left")
+    table.add_row(logo, Group(head, help_text))
+
+    rows: list[RenderableType] = [table]
+
+    if info_items:
+        rows.append(Text(""))  # Empty line
+        rows.extend(
+            Text.from_markup(f"[grey50]{key}: {value}[/grey50]")
+            for key, value in info_items.items()
+        )
+
+    console.print(
+        Panel(
+            Group(*rows),
+            border_style="blue",
+            expand=False,
+            padding=(1, 2),
+        )
+    )
