@@ -242,7 +242,7 @@ class ShellApp:
 
 _LOGO = """\
 [bold blue]\
-▐[bold blue on white]█▛█▛█[/bold blue on white]▌
+▐[on white]█▛█▛█[/on white]▌
 ▐█████▌\
 [/bold blue]\
 """
