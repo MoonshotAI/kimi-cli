@@ -368,6 +368,15 @@ class UserInput(BaseModel):
         return bool(self.command)
 
 
+_REFRESH_INTERVAL = 1.0
+_toast_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
+
+
+def toast(message: str, duration: float = 5.0) -> None:
+    duration = max(duration, _REFRESH_INTERVAL)
+    _toast_queue.put_nowait((message, duration))
+
+
 class CustomPromptSession:
     def __init__(self, status_provider: Callable[[], StatusSnapshot]):
         history_dir = get_share_dir() / "user-history"
@@ -429,6 +438,8 @@ class CustomPromptSession:
         )
 
         self._status_refresh_task: asyncio.Task | None = None
+        self._current_toast: str | None = None
+        self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
         symbol = "✨" if self._mode == PromptMode.AGENT else "$"
@@ -477,7 +488,7 @@ class CustomPromptSession:
                 # graceful exit
                 pass
 
-        self._status_refresh_task = asyncio.create_task(_refresh(1.0))
+        self._status_refresh_task = asyncio.create_task(_refresh(_REFRESH_INTERVAL))
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
@@ -530,17 +541,26 @@ class CustomPromptSession:
         status = self._status_provider()
         status_text = self._format_status(status)
 
-        shortcuts = [
-            "ctrl-k: toggle mode",
-            "ctrl-d: exit",
-            "/help: show help",
-        ]
-        for shortcut in shortcuts:
-            if columns - len(status_text) > len(shortcut) + 2:
-                fragments.extend([("", shortcut), ("", " " * 2)])
-                columns -= len(shortcut) + 2
-            else:
-                break
+        if self._current_toast is not None:
+            fragments.extend([("", self._current_toast), ("", " " * 2)])
+            columns -= len(self._current_toast) + 2
+            self._current_toast_duration -= _REFRESH_INTERVAL
+            if self._current_toast_duration <= 0.0:
+                self._current_toast = None
+        else:
+            shortcuts = [
+                "ctrl-k: toggle mode",
+                "ctrl-d: exit",
+            ]
+            for shortcut in shortcuts:
+                if columns - len(status_text) > len(shortcut) + 2:
+                    fragments.extend([("", shortcut), ("", " " * 2)])
+                    columns -= len(shortcut) + 2
+                else:
+                    break
+
+        if self._current_toast is None and not _toast_queue.empty():
+            self._current_toast, self._current_toast_duration = _toast_queue.get_nowait()
 
         padding = max(1, columns - len(status_text))
         fragments.append(("", " " * padding))

@@ -1,6 +1,7 @@
 import asyncio
 import signal
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Coroutine
+from typing import Any
 
 from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
 from kosong.chat_provider import ChatProviderError
@@ -20,7 +21,8 @@ from kimi_cli.ui import RunCancelled, run_soul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.liveview import StepLiveView
 from kimi_cli.ui.shell.metacmd import get_meta_command
-from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode
+from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
+from kimi_cli.ui.shell.update import UpdateResult, do_update
 from kimi_cli.utils.logging import logger
 
 
@@ -28,6 +30,7 @@ class ShellApp:
     def __init__(self, soul: Soul, welcome_info: dict[str, str] | None = None):
         self.soul = soul
         self.welcome_info = welcome_info or {}
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -55,6 +58,8 @@ class ShellApp:
             )
         )
         console.print()
+
+        self._start_auto_update_task()
 
         with CustomPromptSession(_status) as prompt_session:
             while True:
@@ -154,6 +159,31 @@ class ShellApp:
         finally:
             loop.remove_signal_handler(signal.SIGINT)
         return False
+
+    def _start_auto_update_task(self) -> None:
+        self._add_background_task(self._auto_update_background())
+
+    async def _auto_update_background(self) -> None:
+        toast("checking for updates...", duration=2.0)
+        result = await do_update(print=False)
+        if result == UpdateResult.UPDATED:
+            toast("auto updated, restart to use the new version", duration=5.0)
+
+    def _add_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+
+        def _cleanup(t: asyncio.Task[Any]) -> None:
+            self._background_tasks.discard(t)
+            try:
+                t.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("Background task failed:")
+
+        task.add_done_callback(_cleanup)
+        return task
 
     async def _visualize(self, wire: Wire):
         """
