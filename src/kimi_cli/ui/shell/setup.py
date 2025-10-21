@@ -79,13 +79,13 @@ async def setup(app: "ShellApp", args: list[str]):
         )
 
     save_config(config)
-    console.print("[bold green]✓[/bold green] Kimi CLI has been setup! Restarting...")
+    console.print("[bold green]✓[/bold green] Kimi CLI has been setup! Reloading...")
     await asyncio.sleep(1)
     console.clear()
 
-    from kimi_cli import Restart
+    from kimi_cli import Reload
 
-    raise Restart
+    raise Reload
 
 
 class _SetupResult(NamedTuple):
@@ -190,3 +190,11 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
         ).strip()
     except (EOFError, KeyboardInterrupt):
         return None
+
+
+@meta_command
+def reload(app: "ShellApp", args: list[str]):
+    """Reload configuration."""
+    from kimi_cli import Reload
+
+    raise Reload

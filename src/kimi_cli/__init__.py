@@ -36,7 +36,7 @@ from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.acp import ACPServer
 from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
-from kimi_cli.ui.shell import Restart, ShellApp
+from kimi_cli.ui.shell import Reload, ShellApp
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.provider import augment_provider_with_env_vars, create_llm
 
@@ -236,7 +236,7 @@ def kimi(
             if not succeeded:
                 sys.exit(1)
             break
-        except Restart:
+        except Reload:
             continue
 
 

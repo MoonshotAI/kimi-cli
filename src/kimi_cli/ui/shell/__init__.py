@@ -30,8 +30,8 @@ from kimi_cli.ui.shell.update import UpdateResult, do_update
 from kimi_cli.utils.logging import logger
 
 
-class Restart(Exception):
-    """Restart the application."""
+class Reload(Exception):
+    """Reload configuration."""
 
     pass
 
@@ -146,7 +146,7 @@ class ShellApp:
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[bold red]Interrupted by user[/bold red]")
-        except Restart:
+        except Reload:
             # just propagate
             raise
         except BaseException as e:
@@ -261,7 +261,7 @@ class ShellApp:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             console.print(f"[bold red]LLM provider error: {e}[/bold red]")
-        except Restart:
+        except Reload:
             # just propagate
             raise
         except BaseException as e:

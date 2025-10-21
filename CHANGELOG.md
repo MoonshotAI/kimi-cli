@@ -16,6 +16,7 @@ Only write entries that are worth mentioning to users.
 - Add `/update` meta command to check for updates and auto-update in background
 - Support running interactive shell commands in raw shell mode
 - Add `/setup` meta command to setup LLM provider and model
+- Add `/reload` meta command to reload configuration
 
 ## [0.33] - 2025-10-18
 
