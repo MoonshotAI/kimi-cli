@@ -30,7 +30,7 @@ class _Platform(NamedTuple):
 
 _PLATFORMS = {
     _PlatformKind.KIMI_CODING: _Platform(
-        name="Kimi Coding",
+        name="Kimi Coding Plan",
         base_url="https://kimi.com/coding/v1",
     ),
     _PlatformKind.MOONSHOT_CN: _Platform(
