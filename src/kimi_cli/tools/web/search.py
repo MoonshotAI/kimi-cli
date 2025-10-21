@@ -39,14 +39,22 @@ class SearchWeb(CallableTool2[Params]):
 
     def __init__(self, config: Config, **kwargs):
         super().__init__(**kwargs)
-        if config.services.moonshot_search is None:
-            raise ValueError("Moonshot search service is not configured")
-        self._base_url = config.services.moonshot_search.base_url
-        self._api_key = config.services.moonshot_search.api_key.get_secret_value()
+        if config.services.moonshot_search is not None:
+            self._base_url = config.services.moonshot_search.base_url
+            self._api_key = config.services.moonshot_search.api_key.get_secret_value()
+        else:
+            self._base_url = ""
+            self._api_key = ""
 
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
         builder = ToolResultBuilder(max_line_length=None)
+
+        if not self._base_url or not self._api_key:
+            return builder.error(
+                "Search service is not configured. You may want to try other methods to search.",
+                brief="Search service not configured",
+            )
 
         async with (
             aiohttp.ClientSession() as session,

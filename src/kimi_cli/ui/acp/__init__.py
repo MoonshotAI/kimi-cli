@@ -12,7 +12,7 @@ from kosong.base.message import (
 from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
-from kimi_cli.soul import MaxStepsReached, Soul
+from kimi_cli.soul import ChatProviderNotSet, MaxStepsReached, Soul
 from kimi_cli.soul.wire import (
     ApprovalRequest,
     ApprovalResponse,
@@ -142,17 +142,20 @@ class ACPAgentImpl:
         try:
             await run_soul(self.soul, prompt_text, self._stream_events, self.run_state.cancel_event)
             return acp.PromptResponse(stopReason="end_turn")
+        except ChatProviderNotSet:
+            logger.error("LLM not set")
+            raise acp.RequestError.internal_error({"error": "LLM not set"}) from None
+        except ChatProviderError as e:
+            logger.exception("LLM provider error:")
+            raise acp.RequestError.internal_error({"error": f"LLM provider error: {e}"}) from e
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n}", n=e.n_steps)
             return acp.PromptResponse(stopReason="max_turn_requests")
         except RunCancelled:
             logger.info("Prompt cancelled by user")
             return acp.PromptResponse(stopReason="cancelled")
-        except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            raise acp.RequestError.internal_error({"error": f"LLM provider error: {e}"}) from e
-        except Exception as e:
-            logger.exception("Error in prompt:")
+        except BaseException as e:
+            logger.exception("Unknown error:")
             raise acp.RequestError.internal_error({"error": f"Unknown error: {e}"}) from e
         finally:
             self.run_state = None

@@ -10,6 +10,7 @@ from rich.panel import Panel
 
 import kimi_cli.prompts.metacmds as prompts
 from kimi_cli.agent import load_agents_md
+from kimi_cli.soul import ChatProviderNotSet
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
@@ -28,6 +29,8 @@ class MetaCommand(NamedTuple):
     description: str
     func: MetaCmdFunc
     aliases: list[str]
+    kimi_soul_only: bool
+    # TODO: actually kimi_soul_only meta commands should be defined in KimiSoul
 
     def slash_name(self):
         """/name (aliases)"""
@@ -60,6 +63,7 @@ def meta_command(
     *,
     name: str | None = None,
     aliases: Sequence[str] | None = None,
+    kimi_soul_only: bool = False,
 ) -> Callable[[MetaCmdFunc], MetaCmdFunc]: ...
 
 
@@ -68,6 +72,7 @@ def meta_command(
     *,
     name: str | None = None,
     aliases: Sequence[str] | None = None,
+    kimi_soul_only: bool = False,
 ) -> (
     MetaCmdFunc
     | Callable[
@@ -98,6 +103,7 @@ def meta_command(
             description=(f.__doc__ or "").strip(),
             func=f,
             aliases=alias_list,
+            kimi_soul_only=kimi_soul_only,
         )
 
         # Register primary command
@@ -209,12 +215,10 @@ async def init(app: "ShellApp", args: list[str]):
     await app.soul._context.append_message(Message(role="user", content=[system_message]))
 
 
-@meta_command(aliases=["reset"])
+@meta_command(aliases=["reset"], kimi_soul_only=True)
 async def clear(app: "ShellApp", args: list[str]):
     """Clear the context"""
-    if not isinstance(app.soul, KimiSoul):
-        console.print("[bold red]Failed to clear the context.[/bold red]")
-        return
+    assert isinstance(app.soul, KimiSoul)
 
     if app.soul._context.n_checkpoints == 0:
         console.print("[bold yellow]Context is empty.[/bold yellow]")
@@ -227,11 +231,12 @@ async def clear(app: "ShellApp", args: list[str]):
 @meta_command
 async def compact(app: "ShellApp", args: list[str]):
     """Compact the context"""
-    if not isinstance(app.soul, KimiSoul):
-        console.print("[bold red]Failed to compact the context.[/bold red]")
-        return
+    assert isinstance(app.soul, KimiSoul)
 
     logger.info("Running `/compact`")
+
+    if app.soul._agent_globals.llm is None:
+        raise ChatProviderNotSet()
 
     # Get current context history
     current_history = list(app.soul._context.history)
@@ -256,7 +261,7 @@ async def compact(app: "ShellApp", args: list[str]):
     try:
         with console.status("[bold cyan]Compacting...[/bold cyan]"):
             compacted_msg, usage = await generate(
-                chat_provider=app.soul._chat_provider,
+                chat_provider=app.soul._agent_globals.llm.chat_provider,
                 system_prompt="You are a helpful assistant that compacts conversation context.",
                 tools=[],
                 history=[compact_message],
@@ -287,4 +292,7 @@ async def compact(app: "ShellApp", args: list[str]):
         return
 
 
-from . import update  # noqa: E402, F401
+from . import (  # noqa: E402
+    setup,  # noqa: F401
+    update,  # noqa: F401
+)

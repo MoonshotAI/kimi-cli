@@ -15,7 +15,7 @@ from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wai
 
 from kimi_cli.agent import Agent, AgentGlobals
 from kimi_cli.config import LoopControl
-from kimi_cli.soul import MaxStepsReached, Soul, StatusSnapshot
+from kimi_cli.soul import ChatProviderNotSet, MaxStepsReached, Soul, StatusSnapshot
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system, tool_result_to_messages
 from kimi_cli.soul.wire import StatusUpdate, StepBegin, StepInterrupted, Wire, current_wire
@@ -46,8 +46,6 @@ class KimiSoul:
         """
         self._agent = agent
         self._agent_globals = agent_globals
-        self._chat_provider = agent_globals.llm.chat_provider
-        self._max_context_size = agent_globals.llm.max_context_size  # unit: tokens
         self._denwa_renji = agent_globals.denwa_renji
         self._approval = agent_globals.approval
         self._context = context
@@ -66,18 +64,25 @@ class KimiSoul:
 
     @property
     def model(self) -> str:
-        return self._chat_provider.model_name
+        return self._agent_globals.llm.chat_provider.model_name if self._agent_globals.llm else ""
 
     @property
     def status(self) -> StatusSnapshot:
-        return StatusSnapshot(
-            context_usage=self._context.token_count / self._max_context_size,
-        )
+        return StatusSnapshot(context_usage=self._context_usage)
+
+    @property
+    def _context_usage(self) -> float:
+        if self._agent_globals.llm is not None:
+            return self._context.token_count / self._agent_globals.llm.max_context_size
+        return 0.0
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
     async def run(self, user_input: str, wire: Wire):
+        if self._agent_globals.llm is None:
+            raise ChatProviderNotSet()
+
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(Message(role="user", content=user_input))
         logger.debug("Appended user message to context")
@@ -128,6 +133,9 @@ class KimiSoul:
 
     async def _step(self, wire: Wire) -> bool:
         """Run an single step and return whether the run should be stopped."""
+        # already checked in `run`
+        assert self._agent_globals.llm is not None
+        chat_provider = self._agent_globals.llm.chat_provider
 
         def _is_retryable_error(exception: BaseException) -> bool:
             if isinstance(exception, (APIConnectionError, APITimeoutError)):
@@ -158,7 +166,7 @@ class KimiSoul:
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                self._chat_provider,
+                chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
                 self._context.history,

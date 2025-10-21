@@ -6,7 +6,6 @@ from typing import Any, NamedTuple
 
 import fastmcp
 import yaml
-from kosong.base.chat_provider import ChatProvider
 from kosong.tooling import Toolset
 from kosong.tooling.simple import ToolType
 from pydantic import BaseModel, Field
@@ -53,7 +52,7 @@ class BuiltinSystemPromptArgs(NamedTuple):
     """The current working directory."""
     KIMI_WORK_DIR_LS: str
     """The `ls -la` output of current working directory."""
-    KIMI_AGENTS_MD: str
+    KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
 
 
@@ -61,7 +60,7 @@ class AgentGlobals(NamedTuple):
     """Agent globals."""
 
     config: Config
-    llm: LLM
+    llm: LLM | None
     builtin_args: BuiltinSystemPromptArgs
     denwa_renji: DenwaRenji
     session: Session
@@ -122,8 +121,6 @@ def load_agent(
         AgentSpec: agent_spec,
         AgentGlobals: globals_,
         Config: globals_.config,
-        LLM: globals_.llm,
-        ChatProvider: globals_.llm.chat_provider,
         BuiltinSystemPromptArgs: globals_.builtin_args,
         Session: globals_.session,
         DenwaRenji: globals_.denwa_renji,

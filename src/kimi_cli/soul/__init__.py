@@ -4,6 +4,12 @@ if TYPE_CHECKING:
     from kimi_cli.soul.wire import Wire
 
 
+class ChatProviderNotSet(Exception):
+    """Raised when the chat provider is not set."""
+
+    pass
+
+
 class MaxStepsReached(Exception):
     """Raised when the maximum number of steps is reached."""
 
@@ -28,7 +34,7 @@ class Soul(Protocol):
 
     @property
     def model(self) -> str:
-        """The LLM model used by the soul."""
+        """The LLM model used by the soul. Empty string indicates no LLM configured."""
         ...
 
     @property
@@ -45,6 +51,7 @@ class Soul(Protocol):
             wire (Wire): The wire to send events and requests to the UI loop.
 
         Raises:
+            ChatProviderNotSet: When the chat provider is not set.
             ChatProviderError: When the LLM provider returns an error.
             MaxStepsReached: When the maximum number of steps is reached.
             asyncio.CancelledError: When the run is cancelled by user.

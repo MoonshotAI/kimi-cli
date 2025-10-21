@@ -9,7 +9,7 @@ import aiofiles
 from kosong.base.message import Message
 from kosong.chat_provider import ChatProviderError
 
-from kimi_cli.soul import MaxStepsReached
+from kimi_cli.soul import ChatProviderNotSet, MaxStepsReached
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.wire import StepInterrupted, Wire
 from kimi_cli.ui import RunCancelled, run_soul
@@ -74,6 +74,9 @@ class PrintApp:
                     logger.info("Empty command, skipping")
 
                 command = None
+        except ChatProviderNotSet:
+            logger.error("LLM not set")
+            print("LLM not set")
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             print(f"LLM provider error: {e}")

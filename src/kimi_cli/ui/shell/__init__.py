@@ -11,7 +11,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from kimi_cli.soul import MaxStepsReached, Soul
+from kimi_cli.soul import ChatProviderNotSet, MaxStepsReached, Soul
+from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.wire import (
     ApprovalRequest,
     ApprovalResponse,
@@ -29,6 +30,12 @@ from kimi_cli.ui.shell.update import UpdateResult, do_update
 from kimi_cli.utils.logging import logger
 
 
+class Restart(Exception):
+    """Restart the application."""
+
+    pass
+
+
 class ShellApp:
     def __init__(self, soul: Soul, welcome_info: dict[str, str] | None = None):
         self.soul = soul
@@ -43,7 +50,7 @@ class ShellApp:
 
         self._start_auto_update_task()
 
-        _print_welcome_info(self.soul.name or "Kimi CLI", self.welcome_info)
+        _print_welcome_info(self.soul.name or "Kimi CLI", self.soul.model, self.welcome_info)
 
         with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:
@@ -127,6 +134,9 @@ class ShellApp:
         try:
             await run_soul(self.soul, command, self._visualize, cancel_event)
             return True
+        except ChatProviderNotSet:
+            logger.error("LLM not set")
+            console.print("[bold red]LLM not set, send /setup to configure[/bold red]")
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             console.print(f"[bold red]LLM provider error: {e}[/bold red]")
@@ -136,6 +146,9 @@ class ShellApp:
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[bold red]Interrupted by user[/bold red]")
+        except Restart:
+            # just propagate
+            raise
         except BaseException as e:
             logger.exception("Unknown error:")
             console.print(f"[bold red]Unknown error: {e}[/bold red]")
@@ -230,14 +243,31 @@ class ShellApp:
         if command is None:
             console.print(f"Meta command /{command_name} not found")
             return
+        if command.kimi_soul_only and not isinstance(self.soul, KimiSoul):
+            console.print(f"Meta command /{command_name} not supported")
+            return
         logger.debug(
             "Running meta command: {command_name} with args: {command_args}",
             command_name=command_name,
             command_args=command_args,
         )
-        ret = command.func(self, command_args)
-        if isinstance(ret, Awaitable):
-            await ret
+        try:
+            ret = command.func(self, command_args)
+            if isinstance(ret, Awaitable):
+                await ret
+        except ChatProviderNotSet:
+            logger.error("LLM not set")
+            console.print("[bold red]LLM not set, send /setup to configure[/bold red]")
+        except ChatProviderError as e:
+            logger.exception("LLM provider error:")
+            console.print(f"[bold red]LLM provider error: {e}[/bold red]")
+        except Restart:
+            # just propagate
+            raise
+        except BaseException as e:
+            logger.exception("Unknown error:")
+            console.print(f"[bold red]Unknown error: {e}[/bold red]")
+            raise  # re-raise unknown error
 
 
 _LOGO = """\
@@ -248,7 +278,7 @@ _LOGO = """\
 """
 
 
-def _print_welcome_info(name: str, info_items: dict[str, str]) -> None:
+def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> None:
     head = Text.from_markup(f"[bold]Welcome to {name}![/bold]")
     help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
 
@@ -261,11 +291,18 @@ def _print_welcome_info(name: str, info_items: dict[str, str]) -> None:
 
     rows: list[RenderableType] = [table]
 
-    if info_items:
-        rows.append(Text(""))  # Empty line
-        rows.extend(
-            Text.from_markup(f"[grey50]{key}: {value}[/grey50]")
-            for key, value in info_items.items()
+    rows.append(Text(""))  # Empty line
+    rows.extend(
+        Text.from_markup(f"[grey50]{key}: {value}[/grey50]") for key, value in info_items.items()
+    )
+    if model:
+        rows.append(Text.from_markup(f"[grey50]Model: {model}[/grey50]"))
+    else:
+        rows.append(
+            Text.from_markup(
+                "[grey50]Model:[/grey50] [bold yellow]not set, "
+                "send /setup to configure[/bold yellow]"
+            )
         )
 
     console.print(

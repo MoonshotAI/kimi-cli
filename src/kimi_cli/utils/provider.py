@@ -9,13 +9,17 @@ from kimi_cli.config import LLMModel, LLMProvider
 from kimi_cli.llm import LLM
 
 
-def augment_provider_with_env_vars(provider: LLMProvider):
+def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
     match provider.type:
         case "kimi":
             if base_url := os.getenv("KIMI_BASE_URL"):
                 provider.base_url = base_url
             if api_key := os.getenv("KIMI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
+            if model_name := os.getenv("KIMI_MODEL_NAME"):
+                model.model = model_name
+            if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
+                model.max_context_size = int(max_context_size)
         case "openai_legacy":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url

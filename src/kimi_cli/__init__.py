@@ -22,8 +22,6 @@ from kimi_cli.agent import (
     load_agents_md,
 )
 from kimi_cli.config import (
-    DEFAULT_KIMI_BASE_URL,
-    DEFAULT_KIMI_MODEL,
     Config,
     ConfigError,
     LLMModel,
@@ -38,7 +36,7 @@ from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.acp import ACPServer
 from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
-from kimi_cli.ui.shell import ShellApp
+from kimi_cli.ui.shell import Restart, ShellApp
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.provider import augment_provider_with_env_vars, create_llm
 
@@ -179,12 +177,6 @@ def kimi(
 
     work_dir = work_dir.absolute()
 
-    try:
-        config = load_config()
-    except ConfigError as e:
-        raise click.ClickException(f"Failed to load config: {e}") from e
-    echo(f"✓ Loaded config: {config}")
-
     if continue_:
         session = continue_session(work_dir)
         if session is None:
@@ -218,23 +210,34 @@ def kimi(
     except json.JSONDecodeError as e:
         raise click.BadOptionUsage("--mcp-config", f"Invalid JSON: {e}") from e
 
-    succeeded = asyncio.run(
-        kimi_run(
-            config=config,
-            model_name=model_name,
-            work_dir=work_dir,
-            session=session,
-            command=command,
-            agent_file=agent_file,
-            verbose=verbose,
-            ui=ui,
-            input_format=input_format,
-            output_format=output_format,
-            mcp_configs=mcp_configs,
-        )
-    )
-    if not succeeded:
-        sys.exit(1)
+    while True:
+        try:
+            try:
+                config = load_config()
+            except ConfigError as e:
+                raise click.ClickException(f"Failed to load config: {e}") from e
+            echo(f"✓ Loaded config: {config}")
+
+            succeeded = asyncio.run(
+                kimi_run(
+                    config=config,
+                    model_name=model_name,
+                    work_dir=work_dir,
+                    session=session,
+                    command=command,
+                    agent_file=agent_file,
+                    verbose=verbose,
+                    ui=ui,
+                    input_format=input_format,
+                    output_format=output_format,
+                    mcp_configs=mcp_configs,
+                )
+            )
+            if not succeeded:
+                sys.exit(1)
+            break
+        except Restart:
+            continue
 
 
 async def kimi_run(
@@ -268,21 +271,23 @@ async def kimi_run(
         provider = config.providers[model.provider]
 
     if not model:
-        model = LLMModel(provider="", model=DEFAULT_KIMI_MODEL)
-        provider = LLMProvider(type="kimi", base_url=DEFAULT_KIMI_BASE_URL, api_key=SecretStr(""))
+        model = LLMModel(provider="", model="", max_context_size=100_000)
+        provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
 
     # try overwrite with environment variables
     assert provider is not None
-    augment_provider_with_env_vars(provider)
+    assert model is not None
+    augment_provider_with_env_vars(provider, model)
 
-    if not provider.api_key:
-        raise click.ClickException("API key is not set")
+    if not provider.base_url or not model.model:
+        llm = None
+    else:
+        echo(f"✓ Using LLM provider: {provider}")
+        echo(f"✓ Using LLM model: {model}")
+        stream = ui != "print"  # use non-streaming mode only for print UI
+        llm = create_llm(provider, model, stream=stream)
 
-    echo(f"✓ Using LLM provider: {provider}")
-    echo(f"✓ Using LLM model: {model}")
-    stream = ui != "print"  # use non-streaming mode only for print UI
-    llm = create_llm(provider, model, stream=stream)
-
+    # TODO: support Windows
     ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)
     agents_md = load_agents_md(work_dir) or ""
     if agents_md:
@@ -338,7 +343,6 @@ async def kimi_run(
             app = ShellApp(
                 soul,
                 welcome_info={
-                    "Model": llm.chat_provider.model_name,
                     "Directory": str(work_dir),
                     "Session": session.id,
                 },
