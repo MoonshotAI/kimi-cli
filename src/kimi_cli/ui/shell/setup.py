@@ -47,7 +47,7 @@ _PLATFORMS = [
 
 @meta_command(kimi_soul_only=True)
 async def setup(app: "ShellApp", args: list[str]):
-    """Setup LLM provider and model."""
+    """Setup Kimi CLI"""
     assert isinstance(app.soul, KimiSoul)
 
     result = await _setup()
@@ -186,7 +186,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 
 @meta_command
 def reload(app: "ShellApp", args: list[str]):
-    """Reload configuration."""
+    """Reload configuration"""
     from kimi_cli import Reload
 
     raise Reload
