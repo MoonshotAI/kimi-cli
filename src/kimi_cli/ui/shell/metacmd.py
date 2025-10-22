@@ -180,7 +180,7 @@ def release_notes(app: "ShellApp", args: list[str]):
 
 @meta_command
 def feedback(app: "ShellApp", args: list[str]):
-    """Submit feedback"""
+    """Submit feedback to make Kimi CLI better"""
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
     if webbrowser.open(ISSUE_URL):
