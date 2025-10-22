@@ -3,7 +3,7 @@ import signal
 from collections.abc import Awaitable, Coroutine
 from typing import Any
 
-from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
+from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from kosong.tooling import ToolResult
 from rich.console import Group, RenderableType
@@ -208,7 +208,9 @@ class ShellApp:
                     while True:
                         match msg:
                             case TextPart(text=text):
-                                step.append_text(text)
+                                step.append_text(text, mode="text")
+                            case ThinkPart(think=think):
+                                step.append_text(think, mode="think")
                             case ContentPart():
                                 # TODO: support more content parts
                                 step.append_text(f"[{msg.__class__.__name__}]")

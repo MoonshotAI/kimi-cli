@@ -1,3 +1,5 @@
+from typing import Literal
+
 import streamingjson
 from kosong.base.message import ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
@@ -70,6 +72,7 @@ class _ToolCallDisplay:
 class StepLiveView:
     def __init__(self, status: StatusSnapshot):
         self._line_buffer = Text("")
+        self._line_buffer_mode: Literal["text", "think", ""] = ""
         self._tool_calls: dict[str, _ToolCallDisplay] = {}
         self._last_tool_call: _ToolCallDisplay | None = None
         self._status_text: Text | None = Text(
@@ -107,7 +110,22 @@ class StepLiveView:
         """
         console.print(text)
 
-    def append_text(self, text: str):
+    def append_text(self, text: str, mode: Literal["text", "think"] = "text"):
+        if not text:
+            # Ignore empty message
+            return
+        if self._line_buffer_mode != mode:
+            if self._line_buffer:
+                self._push_out(self._line_buffer)
+                self._line_buffer.plain = ""
+            # Add extra line between different modes
+            self._push_out("")
+            self._line_buffer_mode = mode
+            match mode:
+                case "text":
+                    self._line_buffer.style = ""
+                case "think":
+                    self._line_buffer.style = "grey50"
         lines = text.split("\n")
         prev_is_empty = not self._line_buffer
         for line in lines[:-1]:
