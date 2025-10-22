@@ -798,7 +798,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.34"
+version = "0.35"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -836,7 +836,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.1" },
     { name = "click", specifier = ">=8.3.0" },
     { name = "fastmcp", specifier = ">=2.12.5" },
-    { name = "kosong", specifier = ">=0.13.1" },
+    { name = "kosong", specifier = ">=0.14.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "patch-ng", specifier = ">=1.19.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.52" },
@@ -861,7 +861,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.13.1"
+version = "0.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dotenv" },
@@ -869,9 +869,9 @@ dependencies = [
     { name = "openai" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/73/879d3065337196ff631d31b584766348fc21473c248e7814a8efed6f1b96/kosong-0.13.1.tar.gz", hash = "sha256:bb7aa6fea03abfa120f3e1968167f090859b919a448a1062171d56e2b095a152", size = 12321, upload-time = "2025-10-18T13:49:01.189Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/41/a4c544e1e3c6b69289ce49467dd77e43a6ed80acae7f1b935612a93d5e12/kosong-0.14.1.tar.gz", hash = "sha256:a35a33c14591f6087c732d4be8184113666134ca762846b677f0657ea4fec535", size = 12416, upload-time = "2025-10-22T12:39:21.768Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/de/030a9f91b18c74fa8da11ac40e01e266fe40378bed8be8ba6966a04458e7/kosong-0.13.1-py3-none-any.whl", hash = "sha256:f129bf41231e089869292995723dd14c01ea0861ad8b4b95c24c7638b3a64994", size = 19790, upload-time = "2025-10-18T13:48:59.972Z" },
+    { url = "https://files.pythonhosted.org/packages/47/96/2b8491e2b1ba8ee8db483d8d954b2d5b0f1ec46dbfe08a80ed976085e626/kosong-0.14.1-py3-none-any.whl", hash = "sha256:7614b7333c056e4e633805fa46d8c64ad517c0ba81cd9328137093126ad1a0c1", size = 19898, upload-time = "2025-10-22T12:39:20.868Z" },
 ]
 
 [[package]]
