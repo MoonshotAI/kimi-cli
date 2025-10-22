@@ -9,6 +9,15 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.35] - 2025-10-22
+
+### Changed
+
+- Minor UI improvements
+- Auto download ripgrep if not found in the system
+- Always approve tool calls in `--print` mode
+- Add `/feedback` meta command
+
 ## [0.34] - 2025-10-21
 
 ### Added
