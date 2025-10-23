@@ -14,6 +14,7 @@ Only write entries that are worth mentioning to users.
 ### Added
 
 - Add `/debug` meta command to debug the context
+- Add auto context compaction
 
 ### Fixed
 
