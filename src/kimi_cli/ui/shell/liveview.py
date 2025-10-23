@@ -182,8 +182,8 @@ class StepLiveView:
 
     def _push_out(self, renderable: RenderableType):
         """
-        Push the text out of the live view to the console.
-        After this, the printed line will not be changed further.
+        Push the renderable out of the live view to the console.
+        After this, the renderable will not be changed further.
         """
         console.print(renderable)
 
