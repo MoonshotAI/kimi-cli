@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.36] - 2025-10-24
 
 ### Added
 
@@ -17,6 +17,7 @@ Only write entries that are worth mentioning to users.
 - Add auto context compaction
 - Add approval request mechanism
 - Add `--yolo` option to automatically approve all actions
+- Render markdown content for better readability
 
 ### Fixed
 
