@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+### Added
+
+- Add `/debug` meta command to debug the context
+
 ### Fixed
 
 - Fix "unknown error" message when interrupting a meta command
