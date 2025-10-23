@@ -286,7 +286,7 @@ async def kimi_run(
         echo(f"✓ Using LLM provider: {provider}")
         echo(f"✓ Using LLM model: {model}")
         stream = ui != "print"  # use non-streaming mode only for print UI
-        llm = create_llm(provider, model, stream=stream)
+        llm = create_llm(provider, model, stream=stream, session_id=session.id)
 
     # TODO: support Windows
     ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)

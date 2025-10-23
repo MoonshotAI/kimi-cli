@@ -29,7 +29,13 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
             pass
 
 
-def create_llm(provider: LLMProvider, model: LLMModel, stream: bool = True) -> LLM:
+def create_llm(
+    provider: LLMProvider,
+    model: LLMModel,
+    *,
+    stream: bool = True,
+    session_id: str | None = None,
+) -> LLM:
     match provider.type:
         case "kimi":
             chat_provider = Kimi(
@@ -41,6 +47,8 @@ def create_llm(provider: LLMProvider, model: LLMModel, stream: bool = True) -> L
                     "User-Agent": kimi_cli.USER_AGENT,
                 },
             )
+            if session_id:
+                chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
         case "openai_legacy":
             chat_provider = OpenAILegacy(
                 model=model.model,
