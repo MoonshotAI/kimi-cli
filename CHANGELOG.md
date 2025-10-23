@@ -9,6 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+### Fixed
+
+- Fix "unknown error" message when interrupting a meta command
+
 ## [0.35] - 2025-10-22
 
 ### Changed
