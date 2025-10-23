@@ -1,11 +1,10 @@
 import asyncio
 import signal
 from collections.abc import Awaitable, Coroutine
+from functools import partial
 from typing import Any
 
-from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from kosong.tooling import ToolResult
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -13,22 +12,12 @@ from rich.text import Text
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.wire import (
-    ApprovalRequest,
-    ApprovalResponse,
-    CompactionBegin,
-    CompactionEnd,
-    StatusUpdate,
-    StepBegin,
-    StepInterrupted,
-    Wire,
-)
 from kimi_cli.ui import RunCancelled, run_soul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.liveview import StepLiveView
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.update import UpdateResult, do_update
+from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
 
 
@@ -171,7 +160,12 @@ class ShellApp:
         loop.add_signal_handler(signal.SIGINT, _handler)
 
         try:
-            await run_soul(self.soul, command, self._visualize, cancel_event)
+            await run_soul(
+                self.soul,
+                command,
+                partial(visualize, initial_status=self.soul.status),
+                cancel_event,
+            )
             return True
         except LLMNotSet:
             logger.error("LLM not set")
@@ -231,67 +225,6 @@ class ShellApp:
 
         task.add_done_callback(_cleanup)
         return task
-
-    async def _visualize(self, wire: Wire):
-        """
-        A loop to consume agent events and visualize the agent behavior.
-        This loop never raise any exception except asyncio.CancelledError.
-        """
-        try:
-            # expect a StepBegin
-            assert isinstance(await wire.receive(), StepBegin)
-
-            while True:
-                # spin the moon at the beginning of each step
-                with console.status("", spinner="moon"):
-                    msg = await wire.receive()
-
-                if isinstance(msg, CompactionBegin):
-                    with console.status("[cyan]Compacting...[/cyan]"):
-                        msg = await wire.receive()
-                    if isinstance(msg, StepInterrupted):
-                        break
-                    assert isinstance(msg, CompactionEnd)
-                    continue
-
-                with StepLiveView(self.soul.status) as step:
-                    # visualization loop for one step
-                    while True:
-                        match msg:
-                            case TextPart(text=text):
-                                step.append_text(text)
-                            case ContentPart():
-                                # TODO: support more content parts
-                                step.append_text(f"[{msg.__class__.__name__}]")
-                            case ToolCall():
-                                step.append_tool_call(msg)
-                            case ToolCallPart():
-                                step.append_tool_call_part(msg)
-                            case ToolResult():
-                                step.append_tool_result(msg)
-                            case ApprovalRequest():
-                                msg.resolve(ApprovalResponse.APPROVE)
-                                # TODO(approval): handle approval request
-                            case StatusUpdate(status=status):
-                                step.update_status(status)
-                            case _:
-                                break  # break the step loop
-                        msg = await wire.receive()
-
-                    # cleanup the step live view
-                    if isinstance(msg, StepInterrupted):
-                        step.interrupt()
-                    else:
-                        step.finish()
-
-                if isinstance(msg, StepInterrupted):
-                    # for StepInterrupted, the visualization loop should end immediately
-                    break
-
-                assert isinstance(msg, StepBegin), "expect a StepBegin"
-                # start a new step
-        except asyncio.QueueShutDown:
-            logger.debug("Visualization loop shutting down")
 
 
 _KIMI_BLUE = "dodger_blue1"

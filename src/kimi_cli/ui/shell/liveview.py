@@ -1,15 +1,20 @@
+from collections import deque
+
 import streamingjson
 from kosong.base.message import ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
+from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
+from kimi_cli.soul.wire import ApprovalRequest, ApprovalResponse
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.keyboard import KeyEvent
 
 
 class _ToolCallDisplay:
@@ -67,11 +72,74 @@ class _ToolCallDisplay:
         self.renderable = Group(*lines)
 
 
+class _ApprovalRequestDisplay:
+    def __init__(self, request: ApprovalRequest, from_: str):
+        self.request = request
+        self.from_ = from_
+        self.options = [
+            ("Approve", ApprovalResponse.APPROVE),
+            ("Approve for this session", ApprovalResponse.APPROVE_FOR_SESSION),
+            ("Reject, tell Kimi CLI what to do instead", ApprovalResponse.REJECT),
+        ]
+        self.selected_index = 0
+
+    def render(self) -> RenderableType:
+        """Render the approval menu as a panel."""
+        lines = []
+
+        # Add request details
+        lines.append(
+            Text(
+                escape(f'{self.from_} is requesting approval to "{self.request.description}"'),
+                style="bold",
+            )
+        )
+
+        lines.append(Text(""))  # Empty line
+
+        # Add menu options
+        for i, (option_text, _) in enumerate(self.options):
+            if i == self.selected_index:
+                lines.append(Text(f"→ {option_text}", style="bold cyan"))
+            else:
+                lines.append(Text(f"  {option_text}", style="grey50"))
+
+        content = Group(*lines)
+        return Panel.fit(
+            content,
+            title="[bold yellow]⚠ Approval Requested[/bold yellow]",
+            border_style="yellow",
+            padding=(1, 2),
+        )
+
+    def move_up(self):
+        """Move selection up."""
+        self.selected_index = (self.selected_index - 1) % len(self.options)
+
+    def move_down(self):
+        """Move selection down."""
+        self.selected_index = (self.selected_index + 1) % len(self.options)
+
+    def get_selected_response(self) -> ApprovalResponse:
+        """Get the approval response based on selected option."""
+        return self.options[self.selected_index][1]
+
+
 class StepLiveView:
     def __init__(self, status: StatusSnapshot):
+        # message content
         self._line_buffer = Text("")
+
+        # tool call
         self._tool_calls: dict[str, _ToolCallDisplay] = {}
         self._last_tool_call: _ToolCallDisplay | None = None
+
+        # approval request
+        self._approval_queue = deque[ApprovalRequest]()
+        self._current_approval: _ApprovalRequestDisplay | None = None
+        self._reject_all_following = False
+
+        # status
         self._status_text: Text | None = Text(
             self._format_status(status), style="grey50", justify="right"
         )
@@ -80,7 +148,7 @@ class StepLiveView:
         self._live = Live(
             self._compose(),
             console=console,
-            refresh_per_second=4,
+            refresh_per_second=10,
             transient=False,  # leave the last frame on the screen
             vertical_overflow="visible",
         )
@@ -96,6 +164,12 @@ class StepLiveView:
             sections.append(self._line_buffer)
         for view in self._tool_calls.values():
             sections.append(view.renderable)
+        if self._current_approval:
+            sections.append(self._current_approval.render())
+        if not sections:
+            # if there's nothing to display, do not show status bar
+            return Group()
+        # TODO: pin status bar at the bottom
         if self._status_text:
             sections.append(self._status_text)
         return Group(*sections)
@@ -134,12 +208,64 @@ class StepLiveView:
             view.finish(tool_result.result)
             self._live.update(self._compose())
 
+    def request_approval(self, approval_request: ApprovalRequest) -> None:
+        # If we're rejecting all following requests, reject immediately
+        if self._reject_all_following:
+            approval_request.resolve(ApprovalResponse.REJECT)
+            return
+
+        # Add to queue
+        self._approval_queue.append(approval_request)
+
+        # If no approval is currently being displayed, show the next one
+        if self._current_approval is None:
+            self._show_next_approval_request()
+            self._live.update(self._compose())
+
+    def _show_next_approval_request(self) -> None:
+        """Show the next approval request from the queue."""
+        if not self._approval_queue:
+            return
+
+        request = self._approval_queue.popleft()
+        self._current_approval = _ApprovalRequestDisplay(
+            request, self._tool_calls[request.tool_call_id]._tool_name
+        )
+
     def update_status(self, status: StatusSnapshot):
         if self._status_text is None:
             return
         self._status_text.plain = self._format_status(status)
 
+    def handle_keyboard_event(self, event: KeyEvent):
+        if not self._current_approval:
+            # just ignore any keyboard event when there's no approval request
+            return
+
+        match event:
+            case KeyEvent.UP:
+                self._current_approval.move_up()
+                self._live.update(self._compose())
+            case KeyEvent.DOWN:
+                self._current_approval.move_down()
+                self._live.update(self._compose())
+            case KeyEvent.ENTER:
+                resp = self._current_approval.get_selected_response()
+                self._current_approval.request.resolve(resp)
+                if resp == ApprovalResponse.REJECT:
+                    # one rejection should stop the step immediately
+                    while self._approval_queue:
+                        self._approval_queue.popleft().resolve(ApprovalResponse.REJECT)
+                    self._reject_all_following = True
+                self._current_approval = None
+                self._show_next_approval_request()
+                self._live.update(self._compose())
+            case _:
+                # just ignore any other keyboard event
+                return
+
     def finish(self):
+        self._current_approval = None
         for view in self._tool_calls.values():
             if not view.finished:
                 # this should not happen, but just in case
@@ -147,6 +273,7 @@ class StepLiveView:
         self._live.update(self._compose())
 
     def interrupt(self):
+        self._current_approval = None
         for view in self._tool_calls.values():
             if not view.finished:
                 view.finish(ToolError(message="", brief="Interrupted"))

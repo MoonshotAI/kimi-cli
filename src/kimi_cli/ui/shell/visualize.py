@@ -1,0 +1,103 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
+
+from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
+from kosong.tooling import ToolResult
+
+from kimi_cli.soul import StatusSnapshot
+from kimi_cli.soul.wire import (
+    ApprovalRequest,
+    CompactionBegin,
+    CompactionEnd,
+    StatusUpdate,
+    StepBegin,
+    StepInterrupted,
+    Wire,
+)
+from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.keyboard import listen_for_keyboard
+from kimi_cli.ui.shell.liveview import StepLiveView
+from kimi_cli.utils.logging import logger
+
+
+@asynccontextmanager
+async def _keyboard_listener(step: StepLiveView):
+    async def _keyboard():
+        try:
+            async for event in listen_for_keyboard():
+                # TODO: ESCAPE to interrupt
+                step.handle_keyboard_event(event)
+        except asyncio.CancelledError:
+            return
+
+    task = asyncio.create_task(_keyboard())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+async def visualize(wire: Wire, *, initial_status: StatusSnapshot):
+    """
+    A loop to consume agent events and visualize the agent behavior.
+    This loop never raise any exception except asyncio.CancelledError.
+    """
+    try:
+        # expect a StepBegin
+        assert isinstance(await wire.receive(), StepBegin)
+
+        while True:
+            # TODO: Maybe we can always have a StepLiveView here.
+            #       No need to recreate for each step.
+            with StepLiveView(initial_status) as step:
+                async with _keyboard_listener(step):
+                    # spin the moon at the beginning of each step
+                    with console.status("", spinner="moon"):
+                        msg = await wire.receive()
+
+                    if isinstance(msg, CompactionBegin):
+                        with console.status("[cyan]Compacting...[/cyan]"):
+                            msg = await wire.receive()
+                        if isinstance(msg, StepInterrupted):
+                            break
+                        assert isinstance(msg, CompactionEnd)
+                        continue
+
+                    # visualization loop for one step
+                    while True:
+                        match msg:
+                            case TextPart(text=text):
+                                step.append_text(text)
+                            case ContentPart():
+                                # TODO: support more content parts
+                                step.append_text(f"[{msg.__class__.__name__}]")
+                            case ToolCall():
+                                step.append_tool_call(msg)
+                            case ToolCallPart():
+                                step.append_tool_call_part(msg)
+                            case ToolResult():
+                                step.append_tool_result(msg)
+                            case ApprovalRequest():
+                                step.request_approval(msg)
+                            case StatusUpdate(status=status):
+                                step.update_status(status)
+                            case _:
+                                break  # break the step loop
+                        msg = await wire.receive()
+
+                    # cleanup the step live view
+                    if isinstance(msg, StepInterrupted):
+                        step.interrupt()
+                    else:
+                        step.finish()
+
+            if isinstance(msg, StepInterrupted):
+                # for StepInterrupted, the visualization loop should end immediately
+                break
+
+            assert isinstance(msg, StepBegin), "expect a StepBegin"
+            # start a new step
+    except asyncio.QueueShutDown:
+        logger.debug("Visualization loop shutting down")
