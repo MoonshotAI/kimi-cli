@@ -7,6 +7,9 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.approval import Approval
+from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.utils import ToolRejectedError
 
 
 class Params(BaseModel):
@@ -19,9 +22,10 @@ class PatchFile(CallableTool2[Params]):
     description: str = (Path(__file__).parent / "patch.md").read_text()
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs):
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._approval = approval
 
     def _validate_path(self, path: Path) -> ToolError | None:
         """Validate that the path is safe to patch."""
@@ -69,6 +73,14 @@ class PatchFile(CallableTool2[Params]):
                     message=f"`{params.path}` is not a file.",
                     brief="Invalid path",
                 )
+
+            # Request approval
+            if not await self._approval.request(
+                self.name,
+                FileActions.EDIT,
+                f"Patch file `{params.path}`",
+            ):
+                return ToolRejectedError()
 
             # Read the file content
             async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:

@@ -2,6 +2,7 @@
 
 import tempfile
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -119,6 +120,22 @@ def agent_spec() -> AgentSpec:
     return _load_agent_spec(DEFAULT_AGENT_FILE)
 
 
+@contextmanager
+def tool_call_context(tool_name: str) -> Generator[None]:
+    """Create a tool call context."""
+    from kosong.base.message import ToolCall
+
+    from kimi_cli.soul.toolset import current_tool_call
+
+    token = current_tool_call.set(
+        ToolCall(id="test", function=ToolCall.FunctionBody(name=tool_name, arguments=None))
+    )
+    try:
+        yield
+    finally:
+        current_tool_call.reset(token)
+
+
 @pytest.fixture
 def task_tool(agent_spec: AgentSpec, agent_globals: AgentGlobals) -> Task:
     """Create a Task tool instance."""
@@ -146,17 +163,8 @@ def set_todo_list_tool() -> SetTodoList:
 @pytest.fixture
 def bash_tool(approval: Approval) -> Generator[Bash]:
     """Create a Bash tool instance."""
-    from kosong.base.message import ToolCall
-
-    from kimi_cli.soul.toolset import current_tool_call
-
-    token = current_tool_call.set(
-        ToolCall(id="test", function=ToolCall.FunctionBody(name="Bash", arguments=None))
-    )
-    try:
+    with tool_call_context("Bash"):
         yield Bash(approval)
-    finally:
-        current_tool_call.reset(token)
 
 
 @pytest.fixture
@@ -178,21 +186,30 @@ def grep_tool() -> Grep:
 
 
 @pytest.fixture
-def write_file_tool(builtin_args: BuiltinSystemPromptArgs) -> WriteFile:
+def write_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+) -> Generator[WriteFile]:
     """Create a WriteFile tool instance."""
-    return WriteFile(builtin_args)
+    with tool_call_context("WriteFile"):
+        yield WriteFile(builtin_args, approval)
 
 
 @pytest.fixture
-def str_replace_file_tool(builtin_args: BuiltinSystemPromptArgs) -> StrReplaceFile:
+def str_replace_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+) -> Generator[StrReplaceFile]:
     """Create a StrReplaceFile tool instance."""
-    return StrReplaceFile(builtin_args)
+    with tool_call_context("StrReplaceFile"):
+        yield StrReplaceFile(builtin_args, approval)
 
 
 @pytest.fixture
-def patch_file_tool(builtin_args: BuiltinSystemPromptArgs) -> PatchFile:
+def patch_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+) -> Generator[PatchFile]:
     """Create a PatchFile tool instance."""
-    return PatchFile(builtin_args)
+    with tool_call_context("PatchFile"):
+        yield PatchFile(builtin_args, approval)
 
 
 @pytest.fixture
