@@ -46,7 +46,7 @@ class ShellApp:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self._run(command)
+            return await self._run_soul_command(command)
 
         self._start_auto_update_task()
 
@@ -86,7 +86,7 @@ class ShellApp:
                     continue
 
                 logger.info("Running agent command: {command}", command=command)
-                await self._run(command)
+                await self._run_soul_command(command)
 
         return True
 
@@ -115,7 +115,44 @@ class ShellApp:
         finally:
             loop.remove_signal_handler(signal.SIGINT)
 
-    async def _run(self, command: str) -> bool:
+    async def _run_meta_command(self, command_str: str):
+        parts = command_str.split(" ")
+        command_name = parts[0]
+        command_args = parts[1:]
+        command = get_meta_command(command_name)
+        if command is None:
+            console.print(f"Meta command /{command_name} not found")
+            return
+        if command.kimi_soul_only and not isinstance(self.soul, KimiSoul):
+            console.print(f"Meta command /{command_name} not supported")
+            return
+        logger.debug(
+            "Running meta command: {command_name} with args: {command_args}",
+            command_name=command_name,
+            command_args=command_args,
+        )
+        try:
+            ret = command.func(self, command_args)
+            if isinstance(ret, Awaitable):
+                await ret
+        except LLMNotSet:
+            logger.error("LLM not set")
+            console.print("[red]LLM not set, send /setup to configure[/red]")
+        except ChatProviderError as e:
+            logger.exception("LLM provider error:")
+            console.print(f"[red]LLM provider error: {e}[/red]")
+        except asyncio.CancelledError:
+            logger.info("Interrupted by user")
+            console.print("[red]Interrupted by user[/red]")
+        except Reload:
+            # just propagate
+            raise
+        except BaseException as e:
+            logger.exception("Unknown error:")
+            console.print(f"[red]Unknown error: {e}[/red]")
+            raise  # re-raise unknown error
+
+    async def _run_soul_command(self, command: str) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -245,40 +282,6 @@ class ShellApp:
                 # start a new step
         except asyncio.QueueShutDown:
             logger.debug("Visualization loop shutting down")
-
-    async def _run_meta_command(self, command_str: str):
-        parts = command_str.split(" ")
-        command_name = parts[0]
-        command_args = parts[1:]
-        command = get_meta_command(command_name)
-        if command is None:
-            console.print(f"Meta command /{command_name} not found")
-            return
-        if command.kimi_soul_only and not isinstance(self.soul, KimiSoul):
-            console.print(f"Meta command /{command_name} not supported")
-            return
-        logger.debug(
-            "Running meta command: {command_name} with args: {command_args}",
-            command_name=command_name,
-            command_args=command_args,
-        )
-        try:
-            ret = command.func(self, command_args)
-            if isinstance(ret, Awaitable):
-                await ret
-        except LLMNotSet:
-            logger.error("LLM not set")
-            console.print("[red]LLM not set, send /setup to configure[/red]")
-        except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            console.print(f"[red]LLM provider error: {e}[/red]")
-        except Reload:
-            # just propagate
-            raise
-        except BaseException as e:
-            logger.exception("Unknown error:")
-            console.print(f"[red]Unknown error: {e}[/red]")
-            raise  # re-raise unknown error
 
 
 _KIMI_BLUE = "dodger_blue1"

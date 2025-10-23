@@ -23,6 +23,17 @@ if TYPE_CHECKING:
     from kimi_cli.ui.shell import ShellApp
 
 type MetaCmdFunc = Callable[["ShellApp", list[str]], None | Awaitable[None]]
+"""
+A function that runs as a meta command.
+
+Raises:
+    LLMNotSet: When the LLM is not set.
+    ChatProviderError: When the LLM provider returns an error.
+    Reload: When the configuration should be reloaded.
+    asyncio.CancelledError: When the command is interrupted by user.
+
+This is quite similar to the `Soul.run` method.
+"""
 
 
 class MetaCommand(NamedTuple):
@@ -206,7 +217,7 @@ async def init(app: "ShellApp", args: list[str]):
             context=tmp_context,
             loop_control=soul_bak._loop_control,
         )
-        ok = await app._run(prompts.INIT)
+        ok = await app._run_soul_command(prompts.INIT)
 
         if ok:
             console.print(

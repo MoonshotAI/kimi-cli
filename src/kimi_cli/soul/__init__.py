@@ -51,7 +51,7 @@ class Soul(Protocol):
             wire (Wire): The wire to send events and requests to the UI loop.
 
         Raises:
-            ChatProviderNotSet: When the chat provider is not set.
+            LLMNotSet: When the LLM is not set.
             ChatProviderError: When the LLM provider returns an error.
             MaxStepsReached: When the maximum number of steps is reached.
             asyncio.CancelledError: When the run is cancelled by user.

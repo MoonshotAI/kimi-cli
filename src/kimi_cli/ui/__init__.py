@@ -28,6 +28,7 @@ async def run_soul(
     the run will be gracefully stopped and a `RunCancelled` will be raised.
 
     Raises:
+        LLMNotSet: When the LLM is not set.
         ChatProviderError: When the LLM provider returns an error.
         MaxStepsReached: When the maximum number of steps is reached.
         RunCancelled: When the run is cancelled by the cancel event.
