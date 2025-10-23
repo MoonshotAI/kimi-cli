@@ -249,6 +249,8 @@ class ShellApp:
                 if isinstance(msg, CompactionBegin):
                     with console.status("[cyan]Compacting...[/cyan]"):
                         msg = await wire.receive()
+                    if isinstance(msg, StepInterrupted):
+                        break
                     assert isinstance(msg, CompactionEnd)
                     continue
 
