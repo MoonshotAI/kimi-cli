@@ -16,6 +16,8 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.wire import (
     ApprovalRequest,
     ApprovalResponse,
+    CompactionBegin,
+    CompactionEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -243,6 +245,12 @@ class ShellApp:
                 # spin the moon at the beginning of each step
                 with console.status("", spinner="moon"):
                     msg = await wire.receive()
+
+                if isinstance(msg, CompactionBegin):
+                    with console.status("[cyan]Compacting...[/cyan]"):
+                        msg = await wire.receive()
+                    assert isinstance(msg, CompactionEnd)
+                    continue
 
                 with StepLiveView(self.soul.status) as step:
                     # visualization loop for one step

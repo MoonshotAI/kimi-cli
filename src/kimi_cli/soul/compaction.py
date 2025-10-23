@@ -10,6 +10,8 @@ from kimi_cli.llm import LLM
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 
+MAX_PRESERVED_MESSAGES = 2
+
 
 @runtime_checkable
 class Compaction(Protocol):
@@ -32,10 +34,33 @@ class Compaction(Protocol):
 
 class SimpleCompaction:
     async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
+        history = list(messages)
+        if not history:
+            return history
+
+        preserve_start_index = len(history)
+        n_preserved = 0
+        for index in range(len(history) - 1, -1, -1):
+            if history[index].role in {"user", "assistant"}:
+                n_preserved += 1
+                if n_preserved == MAX_PRESERVED_MESSAGES:
+                    preserve_start_index = index
+                    break
+
+        if n_preserved < MAX_PRESERVED_MESSAGES:
+            return history
+
+        to_compact = history[:preserve_start_index]
+        to_preserve = history[preserve_start_index:]
+
+        if not to_compact:
+            # Let's hope this won't exceed the context size limit
+            return to_preserve
+
         # Convert history to string for the compact prompt
         history_text = "\n\n".join(
             f"## Message {i + 1}\nRole: {msg.role}\nContent: {msg.content}"
-            for i, msg in enumerate(messages)
+            for i, msg in enumerate(to_compact)
         )
 
         # Build the compact prompt using string template
@@ -69,7 +94,9 @@ class SimpleCompaction:
             if isinstance(compacted_msg.content, str)
             else compacted_msg.content
         )
-        return [Message(role="assistant", content=content)]
+        compacted_messages: list[Message] = [Message(role="assistant", content=content)]
+        compacted_messages.extend(to_preserve)
+        return compacted_messages
 
 
 def __static_type_check(

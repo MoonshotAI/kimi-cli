@@ -155,6 +155,7 @@ class PrintApp:
             logger.debug("Visualization loop shutting down")
 
     async def _visualize_stream_json(self, wire: Wire, start_position: int):
+        # TODO: be aware of context compaction
         try:
             async with aiofiles.open(self.soul._context._file_backend, encoding="utf-8") as f:
                 await f.seek(start_position)

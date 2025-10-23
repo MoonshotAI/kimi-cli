@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Sequence
+from functools import partial
 
 import kosong
 import tenacity
@@ -20,10 +21,20 @@ from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul, StatusSnapshot
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system, tool_result_to_messages
-from kimi_cli.soul.wire import StatusUpdate, StepBegin, StepInterrupted, Wire, current_wire
+from kimi_cli.soul.wire import (
+    CompactionBegin,
+    CompactionEnd,
+    StatusUpdate,
+    StepBegin,
+    StepInterrupted,
+    Wire,
+    current_wire,
+)
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
+
+RESERVED_TOKENS = 50_000
 
 
 class KimiSoul:
@@ -53,6 +64,9 @@ class KimiSoul:
         self._context = context
         self._loop_control = loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._reserved_tokens = RESERVED_TOKENS
+        if self._agent_globals.llm is not None:
+            assert self._reserved_tokens <= self._agent_globals.llm.max_context_size
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -112,6 +126,14 @@ class KimiSoul:
             # to the main wire. See `_SubWire` for more details. Later we need to figure
             # out a better solution.
             try:
+                # compact the context if needed
+                if self._context.token_count >= self._reserved_tokens:
+                    logger.info("Context too long, compacting...")
+                    wire.send(CompactionBegin())
+                    await self.compact_context()
+                    wire.send(CompactionEnd())
+
+                logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
                 finished = await self._step(wire)
@@ -140,28 +162,9 @@ class KimiSoul:
         assert self._agent_globals.llm is not None
         chat_provider = self._agent_globals.llm.chat_provider
 
-        def _is_retryable_error(exception: BaseException) -> bool:
-            if isinstance(exception, (APIConnectionError, APITimeoutError)):
-                return True
-            return isinstance(exception, APIStatusError) and exception.status_code in (
-                429,  # Too Many Requests
-                500,  # Internal Server Error
-                502,  # Bad Gateway
-                503,  # Service Unavailable
-            )
-
-        def _retry_log(retry_state: RetryCallState):
-            logger.info(
-                "Retrying step for the {n} time. Waiting {sleep} seconds.",
-                n=retry_state.attempt_number,
-                sleep=retry_state.next_action.sleep
-                if retry_state.next_action is not None
-                else "unknown",
-            )
-
         @tenacity.retry(
-            retry=retry_if_exception(_is_retryable_error),
-            before_sleep=_retry_log,
+            retry=retry_if_exception(self._is_retryable_error),
+            before_sleep=partial(self._retry_log, "step"),
             wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
             stop=stop_after_attempt(self._loop_control.max_retries_per_step),
             reraise=True,
@@ -243,16 +246,45 @@ class KimiSoul:
             LLMNotSet: When the LLM is not set.
             ChatProviderError: When the chat provider returns an error.
         """
-        if self._agent_globals.llm is None:
-            raise LLMNotSet()
 
-        # TODO: add retry just like `_step`
-        compacted_messages = await self._compaction.compact(
-            self._context.history, self._agent_globals.llm
+        @tenacity.retry(
+            retry=retry_if_exception(self._is_retryable_error),
+            before_sleep=partial(self._retry_log, "compaction"),
+            wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
+            stop=stop_after_attempt(self._loop_control.max_retries_per_step),
+            reraise=True,
         )
+        async def _compact_with_retry() -> Sequence[Message]:
+            if self._agent_globals.llm is None:
+                raise LLMNotSet()
+            return await self._compaction.compact(self._context.history, self._agent_globals.llm)
+
+        compacted_messages = await _compact_with_retry()
         await self._context.revert_to(0)
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
+
+    @staticmethod
+    def _is_retryable_error(exception: BaseException) -> bool:
+        if isinstance(exception, (APIConnectionError, APITimeoutError)):
+            return True
+        return isinstance(exception, APIStatusError) and exception.status_code in (
+            429,  # Too Many Requests
+            500,  # Internal Server Error
+            502,  # Bad Gateway
+            503,  # Service Unavailable
+        )
+
+    @staticmethod
+    def _retry_log(name: str, retry_state: RetryCallState):
+        logger.info(
+            "Retrying {name} for the {n} time. Waiting {sleep} seconds.",
+            name=name,
+            n=retry_state.attempt_number,
+            sleep=retry_state.next_action.sleep
+            if retry_state.next_action is not None
+            else "unknown",
+        )
 
 
 class BackToTheFuture(Exception):

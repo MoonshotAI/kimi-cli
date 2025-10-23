@@ -15,7 +15,26 @@ class StepBegin(NamedTuple):
     n: int
 
 
-class StepInterrupted(NamedTuple):
+class StepInterrupted:
+    pass
+
+
+class CompactionBegin:
+    """
+    Indicates that a compaction just began.
+    This event must be sent during a step, which means, between `StepBegin` and `StepInterrupted`.
+    And, there must be a `CompactionEnd` directly following this event.
+    """
+
+    pass
+
+
+class CompactionEnd:
+    """
+    Indicates that a compaction just ended.
+    This event must be sent directly after a `CompactionBegin` event.
+    """
+
     pass
 
 
@@ -23,7 +42,7 @@ class StatusUpdate(NamedTuple):
     status: StatusSnapshot
 
 
-type ControlFlowEvent = StepBegin | StepInterrupted | StatusUpdate
+type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
 type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult
 
 
