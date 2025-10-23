@@ -7,7 +7,6 @@ from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider, MoonshotSearchConfig, load_config, save_config
-from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
 
@@ -45,11 +44,9 @@ _PLATFORMS = [
 ]
 
 
-@meta_command(kimi_soul_only=True)
+@meta_command
 async def setup(app: "ShellApp", args: list[str]):
     """Setup Kimi CLI"""
-    assert isinstance(app.soul, KimiSoul)
-
     result = await _setup()
     if not result:
         # error message already printed

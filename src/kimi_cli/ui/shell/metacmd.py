@@ -2,16 +2,13 @@ import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from string import Template
 from typing import TYPE_CHECKING, NamedTuple, overload
 
-from kosong.base import generate
-from kosong.base.message import ContentPart, Message, TextPart
+from kosong.base.message import Message
 from rich.panel import Panel
 
-import kimi_cli.prompts.metacmds as prompts
+import kimi_cli.prompts as prompts
 from kimi_cli.agent import load_agents_md
-from kimi_cli.soul import LLMNotSet
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
@@ -199,14 +196,12 @@ def feedback(app: "ShellApp", args: list[str]):
     console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
 
 
-@meta_command
+@meta_command(kimi_soul_only=True)
 async def init(app: "ShellApp", args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
-    soul_bak = app.soul
-    if not isinstance(soul_bak, KimiSoul):
-        console.print("[red]Failed to analyze the codebase.[/red]")
-        return
+    assert isinstance(app.soul, KimiSoul)
 
+    soul_bak = app.soul
     with tempfile.TemporaryDirectory() as temp_dir:
         logger.info("Running `/init`")
         console.print("Analyzing the codebase...")
@@ -250,68 +245,19 @@ async def clear(app: "ShellApp", args: list[str]):
     console.print("[green]✓[/green] Context has been cleared.")
 
 
-@meta_command
+@meta_command(kimi_soul_only=True)
 async def compact(app: "ShellApp", args: list[str]):
     """Compact the context"""
     assert isinstance(app.soul, KimiSoul)
 
+    if app.soul._context.n_checkpoints == 0:
+        console.print("[yellow]Context is empty.[/yellow]")
+        return
+
     logger.info("Running `/compact`")
-
-    if app.soul._agent_globals.llm is None:
-        raise LLMNotSet()
-
-    # Get current context history
-    current_history = list(app.soul._context.history)
-    if len(current_history) <= 1:
-        console.print("[yellow]Context is too short to compact.[/yellow]")
-        return
-
-    # Convert history to string for the compact prompt
-    history_text = "\n\n".join(
-        f"## Message {i + 1}\nRole: {msg.role}\nContent: {msg.content}"
-        for i, msg in enumerate(current_history)
-    )
-
-    # Build the compact prompt using string template
-    compact_template = Template(prompts.COMPACT)
-    compact_prompt = compact_template.substitute(CONTEXT=history_text)
-
-    # Create input message for compaction
-    compact_message = Message(role="user", content=compact_prompt)
-
-    # Call generate to get the compacted context
-    try:
-        with console.status("[cyan]Compacting...[/cyan]"):
-            compacted_msg, usage = await generate(
-                chat_provider=app.soul._agent_globals.llm.chat_provider,
-                system_prompt="You are a helpful assistant that compacts conversation context.",
-                tools=[],
-                history=[compact_message],
-            )
-
-        # Clear the context and add the compacted message as the first message
-        await app.soul._context.revert_to(0)
-        content: list[ContentPart] = (
-            [TextPart(text=compacted_msg.content)]
-            if isinstance(compacted_msg.content, str)
-            else compacted_msg.content
-        )
-        content.insert(
-            0, system("Previous context has been compacted. Here is the compaction output:")
-        )
-        await app.soul._context.append_message(Message(role="assistant", content=content))
-
-        console.print("[green]✓[/green] Context has been compacted.")
-        if usage:
-            logger.info(
-                "Compaction used {input} input tokens and {output} output tokens",
-                input=usage.input,
-                output=usage.output,
-            )
-    except Exception as e:
-        logger.error("Failed to compact context: {error}", error=e)
-        console.print(f"[red]Failed to compact the context: {e}[/red]")
-        return
+    with console.status("[cyan]Compacting...[/cyan]"):
+        await app.soul.compact_context()
+    console.print("[green]✓[/green] Context has been compacted.")
 
 
 from . import (  # noqa: E402

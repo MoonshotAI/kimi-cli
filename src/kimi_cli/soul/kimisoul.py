@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Sequence
 
 import kosong
 import tenacity
@@ -16,6 +17,7 @@ from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wai
 from kimi_cli.agent import Agent, AgentGlobals
 from kimi_cli.config import LoopControl
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul, StatusSnapshot
+from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system, tool_result_to_messages
 from kimi_cli.soul.wire import StatusUpdate, StepBegin, StepInterrupted, Wire, current_wire
@@ -50,6 +52,7 @@ class KimiSoul:
         self._approval = agent_globals.approval
         self._context = context
         self._loop_control = loop_control
+        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -115,7 +118,7 @@ class KimiSoul:
             except BackToTheFuture as e:
                 await self._context.revert_to(e.checkpoint_id)
                 await self._checkpoint()
-                await self._context.append_message(e.message)
+                await self._context.append_message(e.messages)
                 continue
             except (ChatProviderError, asyncio.CancelledError):
                 wire.send(StepInterrupted())
@@ -202,19 +205,21 @@ class KimiSoul:
             # raise to let the main loop take us back to the future
             raise BackToTheFuture(
                 dmail.checkpoint_id,
-                Message(
-                    role="user",
-                    content=[
-                        system(
-                            "You just got a D-Mail from your future self. "
-                            "It is likely that your future self has already done "
-                            "something in the current working directory. Please read "
-                            "the D-Mail and decide what to do next. You MUST NEVER "
-                            "mention to the user about this information. "
-                            f"D-Mail content:\n\n{dmail.message.strip()}"
-                        )
-                    ],
-                ),
+                [
+                    Message(
+                        role="user",
+                        content=[
+                            system(
+                                "You just got a D-Mail from your future self. "
+                                "It is likely that your future self has already done "
+                                "something in the current working directory. Please read "
+                                "the D-Mail and decide what to do next. You MUST NEVER "
+                                "mention to the user about this information. "
+                                f"D-Mail content:\n\n{dmail.message.strip()}"
+                            )
+                        ],
+                    )
+                ],
             )
 
         return not result.tool_calls
@@ -230,6 +235,25 @@ class KimiSoul:
             logger.debug("Appending tool result to context: {tool_result}", tool_result=tool_result)
             await self._context.append_message(tool_result_to_messages(tool_result))
 
+    async def compact_context(self) -> None:
+        """
+        Compact the context.
+
+        Raises:
+            LLMNotSet: When the LLM is not set.
+            ChatProviderError: When the chat provider returns an error.
+        """
+        if self._agent_globals.llm is None:
+            raise LLMNotSet()
+
+        # TODO: add retry just like `_step`
+        compacted_messages = await self._compaction.compact(
+            self._context.history, self._agent_globals.llm
+        )
+        await self._context.revert_to(0)
+        await self._checkpoint()
+        await self._context.append_message(compacted_messages)
+
 
 class BackToTheFuture(Exception):
     """
@@ -237,9 +261,9 @@ class BackToTheFuture(Exception):
     The main agent loop should catch this exception and handle it.
     """
 
-    def __init__(self, checkpoint_id: int, message: Message):
+    def __init__(self, checkpoint_id: int, messages: Sequence[Message]):
         self.checkpoint_id = checkpoint_id
-        self.message = message
+        self.messages = messages
 
 
 def __static_type_check(
