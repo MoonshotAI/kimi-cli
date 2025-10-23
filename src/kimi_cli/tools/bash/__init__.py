@@ -38,7 +38,9 @@ class Bash(CallableTool2[Params]):
         builder = ToolResultBuilder()
 
         if not await self._approval.request(
-            f"run command {params.command}", f"Run command `{params.command}`"
+            self.name,
+            f"run command {params.command}",
+            f"Run command `{params.command}`",
         ):
             return ToolRejectedError()
 

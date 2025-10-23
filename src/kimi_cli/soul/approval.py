@@ -15,11 +15,12 @@ class Approval:
     def set_yolo(self, yolo: bool) -> None:
         self._yolo = yolo
 
-    async def request(self, action: str, description: str) -> bool:
+    async def request(self, sender: str, action: str, description: str) -> bool:
         """
         Request approval for the given action. Intended to be called by tools.
 
         Args:
+            sender (str): The name of the sender.
             action (str): The action to request approval for.
                 This is used to identify the action for auto-approval.
             description (str): The description of the action. This is used to display to the user.
@@ -47,7 +48,7 @@ class Approval:
         if action in self._auto_approve_actions:
             return True
 
-        request = ApprovalRequest(tool_call.id, action, description)
+        request = ApprovalRequest(tool_call.id, sender, action, description)
         self._request_queue.put_nowait(request)
         response = await request.wait()
         logger.debug("Received approval response: {response}", response=response)

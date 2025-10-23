@@ -53,9 +53,10 @@ class ApprovalResponse(Enum):
 
 
 class ApprovalRequest:
-    def __init__(self, tool_call_id: str, action: str, description: str):
+    def __init__(self, tool_call_id: str, sender: str, action: str, description: str):
         self.id = str(uuid.uuid4())
         self.tool_call_id = tool_call_id
+        self.sender = sender
         self.action = action
         self.description = description
         self._future = asyncio.Future[ApprovalResponse]()
@@ -63,7 +64,7 @@ class ApprovalRequest:
     def __repr__(self) -> str:
         return (
             f"ApprovalRequest(id={self.id}, tool_call_id={self.tool_call_id}, "
-            f"action={self.action}, description={self.description})"
+            f"sender={self.sender}, action={self.action}, description={self.description})"
         )
 
     async def wait(self) -> ApprovalResponse:

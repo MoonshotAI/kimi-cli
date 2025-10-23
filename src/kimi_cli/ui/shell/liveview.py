@@ -76,9 +76,8 @@ class _ToolCallDisplay:
 
 
 class _ApprovalRequestDisplay:
-    def __init__(self, request: ApprovalRequest, from_: str):
+    def __init__(self, request: ApprovalRequest):
         self.request = request
-        self.from_ = from_
         self.options = [
             ("Approve", ApprovalResponse.APPROVE),
             ("Approve for this session", ApprovalResponse.APPROVE_FOR_SESSION),
@@ -92,10 +91,7 @@ class _ApprovalRequestDisplay:
 
         # Add request details
         lines.append(
-            Text(
-                escape(f'{self.from_} is requesting approval to "{self.request.description}"'),
-                style="bold",
-            )
+            Text(f'{self.request.sender} is requesting approval to "{self.request.description}".')
         )
 
         lines.append(Text(""))  # Empty line
@@ -103,14 +99,14 @@ class _ApprovalRequestDisplay:
         # Add menu options
         for i, (option_text, _) in enumerate(self.options):
             if i == self.selected_index:
-                lines.append(Text(f"→ {option_text}", style="bold cyan"))
+                lines.append(Text(f"→ {option_text}", style="cyan"))
             else:
                 lines.append(Text(f"  {option_text}", style="grey50"))
 
         content = Group(*lines)
         return Panel.fit(
             content,
-            title="[bold yellow]⚠ Approval Requested[/bold yellow]",
+            title="[yellow]⚠ Approval Requested[/yellow]",
             border_style="yellow",
             padding=(1, 2),
         )
@@ -234,9 +230,7 @@ class StepLiveView:
             return
 
         request = self._approval_queue.popleft()
-        self._current_approval = _ApprovalRequestDisplay(
-            request, self._tool_calls[request.tool_call_id]._tool_name
-        )
+        self._current_approval = _ApprovalRequestDisplay(request)
 
     def update_status(self, status: StatusSnapshot):
         if self._status_text is None:
