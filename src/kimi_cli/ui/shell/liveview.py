@@ -3,11 +3,14 @@ from collections import deque
 import streamingjson
 from kosong.base.message import ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
-from rich.console import Group, RenderableType
+from rich import box
+from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
+from rich.markdown import Heading, Markdown
 from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
+from rich.status import Status
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
@@ -143,6 +146,7 @@ class StepLiveView:
         self._status_text: Text | None = Text(
             self._format_status(status), style="grey50", justify="right"
         )
+        self._buffer_status: RenderableType | None = None
 
     def __enter__(self):
         self._live = Live(
@@ -162,6 +166,8 @@ class StepLiveView:
         sections = []
         if self._line_buffer:
             sections.append(self._line_buffer)
+        if self._buffer_status:
+            sections.append(self._buffer_status)
         for view in self._tool_calls.values():
             sections.append(view.renderable)
         if self._current_approval:
@@ -174,12 +180,12 @@ class StepLiveView:
             sections.append(self._status_text)
         return Group(*sections)
 
-    def _push_out(self, text: Text | str):
+    def _push_out(self, renderable: RenderableType):
         """
         Push the text out of the live view to the console.
         After this, the printed line will not be changed further.
         """
-        console.print(text)
+        console.print(renderable)
 
     def append_text(self, text: str):
         lines = text.split("\n")
@@ -283,3 +289,83 @@ class StepLiveView:
     def _format_status(status: StatusSnapshot) -> str:
         bounded = max(0.0, min(status.context_usage, 1.0))
         return f"context: {bounded:.1%}"
+
+
+class StepLiveViewWithMarkdown(StepLiveView):
+    def __init__(self, status: StatusSnapshot):
+        super().__init__(status)
+        self._pending_markdown_parts: list[str] = []
+        self._buffer_status_active = False
+        self._buffer_status_obj: Status | None = None
+
+    def append_text(self, text: str):
+        if not self._pending_markdown_parts:
+            self._show_thinking_status()
+        self._pending_markdown_parts.append(text)
+
+    def append_tool_call(self, tool_call: ToolCall):
+        self._flush_markdown()
+        super().append_tool_call(tool_call)
+
+    def finish(self):
+        self._flush_markdown()
+        super().finish()
+
+    def interrupt(self):
+        self._flush_markdown()
+        super().interrupt()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._flush_markdown()
+        return super().__exit__(exc_type, exc_value, traceback)
+
+    def _flush_markdown(self):
+        self._hide_thinking_status()
+        if not self._pending_markdown_parts:
+            return
+        markdown_text = "".join(self._pending_markdown_parts)
+        self._pending_markdown_parts.clear()
+        if markdown_text.strip():
+            self._push_out(_LeftAlignedMarkdown(markdown_text, justify="left"))
+
+    def _show_thinking_status(self):
+        if self._buffer_status_active:
+            return
+        self._buffer_status_active = True
+        self._line_buffer.plain = ""
+        self._buffer_status_obj = Status("Thinking...", console=console, spinner="dots")
+        self._buffer_status = self._buffer_status_obj.renderable
+        self._live.update(self._compose())
+
+    def _hide_thinking_status(self):
+        if not self._buffer_status_active:
+            return
+        self._buffer_status_active = False
+        if self._buffer_status_obj is not None:
+            self._buffer_status_obj.stop()
+        self._buffer_status = None
+        self._buffer_status_obj = None
+        self._live.update(self._compose())
+
+
+class _LeftAlignedHeading(Heading):
+    """Heading element with left-aligned content."""
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        text = self.text
+        text.justify = "left"
+        if self.tag == "h2":
+            text.stylize("bold")
+        if self.tag == "h1":
+            yield Panel(text, box=box.HEAVY, style="markdown.h1.border")
+        else:
+            if self.tag == "h2":
+                yield Text("")
+            yield text
+
+
+class _LeftAlignedMarkdown(Markdown):
+    """Markdown renderer that left-aligns headings."""
+
+    elements = dict(Markdown.elements)
+    elements["heading_open"] = _LeftAlignedHeading

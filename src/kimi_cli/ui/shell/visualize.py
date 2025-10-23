@@ -16,7 +16,7 @@ from kimi_cli.soul.wire import (
 )
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import listen_for_keyboard
-from kimi_cli.ui.shell.liveview import StepLiveView
+from kimi_cli.ui.shell.liveview import StepLiveView, StepLiveViewWithMarkdown
 from kimi_cli.utils.logging import logger
 
 
@@ -51,7 +51,7 @@ async def visualize(wire: Wire, *, initial_status: StatusSnapshot):
         while True:
             # TODO: Maybe we can always have a StepLiveView here.
             #       No need to recreate for each step.
-            with StepLiveView(initial_status) as step:
+            with StepLiveViewWithMarkdown(initial_status) as step:
                 async with _keyboard_listener(step):
                     # spin the moon at the beginning of each step
                     with console.status("", spinner="moon"):
