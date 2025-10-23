@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 
 - Add `/debug` meta command to debug the context
 - Add auto context compaction
+- Add approval request mechanism
+- Add `--yolo` option to automatically approve all actions
 
 ### Fixed
 

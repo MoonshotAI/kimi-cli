@@ -152,6 +152,16 @@ UIMode = Literal["shell", "print", "acp"]
         "Default: none."
     ),
 )
+@click.option(
+    "--yolo",
+    "--yes",
+    "-y",
+    "--auto-approve",
+    "yolo",
+    is_flag=True,
+    default=False,
+    help="Automatically approve all actions. Default: no.",
+)
 def kimi(
     verbose: bool,
     debug: bool,
@@ -165,6 +175,7 @@ def kimi(
     output_format: OutputFormat | None,
     mcp_config_file: list[Path],
     mcp_config: list[str],
+    yolo: bool,
 ):
     """Kimi, your next CLI agent."""
     echo = click.echo if verbose else lambda *args, **kwargs: None
@@ -232,6 +243,7 @@ def kimi(
                     input_format=input_format,
                     output_format=output_format,
                     mcp_configs=mcp_configs,
+                    yolo=yolo,
                 )
             )
             if not succeeded:
@@ -254,6 +266,7 @@ async def kimi_run(
     input_format: InputFormat | None = None,
     output_format: OutputFormat | None = None,
     mcp_configs: list[dict[str, Any]] | None = None,
+    yolo: bool = False,
 ) -> bool:
     """Run Kimi CLI."""
     echo = click.echo if verbose else lambda *args, **kwargs: None
@@ -305,7 +318,7 @@ async def kimi_run(
         ),
         denwa_renji=DenwaRenji(),
         session=session,
-        approval=Approval(),
+        approval=Approval(yolo=yolo),
     )
     try:
         agent = await load_agent_with_mcp(agent_file, agent_globals, mcp_configs or [])
