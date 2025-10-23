@@ -292,6 +292,8 @@ class StepLiveView:
 
 
 class StepLiveViewWithMarkdown(StepLiveView):
+    # TODO: figure out a streaming implementation for this
+
     def __init__(self, status: StatusSnapshot):
         super().__init__(status)
         self._pending_markdown_parts: list[str] = []
