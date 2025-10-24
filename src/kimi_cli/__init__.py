@@ -21,6 +21,7 @@ from kimi_cli.agent import (
     load_agent_with_mcp,
     load_agents_md,
 )
+from types import SimpleNamespace
 from kimi_cli.config import (
     Config,
     ConfigError,
@@ -39,6 +40,7 @@ from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
 from kimi_cli.ui.shell import Reload, ShellApp
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.provider import augment_provider_with_env_vars, create_llm
+import platform
 
 __version__ = importlib.metadata.version("kimi-cli")
 USER_AGENT = f"KimiCLI/{__version__}"
@@ -301,8 +303,13 @@ async def kimi_run(
         stream = ui != "print"  # use non-streaming mode only for print UI
         llm = create_llm(provider, model, stream=stream, session_id=session.id)
 
-    # TODO: support Windows
-    ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)
+    here = pathlib.Path.cwd()
+    lines = [f"{p.name}{'/' if p.is_dir() else ''}" for p in here.iterdir()]
+    ls_output = textwrap.fill("  ".join(lines), width=78)
+    if platform.system() == "Windows":
+       completed = SimpleNamespace(stdout=ls_output, stderr="", returncode=0)
+    else:
+     completed = subprocess.run(["ls", "-la"], capture_output=True, text=True)
     agents_md = load_agents_md(work_dir) or ""
     if agents_md:
         echo(f"✓ Loaded agents.md: {textwrap.shorten(agents_md, width=100)}")
@@ -313,7 +320,7 @@ async def kimi_run(
         builtin_args=BuiltinSystemPromptArgs(
             KIMI_NOW=datetime.now().astimezone().isoformat(),
             KIMI_WORK_DIR=work_dir,
-            KIMI_WORK_DIR_LS=ls.stdout,
+            KIMI_WORK_DIR_LS=completed.stdout,
             KIMI_AGENTS_MD=agents_md,
         ),
         denwa_renji=DenwaRenji(),
