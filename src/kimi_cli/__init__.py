@@ -213,7 +213,7 @@ def kimi(
         )
 
     try:
-        mcp_configs = [json.loads(conf.read_text()) for conf in mcp_config_file]
+        mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in mcp_config_file]
     except json.JSONDecodeError as e:
         raise click.BadOptionUsage("--mcp-config-file", f"Invalid JSON: {e}") from e
 

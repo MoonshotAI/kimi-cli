@@ -265,7 +265,7 @@ def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> No
     if LATEST_VERSION_FILE.exists():
         from kimi_cli import __version__ as current_version
 
-        latest_version = LATEST_VERSION_FILE.read_text().strip()
+        latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
         if semver_tuple(latest_version) > semver_tuple(current_version):
             rows.append(
                 Text.from_markup(

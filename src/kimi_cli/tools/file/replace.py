@@ -29,7 +29,7 @@ class Params(BaseModel):
 
 class StrReplaceFile(CallableTool2[Params]):
     name: str = "StrReplaceFile"
-    description: str = (Path(__file__).parent / "replace.md").read_text()
+    description: str = (Path(__file__).parent / "replace.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
     def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):

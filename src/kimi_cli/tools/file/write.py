@@ -26,7 +26,7 @@ class Params(BaseModel):
 
 class WriteFile(CallableTool2[Params]):
     name: str = "WriteFile"
-    description: str = (Path(__file__).parent / "write.md").read_text()
+    description: str = (Path(__file__).parent / "write.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
     def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):
