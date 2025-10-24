@@ -292,7 +292,6 @@ async def review(app: "ShellApp", args: list[str]):
         console.print("[red]Code review interrupted by user.[/red]")
         return
     except Exception as exc:  # noqa: BLE001 -- surface unexpected failures to the user
-        # Note: asyncio.CancelledError is handled above and won't reach here since it's caught first
         logger.exception("Code review execution failed")
         console.print(f"[red]Code review failed: {exc}[/red]")
         return
