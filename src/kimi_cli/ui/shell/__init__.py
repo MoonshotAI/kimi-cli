@@ -160,10 +160,11 @@ class ShellApp:
         loop.add_signal_handler(signal.SIGINT, _handler)
 
         try:
+            # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
                 command,
-                partial(visualize, initial_status=self.soul.status),
+                lambda wire: visualize(wire, initial_status=self.soul.status, cancel_event=cancel_event),
                 cancel_event,
             )
             return True
