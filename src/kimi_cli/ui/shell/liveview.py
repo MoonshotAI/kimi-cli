@@ -248,10 +248,9 @@ class StepLiveView:
 
     def handle_keyboard_event(self, event: KeyEvent):
         # Handle ESC key to cancel the run
-        if event == KeyEvent.ESCAPE:
-            if self._cancel_event is not None:
-                self._cancel_event.set()
-                return
+        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
+            self._cancel_event.set()
+            return
 
         if not self._current_approval:
             # just ignore any keyboard event when there's no approval request
