@@ -21,6 +21,7 @@ dependencies = [
     "tenacity>=9.1.2",
     "fastmcp>=2.12.5",
     "pydantic>=2.12.3",
+    "httpx[socks]>=0.28.0",
 ]
 
 [dependency-groups]
