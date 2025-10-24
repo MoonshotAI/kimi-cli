@@ -266,7 +266,7 @@ class KimiSoul:
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
-        if isinstance(exception, (APIConnectionError, APITimeoutError)):
+        if isinstance(exception, APIConnectionError | APITimeoutError):
             return True
         return isinstance(exception, APIStatusError) and exception.status_code in (
             429,  # Too Many Requests

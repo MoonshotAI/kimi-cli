@@ -291,7 +291,7 @@ async def test_grep_invalid_pattern(grep_tool: Grep):
     """Test with invalid regex pattern."""
     result = await grep_tool(Params(pattern="[invalid", path=".", output_mode="files_with_matches"))
     # Should handle the error gracefully
-    assert isinstance(result, (ToolOk, ToolError))  # Either way should not crash
+    assert isinstance(result, ToolOk | ToolError)  # Either way should not crash
 
 
 @pytest.mark.asyncio
