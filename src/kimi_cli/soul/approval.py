@@ -9,7 +9,7 @@ class Approval:
     def __init__(self, yolo: bool = False):
         self._request_queue = asyncio.Queue[ApprovalRequest]()
         self._yolo = yolo
-        self._auto_approve_actions = set()  # TODO: persist across sessions
+        self._auto_approve_actions: set[str] = set()  # TODO: persist across sessions
         """Set of action names that should automatically be approved."""
 
     def set_yolo(self, yolo: bool) -> None:
@@ -60,8 +60,6 @@ class Approval:
                 return True
             case ApprovalResponse.REJECT:
                 return False
-            case _:
-                raise ValueError(f"Unknown approval response: {response}")
 
     async def fetch_request(self) -> ApprovalRequest:
         """

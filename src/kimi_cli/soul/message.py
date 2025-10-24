@@ -14,7 +14,7 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
         message = tool_result.result.message
         if isinstance(tool_result.result, ToolRuntimeError):
             message += "\nThis is an unexpected error and the tool is probably not working."
-        content = [system(message)]
+        content: list[ContentPart] = [system(message)]
         if tool_result.result.output:
             content.append(TextPart(text=tool_result.result.output))
         return [
@@ -26,8 +26,8 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
         ]
 
     content = tool_ok_to_message_content(tool_result.result)
-    text_parts = []
-    non_text_parts = []
+    text_parts: list[ContentPart] = []
+    non_text_parts: list[ContentPart] = []
     for part in content:
         if isinstance(part, TextPart):
             text_parts.append(part)
@@ -60,7 +60,7 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
 
 def tool_ok_to_message_content(result: ToolOk) -> list[ContentPart]:
     """Convert a tool return value to a list of message content parts."""
-    content = []
+    content: list[ContentPart] = []
     if result.message:
         content.append(system(result.message))
     match output := result.output:
@@ -70,7 +70,7 @@ def tool_ok_to_message_content(result: ToolOk) -> list[ContentPart]:
         case ContentPart():
             content.append(output)
         case _:
-            content.extend(list(output))
+            content.extend(output)
     if not content:
         content.append(system("Tool output is empty."))
     return content

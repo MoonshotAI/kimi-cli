@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from string import Template
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from kosong.base import generate
 from kosong.base.message import ContentPart, Message, TextPart
@@ -32,7 +32,7 @@ class Compaction(Protocol):
         ...
 
 
-class SimpleCompaction:
+class SimpleCompaction(Compaction):
     async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
         history = list(messages)
         if not history:
@@ -99,7 +99,7 @@ class SimpleCompaction:
         return compacted_messages
 
 
-def __static_type_check(
-    simple: SimpleCompaction,
-):
-    _: Compaction = simple
+if TYPE_CHECKING:
+
+    def type_check(simple: SimpleCompaction):
+        _: Compaction = simple
