@@ -18,6 +18,7 @@ Only write entries that are worth mentioning to users.
 ### Fixed
 
 - Fix SSL certificate verification error in some rare cases
+- Fix possible decoding error in Bash tool
 
 ## [0.39] - 2025-10-24
 
