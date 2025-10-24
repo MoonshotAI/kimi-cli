@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
@@ -5,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, overload
 
 from kosong.base.message import Message
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
@@ -12,6 +14,14 @@ from kimi_cli.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
+from kimi_cli.tools.review import (
+    ReviewError,
+    build_review_prompt,
+    collect_commit_diff,
+    collect_uncommitted_diff,
+    get_recent_commits,
+    is_git_repo,
+)
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.logging import logger
@@ -194,6 +204,109 @@ def feedback(app: "ShellApp", args: list[str]):
     if webbrowser.open(ISSUE_URL):
         return
     console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
+
+
+@meta_command
+async def review(app: "ShellApp", args: list[str]):
+    """Run AI-powered code review for local changes"""
+
+    repo_path = Path.cwd()
+    if not is_git_repo(repo_path):
+        console.print(
+            "[red]Current directory is not a git repository. Review cannot proceed.[/red]"
+        )
+        return
+
+    try:
+        review_target = await ChoiceInput(
+            message="Select review target",
+            options=[
+                ("uncommitted", "Review uncommitted changes"),
+                ("commit", "Review a commit"),
+            ],
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
+        return
+
+    if not review_target:
+        console.print("[yellow]Code review cancelled.[/yellow]")
+        return
+
+    scope_hint: str | None = None
+    if review_target == "uncommitted":
+        console.print("[grey50]Collecting uncommitted changes…[/grey50]")
+        try:
+            diff_text = collect_uncommitted_diff(repo_path)
+        except ReviewError as exc:
+            console.print(f"[red]Failed to collect uncommitted changes: {exc}[/red]")
+            return
+        scope_hint = "Reviewing uncommitted workspace changes"
+    else:
+        commits = get_recent_commits(repo_path, limit=20)
+        if not commits:
+            console.print("[red]Unable to load recent commits.[/red]")
+            return
+
+        commit_lookup = {commit.sha: commit for commit in commits}
+        options = [
+            (commit.sha, f"{commit.short_sha} {_truncate_subject(commit.subject)}")
+            for commit in commits
+        ]
+        options.append(("", "Cancel"))
+
+        try:
+            selected = await ChoiceInput(
+                message="Select a commit to review",
+                options=options,
+            ).prompt_async()
+        except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
+            return
+
+        if not selected:
+            console.print("[yellow]Commit review cancelled.[/yellow]")
+            return
+
+        if selected not in commit_lookup:
+            console.print(
+                "[red]Selected commit is not available. Please rerun the review command.[/red]"
+            )
+            return
+
+        commit = commit_lookup[selected]
+
+        scope_hint = f"Reviewing commit {commit.short_sha} — {_truncate_subject(commit.subject)}"
+        console.print(f"[grey50]Collecting diff for commit {commit.short_sha}…[/grey50]")
+        try:
+            diff_text = collect_commit_diff(repo_path, commit.sha)
+        except ReviewError as exc:
+            console.print(f"[red]Failed to collect commit diff: {exc}[/red]")
+            return
+
+    prompt = build_review_prompt(diff_text, scope_hint=scope_hint)
+    console.print("[grey50]Requesting review from the model…[/grey50]")
+
+    try:
+        ok = await app._run_soul_command(prompt)
+    except asyncio.CancelledError:
+        logger.info("Code review interrupted by user")
+        console.print("[red]Code review interrupted by user.[/red]")
+        return
+    except Exception as exc:  # noqa: BLE001 -- surface unexpected failures to the user
+        # Note: asyncio.CancelledError is handled above and won't reach here since it's caught first
+        logger.exception("Code review execution failed")
+        console.print(f"[red]Code review failed: {exc}[/red]")
+        return
+    if not ok:
+        console.print(
+            "[red]Code review did not complete successfully. Check the logs above for provider "
+            "details.[/red]"
+        )
+
+
+def _truncate_subject(subject: str, *, limit: int = 60) -> str:
+    if len(subject) <= limit:
+        return subject
+    return subject[: limit - 3] + "..."
 
 
 @meta_command(kimi_soul_only=True)
