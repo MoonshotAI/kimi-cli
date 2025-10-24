@@ -20,6 +20,7 @@ class _Platform(NamedTuple):
     base_url: str
     search_url: str | None = None
     allowed_models: list[str] | None = None
+    content_length_map: dict[str, int] | None = None
 
 
 _PLATFORMS = [
@@ -40,6 +41,11 @@ _PLATFORMS = [
         name="Moonshot AI Open Platform",
         base_url="https://api.moonshot.ai/v1",
         allowed_models=["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "kimi-k2-0711-preview"],
+        content_length_map={
+            "kimi-k2-turbo-preview": 262144,
+            "kimi-k2-0905-preview": 262144,
+            "kimi-k2-0711-preview": 131072,
+        },
     ),
 ]
 
@@ -146,11 +152,19 @@ async def _setup() -> _SetupResult | None:
 
     model = model_dict[model_id]
 
+    context_length = model.get("context_length")
+    if context_length is None and platform.content_length_map is not None:
+        context_length = platform.content_length_map.get(model_id)
+
+    if context_length is None:
+        console.print("[red]No context length available for the selected model[/red]")
+        return None
+
     return _SetupResult(
         platform=platform,
         api_key=SecretStr(api_key),
         model_id=model_id,
-        max_context_size=model["context_length"],
+        max_context_size=context_length,
     )
 
 
