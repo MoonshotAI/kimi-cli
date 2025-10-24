@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Sequence
 from functools import partial
+from typing import TYPE_CHECKING
 
 import kosong
 import tenacity
@@ -302,7 +303,7 @@ class BackToTheFuture(Exception):
         self.messages = messages
 
 
-def __static_type_check(
-    kimi_soul: KimiSoul,
-):
-    _: Soul = kimi_soul
+if TYPE_CHECKING:
+
+    def type_check(kimi_soul: KimiSoul):
+        _: Soul = kimi_soul

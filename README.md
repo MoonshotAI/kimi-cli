@@ -84,7 +84,7 @@ After restarting Zsh, you can switch to agent mode by pressing `Ctrl-K`.
 
 ### ACP support
 
-Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editors or IDEs.
+Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
 For example, to use Kimi CLI with [Zed](https://zed.dev/), add the following configuration to your `~/.config/zed/settings.json`:
 

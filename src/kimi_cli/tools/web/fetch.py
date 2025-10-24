@@ -7,6 +7,7 @@ from kosong.tooling import CallableTool2, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
+from kimi_cli.utils.aiohttp import new_client_session
 
 
 class Params(BaseModel):
@@ -24,7 +25,7 @@ class FetchURL(CallableTool2[Params]):
 
         try:
             async with (
-                aiohttp.ClientSession() as session,
+                new_client_session() as session,
                 session.get(
                     params.url,
                     headers={
