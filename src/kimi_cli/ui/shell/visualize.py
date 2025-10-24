@@ -25,7 +25,6 @@ async def _keyboard_listener(step: StepLiveView):
     async def _keyboard():
         try:
             async for event in listen_for_keyboard():
-                # TODO: ESCAPE to interrupt
                 step.handle_keyboard_event(event)
         except asyncio.CancelledError:
             return
@@ -39,10 +38,17 @@ async def _keyboard_listener(step: StepLiveView):
             await task
 
 
-async def visualize(wire: Wire, *, initial_status: StatusSnapshot):
+async def visualize(
+    wire: Wire, *, initial_status: StatusSnapshot, cancel_event: asyncio.Event | None = None
+):
     """
     A loop to consume agent events and visualize the agent behavior.
     This loop never raise any exception except asyncio.CancelledError.
+
+    Args:
+        wire: Communication channel with the agent
+        initial_status: Initial status snapshot
+        cancel_event: Event that can be set (e.g., by ESC key) to cancel the run
     """
     latest_status = initial_status
     try:
@@ -52,7 +58,7 @@ async def visualize(wire: Wire, *, initial_status: StatusSnapshot):
         while True:
             # TODO: Maybe we can always have a StepLiveView here.
             #       No need to recreate for each step.
-            with StepLiveViewWithMarkdown(latest_status) as step:
+            with StepLiveViewWithMarkdown(latest_status, cancel_event) as step:
                 async with _keyboard_listener(step):
                     # spin the moon at the beginning of each step
                     with console.status("", spinner="moon"):

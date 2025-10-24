@@ -1,3 +1,4 @@
+import asyncio
 from collections import deque
 
 import streamingjson
@@ -125,7 +126,7 @@ class _ApprovalRequestDisplay:
 
 
 class StepLiveView:
-    def __init__(self, status: StatusSnapshot):
+    def __init__(self, status: StatusSnapshot, cancel_event: asyncio.Event | None = None):
         # message content
         self._line_buffer = Text("")
 
@@ -143,6 +144,9 @@ class StepLiveView:
             self._format_status(status), style="grey50", justify="right"
         )
         self._buffer_status: RenderableType | None = None
+
+        # cancel event for ESC key handling
+        self._cancel_event = cancel_event
 
     def __enter__(self):
         self._live = Live(
@@ -243,6 +247,11 @@ class StepLiveView:
         self._status_text.plain = self._format_status(status)
 
     def handle_keyboard_event(self, event: KeyEvent):
+        # Handle ESC key to cancel the run
+        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
+            self._cancel_event.set()
+            return
+
         if not self._current_approval:
             # just ignore any keyboard event when there's no approval request
             return
@@ -298,8 +307,8 @@ class StepLiveView:
 class StepLiveViewWithMarkdown(StepLiveView):
     # TODO: figure out a streaming implementation for this
 
-    def __init__(self, status: StatusSnapshot):
-        super().__init__(status)
+    def __init__(self, status: StatusSnapshot, cancel_event: asyncio.Event | None = None):
+        super().__init__(status, cancel_event)
         self._pending_markdown_parts: list[str] = []
         self._buffer_status_active = False
         self._buffer_status_obj: Status | None = None
