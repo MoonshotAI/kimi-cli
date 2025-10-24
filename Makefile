@@ -1,20 +1,17 @@
-RUFF := $(shell command -v ruff 2> /dev/null || echo "uv run ruff")
-PYRIGHT := $(shell command -v pyright 2> /dev/null || echo "uv run pyright")
-
 .PHONY: prepare
 prepare: download-deps
 	uv sync --frozen
 
 .PHONY: format
 format:
-	$(RUFF) check --fix
-	$(RUFF) format
+	uv run ruff check --fix
+	uv run ruff format
 
 .PHONY: check
 check:
-	$(RUFF) check
-	$(RUFF) format --check
-	$(PYRIGHT)
+	uv run ruff check
+	uv run ruff format --check
+	uv run pyright
 
 .PHONY: test
 test:
