@@ -57,3 +57,12 @@ select = [
     "SIM", # flake8-simplify
     "I",   # isort
 ]
+
+[tool.typos.files]
+extend-exclude = [
+    "kimi.spec",
+    "pyinstaller.py",
+]
+
+[tool.typos.default.extend-words]
+datas = "datas"
