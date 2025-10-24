@@ -9,11 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.39] - 2025-10-24
 
 ### Fixed
 
 - Fix context compaction threshold check
+- Fix panic when SOCKS proxy is set in the shell session
 
 ## [0.38] - 2025-10-24
 
