@@ -309,15 +309,15 @@ Only write entries that are worth mentioning to users.
 - Improve session management
 - Restore context usage when `--continue` a session
 
-## [0.9.0] - 2025-09-15
+## [0.0.9.0] - 2025-09-15
 
 - Remove `--session` and `--continue` options
 
-## [0.8.1] - 2025-09-14
+## [0.0.8.1] - 2025-09-14
 
 - Fix config model dumping
 
-## [0.8.0] - 2025-09-14
+## [0.0.8.0] - 2025-09-14
 
 - Add `shell` tool and basic system prompt
 - Add tool call visualization
