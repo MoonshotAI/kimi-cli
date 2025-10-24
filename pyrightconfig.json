@@ -8,6 +8,7 @@
         "**/__pycache__/**/*.py",
     ],
     "strict": [
-        "src/kimi_cli/soul"
+        "src/kimi_cli/soul",
+        "src/kimi_cli/utils"
     ]
 }
