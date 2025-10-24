@@ -435,6 +435,7 @@ class CustomPromptSession:
             key_bindings=_kb,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
+            enable_suspend=True,
         )
 
         self._status_refresh_task: asyncio.Task | None = None
