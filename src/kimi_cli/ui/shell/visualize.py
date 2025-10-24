@@ -38,7 +38,9 @@ async def _keyboard_listener(step: StepLiveView):
             await task
 
 
-async def visualize(wire: Wire, *, initial_status: StatusSnapshot, cancel_event: asyncio.Event | None = None):
+async def visualize(
+    wire: Wire, *, initial_status: StatusSnapshot, cancel_event: asyncio.Event | None = None
+):
     """
     A loop to consume agent events and visualize the agent behavior.
     This loop never raise any exception except asyncio.CancelledError.

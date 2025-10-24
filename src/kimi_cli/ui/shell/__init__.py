@@ -1,7 +1,6 @@
 import asyncio
 import signal
 from collections.abc import Awaitable, Coroutine
-from functools import partial
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
@@ -164,7 +163,9 @@ class ShellApp:
             await run_soul(
                 self.soul,
                 command,
-                lambda wire: visualize(wire, initial_status=self.soul.status, cancel_event=cancel_event),
+                lambda wire: visualize(
+                    wire, initial_status=self.soul.status, cancel_event=cancel_event
+                ),
                 cancel_event,
             )
             return True
