@@ -111,6 +111,7 @@ class KimiSoul:
 
     async def _agent_loop(self, wire: Wire):
         """The main agent loop for one run."""
+        assert self._agent_globals.llm is not None
 
         async def _pipe_approval_to_wire():
             while True:
@@ -127,7 +128,10 @@ class KimiSoul:
             # out a better solution.
             try:
                 # compact the context if needed
-                if self._context.token_count >= self._reserved_tokens:
+                if (
+                    self._context.token_count + self._reserved_tokens
+                    >= self._agent_globals.llm.max_context_size
+                ):
                     logger.info("Context too long, compacting...")
                     wire.send(CompactionBegin())
                     await self.compact_context()

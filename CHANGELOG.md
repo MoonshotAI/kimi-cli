@@ -9,6 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+### Fixed
+
+- Fix context compaction threshold check
+
 ## [0.38] - 2025-10-24
 
 - Minor UX improvements

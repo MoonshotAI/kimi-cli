@@ -19,6 +19,9 @@ Kimi CLI is a new CLI agent that can help you with your software development tas
 
 ## Installation
 
+> [!IMPORTANT]
+> Kimi CLI currently only supports macOS and Linux. Windows support is coming soon.
+
 Kimi CLI is published as a Python package on PyPI. We highly recommend installing it with [uv](https://docs.astral.sh/uv/). If you have not installed uv yet, please follow the instructions [here](https://docs.astral.sh/uv/getting-started/installation/) to install it first.
 
 Once uv is installed, you can install Kimi CLI with:
