@@ -66,7 +66,5 @@ def create_llm(
                     error_types=[429, 500, 503],
                 ),
             )
-        case _:
-            raise ValueError(f"Unsupported provider: {provider.type}")
 
     return LLM(chat_provider=chat_provider, max_context_size=model.max_context_size)

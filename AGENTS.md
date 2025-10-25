@@ -89,7 +89,7 @@ uv run pyinstaller kimi.spec
 
 ### Configuration
 
-Configuration file: `~/.config/kimi/config.json`
+Configuration file: `~/.kimi/config.json`
 
 Default configuration includes:
 - LLM provider settings (Kimi API by default)
@@ -174,7 +174,7 @@ Builtin variables available in system prompts:
 - **PyPI Package**: Distributed as `kimi-cli`
 - **Standalone Binary**: Built with PyInstaller
 - **Entry Point**: `kimi` command-line tool
-- **Configuration**: User-specific config in `~/.config/kimi/`
+- **Configuration**: User-specific config in `~/.kimi/`
 
 ## Version History
 
