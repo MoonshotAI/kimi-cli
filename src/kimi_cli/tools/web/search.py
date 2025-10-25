@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import override
 
-import aiohttp
 from kosong.tooling import CallableTool2, ToolReturnType
 from pydantic import BaseModel, Field, ValidationError
 
@@ -9,6 +8,7 @@ import kimi_cli
 from kimi_cli.config import Config
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
+from kimi_cli.utils.aiohttp import new_client_session
 
 
 class Params(BaseModel):
@@ -62,7 +62,7 @@ class SearchWeb(CallableTool2[Params]):
         assert tool_call is not None, "Tool call is expected to be set"
 
         async with (
-            aiohttp.ClientSession() as session,
+            new_client_session() as session,
             session.post(
                 self._base_url,
                 headers={
