@@ -182,6 +182,7 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
 def _load_system_prompt(
     path: Path, args: dict[str, str], builtin_args: BuiltinSystemPromptArgs
 ) -> str:
+    logger.info("Loading system prompt: {path}", path=path)
     system_prompt = path.read_text(encoding="utf-8").strip()
     logger.debug(
         "Substituting system prompt with builtin args: {builtin_args}, spec args: {spec_args}",
