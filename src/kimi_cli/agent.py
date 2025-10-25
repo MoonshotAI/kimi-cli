@@ -258,5 +258,5 @@ def load_agents_md(work_dir: Path) -> str | None:
         if path.is_file():
             logger.debug("Loaded agents.md: {path}", path=path)
             return path.read_text(encoding="utf-8").strip()
-    logger.debug("No AGENTS.md found")
+    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
     return None
