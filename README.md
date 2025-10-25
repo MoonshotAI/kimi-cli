@@ -1,5 +1,10 @@
 # Kimi CLI
 
+[![Commit Activity](https://img.shields.io/github/commit-activity/w/MoonshotAI/kimi-cli)](https://github.com/MoonshotAI/kimi-cli/graphs/commit-activity)
+[![Checks](https://img.shields.io/github/check-runs/MoonshotAI/kimi-cli/main)](https://github.com/MoonshotAI/kimi-cli/actions)
+[![Version](https://img.shields.io/pypi/v/kimi-cli)](https://pypi.org/project/kimi-cli/)
+[![Downloads](https://img.shields.io/pypi/dw/kimi-cli)](https://pypistats.org/packages/kimi-cli)
+
 [中文](https://www.kimi.com/coding/docs/kimi-cli.html)
 
 Kimi CLI is a new CLI agent that can help you with your software development tasks and terminal operations.
@@ -84,7 +89,7 @@ After restarting Zsh, you can switch to agent mode by pressing `Ctrl-K`.
 
 ### ACP support
 
-Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editors or IDEs.
+Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
 For example, to use Kimi CLI with [Zed](https://zed.dev/), add the following configuration to your `~/.config/zed/settings.json`:
 
@@ -128,3 +133,31 @@ Run `kimi` with `--mcp-config-file` option to connect to the specified MCP serve
 ```sh
 kimi --mcp-config-file /path/to/mcp.json
 ```
+
+## Development
+
+To develop Kimi CLI, run:
+
+```sh
+git clone https://github.com/MoonshotAI/kimi-cli.git
+cd kimi-cli
+
+make prepare  # prepare the development environment
+```
+
+Then you can start working on Kimi CLI.
+
+Refer to the following commands after you make changes:
+
+```sh
+uv run kimi  # run Kimi CLI
+
+make format  # format code
+make check  # run linting and type checking
+make test  # run tests
+make help  # show all make targets
+```
+
+## Contributing
+
+We welcome contributions to Kimi CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.

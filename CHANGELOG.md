@@ -9,6 +9,17 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.40] - 2025-10-24
+
+### Added
+
+- Support `ESC` key to interrupt the agent loop
+
+### Fixed
+
+- Fix SSL certificate verification error in some rare cases
+- Fix possible decoding error in Bash tool
+
 ## [0.39] - 2025-10-24
 
 ### Fixed

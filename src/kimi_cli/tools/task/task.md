@@ -4,7 +4,7 @@ Spawn a subagent to perform a specific task. Subagent will be spawned with a fre
 
 Context isolation is one of the key benefits of using subagents. By delegating tasks to subagents, you can keep your main context clean and focused on the main goal requested by the user.
 
-Here are some scenerios you may want this tool for context isolation:
+Here are some scenarios you may want this tool for context isolation:
 
 - You wrote some code and it did not work as expected. In this case you can spawn a subagent to fix the code, asking the subagent to return how it is fixed. This can potentially benefit because the detailed process of fixing the code may not be relevant to your main goal, and may clutter your context.
 - When you need some latest knowledge of a specific library, framework or technology to proceed with your task, you can spawn a subagent to search on the internet for the needed information and return to you the gathered relevant information, for example code examples, API references, etc. This can avoid ton of irrelevant search results in your own context.

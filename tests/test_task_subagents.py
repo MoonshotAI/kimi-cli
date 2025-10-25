@@ -70,7 +70,7 @@ The operating environment is not in a sandbox. Any action especially mutation yo
 
 The current working directory is `/path/to/work/dir`. This should be considered as the project root if you are instructed to perform tasks on the project. Every file system operation will be relative to the working directory if you do not explicitly specify the absolute path. Tools may require absolute paths for some parameters, if so, you should strictly follow the requirements.
 
-The `ls -la` output of current working directory is:
+The directory listing of current working directory is:
 
 ```
 Test ls content
