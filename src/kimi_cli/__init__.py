@@ -301,8 +301,13 @@ async def kimi_run(
         stream = ui != "print"  # use non-streaming mode only for print UI
         llm = create_llm(provider, model, stream=stream, session_id=session.id)
 
-    # TODO: support Windows
-    ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)
+    # Get directory listing
+    if sys.platform == "win32":
+        ls = subprocess.run(
+            ["cmd", "/c", "dir"], capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
+    else:
+        ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)
     agents_md = load_agents_md(work_dir) or ""
     if agents_md:
         echo(f"✓ Loaded agents.md: {textwrap.shorten(agents_md, width=100)}")

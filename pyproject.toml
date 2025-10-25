@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "0.39"
+version = "0.40"
 description = "Kimi CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -57,3 +57,12 @@ select = [
     "SIM", # flake8-simplify
     "I",   # isort
 ]
+
+[tool.typos.files]
+extend-exclude = [
+    "kimi.spec",
+    "pyinstaller.py",
+]
+
+[tool.typos.default.extend-words]
+datas = "datas"

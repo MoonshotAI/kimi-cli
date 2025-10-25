@@ -51,7 +51,7 @@ class BuiltinSystemPromptArgs(NamedTuple):
     KIMI_WORK_DIR: Path
     """The current working directory."""
     KIMI_WORK_DIR_LS: str
-    """The `ls -la` output of current working directory."""
+    """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
 

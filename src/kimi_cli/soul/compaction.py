@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from string import Template
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from kosong.base import generate
 from kosong.base.message import ContentPart, Message, TextPart
@@ -9,8 +9,6 @@ import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
-
-MAX_PRESERVED_MESSAGES = 2
 
 
 @runtime_checkable
@@ -32,7 +30,9 @@ class Compaction(Protocol):
         ...
 
 
-class SimpleCompaction:
+class SimpleCompaction(Compaction):
+    MAX_PRESERVED_MESSAGES = 2
+
     async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
         history = list(messages)
         if not history:
@@ -43,11 +43,11 @@ class SimpleCompaction:
         for index in range(len(history) - 1, -1, -1):
             if history[index].role in {"user", "assistant"}:
                 n_preserved += 1
-                if n_preserved == MAX_PRESERVED_MESSAGES:
+                if n_preserved == self.MAX_PRESERVED_MESSAGES:
                     preserve_start_index = index
                     break
 
-        if n_preserved < MAX_PRESERVED_MESSAGES:
+        if n_preserved < self.MAX_PRESERVED_MESSAGES:
             return history
 
         to_compact = history[:preserve_start_index]
@@ -99,7 +99,7 @@ class SimpleCompaction:
         return compacted_messages
 
 
-def __static_type_check(
-    simple: SimpleCompaction,
-):
-    _: Compaction = simple
+if TYPE_CHECKING:
+
+    def type_check(simple: SimpleCompaction):
+        _: Compaction = simple

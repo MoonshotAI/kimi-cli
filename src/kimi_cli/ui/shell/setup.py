@@ -9,6 +9,7 @@ from pydantic import SecretStr
 from kimi_cli.config import LLMModel, LLMProvider, MoonshotSearchConfig, load_config, save_config
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
+from kimi_cli.utils.aiohttp import new_client_session
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import ShellApp
@@ -109,7 +110,7 @@ async def _setup() -> _SetupResult | None:
     models_url = f"{platform.base_url}/models"
     try:
         async with (
-            aiohttp.ClientSession() as session,
+            new_client_session() as session,
             session.get(
                 models_url,
                 headers={

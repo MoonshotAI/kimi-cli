@@ -13,6 +13,7 @@ import aiohttp
 
 from kimi_cli.share import get_share_dir
 from kimi_cli.ui.shell.console import console
+from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
 BASE_URL = "https://cdn.kimi.com/binaries/kimi-cli"
@@ -95,7 +96,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
         _print("[red]Failed to detect target platform.[/red]")
         return UpdateResult.UNSUPPORTED
 
-    async with aiohttp.ClientSession() as session:
+    async with new_client_session() as session:
         logger.info("Checking for updates...")
         _print("Checking for updates...")
         latest_version = await _get_latest_version(session)
