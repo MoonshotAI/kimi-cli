@@ -43,7 +43,7 @@ module-name = ["kimi_cli"]
 source-exclude = ["tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [project.scripts]
-kimi = "kimi_cli:main"
+kimi = "kimi_cli.cli:main"
 
 [tool.ruff]
 line-length = 100
@@ -59,10 +59,7 @@ select = [
 ]
 
 [tool.typos.files]
-extend-exclude = [
-    "kimi.spec",
-    "pyinstaller.py",
-]
+extend-exclude = ["kimi.spec", "pyinstaller.py"]
 
 [tool.typos.default.extend-words]
 datas = "datas"

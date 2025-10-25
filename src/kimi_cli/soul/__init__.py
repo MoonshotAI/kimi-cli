@@ -1,7 +1,4 @@
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from kimi_cli.soul.wire import Wire
+from typing import NamedTuple, Protocol, runtime_checkable
 
 
 class LLMNotSet(Exception):
@@ -42,13 +39,12 @@ class Soul(Protocol):
         """The current status of the soul. The returned value is immutable."""
         ...
 
-    async def run(self, user_input: str, wire: "Wire"):
+    async def run(self, user_input: str):
         """
-        Run the agent with the given user input.
+        Run the agent with the given user input until the max steps or no more tool calls.
 
         Args:
             user_input (str): The user input to the agent.
-            wire (Wire): The wire to send events and requests to the UI loop.
 
         Raises:
             LLMNotSet: When the LLM is not set.

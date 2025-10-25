@@ -220,7 +220,7 @@ async def _ensure_rg_path() -> str:
 
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
-    description: str = (Path(__file__).parent / "grep.md").read_text()
+    description: str = (Path(__file__).parent / "grep.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
     @override

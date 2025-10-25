@@ -128,7 +128,7 @@ class Glob(CallableTool2[Params]):
             message = (
                 f"Found {len(matches)} matches for pattern `{params.pattern}`."
                 if len(matches) > 0
-                else "No matches found for pattern `{params.pattern}`."
+                else f"No matches found for pattern `{params.pattern}`."
             )
             if len(matches) > MAX_MATCHES:
                 matches = matches[:MAX_MATCHES]

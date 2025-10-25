@@ -11,13 +11,13 @@ from rich.text import Text
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.ui import RunCancelled, run_soul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire import RunCancelled, run_soul
 
 
 class Reload(Exception):
@@ -267,7 +267,7 @@ def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> No
     if LATEST_VERSION_FILE.exists():
         from kimi_cli import __version__ as current_version
 
-        latest_version = LATEST_VERSION_FILE.read_text().strip()
+        latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
         if semver_tuple(latest_version) > semver_tuple(current_version):
             rows.append(
                 Text.from_markup(

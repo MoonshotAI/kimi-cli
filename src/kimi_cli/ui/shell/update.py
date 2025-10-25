@@ -105,7 +105,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
             return UpdateResult.FAILED
 
         logger.debug("Latest version: {latest_version}", latest_version=latest_version)
-        LATEST_VERSION_FILE.write_text(latest_version)
+        LATEST_VERSION_FILE.write_text(latest_version, encoding="utf-8")
 
         cur_t = semver_tuple(current_version)
         lat_t = semver_tuple(latest_version)
