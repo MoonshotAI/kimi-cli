@@ -93,6 +93,10 @@ def test_pyinstaller_datas():
                 "kimi_cli/tools/file",
             ),
             (
+                "src/kimi_cli/tools/review/review.md",
+                "kimi_cli/tools/review",
+            ),
+            (
                 "src/kimi_cli/tools/task/task.md",
                 "kimi_cli/tools/task",
             ),
@@ -132,6 +136,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.write",
             "kimi_cli.tools.mcp",
+            "kimi_cli.tools.review",
             "kimi_cli.tools.task",
             "kimi_cli.tools.test",
             "kimi_cli.tools.think",
