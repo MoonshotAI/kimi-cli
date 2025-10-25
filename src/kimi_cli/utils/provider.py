@@ -25,6 +25,15 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
                 provider.base_url = base_url
             if api_key := os.getenv("OPENAI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
+        case "openrouter":
+            if base_url := os.getenv("OPENROUTER_BASE_URL"):
+                provider.base_url = base_url
+            if api_key := os.getenv("OPENROUTER_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+            if model_name := os.getenv("OPENROUTER_MODEL_NAME"):
+                model.model = model_name
+            if max_context_size := os.getenv("OPENROUTER_MODEL_MAX_CONTEXT_SIZE"):
+                model.max_context_size = int(max_context_size)
         case _:
             pass
 
@@ -55,6 +64,21 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
                 stream=stream,
+            )
+        case "openrouter":
+            base_url = provider.base_url or "https://openrouter.ai/api/v1"
+            default_headers = {
+                "User-Agent": kimi_cli.USER_AGENT,
+                "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", ""),
+                "X-Title": os.getenv("OPENROUTER_X_TITLE", ""),
+            }
+            default_headers = {k: v for k, v in default_headers.items() if v}
+            chat_provider = OpenAILegacy(
+                model=model.model,
+                base_url=base_url,
+                api_key=provider.api_key.get_secret_value(),
+                stream=stream,
+                default_headers=default_headers,
             )
         case "_chaos":
             chat_provider = ChaosChatProvider(
