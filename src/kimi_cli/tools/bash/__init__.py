@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from pathlib import Path
 from typing import override
 
@@ -69,6 +70,11 @@ class Bash(CallableTool2[Params]):
                 f"Command killed by timeout ({params.timeout}s)",
                 brief=f"Killed by timeout ({params.timeout}s)",
             )
+        except asyncio.CancelledError:
+            return builder.error(
+                "Command cancelled by user",
+                brief="Cancelled by user",
+            )
 
 
 async def _stream_subprocess(command: str, stdout_cb, stderr_cb, timeout: int) -> int:
@@ -96,4 +102,11 @@ async def _stream_subprocess(command: str, stdout_cb, stderr_cb, timeout: int) -
         return await process.wait()
     except TimeoutError:
         process.kill()
+        raise
+    except asyncio.CancelledError:
+        # Handle user cancellation (Ctrl+C or ESC key)
+        process.kill()
+        with contextlib.suppress(Exception):
+            # Wait for process to exit with protection, ignore cleanup failures
+            await asyncio.shield(asyncio.wait_for(process.wait(), timeout=2.0))
         raise
