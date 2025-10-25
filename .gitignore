@@ -19,4 +19,3 @@ uv.toml
 # Build dependencies
 src/kimi_cli/deps/bin
 src/kimi_cli/deps/tmp
-.idea/*
