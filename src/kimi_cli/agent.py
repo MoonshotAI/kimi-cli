@@ -104,6 +104,7 @@ def load_agent(
     Raises:
         ValueError: If the agent spec is not valid.
     """
+    logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = _load_agent_spec(agent_file)
     assert agent_spec.extend is None, "agent extension should be recursively resolved"
     if agent_spec.name is None:
@@ -114,7 +115,9 @@ def load_agent(
         raise ValueError("Tools are required")
 
     system_prompt = _load_system_prompt(
-        agent_spec.system_prompt_path, agent_spec.system_prompt_args, globals_.builtin_args
+        agent_spec.system_prompt_path,
+        agent_spec.system_prompt_args,
+        globals_.builtin_args,
     )
 
     tool_deps = {
@@ -182,6 +185,7 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
 def _load_system_prompt(
     path: Path, args: dict[str, str], builtin_args: BuiltinSystemPromptArgs
 ) -> str:
+    logger.info("Loading system prompt: {path}", path=path)
     system_prompt = path.read_text().strip()
     logger.debug(
         "Substituting system prompt with builtin args: {builtin_args}, spec args: {spec_args}",
@@ -196,14 +200,14 @@ def _load_tools(
     tool_paths: list[str],
     dependencies: dict[type[Any], Any],
 ) -> list[str]:
-    bad_tools = []
+    bad_tools: list[str] = []
     for tool_path in tool_paths:
         tool = _load_tool(tool_path, dependencies)
         if tool:
             toolset += tool
         else:
             bad_tools.append(tool_path)
-    logger.debug("Loaded tools: {tools}", tools=toolset.tools)
+    logger.info("Loaded tools: {tools}", tools=[tool.name for tool in toolset.tools])
     if bad_tools:
         logger.error("Bad tools: {bad_tools}", bad_tools=bad_tools)
     return bad_tools
@@ -241,6 +245,7 @@ async def _load_mcp_tools(
         RuntimeError: If the MCP server cannot be connected.
     """
     for mcp_config in mcp_configs:
+        logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
         client = fastmcp.Client(mcp_config)
         async with client:
             for tool in await client.list_tools():
@@ -255,7 +260,7 @@ def load_agents_md(work_dir: Path) -> str | None:
     ]
     for path in paths:
         if path.is_file():
-            logger.debug("Loaded agents.md: {path}", path=path)
+            logger.info("Loaded agents.md: {path}", path=path)
             return path.read_text().strip()
-    logger.debug("No AGENTS.md found")
+    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
     return None

@@ -13,17 +13,16 @@ from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul
-from kimi_cli.soul.wire import (
+from kimi_cli.tools import extract_subtitle
+from kimi_cli.utils.logging import logger
+from kimi_cli.wire import RunCancelled, WireUISide, run_soul
+from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
-    Wire,
 )
-from kimi_cli.tools import extract_subtitle
-from kimi_cli.ui import RunCancelled, run_soul
-from kimi_cli.utils.logging import logger
 
 
 class _ToolCallState:
@@ -172,7 +171,7 @@ class ACPAgentImpl:
             logger.info("Cancelling running prompt")
             self.run_state.cancel_event.set()
 
-    async def _stream_events(self, wire: Wire):
+    async def _stream_events(self, wire: WireUISide):
         try:
             # expect a StepBegin
             assert isinstance(await wire.receive(), StepBegin)

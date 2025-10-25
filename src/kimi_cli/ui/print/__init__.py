@@ -3,18 +3,18 @@ import json
 import signal
 import sys
 from functools import partial
+from pathlib import Path
 from typing import Literal
 
 import aiofiles
 from kosong.base.message import Message
 from kosong.chat_provider import ChatProviderError
 
-from kimi_cli.soul import LLMNotSet, MaxStepsReached
-from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.wire import StepInterrupted, Wire
-from kimi_cli.ui import RunCancelled, run_soul
+from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_extract_text
+from kimi_cli.wire import RunCancelled, WireUISide, run_soul
+from kimi_cli.wire.message import StepInterrupted
 
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
@@ -25,17 +25,22 @@ class PrintApp:
     An app implementation that prints the agent behavior to the console.
 
     Args:
-        soul (KimiSoul): The soul to run. Only `KimiSoul` is supported.
+        soul (Soul): The soul to run.
         input_format (InputFormat): The input format to use.
         output_format (OutputFormat): The output format to use.
     """
 
-    def __init__(self, soul: KimiSoul, input_format: InputFormat, output_format: OutputFormat):
+    def __init__(
+        self,
+        soul: Soul,
+        input_format: InputFormat,
+        output_format: OutputFormat,
+        context_file: Path,
+    ):
         self.soul = soul
         self.input_format = input_format
         self.output_format = output_format
-        self.soul._approval.set_yolo(True)
-        # TODO(approval): proper approval request handling
+        self.context_file = context_file
 
     async def run(self, command: str | None = None) -> bool:
         cancel_event = asyncio.Event()
@@ -95,30 +100,6 @@ class PrintApp:
             loop.remove_signal_handler(signal.SIGINT)
         return False
 
-    # TODO: unify with `_soul_run` in `ShellApp` and `ACPAgentImpl`
-    async def _soul_run(self, user_input: str):
-        wire = Wire()
-        logger.debug("Starting visualization loop")
-
-        if self.output_format == "text":
-            vis_task = asyncio.create_task(self._visualize_text(wire))
-        else:
-            assert self.output_format == "stream-json"
-            if not self.soul._context._file_backend.exists():
-                self.soul._context._file_backend.touch()
-            start_position = self.soul._context._file_backend.stat().st_size
-            vis_task = asyncio.create_task(self._visualize_stream_json(wire, start_position))
-
-        try:
-            await self.soul.run(user_input, wire)
-        finally:
-            wire.shutdown()
-            # shutting down the event queue should break the visualization loop
-            try:
-                await asyncio.wait_for(vis_task, timeout=0.5)
-            except TimeoutError:
-                logger.warning("Visualization loop timed out")
-
     def _read_next_command(self) -> str | None:
         while True:
             json_line = sys.stdin.readline()
@@ -144,7 +125,7 @@ class PrintApp:
             except Exception:
                 logger.warning("Ignoring invalid user message: {json_line}", json_line=json_line)
 
-    async def _visualize_text(self, wire: Wire):
+    async def _visualize_text(self, wire: WireUISide):
         try:
             while True:
                 msg = await wire.receive()
@@ -154,10 +135,10 @@ class PrintApp:
         except asyncio.QueueShutDown:
             logger.debug("Visualization loop shutting down")
 
-    async def _visualize_stream_json(self, wire: Wire, start_position: int):
+    async def _visualize_stream_json(self, wire: WireUISide, start_position: int):
         # TODO: be aware of context compaction
         try:
-            async with aiofiles.open(self.soul._context._file_backend, encoding="utf-8") as f:
+            async with aiofiles.open(self.context_file, encoding="utf-8") as f:
                 await f.seek(start_position)
                 while True:
                     should_end = False
