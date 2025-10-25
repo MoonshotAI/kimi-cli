@@ -107,6 +107,29 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/), add the following con
 
 Then you can create Kimi CLI threads in Zed's agent panel.
 
+### OpenRouter support
+
+You can route requests through [OpenRouter](https://openrouter.ai/) using the OpenAI-compatible API. Add an `openrouter` provider to your config:
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "type": "openrouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "YOUR_OPENROUTER_API_KEY"
+    }
+  },
+  "models": {
+    "router-default": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-haiku-4.5",
+      "max_context_size": 200000
+    }
+  }
+}
+```
+
 ### Using MCP tools
 
 Kimi CLI supports the well-established MCP config convention. For example:
