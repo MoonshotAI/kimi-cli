@@ -8,8 +8,8 @@ from kosong.base.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
-from kimi_cli.agent import load_agents_md
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.globals import load_agents_md
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
 from kimi_cli.ui.shell.console import console

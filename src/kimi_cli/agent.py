@@ -11,10 +11,10 @@ from kosong.tooling.simple import ToolType
 from pydantic import BaseModel, Field
 
 from kimi_cli.config import Config
-from kimi_cli.llm import LLM
 from kimi_cli.metadata import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.globals import AgentGlobals, BuiltinSystemPromptArgs
 from kimi_cli.soul.toolset import CustomToolset
 from kimi_cli.tools.mcp import MCPTool
 from kimi_cli.utils.logging import logger
@@ -41,30 +41,6 @@ class SubagentSpec(BaseModel):
 
     path: Path = Field(description="Subagent file path")
     description: str = Field(description="Subagent description")
-
-
-class BuiltinSystemPromptArgs(NamedTuple):
-    """Builtin system prompt arguments."""
-
-    KIMI_NOW: str
-    """The current datetime."""
-    KIMI_WORK_DIR: Path
-    """The current working directory."""
-    KIMI_WORK_DIR_LS: str
-    """The directory listing of current working directory."""
-    KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
-    """The content of AGENTS.md."""
-
-
-class AgentGlobals(NamedTuple):
-    """Agent globals."""
-
-    config: Config
-    llm: LLM | None
-    builtin_args: BuiltinSystemPromptArgs
-    denwa_renji: DenwaRenji
-    session: Session
-    approval: Approval
 
 
 class Agent(NamedTuple):
@@ -251,16 +227,3 @@ async def _load_mcp_tools(
             for tool in await client.list_tools():
                 toolset += MCPTool(tool, client)
     return toolset
-
-
-def load_agents_md(work_dir: Path) -> str | None:
-    paths = [
-        work_dir / "AGENTS.md",
-        work_dir / "agents.md",
-    ]
-    for path in paths:
-        if path.is_file():
-            logger.info("Loaded agents.md: {path}", path=path)
-            return path.read_text(encoding="utf-8").strip()
-    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
-    return None
