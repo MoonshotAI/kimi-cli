@@ -6,6 +6,7 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import zipfile
 from enum import Enum, auto
 from pathlib import Path
 
@@ -18,7 +19,19 @@ from kimi_cli.utils.logging import logger
 
 BASE_URL = "https://cdn.kimi.com/binaries/kimi-cli"
 LATEST_VERSION_URL = f"{BASE_URL}/latest"
-INSTALL_DIR = Path.home() / ".local" / "bin"
+
+
+def get_install_dir() -> Path:
+    """Get the appropriate installation directory for the current platform."""
+    if platform.system() == "Windows":
+        # On Windows, install to user's local bin directory
+        return Path(os.environ.get("USERPROFILE", "")) / "AppData" / "Local" / "kimi-cli" / "bin"
+    else:
+        # On Unix-like systems, use ~/.local/bin
+        return Path.home() / ".local" / "bin"
+
+
+INSTALL_DIR = get_install_dir()
 
 
 class UpdateResult(Enum):
@@ -59,6 +72,8 @@ def _detect_target() -> str | None:
         os_name = "apple-darwin"
     elif sys_name == "Linux":
         os_name = "unknown-linux-gnu"
+    elif sys_name == "Windows":
+        os_name = "pc-windows-msvc"
     else:
         logger.error("Unsupported OS: {sys_name}", sys_name=sys_name)
         return None
@@ -131,18 +146,25 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
         )
         _print(f"Updating from {current_version} to {latest_version}...")
 
-        filename = f"kimi-{latest_version}-{target}.tar.gz"
+        # Determine file format and binary name based on platform
+        if platform.system() == "Windows":
+            filename = f"kimi-{latest_version}-{target}.zip"
+            binary_name = "kimi.exe"
+        else:
+            filename = f"kimi-{latest_version}-{target}.tar.gz"
+            binary_name = "kimi"
+
         download_url = f"{BASE_URL}/{latest_version}/{filename}"
 
         with tempfile.TemporaryDirectory(prefix="kimi-cli-") as tmpdir:
-            tar_path = os.path.join(tmpdir, filename)
+            archive_path = os.path.join(tmpdir, filename)
 
             logger.info("Downloading from {download_url}...", download_url=download_url)
             _print("[grey50]Downloading...[/grey50]")
             try:
                 async with session.get(download_url) as resp:
                     resp.raise_for_status()
-                    with open(tar_path, "wb") as f:
+                    with open(archive_path, "wb") as f:
                         async for chunk in resp.content.iter_chunked(1024 * 64):
                             if chunk:
                                 f.write(chunk)
@@ -158,19 +180,29 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
                 _print("[red]Failed to download.[/red]")
                 return UpdateResult.FAILED
 
-            logger.info("Extracting archive {tar_path}...", tar_path=tar_path)
+            logger.info("Extracting archive {archive_path}...", archive_path=archive_path)
             _print("[grey50]Extracting...[/grey50]")
             try:
-                with tarfile.open(tar_path, "r:gz") as tar:
-                    tar.extractall(tmpdir)
+                if platform.system() == "Windows":
+                    # Extract .zip file for Windows
+                    with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                        zip_ref.extractall(tmpdir)
+                else:
+                    # Extract .tar.gz file for Unix systems
+                    with tarfile.open(archive_path, "r:gz") as tar:
+                        tar.extractall(tmpdir)
+
                 binary_path = None
                 for root, _, files in os.walk(tmpdir):
-                    if "kimi" in files:
-                        binary_path = os.path.join(root, "kimi")
+                    if binary_name in files:
+                        binary_path = os.path.join(root, binary_name)
                         break
                 if not binary_path:
-                    logger.error("Binary 'kimi' not found in archive.")
-                    _print("[red]Binary 'kimi' not found in archive.[/red]")
+                    logger.error(
+                        "Binary '{binary_name}' not found in archive.",
+                        binary_name=binary_name
+                    )
+                    _print(f"[red]Binary '{binary_name}' not found in archive.[/red]")
                     return UpdateResult.FAILED
             except Exception:
                 logger.exception("Failed to extract archive:")
@@ -178,16 +210,18 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
                 return UpdateResult.FAILED
 
             INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-            dest_path = INSTALL_DIR / "kimi"
+            dest_path = INSTALL_DIR / binary_name
             logger.info("Installing to {dest_path}...", dest_path=dest_path)
             _print("[grey50]Installing...[/grey50]")
 
             try:
                 shutil.copy2(binary_path, dest_path)
-                os.chmod(
-                    dest_path,
-                    os.stat(dest_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
-                )
+                # Only set execute permissions on Unix systems
+                if platform.system() != "Windows":
+                    os.chmod(
+                        dest_path,
+                        os.stat(dest_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
+                    )
             except Exception:
                 logger.exception("Failed to install:")
                 _print("[red]Failed to install.[/red]")
