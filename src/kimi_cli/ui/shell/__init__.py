@@ -17,6 +17,11 @@ from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.signal import (
+    add_signal_handler_if_supported,
+    create_sigint_handler,
+    remove_signal_handler_if_supported,
+)
 
 
 class ShellApp:
@@ -145,13 +150,11 @@ class ShellApp:
             bool: Whether the run is successful.
         """
         cancel_event = asyncio.Event()
-
-        def _handler():
-            logger.debug("SIGINT received.")
-            cancel_event.set()
-
+        handler = create_sigint_handler(cancel_event)
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, _handler)
+
+        # Add signal handler if supported on current platform
+        add_signal_handler_if_supported(signal.SIGINT, handler, loop)
 
         try:
             # Use lambda to pass cancel_event via closure
@@ -188,7 +191,8 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            # Remove signal handler if supported on current platform
+            remove_signal_handler_if_supported(signal.SIGINT, loop)
         return False
 
     def _start_auto_update_task(self) -> None:
