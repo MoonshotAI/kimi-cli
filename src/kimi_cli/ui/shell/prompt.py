@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import override
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.completion import (
     Completer,
@@ -29,10 +30,13 @@ from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
+from rich.panel import Panel
 
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
+from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_commands
+from kimi_cli.ui.shell.todo import get_todo
 from kimi_cli.utils.logging import logger
 
 
@@ -427,6 +431,22 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
+        @_kb.add("c-t", eager=True)
+        def _show_todos(event: KeyPressEvent) -> None:
+            """Show current TODO list captured from SetTodoList tool."""
+            todo = get_todo()
+
+            def _print():
+                if todo and todo.strip():
+                    console.print(
+                        Panel.fit(todo.strip(), title="TODOs", border_style="cyan", padding=(1, 2))
+                    )
+                else:
+                    console.print("[grey50]No TODOs yet[/grey50]")
+
+            # Print without breaking the current prompt buffer
+            run_in_terminal(_print)
+
         self._session = PromptSession(
             message=self._render_message,
             prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
@@ -550,6 +570,7 @@ class CustomPromptSession:
         else:
             shortcuts = [
                 "ctrl-k: toggle mode",
+                "ctrl-t: todos",
                 "ctrl-d: exit",
             ]
             for shortcut in shortcuts:
