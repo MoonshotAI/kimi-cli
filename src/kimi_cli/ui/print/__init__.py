@@ -13,6 +13,11 @@ from kosong.chat_provider import ChatProviderError
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_extract_text
+from kimi_cli.utils.signal import (
+    add_signal_handler_if_supported,
+    create_sigint_handler,
+    remove_signal_handler_if_supported,
+)
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import StepInterrupted
 
@@ -45,13 +50,11 @@ class PrintApp:
 
     async def run(self, command: str | None = None) -> bool:
         cancel_event = asyncio.Event()
-
-        def _handler():
-            logger.debug("SIGINT received.")
-            cancel_event.set()
-
+        handler = create_sigint_handler(cancel_event)
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, _handler)
+
+        # Add signal handler if supported on current platform
+        add_signal_handler_if_supported(signal.SIGINT, handler, loop)
 
         if command is None and not sys.stdin.isatty() and self.input_format == "text":
             command = sys.stdin.read().strip()
@@ -98,7 +101,8 @@ class PrintApp:
             print(f"Unknown error: {e}")
             raise
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            # Remove signal handler if supported on current platform
+            remove_signal_handler_if_supported(signal.SIGINT, loop)
         return False
 
     def _read_next_command(self) -> str | None:
