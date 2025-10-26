@@ -157,7 +157,10 @@ async def test_glob_with_relative_path(glob_tool: Glob):
 @pytest.mark.asyncio
 async def test_glob_outside_work_directory(glob_tool: Glob):
     """Test glob outside working directory (should fail)."""
-    result = await glob_tool(Params(pattern="*.py", directory="/tmp/outside"))
+    import platform
+    outside_path = "C:\\Windows\\temp" if platform.system() == "Windows" else "/tmp/outside"
+
+    result = await glob_tool(Params(pattern="*.py", directory=outside_path))
 
     assert isinstance(result, ToolError)
     assert "outside the working directory" in result.message
