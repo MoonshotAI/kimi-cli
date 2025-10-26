@@ -121,7 +121,7 @@ def _listen_for_keyboard_windows(
     while not cancel.is_set():
         if msvcrt.kbhit():
             c = msvcrt.getch()
-            
+
             # Handle special keys (arrow keys, etc.)
             if c in (b"\x00", b"\xe0"):
                 # Extended key, read the next byte
@@ -149,10 +149,10 @@ _ARROW_KEY_MAP: dict[str, KeyEvent] = {
 }
 
 _WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
-    b"H": KeyEvent.UP,     # Up arrow
-    b"P": KeyEvent.DOWN,   # Down arrow
+    b"H": KeyEvent.UP,  # Up arrow
+    b"P": KeyEvent.DOWN,  # Down arrow
     b"M": KeyEvent.RIGHT,  # Right arrow
-    b"K": KeyEvent.LEFT,   # Left arrow
+    b"K": KeyEvent.LEFT,  # Left arrow
 }
 
 
