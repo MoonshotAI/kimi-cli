@@ -1,10 +1,16 @@
 import asyncio
 import sys
-import termios
 import threading
 import time
 from collections.abc import AsyncGenerator, Callable
 from enum import Enum, auto
+from platform import system
+
+# Cross-platform terminal handling
+if system() == "Windows":
+    import msvcrt
+else:
+    import termios
 
 
 class KeyEvent(Enum):
@@ -47,6 +53,87 @@ def _listen_for_keyboard_thread(
     cancel: threading.Event,
     emit: Callable[[KeyEvent], None],
 ) -> None:
+    if system() == "Windows":
+        _listen_for_keyboard_thread_windows(cancel, emit)
+    else:
+        _listen_for_keyboard_thread_unix(cancel, emit)
+
+
+def _listen_for_keyboard_thread_windows(
+    cancel: threading.Event,
+    emit: Callable[[KeyEvent], None],
+) -> None:
+    """Windows-specific keyboard listener using msvcrt."""
+    try:
+        while not cancel.is_set():
+            if msvcrt.kbhit():
+                # Get first character
+                c = msvcrt.getch()
+                if isinstance(c, bytes):
+                    c = c.decode("utf-8", errors="ignore")
+
+                if not c:
+                    continue
+
+                # Handle escape sequences (arrow keys)
+                if c == "\x1b" or (ord(c) == 224):  # ESC or arrow key prefix on Windows
+                    if c == "\x1b":
+                        # Standard ANSI escape sequence
+                        sequence = c
+                        for _ in range(2):
+                            if cancel.is_set():
+                                break
+                            if msvcrt.kbhit():
+                                fragment = msvcrt.getch()
+                                if isinstance(fragment, bytes):
+                                    fragment = fragment.decode("utf-8", errors="ignore")
+                                if not fragment:
+                                    break
+                                sequence += fragment
+                                if sequence in _ARROW_KEY_MAP:
+                                    break
+
+                        event = _ARROW_KEY_MAP.get(sequence)
+                        if event is not None:
+                            emit(event)
+                        elif sequence == "\x1b":
+                            emit(KeyEvent.ESCAPE)
+                    else:
+                        # Windows arrow keys (224 prefix)
+                        if msvcrt.kbhit():
+                            arrow_code = msvcrt.getch()
+                            if isinstance(arrow_code, bytes):
+                                arrow_code = arrow_code.decode("utf-8", errors="ignore")
+
+                            # Windows arrow key codes
+                            arrow_map = {
+                                "H": KeyEvent.UP,  # Up arrow
+                                "P": KeyEvent.DOWN,  # Down arrow
+                                "M": KeyEvent.RIGHT,  # Right arrow
+                                "K": KeyEvent.LEFT,  # Left arrow
+                            }
+                            event = arrow_map.get(arrow_code)
+                            if event:
+                                emit(event)
+
+                elif c in ("\r", "\n"):
+                    emit(KeyEvent.ENTER)
+                elif c == "\t":
+                    emit(KeyEvent.TAB)
+            else:
+                if cancel.is_set():
+                    break
+                time.sleep(0.01)
+    except Exception:
+        # Silently handle exceptions to avoid breaking the application
+        pass
+
+
+def _listen_for_keyboard_thread_unix(
+    cancel: threading.Event,
+    emit: Callable[[KeyEvent], None],
+) -> None:
+    """Unix-specific keyboard listener using termios."""
     # make stdin raw and non-blocking
     fd = sys.stdin.fileno()
     oldterm = termios.tcgetattr(fd)
