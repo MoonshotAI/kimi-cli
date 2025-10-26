@@ -156,8 +156,8 @@ def kimi(
 ):
     """Kimi, your next CLI agent."""
 
-    def _noop_echo(*args: Any, **kwargs: Any) -> None:
-        return None
+    def _noop_echo(*args: Any, **kwargs: Any):
+        pass
 
     echo: Callable[..., None] = click.echo if verbose else _noop_echo
 
