@@ -138,13 +138,15 @@ class PrintApp:
 
     async def _visualize_stream_json(self, wire: WireUISide, start_position: int):
         # TODO: be aware of context compaction
+        # FIXME: this is only a temporary impl, may miss the last lines of the context file
+        if not self.context_file.exists():
+            self.context_file.touch()
         try:
             async with aiofiles.open(self.context_file, encoding="utf-8") as f:
                 await f.seek(start_position)
                 while True:
                     should_end = False
-                    while wire._queue.qsize() > 0:
-                        msg = wire._queue.get_nowait()
+                    while (msg := wire.receive_nowait()) is not None:
                         if isinstance(msg, StepInterrupted):
                             should_end = True
 

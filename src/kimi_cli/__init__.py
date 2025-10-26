@@ -68,6 +68,7 @@ async def kimi_run(
         stream = ui != "print"  # use non-streaming mode only for print UI
         llm = create_llm(provider, model, stream=stream, session_id=session.id)
 
+    yolo = yolo or (ui == "print")  # print mode implies yolo
     agent_globals = await AgentGlobals.create(config, llm, session, yolo)
     try:
         agent = await load_agent_with_mcp(agent_file, agent_globals, mcp_configs or [])
@@ -106,7 +107,6 @@ async def kimi_run(
             with contextlib.redirect_stderr(StreamToLogger()):
                 return await app.run(command)
         elif ui == "print":
-            soul._approval.set_yolo(True)  # print mode implies yolo mode
             app = PrintApp(
                 soul,
                 input_format or "text",

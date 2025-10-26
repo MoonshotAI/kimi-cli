@@ -1,7 +1,9 @@
 import asyncio
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -85,7 +87,7 @@ class Reload(Exception):
     "--print",
     "ui",
     flag_value="print",
-    help="Run in print mode. Shortcut for `--ui print`.",
+    help="Run in print mode. Shortcut for `--ui print`. Note: print mode implicitly adds `--yolo`.",
 )
 @click.option(
     "--acp",
@@ -153,7 +155,11 @@ def kimi(
     yolo: bool,
 ):
     """Kimi, your next CLI agent."""
-    echo = click.echo if verbose else lambda *args, **kwargs: None
+
+    def _noop_echo(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    echo: Callable[..., None] = click.echo if verbose else _noop_echo
 
     logger.add(
         get_share_dir() / "logs" / "kimi.log",

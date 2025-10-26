@@ -55,3 +55,15 @@ class WireUISide:
         if not isinstance(msg, ContentPart | ToolCallPart):
             logger.debug("Receiving wire message: {msg}", msg=msg)
         return msg
+
+    def receive_nowait(self) -> WireMessage | None:
+        """
+        Try receive a message without waiting. If no message is available, return None.
+        """
+        try:
+            msg = self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
+        if not isinstance(msg, ContentPart | ToolCallPart):
+            logger.debug("Receiving wire message: {msg}", msg=msg)
+        return msg
