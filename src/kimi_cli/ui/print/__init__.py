@@ -10,10 +10,10 @@ import aiofiles
 from kosong.base.message import Message
 from kosong.chat_provider import ChatProviderError
 
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul
+from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_extract_text
-from kimi_cli.wire import RunCancelled, WireUISide, run_soul
+from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import StepInterrupted
 
 InputFormat = Literal["text", "stream-json"]
@@ -28,6 +28,7 @@ class PrintApp:
         soul (Soul): The soul to run.
         input_format (InputFormat): The input format to use.
         output_format (OutputFormat): The output format to use.
+        context_file (Path): The file to store the context.
     """
 
     def __init__(
@@ -137,13 +138,15 @@ class PrintApp:
 
     async def _visualize_stream_json(self, wire: WireUISide, start_position: int):
         # TODO: be aware of context compaction
+        # FIXME: this is only a temporary impl, may miss the last lines of the context file
+        if not self.context_file.exists():
+            self.context_file.touch()
         try:
             async with aiofiles.open(self.context_file, encoding="utf-8") as f:
                 await f.seek(start_position)
                 while True:
                     should_end = False
-                    while wire._queue.qsize() > 0:
-                        msg = wire._queue.get_nowait()
+                    while (msg := wire.receive_nowait()) is not None:
                         if isinstance(msg, StepInterrupted):
                             should_end = True
 

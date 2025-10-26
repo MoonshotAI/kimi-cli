@@ -8,8 +8,8 @@ from kosong.base.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
-from kimi_cli.agent import load_agents_md
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.globals import load_agents_md
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
 from kimi_cli.ui.shell.console import console
@@ -173,9 +173,9 @@ def help(app: "ShellApp", args: list[str]):
 @meta_command
 def version(app: "ShellApp", args: list[str]):
     """Show version information"""
-    from kimi_cli import __version__
+    from kimi_cli.constant import VERSION
 
-    console.print(f"kimi, version {__version__}")
+    console.print(f"kimi, version {VERSION}")
 
 
 @meta_command(name="release-notes")

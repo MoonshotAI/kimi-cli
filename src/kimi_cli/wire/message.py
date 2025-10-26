@@ -1,12 +1,13 @@
 import asyncio
 import uuid
 from enum import Enum
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from kosong.base.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 
-from kimi_cli.soul import StatusSnapshot
+if TYPE_CHECKING:
+    from kimi_cli.soul import StatusSnapshot
 
 
 class StepBegin(NamedTuple):
@@ -37,7 +38,7 @@ class CompactionEnd:
 
 
 class StatusUpdate(NamedTuple):
-    status: StatusSnapshot
+    status: "StatusSnapshot"
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate

@@ -6,8 +6,8 @@ import patch_ng
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agent import BuiltinSystemPromptArgs
 from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.globals import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError
 

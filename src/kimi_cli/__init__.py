@@ -1,37 +1,24 @@
 import contextlib
-import importlib.metadata
 import os
-import subprocess
-import sys
 import warnings
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import click
 from pydantic import SecretStr
 
-from kimi_cli.agent import (
-    DEFAULT_AGENT_FILE,
-    AgentGlobals,
-    BuiltinSystemPromptArgs,
-    load_agent_with_mcp,
-    load_agents_md,
-)
+from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.config import Config, LLMModel, LLMProvider
+from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.metadata import Session
-from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.agent import load_agent_with_mcp
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.globals import AgentGlobals
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.acp import ACPServer
 from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
 from kimi_cli.ui.shell import ShellApp
 from kimi_cli.utils.logging import StreamToLogger, logger
-from kimi_cli.utils.provider import augment_provider_with_env_vars, create_llm
-
-__version__ = importlib.metadata.version("kimi-cli")
-USER_AGENT = f"KimiCLI/{__version__}"
 
 UIMode = Literal["shell", "print", "acp"]
 
@@ -81,28 +68,8 @@ async def kimi_run(
         stream = ui != "print"  # use non-streaming mode only for print UI
         llm = create_llm(provider, model, stream=stream, session_id=session.id)
 
-    # Get directory listing
-    if sys.platform == "win32":
-        ls = subprocess.run(
-            ["cmd", "/c", "dir"], capture_output=True, text=True, encoding="utf-8", errors="replace"
-        )
-    else:
-        ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)
-    agents_md = load_agents_md(work_dir) or ""
-
-    agent_globals = AgentGlobals(
-        config=config,
-        llm=llm,
-        builtin_args=BuiltinSystemPromptArgs(
-            KIMI_NOW=datetime.now().astimezone().isoformat(),
-            KIMI_WORK_DIR=work_dir,
-            KIMI_WORK_DIR_LS=ls.stdout,
-            KIMI_AGENTS_MD=agents_md,
-        ),
-        denwa_renji=DenwaRenji(),
-        session=session,
-        approval=Approval(yolo=yolo),
-    )
+    yolo = yolo or (ui == "print")  # print mode implies yolo
+    agent_globals = await AgentGlobals.create(config, llm, session, yolo)
     try:
         agent = await load_agent_with_mcp(agent_file, agent_globals, mcp_configs or [])
     except ValueError as e:
@@ -128,9 +95,6 @@ async def kimi_run(
 
     try:
         if ui == "shell":
-            if command is None and not sys.stdin.isatty():
-                command = sys.stdin.read().strip()
-
             app = ShellApp(
                 soul,
                 welcome_info={
@@ -143,7 +107,6 @@ async def kimi_run(
             with contextlib.redirect_stderr(StreamToLogger()):
                 return await app.run(command)
         elif ui == "print":
-            soul._approval.set_yolo(True)  # print mode implies yolo mode
             app = PrintApp(
                 soul,
                 input_format or "text",

@@ -3,7 +3,9 @@
 from inline_snapshot import snapshot
 from kosong.base.tool import Tool
 
-from kimi_cli.agent import DEFAULT_AGENT_FILE, AgentGlobals, load_agent
+from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+from kimi_cli.soul.agent import load_agent
+from kimi_cli.soul.globals import AgentGlobals
 
 
 def test_default_agent(agent_globals: AgentGlobals):

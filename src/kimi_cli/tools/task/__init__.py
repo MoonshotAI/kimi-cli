@@ -5,14 +5,16 @@ from typing import override
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agent import Agent, AgentGlobals, AgentSpec, load_agent
-from kimi_cli.soul import MaxStepsReached
+from kimi_cli.agentspec import ResolvedAgentSpec
+from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
+from kimi_cli.soul.agent import Agent, load_agent
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.globals import AgentGlobals
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
-from kimi_cli.wire import WireUISide, get_wire_or_none, run_soul
+from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import ApprovalRequest, WireMessage
 
 # Maximum continuation attempts for task summary
@@ -47,12 +49,11 @@ class Task(CallableTool2[Params]):
     name: str = "Task"
     params: type[Params] = Params
 
-    def __init__(self, agent_spec: AgentSpec, agent_globals: AgentGlobals, **kwargs):
+    def __init__(self, agent_spec: ResolvedAgentSpec, agent_globals: AgentGlobals, **kwargs):
         subagents: dict[str, Agent] = {}
         descs = []
 
         # load all subagents
-        assert agent_spec.subagents is not None, "Task tool expects subagents"
         for name, spec in agent_spec.subagents.items():
             subagents[name] = load_agent(spec.path, agent_globals)
             descs.append(f"- `{name}`: {spec.description}")
