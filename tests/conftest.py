@@ -8,18 +8,13 @@ from pathlib import Path
 import pytest
 from kosong.chat_provider import MockChatProvider
 
-from kimi_cli.agent import (
-    DEFAULT_AGENT_FILE,
-    AgentGlobals,
-    AgentSpec,
-    BuiltinSystemPromptArgs,
-    _load_agent_spec,
-)
+from kimi_cli.agentspec import DEFAULT_AGENT_FILE, ResolvedAgentSpec, load_agent_spec
 from kimi_cli.config import Config, get_default_config
 from kimi_cli.llm import LLM
 from kimi_cli.metadata import Session, WorkDirMeta
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.globals import AgentGlobals, BuiltinSystemPromptArgs
 from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
@@ -115,9 +110,9 @@ def agent_globals(
 
 
 @pytest.fixture
-def agent_spec() -> AgentSpec:
+def agent_spec() -> ResolvedAgentSpec:
     """Create a AgentSpec instance."""
-    return _load_agent_spec(DEFAULT_AGENT_FILE)
+    return load_agent_spec(DEFAULT_AGENT_FILE)
 
 
 @contextmanager
@@ -137,7 +132,7 @@ def tool_call_context(tool_name: str) -> Generator[None]:
 
 
 @pytest.fixture
-def task_tool(agent_spec: AgentSpec, agent_globals: AgentGlobals) -> Task:
+def task_tool(agent_spec: ResolvedAgentSpec, agent_globals: AgentGlobals) -> Task:
     """Create a Task tool instance."""
     return Task(agent_spec, agent_globals)
 

@@ -4,8 +4,8 @@ from typing import override
 from kosong.tooling import CallableTool2, ToolReturnType
 from pydantic import BaseModel, Field, ValidationError
 
-import kimi_cli
 from kimi_cli.config import Config
+from kimi_cli.constant import USER_AGENT
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
@@ -66,7 +66,7 @@ class SearchWeb(CallableTool2[Params]):
             session.post(
                 self._base_url,
                 headers={
-                    "User-Agent": kimi_cli.USER_AGENT,
+                    "User-Agent": USER_AGENT,
                     "Authorization": f"Bearer {self._api_key}",
                     "X-Msh-Tool-Call-Id": tool_call.id,
                 },

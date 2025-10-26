@@ -16,7 +16,7 @@ class Params(BaseModel):
 
 class SetTodoList(CallableTool2[Params]):
     name: str = "SetTodoList"
-    description: str = (Path(__file__).parent / "set_todo_list.md").read_text()
+    description: str = (Path(__file__).parent / "set_todo_list.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
     @override

@@ -1,8 +1,8 @@
 import asyncio
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
-from kimi_cli.soul.wire import ApprovalRequest, ApprovalResponse
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse
 
 
 class Approval:
