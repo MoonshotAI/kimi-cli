@@ -18,6 +18,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent
+from kimi_cli.ui.shell.todo import set_todo
 from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse
 
 
@@ -37,6 +38,10 @@ class _ToolCallDisplay:
     @property
     def finished(self) -> bool:
         return self._finished
+
+    @property
+    def tool_name(self) -> str:
+        return self._tool_name
 
     @property
     def _spinner_markup(self) -> str:
@@ -212,6 +217,17 @@ class StepLiveView:
     def append_tool_result(self, tool_result: ToolResult):
         if view := self._tool_calls.get(tool_result.tool_call_id):
             view.finish(tool_result.result)
+            # Persist TODO list when SetTodoList completes successfully
+            try:
+                if getattr(view, "tool_name", None) == "SetTodoList" and isinstance(
+                    tool_result.result, ToolOk
+                ):
+                    output = getattr(tool_result.result, "output", None)
+                    if isinstance(output, str) and output.strip():
+                        set_todo(output)
+            except Exception:
+                # best-effort; never break UI on TODO capture
+                pass
             self._live.update(self._compose())
 
     def request_approval(self, approval_request: ApprovalRequest) -> None:
