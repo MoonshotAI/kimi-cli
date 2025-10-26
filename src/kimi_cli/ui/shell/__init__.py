@@ -12,6 +12,7 @@ from rich.text import Text
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.signals import install_sigint_handler
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
@@ -89,14 +90,17 @@ class ShellApp:
                 logger.debug("SIGINT received.")
                 proc.terminate()
 
-            loop.add_signal_handler(signal.SIGINT, _handler)
+            remove_sigint = install_sigint_handler(loop, _handler)
 
             await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
             console.print(f"[red]Failed to run shell command: {e}[/red]")
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            try:
+                remove_sigint()
+            except Exception:
+                pass
 
     async def _run_meta_command(self, command_str: str):
         from kimi_cli.cli import Reload
@@ -151,7 +155,7 @@ class ShellApp:
             cancel_event.set()
 
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, _handler)
+        remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
             # Use lambda to pass cancel_event via closure
@@ -188,7 +192,10 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            try:
+                remove_sigint()
+            except Exception:
+                pass
         return False
 
     def _start_auto_update_task(self) -> None:
