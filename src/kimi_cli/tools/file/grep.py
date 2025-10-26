@@ -5,6 +5,7 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import override
 
@@ -148,6 +149,8 @@ def _detect_target() -> str | None:
         os_name = "apple-darwin"
     elif sys_name == "Linux":
         os_name = "unknown-linux-musl" if arch == "x86_64" else "unknown-linux-gnu"
+    elif sys_name == "Windows":
+        os_name = "pc-windows-msvc"
     else:
         logger.error("Unsupported operating system for ripgrep: {sys_name}", sys_name=sys_name)
         return None
@@ -160,7 +163,12 @@ async def _download_and_install_rg(bin_name: str) -> Path:
     if not target:
         raise RuntimeError("Unsupported platform for ripgrep download")
 
-    filename = f"ripgrep-{RG_VERSION}-{target}.tar.gz"
+    # Determine file extension based on platform
+    if platform.system() == "Windows":
+        filename = f"ripgrep-{RG_VERSION}-{target}.zip"
+    else:
+        filename = f"ripgrep-{RG_VERSION}-{target}.tar.gz"
+
     url = f"{RG_BASE_URL}/{filename}"
     logger.info("Downloading ripgrep from {url}", url=url)
 
@@ -170,12 +178,12 @@ async def _download_and_install_rg(bin_name: str) -> Path:
 
     async with new_client_session() as session:
         with tempfile.TemporaryDirectory(prefix="kimi-rg-") as tmpdir:
-            tar_path = Path(tmpdir) / filename
+            archive_path = Path(tmpdir) / filename
 
             try:
                 async with session.get(url) as resp:
                     resp.raise_for_status()
-                    with open(tar_path, "wb") as fh:
+                    with open(archive_path, "wb") as fh:
                         async for chunk in resp.content.iter_chunked(1024 * 64):
                             if chunk:
                                 fh.write(chunk)
@@ -183,22 +191,43 @@ async def _download_and_install_rg(bin_name: str) -> Path:
                 raise RuntimeError("Failed to download ripgrep binary") from exc
 
             try:
-                with tarfile.open(tar_path, "r:gz") as tar:
-                    member = next(
-                        (m for m in tar.getmembers() if Path(m.name).name == bin_name),
-                        None,
-                    )
-                    if not member:
+                if platform.system() == "Windows":
+                    # Extract .zip file for Windows
+                    with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                        zip_ref.extractall(tmpdir)
+                    # Find the .exe file in extracted files
+                    binary_found = False
+                    for root, _, files in os.walk(tmpdir):
+                        for file in files:
+                            if file == bin_name:
+                                binary_path = os.path.join(root, file)
+                                shutil.copy2(binary_path, destination)
+                                binary_found = True
+                                break
+                        if binary_found:
+                            break
+                    if not binary_found:
                         raise RuntimeError("Ripgrep binary not found in archive")
-                    extracted = tar.extractfile(member)
-                    if not extracted:
-                        raise RuntimeError("Failed to extract ripgrep binary")
-                    with open(destination, "wb") as dest_fh:
-                        shutil.copyfileobj(extracted, dest_fh)
+                else:
+                    # Extract .tar.gz file for Unix systems
+                    with tarfile.open(archive_path, "r:gz") as tar:
+                        member = next(
+                            (m for m in tar.getmembers() if Path(m.name).name == bin_name),
+                            None,
+                        )
+                        if not member:
+                            raise RuntimeError("Ripgrep binary not found in archive")
+                        extracted = tar.extractfile(member)
+                        if not extracted:
+                            raise RuntimeError("Failed to extract ripgrep binary")
+                        with open(destination, "wb") as dest_fh:
+                            shutil.copyfileobj(extracted, dest_fh)
             except (tarfile.TarError, OSError) as exc:
                 raise RuntimeError("Failed to extract ripgrep archive") from exc
 
-    destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Only set execute permissions on Unix systems
+    if platform.system() != "Windows":
+        destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     logger.info("Installed ripgrep to {destination}", destination=destination)
     return destination
 
