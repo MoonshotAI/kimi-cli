@@ -2,14 +2,16 @@
 
 from inline_snapshot import snapshot
 from kosong.base.tool import Tool
+import pytest
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.globals import AgentGlobals
 
 
-def test_default_agent(agent_globals: AgentGlobals):
-    agent = load_agent(DEFAULT_AGENT_FILE, agent_globals)
+@pytest.mark.asyncio
+async def test_default_agent(agent_globals: AgentGlobals):
+    agent = await load_agent(DEFAULT_AGENT_FILE, agent_globals, mcp_configs=[])
     assert agent.system_prompt.replace(
         f"{agent_globals.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
     ) == snapshot(
@@ -118,7 +120,7 @@ Examples:
 
 **Available Subagents:**
 
-- `koder`: Good at general software engineering tasks.
+- `coder`: Good at general software engineering tasks.
 """,
                 parameters={
                     "properties": {

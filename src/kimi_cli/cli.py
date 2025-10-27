@@ -41,7 +41,7 @@ class Reload(Exception):
     "--agent-file",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
     default=DEFAULT_AGENT_FILE,
-    help="Custom agent specification file. Default: builtin Kimi Koder.",
+    help="Custom agent specification file. Default: builtin default agent.",
 )
 @click.option(
     "--model",

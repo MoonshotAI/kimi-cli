@@ -36,7 +36,7 @@ class ShellApp:
             logger.info("Running agent with command: {command}", command=command)
             return await self._run_soul_command(command)
 
-        self._start_auto_update_task()
+        self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi CLI", self.soul.model, self.welcome_info)
 
@@ -195,10 +195,7 @@ class ShellApp:
             remove_signal_handler_if_supported(signal.SIGINT, loop)
         return False
 
-    def _start_auto_update_task(self) -> None:
-        self._add_background_task(self._auto_update_background())
-
-    async def _auto_update_background(self) -> None:
+    async def _auto_update(self) -> None:
         toast("checking for updates...", duration=2.0)
         result = await do_update(print=False, check_only=True)
         if result == UpdateResult.UPDATE_AVAILABLE:
@@ -208,7 +205,7 @@ class ShellApp:
         elif result == UpdateResult.UPDATED:
             toast("auto updated, restart to use the new version", duration=5.0)
 
-    def _add_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+    def _start_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro)
         self._background_tasks.add(task)
 

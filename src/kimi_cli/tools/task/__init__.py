@@ -5,7 +5,7 @@ from typing import override
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agentspec import ResolvedAgentSpec
+from kimi_cli.agentspec import ResolvedAgentSpec, SubagentSpec
 from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
 from kimi_cli.soul.agent import Agent, load_agent
 from kimi_cli.soul.context import Context
@@ -50,19 +50,14 @@ class Task(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self, agent_spec: ResolvedAgentSpec, agent_globals: AgentGlobals, **kwargs):
-        subagents: dict[str, Agent] = {}
-        descs = []
-
-        # load all subagents
-        for name, spec in agent_spec.subagents.items():
-            subagents[name] = load_agent(spec.path, agent_globals)
-            descs.append(f"- `{name}`: {spec.description}")
-
         super().__init__(
             description=load_desc(
                 Path(__file__).parent / "task.md",
                 {
-                    "SUBAGENTS_MD": "\n".join(descs),
+                    "SUBAGENTS_MD": "\n".join(
+                        f"- `{name}`: {spec.description}"
+                        for name, spec in agent_spec.subagents.items()
+                    ),
                 },
             ),
             **kwargs,
@@ -70,7 +65,20 @@ class Task(CallableTool2[Params]):
 
         self._agent_globals = agent_globals
         self._session = agent_globals.session
-        self._subagents = subagents
+        self._subagents: dict[str, Agent] = {}
+
+        try:
+            self._load_task = asyncio.create_task(self._load_subagents(agent_spec.subagents))
+        except RuntimeError:
+            # In case there's no running event loop, e.g., during synchronous tests
+            self._load_task = None
+            asyncio.run(self._load_subagents(agent_spec.subagents))
+
+    async def _load_subagents(self, subagent_specs: dict[str, SubagentSpec]) -> None:
+        """Load all subagents specified in the agent spec."""
+        for name, spec in subagent_specs.items():
+            agent = await load_agent(spec.path, self._agent_globals, mcp_configs=[])
+            self._subagents[name] = agent
 
     async def _get_subagent_history_file(self) -> Path:
         """Generate a unique history file path for subagent."""
@@ -85,6 +93,10 @@ class Task(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
+        if self._load_task is not None:
+            await self._load_task
+            self._load_task = None
+
         if params.subagent_name not in self._subagents:
             return ToolError(
                 message=f"Subagent not found: {params.subagent_name}",

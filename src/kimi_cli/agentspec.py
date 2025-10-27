@@ -9,7 +9,7 @@ def get_agents_dir() -> Path:
     return Path(__file__).parent / "agents"
 
 
-DEFAULT_AGENT_FILE = get_agents_dir() / "koder" / "agent.yaml"
+DEFAULT_AGENT_FILE = get_agents_dir() / "default" / "agent.yaml"
 
 
 class AgentSpec(BaseModel):

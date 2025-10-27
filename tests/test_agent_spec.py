@@ -95,7 +95,7 @@ agent:
         assert spec.exclude_tools == snapshot(
             ["kimi_cli.tools.web:SearchWeb", "kimi_cli.tools.web:FetchURL"]
         )
-        assert "koder" in spec.subagents
+        assert "coder" in spec.subagents
 
 
 def test_load_agent_spec_unsupported_version():

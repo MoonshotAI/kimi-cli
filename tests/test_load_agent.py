@@ -68,10 +68,13 @@ def test_load_tools_invalid(agent_globals: AgentGlobals):
     assert "kimi_cli.tools.nonexistent:Tool" in bad_tools
 
 
-def test_load_agent_invalid_tools(agent_file_invalid_tools: Path, agent_globals: AgentGlobals):
+@pytest.mark.asyncio
+async def test_load_agent_invalid_tools(
+    agent_file_invalid_tools: Path, agent_globals: AgentGlobals
+):
     """Test loading agent with invalid tools raises ValueError."""
     with pytest.raises(ValueError, match="Invalid tools"):
-        load_agent(agent_file_invalid_tools, agent_globals)
+        await load_agent(agent_file_invalid_tools, agent_globals, mcp_configs=[])
 
 
 @pytest.fixture

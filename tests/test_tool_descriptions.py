@@ -46,7 +46,7 @@ Examples:
 
 **Available Subagents:**
 
-- `koder`: Good at general software engineering tasks.
+- `coder`: Good at general software engineering tasks.
 """
     )
 
