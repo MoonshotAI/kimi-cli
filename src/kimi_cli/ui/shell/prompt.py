@@ -420,8 +420,9 @@ class CustomPromptSession:
                 buff.apply_completion(completion)
 
         @_kb.add("escape", "enter", eager=True)
+        @_kb.add("c-j", eager=True)
         def _insert_newline(event: KeyPressEvent) -> None:
-            """Insert a newline when Alt+Enter is pressed."""
+            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
         @_kb.add("c-k", eager=True)
@@ -554,8 +555,8 @@ class CustomPromptSession:
                 self._current_toast = None
         else:
             shortcuts = [
-                "alt-enter: newline",
                 "ctrl-k: toggle mode",
+                "ctrl-j: newline",
                 "ctrl-d: exit",
             ]
             for shortcut in shortcuts:
