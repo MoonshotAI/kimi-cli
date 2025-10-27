@@ -15,12 +15,6 @@ from kimi_cli.ui.print import InputFormat, OutputFormat
 from kimi_cli.utils.logging import logger
 
 
-class Reload(Exception):
-    """Reload configuration."""
-
-    pass
-
-
 UIMode = Literal["shell", "print", "acp"]
 
 
@@ -230,6 +224,8 @@ def kimi(
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
                 return await instance.run_acp_server()
+
+    from kimi_cli.exception import Reload
 
     while True:
         try:

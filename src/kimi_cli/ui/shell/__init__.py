@@ -99,7 +99,7 @@ class ShellApp:
             loop.remove_signal_handler(signal.SIGINT)
 
     async def _run_meta_command(self, command_str: str):
-        from kimi_cli.cli import Reload
+        from kimi_cli.exception import Reload
 
         parts = command_str.split(" ")
         command_name = parts[0]

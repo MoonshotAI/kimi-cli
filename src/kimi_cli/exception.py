@@ -14,3 +14,9 @@ class AgentSpecError(KimiCLIException):
     """Agent specification error."""
 
     pass
+
+
+class Reload(Exception):
+    """Reload configuration."""
+
+    pass
