@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 import kimi_cli
 from kimi_cli.share import get_share_dir
+from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
 
@@ -167,7 +168,7 @@ async def _download_and_install_rg(bin_name: str) -> Path:
     share_bin_dir.mkdir(parents=True, exist_ok=True)
     destination = share_bin_dir / bin_name
 
-    async with aiohttp.ClientSession() as session:
+    async with new_client_session() as session:
         with tempfile.TemporaryDirectory(prefix="kimi-rg-") as tmpdir:
             tar_path = Path(tmpdir) / filename
 
@@ -219,7 +220,7 @@ async def _ensure_rg_path() -> str:
 
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
-    description: str = (Path(__file__).parent / "grep.md").read_text()
+    description: str = (Path(__file__).parent / "grep.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
     @override

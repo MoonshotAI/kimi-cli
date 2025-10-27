@@ -15,6 +15,7 @@ wheels/
 .env.local
 /tests_local
 uv.toml
+.idea/*
 
 # Build dependencies
 src/kimi_cli/deps/bin

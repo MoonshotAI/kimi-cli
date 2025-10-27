@@ -10,7 +10,7 @@ NAME = "SendDMail"
 
 class SendDMail(CallableTool2):
     name: str = NAME
-    description: str = (Path(__file__).parent / "dmail.md").read_text()
+    description: str = (Path(__file__).parent / "dmail.md").read_text(encoding="utf-8")
     params: type[DMail] = DMail
 
     def __init__(self, denwa_renji: DenwaRenji, **kwargs):

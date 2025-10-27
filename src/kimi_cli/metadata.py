@@ -33,7 +33,9 @@ class WorkDirMeta(BaseModel):
 class Metadata(BaseModel):
     """Kimi metadata structure."""
 
-    work_dirs: list[WorkDirMeta] = Field(default_factory=list, description="Work directory list")
+    work_dirs: list[WorkDirMeta] = Field(
+        default_factory=list[WorkDirMeta], description="Work directory list"
+    )
 
 
 def _load_metadata() -> Metadata:

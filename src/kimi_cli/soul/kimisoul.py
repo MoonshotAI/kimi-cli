@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Sequence
 from functools import partial
+from typing import TYPE_CHECKING
 
 import kosong
 import tenacity
@@ -15,29 +16,28 @@ from kosong.chat_provider import (
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
-from kimi_cli.agent import Agent, AgentGlobals
 from kimi_cli.config import LoopControl
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul, StatusSnapshot
+from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul, StatusSnapshot, wire_send
+from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.globals import AgentGlobals
 from kimi_cli.soul.message import system, tool_result_to_messages
-from kimi_cli.soul.wire import (
+from kimi_cli.tools.dmail import NAME as SendDMail_NAME
+from kimi_cli.tools.utils import ToolRejectedError
+from kimi_cli.utils.logging import logger
+from kimi_cli.wire.message import (
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
-    Wire,
-    current_wire,
 )
-from kimi_cli.tools.dmail import NAME as SendDMail_NAME
-from kimi_cli.tools.utils import ToolRejectedError
-from kimi_cli.utils.logging import logger
 
 RESERVED_TOKENS = 50_000
 
 
-class KimiSoul:
+class KimiSoul(Soul):
     """The soul of Kimi CLI."""
 
     def __init__(
@@ -96,30 +96,27 @@ class KimiSoul:
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
-    async def run(self, user_input: str, wire: Wire):
+    async def run(self, user_input: str):
         if self._agent_globals.llm is None:
             raise LLMNotSet()
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(Message(role="user", content=user_input))
         logger.debug("Appended user message to context")
-        wire_token = current_wire.set(wire)
-        try:
-            await self._agent_loop(wire)
-        finally:
-            current_wire.reset(wire_token)
+        await self._agent_loop()
 
-    async def _agent_loop(self, wire: Wire):
+    async def _agent_loop(self):
         """The main agent loop for one run."""
+        assert self._agent_globals.llm is not None
 
         async def _pipe_approval_to_wire():
             while True:
                 request = await self._approval.fetch_request()
-                wire.send(request)
+                wire_send(request)
 
         step_no = 1
         while True:
-            wire.send(StepBegin(step_no))
+            wire_send(StepBegin(step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
             # FIXME: It's possible that a subagent's approval task steals approval request
             # from the main agent. We must ensure that the Task tool will redirect them
@@ -127,23 +124,26 @@ class KimiSoul:
             # out a better solution.
             try:
                 # compact the context if needed
-                if self._context.token_count >= self._reserved_tokens:
+                if (
+                    self._context.token_count + self._reserved_tokens
+                    >= self._agent_globals.llm.max_context_size
+                ):
                     logger.info("Context too long, compacting...")
-                    wire.send(CompactionBegin())
+                    wire_send(CompactionBegin())
                     await self.compact_context()
-                    wire.send(CompactionEnd())
+                    wire_send(CompactionEnd())
 
                 logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
-                finished = await self._step(wire)
+                finished = await self._step()
             except BackToTheFuture as e:
                 await self._context.revert_to(e.checkpoint_id)
                 await self._checkpoint()
                 await self._context.append_message(e.messages)
                 continue
             except (ChatProviderError, asyncio.CancelledError):
-                wire.send(StepInterrupted())
+                wire_send(StepInterrupted())
                 # break the agent loop
                 raise
             finally:
@@ -156,7 +156,7 @@ class KimiSoul:
             if step_no > self._loop_control.max_steps_per_run:
                 raise MaxStepsReached(self._loop_control.max_steps_per_run)
 
-    async def _step(self, wire: Wire) -> bool:
+    async def _step(self) -> bool:
         """Run an single step and return whether the run should be stopped."""
         # already checked in `run`
         assert self._agent_globals.llm is not None
@@ -176,8 +176,8 @@ class KimiSoul:
                 self._agent.system_prompt,
                 self._agent.toolset,
                 self._context.history,
-                on_message_part=wire.send,
-                on_tool_result=wire.send,
+                on_message_part=wire_send,
+                on_tool_result=wire_send,
             )
 
         result = await _kosong_step_with_retry()
@@ -185,7 +185,7 @@ class KimiSoul:
         if result.usage is not None:
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)
-            wire.send(StatusUpdate(status=self.status))
+            wire_send(StatusUpdate(status=self.status))
 
         # wait for all tool results (may be interrupted)
         results = await result.tool_results()
@@ -298,7 +298,7 @@ class BackToTheFuture(Exception):
         self.messages = messages
 
 
-def __static_type_check(
-    kimi_soul: KimiSoul,
-):
-    _: Soul = kimi_soul
+if TYPE_CHECKING:
+
+    def type_check(kimi_soul: KimiSoul):
+        _: Soul = kimi_soul

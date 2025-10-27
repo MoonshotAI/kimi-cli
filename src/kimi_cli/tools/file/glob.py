@@ -8,7 +8,7 @@ import aiofiles.os
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.globals import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
 
 MAX_MATCHES = 1000
@@ -128,7 +128,7 @@ class Glob(CallableTool2[Params]):
             message = (
                 f"Found {len(matches)} matches for pattern `{params.pattern}`."
                 if len(matches) > 0
-                else "No matches found for pattern `{params.pattern}`."
+                else f"No matches found for pattern `{params.pattern}`."
             )
             if len(matches) > MAX_MATCHES:
                 matches = matches[:MAX_MATCHES]
