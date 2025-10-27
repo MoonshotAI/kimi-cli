@@ -29,7 +29,6 @@ async def listen_for_keyboard() -> AsyncGenerator[KeyEvent]:
     cancel_event = threading.Event()
 
     def emit(event: KeyEvent) -> None:
-        # print(f"emit: {event}")
         loop.call_soon_threadsafe(queue.put_nowait, event)
 
     listener = threading.Thread(
@@ -67,58 +66,38 @@ def _listen_for_keyboard_thread_windows(
     try:
         while not cancel.is_set():
             if msvcrt.kbhit():
-                # Get first character
                 c = msvcrt.getch()
-                if isinstance(c, bytes):
-                    c = c.decode("utf-8", errors="ignore")
 
-                if not c:
-                    continue
-
-                # Handle escape sequences (arrow keys)
-                if c == "\x1b" or (ord(c) == 224):  # ESC or arrow key prefix on Windows
-                    if c == "\x1b":
-                        # Standard ANSI escape sequence
-                        sequence = c
-                        for _ in range(2):
-                            if cancel.is_set():
-                                break
-                            if msvcrt.kbhit():
-                                fragment = msvcrt.getch()
-                                if isinstance(fragment, bytes):
-                                    fragment = fragment.decode("utf-8", errors="ignore")
-                                if not fragment:
-                                    break
-                                sequence += fragment
+                # Handle special keys (arrow keys, etc.)
+                if c in (b"\x00", b"\xe0"):
+                    # Extended key, read the next byte
+                    extended = msvcrt.getch()
+                    event = _WINDOWS_KEY_MAP.get(extended)
+                    if event is not None:
+                        emit(event)
+                elif c == b"\x1b":
+                    # Handle ANSI escape sequences for Windows Terminal
+                    sequence = c.decode("utf-8", errors="ignore")
+                    # Try to read the complete ANSI sequence
+                    for _ in range(3):
+                        if cancel.is_set():
+                            break
+                        if msvcrt.kbhit():
+                            fragment = msvcrt.getch()
+                            if isinstance(fragment, bytes):
+                                fragment_decoded = fragment.decode("utf-8", errors="ignore")
+                                sequence += fragment_decoded
                                 if sequence in _ARROW_KEY_MAP:
                                     break
 
-                        event = _ARROW_KEY_MAP.get(sequence)
-                        if event is not None:
-                            emit(event)
-                        elif sequence == "\x1b":
-                            emit(KeyEvent.ESCAPE)
-                    else:
-                        # Windows arrow keys (224 prefix)
-                        if msvcrt.kbhit():
-                            arrow_code = msvcrt.getch()
-                            if isinstance(arrow_code, bytes):
-                                arrow_code = arrow_code.decode("utf-8", errors="ignore")
-
-                            # Windows arrow key codes
-                            arrow_map = {
-                                "H": KeyEvent.UP,  # Up arrow
-                                "P": KeyEvent.DOWN,  # Down arrow
-                                "M": KeyEvent.RIGHT,  # Right arrow
-                                "K": KeyEvent.LEFT,  # Left arrow
-                            }
-                            event = arrow_map.get(arrow_code)
-                            if event:
-                                emit(event)
-
-                elif c in ("\r", "\n"):
+                    event = _ARROW_KEY_MAP.get(sequence)
+                    if event is not None:
+                        emit(event)
+                    elif sequence == "\x1b":
+                        emit(KeyEvent.ESCAPE)
+                elif c in (b"\r", b"\n"):
                     emit(KeyEvent.ENTER)
-                elif c == "\t":
+                elif c == b"\t":
                     emit(KeyEvent.TAB)
             else:
                 if cancel.is_set():
@@ -190,6 +169,13 @@ _ARROW_KEY_MAP: dict[str, KeyEvent] = {
     "\x1b[B": KeyEvent.DOWN,
     "\x1b[C": KeyEvent.RIGHT,
     "\x1b[D": KeyEvent.LEFT,
+}
+
+_WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
+    b"H": KeyEvent.UP,      # Up arrow
+    b"P": KeyEvent.DOWN,    # Down arrow
+    b"M": KeyEvent.RIGHT,   # Right arrow
+    b"K": KeyEvent.LEFT,    # Left arrow
 }
 
 
