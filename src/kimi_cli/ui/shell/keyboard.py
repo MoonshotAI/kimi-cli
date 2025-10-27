@@ -103,9 +103,11 @@ def _listen_for_keyboard_thread_windows(
                 if cancel.is_set():
                     break
                 time.sleep(0.01)
-    except Exception:
-        # Silently handle exceptions to avoid breaking the application
-        pass
+    except Exception as e:
+        # Log keyboard listener errors but don't break the application
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in Windows keyboard listener: {e}")
 
 
 def _listen_for_keyboard_thread_unix(
