@@ -4,14 +4,14 @@ requires-python = ">=3.13"
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.4.9"
+version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2c/13/6e81dff98af18ba728ef34697d14d9799ad52eaaaedbaebf932a647567ab/agent_client_protocol-0.4.9.tar.gz", hash = "sha256:326a65273b3097d543f2a4c24740913d716fe406781d5f8b749cfccea868a4ea", size = 140632, upload-time = "2025-10-14T05:30:21.97Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/59/5c6c8571dd1ae7a808b4208c7fbccab8f365762ead30980d08c0d3340747/agent_client_protocol-0.6.2.tar.gz", hash = "sha256:2260025f4acc15884ec982b0f484aeb60c49beef6c16e544b854b4c99aecb996", size = 150430, upload-time = "2025-10-25T18:29:03.176Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/36/13aa30ea0c410de5460ea7b4f8afa426d9bb1e30bae92134cb40d3585ee7/agent_client_protocol-0.4.9-py3-none-any.whl", hash = "sha256:b18e70138a2c653f99e2ff8bfd9d657bf07659793efb48a4fadec4bd92f677c3", size = 39596, upload-time = "2025-10-14T05:30:21.128Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/e1/f0e8b3bb757ebcbad5cd15886bca3d3c2fdd85ae4361de4952fb56e7fb74/agent_client_protocol-0.6.2-py3-none-any.whl", hash = "sha256:1f587b2acf19f7e0a57996426e67d4ac62270ca4f8374d416d56b2f3c91d9ed8", size = 47474, upload-time = "2025-10-25T18:29:01.825Z" },
 ]
 
 [[package]]
@@ -837,7 +837,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.4.9" },
+    { name = "agent-client-protocol", specifier = "==0.6.2" },
     { name = "aiofiles", specifier = "==25.1.0" },
     { name = "aiohttp", specifier = "==3.13.1" },
     { name = "click", specifier = "==8.3.0" },
