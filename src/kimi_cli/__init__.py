@@ -1,392 +1,155 @@
-import asyncio
 import contextlib
-import importlib.metadata
-import json
 import os
-import subprocess
-import sys
-import textwrap
 import warnings
-from datetime import datetime
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-import click
 from pydantic import SecretStr
 
-from kimi_cli.agent import (
-    DEFAULT_AGENT_FILE,
-    AgentGlobals,
-    BuiltinSystemPromptArgs,
-    load_agent_with_mcp,
-    load_agents_md,
-)
-from kimi_cli.config import (
-    Config,
-    ConfigError,
-    LLMModel,
-    LLMProvider,
-    load_config,
-)
-from kimi_cli.metadata import Session, continue_session, new_session
-from kimi_cli.share import get_share_dir
-from kimi_cli.soul.approval import Approval
+from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+from kimi_cli.config import LLMModel, LLMProvider, load_config
+from kimi_cli.llm import augment_provider_with_env_vars, create_llm
+from kimi_cli.session import Session
+from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.runtime import Runtime
 from kimi_cli.ui.acp import ACPServer
 from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
-from kimi_cli.ui.shell import Reload, ShellApp
+from kimi_cli.ui.shell import ShellApp
 from kimi_cli.utils.logging import StreamToLogger, logger
-from kimi_cli.utils.provider import augment_provider_with_env_vars, create_llm
-
-__version__ = importlib.metadata.version("kimi-cli")
-USER_AGENT = f"KimiCLI/{__version__}"
-
-UIMode = Literal["shell", "print", "acp"]
 
 
-@click.command(context_settings=dict(help_option_names=["-h", "--help"]))
-@click.version_option(__version__)
-@click.option(
-    "--verbose",
-    is_flag=True,
-    default=False,
-    help="Print verbose information. Default: no.",
-)
-@click.option(
-    "--debug",
-    is_flag=True,
-    default=False,
-    help="Log debug information. Default: no.",
-)
-@click.option(
-    "--agent-file",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-    default=DEFAULT_AGENT_FILE,
-    help="Custom agent specification file. Default: builtin Kimi Koder.",
-)
-@click.option(
-    "--model",
-    "-m",
-    "model_name",
-    type=str,
-    default=None,
-    help="LLM model to use. Default: default model set in config file.",
-)
-@click.option(
-    "--work-dir",
-    "-w",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    default=Path.cwd(),
-    help="Working directory for the agent. Default: current directory.",
-)
-@click.option(
-    "--continue",
-    "-C",
-    "continue_",
-    is_flag=True,
-    default=False,
-    help="Continue the previous session for the working directory. Default: no.",
-)
-@click.option(
-    "--command",
-    "-c",
-    "--query",
-    "-q",
-    "command",
-    type=str,
-    default=None,
-    help="User query to the agent. Default: prompt interactively.",
-)
-@click.option(
-    "--ui",
-    "ui",
-    type=click.Choice(["shell", "print", "acp"]),
-    default="shell",
-    help="UI mode to use. Default: shell.",
-)
-@click.option(
-    "--print",
-    "ui",
-    flag_value="print",
-    help="Run in print mode. Shortcut for `--ui print`.",
-)
-@click.option(
-    "--acp",
-    "ui",
-    flag_value="acp",
-    help="Start ACP server. Shortcut for `--ui acp`.",
-)
-@click.option(
-    "--input-format",
-    type=click.Choice(["text", "stream-json"]),
-    default=None,
-    help=(
-        "Input format to use. Must be used with `--print` "
-        "and the input must be piped in via stdin. "
-        "Default: text."
-    ),
-)
-@click.option(
-    "--output-format",
-    type=click.Choice(["text", "stream-json"]),
-    default=None,
-    help="Output format to use. Must be used with `--print`. Default: text.",
-)
-@click.option(
-    "--mcp-config-file",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-    multiple=True,
-    help=(
-        "MCP config file to load. Add this option multiple times to specify multiple MCP configs. "
-        "Default: none."
-    ),
-)
-@click.option(
-    "--mcp-config",
-    type=str,
-    multiple=True,
-    help=(
-        "MCP config JSON to load. Add this option multiple times to specify multiple MCP configs. "
-        "Default: none."
-    ),
-)
-@click.option(
-    "--yolo",
-    "--yes",
-    "-y",
-    "--auto-approve",
-    "yolo",
-    is_flag=True,
-    default=False,
-    help="Automatically approve all actions. Default: no.",
-)
-def kimi(
-    verbose: bool,
-    debug: bool,
-    agent_file: Path,
-    model_name: str | None,
-    work_dir: Path,
-    continue_: bool,
-    command: str | None,
-    ui: UIMode,
-    input_format: InputFormat | None,
-    output_format: OutputFormat | None,
-    mcp_config_file: list[Path],
-    mcp_config: list[str],
-    yolo: bool,
-):
-    """Kimi, your next CLI agent."""
-    echo = click.echo if verbose else lambda *args, **kwargs: None
+class KimiCLI:
+    @staticmethod
+    async def create(
+        session: Session,
+        *,
+        yolo: bool = False,
+        stream: bool = True,  # TODO: remove this when we have a correct print mode impl
+        mcp_configs: list[dict[str, Any]] | None = None,
+        config_file: Path | None = None,
+        model_name: str | None = None,
+        agent_file: Path | None = None,
+    ) -> "KimiCLI":
+        """
+        Create a KimiCLI instance.
 
-    logger.add(
-        get_share_dir() / "logs" / "kimi.log",
-        level="DEBUG" if debug else "INFO",
-        rotation="06:00",
-        retention="10 days",
-    )
+        Args:
+            session (Session): A session created by `Session.create` or `Session.continue_`.
+            yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
+            stream (bool, optional): Use stream mode when calling LLM API. Defaults to True.
+            config_file (Path | None, optional): Path to the configuration file. Defaults to None.
+            model_name (str | None, optional): Name of the model to use. Defaults to None.
+            agent_file (Path | None, optional): Path to the agent file. Defaults to None.
 
-    work_dir = work_dir.absolute()
+        Raises:
+            FileNotFoundError: When the agent file is not found.
+            ConfigError(KimiCLIException): When the configuration is invalid.
+            AgentSpecError(KimiCLIException): When the agent specification is invalid.
+        """
+        config = load_config(config_file)
+        logger.info("Loaded config: {config}", config=config)
 
-    if continue_:
-        session = continue_session(work_dir)
-        if session is None:
-            raise click.BadOptionUsage(
-                "--continue", "No previous session found for the working directory"
-            )
-        echo(f"✓ Continuing previous session: {session.id}")
-    else:
-        session = new_session(work_dir)
-        echo(f"✓ Created new session: {session.id}")
-    echo(f"✓ Session history file: {session.history_file}")
+        model: LLMModel | None = None
+        provider: LLMProvider | None = None
 
-    if input_format is not None and ui != "print":
-        raise click.BadOptionUsage(
-            "--input-format",
-            "Input format is only supported for print UI",
+        # try to use config file
+        if not model_name and config.default_model:
+            # no --model specified && default model is set in config
+            model = config.models[config.default_model]
+            provider = config.providers[model.provider]
+        if model_name and model_name in config.models:
+            # --model specified && model is set in config
+            model = config.models[model_name]
+            provider = config.providers[model.provider]
+
+        if not model:
+            model = LLMModel(provider="", model="", max_context_size=100_000)
+            provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
+
+        # try overwrite with environment variables
+        assert provider is not None
+        assert model is not None
+        augment_provider_with_env_vars(provider, model)
+
+        if not provider.base_url or not model.model:
+            llm = None
+        else:
+            logger.info("Using LLM provider: {provider}", provider=provider)
+            logger.info("Using LLM model: {model}", model=model)
+            llm = create_llm(provider, model, stream=stream, session_id=session.id)
+
+        runtime = await Runtime.create(config, llm, session, yolo)
+
+        if agent_file is None:
+            agent_file = DEFAULT_AGENT_FILE
+        agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+
+        context = Context(session.history_file)
+        await context.restore()
+
+        soul = KimiSoul(
+            agent,
+            runtime,
+            context=context,
         )
-    if output_format is not None and ui != "print":
-        raise click.BadOptionUsage(
-            "--output-format",
-            "Output format is only supported for print UI",
-        )
+        return KimiCLI(soul, session)
 
-    try:
-        mcp_configs = [json.loads(conf.read_text()) for conf in mcp_config_file]
-    except json.JSONDecodeError as e:
-        raise click.BadOptionUsage("--mcp-config-file", f"Invalid JSON: {e}") from e
+    def __init__(self, soul: KimiSoul, session: Session) -> None:
+        self._soul = soul
+        self._session = session
 
-    try:
-        mcp_configs += [json.loads(conf) for conf in mcp_config]
-    except json.JSONDecodeError as e:
-        raise click.BadOptionUsage("--mcp-config", f"Invalid JSON: {e}") from e
+    @property
+    def soul(self) -> KimiSoul:
+        """Get the KimiSoul instance."""
+        return self._soul
 
-    while True:
+    @property
+    def session(self) -> Session:
+        """Get the Session instance."""
+        return self._session
+
+    @contextlib.contextmanager
+    def _app_env(self) -> Generator[None]:
+        original_cwd = Path.cwd()
+        os.chdir(self._session.work_dir)
         try:
-            try:
-                config = load_config()
-            except ConfigError as e:
-                raise click.ClickException(f"Failed to load config: {e}") from e
-            echo(f"✓ Loaded config: {config}")
-
-            succeeded = asyncio.run(
-                kimi_run(
-                    config=config,
-                    model_name=model_name,
-                    work_dir=work_dir,
-                    session=session,
-                    command=command,
-                    agent_file=agent_file,
-                    verbose=verbose,
-                    ui=ui,
-                    input_format=input_format,
-                    output_format=output_format,
-                    mcp_configs=mcp_configs,
-                    yolo=yolo,
-                )
-            )
-            if not succeeded:
-                sys.exit(1)
-            break
-        except Reload:
-            continue
-
-
-async def kimi_run(
-    *,
-    config: Config,
-    model_name: str | None,
-    work_dir: Path,
-    session: Session,
-    command: str | None = None,
-    agent_file: Path = DEFAULT_AGENT_FILE,
-    verbose: bool = True,
-    ui: UIMode = "shell",
-    input_format: InputFormat | None = None,
-    output_format: OutputFormat | None = None,
-    mcp_configs: list[dict[str, Any]] | None = None,
-    yolo: bool = False,
-) -> bool:
-    """Run Kimi CLI."""
-    echo = click.echo if verbose else lambda *args, **kwargs: None
-
-    model: LLMModel | None = None
-    provider: LLMProvider | None = None
-
-    # try to use config file
-    if not model_name and config.default_model:
-        # no --model specified && default model is set in config
-        model = config.models[config.default_model]
-        provider = config.providers[model.provider]
-    if model_name and model_name in config.models:
-        # --model specified && model is set in config
-        model = config.models[model_name]
-        provider = config.providers[model.provider]
-
-    if not model:
-        model = LLMModel(provider="", model="", max_context_size=100_000)
-        provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
-
-    # try overwrite with environment variables
-    assert provider is not None
-    assert model is not None
-    augment_provider_with_env_vars(provider, model)
-
-    if not provider.base_url or not model.model:
-        llm = None
-    else:
-        echo(f"✓ Using LLM provider: {provider}")
-        echo(f"✓ Using LLM model: {model}")
-        stream = ui != "print"  # use non-streaming mode only for print UI
-        llm = create_llm(provider, model, stream=stream, session_id=session.id)
-
-    # Get directory listing
-    if sys.platform == "win32":
-        ls = subprocess.run(
-            ["cmd", "/c", "dir"], capture_output=True, text=True, encoding="utf-8", errors="replace"
-        )
-    else:
-        ls = subprocess.run(["ls", "-la"], capture_output=True, text=True)
-    agents_md = load_agents_md(work_dir) or ""
-    if agents_md:
-        echo(f"✓ Loaded agents.md: {textwrap.shorten(agents_md, width=100)}")
-
-    agent_globals = AgentGlobals(
-        config=config,
-        llm=llm,
-        builtin_args=BuiltinSystemPromptArgs(
-            KIMI_NOW=datetime.now().astimezone().isoformat(),
-            KIMI_WORK_DIR=work_dir,
-            KIMI_WORK_DIR_LS=ls.stdout,
-            KIMI_AGENTS_MD=agents_md,
-        ),
-        denwa_renji=DenwaRenji(),
-        session=session,
-        approval=Approval(yolo=yolo),
-    )
-    try:
-        agent = await load_agent_with_mcp(agent_file, agent_globals, mcp_configs or [])
-    except ValueError as e:
-        raise click.BadParameter(f"Failed to load agent: {e}") from e
-    echo(f"✓ Loaded agent: {agent.name}")
-    echo(f"✓ Loaded system prompt: {textwrap.shorten(agent.system_prompt, width=100)}")
-    echo(f"✓ Loaded tools: {[tool.name for tool in agent.toolset.tools]}")
-
-    if command is not None:
-        command = command.strip()
-        if not command:
-            raise click.BadParameter("Command cannot be empty")
-
-    context = Context(session.history_file)
-    restored = await context.restore()
-    if restored:
-        echo(f"✓ Restored history from {session.history_file}")
-
-    soul = KimiSoul(
-        agent,
-        agent_globals,
-        context=context,
-        loop_control=config.loop_control,
-    )
-
-    original_cwd = Path.cwd()
-    os.chdir(work_dir)
-
-    try:
-        if ui == "shell":
-            if command is None and not sys.stdin.isatty():
-                command = sys.stdin.read().strip()
-                echo(f"✓ Read command from stdin: {command}")
-
-            app = ShellApp(
-                soul,
-                welcome_info={
-                    "Directory": str(work_dir),
-                    "Session": session.id,
-                },
-            )
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             with contextlib.redirect_stderr(StreamToLogger()):
-                return await app.run(command)
-        elif ui == "print":
-            app = PrintApp(soul, input_format or "text", output_format or "text")
+                yield
+        finally:
+            os.chdir(original_cwd)
+
+    async def run_shell_mode(self, command: str | None = None) -> bool:
+        with self._app_env():
+            app = ShellApp(
+                self._soul,
+                welcome_info={
+                    "Directory": str(self._session.work_dir),
+                    "Session": self._session.id,
+                },
+            )
             return await app.run(command)
-        elif ui == "acp":
-            if command is not None:
-                logger.warning("ACP server ignores command argument")
-            app = ACPServer(soul)
+
+    async def run_print_mode(
+        self,
+        input_format: InputFormat,
+        output_format: OutputFormat,
+        command: str | None = None,
+    ) -> bool:
+        with self._app_env():
+            app = PrintApp(
+                self._soul,
+                input_format,
+                output_format,
+                self._session.history_file,
+            )
+            return await app.run(command)
+
+    async def run_acp_server(self) -> bool:
+        with self._app_env():
+            app = ACPServer(self._soul)
             return await app.run()
-        else:
-            raise click.BadParameter(f"Invalid UI mode: {ui}")
-    finally:
-        os.chdir(original_cwd)
-
-
-def main():
-    kimi()
-
-
-if __name__ == "__main__":
-    main()

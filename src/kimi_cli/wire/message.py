@@ -1,14 +1,13 @@
 import asyncio
 import uuid
-from contextvars import ContextVar
 from enum import Enum
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from kosong.base.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 
-from kimi_cli.soul import StatusSnapshot
-from kimi_cli.utils.logging import logger
+if TYPE_CHECKING:
+    from kimi_cli.soul import StatusSnapshot
 
 
 class StepBegin(NamedTuple):
@@ -39,7 +38,7 @@ class CompactionEnd:
 
 
 class StatusUpdate(NamedTuple):
-    status: StatusSnapshot
+    status: "StatusSnapshot"
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
@@ -90,37 +89,3 @@ class ApprovalRequest:
 
 
 type WireMessage = Event | ApprovalRequest
-
-
-class Wire:
-    """
-    A channel for communication between the soul and the UI.
-    """
-
-    def __init__(self):
-        self._queue = asyncio.Queue[WireMessage]()
-
-    def send(self, msg: WireMessage) -> None:
-        if not isinstance(msg, ContentPart | ToolCallPart):
-            logger.debug("Sending wire message: {msg}", msg=msg)
-        self._queue.put_nowait(msg)
-
-    async def receive(self) -> WireMessage:
-        msg = await self._queue.get()
-        if not isinstance(msg, ContentPart | ToolCallPart):
-            logger.debug("Receiving wire message: {msg}", msg=msg)
-        return msg
-
-    def shutdown(self) -> None:
-        self._queue.shutdown()
-
-
-current_wire = ContextVar[Wire | None]("current_wire", default=None)
-
-
-def get_wire_or_none() -> Wire | None:
-    """
-    Get the current wire or None.
-    Expect to be not None when called from anywhere in the agent loop.
-    """
-    return current_wire.get()

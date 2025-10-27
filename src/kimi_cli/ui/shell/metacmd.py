@@ -8,10 +8,10 @@ from kosong.base.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
-from kimi_cli.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
+from kimi_cli.soul.runtime import load_agents_md
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.logging import logger
@@ -173,9 +173,9 @@ def help(app: "ShellApp", args: list[str]):
 @meta_command
 def version(app: "ShellApp", args: list[str]):
     """Show version information"""
-    from kimi_cli import __version__
+    from kimi_cli.constant import VERSION
 
-    console.print(f"kimi, version {__version__}")
+    console.print(f"kimi, version {VERSION}")
 
 
 @meta_command(name="release-notes")
@@ -206,12 +206,7 @@ async def init(app: "ShellApp", args: list[str]):
         logger.info("Running `/init`")
         console.print("Analyzing the codebase...")
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
-        app.soul = KimiSoul(
-            soul_bak._agent,
-            soul_bak._agent_globals,
-            context=tmp_context,
-            loop_control=soul_bak._loop_control,
-        )
+        app.soul = KimiSoul(soul_bak._agent, soul_bak._runtime, context=tmp_context)
         ok = await app._run_soul_command(prompts.INIT)
 
         if ok:
@@ -223,7 +218,7 @@ async def init(app: "ShellApp", args: list[str]):
             console.print("[red]Failed to analyze the codebase.[/red]")
 
     app.soul = soul_bak
-    agents_md = load_agents_md(soul_bak._agent_globals.builtin_args.KIMI_WORK_DIR)
+    agents_md = load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR)
     system_message = system(
         "The user just ran `/init` meta command. "
         "The system has analyzed the codebase and generated an `AGENTS.md` file. "

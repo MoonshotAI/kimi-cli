@@ -26,19 +26,19 @@ class _Platform(NamedTuple):
 _PLATFORMS = [
     _Platform(
         id="kimi-for-coding",
-        name="Kimi For Coding",
+        name="Kimi For Coding (CN)",
         base_url="https://api.kimi.com/coding/v1",
         search_url="https://api.kimi.com/coding/v1/search",
     ),
     _Platform(
         id="moonshot-cn",
-        name="Moonshot AI 开放平台",
+        name="Moonshot AI 开放平台 (moonshot.cn)",
         base_url="https://api.moonshot.cn/v1",
         allowed_models=["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "kimi-k2-0711-preview"],
     ),
     _Platform(
         id="moonshot-ai",
-        name="Moonshot AI Open Platform",
+        name="Moonshot AI Open Platform (moonshot.ai)",
         base_url="https://api.moonshot.ai/v1",
         allowed_models=["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "kimi-k2-0711-preview"],
     ),
@@ -77,7 +77,7 @@ async def setup(app: "ShellApp", args: list[str]):
     await asyncio.sleep(1)
     console.clear()
 
-    from kimi_cli import Reload
+    from kimi_cli.cli import Reload
 
     raise Reload
 
@@ -185,6 +185,6 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 @meta_command
 def reload(app: "ShellApp", args: list[str]):
     """Reload configuration"""
-    from kimi_cli import Reload
+    from kimi_cli.cli import Reload
 
     raise Reload

@@ -15,10 +15,10 @@ from rich.status import Status
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
-from kimi_cli.soul.wire import ApprovalRequest, ApprovalResponse
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent
+from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse
 
 
 class _ToolCallDisplay:

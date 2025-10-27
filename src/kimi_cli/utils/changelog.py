@@ -98,4 +98,6 @@ def format_release_notes(changelog: dict[str, ReleaseEntry]) -> str:
     return "\n".join(parts).strip()
 
 
-CHANGELOG = parse_changelog((Path(__file__).parent.parent / "CHANGELOG.md").read_text())
+CHANGELOG = parse_changelog(
+    (Path(__file__).parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
+)

@@ -5,19 +5,19 @@ from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 
 from kimi_cli.soul import StatusSnapshot
-from kimi_cli.soul.wire import (
+from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.keyboard import listen_for_keyboard
+from kimi_cli.ui.shell.liveview import StepLiveView, StepLiveViewWithMarkdown
+from kimi_cli.utils.logging import logger
+from kimi_cli.wire import WireUISide
+from kimi_cli.wire.message import (
     ApprovalRequest,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
-    Wire,
 )
-from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.keyboard import listen_for_keyboard
-from kimi_cli.ui.shell.liveview import StepLiveView, StepLiveViewWithMarkdown
-from kimi_cli.utils.logging import logger
 
 
 @asynccontextmanager
@@ -39,7 +39,10 @@ async def _keyboard_listener(step: StepLiveView):
 
 
 async def visualize(
-    wire: Wire, *, initial_status: StatusSnapshot, cancel_event: asyncio.Event | None = None
+    wire: WireUISide,
+    *,
+    initial_status: StatusSnapshot,
+    cancel_event: asyncio.Event | None = None,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.

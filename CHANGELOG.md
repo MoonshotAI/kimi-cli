@@ -9,6 +9,18 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.41] - 2025-10-26
+
+### Fixed
+
+- Fix a bug for Glob tool when no matching files are found
+- Ensure reading files with UTF-8 encoding
+
+### Changed
+
+- Disable reading command/query from stdin in shell mode
+- Clarify the API platform selection in `/setup` meta command
+
 ## [0.40] - 2025-10-24
 
 ### Added

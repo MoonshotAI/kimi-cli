@@ -5,8 +5,8 @@ import aiofiles
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agent import BuiltinSystemPromptArgs
 from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError
 
@@ -26,7 +26,7 @@ class Params(BaseModel):
 
 class WriteFile(CallableTool2[Params]):
     name: str = "WriteFile"
-    description: str = (Path(__file__).parent / "write.md").read_text()
+    description: str = (Path(__file__).parent / "write.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
     def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):

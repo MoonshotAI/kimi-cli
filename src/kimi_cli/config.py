@@ -4,6 +4,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_serializer, model_validator
 
+from kimi_cli.exception import ConfigError
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
 
@@ -99,13 +100,21 @@ def get_default_config() -> Config:
     )
 
 
-def load_config() -> Config:
-    """Load configuration from config file.
+def load_config(config_file: Path | None = None) -> Config:
+    """
+    Load configuration from config file.
+    If the config file does not exist, create it with default configuration.
+
+    Args:
+        config_file (Path | None): Path to the configuration file. If None, use default path.
 
     Returns:
         Validated Config object.
+
+    Raises:
+        ConfigError: If the configuration file is invalid.
     """
-    config_file = get_config_file()
+    config_file = config_file or get_config_file()
     logger.debug("Loading config from file: {file}", file=config_file)
 
     if not config_file.exists():
@@ -119,20 +128,21 @@ def load_config() -> Config:
         with open(config_file, encoding="utf-8") as f:
             data = json.load(f)
         return Config(**data)
-    except (json.JSONDecodeError, ValidationError) as e:
-        raise ConfigError(f"Invalid configuration file: {config_file}") from e
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
+    except ValidationError as e:
+        raise ConfigError(f"Invalid configuration file: {e}") from e
 
 
-class ConfigError(Exception):
-    """Configuration error."""
+def save_config(config: Config, config_file: Path | None = None):
+    """
+    Save configuration to config file.
 
-    def __init__(self, message: str):
-        super().__init__(message)
-
-
-def save_config(config: Config):
-    """Save configuration to config file."""
-    config_file = get_config_file()
+    Args:
+        config (Config): Config object to save.
+        config_file (Path | None): Path to the configuration file. If None, use default path.
+    """
+    config_file = config_file or get_config_file()
     logger.debug("Saving config to file: {file}", file=config_file)
     with open(config_file, "w", encoding="utf-8") as f:
         f.write(config.model_dump_json(indent=2, exclude_none=True))

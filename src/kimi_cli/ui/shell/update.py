@@ -85,7 +85,7 @@ LATEST_VERSION_FILE = get_share_dir() / "latest_version.txt"
 
 
 async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
-    from kimi_cli import __version__ as current_version
+    from kimi_cli.constant import VERSION as current_version
 
     def _print(message: str) -> None:
         if print:
@@ -105,7 +105,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
             return UpdateResult.FAILED
 
         logger.debug("Latest version: {latest_version}", latest_version=latest_version)
-        LATEST_VERSION_FILE.write_text(latest_version)
+        LATEST_VERSION_FILE.write_text(latest_version, encoding="utf-8")
 
         cur_t = semver_tuple(current_version)
         lat_t = semver_tuple(latest_version)
