@@ -803,7 +803,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.41"
+version = "0.42"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -837,23 +837,23 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = ">=0.4.9,<0.5.0" },
-    { name = "aiofiles", specifier = ">=25.1.0" },
-    { name = "aiohttp", specifier = ">=3.13.1" },
-    { name = "click", specifier = ">=8.3.0" },
-    { name = "fastmcp", specifier = ">=2.12.5" },
-    { name = "httpx", extras = ["socks"], specifier = ">=0.28.0" },
-    { name = "kosong", specifier = ">=0.15.0" },
-    { name = "loguru", specifier = ">=0.7.3" },
-    { name = "patch-ng", specifier = ">=1.19.0" },
-    { name = "prompt-toolkit", specifier = ">=3.0.52" },
-    { name = "pydantic", specifier = ">=2.12.3" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "ripgrepy", specifier = ">=2.2.0" },
-    { name = "streamingjson", specifier = ">=0.0.5" },
-    { name = "tenacity", specifier = ">=9.1.2" },
-    { name = "trafilatura", specifier = ">=2.0.0" },
+    { name = "agent-client-protocol", specifier = "==0.4.9" },
+    { name = "aiofiles", specifier = "==25.1.0" },
+    { name = "aiohttp", specifier = "==3.13.1" },
+    { name = "click", specifier = "==8.3.0" },
+    { name = "fastmcp", specifier = "==2.12.5" },
+    { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
+    { name = "kosong", specifier = "==0.15.0" },
+    { name = "loguru", specifier = "==0.7.3" },
+    { name = "patch-ng", specifier = "==1.19.0" },
+    { name = "prompt-toolkit", specifier = "==3.0.52" },
+    { name = "pydantic", specifier = "==2.12.3" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "rich", specifier = "==14.2.0" },
+    { name = "ripgrepy", specifier = "==2.2.0" },
+    { name = "streamingjson", specifier = "==0.0.5" },
+    { name = "tenacity", specifier = "==9.1.2" },
+    { name = "trafilatura", specifier = "==2.0.0" },
 ]
 
 [package.metadata.requires-dev]

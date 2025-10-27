@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.42] - 2025-10-28
 
 ### Added
 
@@ -18,6 +18,11 @@ Only write entries that are worth mentioning to users.
 ### Changed
 
 - Change mode switch shortcut from Ctrl-K to Ctrl-X
+- Improve overall robustness
+
+### Fixed
+
+- Fix ACP server `no attribute` error
 
 ## [0.41] - 2025-10-26
 
