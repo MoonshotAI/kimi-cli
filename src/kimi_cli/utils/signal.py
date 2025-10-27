@@ -1,4 +1,5 @@
 """Cross-platform signal handling utilities."""
+
 import asyncio
 from collections.abc import Callable
 from platform import system
@@ -56,6 +57,8 @@ def create_sigint_handler(cancel_event: asyncio.Event) -> Callable[[], None]:
     Returns:
         Handler function
     """
+
     def handler() -> None:
         cancel_event.set()
+
     return handler
