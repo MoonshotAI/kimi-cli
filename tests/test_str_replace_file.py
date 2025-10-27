@@ -141,9 +141,7 @@ async def test_replace_outside_work_directory(str_replace_file_tool: StrReplaceF
     else:
         outside_path = "/tmp/outside.txt"
 
-    result = await str_replace_file_tool(
-        Params(path=outside_path, edit=Edit(old="old", new="new"))
-    )
+    result = await str_replace_file_tool(Params(path=outside_path, edit=Edit(old="old", new="new")))
 
     assert isinstance(result, ToolError)
     assert "outside the working directory" in result.message
