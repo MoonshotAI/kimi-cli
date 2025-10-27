@@ -193,7 +193,7 @@ async def _download_and_install_rg(bin_name: str) -> Path:
             try:
                 if platform.system() == "Windows":
                     # Extract .zip file for Windows
-                    with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                    with zipfile.ZipFile(archive_path, "r") as zip_ref:
                         zip_ref.extractall(tmpdir)
                     # Find the .exe file in extracted files
                     binary_found = False
