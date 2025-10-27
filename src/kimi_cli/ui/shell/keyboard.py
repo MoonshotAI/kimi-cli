@@ -6,6 +6,8 @@ from collections.abc import AsyncGenerator, Callable
 from enum import Enum, auto
 from platform import system
 
+# type: ignore [import-not-found,attr-defined]
+
 # Cross-platform terminal handling
 if system() == "Windows":
     import msvcrt
@@ -63,15 +65,16 @@ def _listen_for_keyboard_thread_windows(
     emit: Callable[[KeyEvent], None],
 ) -> None:
     """Windows-specific keyboard listener using msvcrt."""
+    assert msvcrt  # type: ignore  # Platform-specific module
     try:
         while not cancel.is_set():
-            if msvcrt.kbhit():
-                c = msvcrt.getch()
+            if msvcrt.kbhit():  # type: ignore
+                c = msvcrt.getch()  # type: ignore
 
                 # Handle special keys (arrow keys, etc.)
                 if c in (b"\x00", b"\xe0"):
                     # Extended key, read the next byte
-                    extended = msvcrt.getch()
+                    extended = msvcrt.getch()  # type: ignore
                     event = _WINDOWS_KEY_MAP.get(extended)
                     if event is not None:
                         emit(event)
@@ -82,8 +85,8 @@ def _listen_for_keyboard_thread_windows(
                     for _ in range(3):
                         if cancel.is_set():
                             break
-                        if msvcrt.kbhit():
-                            fragment = msvcrt.getch()
+                        if msvcrt.kbhit():  # type: ignore
+                            fragment = msvcrt.getch()  # type: ignore
                             if isinstance(fragment, bytes):
                                 fragment_decoded = fragment.decode("utf-8", errors="ignore")
                                 sequence += fragment_decoded
@@ -106,6 +109,7 @@ def _listen_for_keyboard_thread_windows(
     except Exception as e:
         # Log keyboard listener errors but don't break the application
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Error in Windows keyboard listener: {e}")
 
@@ -115,14 +119,15 @@ def _listen_for_keyboard_thread_unix(
     emit: Callable[[KeyEvent], None],
 ) -> None:
     """Unix-specific keyboard listener using termios."""
+    assert termios  # type: ignore  # Platform-specific module
     # make stdin raw and non-blocking
     fd = sys.stdin.fileno()
-    oldterm = termios.tcgetattr(fd)
-    newattr = termios.tcgetattr(fd)
-    newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
-    newattr[6][termios.VMIN] = 0
-    newattr[6][termios.VTIME] = 0
-    termios.tcsetattr(fd, termios.TCSANOW, newattr)
+    oldterm = termios.tcgetattr(fd)  # type: ignore
+    newattr = termios.tcgetattr(fd)  # type: ignore
+    newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO  # type: ignore
+    newattr[6][termios.VMIN] = 0  # type: ignore
+    newattr[6][termios.VTIME] = 0  # type: ignore
+    termios.tcsetattr(fd, termios.TCSANOW, newattr)  # type: ignore
 
     try:
         while not cancel.is_set():
@@ -163,7 +168,7 @@ def _listen_for_keyboard_thread_unix(
                 emit(KeyEvent.TAB)
     finally:
         # restore the terminal settings
-        termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
+        termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)  # type: ignore
 
 
 _ARROW_KEY_MAP: dict[str, KeyEvent] = {
@@ -174,10 +179,10 @@ _ARROW_KEY_MAP: dict[str, KeyEvent] = {
 }
 
 _WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
-    b"H": KeyEvent.UP,      # Up arrow
-    b"P": KeyEvent.DOWN,    # Down arrow
-    b"M": KeyEvent.RIGHT,   # Right arrow
-    b"K": KeyEvent.LEFT,    # Left arrow
+    b"H": KeyEvent.UP,  # Up arrow
+    b"P": KeyEvent.DOWN,  # Down arrow
+    b"M": KeyEvent.RIGHT,  # Right arrow
+    b"K": KeyEvent.LEFT,  # Left arrow
 }
 
 
