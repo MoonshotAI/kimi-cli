@@ -1,5 +1,6 @@
-RUFF := $(shell command -v ruff 2> /dev/null || echo "uv run ruff")
-PYRIGHT := $(shell command -v pyright 2> /dev/null || echo "uv run pyright")
+# Use uv run by default on all platforms for consistency
+RUFF := uv run ruff
+PYRIGHT := uv run pyright
 
 .DEFAULT_GOAL := prepare
 
