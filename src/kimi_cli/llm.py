@@ -28,7 +28,7 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
                 model.model = model_name
             if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
-        case "openai_legacy":
+        case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
             if api_key := os.getenv("OPENAI_API_KEY"):
@@ -70,7 +70,7 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
                 stream=stream,
-            ).with_generation_kwargs(reasoning_effort="medium")
+            )
         case "_chaos":
             chat_provider = ChaosChatProvider(
                 model=model.model,

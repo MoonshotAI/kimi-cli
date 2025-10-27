@@ -1,6 +1,5 @@
 import asyncio
 from collections import deque
-
 from typing import Literal
 
 import streamingjson
@@ -367,7 +366,13 @@ class StepLiveViewWithMarkdown(StepLiveView):
         markdown_text = "".join(self._pending_markdown_parts)
         self._pending_markdown_parts.clear()
         if markdown_text.strip():
-            self._push_out(_LeftAlignedMarkdown(markdown_text, justify="left", style="grey50" if self._last_text_mode == "think" else "none"))
+            self._push_out(
+                _LeftAlignedMarkdown(
+                    markdown_text,
+                    justify="left",
+                    style="grey50" if self._last_text_mode == "think" else "none",
+                )
+            )
 
     def _show_thinking_status(self):
         if self._buffer_status_active:
