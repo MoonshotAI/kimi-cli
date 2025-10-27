@@ -38,16 +38,18 @@ class Bash(CallableTool2[Params]):
         builder = ToolResultBuilder()
 
         if not await self._approval.request(
-            f"run command {params.command}", f"Run command `{params.command}`"
+            self.name,
+            "run shell command",
+            f"Run command `{params.command}`",
         ):
             return ToolRejectedError()
 
         def stdout_cb(line: bytes):
-            line_str = line.decode()
+            line_str = line.decode(errors="replace")
             builder.write(line_str)
 
         def stderr_cb(line: bytes):
-            line_str = line.decode()
+            line_str = line.decode(errors="replace")
             builder.write(line_str)
 
         try:

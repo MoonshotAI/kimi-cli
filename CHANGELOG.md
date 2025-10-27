@@ -9,6 +9,69 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.41] - 2025-10-26
+
+### Fixed
+
+- Fix a bug for Glob tool when no matching files are found
+- Ensure reading files with UTF-8 encoding
+
+### Changed
+
+- Disable reading command/query from stdin in shell mode
+- Clarify the API platform selection in `/setup` meta command
+
+## [0.40] - 2025-10-24
+
+### Added
+
+- Support `ESC` key to interrupt the agent loop
+
+### Fixed
+
+- Fix SSL certificate verification error in some rare cases
+- Fix possible decoding error in Bash tool
+
+## [0.39] - 2025-10-24
+
+### Fixed
+
+- Fix context compaction threshold check
+- Fix panic when SOCKS proxy is set in the shell session
+
+## [0.38] - 2025-10-24
+
+- Minor UX improvements
+
+## [0.37] - 2025-10-24
+
+### Fixed
+
+- Fix update checking
+
+## [0.36] - 2025-10-24
+
+### Added
+
+- Add `/debug` meta command to debug the context
+- Add auto context compaction
+- Add approval request mechanism
+- Add `--yolo` option to automatically approve all actions
+- Render markdown content for better readability
+
+### Fixed
+
+- Fix "unknown error" message when interrupting a meta command
+
+## [0.35] - 2025-10-22
+
+### Changed
+
+- Minor UI improvements
+- Auto download ripgrep if not found in the system
+- Always approve tool calls in `--print` mode
+- Add `/feedback` meta command
+
 ## [0.34] - 2025-10-21
 
 ### Added

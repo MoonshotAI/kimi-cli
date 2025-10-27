@@ -8,17 +8,13 @@ import tarfile
 import tempfile
 from enum import Enum, auto
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import aiohttp
 
+from kimi_cli.share import get_share_dir
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import meta_command
+from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
-
-if TYPE_CHECKING:
-    from kimi_cli.ui.shell import ShellApp
-
 
 BASE_URL = "https://cdn.kimi.com/binaries/kimi-cli"
 LATEST_VERSION_URL = f"{BASE_URL}/latest"
@@ -26,6 +22,7 @@ INSTALL_DIR = Path.home() / ".local" / "bin"
 
 
 class UpdateResult(Enum):
+    UPDATE_AVAILABLE = auto()
     UPDATED = auto()
     UP_TO_DATE = auto()
     FAILED = auto()
@@ -35,7 +32,7 @@ class UpdateResult(Enum):
 _UPDATE_LOCK = asyncio.Lock()
 
 
-def _semver_tuple(version: str) -> tuple[int, int, int]:
+def semver_tuple(version: str) -> tuple[int, int, int]:
     v = version.strip()
     if v.startswith("v"):
         v = v[1:]
@@ -79,13 +76,16 @@ async def _get_latest_version(session: aiohttp.ClientSession) -> str | None:
         return None
 
 
-async def do_update(*, print: bool = True) -> UpdateResult:
+async def do_update(*, print: bool = True, check_only: bool = False) -> UpdateResult:
     async with _UPDATE_LOCK:
-        return await _do_update(print=print)
+        return await _do_update(print=print, check_only=check_only)
 
 
-async def _do_update(*, print: bool) -> UpdateResult:
-    from kimi_cli import __version__ as current_version
+LATEST_VERSION_FILE = get_share_dir() / "latest_version.txt"
+
+
+async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
+    from kimi_cli.constant import VERSION as current_version
 
     def _print(message: str) -> None:
         if print:
@@ -96,23 +96,33 @@ async def _do_update(*, print: bool) -> UpdateResult:
         _print("[red]Failed to detect target platform.[/red]")
         return UpdateResult.UNSUPPORTED
 
-    logger.info("Checking for updates...")
-    _print("Checking for updates...")
-
-    async with aiohttp.ClientSession() as session:
+    async with new_client_session() as session:
+        logger.info("Checking for updates...")
+        _print("Checking for updates...")
         latest_version = await _get_latest_version(session)
         if not latest_version:
             _print("[red]Failed to check for updates.[/red]")
             return UpdateResult.FAILED
 
         logger.debug("Latest version: {latest_version}", latest_version=latest_version)
-        cur_t = _semver_tuple(current_version)
-        lat_t = _semver_tuple(latest_version)
+        LATEST_VERSION_FILE.write_text(latest_version, encoding="utf-8")
+
+        cur_t = semver_tuple(current_version)
+        lat_t = semver_tuple(latest_version)
 
         if cur_t >= lat_t:
-            logger.info("Already up to date: {current_version}", current_version=current_version)
+            logger.debug("Already up to date: {current_version}", current_version=current_version)
             _print("[green]Already up to date.[/green]")
             return UpdateResult.UP_TO_DATE
+
+        if check_only:
+            logger.info(
+                "Update available: current={current_version}, latest={latest_version}",
+                current_version=current_version,
+                latest_version=latest_version,
+            )
+            _print(f"[yellow]Update available: {latest_version}[/yellow]")
+            return UpdateResult.UPDATE_AVAILABLE
 
         logger.info(
             "Updating from {current_version} to {latest_version}...",
@@ -188,7 +198,13 @@ async def _do_update(*, print: bool) -> UpdateResult:
     return UpdateResult.UPDATED
 
 
-@meta_command
-async def update(app: "ShellApp", args: list[str]):
-    """Check for updates"""
-    await do_update(print=True)
+# @meta_command
+# async def update(app: "ShellApp", args: list[str]):
+#     """Check for updates"""
+#     await do_update(print=True)
+
+
+# @meta_command(name="check-update")
+# async def check_update(app: "ShellApp", args: list[str]):
+#     """Check for updates"""
+#     await do_update(print=True, check_only=True)

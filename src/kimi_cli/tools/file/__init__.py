@@ -1,7 +1,15 @@
+from enum import Enum
+
+
 class FileOpsWindow:
     """Maintains a window of file operations."""
 
     pass
+
+
+class FileActions(str, Enum):
+    READ = "read file"
+    EDIT = "edit file"
 
 
 from .glob import Glob  # noqa: E402

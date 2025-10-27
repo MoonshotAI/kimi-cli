@@ -1,0 +1,67 @@
+name: Bug Report
+description: Report an issue that should be fixed
+labels:
+  - bug
+  - needs triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a bug report! It helps make Kimi CLI better for everyone.
+
+        If you need help or support using Kimi CLI, and are not reporting a bug, please post on [kimi-cli/discussions](https://github.com/MoonshotAI/kimi-cli/discussions), where you can ask questions or engage with others on ideas for how to improve Kimi CLI.
+
+        Make sure you are running the latest version of Kimi CLI (`uv tool upgrade kimi-cli` to upgrade). The bug you are experiencing may already have been fixed.
+
+        Please try to include as much information as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: What version of Kimi CLI is running?
+      description: Copy the output of `kimi --version` or `/version`
+    validations:
+      required: true
+  - type: input
+    id: plan
+    attributes:
+      label: Which open platform/subscription were you using?
+      description: The one you selected when running `/setup`
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Which model were you using?
+      description: The one you selected when running `/setup`, like `kimi-k2-turbo-preview`, `kimi-for-coding`, etc.
+  - type: input
+    id: platform
+    attributes:
+      label: What platform is your computer?
+      description: |
+        For MacOS and Linux: copy the output of `uname -mprs`
+        For Windows: copy the output of `"$([Environment]::OSVersion | ForEach-Object VersionString) $(if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" })"` in the PowerShell console
+  - type: textarea
+    id: actual
+    attributes:
+      label: What issue are you seeing?
+      description: Please include the full error messages and prompts with any private information redacted. If possible, please provide text instead of a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What steps can reproduce the bug?
+      description: Explain the bug and provide a code snippet that can reproduce it. Please include session id and context usage if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What is the expected behavior?
+      description: If possible, please provide text instead of a screenshot.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional information
+      description: Is there anything else you think we should know?

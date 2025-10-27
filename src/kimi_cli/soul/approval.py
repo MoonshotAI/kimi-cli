@@ -1,22 +1,26 @@
 import asyncio
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
-from kimi_cli.soul.wire import ApprovalRequest, ApprovalResponse
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse
 
 
 class Approval:
     def __init__(self, yolo: bool = False):
         self._request_queue = asyncio.Queue[ApprovalRequest]()
         self._yolo = yolo
-        self._auto_approve_actions = set()  # TODO: persist across sessions
+        self._auto_approve_actions: set[str] = set()  # TODO: persist across sessions
         """Set of action names that should automatically be approved."""
 
-    async def request(self, action: str, description: str) -> bool:
+    def set_yolo(self, yolo: bool) -> None:
+        self._yolo = yolo
+
+    async def request(self, sender: str, action: str, description: str) -> bool:
         """
         Request approval for the given action. Intended to be called by tools.
 
         Args:
+            sender (str): The name of the sender.
             action (str): The action to request approval for.
                 This is used to identify the action for auto-approval.
             description (str): The description of the action. This is used to display to the user.
@@ -44,7 +48,7 @@ class Approval:
         if action in self._auto_approve_actions:
             return True
 
-        request = ApprovalRequest(tool_call.id, action, description)
+        request = ApprovalRequest(tool_call.id, sender, action, description)
         self._request_queue.put_nowait(request)
         response = await request.wait()
         logger.debug("Received approval response: {response}", response=response)
@@ -56,8 +60,6 @@ class Approval:
                 return True
             case ApprovalResponse.REJECT:
                 return False
-            case _:
-                raise ValueError(f"Unknown approval response: {response}")
 
     async def fetch_request(self) -> ApprovalRequest:
         """

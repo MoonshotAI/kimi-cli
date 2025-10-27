@@ -3,37 +3,20 @@ import signal
 from collections.abc import Awaitable, Coroutine
 from typing import Any
 
-from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from kosong.tooling import ToolResult
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul
+from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.wire import (
-    ApprovalRequest,
-    ApprovalResponse,
-    StatusUpdate,
-    StepBegin,
-    StepInterrupted,
-    Wire,
-)
-from kimi_cli.ui import RunCancelled, run_soul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.liveview import StepLiveView
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
-from kimi_cli.ui.shell.update import UpdateResult, do_update
+from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
+from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
-
-
-class Reload(Exception):
-    """Reload configuration."""
-
-    pass
 
 
 class ShellApp:
@@ -46,9 +29,9 @@ class ShellApp:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self._run(command)
+            return await self._run_soul_command(command)
 
-        self._start_auto_update_task()
+        self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi CLI", self.soul.model, self.welcome_info)
 
@@ -86,7 +69,7 @@ class ShellApp:
                     continue
 
                 logger.info("Running agent command: {command}", command=command)
-                await self._run(command)
+                await self._run_soul_command(command)
 
         return True
 
@@ -115,136 +98,9 @@ class ShellApp:
         finally:
             loop.remove_signal_handler(signal.SIGINT)
 
-    async def _run(self, command: str) -> bool:
-        """
-        Run the soul and handle any known exceptions.
-
-        Returns:
-            bool: Whether the run is successful.
-        """
-        cancel_event = asyncio.Event()
-
-        def _handler():
-            logger.debug("SIGINT received.")
-            cancel_event.set()
-
-        loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, _handler)
-
-        try:
-            await run_soul(self.soul, command, self._visualize, cancel_event)
-            return True
-        except LLMNotSet:
-            logger.error("LLM not set")
-            console.print("[red]LLM not set, send /setup to configure[/red]")
-        except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print("[red]Authorization failed, please check your API key[/red]")
-            elif isinstance(e, APIStatusError) and e.status_code == 402:
-                console.print("[red]Membership expired, please renew your plan[/red]")
-            elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
-            else:
-                console.print(f"[red]LLM provider error: {e}[/red]")
-        except MaxStepsReached as e:
-            logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            console.print(f"[yellow]Max steps reached: {e.n_steps}[/yellow]")
-        except RunCancelled:
-            logger.info("Cancelled by user")
-            console.print("[red]Interrupted by user[/red]")
-        except Reload:
-            # just propagate
-            raise
-        except BaseException as e:
-            logger.exception("Unknown error:")
-            console.print(f"[red]Unknown error: {e}[/red]")
-            raise  # re-raise unknown error
-        finally:
-            loop.remove_signal_handler(signal.SIGINT)
-        return False
-
-    def _start_auto_update_task(self) -> None:
-        self._add_background_task(self._auto_update_background())
-
-    async def _auto_update_background(self) -> None:
-        toast("checking for updates...", duration=2.0)
-        result = await do_update(print=False)
-        if result == UpdateResult.UPDATED:
-            toast("auto updated, restart to use the new version", duration=5.0)
-
-    def _add_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
-        task = asyncio.create_task(coro)
-        self._background_tasks.add(task)
-
-        def _cleanup(t: asyncio.Task[Any]) -> None:
-            self._background_tasks.discard(t)
-            try:
-                t.result()
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Background task failed:")
-
-        task.add_done_callback(_cleanup)
-        return task
-
-    async def _visualize(self, wire: Wire):
-        """
-        A loop to consume agent events and visualize the agent behavior.
-        This loop never raise any exception except asyncio.CancelledError.
-        """
-        try:
-            # expect a StepBegin
-            assert isinstance(await wire.receive(), StepBegin)
-
-            while True:
-                # spin the moon at the beginning of each step
-                with console.status("", spinner="moon"):
-                    msg = await wire.receive()
-
-                with StepLiveView(self.soul.status) as step:
-                    # visualization loop for one step
-                    while True:
-                        match msg:
-                            case TextPart(text=text):
-                                step.append_text(text, mode="text")
-                            case ThinkPart(think=think):
-                                step.append_text(think, mode="think")
-                            case ContentPart():
-                                # TODO: support more content parts
-                                step.append_text(f"[{msg.__class__.__name__}]")
-                            case ToolCall():
-                                step.append_tool_call(msg)
-                            case ToolCallPart():
-                                step.append_tool_call_part(msg)
-                            case ToolResult():
-                                step.append_tool_result(msg)
-                            case ApprovalRequest():
-                                msg.resolve(ApprovalResponse.APPROVE)
-                                # TODO(approval): handle approval request
-                            case StatusUpdate(status=status):
-                                step.update_status(status)
-                            case _:
-                                break  # break the step loop
-                        msg = await wire.receive()
-
-                    # cleanup the step live view
-                    if isinstance(msg, StepInterrupted):
-                        step.interrupt()
-                    else:
-                        step.finish()
-
-                if isinstance(msg, StepInterrupted):
-                    # for StepInterrupted, the visualization loop should end immediately
-                    break
-
-                assert isinstance(msg, StepBegin), "expect a StepBegin"
-                # start a new step
-        except asyncio.QueueShutDown:
-            logger.debug("Visualization loop shutting down")
-
     async def _run_meta_command(self, command_str: str):
+        from kimi_cli.cli import Reload
+
         parts = command_str.split(" ")
         command_name = parts[0]
         command_args = parts[1:]
@@ -270,6 +126,9 @@ class ShellApp:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             console.print(f"[red]LLM provider error: {e}[/red]")
+        except asyncio.CancelledError:
+            logger.info("Interrupted by user")
+            console.print("[red]Interrupted by user[/red]")
         except Reload:
             # just propagate
             raise
@@ -277,6 +136,86 @@ class ShellApp:
             logger.exception("Unknown error:")
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
+
+    async def _run_soul_command(self, command: str) -> bool:
+        """
+        Run the soul and handle any known exceptions.
+
+        Returns:
+            bool: Whether the run is successful.
+        """
+        cancel_event = asyncio.Event()
+
+        def _handler():
+            logger.debug("SIGINT received.")
+            cancel_event.set()
+
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGINT, _handler)
+
+        try:
+            # Use lambda to pass cancel_event via closure
+            await run_soul(
+                self.soul,
+                command,
+                lambda wire: visualize(
+                    wire, initial_status=self.soul.status, cancel_event=cancel_event
+                ),
+                cancel_event,
+            )
+            return True
+        except LLMNotSet:
+            logger.error("LLM not set")
+            console.print("[red]LLM not set, send /setup to configure[/red]")
+        except ChatProviderError as e:
+            logger.exception("LLM provider error:")
+            if isinstance(e, APIStatusError) and e.status_code == 401:
+                console.print("[red]Authorization failed, please check your API key[/red]")
+            elif isinstance(e, APIStatusError) and e.status_code == 402:
+                console.print("[red]Membership expired, please renew your plan[/red]")
+            elif isinstance(e, APIStatusError) and e.status_code == 403:
+                console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+            else:
+                console.print(f"[red]LLM provider error: {e}[/red]")
+        except MaxStepsReached as e:
+            logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
+            console.print(f"[yellow]Max steps reached: {e.n_steps}[/yellow]")
+        except RunCancelled:
+            logger.info("Cancelled by user")
+            console.print("[red]Interrupted by user[/red]")
+        except BaseException as e:
+            logger.exception("Unknown error:")
+            console.print(f"[red]Unknown error: {e}[/red]")
+            raise  # re-raise unknown error
+        finally:
+            loop.remove_signal_handler(signal.SIGINT)
+        return False
+
+    async def _auto_update(self) -> None:
+        toast("checking for updates...", duration=2.0)
+        result = await do_update(print=False, check_only=True)
+        if result == UpdateResult.UPDATE_AVAILABLE:
+            while True:
+                toast("new version found, run `uv tool upgrade kimi-cli` to upgrade", duration=30.0)
+                await asyncio.sleep(60.0)
+        elif result == UpdateResult.UPDATED:
+            toast("auto updated, restart to use the new version", duration=5.0)
+
+    def _start_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+
+        def _cleanup(t: asyncio.Task[Any]) -> None:
+            self._background_tasks.discard(t)
+            try:
+                t.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("Background task failed:")
+
+        task.add_done_callback(_cleanup)
+        return task
 
 
 _KIMI_BLUE = "dodger_blue1"
@@ -313,6 +252,18 @@ def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> No
                 "[grey50]Model:[/grey50] [yellow]not set, send /setup to configure[/yellow]"
             )
         )
+
+    if LATEST_VERSION_FILE.exists():
+        from kimi_cli.constant import VERSION as current_version
+
+        latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
+        if semver_tuple(latest_version) > semver_tuple(current_version):
+            rows.append(
+                Text.from_markup(
+                    f"\n[yellow]New version available: {latest_version}. "
+                    "Please run `uv tool upgrade kimi-cli` to upgrade.[/yellow]"
+                )
+            )
 
     console.print(
         Panel(

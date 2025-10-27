@@ -5,7 +5,7 @@ import aiofiles
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.globals import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc, truncate_line
 
 MAX_LINES = 1000

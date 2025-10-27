@@ -1,17 +1,21 @@
+import asyncio
 from pathlib import Path
 from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.agent import Agent, AgentGlobals, AgentSpec, load_agent
-from kimi_cli.soul import MaxStepsReached
+from kimi_cli.agentspec import ResolvedAgentSpec, SubagentSpec
+from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
+from kimi_cli.soul.agent import Agent, load_agent
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.globals import AgentGlobals
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.wire import ApprovalRequest, Wire, WireMessage, get_wire_or_none
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
+from kimi_cli.wire import WireUISide
+from kimi_cli.wire.message import ApprovalRequest, WireMessage
 
 # Maximum continuation attempts for task summary
 MAX_CONTINUE_ATTEMPTS = 1
@@ -45,21 +49,15 @@ class Task(CallableTool2[Params]):
     name: str = "Task"
     params: type[Params] = Params
 
-    def __init__(self, agent_spec: AgentSpec, agent_globals: AgentGlobals, **kwargs):
-        subagents: dict[str, Agent] = {}
-        descs = []
-
-        # load all subagents
-        assert agent_spec.subagents is not None, "Task tool expects subagents"
-        for name, spec in agent_spec.subagents.items():
-            subagents[name] = load_agent(spec.path, agent_globals)
-            descs.append(f"- `{name}`: {spec.description}")
-
+    def __init__(self, agent_spec: ResolvedAgentSpec, agent_globals: AgentGlobals, **kwargs):
         super().__init__(
             description=load_desc(
                 Path(__file__).parent / "task.md",
                 {
-                    "SUBAGENTS_MD": "\n".join(descs),
+                    "SUBAGENTS_MD": "\n".join(
+                        f"- `{name}`: {spec.description}"
+                        for name, spec in agent_spec.subagents.items()
+                    ),
                 },
             ),
             **kwargs,
@@ -67,7 +65,20 @@ class Task(CallableTool2[Params]):
 
         self._agent_globals = agent_globals
         self._session = agent_globals.session
-        self._subagents = subagents
+        self._subagents: dict[str, Agent] = {}
+
+        try:
+            self._load_task = asyncio.create_task(self._load_subagents(agent_spec.subagents))
+        except RuntimeError:
+            # In case there's no running event loop, e.g., during synchronous tests
+            self._load_task = None
+            asyncio.run(self._load_subagents(agent_spec.subagents))
+
+    async def _load_subagents(self, subagent_specs: dict[str, SubagentSpec]) -> None:
+        """Load all subagents specified in the agent spec."""
+        for name, spec in subagent_specs.items():
+            agent = await load_agent(spec.path, self._agent_globals, mcp_configs=[])
+            self._subagents[name] = agent
 
     async def _get_subagent_history_file(self) -> Path:
         """Generate a unique history file path for subagent."""
@@ -82,6 +93,10 @@ class Task(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
+        if self._load_task is not None:
+            await self._load_task
+            self._load_task = None
+
         if params.subagent_name not in self._subagents:
             return ToolError(
                 message=f"Subagent not found: {params.subagent_name}",
@@ -99,6 +114,19 @@ class Task(CallableTool2[Params]):
 
     async def _run_subagent(self, agent: Agent, prompt: str) -> ToolReturnType:
         """Run subagent with optional continuation for task summary."""
+        super_wire = get_wire_or_none()
+        assert super_wire is not None
+
+        def _super_wire_send(msg: WireMessage) -> None:
+            if isinstance(msg, ApprovalRequest):
+                super_wire.soul_side.send(msg)
+            # TODO: visualize subagent behavior by sending other messages in some way
+
+        async def _ui_loop_fn(wire: WireUISide) -> None:
+            while True:
+                msg = await wire.receive()
+                _super_wire_send(msg)
+
         subagent_history_file = await self._get_subagent_history_file()
         context = Context(file_backend=subagent_history_file)
         soul = KimiSoul(
@@ -107,12 +135,9 @@ class Task(CallableTool2[Params]):
             context=context,
             loop_control=self._agent_globals.config.loop_control,
         )
-        wire = get_wire_or_none()
-        assert wire is not None, "Wire is expected to be set"
-        sub_wire = _SubWire(wire)
 
         try:
-            await soul.run(prompt, sub_wire)
+            await run_soul(soul, prompt, _ui_loop_fn, asyncio.Event())
         except MaxStepsReached as e:
             return ToolError(
                 message=(
@@ -135,22 +160,10 @@ class Task(CallableTool2[Params]):
         # Check if response is too brief, if so, run again with continuation prompt
         n_attempts_remaining = MAX_CONTINUE_ATTEMPTS
         if len(final_response) < 200 and n_attempts_remaining > 0:
-            await soul.run(CONTINUE_PROMPT, sub_wire)
+            await run_soul(soul, CONTINUE_PROMPT, _ui_loop_fn, asyncio.Event())
 
             if len(context.history) == 0 or context.history[-1].role != "assistant":
                 return ToolError(message=_error_msg, brief="Failed to run subagent")
             final_response = message_extract_text(context.history[-1])
 
         return ToolOk(output=final_response)
-
-
-class _SubWire(Wire):
-    def __init__(self, super_wire: Wire):
-        super().__init__()
-        self._super_wire = super_wire
-
-    @override
-    def send(self, msg: WireMessage):
-        if isinstance(msg, ApprovalRequest):
-            self._super_wire.send(msg)
-        # TODO: visualize subagent behavior by sending other messages in some way

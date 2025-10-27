@@ -2,23 +2,19 @@
 
 import tempfile
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 from kosong.chat_provider import MockChatProvider
 
-from kimi_cli.agent import (
-    DEFAULT_AGENT_FILE,
-    AgentGlobals,
-    AgentSpec,
-    BuiltinSystemPromptArgs,
-    _load_agent_spec,
-)
+from kimi_cli.agentspec import DEFAULT_AGENT_FILE, ResolvedAgentSpec, load_agent_spec
 from kimi_cli.config import Config, get_default_config
 from kimi_cli.llm import LLM
 from kimi_cli.metadata import Session, WorkDirMeta
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.globals import AgentGlobals, BuiltinSystemPromptArgs
 from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
@@ -114,13 +110,29 @@ def agent_globals(
 
 
 @pytest.fixture
-def agent_spec() -> AgentSpec:
+def agent_spec() -> ResolvedAgentSpec:
     """Create a AgentSpec instance."""
-    return _load_agent_spec(DEFAULT_AGENT_FILE)
+    return load_agent_spec(DEFAULT_AGENT_FILE)
+
+
+@contextmanager
+def tool_call_context(tool_name: str) -> Generator[None]:
+    """Create a tool call context."""
+    from kosong.base.message import ToolCall
+
+    from kimi_cli.soul.toolset import current_tool_call
+
+    token = current_tool_call.set(
+        ToolCall(id="test", function=ToolCall.FunctionBody(name=tool_name, arguments=None))
+    )
+    try:
+        yield
+    finally:
+        current_tool_call.reset(token)
 
 
 @pytest.fixture
-def task_tool(agent_spec: AgentSpec, agent_globals: AgentGlobals) -> Task:
+def task_tool(agent_spec: ResolvedAgentSpec, agent_globals: AgentGlobals) -> Task:
     """Create a Task tool instance."""
     return Task(agent_spec, agent_globals)
 
@@ -146,17 +158,8 @@ def set_todo_list_tool() -> SetTodoList:
 @pytest.fixture
 def bash_tool(approval: Approval) -> Generator[Bash]:
     """Create a Bash tool instance."""
-    from kosong.base.message import ToolCall
-
-    from kimi_cli.soul.toolset import current_tool_call
-
-    token = current_tool_call.set(
-        ToolCall(id="test", function=ToolCall.FunctionBody(name="Bash", arguments=None))
-    )
-    try:
+    with tool_call_context("Bash"):
         yield Bash(approval)
-    finally:
-        current_tool_call.reset(token)
 
 
 @pytest.fixture
@@ -178,21 +181,30 @@ def grep_tool() -> Grep:
 
 
 @pytest.fixture
-def write_file_tool(builtin_args: BuiltinSystemPromptArgs) -> WriteFile:
+def write_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+) -> Generator[WriteFile]:
     """Create a WriteFile tool instance."""
-    return WriteFile(builtin_args)
+    with tool_call_context("WriteFile"):
+        yield WriteFile(builtin_args, approval)
 
 
 @pytest.fixture
-def str_replace_file_tool(builtin_args: BuiltinSystemPromptArgs) -> StrReplaceFile:
+def str_replace_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+) -> Generator[StrReplaceFile]:
     """Create a StrReplaceFile tool instance."""
-    return StrReplaceFile(builtin_args)
+    with tool_call_context("StrReplaceFile"):
+        yield StrReplaceFile(builtin_args, approval)
 
 
 @pytest.fixture
-def patch_file_tool(builtin_args: BuiltinSystemPromptArgs) -> PatchFile:
+def patch_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+) -> Generator[PatchFile]:
     """Create a PatchFile tool instance."""
-    return PatchFile(builtin_args)
+    with tool_call_context("PatchFile"):
+        yield PatchFile(builtin_args, approval)
 
 
 @pytest.fixture
