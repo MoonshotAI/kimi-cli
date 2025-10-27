@@ -1,10 +1,18 @@
 import asyncio
 import sys
-import termios
 import threading
 import time
 from collections.abc import AsyncGenerator, Callable
 from enum import Enum, auto
+from platform import system
+
+# type: ignore [import-not-found,attr-defined]
+
+# Cross-platform terminal handling
+if system() == "Windows":
+    import msvcrt
+else:
+    import termios
 
 
 class KeyEvent(Enum):
@@ -23,7 +31,6 @@ async def listen_for_keyboard() -> AsyncGenerator[KeyEvent]:
     cancel_event = threading.Event()
 
     def emit(event: KeyEvent) -> None:
-        # print(f"emit: {event}")
         loop.call_soon_threadsafe(queue.put_nowait, event)
 
     listener = threading.Thread(
@@ -47,14 +54,80 @@ def _listen_for_keyboard_thread(
     cancel: threading.Event,
     emit: Callable[[KeyEvent], None],
 ) -> None:
+    if system() == "Windows":
+        _listen_for_keyboard_thread_windows(cancel, emit)
+    else:
+        _listen_for_keyboard_thread_unix(cancel, emit)
+
+
+def _listen_for_keyboard_thread_windows(
+    cancel: threading.Event,
+    emit: Callable[[KeyEvent], None],
+) -> None:
+    """Windows-specific keyboard listener using msvcrt."""
+    assert msvcrt  # type: ignore  # Platform-specific module
+    try:
+        while not cancel.is_set():
+            if msvcrt.kbhit():  # type: ignore
+                c = msvcrt.getch()  # type: ignore
+
+                # Handle special keys (arrow keys, etc.)
+                if c in (b"\x00", b"\xe0"):
+                    # Extended key, read the next byte
+                    extended = msvcrt.getch()  # type: ignore
+                    event = _WINDOWS_KEY_MAP.get(extended)
+                    if event is not None:
+                        emit(event)
+                elif c == b"\x1b":
+                    # Handle ANSI escape sequences for Windows Terminal
+                    sequence = c.decode("utf-8", errors="ignore")
+                    # Try to read the complete ANSI sequence
+                    for _ in range(3):
+                        if cancel.is_set():
+                            break
+                        if msvcrt.kbhit():  # type: ignore
+                            fragment = msvcrt.getch()  # type: ignore
+                            if isinstance(fragment, bytes):
+                                fragment_decoded = fragment.decode("utf-8", errors="ignore")
+                                sequence += fragment_decoded
+                                if sequence in _ARROW_KEY_MAP:
+                                    break
+
+                    event = _ARROW_KEY_MAP.get(sequence)
+                    if event is not None:
+                        emit(event)
+                    elif sequence == "\x1b":
+                        emit(KeyEvent.ESCAPE)
+                elif c in (b"\r", b"\n"):
+                    emit(KeyEvent.ENTER)
+                elif c == b"\t":
+                    emit(KeyEvent.TAB)
+            else:
+                if cancel.is_set():
+                    break
+                time.sleep(0.01)
+    except Exception as e:
+        # Log keyboard listener errors but don't break the application
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in Windows keyboard listener: {e}")
+
+
+def _listen_for_keyboard_thread_unix(
+    cancel: threading.Event,
+    emit: Callable[[KeyEvent], None],
+) -> None:
+    """Unix-specific keyboard listener using termios."""
+    assert termios  # type: ignore  # Platform-specific module
     # make stdin raw and non-blocking
     fd = sys.stdin.fileno()
-    oldterm = termios.tcgetattr(fd)
-    newattr = termios.tcgetattr(fd)
-    newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
-    newattr[6][termios.VMIN] = 0
-    newattr[6][termios.VTIME] = 0
-    termios.tcsetattr(fd, termios.TCSANOW, newattr)
+    oldterm = termios.tcgetattr(fd)  # type: ignore
+    newattr = termios.tcgetattr(fd)  # type: ignore
+    newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO  # type: ignore
+    newattr[6][termios.VMIN] = 0  # type: ignore
+    newattr[6][termios.VTIME] = 0  # type: ignore
+    termios.tcsetattr(fd, termios.TCSANOW, newattr)  # type: ignore
 
     try:
         while not cancel.is_set():
@@ -95,7 +168,7 @@ def _listen_for_keyboard_thread(
                 emit(KeyEvent.TAB)
     finally:
         # restore the terminal settings
-        termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
+        termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)  # type: ignore
 
 
 _ARROW_KEY_MAP: dict[str, KeyEvent] = {
@@ -103,6 +176,13 @@ _ARROW_KEY_MAP: dict[str, KeyEvent] = {
     "\x1b[B": KeyEvent.DOWN,
     "\x1b[C": KeyEvent.RIGHT,
     "\x1b[D": KeyEvent.LEFT,
+}
+
+_WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
+    b"H": KeyEvent.UP,  # Up arrow
+    b"P": KeyEvent.DOWN,  # Down arrow
+    b"M": KeyEvent.RIGHT,  # Right arrow
+    b"K": KeyEvent.LEFT,  # Left arrow
 }
 
 
