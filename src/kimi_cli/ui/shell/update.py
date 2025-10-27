@@ -185,7 +185,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
             try:
                 if platform.system() == "Windows":
                     # Extract .zip file for Windows
-                    with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                    with zipfile.ZipFile(archive_path, "r") as zip_ref:
                         zip_ref.extractall(tmpdir)
                 else:
                     # Extract .tar.gz file for Unix systems
@@ -199,8 +199,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
                         break
                 if not binary_path:
                     logger.error(
-                        "Binary '{binary_name}' not found in archive.",
-                        binary_name=binary_name
+                        "Binary '{binary_name}' not found in archive.", binary_name=binary_name
                     )
                     _print(f"[red]Binary '{binary_name}' not found in archive.[/red]")
                     return UpdateResult.FAILED
