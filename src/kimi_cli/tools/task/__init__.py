@@ -68,11 +68,14 @@ class Task(CallableTool2[Params]):
         self._subagents: dict[str, Agent] = {}
 
         try:
-            self._load_task = asyncio.create_task(self._load_subagents(agent_spec.subagents))
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            # In case there's no running event loop, e.g., during synchronous tests
+            # No running loop: run synchronously
             self._load_task = None
             asyncio.run(self._load_subagents(agent_spec.subagents))
+        else:
+            # There's a running loop: schedule a background task
+            self._load_task = loop.create_task(self._load_subagents(agent_spec.subagents))
 
     async def _load_subagents(self, subagent_specs: dict[str, SubagentSpec]) -> None:
         """Load all subagents specified in the agent spec."""
