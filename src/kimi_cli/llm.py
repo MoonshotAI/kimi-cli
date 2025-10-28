@@ -32,6 +32,15 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
                 provider.base_url = base_url
             if api_key := os.getenv("OPENAI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
+        case "zenmux":
+            if base_url := os.getenv("ZENMUX_BASE_URL"):
+                provider.base_url = base_url
+            if api_key := os.getenv("ZENMUX_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+            if model_name := os.getenv("ZENMUX_MODEL_NAME"):
+                model.model = model_name
+            if max_context_size := os.getenv("ZENMUX_MODEL_MAX_CONTEXT_SIZE"):
+                model.max_context_size = int(max_context_size)
         case _:
             pass
 
@@ -62,6 +71,16 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
                 stream=stream,
+            )
+        case "zenmux":
+            chat_provider = OpenAILegacy(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                stream=stream,
+                default_headers={
+                    "X-Title": "kimi-cli",
+                },
             )
         case "_chaos":
             chat_provider = ChaosChatProvider(

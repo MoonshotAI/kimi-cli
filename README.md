@@ -107,6 +107,29 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/), add the following con
 
 Then you can create Kimi CLI threads in Zed's agent panel.
 
+### ZenMux support
+
+You can route requests through [ZenMux](https://zenmux.ai/) using the OpenAI-compatible API. Add an `zenmux` provider to your config:
+
+```json
+{
+  "providers": {
+    "zenmux": {
+      "type": "zenmux",
+      "base_url": "https://zenmux.ai/api/v1",
+      "api_key": "YOUR_ZENMUX_API_KEY"
+    }
+  },
+  "models": {
+    "anthropic/claude-sonnet-4.5": {
+      "provider": "zenmux",
+      "model": "anthropic/claude-sonnet-4.5",
+      "max_context_size": 200000
+    }
+  }
+}
+```
+
 ### Using MCP tools
 
 Kimi CLI supports the well-established MCP config convention. For example:
