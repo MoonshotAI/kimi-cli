@@ -336,8 +336,6 @@ class StepLiveViewWithMarkdown(StepLiveView):
             return
         if self._last_text_mode != mode:
             self._flush_markdown()
-            # Add extra line between different modes
-            self._push_out("")
             self._last_text_mode = mode
         if not self._pending_markdown_parts:
             self._show_thinking_status()
@@ -370,7 +368,7 @@ class StepLiveViewWithMarkdown(StepLiveView):
                 _LeftAlignedMarkdown(
                     markdown_text,
                     justify="left",
-                    style="grey50" if self._last_text_mode == "think" else "none",
+                    style="grey50 italic" if self._last_text_mode == "think" else "none",
                 )
             )
 
