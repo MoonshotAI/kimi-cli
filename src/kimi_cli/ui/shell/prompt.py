@@ -584,10 +584,8 @@ class CustomPromptSession:
 
 def ensure_new_line() -> None:
     """Ensure the next prompt starts at column 0 regardless of prior command output."""
-    stdout = sys.stdout
-    stdin = sys.stdin
 
-    if not stdout.isatty() or not stdin.isatty():
+    if not sys.stdout.isatty() or not sys.stdin.isatty():
         return
 
     needs_break = True
