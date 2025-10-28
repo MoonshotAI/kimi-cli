@@ -650,7 +650,8 @@ def _cursor_column_windows() -> int | None:
     from ctypes import wintypes
 
     kernel32 = ctypes.windll.kernel32
-    handle = kernel32.GetStdHandle(-11)
+    _STD_OUTPUT_HANDLE = -11  # Windows API constant for standard output handle
+    handle = kernel32.GetStdHandle(_STD_OUTPUT_HANDLE)
     invalid_handle_value = ctypes.c_void_p(-1).value
     if handle in (0, invalid_handle_value):
         return None
