@@ -843,7 +843,7 @@ requires-dist = [
     { name = "click", specifier = "==8.3.0" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.15.0" },
+    { name = "kosong", specifier = "==0.16.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "patch-ng", specifier = "==1.19.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
@@ -868,7 +868,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.15.0"
+version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dotenv" },
@@ -876,9 +876,9 @@ dependencies = [
     { name = "openai" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/01/00/6d4485d9d7bb32c571e5a5e9832b71ee45b19f8ac0cc68235351d85b1d3c/kosong-0.15.0.tar.gz", hash = "sha256:05d4e0b2640fde14b35e3ff86abfc513301ca29c9b607da437fc944d424dee7a", size = 12420, upload-time = "2025-10-23T11:21:32.425Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/f5/96f04e5e464091d0bf079b872299f368c100fcf67fdbee7e619be8612adb/kosong-0.16.0.tar.gz", hash = "sha256:b88c8e7a2be6f2a66e813be68d7db41dc9c3bc2499a3bac428f69cf4c3425f7f", size = 15599, upload-time = "2025-10-28T13:02:36.174Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/b6/51c097e65f3332dc1c78be8b1824d34ba10a6b8c724383db6b467065a553/kosong-0.15.0-py3-none-any.whl", hash = "sha256:22318cac487d7ba27b5bd70c42ff96a38e12f642ffe0ab6c20644f18d9e7f6ce", size = 19909, upload-time = "2025-10-23T11:21:31.341Z" },
+    { url = "https://files.pythonhosted.org/packages/31/db/f5e4bf1ab775943c2d99b1c66544e7daaa33fc3c9a1329bbc79eb7d31fc8/kosong-0.16.0-py3-none-any.whl", hash = "sha256:1161747135a20bdd394248082fcb111c1cf1e25172c4d0f39adc83c2b9687e5b", size = 24728, upload-time = "2025-10-28T13:02:35.23Z" },
 ]
 
 [[package]]
@@ -1179,7 +1179,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.5.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1191,9 +1191,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/39/aa3767c920c217ef56f27e89cbe3aaa43dd6eea3269c95f045c5761b9df1/openai-2.5.0.tar.gz", hash = "sha256:f8fa7611f96886a0f31ac6b97e58bc0ada494b255ee2cfd51c8eb502cfcb4814", size = 590333, upload-time = "2025-10-17T18:14:47.669Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/44/303deb97be7c1c9b53118b52825cbd1557aeeff510f3a52566b1fa66f6a2/openai-2.6.1.tar.gz", hash = "sha256:27ae704d190615fca0c0fc2b796a38f8b5879645a3a52c9c453b23f97141bb49", size = 593043, upload-time = "2025-10-24T13:29:52.79Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/f3/ebbd700d8dc1e6380a7a382969d96bc0cbea8717b52fb38ff0ca2a7653e8/openai-2.5.0-py3-none-any.whl", hash = "sha256:21380e5f52a71666dbadbf322dd518bdf2b9d11ed0bb3f96bea17310302d6280", size = 999851, upload-time = "2025-10-17T18:14:45.528Z" },
+    { url = "https://files.pythonhosted.org/packages/15/0e/331df43df633e6105ff9cf45e0ce57762bd126a45ac16b25a43f6738d8a2/openai-2.6.1-py3-none-any.whl", hash = "sha256:904e4b5254a8416746a2f05649594fa41b19d799843cd134dac86167e094edef", size = 1005551, upload-time = "2025-10-24T13:29:50.973Z" },
 ]
 
 [[package]]
