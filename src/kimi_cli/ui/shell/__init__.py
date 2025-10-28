@@ -12,7 +12,7 @@ from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_so
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
-from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
+from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.ui.signals import install_sigint_handler
@@ -38,6 +38,7 @@ class ShellApp:
         with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:
                 try:
+                    ensure_new_line()
                     user_input = await prompt_session.prompt()
                 except KeyboardInterrupt:
                     logger.debug("Exiting by KeyboardInterrupt")
