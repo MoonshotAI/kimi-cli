@@ -317,7 +317,7 @@ class ACPAgent:
         # Create permission request with options
         permission_request = acp.RequestPermissionRequest(
             sessionId=self.session_id,
-            toolCall=acp.schema.ToolCallUpdate(
+            toolCall=acp.schema.ToolCall(
                 toolCallId=state.acp_tool_call_id,
                 content=[
                     acp.schema.ContentToolCallContent(
