@@ -172,33 +172,29 @@ class ACPAgent:
             self.run_state.cancel_event.set()
 
     async def _stream_events(self, wire: WireUISide):
-        try:
-            # expect a StepBegin
-            assert isinstance(await wire.receive(), StepBegin)
+        assert isinstance(await wire.receive(), StepBegin)
 
-            while True:
-                msg = await wire.receive()
+        while True:
+            msg = await wire.receive()
 
-                if isinstance(msg, TextPart):
-                    await self._send_text(msg.text)
-                elif isinstance(msg, ContentPart):
-                    logger.warning("Unsupported content part: {part}", part=msg)
-                    await self._send_text(f"[{msg.__class__.__name__}]")
-                elif isinstance(msg, ToolCall):
-                    await self._send_tool_call(msg)
-                elif isinstance(msg, ToolCallPart):
-                    await self._send_tool_call_part(msg)
-                elif isinstance(msg, ToolResult):
-                    await self._send_tool_result(msg)
-                elif isinstance(msg, ApprovalRequest):
-                    await self._handle_approval_request(msg)
-                elif isinstance(msg, StatusUpdate):
-                    # TODO: stream status if needed
-                    pass
-                elif isinstance(msg, StepInterrupted):
-                    break
-        except asyncio.QueueShutDown:
-            logger.debug("Event stream loop shutting down")
+            if isinstance(msg, TextPart):
+                await self._send_text(msg.text)
+            elif isinstance(msg, ContentPart):
+                logger.warning("Unsupported content part: {part}", part=msg)
+                await self._send_text(f"[{msg.__class__.__name__}]")
+            elif isinstance(msg, ToolCall):
+                await self._send_tool_call(msg)
+            elif isinstance(msg, ToolCallPart):
+                await self._send_tool_call_part(msg)
+            elif isinstance(msg, ToolResult):
+                await self._send_tool_result(msg)
+            elif isinstance(msg, ApprovalRequest):
+                await self._handle_approval_request(msg)
+            elif isinstance(msg, StatusUpdate):
+                # TODO: stream status if needed
+                pass
+            elif isinstance(msg, StepInterrupted):
+                break
 
     async def _send_text(self, text: str):
         """Send text chunk to client."""

@@ -25,6 +25,7 @@ class Wire:
         return self._ui_side
 
     def shutdown(self) -> None:
+        logger.debug("Shutting down wire")
         self._queue.shutdown()
 
 
