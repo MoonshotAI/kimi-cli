@@ -52,6 +52,7 @@ def create_llm(
                 stream=stream,
                 default_headers={
                     "User-Agent": USER_AGENT,
+                    **provider.custom_headers,
                 },
             )
             if session_id:

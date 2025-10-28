@@ -60,7 +60,7 @@ After setup, Kimi CLI will be ready to use. You can send `/help` to get more inf
 
 ### Shell mode
 
-Kimi CLI is not only a coding agent, but also a shell. You can switch the mode by pressing `Ctrl-K`. In shell mode, you can directly run shell commands without leaving Kimi CLI.
+Kimi CLI is not only a coding agent, but also a shell. You can switch the mode by pressing `Ctrl-X`. In shell mode, you can directly run shell commands without leaving Kimi CLI.
 
 > [!NOTE]
 > Built-in shell commands like `cd` are not supported yet.
@@ -85,7 +85,7 @@ Then add `kimi-cli` to your Zsh plugin list in `~/.zshrc`:
 plugins=(... kimi-cli)
 ```
 
-After restarting Zsh, you can switch to agent mode by pressing `Ctrl-K`.
+After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
 
 ### ACP support
 

@@ -9,10 +9,10 @@ from kosong.tooling import CallableTool, CallableTool2, Toolset
 
 from kimi_cli.agentspec import ResolvedAgentSpec, load_agent_spec
 from kimi_cli.config import Config
-from kimi_cli.metadata import Session
+from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
-from kimi_cli.soul.globals import AgentGlobals, BuiltinSystemPromptArgs
+from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.soul.toolset import CustomToolset
 from kimi_cli.tools.mcp import MCPTool
 from kimi_cli.utils.logging import logger
@@ -26,27 +26,18 @@ class Agent(NamedTuple):
     toolset: Toolset
 
 
-async def load_agent_with_mcp(
+async def load_agent(
     agent_file: Path,
-    globals_: AgentGlobals,
+    runtime: Runtime,
+    *,
     mcp_configs: list[dict[str, Any]],
-) -> Agent:
-    agent = load_agent(agent_file, globals_)
-    assert isinstance(agent.toolset, CustomToolset)
-    if mcp_configs:
-        await _load_mcp_tools(agent.toolset, mcp_configs)
-    return agent
-
-
-def load_agent(
-    agent_file: Path,
-    globals_: AgentGlobals,
 ) -> Agent:
     """
     Load agent from specification file.
 
     Raises:
-        ValueError: If the agent spec is not valid.
+        FileNotFoundError: If the agent spec file does not exist.
+        AgentSpecError: If the agent spec is not valid.
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
@@ -54,17 +45,17 @@ def load_agent(
     system_prompt = _load_system_prompt(
         agent_spec.system_prompt_path,
         agent_spec.system_prompt_args,
-        globals_.builtin_args,
+        runtime.builtin_args,
     )
 
     tool_deps = {
         ResolvedAgentSpec: agent_spec,
-        AgentGlobals: globals_,
-        Config: globals_.config,
-        BuiltinSystemPromptArgs: globals_.builtin_args,
-        Session: globals_.session,
-        DenwaRenji: globals_.denwa_renji,
-        Approval: globals_.approval,
+        Runtime: runtime,
+        Config: runtime.config,
+        BuiltinSystemPromptArgs: runtime.builtin_args,
+        Session: runtime.session,
+        DenwaRenji: runtime.denwa_renji,
+        Approval: runtime.approval,
     }
     tools = agent_spec.tools
     if agent_spec.exclude_tools:
@@ -74,6 +65,10 @@ def load_agent(
     bad_tools = _load_tools(toolset, tools, tool_deps)
     if bad_tools:
         raise ValueError(f"Invalid tools: {bad_tools}")
+
+    assert isinstance(toolset, CustomToolset)
+    if mcp_configs:
+        await _load_mcp_tools(toolset, mcp_configs)
 
     return Agent(
         name=agent_spec.name,

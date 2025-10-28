@@ -669,7 +669,7 @@ wheels = [
 
 [[package]]
 name = "inline-snapshot"
-version = "0.30.1"
+version = "0.31.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asttokens" },
@@ -677,9 +677,9 @@ dependencies = [
     { name = "pytest" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/89/125e7411ded6fda4c3881674dd815aaa175cd3f822a1e215edab491024b9/inline_snapshot-0.30.1.tar.gz", hash = "sha256:77c2e94a40f2da02909b39e3386c9fc23f532c92af45558e2d7bbabb5fd0cbc1", size = 2599126, upload-time = "2025-10-20T11:02:58.845Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/fd/519c4ea03c38fa71a42e09a0758f319be78758a5089f87ed786aa4f65542/inline_snapshot-0.31.0.tar.gz", hash = "sha256:7b5ac05ad695151ae425b0f04318613a2440d3402c08d51ecc66ba6d0b434e5d", size = 2600041, upload-time = "2025-10-27T12:01:04.923Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/d8/1c4a926d1201be6a453c1efa795d6ca58735783b017e4ef78536879e82e9/inline_snapshot-0.30.1-py3-none-any.whl", hash = "sha256:4e65fe9d6d266d5dcbab9a75aef65ade386ba257238e30e11ce4cebf9a4312c8", size = 71265, upload-time = "2025-10-20T11:02:57.063Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/9c/db01a8d8813ef51231657fdb2d9ca4abdcd789e2fb9675603c1ae7c73444/inline_snapshot-0.31.0-py3-none-any.whl", hash = "sha256:8bb54ea7c5da628f53e4485aed484118ed06d7e29c686aecb952e3771b540c80", size = 71793, upload-time = "2025-10-27T12:01:03.576Z" },
 ]
 
 [package.optional-dependencies]
@@ -803,7 +803,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.41"
+version = "0.42"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -837,28 +837,28 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = ">=0.4.9" },
-    { name = "aiofiles", specifier = ">=25.1.0" },
-    { name = "aiohttp", specifier = ">=3.13.1" },
-    { name = "click", specifier = ">=8.3.0" },
-    { name = "fastmcp", specifier = ">=2.12.5" },
-    { name = "httpx", extras = ["socks"], specifier = ">=0.28.0" },
-    { name = "kosong", specifier = ">=0.15.0" },
-    { name = "loguru", specifier = ">=0.7.3" },
-    { name = "patch-ng", specifier = ">=1.19.0" },
-    { name = "prompt-toolkit", specifier = ">=3.0.52" },
-    { name = "pydantic", specifier = ">=2.12.3" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "ripgrepy", specifier = ">=2.2.0" },
-    { name = "streamingjson", specifier = ">=0.0.5" },
-    { name = "tenacity", specifier = ">=9.1.2" },
-    { name = "trafilatura", specifier = ">=2.0.0" },
+    { name = "agent-client-protocol", specifier = "==0.4.9" },
+    { name = "aiofiles", specifier = "==25.1.0" },
+    { name = "aiohttp", specifier = "==3.13.1" },
+    { name = "click", specifier = "==8.3.0" },
+    { name = "fastmcp", specifier = "==2.12.5" },
+    { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
+    { name = "kosong", specifier = "==0.15.0" },
+    { name = "loguru", specifier = "==0.7.3" },
+    { name = "patch-ng", specifier = "==1.19.0" },
+    { name = "prompt-toolkit", specifier = "==3.0.52" },
+    { name = "pydantic", specifier = "==2.12.3" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "rich", specifier = "==14.2.0" },
+    { name = "ripgrepy", specifier = "==2.2.0" },
+    { name = "streamingjson", specifier = "==0.0.5" },
+    { name = "tenacity", specifier = "==9.1.2" },
+    { name = "trafilatura", specifier = "==2.0.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "inline-snapshot", extras = ["black"], specifier = ">=0.30.1" },
+    { name = "inline-snapshot", extras = ["black"], specifier = ">=0.31.0" },
     { name = "pyinstaller", specifier = ">=6.16.0" },
     { name = "pyright", specifier = ">=1.1.407" },
     { name = "pytest", specifier = ">=8.4.2" },

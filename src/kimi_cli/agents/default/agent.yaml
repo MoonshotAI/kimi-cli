@@ -19,6 +19,6 @@ agent:
     - "kimi_cli.tools.web:SearchWeb"
     - "kimi_cli.tools.web:FetchURL"
   subagents:
-    koder:
+    coder:
       path: ./sub.yaml
       description: "Good at general software engineering tasks."
