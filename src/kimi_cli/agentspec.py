@@ -4,6 +4,8 @@ from typing import Any, NamedTuple
 import yaml
 from pydantic import BaseModel, Field
 
+from kimi_cli.exception import AgentSpecError
+
 
 def get_agents_dir() -> Path:
     return Path(__file__).parent / "agents"
@@ -47,15 +49,21 @@ class ResolvedAgentSpec(NamedTuple):
 
 
 def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
-    """Load agent specification from file."""
+    """
+    Load agent specification from file.
+
+    Raises:
+        FileNotFoundError: If the agent spec file is not found.
+        AgentSpecError: If the agent spec is not valid.
+    """
     agent_spec = _load_agent_spec(agent_file)
     assert agent_spec.extend is None, "agent extension should be recursively resolved"
     if agent_spec.name is None:
-        raise ValueError("Agent name is required")
+        raise AgentSpecError("Agent name is required")
     if agent_spec.system_prompt_path is None:
-        raise ValueError("System prompt path is required")
+        raise AgentSpecError("System prompt path is required")
     if agent_spec.tools is None:
-        raise ValueError("Tools are required")
+        raise AgentSpecError("Tools are required")
     return ResolvedAgentSpec(
         name=agent_spec.name,
         system_prompt_path=agent_spec.system_prompt_path,
@@ -68,12 +76,15 @@ def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
 
 def _load_agent_spec(agent_file: Path) -> AgentSpec:
     assert agent_file.is_file(), "expect agent file to exist"
-    with open(agent_file, encoding="utf-8") as f:
-        data: dict[str, Any] = yaml.safe_load(f)
+    try:
+        with open(agent_file, encoding="utf-8") as f:
+            data: dict[str, Any] = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise AgentSpecError(f"Invalid YAML in agent spec file: {e}") from e
 
     version = data.get("version", 1)
     if version != 1:
-        raise ValueError(f"Unsupported agent spec version: {version}")
+        raise AgentSpecError(f"Unsupported agent spec version: {version}")
 
     agent_spec = AgentSpec(**data.get("agent", {}))
     if agent_spec.system_prompt_path is not None:

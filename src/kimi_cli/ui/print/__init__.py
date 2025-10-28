@@ -1,6 +1,5 @@
 import asyncio
 import json
-import signal
 import sys
 from functools import partial
 from pathlib import Path
@@ -11,6 +10,7 @@ from kosong.base.message import Message
 from kosong.chat_provider import ChatProviderError
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.ui.signals import install_sigint_handler
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.wire import WireUISide
@@ -51,7 +51,7 @@ class PrintApp:
             cancel_event.set()
 
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, _handler)
+        remove_sigint = install_sigint_handler(loop, _handler)
 
         if command is None and not sys.stdin.isatty() and self.input_format == "text":
             command = sys.stdin.read().strip()
@@ -98,7 +98,7 @@ class PrintApp:
             print(f"Unknown error: {e}")
             raise
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            remove_sigint()
         return False
 
     def _read_next_command(self) -> str | None:
@@ -127,35 +127,29 @@ class PrintApp:
                 logger.warning("Ignoring invalid user message: {json_line}", json_line=json_line)
 
     async def _visualize_text(self, wire: WireUISide):
-        try:
-            while True:
-                msg = await wire.receive()
-                print(msg)
-                if isinstance(msg, StepInterrupted):
-                    break
-        except asyncio.QueueShutDown:
-            logger.debug("Visualization loop shutting down")
+        while True:
+            msg = await wire.receive()
+            print(msg)
+            if isinstance(msg, StepInterrupted):
+                break
 
     async def _visualize_stream_json(self, wire: WireUISide, start_position: int):
         # TODO: be aware of context compaction
         # FIXME: this is only a temporary impl, may miss the last lines of the context file
         if not self.context_file.exists():
             self.context_file.touch()
-        try:
-            async with aiofiles.open(self.context_file, encoding="utf-8") as f:
-                await f.seek(start_position)
-                while True:
-                    should_end = False
-                    while (msg := wire.receive_nowait()) is not None:
-                        if isinstance(msg, StepInterrupted):
-                            should_end = True
+        async with aiofiles.open(self.context_file, encoding="utf-8") as f:
+            await f.seek(start_position)
+            while True:
+                should_end = False
+                while (msg := wire.receive_nowait()) is not None:
+                    if isinstance(msg, StepInterrupted):
+                        should_end = True
 
-                    line = await f.readline()
-                    if not line:
-                        if should_end:
-                            break
-                        await asyncio.sleep(0.1)
-                        continue
-                    print(line, end="")
-        except asyncio.QueueShutDown:
-            logger.debug("Visualization loop shutting down")
+                line = await f.readline()
+                if not line:
+                    if should_end:
+                        break
+                    await asyncio.sleep(0.1)
+                    continue
+                print(line, end="")

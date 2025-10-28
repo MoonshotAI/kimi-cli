@@ -1,6 +1,5 @@
 import asyncio
 import sys
-import termios
 import threading
 import time
 from collections.abc import AsyncGenerator, Callable
@@ -47,6 +46,21 @@ def _listen_for_keyboard_thread(
     cancel: threading.Event,
     emit: Callable[[KeyEvent], None],
 ) -> None:
+    if sys.platform == "win32":
+        _listen_for_keyboard_windows(cancel, emit)
+    else:
+        _listen_for_keyboard_unix(cancel, emit)
+
+
+def _listen_for_keyboard_unix(
+    cancel: threading.Event,
+    emit: Callable[[KeyEvent], None],
+) -> None:
+    if sys.platform == "win32":
+        raise RuntimeError("Unix keyboard listener requires a non-Windows platform")
+
+    import termios
+
     # make stdin raw and non-blocking
     fd = sys.stdin.fileno()
     oldterm = termios.tcgetattr(fd)
@@ -98,11 +112,50 @@ def _listen_for_keyboard_thread(
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
 
 
+def _listen_for_keyboard_windows(
+    cancel: threading.Event,
+    emit: Callable[[KeyEvent], None],
+) -> None:
+    if sys.platform != "win32":
+        raise RuntimeError("Windows keyboard listener requires a Windows platform")
+
+    import msvcrt
+
+    while not cancel.is_set():
+        if msvcrt.kbhit():
+            c = msvcrt.getch()
+
+            # Handle special keys (arrow keys, etc.)
+            if c in (b"\x00", b"\xe0"):
+                # Extended key, read the next byte
+                extended = msvcrt.getch()
+                event = _WINDOWS_KEY_MAP.get(extended)
+                if event is not None:
+                    emit(event)
+            elif c == b"\x1b":
+                emit(KeyEvent.ESCAPE)
+            elif c in (b"\r", b"\n"):
+                emit(KeyEvent.ENTER)
+            elif c == b"\t":
+                emit(KeyEvent.TAB)
+        else:
+            if cancel.is_set():
+                break
+            time.sleep(0.01)
+
+
 _ARROW_KEY_MAP: dict[str, KeyEvent] = {
     "\x1b[A": KeyEvent.UP,
     "\x1b[B": KeyEvent.DOWN,
     "\x1b[C": KeyEvent.RIGHT,
     "\x1b[D": KeyEvent.LEFT,
+}
+
+_WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
+    b"H": KeyEvent.UP,  # Up arrow
+    b"P": KeyEvent.DOWN,  # Down arrow
+    b"M": KeyEvent.RIGHT,  # Right arrow
+    b"K": KeyEvent.LEFT,  # Left arrow
 }
 
 

@@ -9,6 +9,21 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.42] - 2025-10-28
+
+### Added
+
+- Support Ctrl-J or Alt-Enter to insert a new line
+
+### Changed
+
+- Change mode switch shortcut from Ctrl-K to Ctrl-X
+- Improve overall robustness
+
+### Fixed
+
+- Fix ACP server `no attribute` error
+
 ## [0.41] - 2025-10-26
 
 ### Fixed

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from kimi_cli.soul.globals import load_agents_md
+from kimi_cli.soul.runtime import load_agents_md
 
 
 def test_load_agents_md_found(temp_work_dir: Path):

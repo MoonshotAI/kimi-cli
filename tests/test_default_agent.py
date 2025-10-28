@@ -6,14 +6,14 @@ import pytest
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.soul.agent import load_agent
-from kimi_cli.soul.globals import AgentGlobals
+from kimi_cli.soul.runtime import Runtime
 
 
 @pytest.mark.asyncio
-async def test_default_agent(agent_globals: AgentGlobals):
-    agent = await load_agent(DEFAULT_AGENT_FILE, agent_globals, mcp_configs=[])
+async def test_default_agent(runtime: Runtime):
+    agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
     assert agent.system_prompt.replace(
-        f"{agent_globals.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
+        f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
     ) == snapshot(
         """\
 You are Kimi CLI. You are an interactive CLI agent specializing in software engineering tasks. Your primary goal is to help users safely and efficiently, adhering strictly to the following instructions and utilizing your available tools.

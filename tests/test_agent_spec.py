@@ -7,6 +7,7 @@ import pytest
 from inline_snapshot import snapshot
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE, load_agent_spec
+from kimi_cli.exception import AgentSpecError
 
 
 def test_load_agent_spec_basic(agent_file: Path):
@@ -19,20 +20,20 @@ def test_load_agent_spec_basic(agent_file: Path):
 
 
 def test_load_agent_spec_missing_name(agent_file_no_name: Path):
-    """Test missing agent name raises ValueError."""
-    with pytest.raises(ValueError, match="Agent name is required"):
+    """Test missing agent name raises AgentSpecError."""
+    with pytest.raises(AgentSpecError, match="Agent name is required"):
         load_agent_spec(agent_file_no_name)
 
 
 def test_load_agent_spec_missing_system_prompt(agent_file_no_prompt: Path):
-    """Test missing system prompt path raises ValueError."""
-    with pytest.raises(ValueError, match="System prompt path is required"):
+    """Test missing system prompt path raises AgentSpecError."""
+    with pytest.raises(AgentSpecError, match="System prompt path is required"):
         load_agent_spec(agent_file_no_prompt)
 
 
 def test_load_agent_spec_missing_tools(agent_file_no_tools: Path):
-    """Test missing tools raises ValueError."""
-    with pytest.raises(ValueError, match="Tools are required"):
+    """Test missing tools raises AgentSpecError."""
+    with pytest.raises(AgentSpecError, match="Tools are required"):
         load_agent_spec(agent_file_no_tools)
 
 
@@ -112,7 +113,7 @@ agent:
   tools: ["kimi_cli.tools.think:Think"]
 """)
 
-        with pytest.raises(ValueError, match="Unsupported agent spec version: 2"):
+        with pytest.raises(AgentSpecError, match="Unsupported agent spec version: 2"):
             load_agent_spec(agent_yaml)
 
 

@@ -3,15 +3,13 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import click
 
-from kimi_cli import UIMode, kimi_run
-from kimi_cli.agentspec import DEFAULT_AGENT_FILE
-from kimi_cli.config import ConfigError, load_config
+from kimi_cli import KimiCLI
 from kimi_cli.constant import VERSION
-from kimi_cli.metadata import continue_session, new_session
+from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.ui.print import InputFormat, OutputFormat
 from kimi_cli.utils.logging import logger
@@ -21,6 +19,9 @@ class Reload(Exception):
     """Reload configuration."""
 
     pass
+
+
+UIMode = Literal["shell", "print", "acp"]
 
 
 @click.command(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -40,7 +41,7 @@ class Reload(Exception):
 @click.option(
     "--agent-file",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-    default=DEFAULT_AGENT_FILE,
+    default=None,
     help="Custom agent specification file. Default: builtin default agent.",
 )
 @click.option(
@@ -79,7 +80,7 @@ class Reload(Exception):
 @click.option(
     "--ui",
     "ui",
-    type=click.Choice(["shell", "print", "acp"]),
+    type=click.Choice(get_args(UIMode)),
     default="shell",
     help="UI mode to use. Default: shell.",
 )
@@ -97,7 +98,7 @@ class Reload(Exception):
 )
 @click.option(
     "--input-format",
-    type=click.Choice(["text", "stream-json"]),
+    type=click.Choice(get_args(InputFormat)),
     default=None,
     help=(
         "Input format to use. Must be used with `--print` "
@@ -107,7 +108,7 @@ class Reload(Exception):
 )
 @click.option(
     "--output-format",
-    type=click.Choice(["text", "stream-json"]),
+    type=click.Choice(get_args(OutputFormat)),
     default=None,
     help="Output format to use. Must be used with `--print`. Default: text.",
 )
@@ -142,7 +143,7 @@ class Reload(Exception):
 def kimi(
     verbose: bool,
     debug: bool,
-    agent_file: Path,
+    agent_file: Path | None,
     model_name: str | None,
     work_dir: Path,
     continue_: bool,
@@ -169,18 +170,22 @@ def kimi(
     )
 
     work_dir = work_dir.absolute()
-
     if continue_:
-        session = continue_session(work_dir)
+        session = Session.continue_(work_dir)
         if session is None:
             raise click.BadOptionUsage(
                 "--continue", "No previous session found for the working directory"
             )
         echo(f"✓ Continuing previous session: {session.id}")
     else:
-        session = new_session(work_dir)
+        session = Session.create(work_dir)
         echo(f"✓ Created new session: {session.id}")
     echo(f"✓ Session history file: {session.history_file}")
+
+    if command is not None:
+        command = command.strip()
+        if not command:
+            raise click.BadOptionUsage("--command", "Command cannot be empty")
 
     if input_format is not None and ui != "print":
         raise click.BadOptionUsage(
@@ -194,7 +199,7 @@ def kimi(
         )
 
     try:
-        mcp_configs = [json.loads(conf.read_text()) for conf in mcp_config_file]
+        mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in mcp_config_file]
     except json.JSONDecodeError as e:
         raise click.BadOptionUsage("--mcp-config-file", f"Invalid JSON: {e}") from e
 
@@ -203,29 +208,32 @@ def kimi(
     except json.JSONDecodeError as e:
         raise click.BadOptionUsage("--mcp-config", f"Invalid JSON: {e}") from e
 
+    async def _run() -> bool:
+        instance = await KimiCLI.create(
+            session,
+            yolo=yolo or (ui == "print"),  # print mode implies yolo
+            stream=ui != "print",  # use non-streaming mode only for print UI
+            mcp_configs=mcp_configs,
+            model_name=model_name,
+            agent_file=agent_file,
+        )
+        match ui:
+            case "shell":
+                return await instance.run_shell_mode(command)
+            case "print":
+                return await instance.run_print_mode(
+                    input_format or "text",
+                    output_format or "text",
+                    command,
+                )
+            case "acp":
+                if command is not None:
+                    logger.warning("ACP server ignores command argument")
+                return await instance.run_acp_server()
+
     while True:
         try:
-            try:
-                config = load_config()
-            except ConfigError as e:
-                raise click.ClickException(f"Failed to load config: {e}") from e
-            echo(f"✓ Loaded config: {config}")
-
-            succeeded = asyncio.run(
-                kimi_run(
-                    config=config,
-                    model_name=model_name,
-                    work_dir=work_dir,
-                    session=session,
-                    command=command,
-                    agent_file=agent_file,
-                    ui=ui,
-                    input_format=input_format,
-                    output_format=output_format,
-                    mcp_configs=mcp_configs,
-                    yolo=yolo,
-                )
-            )
+            succeeded = asyncio.run(_run())
             if not succeeded:
                 sys.exit(1)
             break

@@ -17,17 +17,28 @@ class LLM(NamedTuple):
     max_context_size: int
 
 
-def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
+def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
+    """Override provider/model settings from environment variables.
+
+    Returns:
+        Mapping of environment variables that were applied.
+    """
+    applied: dict[str, str] = {}
+
     match provider.type:
         case "kimi":
             if base_url := os.getenv("KIMI_BASE_URL"):
                 provider.base_url = base_url
+                applied["KIMI_BASE_URL"] = base_url
             if api_key := os.getenv("KIMI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
+                applied["KIMI_API_KEY"] = "******"
             if model_name := os.getenv("KIMI_MODEL_NAME"):
                 model.model = model_name
+                applied["KIMI_MODEL_NAME"] = model.model
             if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
+                applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = str(model.max_context_size)
         case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
@@ -35,6 +46,8 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel):
                 provider.api_key = SecretStr(api_key)
         case _:
             pass
+
+    return applied
 
 
 def create_llm(
@@ -53,6 +66,7 @@ def create_llm(
                 stream=stream,
                 default_headers={
                     "User-Agent": USER_AGENT,
+                    **provider.custom_headers,
                 },
             )
             if session_id:
