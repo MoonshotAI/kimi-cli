@@ -4,13 +4,6 @@ import threading
 import time
 from collections.abc import AsyncGenerator, Callable
 from enum import Enum, auto
-from typing import TYPE_CHECKING
-
-# Platform-specific imports
-if TYPE_CHECKING or sys.platform != "win32":
-    import termios
-if TYPE_CHECKING or sys.platform == "win32":
-    import msvcrt
 
 
 class KeyEvent(Enum):
@@ -63,6 +56,11 @@ def _listen_for_keyboard_unix(
     cancel: threading.Event,
     emit: Callable[[KeyEvent], None],
 ) -> None:
+    if sys.platform == "win32":
+        raise RuntimeError("Unix keyboard listener requires a non-Windows platform")
+
+    import termios
+
     # make stdin raw and non-blocking
     fd = sys.stdin.fileno()
     oldterm = termios.tcgetattr(fd)
@@ -118,6 +116,11 @@ def _listen_for_keyboard_windows(
     cancel: threading.Event,
     emit: Callable[[KeyEvent], None],
 ) -> None:
+    if sys.platform != "win32":
+        raise RuntimeError("Windows keyboard listener requires a Windows platform")
+
+    import msvcrt
+
     while not cancel.is_set():
         if msvcrt.kbhit():
             c = msvcrt.getch()
