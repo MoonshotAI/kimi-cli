@@ -17,7 +17,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.runtime import Runtime
 from kimi_cli.ui.acp import ACPServer
 from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
-from kimi_cli.ui.shell import ShellApp
+from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
 from kimi_cli.utils.logging import StreamToLogger, logger
 
 
@@ -72,7 +72,7 @@ class KimiCLI:
         # try overwrite with environment variables
         assert provider is not None
         assert model is not None
-        augment_provider_with_env_vars(provider, model)
+        env_overrides = augment_provider_with_env_vars(provider, model)
 
         if not provider.base_url or not model.model:
             llm = None
@@ -80,6 +80,43 @@ class KimiCLI:
             logger.info("Using LLM provider: {provider}", provider=provider)
             logger.info("Using LLM model: {model}", model=model)
             llm = create_llm(provider, model, stream=stream, session_id=session.id)
+
+        welcome_info = [
+            WelcomeInfoItem(name="Directory", value=str(session.work_dir)),
+            WelcomeInfoItem(name="Session", value=session.id),
+        ]
+        if base_url := env_overrides.get("KIMI_BASE_URL"):
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="API URL",
+                    value=f"{base_url} (from KIMI_BASE_URL)",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        if not llm:
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="Model",
+                    value="not set, send /setup to configure",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        elif "KIMI_MODEL_NAME" in env_overrides:
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="Model",
+                    value=f"{model.model} (from KIMI_MODEL_NAME)",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        else:
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="Model",
+                    value=model.model,
+                    level=WelcomeInfoItem.Level.INFO,
+                )
+            )
 
         runtime = await Runtime.create(config, llm, session, yolo)
 
@@ -95,11 +132,17 @@ class KimiCLI:
             runtime,
             context=context,
         )
-        return KimiCLI(soul, session)
+        return KimiCLI(soul, session, welcome_info)
 
-    def __init__(self, soul: KimiSoul, session: Session) -> None:
+    def __init__(
+        self,
+        soul: KimiSoul,
+        session: Session,
+        welcome_info: list[WelcomeInfoItem],
+    ) -> None:
         self._soul = soul
         self._session = session
+        self._welcome_info = welcome_info
 
     @property
     def soul(self) -> KimiSoul:
@@ -125,13 +168,7 @@ class KimiCLI:
 
     async def run_shell_mode(self, command: str | None = None) -> bool:
         with self._app_env():
-            app = ShellApp(
-                self._soul,
-                welcome_info={
-                    "Directory": str(self._session.work_dir),
-                    "Session": self._session.id,
-                },
-            )
+            app = ShellApp(self._soul, welcome_info=self._welcome_info)
             return await app.run(command)
 
     async def run_print_mode(

@@ -1,5 +1,7 @@
 import asyncio
 from collections.abc import Awaitable, Coroutine
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
@@ -20,9 +22,9 @@ from kimi_cli.utils.logging import logger
 
 
 class ShellApp:
-    def __init__(self, soul: Soul, welcome_info: dict[str, str] | None = None):
+    def __init__(self, soul: Soul, welcome_info: list["WelcomeInfoItem"] | None = None):
         self.soul = soul
-        self.welcome_info = welcome_info or {}
+        self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
     async def run(self, command: str | None = None) -> bool:
@@ -33,7 +35,7 @@ class ShellApp:
 
         self._start_background_task(self._auto_update())
 
-        _print_welcome_info(self.soul.name or "Kimi CLI", self.soul.model, self.welcome_info)
+        _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
 
         with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:
@@ -229,7 +231,19 @@ _LOGO = f"""\
 """
 
 
-def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> None:
+@dataclass(slots=True)
+class WelcomeInfoItem:
+    class Level(Enum):
+        INFO = "grey50"
+        WARN = "yellow"
+        ERROR = "red"
+
+    name: str
+    value: str
+    level: Level = Level.INFO
+
+
+def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
     head = Text.from_markup(f"[bold]Welcome to {name}![/bold]")
     help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
 
@@ -243,17 +257,8 @@ def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> No
     rows: list[RenderableType] = [table]
 
     rows.append(Text(""))  # Empty line
-    rows.extend(
-        Text.from_markup(f"[grey50]{key}: {value}[/grey50]") for key, value in info_items.items()
-    )
-    if model:
-        rows.append(Text.from_markup(f"[grey50]Model: {model}[/grey50]"))
-    else:
-        rows.append(
-            Text.from_markup(
-                "[grey50]Model:[/grey50] [yellow]not set, send /setup to configure[/yellow]"
-            )
-        )
+    for item in info_items:
+        rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
 
     if LATEST_VERSION_FILE.exists():
         from kimi_cli.constant import VERSION as current_version
