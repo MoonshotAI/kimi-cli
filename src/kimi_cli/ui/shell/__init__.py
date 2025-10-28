@@ -1,5 +1,4 @@
 import asyncio
-import signal
 from collections.abc import Awaitable, Coroutine
 from typing import Any
 
@@ -12,11 +11,11 @@ from rich.text import Text
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.signals import install_sigint_handler
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.ui.signals import install_sigint_handler
 from kimi_cli.utils.logging import logger
 
 
@@ -80,27 +79,26 @@ class ShellApp:
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
+
+        proc: asyncio.subprocess.Process | None = None
+
+        def _handler():
+            logger.debug("SIGINT received.")
+            if proc:
+                proc.terminate()
+
         loop = asyncio.get_running_loop()
+        remove_sigint = install_sigint_handler(loop, _handler)
         try:
             # TODO: For the sake of simplicity, we now use `create_subprocess_shell`.
             # Later we should consider making this behave like a real shell.
             proc = await asyncio.create_subprocess_shell(command)
-
-            def _handler():
-                logger.debug("SIGINT received.")
-                proc.terminate()
-
-            remove_sigint = install_sigint_handler(loop, _handler)
-
             await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
             console.print(f"[red]Failed to run shell command: {e}[/red]")
         finally:
-            try:
-                remove_sigint()
-            except Exception:
-                pass
+            remove_sigint()
 
     async def _run_meta_command(self, command_str: str):
         from kimi_cli.cli import Reload
@@ -192,10 +190,7 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
-            try:
-                remove_sigint()
-            except Exception:
-                pass
+            remove_sigint()
         return False
 
     async def _auto_update(self) -> None:

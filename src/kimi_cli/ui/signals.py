@@ -1,43 +1,41 @@
 import asyncio
+import contextlib
 import signal
-import sys
 from collections.abc import Callable
 
 
-def install_sigint_handler(loop: asyncio.AbstractEventLoop, handler: Callable[[], None]) -> Callable[[], None]:
-    """Install a SIGINT handler that works on Unix and Windows.
+def install_sigint_handler(
+    loop: asyncio.AbstractEventLoop, handler: Callable[[], None]
+) -> Callable[[], None]:
+    """
+    Install a SIGINT handler that works on Unix and Windows.
 
-    Returns a callable to remove the handler.
-
-    On Unix event loops, prefer ``loop.add_signal_handler``.
+    On Unix event loops, prefer `loop.add_signal_handler`.
     On Windows (or other platforms) where it is not implemented, fall back to
-    ``signal.signal``. The fallback cannot be removed from the loop, but we
+    `signal.signal`. The fallback cannot be removed from the loop, but we
     restore the previous handler on uninstall.
+
+    Returns:
+        A function that removes the installed handler. It is guaranteed that
+        no exceptions are raised when calling the returned function.
     """
 
     try:
-        loop.add_signal_handler(signal.SIGINT, handler)  # type: ignore[attr-defined]
+        loop.add_signal_handler(signal.SIGINT, handler)
 
         def remove() -> None:
-            try:
-                loop.remove_signal_handler(signal.SIGINT)  # type: ignore[attr-defined]
-            except Exception:
-                # Best effort removal; ignore if unsupported
-                pass
+            with contextlib.suppress(RuntimeError):
+                loop.remove_signal_handler(signal.SIGINT)
 
         return remove
-    except (NotImplementedError, RuntimeError):
+    except RuntimeError:
         # Windows ProactorEventLoop and some environments do not support
         # add_signal_handler. Use synchronous signal handling as a fallback.
         previous = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, lambda signum, frame: handler())
 
         def remove() -> None:
-            try:
-                signal.signal(signal.SIGINT, previous)  # type: ignore[arg-type]
-            except Exception:
-                pass
+            with contextlib.suppress(RuntimeError):
+                signal.signal(signal.SIGINT, previous)
 
         return remove
-
-
