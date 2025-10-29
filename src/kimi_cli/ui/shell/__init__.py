@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from kosong.base.message import ContentPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -65,14 +66,13 @@ class ShellApp:
                     await self._run_shell_command(user_input.command)
                     continue
 
-                command = user_input.command
-                if command.startswith("/"):
-                    logger.debug("Running meta command: {command}", command=command)
-                    await self._run_meta_command(command[1:])
+                if user_input.command.startswith("/"):
+                    logger.debug("Running meta command: {command}", command=user_input.command)
+                    await self._run_meta_command(user_input.command[1:])
                     continue
 
-                logger.info("Running agent command: {command}", command=command)
-                await self._run_soul_command(command)
+                logger.info("Running agent command: {command}", command=user_input.content)
+                await self._run_soul_command(user_input.content)
 
         return True
 
@@ -142,7 +142,7 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-    async def _run_soul_command(self, command: str) -> bool:
+    async def _run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -162,7 +162,7 @@ class ShellApp:
             # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
-                command,
+                user_input,
                 lambda wire: visualize(
                     wire, initial_status=self.soul.status, cancel_event=cancel_event
                 ),

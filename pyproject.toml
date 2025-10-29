@@ -13,6 +13,7 @@ dependencies = [
     "loguru==0.7.3",
     "patch-ng==1.19.0",
     "prompt-toolkit==3.0.52",
+    "pillow==12.0.0",
     "pyyaml==6.0.3",
     "rich==14.2.0",
     "ripgrepy==2.2.0",

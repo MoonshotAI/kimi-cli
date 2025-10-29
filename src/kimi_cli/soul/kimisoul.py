@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import kosong
 import tenacity
 from kosong import StepResult
-from kosong.base.message import Message
+from kosong.base.message import ContentPart, Message
 from kosong.chat_provider import (
     APIConnectionError,
     APIStatusError,
@@ -94,7 +94,7 @@ class KimiSoul(Soul):
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
-    async def run(self, user_input: str):
+    async def run(self, user_input: str | list[ContentPart]):
         if self._runtime.llm is None:
             raise LLMNotSet()
 

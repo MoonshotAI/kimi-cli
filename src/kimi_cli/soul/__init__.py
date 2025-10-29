@@ -4,6 +4,8 @@ from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
+from kosong.base.message import ContentPart
+
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
@@ -47,12 +49,12 @@ class Soul(Protocol):
         """The current status of the soul. The returned value is immutable."""
         ...
 
-    async def run(self, user_input: str):
+    async def run(self, user_input: str | list[ContentPart]):
         """
         Run the agent with the given user input until the max steps or no more tool calls.
 
         Args:
-            user_input (str): The user input to the agent.
+            user_input (str | list[ContentPart]): The user input to the agent.
 
         Raises:
             LLMNotSet: When the LLM is not set.
@@ -73,7 +75,7 @@ class RunCancelled(Exception):
 
 async def run_soul(
     soul: "Soul",
-    user_input: str,
+    user_input: str | list[ContentPart],
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,
 ) -> None:
