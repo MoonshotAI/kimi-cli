@@ -3,6 +3,7 @@ import json
 import sys
 from functools import partial
 from pathlib import Path
+from rich import print
 from typing import Literal
 
 import aiofiles
