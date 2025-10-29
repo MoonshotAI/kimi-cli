@@ -39,7 +39,7 @@ from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.string import randome_string
+from kimi_cli.utils.string import random_string
 
 
 class MetaCommandCompleter(Completer):
@@ -543,7 +543,7 @@ class CustomPromptSession:
         if image is None:
             return False
 
-        attachment_id = f"{randome_string(8)}.png"
+        attachment_id = f"{random_string(8)}.png"
         png_bytes = BytesIO()
         image.save(png_bytes, format="PNG")
         png_base64 = base64.b64encode(png_bytes.getvalue()).decode("ascii")

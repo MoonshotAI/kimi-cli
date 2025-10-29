@@ -14,7 +14,7 @@ def shorten_middle(text: str, width: int, remove_newline: bool = True) -> str:
     return text[: width // 2] + "..." + text[-width // 2 :]
 
 
-def randome_string(length: int = 8) -> str:
+def random_string(length: int = 8) -> str:
     """Generate a random string of fixed length."""
     letters = string.ascii_lowercase
     return "".join(random.choice(letters) for _ in range(length))
