@@ -1,6 +1,7 @@
 import asyncio
-import signal
 from collections.abc import Awaitable, Coroutine
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
@@ -13,16 +14,17 @@ from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_so
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
-from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
+from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.ui.signals import install_sigint_handler
 from kimi_cli.utils.logging import logger
 
 
 class ShellApp:
-    def __init__(self, soul: Soul, welcome_info: dict[str, str] | None = None):
+    def __init__(self, soul: Soul, welcome_info: list["WelcomeInfoItem"] | None = None):
         self.soul = soul
-        self.welcome_info = welcome_info or {}
+        self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
     async def run(self, command: str | None = None) -> bool:
@@ -31,13 +33,14 @@ class ShellApp:
             logger.info("Running agent with command: {command}", command=command)
             return await self._run_soul_command(command)
 
-        self._start_auto_update_task()
+        self._start_background_task(self._auto_update())
 
-        _print_welcome_info(self.soul.name or "Kimi CLI", self.soul.model, self.welcome_info)
+        _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
 
         with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:
                 try:
+                    ensure_new_line()
                     user_input = await prompt_session.prompt()
                 except KeyboardInterrupt:
                     logger.debug("Exiting by KeyboardInterrupt")
@@ -79,24 +82,26 @@ class ShellApp:
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
+
+        proc: asyncio.subprocess.Process | None = None
+
+        def _handler():
+            logger.debug("SIGINT received.")
+            if proc:
+                proc.terminate()
+
         loop = asyncio.get_running_loop()
+        remove_sigint = install_sigint_handler(loop, _handler)
         try:
             # TODO: For the sake of simplicity, we now use `create_subprocess_shell`.
             # Later we should consider making this behave like a real shell.
             proc = await asyncio.create_subprocess_shell(command)
-
-            def _handler():
-                logger.debug("SIGINT received.")
-                proc.terminate()
-
-            loop.add_signal_handler(signal.SIGINT, _handler)
-
             await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
             console.print(f"[red]Failed to run shell command: {e}[/red]")
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            remove_sigint()
 
     async def _run_meta_command(self, command_str: str):
         from kimi_cli.cli import Reload
@@ -151,7 +156,7 @@ class ShellApp:
             cancel_event.set()
 
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGINT, _handler)
+        remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
             # Use lambda to pass cancel_event via closure
@@ -188,13 +193,10 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
-            loop.remove_signal_handler(signal.SIGINT)
+            remove_sigint()
         return False
 
-    def _start_auto_update_task(self) -> None:
-        self._add_background_task(self._auto_update_background())
-
-    async def _auto_update_background(self) -> None:
+    async def _auto_update(self) -> None:
         toast("checking for updates...", duration=2.0)
         result = await do_update(print=False, check_only=True)
         if result == UpdateResult.UPDATE_AVAILABLE:
@@ -204,7 +206,7 @@ class ShellApp:
         elif result == UpdateResult.UPDATED:
             toast("auto updated, restart to use the new version", duration=5.0)
 
-    def _add_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+    def _start_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro)
         self._background_tasks.add(task)
 
@@ -230,7 +232,19 @@ _LOGO = f"""\
 """
 
 
-def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> None:
+@dataclass(slots=True)
+class WelcomeInfoItem:
+    class Level(Enum):
+        INFO = "grey50"
+        WARN = "yellow"
+        ERROR = "red"
+
+    name: str
+    value: str
+    level: Level = Level.INFO
+
+
+def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
     head = Text.from_markup(f"[bold]Welcome to {name}![/bold]")
     help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
 
@@ -244,17 +258,8 @@ def _print_welcome_info(name: str, model: str, info_items: dict[str, str]) -> No
     rows: list[RenderableType] = [table]
 
     rows.append(Text(""))  # Empty line
-    rows.extend(
-        Text.from_markup(f"[grey50]{key}: {value}[/grey50]") for key, value in info_items.items()
-    )
-    if model:
-        rows.append(Text.from_markup(f"[grey50]Model: {model}[/grey50]"))
-    else:
-        rows.append(
-            Text.from_markup(
-                "[grey50]Model:[/grey50] [yellow]not set, send /setup to configure[/yellow]"
-            )
-        )
+    for item in info_items:
+        rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
 
     if LATEST_VERSION_FILE.exists():
         from kimi_cli.constant import VERSION as current_version

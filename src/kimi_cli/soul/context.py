@@ -19,11 +19,6 @@ class Context:
         self._next_checkpoint_id: int = 0
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
 
-    @property
-    def file_backend(self) -> Path:
-        """The JSONL file backend of the context."""
-        return self._file_backend
-
     async def restore(self) -> bool:
         logger.debug("Restoring context from file: {file_backend}", file_backend=self._file_backend)
         if self._history:

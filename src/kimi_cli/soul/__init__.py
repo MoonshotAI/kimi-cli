@@ -125,7 +125,7 @@ async def run_soul(
         try:
             await asyncio.wait_for(ui_task, timeout=0.5)
         except asyncio.QueueShutDown:
-            # expected
+            logger.debug("UI loop shut down")
             pass
         except TimeoutError:
             logger.warning("UI loop timed out")

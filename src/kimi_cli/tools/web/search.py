@@ -44,9 +44,11 @@ class SearchWeb(CallableTool2[Params]):
         if config.services.moonshot_search is not None:
             self._base_url = config.services.moonshot_search.base_url
             self._api_key = config.services.moonshot_search.api_key.get_secret_value()
+            self._custom_headers = config.services.moonshot_search.custom_headers
         else:
             self._base_url = ""
             self._api_key = ""
+            self._custom_headers = {}
 
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
@@ -69,6 +71,7 @@ class SearchWeb(CallableTool2[Params]):
                     "User-Agent": USER_AGENT,
                     "Authorization": f"Bearer {self._api_key}",
                     "X-Msh-Tool-Call-Id": tool_call.id,
+                    **self._custom_headers,
                 },
                 json={
                     "text_query": params.query,

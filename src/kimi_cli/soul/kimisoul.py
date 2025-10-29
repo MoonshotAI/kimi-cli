@@ -16,13 +16,12 @@ from kosong.chat_provider import (
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
-from kimi_cli.config import LoopControl
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul, StatusSnapshot, wire_send
 from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.globals import AgentGlobals
 from kimi_cli.soul.message import system, tool_result_to_messages
+from kimi_cli.soul.runtime import Runtime
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
@@ -43,30 +42,29 @@ class KimiSoul(Soul):
     def __init__(
         self,
         agent: Agent,
-        agent_globals: AgentGlobals,
+        runtime: Runtime,
         *,
         context: Context,
-        loop_control: LoopControl,
     ):
         """
         Initialize the soul.
 
         Args:
             agent (Agent): The agent to run.
-            agent_globals (AgentGlobals): Global states and parameters.
+            runtime (Runtime): Runtime parameters and states.
             context (Context): The context of the agent.
             loop_control (LoopControl): The control parameters for the agent loop.
         """
         self._agent = agent
-        self._agent_globals = agent_globals
-        self._denwa_renji = agent_globals.denwa_renji
-        self._approval = agent_globals.approval
+        self._runtime = runtime
+        self._denwa_renji = runtime.denwa_renji
+        self._approval = runtime.approval
         self._context = context
-        self._loop_control = loop_control
+        self._loop_control = runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
         self._reserved_tokens = RESERVED_TOKENS
-        if self._agent_globals.llm is not None:
-            assert self._reserved_tokens <= self._agent_globals.llm.max_context_size
+        if self._runtime.llm is not None:
+            assert self._reserved_tokens <= self._runtime.llm.max_context_size
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -81,7 +79,7 @@ class KimiSoul(Soul):
 
     @property
     def model(self) -> str:
-        return self._agent_globals.llm.chat_provider.model_name if self._agent_globals.llm else ""
+        return self._runtime.llm.chat_provider.model_name if self._runtime.llm else ""
 
     @property
     def status(self) -> StatusSnapshot:
@@ -89,15 +87,15 @@ class KimiSoul(Soul):
 
     @property
     def _context_usage(self) -> float:
-        if self._agent_globals.llm is not None:
-            return self._context.token_count / self._agent_globals.llm.max_context_size
+        if self._runtime.llm is not None:
+            return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
     async def run(self, user_input: str):
-        if self._agent_globals.llm is None:
+        if self._runtime.llm is None:
             raise LLMNotSet()
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
@@ -107,7 +105,7 @@ class KimiSoul(Soul):
 
     async def _agent_loop(self):
         """The main agent loop for one run."""
-        assert self._agent_globals.llm is not None
+        assert self._runtime.llm is not None
 
         async def _pipe_approval_to_wire():
             while True:
@@ -126,7 +124,7 @@ class KimiSoul(Soul):
                 # compact the context if needed
                 if (
                     self._context.token_count + self._reserved_tokens
-                    >= self._agent_globals.llm.max_context_size
+                    >= self._runtime.llm.max_context_size
                 ):
                     logger.info("Context too long, compacting...")
                     wire_send(CompactionBegin())
@@ -159,8 +157,8 @@ class KimiSoul(Soul):
     async def _step(self) -> bool:
         """Run an single step and return whether the run should be stopped."""
         # already checked in `run`
-        assert self._agent_globals.llm is not None
-        chat_provider = self._agent_globals.llm.chat_provider
+        assert self._runtime.llm is not None
+        chat_provider = self._runtime.llm.chat_provider
 
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
@@ -255,9 +253,9 @@ class KimiSoul(Soul):
             reraise=True,
         )
         async def _compact_with_retry() -> Sequence[Message]:
-            if self._agent_globals.llm is None:
+            if self._runtime.llm is None:
                 raise LLMNotSet()
-            return await self._compaction.compact(self._context.history, self._agent_globals.llm)
+            return await self._compaction.compact(self._context.history, self._runtime.llm)
 
         compacted_messages = await _compact_with_retry()
         await self._context.revert_to(0)
