@@ -24,9 +24,13 @@ type _ReplayEvent = StepBegin | ToolCall | ContentPart | ToolResult
 class _ReplayRun:
     user_message: Message
     events: list[_ReplayEvent]
+    n_steps: int = 0
 
 
 async def replay_recent_history(history: Sequence[Message]) -> None:
+    """
+    Replay the most recent user-initiated runs from the provided message history.
+    """
     start_idx = _find_replay_start(history)
     if start_idx is None:
         return
@@ -67,7 +71,6 @@ def _find_replay_start(history: Sequence[Message]) -> int | None:
 def _build_replay_runs(history: Sequence[Message]) -> list[_ReplayRun]:
     runs: list[_ReplayRun] = []
     current_run: _ReplayRun | None = None
-    step_no = 1
     for message in history:
         if _is_user_message(message):
             # start a new run
@@ -77,8 +80,8 @@ def _build_replay_runs(history: Sequence[Message]) -> list[_ReplayRun]:
         elif message.role == "assistant":
             if current_run is None:
                 continue
-            current_run.events.append(StepBegin(n=step_no))
-            step_no += 1
+            current_run.n_steps += 1
+            current_run.events.append(StepBegin(n=current_run.n_steps))
             if isinstance(message.content, str):
                 current_run.events.append(TextPart(text=message.content))
             else:
