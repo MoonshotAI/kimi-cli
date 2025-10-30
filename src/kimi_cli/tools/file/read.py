@@ -93,6 +93,8 @@ class ReadFile(CallableTool2[Params]):
                     current_line_no += 1
                     if current_line_no < params.line_offset:
                         continue
+                    # issue #99 Remove null bytes which are not allowed by LLM APIs
+                    # line = line.replace("\x00", "")
                     truncated = truncate_line(line, MAX_LINE_LENGTH)
                     if truncated != line:
                         truncated_line_numbers.append(current_line_no)
