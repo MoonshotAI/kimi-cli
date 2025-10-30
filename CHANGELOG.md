@@ -17,7 +17,7 @@ Only write entries that are worth mentioning to users.
 
 ### Fixed
 
-- Fix potential invalid byte in user input
+- Fix potential invalid bytes in user input
 
 ## [0.43] - 2025-10-30
 
