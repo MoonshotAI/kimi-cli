@@ -4,7 +4,6 @@ import string
 from pathlib import Path
 from typing import Any, NamedTuple
 
-import fastmcp
 from kosong.tooling import CallableTool, CallableTool2, Toolset
 
 from kimi_cli.agentspec import ResolvedAgentSpec, load_agent_spec
@@ -14,7 +13,6 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.soul.toolset import CustomToolset
-from kimi_cli.tools.mcp import MCPTool
 from kimi_cli.utils.logging import logger
 
 
@@ -143,6 +141,10 @@ async def _load_mcp_tools(
         ValueError: If the MCP config is not valid.
         RuntimeError: If the MCP server cannot be connected.
     """
+    import fastmcp
+
+    from kimi_cli.tools.mcp import MCPTool
+
     for mcp_config in mcp_configs:
         logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
         client = fastmcp.Client(mcp_config)
