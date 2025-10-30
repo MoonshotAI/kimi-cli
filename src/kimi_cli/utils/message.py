@@ -10,13 +10,13 @@ def message_extract_text(message: Message) -> str:
 
 def message_stringify(message: Message) -> str:
     """Get a string representation of a message."""
-    s = ""
+    parts: list[str] = []
     if isinstance(message.content, str):
-        s += message.content
+        parts.append(message.content)
     else:
         for part in message.content:
             if isinstance(part, TextPart):
-                s += part.text
+                parts.append(part.text)
             else:
-                s += f"[{part.type}]"
-    return s
+                parts.append(f"[{part.type}]")
+    return "".join(parts)

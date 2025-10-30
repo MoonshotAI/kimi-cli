@@ -8,7 +8,6 @@ from kosong.base.message import Message, TextPart
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.soul import StatusSnapshot
-from kimi_cli.soul.message import system
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
 from kimi_cli.ui.shell.visualize import visualize
@@ -89,13 +88,11 @@ def _build_replay_runs(history: Sequence[Message]) -> list[_ReplayRun]:
             if current_run is None:
                 continue
             assert message.tool_call_id is not None
-            error_part = system("ERROR")
-            if isinstance(message.content, list):
-                if error_part in message.content:
-                    # XXX: missing error message and brief here
-                    result = ToolError(message="", output="", brief="")
-                else:
-                    result = ToolOk(output=message.content)
+            if isinstance(message.content, list) and any(
+                isinstance(part, TextPart) and part.text.startswith("<system>ERROR")
+                for part in message.content
+            ):
+                result = ToolError(message="", output="", brief="")
             else:
                 result = ToolOk(output=message.content)
             current_run.events.append(ToolResult(tool_call_id=message.tool_call_id, result=result))
