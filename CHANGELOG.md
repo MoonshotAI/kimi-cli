@@ -9,6 +9,19 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.43] - 2025-10-30
+
+### Added
+
+- Basic Windows support (experimental)
+- Display warnings when base URL or API key is overridden in environment variables
+- Support image input if the LLM model supports it
+- Replay recent context history when continuing a session
+
+### Fixed
+
+- Ensure new line after executing shell commands
+
 ## [0.42] - 2025-10-28
 
 ### Added
