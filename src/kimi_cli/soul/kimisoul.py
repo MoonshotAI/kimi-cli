@@ -53,7 +53,6 @@ class KimiSoul(Soul):
             agent (Agent): The agent to run.
             runtime (Runtime): Runtime parameters and states.
             context (Context): The context of the agent.
-            loop_control (LoopControl): The control parameters for the agent loop.
         """
         self._agent = agent
         self._runtime = runtime
@@ -84,6 +83,10 @@ class KimiSoul(Soul):
     @property
     def status(self) -> StatusSnapshot:
         return StatusSnapshot(context_usage=self._context_usage)
+
+    @property
+    def context(self) -> Context:
+        return self._context
 
     @property
     def _context_usage(self) -> float:

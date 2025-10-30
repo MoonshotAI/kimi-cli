@@ -15,6 +15,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
+from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
@@ -36,6 +37,9 @@ class ShellApp:
         self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
+
+        if isinstance(self.soul, KimiSoul):
+            await replay_recent_history(self.soul.context.history)
 
         with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:

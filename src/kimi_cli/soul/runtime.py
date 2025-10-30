@@ -59,7 +59,7 @@ def _list_work_dir(work_dir: Path) -> str:
 
 
 class Runtime(NamedTuple):
-    """Agent globals."""
+    """Agent runtime."""
 
     config: Config
     llm: LLM | None
