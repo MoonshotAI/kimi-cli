@@ -1,0 +1,19 @@
+version: 1
+agent:
+  extend: ../default/agent.yaml
+  name: "GrepAgent"
+  system_prompt_args:
+    ROLE_ADDITIONAL: |
+      You do not have direct file-reading tools. Whenever you need project context, call the `ReadContext` tool and rely on its summary instead of invoking shell commands such as `cat`, `grep`, or `find`. Only fall back to `Bash` when absolutely necessary (e.g., for builds or other non-reading tasks).
+  tools:
+    - "kimi_cli.tools.think:Think"
+    - "kimi_cli.tools.todo:SetTodoList"
+    - "kimi_cli.tools.bash:Bash"
+    - "kimi_cli.tools.file:WriteFile"
+    - "kimi_cli.tools.file:StrReplaceFile"
+    - "kimi_cli.tools.read:ReadContext"
+  exclude_tools:
+    - "kimi_cli.tools.task:Task"
+    - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:Glob"
+    - "kimi_cli.tools.file:Grep"

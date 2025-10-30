@@ -1,0 +1,102 @@
+diff --git a/sklearn/compose/_column_transformer.py b/sklearn/compose/_column_transformer.py
+index 4eddd12b1..74ae59989 100644
+--- a/sklearn/compose/_column_transformer.py
++++ b/sklearn/compose/_column_transformer.py
+@@ -275,8 +275,8 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+     def set_output(self, *, transform=None):
+         """Set the output container when `"transform"` and `"fit_transform"` are called.
+ 
+-        Calling `set_output` will set the output of all estimators in `transformers`
+-        and `transformers_`.
++        Calling `set_output` will set the output of all estimators in `transformers`,
++        `transformers_`, and the `remainder` if it's an estimator.
+ 
+         Parameters
+         ----------
+@@ -303,6 +303,10 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+         for trans in transformers:
+             _safe_set_output(trans, transform=transform)
+ 
++        # Handle remainder if it's an estimator
++        if hasattr(self, "remainder") and self.remainder not in {"passthrough", "drop"}:
++            _safe_set_output(self.remainder, transform=transform)
++
+         return self
+ 
+     def get_params(self, deep=True):
+diff --git a/sklearn/compose/tests/test_column_transformer.py b/sklearn/compose/tests/test_column_transformer.py
+index b9c8f5831..6cd6717d8 100644
+--- a/sklearn/compose/tests/test_column_transformer.py
++++ b/sklearn/compose/tests/test_column_transformer.py
+@@ -22,6 +22,7 @@ from sklearn.compose import (
+ from sklearn.exceptions import NotFittedError
+ from sklearn.preprocessing import FunctionTransformer
+ from sklearn.preprocessing import StandardScaler, Normalizer, OneHotEncoder
++from sklearn.feature_selection import VarianceThreshold
+ 
+ 
+ class Trans(TransformerMixin, BaseEstimator):
+@@ -2185,3 +2186,63 @@ def test_raise_error_if_index_not_aligned():
+     )
+     with pytest.raises(ValueError, match=msg):
+         ct.fit_transform(X)
++
++
++def test_column_transformer_set_output_with_remainder_estimator():
++    """Test that set_output works correctly when remainder is an estimator.
++    
++    This is a regression test for the bug where set_output was not applied
++    to the remainder estimator, causing it to default to numpy output
++    instead of pandas output.
++    """
++    pd = pytest.importorskip("pandas")
++    
++    # Create test data with mixed types
++    df = pd.DataFrame({
++        "bool_col": [True, False, True], 
++        "int_col": [1, 2, 3],
++        "float_col": [1.1, 2.2, 3.3]
++    })
++    
++    # Test case 1: remainder as estimator should preserve data types
++    transformer_with_remainder = ColumnTransformer(
++        [("bool_selector", VarianceThreshold(), ["bool_col"])],
++        remainder=VarianceThreshold(),
++        verbose_feature_names_out=False,
++    ).set_output(transform="pandas")
++    
++    result1 = transformer_with_remainder.fit_transform(df)
++    
++    # Test case 2: explicit transformer should be equivalent
++    transformer_explicit = ColumnTransformer(
++        [
++            ("bool_selector", VarianceThreshold(), ["bool_col"]),
++            ("remainder_selector", VarianceThreshold(), ["int_col", "float_col"])
++        ],
++        verbose_feature_names_out=False,
++    ).set_output(transform="pandas")
++    
++    result2 = transformer_explicit.fit_transform(df)
++    
++    # Both results should be identical
++    pd.testing.assert_frame_equal(result1, result2)
++    
++    # Boolean column should remain boolean (not converted to int)
++    assert result1["bool_col"].dtype == bool, f"Expected bool, got {result1['bool_col'].dtype}"
++    
++    # Test case 3: Different estimator for remainder
++    transformer_scaler = ColumnTransformer(
++        [("bool_selector", VarianceThreshold(), ["bool_col"])],
++        remainder=StandardScaler(),
++        verbose_feature_names_out=False,
++    ).set_output(transform="pandas")
++    
++    result3 = transformer_scaler.fit_transform(df)
++    
++    # Should be a DataFrame (not numpy array)
++    assert isinstance(result3, pd.DataFrame)
++    
++    # Boolean column should be preserved, numeric columns should be scaled
++    assert result3["bool_col"].dtype == bool, "Boolean column should be preserved"
++    assert result3["int_col"].dtype == float, "Scaled column should be float"
++    assert result3["float_col"].dtype == float, "Scaled column should be float"
