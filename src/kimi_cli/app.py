@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
@@ -15,9 +16,6 @@ from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.runtime import Runtime
-from kimi_cli.ui.acp import ACPServer
-from kimi_cli.ui.print import InputFormat, OutputFormat, PrintApp
-from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
 from kimi_cli.utils.logging import StreamToLogger, logger
 
 
@@ -81,43 +79,6 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             llm = create_llm(provider, model, stream=stream, session_id=session.id)
 
-        welcome_info = [
-            WelcomeInfoItem(name="Directory", value=str(session.work_dir)),
-            WelcomeInfoItem(name="Session", value=session.id),
-        ]
-        if base_url := env_overrides.get("KIMI_BASE_URL"):
-            welcome_info.append(
-                WelcomeInfoItem(
-                    name="API URL",
-                    value=f"{base_url} (from KIMI_BASE_URL)",
-                    level=WelcomeInfoItem.Level.WARN,
-                )
-            )
-        if not llm:
-            welcome_info.append(
-                WelcomeInfoItem(
-                    name="Model",
-                    value="not set, send /setup to configure",
-                    level=WelcomeInfoItem.Level.WARN,
-                )
-            )
-        elif "KIMI_MODEL_NAME" in env_overrides:
-            welcome_info.append(
-                WelcomeInfoItem(
-                    name="Model",
-                    value=f"{model.model} (from KIMI_MODEL_NAME)",
-                    level=WelcomeInfoItem.Level.WARN,
-                )
-            )
-        else:
-            welcome_info.append(
-                WelcomeInfoItem(
-                    name="Model",
-                    value=model.model,
-                    level=WelcomeInfoItem.Level.INFO,
-                )
-            )
-
         runtime = await Runtime.create(config, llm, session, yolo)
 
         if agent_file is None:
@@ -132,17 +93,17 @@ class KimiCLI:
             runtime,
             context=context,
         )
-        return KimiCLI(soul, session, welcome_info)
+        return KimiCLI(soul, runtime, env_overrides)
 
     def __init__(
         self,
-        soul: KimiSoul,
-        session: Session,
-        welcome_info: list[WelcomeInfoItem],
+        _soul: KimiSoul,
+        _runtime: Runtime,
+        _env_overrides: dict[str, str],
     ) -> None:
-        self._soul = soul
-        self._session = session
-        self._welcome_info = welcome_info
+        self._soul = _soul
+        self._runtime = _runtime
+        self._env_overrides = _env_overrides
 
     @property
     def soul(self) -> KimiSoul:
@@ -152,12 +113,12 @@ class KimiCLI:
     @property
     def session(self) -> Session:
         """Get the Session instance."""
-        return self._session
+        return self._runtime.session
 
     @contextlib.contextmanager
     def _app_env(self) -> Generator[None]:
         original_cwd = Path.cwd()
-        os.chdir(self._session.work_dir)
+        os.chdir(self._runtime.session.work_dir)
         try:
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -167,8 +128,46 @@ class KimiCLI:
             os.chdir(original_cwd)
 
     async def run_shell_mode(self, command: str | None = None) -> bool:
+        from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
+
+        welcome_info = [
+            WelcomeInfoItem(name="Directory", value=str(self._runtime.session.work_dir)),
+            WelcomeInfoItem(name="Session", value=self._runtime.session.id),
+        ]
+        if base_url := self._env_overrides.get("KIMI_BASE_URL"):
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="API URL",
+                    value=f"{base_url} (from KIMI_BASE_URL)",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        if not self._runtime.llm:
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="Model",
+                    value="not set, send /setup to configure",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        elif "KIMI_MODEL_NAME" in self._env_overrides:
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="Model",
+                    value=f"{self._soul.model} (from KIMI_MODEL_NAME)",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        else:
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="Model",
+                    value=self._soul.model,
+                    level=WelcomeInfoItem.Level.INFO,
+                )
+            )
         with self._app_env():
-            app = ShellApp(self._soul, welcome_info=self._welcome_info)
+            app = ShellApp(self._soul, welcome_info=welcome_info)
             return await app.run(command)
 
     async def run_print_mode(
@@ -177,16 +176,20 @@ class KimiCLI:
         output_format: OutputFormat,
         command: str | None = None,
     ) -> bool:
+        from kimi_cli.ui.print import PrintApp
+
         with self._app_env():
             app = PrintApp(
                 self._soul,
                 input_format,
                 output_format,
-                self._session.history_file,
+                self._runtime.session.history_file,
             )
             return await app.run(command)
 
     async def run_acp_server(self) -> bool:
+        from kimi_cli.ui.acp import ACPServer
+
         with self._app_env():
             app = ACPServer(self._soul)
             return await app.run()
