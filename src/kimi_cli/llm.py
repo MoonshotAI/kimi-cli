@@ -2,9 +2,6 @@ import os
 from typing import NamedTuple
 
 from kosong.base.chat_provider import ChatProvider
-from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
-from kosong.chat_provider.kimi import Kimi
-from kosong.chat_provider.openai_legacy import OpenAILegacy
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMModelCapability, LLMProvider
@@ -68,6 +65,8 @@ def create_llm(
 ) -> LLM:
     match provider.type:
         case "kimi":
+            from kosong.chat_provider.kimi import Kimi
+
             chat_provider = Kimi(
                 model=model.model,
                 base_url=provider.base_url,
@@ -81,6 +80,8 @@ def create_llm(
             if session_id:
                 chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
         case "openai_legacy":
+            from kosong.chat_provider.openai_legacy import OpenAILegacy
+
             chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
@@ -88,6 +89,8 @@ def create_llm(
                 stream=stream,
             )
         case "_chaos":
+            from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
+
             chat_provider = ChaosChatProvider(
                 model=model.model,
                 base_url=provider.base_url,

@@ -1,3 +1,4 @@
+import asyncio
 import subprocess
 import sys
 from datetime import datetime
@@ -75,9 +76,10 @@ class Runtime(NamedTuple):
         session: Session,
         yolo: bool,
     ) -> "Runtime":
-        # FIXME: do these asynchronously
-        ls_output = _list_work_dir(session.work_dir)
-        agents_md = load_agents_md(session.work_dir) or ""
+        ls_output, agents_md = await asyncio.gather(
+            asyncio.to_thread(_list_work_dir, session.work_dir),
+            asyncio.to_thread(load_agents_md, session.work_dir),
+        )
 
         return Runtime(
             config=config,
@@ -87,7 +89,7 @@ class Runtime(NamedTuple):
                 KIMI_NOW=datetime.now().astimezone().isoformat(),
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
-                KIMI_AGENTS_MD=agents_md,
+                KIMI_AGENTS_MD=agents_md or "",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),

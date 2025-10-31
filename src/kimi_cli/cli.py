@@ -7,12 +7,7 @@ from typing import Any, Literal, get_args
 
 import click
 
-from kimi_cli import KimiCLI
 from kimi_cli.constant import VERSION
-from kimi_cli.session import Session
-from kimi_cli.share import get_share_dir
-from kimi_cli.ui.print import InputFormat, OutputFormat
-from kimi_cli.utils.logging import logger
 
 
 class Reload(Exception):
@@ -22,6 +17,8 @@ class Reload(Exception):
 
 
 UIMode = Literal["shell", "print", "acp"]
+InputFormat = Literal["text", "stream-json"]
+OutputFormat = Literal["text", "stream-json"]
 
 
 @click.command(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -156,6 +153,10 @@ def kimi(
     yolo: bool,
 ):
     """Kimi, your next CLI agent."""
+    from kimi_cli.app import KimiCLI
+    from kimi_cli.session import Session
+    from kimi_cli.share import get_share_dir
+    from kimi_cli.utils.logging import logger
 
     def _noop_echo(*args: Any, **kwargs: Any):
         pass

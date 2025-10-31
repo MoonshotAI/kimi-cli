@@ -572,6 +572,7 @@ class CustomPromptSession:
     async def prompt(self) -> UserInput:
         with patch_stdout():
             command = str(await self._session.prompt_async()).strip()
+            command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
 
         # Parse rich content parts
