@@ -1,10 +1,13 @@
+import getpass
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, overload
 
 from kosong.base.message import Message
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
@@ -13,8 +16,10 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
 from kimi_cli.soul.runtime import load_agents_md
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.liveview import _LeftAlignedMarkdown
 from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.message import message_extract_text
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import ShellApp
@@ -253,6 +258,127 @@ async def compact(app: "ShellApp", args: list[str]):
     with console.status("[cyan]Compacting...[/cyan]"):
         await app.soul.compact_context()
     console.print("[green]✓[/green] Context has been compacted.")
+
+
+@meta_command(aliases=["resume"], kimi_soul_only=True)
+async def session(app: "ShellApp", args: list[str]):
+    """List all conversation sessions and switch to a previous one to continue"""
+    from kimi_cli.metadata import list_sessions
+
+    assert isinstance(app.soul, KimiSoul)
+    work_dir = app.soul._runtime.builtin_args.KIMI_WORK_DIR
+
+    session_list = list_sessions(work_dir)
+
+    if not session_list:
+        console.print("[yellow]No sessions found.[/yellow]")
+        return
+
+    # Build a list of choices for the user to select from
+    choices = []
+    session_map = {}  # Map display string to session_id
+    preview_width = 50  # Fix the width of the preview column
+
+    for _i, (session_id, _path, info) in enumerate(session_list, start=1):
+        # Build a relative time calculation
+        now = datetime.now()
+        time_diff = now - info["timestamp"]
+        if time_diff < timedelta(minutes=5):
+            time_str = "just now"
+        elif time_diff < timedelta(hours=1):
+            minutes = int(time_diff.total_seconds() / 60)
+            time_str = f"{minutes}m ago"
+        elif time_diff < timedelta(days=1):
+            hours = int(time_diff.total_seconds() / 3600)
+            time_str = f"{hours}h ago"
+        elif time_diff < timedelta(days=7):
+            days = time_diff.days
+            time_str = f"{days}d ago"
+        else:
+            time_str = info["timestamp"].strftime("%m-%d")
+
+        preview = info["first_message"] or "empty"
+        if len(preview) > preview_width - 3:
+            preview_display = preview[: preview_width - 3] + "..."
+        else:
+            preview_display = preview.ljust(preview_width)
+
+        marker = "→" if info["is_current"] else " "
+        label = f"{marker} {preview_display}  {time_str} · {info['num_messages']} msgs"
+        choices.append((label, label))
+        session_map[label] = (session_id, info)
+
+    try:
+        result = await ChoiceInput(
+            message="Select a session to switch to(↑↓ navigate, Enter select, Ctrl+C cancel):",
+            options=choices,
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if result is None:
+        return
+
+    # Get session_id and info from the selected label
+    if result not in session_map:
+        console.print("[red]Invalid selection.[/red]")
+        return
+
+    session_id, session_info = session_map[result]
+
+    if session_info["is_current"]:
+        console.print("[yellow]You are already in this session.[/yellow]")
+        return
+
+    from kimi_cli.metadata import load_session
+    from kimi_cli.soul.context import Context
+
+    new_session = load_session(work_dir, session_id)
+    if not new_session:
+        console.print("[red]Failed to load session.[/red]")
+        return
+
+    new_context = Context(file_backend=new_session.history_file)
+    restored = await new_context.restore()
+
+    if not restored or not new_context.history:
+        console.print("[yellow]The session is empty.[/yellow]")
+        return
+
+    # Switch to the new session completely
+    app.soul._context = new_context
+
+    # Update runtime to point to the new session
+    new_runtime = app.soul._runtime._replace(session=new_session)
+    app.soul._runtime = new_runtime
+
+    console.clear()
+    _render_history(list(new_context.history))
+
+    # Confirm successful switch
+    console.print("[green]✓ Session switched successfully[/green]")
+    console.print()
+
+
+def _render_history(history: list[Message]):
+    """Render the history as a table to display"""
+    username = getpass.getuser()
+
+    for msg in history:
+        if msg.role == "user":
+            text = message_extract_text(msg)
+
+            # dmail will add some system messages, skip them
+            if text and not (text.startswith("<system>") and text.endswith("</system>")):
+                console.print(f"[bold]{username}✨[/bold] {text}")
+                console.print()
+
+        elif msg.role == "assistant":
+            text = message_extract_text(msg)
+            if text:
+                md = _LeftAlignedMarkdown(text, justify="left")
+                console.print(md)
+                console.print()
 
 
 from . import (  # noqa: E402
