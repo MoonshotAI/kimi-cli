@@ -40,6 +40,16 @@ Run `kimi --help` to check if Kimi CLI is installed successfully.
 > [!IMPORTANT]
 > Due to the security checks on macOS, the first time you run `kimi` command may take 10 seconds or more depending on your system environment.
 
+## Quick Start
+
+If you want to quickly try Kimi CLI without installing it permanently, you can use `uvx`:
+
+```sh
+uvx --from kimi-cli kimi
+```
+
+This will run Kimi CLI in an isolated environment without affecting your system.
+
 ## Upgrading
 
 Upgrade Kimi CLI to the latest version with:
