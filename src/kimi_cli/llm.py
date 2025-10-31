@@ -1,5 +1,5 @@
 import os
-from typing import NamedTuple
+from typing import NamedTuple, cast, get_args
 
 from kosong.base.chat_provider import ChatProvider
 from pydantic import SecretStr
@@ -41,10 +41,18 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
                 applied["KIMI_API_KEY"] = "******"
             if model_name := os.getenv("KIMI_MODEL_NAME"):
                 model.model = model_name
-                applied["KIMI_MODEL_NAME"] = model.model
+                applied["KIMI_MODEL_NAME"] = model_name
             if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
-                applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = str(model.max_context_size)
+                applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
+            if capabilities := os.getenv("KIMI_MODEL_CAPABILITIES"):
+                caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
+                model.capabilities = set(
+                    cast(LLMModelCapability, cap)
+                    for cap in caps_lower
+                    if cap in get_args(LLMModelCapability)
+                )
+                applied["KIMI_MODEL_CAPABILITIES"] = capabilities
         case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url

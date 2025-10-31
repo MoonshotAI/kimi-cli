@@ -42,6 +42,7 @@ async def visualize(
     *,
     initial_status: StatusSnapshot,
     cancel_event: asyncio.Event | None = None,
+    markdown: bool = True,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -60,7 +61,8 @@ async def visualize(
     while True:
         # TODO: Maybe we can always have a StepLiveView here.
         #       No need to recreate for each step.
-        with StepLiveViewWithMarkdown(latest_status, cancel_event) as step:
+        LiveView = StepLiveViewWithMarkdown if markdown else StepLiveView
+        with LiveView(latest_status, cancel_event) as step:
             async with _keyboard_listener(step):
                 # spin the moon at the beginning of each step
                 with console.status("", spinner="moon"):
