@@ -105,6 +105,20 @@ def create_llm(
                 api_key=provider.api_key.get_secret_value(),
                 stream=stream,
             )
+        case "anthropic":
+            from kosong.chat_provider.anthropic import Anthropic
+
+            chat_provider = Anthropic(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                stream=stream,
+                default_max_tokens=50000,
+            ).with_generation_kwargs(
+                # TODO: support configurable values
+                thinking={"type": "enabled", "budget_tokens": 1024},
+                beta_features=["interleaved-thinking-2025-05-14"],
+            )
         case "_chaos":
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
 
