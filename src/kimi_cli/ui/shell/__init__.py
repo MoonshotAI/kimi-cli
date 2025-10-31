@@ -4,21 +4,23 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from kosong.base.message import ContentPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
+from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
-from kimi_cli.ui.signals import install_sigint_handler
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.signals import install_sigint_handler
 
 
 class ShellApp:
@@ -36,6 +38,9 @@ class ShellApp:
         self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
+
+        if isinstance(self.soul, KimiSoul):
+            await replay_recent_history(self.soul.context.history)
 
         with CustomPromptSession(lambda: self.soul.status) as prompt_session:
             while True:
@@ -65,14 +70,13 @@ class ShellApp:
                     await self._run_shell_command(user_input.command)
                     continue
 
-                command = user_input.command
-                if command.startswith("/"):
-                    logger.debug("Running meta command: {command}", command=command)
-                    await self._run_meta_command(command[1:])
+                if user_input.command.startswith("/"):
+                    logger.debug("Running meta command: {command}", command=user_input.command)
+                    await self._run_meta_command(user_input.command[1:])
                     continue
 
-                logger.info("Running agent command: {command}", command=command)
-                await self._run_soul_command(command)
+                logger.info("Running agent command: {command}", command=user_input.content)
+                await self._run_soul_command(user_input.content)
 
         return True
 
@@ -142,7 +146,7 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-    async def _run_soul_command(self, command: str) -> bool:
+    async def _run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -162,7 +166,7 @@ class ShellApp:
             # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
-                command,
+                user_input,
                 lambda wire: visualize(
                     wire, initial_status=self.soul.status, cancel_event=cancel_event
                 ),
@@ -172,6 +176,13 @@ class ShellApp:
         except LLMNotSet:
             logger.error("LLM not set")
             console.print("[red]LLM not set, send /setup to configure[/red]")
+        except LLMNotSupported as e:
+            logger.error(
+                "LLM model '{model_name}' does not support required capabilities: {capabilities}",
+                model_name=e.llm.model_name,
+                capabilities=", ".join(e.capabilities),
+            )
+            console.print(f"[red]{e}[/red]")
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:

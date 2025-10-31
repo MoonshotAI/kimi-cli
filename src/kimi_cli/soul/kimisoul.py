@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import kosong
 import tenacity
 from kosong import StepResult
-from kosong.base.message import Message
+from kosong.base.message import ContentPart, ImageURLPart, Message
 from kosong.chat_provider import (
     APIConnectionError,
     APIStatusError,
@@ -16,7 +16,14 @@ from kosong.chat_provider import (
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, Soul, StatusSnapshot, wire_send
+from kimi_cli.soul import (
+    LLMNotSet,
+    LLMNotSupported,
+    MaxStepsReached,
+    Soul,
+    StatusSnapshot,
+    wire_send,
+)
 from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
@@ -53,7 +60,6 @@ class KimiSoul(Soul):
             agent (Agent): The agent to run.
             runtime (Runtime): Runtime parameters and states.
             context (Context): The context of the agent.
-            loop_control (LoopControl): The control parameters for the agent loop.
         """
         self._agent = agent
         self._runtime = runtime
@@ -86,6 +92,10 @@ class KimiSoul(Soul):
         return StatusSnapshot(context_usage=self._context_usage)
 
     @property
+    def context(self) -> Context:
+        return self._context
+
+    @property
     def _context_usage(self) -> float:
         if self._runtime.llm is not None:
             return self._context.token_count / self._runtime.llm.max_context_size
@@ -94,9 +104,16 @@ class KimiSoul(Soul):
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
-    async def run(self, user_input: str):
+    async def run(self, user_input: str | list[ContentPart]):
         if self._runtime.llm is None:
             raise LLMNotSet()
+
+        if (
+            isinstance(user_input, list)
+            and any(isinstance(part, ImageURLPart) for part in user_input)
+            and not self._runtime.llm.supports_image_in
+        ):
+            raise LLMNotSupported(self._runtime.llm, ["image_in"])
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(Message(role="user", content=user_input))

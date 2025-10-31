@@ -39,7 +39,11 @@ def config() -> Config:
 @pytest.fixture
 def llm() -> LLM:
     """Create a LLM instance."""
-    return LLM(chat_provider=MockChatProvider([]), max_context_size=100_000)
+    return LLM(
+        chat_provider=MockChatProvider([]),
+        max_context_size=100_000,
+        capabilities=set(),
+    )
 
 
 @pytest.fixture

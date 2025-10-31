@@ -73,9 +73,9 @@ def _listen_for_keyboard_unix(
     try:
         while not cancel.is_set():
             try:
-                c = sys.stdin.read(1)
+                c = sys.stdin.buffer.read(1)
             except (OSError, ValueError):
-                c = ""
+                c = b""
 
             if not c:
                 if cancel.is_set():
@@ -83,15 +83,15 @@ def _listen_for_keyboard_unix(
                 time.sleep(0.01)
                 continue
 
-            if c == "\x1b":
+            if c == b"\x1b":
                 sequence = c
                 for _ in range(2):
                     if cancel.is_set():
                         break
                     try:
-                        fragment = sys.stdin.read(1)
+                        fragment = sys.stdin.buffer.read(1)
                     except (OSError, ValueError):
-                        fragment = ""
+                        fragment = b""
                     if not fragment:
                         break
                     sequence += fragment
@@ -101,11 +101,11 @@ def _listen_for_keyboard_unix(
                 event = _ARROW_KEY_MAP.get(sequence)
                 if event is not None:
                     emit(event)
-                elif sequence == "\x1b":
+                elif sequence == b"\x1b":
                     emit(KeyEvent.ESCAPE)
-            elif c in ("\r", "\n"):
+            elif c in (b"\r", b"\n"):
                 emit(KeyEvent.ENTER)
-            elif c == "\t":
+            elif c == b"\t":
                 emit(KeyEvent.TAB)
     finally:
         # restore the terminal settings
@@ -133,7 +133,22 @@ def _listen_for_keyboard_windows(
                 if event is not None:
                     emit(event)
             elif c == b"\x1b":
-                emit(KeyEvent.ESCAPE)
+                sequence = c
+                for _ in range(2):
+                    if cancel.is_set():
+                        break
+                    fragment = msvcrt.getch() if msvcrt.kbhit() else b""
+                    if not fragment:
+                        break
+                    sequence += fragment
+                    if sequence in _ARROW_KEY_MAP:
+                        break
+
+                event = _ARROW_KEY_MAP.get(sequence)
+                if event is not None:
+                    emit(event)
+                elif sequence == b"\x1b":
+                    emit(KeyEvent.ESCAPE)
             elif c in (b"\r", b"\n"):
                 emit(KeyEvent.ENTER)
             elif c == b"\t":
@@ -144,11 +159,11 @@ def _listen_for_keyboard_windows(
             time.sleep(0.01)
 
 
-_ARROW_KEY_MAP: dict[str, KeyEvent] = {
-    "\x1b[A": KeyEvent.UP,
-    "\x1b[B": KeyEvent.DOWN,
-    "\x1b[C": KeyEvent.RIGHT,
-    "\x1b[D": KeyEvent.LEFT,
+_ARROW_KEY_MAP: dict[bytes, KeyEvent] = {
+    b"\x1b[A": KeyEvent.UP,
+    b"\x1b[B": KeyEvent.DOWN,
+    b"\x1b[C": KeyEvent.RIGHT,
+    b"\x1b[D": KeyEvent.LEFT,
 }
 
 _WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {

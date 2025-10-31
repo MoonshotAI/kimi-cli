@@ -91,7 +91,7 @@ def test_tool_error_result():
     assert message.tool_call_id == "call_123"
     assert isinstance(message.content, list)
     assert len(message.content) == 2  # System message + error output
-    assert message.content[0] == system("Error occurred")
+    assert message.content[0] == system("ERROR: Error occurred")
     assert message.content[1] == TextPart(text="Error details")
 
 
@@ -108,7 +108,7 @@ def test_tool_error_without_output():
     assert message.role == "tool"
     assert isinstance(message.content, list)
     assert len(message.content) == 1  # Only system message
-    assert message.content[0] == system("Error occurred")
+    assert message.content[0] == system("ERROR: Error occurred")
 
 
 def test_tool_ok_with_text_only():
