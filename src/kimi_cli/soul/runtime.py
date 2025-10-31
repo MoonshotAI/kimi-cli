@@ -46,7 +46,7 @@ def _list_work_dir(work_dir: Path) -> str:
             capture_output=True,
             text=True,
             encoding="utf-8",
-            errors="replace",
+            errors="ignore",
         )
     else:
         ls = subprocess.run(
@@ -54,7 +54,7 @@ def _list_work_dir(work_dir: Path) -> str:
             capture_output=True,
             text=True,
             encoding="utf-8",
-            errors="replace",
+            errors="ignore",
         )
     return ls.stdout.strip()
 
