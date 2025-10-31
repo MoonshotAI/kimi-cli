@@ -83,7 +83,7 @@ class PatchFile(CallableTool2[Params]):
                 return ToolRejectedError()
 
             # Read the file content
-            async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:
+            async with aiofiles.open(p, encoding="utf-8", errors="ignore") as f:
                 original_content = await f.read()
 
             # Create patch object directly from string (no temporary file needed!)
@@ -119,7 +119,7 @@ class PatchFile(CallableTool2[Params]):
                 )
 
             # Read the modified content to check if changes were made
-            async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:
+            async with aiofiles.open(p, encoding="utf-8", errors="ignore") as f:
                 modified_content = await f.read()
 
             # Check if any changes were made

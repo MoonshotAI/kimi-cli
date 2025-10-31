@@ -100,7 +100,7 @@ class StrReplaceFile(CallableTool2[Params]):
                 return ToolRejectedError()
 
             # Read the file content
-            async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:
+            async with aiofiles.open(p, encoding="utf-8", errors="ignore") as f:
                 content = await f.read()
 
             original_content = content
