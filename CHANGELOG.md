@@ -9,6 +9,18 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.45] - 2025-10-31
+
+### Added
+
+- Allow `KIMI_MODEL_CAPABILITIES` environment variable to override model capabilities
+- Add `--no-markdown` option to disable markdown rendering
+- Support `openai_responses` LLM provider type
+
+### Fixed
+
+- Fix crash when continuing a session
+
 ## [0.44] - 2025-10-30
 
 ### Changed
