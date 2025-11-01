@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import aiofiles
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
@@ -47,8 +47,9 @@ class ReadFile(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs):
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
     @override
@@ -84,7 +85,7 @@ class ReadFile(CallableTool2[Params]):
 
             lines: list[str] = []
             n_bytes = 0
-            truncated_line_numbers = []
+            truncated_line_numbers: list[int] = []
             max_lines_reached = False
             max_bytes_reached = False
             async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:
@@ -108,7 +109,7 @@ class ReadFile(CallableTool2[Params]):
                         break
 
             # Format output with line numbers like `cat -n`
-            lines_with_no = []
+            lines_with_no: list[str] = []
             for line_num, line in zip(
                 range(params.line_offset, params.line_offset + len(lines)), lines, strict=True
             ):

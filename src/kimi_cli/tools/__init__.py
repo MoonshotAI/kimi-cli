@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
+from typing import Any, cast
 
-import streamingjson
+import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.utils.typing import JsonType
 
 from kimi_cli.utils.string import shorten_middle
@@ -31,12 +32,16 @@ def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
                 return None
             if not isinstance(curr_args["todos"], list):
                 return None
-            for todo in curr_args["todos"]:
-                if not isinstance(todo, dict) or not todo.get("title"):
+
+            todos = cast(list[dict[str, Any]], curr_args["todos"])
+            for todo in todos:
+                title = todo.get("title")
+                if not isinstance(title, str) or not title:
                     continue
-                subtitle += f"• {todo['title']}"
-                if todo.get("status"):
-                    subtitle += f" [{todo['status']}]"
+                subtitle += f"• {title}"
+                status = todo.get("status")
+                if isinstance(status, str):
+                    subtitle += f" [{status}]"
                 subtitle += "\n"
             return "\n" + subtitle.strip()
         case "Bash":
@@ -72,7 +77,9 @@ def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
                 return None
             subtitle = str(curr_args["url"])
         case _:
-            subtitle = "".join(lexer.json_content)
+            # lexer.json_content is list[str] based on streamingjson source code
+            content: list[str] = cast(list[str], lexer.json_content)  # pyright: ignore[reportUnknownMemberType]
+            subtitle = "".join(content)
     if tool_name not in ["SetTodoList"]:
         subtitle = shorten_middle(subtitle, width=50)
     return subtitle

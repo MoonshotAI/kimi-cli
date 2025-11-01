@@ -1,12 +1,17 @@
+from typing import Any, TypeVar
+
 import fastmcp
 import mcp
 from fastmcp.client.client import CallToolResult
+from fastmcp.client.transports import ClientTransport
 from kosong.base.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
 from kosong.tooling import CallableTool, ToolOk, ToolReturnType
 
+MCP_TRANSPORTS = TypeVar("MCP_TRANSPORTS", bound=ClientTransport)
+
 
 class MCPTool(CallableTool):
-    def __init__(self, mcp_tool: mcp.Tool, client: fastmcp.Client, **kwargs):
+    def __init__(self, mcp_tool: mcp.Tool, client: fastmcp.Client[MCP_TRANSPORTS], **kwargs: Any):
         super().__init__(
             name=mcp_tool.name,
             description=mcp_tool.description or "",
@@ -16,7 +21,7 @@ class MCPTool(CallableTool):
         self._mcp_tool = mcp_tool
         self._client = client
 
-    async def __call__(self, *args, **kwargs) -> ToolReturnType:
+    async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnType:
         async with self._client as client:
             result = await client.call_tool(self._mcp_tool.name, kwargs, timeout=20)
             return convert_tool_result(result)

@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import aiofiles.os
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
@@ -38,7 +38,7 @@ class Glob(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs):
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
 

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 from kosong.tooling import CallableTool2, ToolError, ToolReturnType
 
@@ -8,12 +8,12 @@ from kimi_cli.soul.denwarenji import DenwaRenji, DenwaRenjiError, DMail
 NAME = "SendDMail"
 
 
-class SendDMail(CallableTool2):
+class SendDMail(CallableTool2[DMail]):
     name: str = NAME
     description: str = (Path(__file__).parent / "dmail.md").read_text(encoding="utf-8")
     params: type[DMail] = DMail
 
-    def __init__(self, denwa_renji: DenwaRenji, **kwargs):
+    def __init__(self, denwa_renji: DenwaRenji, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._denwa_renji = denwa_renji
 

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 from kosong.tooling import CallableTool2, ToolReturnType
 from pydantic import BaseModel, Field, ValidationError
@@ -39,7 +39,7 @@ class SearchWeb(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "search.md", {})
     params: type[Params] = Params
 
-    def __init__(self, config: Config, **kwargs):
+    def __init__(self, config: Config, **kwargs: Any):
         super().__init__(**kwargs)
         if config.services.moonshot_search is not None:
             self._base_url = config.services.moonshot_search.base_url

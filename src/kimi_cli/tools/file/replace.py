@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import aiofiles
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
@@ -32,7 +32,7 @@ class StrReplaceFile(CallableTool2[Params]):
     description: str = (Path(__file__).parent / "replace.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs: Any):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
