@@ -1,0 +1,1 @@
+Use a dedicated reading agent to discover and summarize project files that are relevant to the caller's objective. Provide a structured report with cited file paths and the key snippets that support the findings.

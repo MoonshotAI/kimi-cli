@@ -1,0 +1,23 @@
+diff --git a/sklearn/compose/_column_transformer.py b/sklearn/compose/_column_transformer.py
+index 4eddd12b1..ff326f9cb 100644
+--- a/sklearn/compose/_column_transformer.py
++++ b/sklearn/compose/_column_transformer.py
+@@ -302,6 +302,18 @@ class ColumnTransformer(TransformerMixin, _BaseComposition):
+         )
+         for trans in transformers:
+             _safe_set_output(trans, transform=transform)
++        
++        # Handle remainder transformer if it's an estimator
++        # Check both pre-fit (self.remainder) and post-fit (self._remainder) states
++        remainder_trans = None
++        if hasattr(self, "_remainder") and self._remainder[2]:  # Post-fit with remainder columns
++            remainder_trans = self._remainder[1]
++        elif hasattr(self, "remainder") and self.remainder not in {"passthrough", "drop"}:
++            # Pre-fit state - check if remainder is an estimator
++            remainder_trans = self.remainder
++        
++        if remainder_trans is not None and remainder_trans not in {"passthrough", "drop"}:
++            _safe_set_output(remainder_trans, transform=transform)
+ 
+         return self
+ 
