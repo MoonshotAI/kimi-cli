@@ -12,7 +12,7 @@ from kimi_cli.utils.logging import logger
 class LLMProvider(BaseModel):
     """LLM provider configuration."""
 
-    type: Literal["kimi", "openai_legacy", "openai_responses", "_chaos"]
+    type: Literal["kimi", "openai_legacy", "openai_responses", "anthropic", "_chaos"]
     """Provider type"""
     base_url: str
     """API base URL"""
