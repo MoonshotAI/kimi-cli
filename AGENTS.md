@@ -178,9 +178,16 @@ Builtin variables available in system prompts:
 
 ## Version History
 
-Current version: 0.27 (as of 2025-10-11)
+Current version: 0.45 (as of 2025-10-31)
 
 Recent changes include:
+- Support for `KIMI_MODEL_CAPABILITIES` environment variable to override model capabilities
+- Added `--no-markdown` option to disable markdown rendering
+- Support `openai_responses` LLM provider type
+- Basic Windows support (experimental)
+- Display warnings when base URL or API key is overridden in environment variables
+- Support image input if the LLM model supports it
+- Replay recent context history when continuing a session
 - MCP configuration support
 - Agent file extension mechanism
 - Tool exclusion capabilities
