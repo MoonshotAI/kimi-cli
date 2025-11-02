@@ -14,7 +14,7 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
         message = tool_result.result.message
         if isinstance(tool_result.result, ToolRuntimeError):
             message += "\nThis is an unexpected error and the tool is probably not working."
-        content: list[ContentPart] = [system(message)]
+        content: list[ContentPart] = [system(f"ERROR: {message}")]
         if tool_result.result.output:
             content.append(TextPart(text=tool_result.result.output))
         return [

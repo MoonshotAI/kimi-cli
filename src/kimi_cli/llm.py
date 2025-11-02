@@ -1,19 +1,26 @@
 import os
-from typing import NamedTuple
+from typing import NamedTuple, cast, get_args
 
 from kosong.base.chat_provider import ChatProvider
-from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
-from kosong.chat_provider.kimi import Kimi
-from kosong.chat_provider.openai_legacy import OpenAILegacy
 from pydantic import SecretStr
 
-from kimi_cli.config import LLMModel, LLMProvider
+from kimi_cli.config import LLMModel, LLMModelCapability, LLMProvider
 from kimi_cli.constant import USER_AGENT
 
 
 class LLM(NamedTuple):
     chat_provider: ChatProvider
     max_context_size: int
+    capabilities: set[LLMModelCapability]
+    # TODO: these additional fields should be moved to ChatProvider
+
+    @property
+    def model_name(self) -> str:
+        return self.chat_provider.model_name
+
+    @property
+    def supports_image_in(self) -> bool:
+        return "image_in" in self.capabilities
 
 
 def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
@@ -34,11 +41,19 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
                 applied["KIMI_API_KEY"] = "******"
             if model_name := os.getenv("KIMI_MODEL_NAME"):
                 model.model = model_name
-                applied["KIMI_MODEL_NAME"] = model.model
+                applied["KIMI_MODEL_NAME"] = model_name
             if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
-                applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = str(model.max_context_size)
-        case "openai_legacy":
+                applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
+            if capabilities := os.getenv("KIMI_MODEL_CAPABILITIES"):
+                caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
+                model.capabilities = set(
+                    cast(LLMModelCapability, cap)
+                    for cap in caps_lower
+                    if cap in get_args(LLMModelCapability)
+                )
+                applied["KIMI_MODEL_CAPABILITIES"] = capabilities
+        case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
             if api_key := os.getenv("OPENAI_API_KEY"):
@@ -58,6 +73,8 @@ def create_llm(
 ) -> LLM:
     match provider.type:
         case "kimi":
+            from kosong.chat_provider.kimi import Kimi
+
             chat_provider = Kimi(
                 model=model.model,
                 base_url=provider.base_url,
@@ -65,19 +82,32 @@ def create_llm(
                 stream=stream,
                 default_headers={
                     "User-Agent": USER_AGENT,
-                    **provider.custom_headers,
+                    **(provider.custom_headers or {}),
                 },
             )
             if session_id:
                 chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
         case "openai_legacy":
+            from kosong.chat_provider.openai_legacy import OpenAILegacy
+
             chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
                 stream=stream,
             )
+        case "openai_responses":
+            from kosong.chat_provider.openai_responses import OpenAIResponses
+
+            chat_provider = OpenAIResponses(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                stream=stream,
+            )
         case "_chaos":
+            from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
+
             chat_provider = ChaosChatProvider(
                 model=model.model,
                 base_url=provider.base_url,
@@ -88,4 +118,8 @@ def create_llm(
                 ),
             )
 
-    return LLM(chat_provider=chat_provider, max_context_size=model.max_context_size)
+    return LLM(
+        chat_provider=chat_provider,
+        max_context_size=model.max_context_size,
+        capabilities=model.capabilities or set(),
+    )

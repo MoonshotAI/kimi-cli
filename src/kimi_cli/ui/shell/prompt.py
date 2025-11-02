@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import contextlib
 import getpass
 import json
@@ -10,11 +11,15 @@ from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
 from hashlib import md5
+from io import BytesIO
 from pathlib import Path
 from typing import override
 
+from kosong.base.message import ContentPart, ImageURLPart, TextPart
+from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
+from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
     Completer,
     Completion,
@@ -35,6 +40,9 @@ from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.string import random_string
+
+PROMPT_SYMBOL = "✨"
 
 
 class MetaCommandCompleter(Completer):
@@ -361,6 +369,9 @@ class PromptMode(Enum):
 class UserInput(BaseModel):
     mode: PromptMode
     command: str
+    """The plain text representation of the user input."""
+    content: list[ContentPart]
+    """The rich content parts."""
 
     def __str__(self) -> str:
         return self.command
@@ -378,6 +389,11 @@ def toast(message: str, duration: float = 5.0) -> None:
     _toast_queue.put_nowait((message, duration))
 
 
+_ATTACHMENT_PLACEHOLDER_RE = re.compile(
+    r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
+)
+
+
 class CustomPromptSession:
     def __init__(self, status_provider: Callable[[], StatusSnapshot]):
         history_dir = get_share_dir() / "user-history"
@@ -387,6 +403,8 @@ class CustomPromptSession:
         self._status_provider = status_provider
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
+        self._attachment_parts: dict[str, ContentPart] = {}
+        """Mapping from attachment id to ContentPart."""
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -434,12 +452,20 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
+        @_kb.add("c-v", eager=True)
+        def _paste(event: KeyPressEvent) -> None:
+            if self._try_paste_image(event):
+                return
+            clipboard_data = event.app.clipboard.get_data()
+            event.current_buffer.paste_clipboard_data(clipboard_data)
+
         self._session = PromptSession(
             message=self._render_message,
-            prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
+            # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
             complete_while_typing=True,
             key_bindings=_kb,
+            clipboard=PyperclipClipboard(),
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
             enable_suspend=True,
@@ -450,7 +476,7 @@ class CustomPromptSession:
         self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
-        symbol = "✨" if self._mode == PromptMode.AGENT else "$"
+        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else "$"
         return FormattedText([("bold", f"{getpass.getuser()}{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
@@ -503,12 +529,76 @@ class CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
+        self._attachment_parts.clear()
+
+    def _try_paste_image(self, event: KeyPressEvent) -> bool:
+        """Try to paste an image from the clipboard. Return True if successful."""
+        # Try get image from clipboard
+        image = ImageGrab.grabclipboard()
+        if isinstance(image, list):
+            for item in image:
+                try:
+                    with Image.open(item) as img:
+                        image = img.copy()
+                    break
+                except Exception:
+                    continue
+            else:
+                image = None
+
+        if image is None:
+            return False
+
+        attachment_id = f"{random_string(8)}.png"
+        png_bytes = BytesIO()
+        image.save(png_bytes, format="PNG")
+        png_base64 = base64.b64encode(png_bytes.getvalue()).decode("ascii")
+        image_part = ImageURLPart(
+            image_url=ImageURLPart.ImageURL(
+                url=f"data:image/png;base64,{png_base64}", id=attachment_id
+            )
+        )
+        self._attachment_parts[attachment_id] = image_part
+        logger.debug(
+            "Pasted image from clipboard: {attachment_id}, {image_size}",
+            attachment_id=attachment_id,
+            image_size=image.size,
+        )
+
+        placeholder = f"[image:{attachment_id},{image.width}x{image.height}]"
+        event.current_buffer.insert_text(placeholder)
+        event.app.invalidate()
+        return True
 
     async def prompt(self) -> UserInput:
         with patch_stdout():
             command = str(await self._session.prompt_async()).strip()
+            command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
-        return UserInput(mode=self._mode, command=command)
+
+        # Parse rich content parts
+        content: list[ContentPart] = []
+        remaining_command = command
+        while match := _ATTACHMENT_PLACEHOLDER_RE.search(remaining_command):
+            start, end = match.span()
+            if start > 0:
+                content.append(TextPart(text=remaining_command[:start]))
+            attachment_id = match.group("id")
+            part = self._attachment_parts.get(attachment_id)
+            if part is not None:
+                content.append(part)
+            else:
+                logger.warning(
+                    "Attachment placeholder found but no matching attachment part: {placeholder}",
+                    placeholder=match.group(0),
+                )
+                content.append(TextPart(text=match.group(0)))
+            remaining_command = remaining_command[end:]
+
+        if remaining_command.strip():
+            content.append(TextPart(text=remaining_command.strip()))
+
+        return UserInput(mode=self._mode, content=content, command=command)
 
     def _append_history_entry(self, text: str) -> None:
         entry = _HistoryEntry(content=text.strip())
@@ -559,6 +649,7 @@ class CustomPromptSession:
             shortcuts = [
                 "ctrl-x: switch mode",
                 "ctrl-j: newline",
+                "ctrl-v: paste",
                 "ctrl-d: exit",
             ]
             for shortcut in shortcuts:

@@ -4,6 +4,9 @@ from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
+from kosong.base.message import ContentPart
+
+from kimi_cli.llm import LLM
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
@@ -13,6 +16,19 @@ class LLMNotSet(Exception):
     """Raised when the LLM is not set."""
 
     pass
+
+
+class LLMNotSupported(Exception):
+    """Raised when the LLM does not have required capabilities."""
+
+    def __init__(self, llm: LLM, capabilities: list[str]):
+        self.llm = llm
+        self.capabilities = capabilities
+        capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
+        super().__init__(
+            f"The LLM model '{llm.model_name}' does not support required {capabilities_str}: "
+            f"{', '.join(capabilities)}."
+        )
 
 
 class MaxStepsReached(Exception):
@@ -47,15 +63,16 @@ class Soul(Protocol):
         """The current status of the soul. The returned value is immutable."""
         ...
 
-    async def run(self, user_input: str):
+    async def run(self, user_input: str | list[ContentPart]):
         """
         Run the agent with the given user input until the max steps or no more tool calls.
 
         Args:
-            user_input (str): The user input to the agent.
+            user_input (str | list[ContentPart]): The user input to the agent.
 
         Raises:
             LLMNotSet: When the LLM is not set.
+            LLMNotSupported: When the LLM does not have required capabilities.
             ChatProviderError: When the LLM provider returns an error.
             MaxStepsReached: When the maximum number of steps is reached.
             asyncio.CancelledError: When the run is cancelled by user.
@@ -73,7 +90,7 @@ class RunCancelled(Exception):
 
 async def run_soul(
     soul: "Soul",
-    user_input: str,
+    user_input: str | list[ContentPart],
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,
 ) -> None:
@@ -85,6 +102,7 @@ async def run_soul(
 
     Raises:
         LLMNotSet: When the LLM is not set.
+        LLMNotSupported: When the LLM does not have required capabilities.
         ChatProviderError: When the LLM provider returns an error.
         MaxStepsReached: When the maximum number of steps is reached.
         RunCancelled: When the run is cancelled by the cancel event.
