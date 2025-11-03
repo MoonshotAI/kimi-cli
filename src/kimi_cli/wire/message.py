@@ -164,6 +164,6 @@ def _serialize_tool_output(
     if isinstance(output, str):
         return output
     elif isinstance(output, ContentPart):
-        return output.model_dump_json(exclude_none=True)
+        return output.model_dump(mode='json', exclude_none=True)
     else:  # Sequence[ContentPart]
-        return [part.model_dump_json(exclude_none=True) for part in output]
+        return [part.model_dump(mode='json', exclude_none=True) for part in output]
