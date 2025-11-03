@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import override
+from typing import Any, Literal, override
 
 import aiofiles
-import patch_ng
+import patch_ng  # pyright: ignore[reportMissingTypeStubs]
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
@@ -10,6 +10,36 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError
+
+
+def _parse_patch(diff_bytes: bytes) -> patch_ng.PatchSet | None:
+    """Parse patch from bytes, returning PatchSet or None on error.
+
+    This wrapper provides type hints for the untyped patch_ng.fromstring function.
+    """
+    result: patch_ng.PatchSet | Literal[False] = patch_ng.fromstring(diff_bytes)  # pyright: ignore[reportUnknownMemberType]
+    return result if result is not False else None
+
+
+def _count_hunks(patch_set: patch_ng.PatchSet) -> int:
+    """Count total hunks across all items in a PatchSet.
+
+    This wrapper provides type hints for the untyped patch_ng library.
+    From source code inspection: PatchSet.items is list[Patch], Patch.hunks is list[Hunk].
+    Type ignore needed because patch_ng lacks type annotations.
+    """
+    items: list[patch_ng.Patch] = patch_set.items  # pyright: ignore[reportUnknownMemberType]
+    # Each Patch has a hunks attribute (list[Hunk])
+    return sum(len(item.hunks) for item in items)  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+
+
+def _apply_patch(patch_set: patch_ng.PatchSet, root: str) -> bool:
+    """Apply a patch to files under the given root directory.
+
+    This wrapper provides type hints for the untyped patch_ng.apply method.
+    """
+    success: Any = patch_set.apply(root=root)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return bool(success)  # pyright: ignore[reportUnknownArgumentType]
 
 
 class Params(BaseModel):
@@ -22,7 +52,7 @@ class PatchFile(CallableTool2[Params]):
     description: str = (Path(__file__).parent / "patch.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs: Any):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
@@ -87,10 +117,10 @@ class PatchFile(CallableTool2[Params]):
                 original_content = await f.read()
 
             # Create patch object directly from string (no temporary file needed!)
-            patch_set = patch_ng.fromstring(params.diff.encode("utf-8"))
+            patch_set = _parse_patch(params.diff.encode("utf-8"))
 
-            # Handle case where patch_ng.fromstring returns False on parse errors
-            if not patch_set or patch_set is True:
+            # Handle case where parsing failed
+            if patch_set is None:
                 return ToolError(
                     message=(
                         "Failed to parse diff content: invalid patch format or no valid hunks found"
@@ -99,7 +129,7 @@ class PatchFile(CallableTool2[Params]):
                 )
 
             # Count total hunks across all items
-            total_hunks = sum(len(item.hunks) for item in patch_set.items)
+            total_hunks = _count_hunks(patch_set)
 
             if total_hunks == 0:
                 return ToolError(
@@ -108,7 +138,7 @@ class PatchFile(CallableTool2[Params]):
                 )
 
             # Apply the patch
-            success = patch_set.apply(root=str(p.parent))
+            success = _apply_patch(patch_set, str(p.parent))
 
             if not success:
                 return ToolError(
