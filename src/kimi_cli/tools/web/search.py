@@ -44,7 +44,7 @@ class SearchWeb(CallableTool2[Params]):
         if config.services.moonshot_search is not None:
             self._base_url = config.services.moonshot_search.base_url
             self._api_key = config.services.moonshot_search.api_key.get_secret_value()
-            self._custom_headers = config.services.moonshot_search.custom_headers
+            self._custom_headers = config.services.moonshot_search.custom_headers or {}
         else:
             self._base_url = ""
             self._api_key = ""

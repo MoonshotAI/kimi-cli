@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
 
-from kosong.base.message import ContentPart, TextPart, ToolCall, ToolCallPart
+from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 
 from kimi_cli.soul import StatusSnapshot
@@ -42,6 +42,7 @@ async def visualize(
     *,
     initial_status: StatusSnapshot,
     cancel_event: asyncio.Event | None = None,
+    markdown: bool = True,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -60,7 +61,8 @@ async def visualize(
     while True:
         # TODO: Maybe we can always have a StepLiveView here.
         #       No need to recreate for each step.
-        with StepLiveViewWithMarkdown(latest_status, cancel_event) as step:
+        LiveView = StepLiveViewWithMarkdown if markdown else StepLiveView
+        with LiveView(latest_status, cancel_event) as step:
             async with _keyboard_listener(step):
                 # spin the moon at the beginning of each step
                 with console.status("", spinner="moon"):
@@ -78,7 +80,9 @@ async def visualize(
                 while True:
                     match msg:
                         case TextPart(text=text):
-                            step.append_text(text)
+                            step.append_text(text, mode="text")
+                        case ThinkPart(think=think):
+                            step.append_text(think, mode="think")
                         case ContentPart():
                             # TODO: support more content parts
                             step.append_text(f"[{msg.__class__.__name__}]")

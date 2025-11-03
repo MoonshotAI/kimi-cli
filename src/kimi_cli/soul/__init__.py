@@ -6,6 +6,7 @@ from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from kosong.base.message import ContentPart
 
+from kimi_cli.llm import LLM
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
@@ -15,6 +16,19 @@ class LLMNotSet(Exception):
     """Raised when the LLM is not set."""
 
     pass
+
+
+class LLMNotSupported(Exception):
+    """Raised when the LLM does not have required capabilities."""
+
+    def __init__(self, llm: LLM, capabilities: list[str]):
+        self.llm = llm
+        self.capabilities = capabilities
+        capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
+        super().__init__(
+            f"The LLM model '{llm.model_name}' does not support required {capabilities_str}: "
+            f"{', '.join(capabilities)}."
+        )
 
 
 class MaxStepsReached(Exception):
@@ -58,6 +72,7 @@ class Soul(Protocol):
 
         Raises:
             LLMNotSet: When the LLM is not set.
+            LLMNotSupported: When the LLM does not have required capabilities.
             ChatProviderError: When the LLM provider returns an error.
             MaxStepsReached: When the maximum number of steps is reached.
             asyncio.CancelledError: When the run is cancelled by user.
@@ -87,6 +102,7 @@ async def run_soul(
 
     Raises:
         LLMNotSet: When the LLM is not set.
+        LLMNotSupported: When the LLM does not have required capabilities.
         ChatProviderError: When the LLM provider returns an error.
         MaxStepsReached: When the maximum number of steps is reached.
         RunCancelled: When the run is cancelled by the cancel event.

@@ -12,18 +12,21 @@ from kimi_cli.utils.logging import logger
 class LLMProvider(BaseModel):
     """LLM provider configuration."""
 
-    type: Literal["kimi", "openai_legacy", "_chaos"]
+    type: Literal["kimi", "openai_legacy", "openai_responses", "_chaos"]
     """Provider type"""
     base_url: str
     """API base URL"""
     api_key: SecretStr
     """API key"""
-    custom_headers: dict[str, str] = Field(default_factory=dict)
+    custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
 
     @field_serializer("api_key", when_used="json")
     def dump_secret(self, v: SecretStr):
         return v.get_secret_value()
+
+
+LLMModelCapability = Literal["image_in"]
 
 
 class LLMModel(BaseModel):
@@ -35,6 +38,8 @@ class LLMModel(BaseModel):
     """Model name"""
     max_context_size: int
     """Maximum context size (unit: tokens)"""
+    capabilities: set[LLMModelCapability] | None = None
+    """Model capabilities"""
 
 
 class LoopControl(BaseModel):
@@ -53,7 +58,7 @@ class MoonshotSearchConfig(BaseModel):
     """Base URL for Moonshot Search service."""
     api_key: SecretStr
     """API key for Moonshot Search service."""
-    custom_headers: dict[str, str] = Field(default_factory=dict)
+    custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests."""
 
     @field_serializer("api_key", when_used="json")

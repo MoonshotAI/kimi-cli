@@ -49,7 +49,8 @@ jobs:
         run: make build
 
       - name: Smoke test binary --help
-        run: ./dist/kimi --help
+        run: |
+          ./dist/kimi --help | grep "Kimi" || { echo "Error: kimi --help did not produce expected output"; exit 1; }
 
       - name: Upload binary artifact
         if: success()

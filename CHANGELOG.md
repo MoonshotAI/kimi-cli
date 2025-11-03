@@ -9,6 +9,41 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.45] - 2025-10-31
+
+### Added
+
+- Allow `KIMI_MODEL_CAPABILITIES` environment variable to override model capabilities
+- Add `--no-markdown` option to disable markdown rendering
+- Support `openai_responses` LLM provider type
+
+### Fixed
+
+- Fix crash when continuing a session
+
+## [0.44] - 2025-10-30
+
+### Changed
+
+- Improve startup time
+
+### Fixed
+
+- Fix potential invalid bytes in user input
+
+## [0.43] - 2025-10-30
+
+### Added
+
+- Basic Windows support (experimental)
+- Display warnings when base URL or API key is overridden in environment variables
+- Support image input if the LLM model supports it
+- Replay recent context history when continuing a session
+
+### Fixed
+
+- Ensure new line after executing shell commands
+
 ## [0.42] - 2025-10-28
 
 ### Added

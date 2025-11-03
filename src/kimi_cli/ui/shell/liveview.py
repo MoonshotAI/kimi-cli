@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+from typing import Literal
 
 import streamingjson
 from kosong.base.message import ToolCall, ToolCallPart
@@ -129,6 +130,7 @@ class StepLiveView:
     def __init__(self, status: StatusSnapshot, cancel_event: asyncio.Event | None = None):
         # message content
         self._line_buffer = Text("")
+        self._last_text_mode: Literal["text", "think", ""] = ""
 
         # tool call
         self._tool_calls: dict[str, _ToolCallDisplay] = {}
@@ -187,7 +189,21 @@ class StepLiveView:
         """
         console.print(renderable)
 
-    def append_text(self, text: str):
+    def append_text(self, text: str, mode: Literal["text", "think"] = "text"):
+        if not text:
+            # Ignore empty message
+            return
+        if self._last_text_mode != mode:
+            if self._line_buffer:
+                self._push_out(self._line_buffer)
+                self._push_out("")  # Add extra line between different modes
+                self._line_buffer.plain = ""
+            self._last_text_mode = mode
+            match mode:
+                case "text":
+                    self._line_buffer.style = ""
+                case "think":
+                    self._line_buffer.style = "grey50 italic"
         lines = text.split("\n")
         prev_is_empty = not self._line_buffer
         for line in lines[:-1]:
@@ -313,7 +329,14 @@ class StepLiveViewWithMarkdown(StepLiveView):
         self._buffer_status_active = False
         self._buffer_status_obj: Status | None = None
 
-    def append_text(self, text: str):
+    def append_text(self, text: str, mode: Literal["text", "think"] = "text"):
+        if not text:
+            # Ignore empty message
+            return
+        if self._last_text_mode != mode:
+            if self._flush_markdown():
+                self._push_out("")  # Add extra line between different modes
+            self._last_text_mode = mode
         if not self._pending_markdown_parts:
             self._show_thinking_status()
         self._pending_markdown_parts.append(text)
@@ -334,14 +357,22 @@ class StepLiveViewWithMarkdown(StepLiveView):
         self._flush_markdown()
         return super().__exit__(exc_type, exc_value, traceback)
 
-    def _flush_markdown(self):
+    def _flush_markdown(self) -> bool:
         self._hide_thinking_status()
         if not self._pending_markdown_parts:
-            return
+            return False
         markdown_text = "".join(self._pending_markdown_parts)
         self._pending_markdown_parts.clear()
         if markdown_text.strip():
-            self._push_out(_LeftAlignedMarkdown(markdown_text, justify="left"))
+            self._push_out(
+                _LeftAlignedMarkdown(
+                    markdown_text,
+                    justify="left",
+                    style="grey50 italic" if self._last_text_mode == "think" else "none",
+                )
+            )
+            return True
+        return False
 
     def _show_thinking_status(self):
         if self._buffer_status_active:
