@@ -1,8 +1,6 @@
 from inline_snapshot import snapshot
-
 from kimi_cli.config import (
     Config,
-    Services,
     get_default_config,
 )
 
@@ -14,7 +12,6 @@ def test_default_config():
             default_model="",
             models={},
             providers={},
-            services=Services(),
         )
     )
 
@@ -30,8 +27,7 @@ def test_default_config_dump():
   "loop_control": {
     "max_steps_per_run": 100,
     "max_retries_per_step": 3
-  },
-  "services": {}
+  }
 }\
 """
     )

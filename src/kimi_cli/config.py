@@ -12,7 +12,7 @@ from kimi_cli.utils.logging import logger
 class LLMProvider(BaseModel):
     """LLM provider configuration."""
 
-    type: Literal["kimi", "openai_legacy", "openai_responses", "anthropic", "_chaos"]
+    type: Literal["openai"]
     """Provider type"""
     base_url: str
     """API base URL"""
@@ -51,28 +51,6 @@ class LoopControl(BaseModel):
     """Maximum number of retries in one step"""
 
 
-class MoonshotSearchConfig(BaseModel):
-    """Moonshot Search configuration."""
-
-    base_url: str
-    """Base URL for Moonshot Search service."""
-    api_key: SecretStr
-    """API key for Moonshot Search service."""
-    custom_headers: dict[str, str] | None = None
-    """Custom headers to include in API requests."""
-
-    @field_serializer("api_key", when_used="json")
-    def dump_secret(self, v: SecretStr):
-        return v.get_secret_value()
-
-
-class Services(BaseModel):
-    """Services configuration."""
-
-    moonshot_search: MoonshotSearchConfig | None = None
-    """Moonshot Search configuration."""
-
-
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -82,7 +60,6 @@ class Config(BaseModel):
         default_factory=dict, description="List of LLM providers"
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
-    services: Services = Field(default_factory=Services, description="Services configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -105,7 +82,6 @@ def get_default_config() -> Config:
         default_model="",
         models={},
         providers={},
-        services=Services(),
     )
 
 

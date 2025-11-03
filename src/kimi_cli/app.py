@@ -65,7 +65,7 @@ class KimiCLI:
 
         if not model:
             model = LLMModel(provider="", model="", max_context_size=100_000)
-            provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
+            provider = LLMProvider(type="openai", base_url="", api_key=SecretStr(""))
 
         # try overwrite with environment variables
         assert provider is not None
@@ -134,11 +134,11 @@ class KimiCLI:
             WelcomeInfoItem(name="Directory", value=str(self._runtime.session.work_dir)),
             WelcomeInfoItem(name="Session", value=self._runtime.session.id),
         ]
-        if base_url := self._env_overrides.get("KIMI_BASE_URL"):
+        if base_url := self._env_overrides.get("OPENAI_BASE_URL"):
             welcome_info.append(
                 WelcomeInfoItem(
                     name="API URL",
-                    value=f"{base_url} (from KIMI_BASE_URL)",
+                    value=f"{base_url} (from OPENAI_BASE_URL)",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )
@@ -150,11 +150,11 @@ class KimiCLI:
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )
-        elif "KIMI_MODEL_NAME" in self._env_overrides:
+        elif "OPENAI_MODEL_NAME" in self._env_overrides:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=f"{self._soul.model} (from KIMI_MODEL_NAME)",
+                    value=f"{self._soul.model} (from OPENAI_MODEL_NAME)",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )

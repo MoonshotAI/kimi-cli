@@ -25,42 +25,35 @@ class LLM(NamedTuple):
 
 def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
     """Override provider/model settings from environment variables.
-
     Returns:
         Mapping of environment variables that were applied.
     """
     applied: dict[str, str] = {}
-
     match provider.type:
-        case "kimi":
-            if base_url := os.getenv("KIMI_BASE_URL"):
+        case "openai":
+            if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
-                applied["KIMI_BASE_URL"] = base_url
-            if api_key := os.getenv("KIMI_API_KEY"):
+                applied["OPENAI_BASE_URL"] = base_url
+            if api_key := os.getenv("OPENAI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
-                applied["KIMI_API_KEY"] = "******"
-            if model_name := os.getenv("KIMI_MODEL_NAME"):
+                applied["OPENAI_API_KEY"] = "******"
+            if model_name := os.getenv("OPENAI_MODEL_NAME"):
                 model.model = model_name
-                applied["KIMI_MODEL_NAME"] = model_name
-            if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
+                applied["OPENAI_MODEL_NAME"] = model_name
+            if max_context_size := os.getenv("OPENAI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
-                applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
-            if capabilities := os.getenv("KIMI_MODEL_CAPABILITIES"):
-                caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
+                applied["OPENAI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
+            if capabilities := os.getenv("OPENAI_MODEL_CAPABILITIES"):
+                caps_lower = (cap.strip().lower() for cap in capabilities.split(
+                    ",") if cap.strip())
                 model.capabilities = set(
                     cast(LLMModelCapability, cap)
                     for cap in caps_lower
                     if cap in get_args(LLMModelCapability)
                 )
-                applied["KIMI_MODEL_CAPABILITIES"] = capabilities
-        case "openai_legacy" | "openai_responses":
-            if base_url := os.getenv("OPENAI_BASE_URL"):
-                provider.base_url = base_url
-            if api_key := os.getenv("OPENAI_API_KEY"):
-                provider.api_key = SecretStr(api_key)
+                applied["OPENAI_MODEL_CAPABILITIES"] = capabilities
         case _:
             pass
-
     return applied
 
 
@@ -72,10 +65,10 @@ def create_llm(
     session_id: str | None = None,
 ) -> LLM:
     match provider.type:
-        case "kimi":
-            from kosong.chat_provider.kimi import Kimi
+        case "openai":
+            from kosong.chat_provider.openai_legacy import OpenAILegacy
 
-            chat_provider = Kimi(
+            chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
@@ -86,52 +79,9 @@ def create_llm(
                 },
             )
             if session_id:
-                chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
-        case "openai_legacy":
-            from kosong.chat_provider.openai_legacy import OpenAILegacy
-
-            chat_provider = OpenAILegacy(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
-                stream=stream,
-            )
-        case "openai_responses":
-            from kosong.chat_provider.openai_responses import OpenAIResponses
-
-            chat_provider = OpenAIResponses(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
-                stream=stream,
-            )
-        case "anthropic":
-            from kosong.chat_provider.anthropic import Anthropic
-
-            chat_provider = Anthropic(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
-                stream=stream,
-                default_max_tokens=50000,
-            ).with_generation_kwargs(
-                # TODO: support configurable values
-                thinking={"type": "enabled", "budget_tokens": 1024},
-                beta_features=["interleaved-thinking-2025-05-14"],
-            )
-        case "_chaos":
-            from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
-
-            chat_provider = ChaosChatProvider(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
-                chaos_config=ChaosConfig(
-                    error_probability=0.8,
-                    error_types=[429, 500, 503],
-                ),
-            )
-
+                chat_provider = chat_provider.with_generation_kwargs(
+                    prompt_cache_key=session_id
+                )
     return LLM(
         chat_provider=chat_provider,
         max_context_size=model.max_context_size,
