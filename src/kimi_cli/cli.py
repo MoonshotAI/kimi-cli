@@ -170,9 +170,12 @@ def kimi(
 
     echo: Callable[..., None] = click.echo if verbose else _noop_echo
 
+    if debug:
+        logger.enable("kosong")
     logger.add(
         get_share_dir() / "logs" / "kimi.log",
-        level="DEBUG" if debug else "INFO",
+        # FIXME: configure level for different modules
+        level="TRACE" if debug else "INFO",
         rotation="06:00",
         retention="10 days",
     )
