@@ -12,6 +12,7 @@
         "src/kimi_cli/soul",
         // "src/kimi_cli/tools",
         // "src/kimi_cli/ui/acp",
+        "src/kimi_cli/ui/kwire",
         "src/kimi_cli/ui/print",
         // "src/kimi_cli/ui/shell",
         "src/kimi_cli/utils",

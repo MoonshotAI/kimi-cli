@@ -193,3 +193,10 @@ class KimiCLI:
         with self._app_env():
             app = ACPServer(self._soul)
             return await app.run()
+
+    async def run_kwire_server(self) -> bool:
+        from kimi_cli.ui.kwire import KwireServer
+
+        with self._app_env():
+            server = KwireServer(self._soul)
+            return await server.run()
