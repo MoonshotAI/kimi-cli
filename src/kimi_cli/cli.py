@@ -16,7 +16,7 @@ class Reload(Exception):
     pass
 
 
-UIMode = Literal["shell", "print", "acp"]
+UIMode = Literal["shell", "print", "acp", "wire"]
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
@@ -238,6 +238,10 @@ def kimi(
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
                 return await instance.run_acp_server()
+            case "wire":
+                if command is not None:
+                    logger.warning("Wire server ignores command argument")
+                return await instance.run_wire_server()
 
     while True:
         try:

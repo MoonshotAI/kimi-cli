@@ -1,10 +1,11 @@
 import asyncio
 import uuid
+from collections.abc import Sequence
 from enum import Enum
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from kosong.base.message import ContentPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolResult
+from kosong.tooling import ToolOk, ToolResult
 
 if TYPE_CHECKING:
     from kimi_cli.soul import StatusSnapshot
@@ -89,3 +90,89 @@ class ApprovalRequest:
 
 
 type WireMessage = Event | ApprovalRequest
+
+
+def serialize_event(event: Event) -> dict[str, Any]:
+    """
+    Convert an event message into a JSON-serializable dictionary.
+    """
+    match event:
+        case StepBegin():
+            return {"type": "step_begin", "payload": {"n": event.n}}
+        case StepInterrupted():
+            return {"type": "step_interrupted"}
+        case CompactionBegin():
+            return {"type": "compaction_begin"}
+        case CompactionEnd():
+            return {"type": "compaction_end"}
+        case StatusUpdate():
+            return {
+                "type": "status_update",
+                "payload": {"context_usage": event.status.context_usage},
+            }
+        case ContentPart():
+            return {
+                "type": "content_part",
+                "payload": event.model_dump(mode="json", exclude_none=True),
+            }
+        case ToolCall():
+            return {
+                "type": "tool_call",
+                "payload": event.model_dump(mode="json", exclude_none=True),
+            }
+        case ToolCallPart():
+            return {
+                "type": "tool_call_part",
+                "payload": event.model_dump(mode="json", exclude_none=True),
+            }
+        case ToolResult():
+            return {
+                "type": "tool_result",
+                "payload": serialize_tool_result(event),
+            }
+
+
+def serialize_approval_request(request: ApprovalRequest) -> dict[str, Any]:
+    """
+    Convert an ApprovalRequest into a JSON-serializable dictionary.
+    """
+    return {
+        "id": request.id,
+        "tool_call_id": request.tool_call_id,
+        "sender": request.sender,
+        "action": request.action,
+        "description": request.description,
+    }
+
+
+def serialize_tool_result(result: ToolResult) -> dict[str, Any]:
+    if isinstance(result.result, ToolOk):
+        ok = True
+        result_data = {
+            "output": _serialize_tool_output(result.result.output),
+            "message": result.result.message,
+            "brief": result.result.brief,
+        }
+    else:
+        ok = False
+        result_data = {
+            "output": result.result.output,
+            "message": result.result.message,
+            "brief": result.result.brief,
+        }
+    return {
+        "tool_call_id": result.tool_call_id,
+        "ok": ok,
+        "result": result_data,
+    }
+
+
+def _serialize_tool_output(
+    output: str | ContentPart | Sequence[ContentPart],
+) -> str | list[Any] | dict[str, Any]:
+    if isinstance(output, str):
+        return output
+    elif isinstance(output, ContentPart):
+        return output.model_dump(mode="json", exclude_none=True)
+    else:  # Sequence[ContentPart]
+        return [part.model_dump(mode="json", exclude_none=True) for part in output]
