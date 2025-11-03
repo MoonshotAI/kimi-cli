@@ -9,6 +9,17 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.46] - 2025-11-03
+
+### Added
+
+- Introduce Wire over stdio for local IPC (experimental, subject to change)
+- Support Anthropic provider type
+
+### Fixed
+
+- Fix binary packed by PyInstaller not working due to wrong entrypoint
+
 ## [0.45] - 2025-10-31
 
 ### Added
