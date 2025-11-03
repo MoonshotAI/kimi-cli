@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.utils.typing import JsonType
@@ -30,19 +30,15 @@ def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
         case "SetTodoList":
             if not isinstance(curr_args, dict) or not curr_args.get("todos"):
                 return None
-            if not isinstance(curr_args["todos"], list):
-                return None
 
-            todos = cast(list[dict[str, Any]], curr_args["todos"])
-            for todo in todos:
-                title = todo.get("title")
-                if not isinstance(title, str) or not title:
-                    continue
-                subtitle += f"• {title}"
-                status = todo.get("status")
-                if isinstance(status, str):
-                    subtitle += f" [{status}]"
-                subtitle += "\n"
+            from kimi_cli.tools.todo import Params
+
+            try:
+                todo_params = Params.model_validate(curr_args)
+                for todo in todo_params.todos:
+                    subtitle += f"• {todo.title} [{todo.status}]\n"
+            except Exception:
+                return None
             return "\n" + subtitle.strip()
         case "Bash":
             if not isinstance(curr_args, dict) or not curr_args.get("command"):

@@ -1,4 +1,4 @@
-from typing import Any, TypeVar
+from typing import Any
 
 import fastmcp
 import mcp
@@ -7,11 +7,9 @@ from fastmcp.client.transports import ClientTransport
 from kosong.base.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
 from kosong.tooling import CallableTool, ToolOk, ToolReturnType
 
-MCP_TRANSPORTS = TypeVar("MCP_TRANSPORTS", bound=ClientTransport)
 
-
-class MCPTool(CallableTool):
-    def __init__(self, mcp_tool: mcp.Tool, client: fastmcp.Client[MCP_TRANSPORTS], **kwargs: Any):
+class MCPTool[T: ClientTransport](CallableTool):
+    def __init__(self, mcp_tool: mcp.Tool, client: fastmcp.Client[T], **kwargs: Any):
         super().__init__(
             name=mcp_tool.name,
             description=mcp_tool.description or "",

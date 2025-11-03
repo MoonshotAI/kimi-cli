@@ -12,13 +12,13 @@ from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError
 
 
-def _parse_patch(diff_bytes: bytes) -> patch_ng.PatchSet | Literal[False]:
-    """Parse patch from bytes, returning PatchSet or False on error.
+def _parse_patch(diff_bytes: bytes) -> patch_ng.PatchSet | None:
+    """Parse patch from bytes, returning PatchSet or None on error.
 
     This wrapper provides type hints for the untyped patch_ng.fromstring function.
     """
     result: patch_ng.PatchSet | Literal[False] = patch_ng.fromstring(diff_bytes)  # pyright: ignore[reportUnknownMemberType]
-    return result
+    return result if result is not False else None
 
 
 def _count_hunks(patch_set: patch_ng.PatchSet) -> int:
@@ -119,8 +119,8 @@ class PatchFile(CallableTool2[Params]):
             # Create patch object directly from string (no temporary file needed!)
             patch_set = _parse_patch(params.diff.encode("utf-8"))
 
-            # Handle case where patch_ng.fromstring returns False on parse errors
-            if patch_set is False:
+            # Handle case where parsing failed
+            if patch_set is None:
                 return ToolError(
                     message=(
                         "Failed to parse diff content: invalid patch format or no valid hunks found"
