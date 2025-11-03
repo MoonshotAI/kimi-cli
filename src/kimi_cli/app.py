@@ -194,9 +194,9 @@ class KimiCLI:
             app = ACPServer(self._soul)
             return await app.run()
 
-    async def run_kwire_server(self) -> bool:
-        from kimi_cli.ui.kwire import KwireServer
+    async def run_wire_server(self) -> bool:
+        from kimi_cli.ui.wire import WireServer
 
         with self._app_env():
-            server = KwireServer(self._soul)
+            server = WireServer(self._soul)
             return await server.run()

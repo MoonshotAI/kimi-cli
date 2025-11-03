@@ -109,7 +109,7 @@ class _SoulRunner:
                 await self._send_event(message)
 
 
-class KwireServer:
+class WireServer:
     def __init__(self, soul: Soul):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -123,7 +123,7 @@ class KwireServer:
         )
 
     async def run(self) -> bool:
-        logger.info("Starting kwire server on stdio")
+        logger.info("Starting Wire server on stdio")
 
         self._reader, self._writer = await acp.stdio_streams()
         self._write_task = asyncio.create_task(self._write_loop())
@@ -140,7 +140,7 @@ class KwireServer:
         while True:
             line = await self._reader.readline()
             if not line:
-                logger.info("stdin closed, kwire server exiting")
+                logger.info("stdin closed, Wire server exiting")
                 break
 
             try:
@@ -283,7 +283,7 @@ class KwireServer:
                 try:
                     payload = await self._send_queue.get()
                 except asyncio.QueueShutDown:
-                    logger.debug("Send queue shut down, stopping kwire write loop")
+                    logger.debug("Send queue shut down, stopping Wire server write loop")
                     break
                 data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                 self._writer.write(data.encode("utf-8") + b"\n")
@@ -291,7 +291,7 @@ class KwireServer:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("kwire write loop error:")
+            logger.exception("Wire server write loop error:")
             raise
 
     async def _send_notification(self, method: str, params: Any) -> None:
