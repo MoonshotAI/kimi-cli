@@ -174,7 +174,7 @@ def kimi(
         logger.enable("kosong")
     logger.add(
         get_share_dir() / "logs" / "kimi.log",
-        # FIXME: configure level for differnt modules
+        # FIXME: configure level for different modules
         level="TRACE" if debug else "INFO",
         rotation="06:00",
         retention="10 days",
