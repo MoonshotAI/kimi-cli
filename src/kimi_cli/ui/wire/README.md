@@ -56,11 +56,12 @@ Payloads come from `serialize_event` (src/kimi_cli/wire/message.py):
 - `compaction_begin`: no payload; a compaction pass started.
 - `compaction_end`: no payload; always follows `compaction_begin`.
 - `status_update`: payload `{"context_usage": <int>}` from `StatusSnapshot`.
-- `content_part`: JSON string from `ContentPart.model_dump_json(...)`; clients should parse it.
-- `tool_call`: JSON string representing a `ToolCall`; parse before use.
-- `tool_call_part`: JSON string for a streaming chunk of a tool call.
+- `content_part`: JSON object produced by `ContentPart.model_dump(mode="json", exclude_none=True)`.
+- `tool_call`: JSON object produced by `ToolCall.model_dump(mode="json", exclude_none=True)`.
+- `tool_call_part`: JSON object from `ToolCallPart.model_dump(mode="json", exclude_none=True)`.
 - `tool_result`: object with `tool_call_id`, `ok`, and `result` (`output`, `message`, `brief`).
-  When `ok` is true the `output` may be text, a JSON string, or an array of JSON strings.
+  When `ok` is true the `output` may be text, a JSON object, or an array of JSON objects for
+  multi-part content.
 
 Event order mirrors Soul execution because the server uses an `asyncio.Queue` for FIFO delivery.
 
@@ -103,6 +104,6 @@ Clients should allow an optional `data` field even though the server omits it to
 
 ## Implementation notes for SDK authors
 - Only one `run` call may execute at a time; queue additional runs client side.
-- Decode the JSON strings found in `content_part`, `tool_call`, and `tool_call_part` events.
+- The payloads for `content_part`, `tool_call`, and `tool_call_part` already contain JSON objects.
 - Approval handling is synchronous; always send a response even if the user cancels.
 - Logging is verbose for non-stream messages; unknown methods are ignored for forward compatibility.
