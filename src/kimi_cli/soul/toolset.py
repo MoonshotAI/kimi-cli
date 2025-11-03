@@ -2,7 +2,8 @@ from contextvars import ContextVar
 from typing import override
 
 from kosong.base.message import ToolCall
-from kosong.tooling import HandleResult, SimpleToolset
+from kosong.tooling import HandleResult
+from kosong.tooling.simple import SimpleToolset
 
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
 
