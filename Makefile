@@ -14,14 +14,14 @@ prepare: download-deps ## Sync dependencies using locked versions.
 
 .PHONY: format
 format: ## Auto-format Python sources with ruff.
-	uv run ruff check --fix
-	uv run ruff format
+	$(RUFF) check --fix
+	$(RUFF) format
 
 .PHONY: check
 check: ## Run linting and type checks.
-	uv run ruff check
-	uv run ruff format --check
-	uv run pyright
+	$(RUFF) check
+	$(RUFF) format --check
+	$(PYRIGHT)
 
 
 .PHONY: test
