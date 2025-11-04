@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal, override
+from typing import Any, Literal, override
 
 import aiofiles
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
@@ -33,9 +33,9 @@ class WriteFile(CallableTool2[Params]):
     def __init__(
         self, 
         builtin_args: BuiltinSystemPromptArgs, 
-        approval: Approval, preview: 
-        Preview, 
-        **kwargs
+        approval: Approval, 
+        preview: Preview, 
+        **kwargs: Any
     ):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR

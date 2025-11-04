@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from kosong.chat_provider import MockChatProvider
+from kosong.chat_provider.mock import MockChatProvider
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE, ResolvedAgentSpec, load_agent_spec
 from kimi_cli.config import Config, get_default_config

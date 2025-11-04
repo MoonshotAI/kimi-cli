@@ -16,7 +16,7 @@ class Reload(Exception):
     pass
 
 
-UIMode = Literal["shell", "print", "acp"]
+UIMode = Literal["shell", "print", "acp", "wire"]
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
@@ -170,9 +170,12 @@ def kimi(
 
     echo: Callable[..., None] = click.echo if verbose else _noop_echo
 
+    if debug:
+        logger.enable("kosong")
     logger.add(
         get_share_dir() / "logs" / "kimi.log",
-        level="DEBUG" if debug else "INFO",
+        # FIXME: configure level for different modules
+        level="TRACE" if debug else "INFO",
         rotation="06:00",
         retention="10 days",
     )
@@ -238,6 +241,10 @@ def kimi(
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
                 return await instance.run_acp_server()
+            case "wire":
+                if command is not None:
+                    logger.warning("Wire server ignores command argument")
+                return await instance.run_wire_server()
 
     while True:
         try:

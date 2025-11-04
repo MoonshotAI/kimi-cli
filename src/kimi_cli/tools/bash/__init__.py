@@ -1,6 +1,7 @@
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 from kosong.tooling import CallableTool2, ToolReturnType
 from pydantic import BaseModel, Field
@@ -29,7 +30,7 @@ class Bash(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "bash.md", {})
     params: type[Params] = Params
 
-    def __init__(self, approval: Approval, **kwargs):
+    def __init__(self, approval: Approval, **kwargs: Any):
         super().__init__(**kwargs)
         self._approval = approval
 
@@ -71,8 +72,13 @@ class Bash(CallableTool2[Params]):
             )
 
 
-async def _stream_subprocess(command: str, stdout_cb, stderr_cb, timeout: int) -> int:
-    async def _read_stream(stream, cb):
+async def _stream_subprocess(
+    command: str,
+    stdout_cb: Callable[[bytes], None],
+    stderr_cb: Callable[[bytes], None],
+    timeout: int,
+) -> int:
+    async def _read_stream(stream: asyncio.StreamReader, cb: Callable[[bytes], None]):
         while True:
             line = await stream.readline()
             if line:
@@ -84,6 +90,9 @@ async def _stream_subprocess(command: str, stdout_cb, stderr_cb, timeout: int) -
     process = await asyncio.create_subprocess_shell(
         command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
+
+    assert process.stdout is not None, "stdout is None"
+    assert process.stderr is not None, "stderr is None"
 
     try:
         await asyncio.wait_for(

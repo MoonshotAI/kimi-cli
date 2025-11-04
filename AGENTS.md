@@ -61,6 +61,7 @@ src/kimi_cli/
 ## Build and Development
 
 ### Installation
+
 ```bash
 # Install with uv
 uv sync
@@ -70,6 +71,7 @@ uv sync --group dev
 ```
 
 ### Build Commands
+
 ```bash
 # Format code
 make format
@@ -92,6 +94,7 @@ uv run pyinstaller kimi.spec
 Configuration file: `~/.kimi/config.json`
 
 Default configuration includes:
+
 - LLM provider settings (Kimi API by default)
 - Model configurations with context size limits
 - Loop control parameters (max steps, retries)
@@ -106,6 +109,7 @@ Default configuration includes:
 - **Async Testing**: Full async/await testing support
 
 Test files follow the pattern `test_*.py` and are organized by component:
+
 - `test_load_agent.py`: Agent loading and configuration
 - `test_bash.py`: Shell command execution
 - `test_*_file.py`: File operation tools
@@ -121,6 +125,7 @@ Test files follow the pattern `test_*.py` and are organized by component:
 - **Logging**: Structured logging with loguru
 
 Selected ruff rules:
+
 - E: pycodestyle
 - F: Pyflakes
 - UP: pyupgrade
@@ -164,6 +169,7 @@ Selected ruff rules:
 ### System Prompt Arguments
 
 Builtin variables available in system prompts:
+
 - `${KIMI_NOW}`: Current timestamp
 - `${KIMI_WORK_DIR}`: Working directory path
 - `${KIMI_WORK_DIR_LS}`: Directory listing output
@@ -178,13 +184,4 @@ Builtin variables available in system prompts:
 
 ## Version History
 
-Current version: 0.27 (as of 2025-10-11)
-
-Recent changes include:
-- MCP configuration support
-- Agent file extension mechanism
-- Tool exclusion capabilities
-- Enhanced subagent system
-- Improved error handling and retry mechanisms
-
-This project follows semantic versioning and maintains detailed changelog in `CHANGELOG.md`.
+This project follows semantic versioning. For detailed version history, release notes, and changes across all versions, please refer to `CHANGELOG.md` in the project root.

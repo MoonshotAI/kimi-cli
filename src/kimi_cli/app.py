@@ -193,3 +193,10 @@ class KimiCLI:
         with self._app_env():
             app = ACPServer(self._soul)
             return await app.run()
+
+    async def run_wire_server(self) -> bool:
+        from kimi_cli.ui.wire import WireServer
+
+        with self._app_env():
+            server = WireServer(self._soul)
+            return await server.run()
