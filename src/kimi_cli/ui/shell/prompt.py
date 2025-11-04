@@ -39,6 +39,7 @@ from pydantic import BaseModel, ValidationError
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
+from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import random_string
 
@@ -426,6 +427,7 @@ class CustomPromptSession:
 
         # Build key bindings
         _kb = KeyBindings()
+        shortcut_hints: list[str] = []
 
         @_kb.add("enter", filter=has_completions)
         def _accept_completion(event: KeyPressEvent) -> None:
@@ -438,12 +440,6 @@ class CustomPromptSession:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
 
-        @_kb.add("escape", "enter", eager=True)
-        @_kb.add("c-j", eager=True)
-        def _insert_newline(event: KeyPressEvent) -> None:
-            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
-            event.current_buffer.insert_text("\n")
-
         @_kb.add("c-x", eager=True)
         def _switch_mode(event: KeyPressEvent) -> None:
             self._mode = self._mode.toggle()
@@ -452,20 +448,38 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
-        @_kb.add("c-v", eager=True)
-        def _paste(event: KeyPressEvent) -> None:
-            if self._try_paste_image(event):
-                return
-            clipboard_data = event.app.clipboard.get_data()
-            event.current_buffer.paste_clipboard_data(clipboard_data)
+        shortcut_hints.append("ctrl-x: switch mode")
 
+        @_kb.add("escape", "enter", eager=True)
+        @_kb.add("c-j", eager=True)
+        def _insert_newline(event: KeyPressEvent) -> None:
+            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            event.current_buffer.insert_text("\n")
+
+        shortcut_hints.append("ctrl-j: newline")
+
+        if is_clipboard_available():
+
+            @_kb.add("c-v", eager=True)
+            def _paste(event: KeyPressEvent) -> None:
+                if self._try_paste_image(event):
+                    return
+                clipboard_data = event.app.clipboard.get_data()
+                event.current_buffer.paste_clipboard_data(clipboard_data)
+
+            shortcut_hints.append("ctrl-v: paste")
+            clipboard = PyperclipClipboard()
+        else:
+            clipboard = None
+
+        self._shortcut_hints = shortcut_hints
         self._session = PromptSession(
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
             complete_while_typing=True,
             key_bindings=_kb,
-            clipboard=PyperclipClipboard(),
+            clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
         )
@@ -646,9 +660,7 @@ class CustomPromptSession:
                 self._current_toast = None
         else:
             shortcuts = [
-                "ctrl-x: switch mode",
-                "ctrl-j: newline",
-                "ctrl-v: paste",
+                *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
             for shortcut in shortcuts:
