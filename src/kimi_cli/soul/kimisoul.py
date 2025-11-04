@@ -65,6 +65,7 @@ class KimiSoul(Soul):
         self._runtime = runtime
         self._denwa_renji = runtime.denwa_renji
         self._approval = runtime.approval
+        self._preview = runtime.preview
         self._context = context
         self._loop_control = runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
@@ -129,10 +130,16 @@ class KimiSoul(Soul):
                 request = await self._approval.fetch_request()
                 wire_send(request)
 
+        async def _pipe_preview_to_wire():
+            while True:
+                request = await self._preview.fetch_request()
+                wire_send(request)
+
         step_no = 1
         while True:
             wire_send(StepBegin(step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
+            preview_task = asyncio.create_task(_pipe_preview_to_wire())
             # FIXME: It's possible that a subagent's approval task steals approval request
             # from the main agent. We must ensure that the Task tool will redirect them
             # to the main wire. See `_SubWire` for more details. Later we need to figure
@@ -163,6 +170,7 @@ class KimiSoul(Soul):
                 raise
             finally:
                 approval_task.cancel()  # stop piping approval requests to the wire
+                preview_task.cancel()  # stop piping preview requests to the wire
 
             if finished:
                 return

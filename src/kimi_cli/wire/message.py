@@ -87,5 +87,16 @@ class ApprovalRequest:
         """Whether the request is resolved."""
         return self._future.done()
 
+class PreviewType(Enum):
+    DIFF = "diff"
+    TEXT = "text"
 
-type WireMessage = Event | ApprovalRequest
+class PreviewRequest:
+    def __init__(self, title: str, content: str, content_type: str = "markdown"):
+        self.id = str(uuid.uuid4())
+        self.title = title
+        self.content = content
+        self.content_type = content_type
+
+
+type WireMessage = Event | ApprovalRequest | PreviewRequest

@@ -6,6 +6,7 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.preview import Preview
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError
@@ -29,10 +30,17 @@ class WriteFile(CallableTool2[Params]):
     description: str = (Path(__file__).parent / "write.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):
+    def __init__(
+        self, 
+        builtin_args: BuiltinSystemPromptArgs, 
+        approval: Approval, preview: 
+        Preview, 
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
+        self._preview = preview
 
     def _validate_path(self, path: Path) -> ToolError | None:
         """Validate that the path is safe to write."""
@@ -88,6 +96,8 @@ class WriteFile(CallableTool2[Params]):
                     ),
                     brief="Invalid write mode",
                 )
+
+            await self._preview.preview_text(params.path, params.content)
 
             # Request approval
             if not await self._approval.request(

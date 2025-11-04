@@ -14,6 +14,7 @@ from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.preview import Preview
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
@@ -94,22 +95,30 @@ def approval() -> Approval:
 
 
 @pytest.fixture
+def preview() -> Preview:
+    """Create a Preview instance."""
+    return Preview()
+
+
+@pytest.fixture
 def runtime(
     config: Config,
     llm: LLM,
+    session: Session,
     builtin_args: BuiltinSystemPromptArgs,
     denwa_renji: DenwaRenji,
-    session: Session,
     approval: Approval,
+    preview: Preview,
 ) -> Runtime:
     """Create a Runtime instance."""
     return Runtime(
         config=config,
         llm=llm,
+        session=session,
         builtin_args=builtin_args,
         denwa_renji=denwa_renji,
-        session=session,
         approval=approval,
+        preview=preview,
     )
 
 
@@ -186,29 +195,29 @@ def grep_tool() -> Grep:
 
 @pytest.fixture
 def write_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval, preview: Preview,
 ) -> Generator[WriteFile]:
     """Create a WriteFile tool instance."""
     with tool_call_context("WriteFile"):
-        yield WriteFile(builtin_args, approval)
+        yield WriteFile(builtin_args, approval, preview)
 
 
 @pytest.fixture
 def str_replace_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval, preview: Preview,
 ) -> Generator[StrReplaceFile]:
     """Create a StrReplaceFile tool instance."""
     with tool_call_context("StrReplaceFile"):
-        yield StrReplaceFile(builtin_args, approval)
+        yield StrReplaceFile(builtin_args, approval, preview)
 
 
 @pytest.fixture
 def patch_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+    builtin_args: BuiltinSystemPromptArgs, approval: Approval, preview: Preview,
 ) -> Generator[PatchFile]:
     """Create a PatchFile tool instance."""
     with tool_call_context("PatchFile"):
-        yield PatchFile(builtin_args, approval)
+        yield PatchFile(builtin_args, approval, preview)
 
 
 @pytest.fixture

@@ -13,6 +13,7 @@ from kimi_cli.wire.message import (
     ApprovalRequest,
     CompactionBegin,
     CompactionEnd,
+    PreviewRequest,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -94,6 +95,8 @@ async def visualize(
                             step.append_tool_result(msg)
                         case ApprovalRequest():
                             step.request_approval(msg)
+                        case PreviewRequest():
+                            step.append_preview(msg)
                         case StatusUpdate(status=status):
                             latest_status = status
                             step.update_status(latest_status)

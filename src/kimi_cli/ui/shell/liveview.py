@@ -13,13 +13,14 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.status import Status
+from rich.syntax import Syntax
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent
-from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse
+from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse, PreviewRequest
 
 
 class _ToolCallDisplay:
@@ -212,6 +213,38 @@ class StepLiveView:
         self._line_buffer.append(lines[-1])
         if (prev_is_empty and self._line_buffer) or (not prev_is_empty and not self._line_buffer):
             self._live.update(self._compose())
+
+    def append_preview(self, msg: PreviewRequest):
+        MAX_TITLE_LENGTH = 70
+        content_type = msg.content_type
+        if content_type == "markdown":
+            body = _LeftAlignedMarkdown(
+                msg.content,
+                justify="left",
+                style="grey50 italic" if self._last_text_mode == "think" else "none",
+            )
+        elif content_type in {"text", "text only"}:
+            body = Text(msg.content)
+        else:
+            body = Syntax(
+                msg.content, 
+                content_type, 
+                theme="monokai", 
+                line_numbers=True,
+            )
+
+        width = int(console.width * 0.8)
+        title = msg.title
+        if len(title) > MAX_TITLE_LENGTH:
+            title = "..." + title[-MAX_TITLE_LENGTH:]
+        
+        panel = Panel(
+            body,
+            title=title,
+            border_style="wheat4",
+            width=width,
+        )
+        self._push_out(panel)
 
     def append_tool_call(self, tool_call: ToolCall):
         self._tool_calls[tool_call.id] = _ToolCallDisplay(tool_call)

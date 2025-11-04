@@ -6,6 +6,7 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.preview import Preview
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError
@@ -32,10 +33,17 @@ class StrReplaceFile(CallableTool2[Params]):
     description: str = (Path(__file__).parent / "replace.md").read_text(encoding="utf-8")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs):
+    def __init__(
+        self, 
+        builtin_args: BuiltinSystemPromptArgs, 
+        approval: Approval, 
+        preview: Preview, 
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
+        self._preview = preview
 
     def _validate_path(self, path: Path) -> ToolError | None:
         """Validate that the path is safe to edit."""
@@ -91,14 +99,6 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                FileActions.EDIT,
-                f"Edit file `{params.path}`",
-            ):
-                return ToolRejectedError()
-
             # Read the file content
             async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:
                 content = await f.read()
@@ -116,6 +116,16 @@ class StrReplaceFile(CallableTool2[Params]):
                     message="No replacements were made. The old string was not found in the file.",
                     brief="No replacements made",
                 )
+            
+            await self._preview.preview_diff(params.path, original_content, content)
+
+            # Request approval
+            if not await self._approval.request(
+                self.name,
+                FileActions.EDIT,
+                f"Edit file `{params.path}`",
+            ):
+                return ToolRejectedError()
 
             # Write the modified content back to the file
             async with aiofiles.open(p, mode="w", encoding="utf-8") as f:
