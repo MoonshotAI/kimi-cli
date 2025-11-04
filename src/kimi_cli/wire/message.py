@@ -43,7 +43,7 @@ class StatusUpdate(NamedTuple):
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
-type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult
+type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | PreviewChange
 
 
 class ApprovalResponse(Enum):
@@ -88,11 +88,13 @@ class ApprovalRequest:
         """Whether the request is resolved."""
         return self._future.done()
 
+
 class PreviewType(Enum):
     DIFF = "diff"
     TEXT = "text"
 
-class PreviewRequest:
+
+class PreviewChange:
     def __init__(self, title: str, content: str, content_type: str = "markdown"):
         self.id = str(uuid.uuid4())
         self.title = title
@@ -100,7 +102,7 @@ class PreviewRequest:
         self.content_type = content_type
 
 
-type WireMessage = Event | ApprovalRequest | PreviewRequest
+type WireMessage = Event | ApprovalRequest | PreviewChange
 
 
 def serialize_event(event: Event) -> dict[str, Any]:
@@ -140,6 +142,11 @@ def serialize_event(event: Event) -> dict[str, Any]:
             return {
                 "type": "tool_result",
                 "payload": serialize_tool_result(event),
+            }
+        case PreviewChange():
+            return {
+                "type": "preview_request",
+                "payload": serialize_preview_request(event),
             }
 
 
@@ -187,3 +194,12 @@ def _serialize_tool_output(
         return output.model_dump(mode="json", exclude_none=True)
     else:  # Sequence[ContentPart]
         return [part.model_dump(mode="json", exclude_none=True) for part in output]
+
+
+def serialize_preview_request(request: PreviewChange) -> dict[str, Any]:
+    return {
+        "id": request.id,
+        "title": request.title,
+        "content": request.content,
+        "content_type": request.content_type,
+    }

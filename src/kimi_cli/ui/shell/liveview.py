@@ -20,7 +20,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent
-from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse, PreviewRequest
+from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse, PreviewChange
 
 
 class _ToolCallDisplay:
@@ -214,7 +214,7 @@ class StepLiveView:
         if (prev_is_empty and self._line_buffer) or (not prev_is_empty and not self._line_buffer):
             self._live.update(self._compose())
 
-    def append_preview(self, msg: PreviewRequest):
+    def append_preview(self, msg: PreviewChange):
         MAX_TITLE_LENGTH = 70
         content_type = msg.content_type
         if content_type == "markdown":
@@ -227,9 +227,9 @@ class StepLiveView:
             body = Text(msg.content)
         else:
             body = Syntax(
-                msg.content, 
-                content_type, 
-                theme="monokai", 
+                msg.content,
+                content_type,
+                theme="monokai",
                 line_numbers=True,
             )
 
@@ -237,7 +237,7 @@ class StepLiveView:
         title = msg.title
         if len(title) > MAX_TITLE_LENGTH:
             title = "..." + title[-MAX_TITLE_LENGTH:]
-        
+
         panel = Panel(
             body,
             title=title,

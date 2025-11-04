@@ -34,11 +34,11 @@ class StrReplaceFile(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(
-        self, 
-        builtin_args: BuiltinSystemPromptArgs, 
-        approval: Approval, 
-        preview: Preview, 
-        **kwargs: Any
+        self,
+        builtin_args: BuiltinSystemPromptArgs,
+        approval: Approval,
+        preview: Preview,
+        **kwargs: Any,
     ):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
@@ -116,7 +116,7 @@ class StrReplaceFile(CallableTool2[Params]):
                     message="No replacements were made. The old string was not found in the file.",
                     brief="No replacements made",
                 )
-            
+
             await self._preview.preview_diff(params.path, original_content, content)
 
             # Request approval

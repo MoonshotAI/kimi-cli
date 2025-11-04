@@ -195,7 +195,9 @@ def grep_tool() -> Grep:
 
 @pytest.fixture
 def write_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval, preview: Preview,
+    builtin_args: BuiltinSystemPromptArgs,
+    approval: Approval,
+    preview: Preview,
 ) -> Generator[WriteFile]:
     """Create a WriteFile tool instance."""
     with tool_call_context("WriteFile"):
@@ -204,7 +206,9 @@ def write_file_tool(
 
 @pytest.fixture
 def str_replace_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval, preview: Preview,
+    builtin_args: BuiltinSystemPromptArgs,
+    approval: Approval,
+    preview: Preview,
 ) -> Generator[StrReplaceFile]:
     """Create a StrReplaceFile tool instance."""
     with tool_call_context("StrReplaceFile"):
@@ -213,7 +217,9 @@ def str_replace_file_tool(
 
 @pytest.fixture
 def patch_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval, preview: Preview,
+    builtin_args: BuiltinSystemPromptArgs,
+    approval: Approval,
+    preview: Preview,
 ) -> Generator[PatchFile]:
     """Create a PatchFile tool instance."""
     with tool_call_context("PatchFile"):
