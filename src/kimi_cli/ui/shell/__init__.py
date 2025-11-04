@@ -1,7 +1,10 @@
 import asyncio
+import os
+import shlex
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from kosong.base.message import ContentPart
@@ -34,6 +37,8 @@ class ShellApp:
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
         self._markdown = markdown
+        self._shell_cwd = Path.cwd()
+        self._previous_shell_cwd: Path | None = None
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -91,6 +96,9 @@ class ShellApp:
         if not command.strip():
             return
 
+        if self._handle_cd_command(command):
+            return
+
         logger.info("Running shell command: {cmd}", cmd=command)
 
         proc: asyncio.subprocess.Process | None = None
@@ -105,13 +113,61 @@ class ShellApp:
         try:
             # TODO: For the sake of simplicity, we now use `create_subprocess_shell`.
             # Later we should consider making this behave like a real shell.
-            proc = await asyncio.create_subprocess_shell(command)
+            proc = await asyncio.create_subprocess_shell(command, cwd=str(self._shell_cwd))
             await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
             console.print(f"[red]Failed to run shell command: {e}[/red]")
         finally:
             remove_sigint()
+
+    def _handle_cd_command(self, command: str) -> bool:
+        """Handle `cd` commands so shell mode keeps its working directory."""
+        try:
+            tokens = shlex.split(command)
+        except ValueError as e:  # unmatched quotes, etc.
+            console.print(f"[red]{e}[/red]")
+            return True
+
+        if not tokens or tokens[0] != "cd":
+            return False
+
+        match tokens:
+            case ["cd"]:
+                target_path = Path.home()
+            case ["cd", "-"]:
+                if self._previous_shell_cwd is None:
+                    console.print("[red]No previous directory[/red]")
+                    return True
+                self._shell_cwd, self._previous_shell_cwd = (
+                    self._previous_shell_cwd,
+                    self._shell_cwd,
+                )
+                console.print(str(self._shell_cwd))
+                return True
+            case ["cd", target]:
+                target_path = self._resolve_shell_path(target)
+            case _:
+                console.print("[red]Usage: cd <directory>[/red]")
+                return True
+
+        if not target_path.exists():
+            console.print(f"[red]Directory not found: {target_path}[/red]")
+            return True
+        if not target_path.is_dir():
+            console.print(f"[red]Not a directory: {target_path}[/red]")
+            return True
+
+        self._previous_shell_cwd = self._shell_cwd
+        self._shell_cwd = target_path
+        return True
+
+    def _resolve_shell_path(self, raw_target: str) -> Path:
+        expanded = os.path.expandvars(os.path.expanduser(raw_target))
+        candidate = Path(expanded)
+        if not candidate.is_absolute():
+            candidate = self._shell_cwd / candidate
+        return candidate.resolve()
 
     async def _run_meta_command(self, command_str: str):
         from kimi_cli.cli import Reload
