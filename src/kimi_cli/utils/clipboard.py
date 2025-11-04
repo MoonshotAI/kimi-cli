@@ -1,10 +1,10 @@
 import pyperclip
-from pyperclip import PyperclipException
 
 
 def is_clipboard_available() -> bool:
+    """Check if the Pyperclip clipboard is available."""
     try:
         pyperclip.paste()
         return True
-    except PyperclipException:
+    except Exception:
         return False
