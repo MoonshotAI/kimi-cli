@@ -235,6 +235,29 @@ async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_d
 
 
 @pytest.mark.asyncio
+async def test_glob_double_star_listing_is_ls_like(glob_tool: Glob, temp_work_dir: Path):
+    """Ensure the unsafe pattern error returns an ls -la style listing."""
+    (temp_work_dir / "visible.txt").write_text("content")
+    (temp_work_dir / ".hidden").write_text("secret")
+    (temp_work_dir / "dir").mkdir()
+
+    result = await glob_tool(Params(pattern="**/*.txt", directory=str(temp_work_dir)))
+
+    assert isinstance(result, ToolError)
+
+    lines = [line for line in result.output.split("\n") if line.strip()]
+    # Each line should look like: mode links owner group size timestamp name
+    assert lines, "Expected directory listing lines in ToolError output"
+    assert all(len(line.split()) >= 7 for line in lines)
+    assert any(line.split()[-1] == "." for line in lines)
+    assert any(line.split()[-1] == ".." for line in lines)
+    assert any(line.split()[-1] == ".hidden" for line in lines)
+    assert any(line.split()[-1] == "visible.txt" for line in lines)
+    assert any(line.split()[-1] == "dir" for line in lines)
+    assert all(len(line.split()[0]) == 10 for line in lines)
+
+
+@pytest.mark.asyncio
 async def test_glob_exactly_max_matches(glob_tool: Glob, temp_work_dir: Path):
     """Test behavior when exactly MAX_MATCHES files are found."""
     # Create exactly MAX_MATCHES files
