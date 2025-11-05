@@ -41,7 +41,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.message import LARGE_PASTE_LINE_THRESHOLD
+from kimi_cli.constants import LARGE_PASTE_LINE_THRESHOLD
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
@@ -471,14 +471,11 @@ class CustomPromptSession:
                 if self._try_paste_image(event):
                     return
 
-                # Get text from clipboard
                 clipboard_data = event.app.clipboard.get_data()
                 text = clipboard_data.text
 
-                # Check if text is large (similar to image paste pattern)
                 line_count = text.count('\n') + 1
                 if line_count > LARGE_PASTE_LINE_THRESHOLD:
-                    # Create placeholder for large text (like we do for images)
                     paste_id = random_string(8)
                     self._attachment_parts[paste_id] = TextPart(text=text)
                     placeholder = f"[text:{paste_id},{line_count} lines]"
@@ -488,11 +485,8 @@ class CustomPromptSession:
                         paste_id=paste_id,
                         line_count=line_count,
                     )
-
-                    # Insert placeholder at cursor (preserves surrounding text)
                     event.current_buffer.insert_text(placeholder)
                 else:
-                    # Normal paste for small text
                     event.current_buffer.paste_clipboard_data(clipboard_data)
 
             shortcut_hints.append("ctrl-v: paste")
@@ -504,7 +498,7 @@ class CustomPromptSession:
 
                 for match in _ATTACHMENT_PLACEHOLDER_RE.finditer(doc.text):
                     start, end = match.span()
-                    if start <= cursor < end:
+                    if start <= cursor <= end:
                         attachment_id = match.group("id")
                         buff.text = doc.text[:start] + doc.text[end:]
                         buff.cursor_position = start
@@ -658,7 +652,7 @@ class CustomPromptSession:
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
 
-        # Parse rich content parts (both text and image attachments)
+        # Parse rich content parts
         content: list[ContentPart] = []
         remaining_command = command
 

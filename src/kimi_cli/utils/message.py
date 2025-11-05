@@ -1,7 +1,6 @@
 from kosong.base.message import Message, TextPart
 
-# Large paste display threshold (same as ui/shell/prompt.py)
-LARGE_PASTE_LINE_THRESHOLD = 50
+from kimi_cli.constants import LARGE_PASTE_LINE_THRESHOLD
 
 
 def message_extract_text(message: Message) -> str:
@@ -12,13 +11,7 @@ def message_extract_text(message: Message) -> str:
 
 
 def message_stringify(message: Message, context: str = "default") -> str:
-    """
-    Get a string representation of a message.
-
-    Args:
-        message: The message to stringify.
-        context: Display context - "replay" shows full text, others collapse large pastes.
-    """
+    """Return a string view of a message, collapsing large pastes outside replay context."""
 
     def _maybe_collapse(text: str) -> str:
         """Collapse text if it exceeds threshold (except in replay context)."""
