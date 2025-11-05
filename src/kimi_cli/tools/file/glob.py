@@ -15,6 +15,8 @@ from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
 
 MAX_MATCHES = 1000
+# `ls` switches between time-of-day and year display when files are older than ~6 months.
+RECENT_FILE_DAYS_THRESHOLD = 182
 
 try:
     import grp
@@ -109,10 +111,13 @@ class Glob(CallableTool2[Params]):
                     entries.append(("..", parent_dir.stat()))
 
             scandir_entries: list[tuple[str, os.stat_result]] = []
-            with suppress(FileNotFoundError), os.scandir(self._work_dir) as it:
-                for entry in it:
-                    with suppress(FileNotFoundError, PermissionError):
-                        scandir_entries.append((entry.name, entry.stat(follow_symlinks=False)))
+            try:
+                with os.scandir(self._work_dir) as it:
+                    for entry in it:
+                        with suppress(FileNotFoundError, PermissionError):
+                            scandir_entries.append((entry.name, entry.stat(follow_symlinks=False)))
+            except FileNotFoundError:
+                pass
 
             scandir_entries.sort(key=lambda item: item[0])
             entries.extend(scandir_entries)
@@ -128,7 +133,7 @@ class Glob(CallableTool2[Params]):
                 group_name = _lookup_group(stats.st_gid)
                 size = stats.st_size
                 mtime = datetime.fromtimestamp(stats.st_mtime)
-                if abs((now - mtime).days) >= 365 // 2:
+                if abs((now - mtime).days) >= RECENT_FILE_DAYS_THRESHOLD:
                     time_part = f"{mtime:%b} {mtime.day:2d}  {mtime:%Y}"
                 else:
                     time_part = f"{mtime:%b} {mtime.day:2d} {mtime:%H:%M}"

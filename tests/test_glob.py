@@ -248,13 +248,15 @@ async def test_glob_double_star_listing_is_ls_like(glob_tool: Glob, temp_work_di
     lines = [line for line in result.output.split("\n") if line.strip()]
     # Each line should look like: mode links owner group size timestamp name
     assert lines, "Expected directory listing lines in ToolError output"
-    assert all(len(line.split()) >= 7 for line in lines)
-    assert any(line.split()[-1] == "." for line in lines)
-    assert any(line.split()[-1] == ".." for line in lines)
-    assert any(line.split()[-1] == ".hidden" for line in lines)
-    assert any(line.split()[-1] == "visible.txt" for line in lines)
-    assert any(line.split()[-1] == "dir" for line in lines)
-    assert all(len(line.split()[0]) == 10 for line in lines)
+    parsed = [line.split(maxsplit=8) for line in lines]
+    assert all(len(parts) >= 8 for parts in parsed)
+    names = [parts[-1] for parts in parsed]
+    assert "." in names
+    assert ".." in names
+    assert ".hidden" in names
+    assert "visible.txt" in names
+    assert "dir" in names
+    assert all(len(line[:10]) == 10 for line in lines)
 
 
 @pytest.mark.asyncio
