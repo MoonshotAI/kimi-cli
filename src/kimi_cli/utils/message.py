@@ -1,7 +1,7 @@
 from kosong.base.message import Message, TextPart
 
 # Large paste display threshold (same as ui/shell/prompt.py)
-LARGE_PASTE_WORD_THRESHOLD = 300
+LARGE_PASTE_LINE_THRESHOLD = 50
 
 
 def message_extract_text(message: Message) -> str:
@@ -24,9 +24,9 @@ def message_stringify(message: Message, context: str = "default") -> str:
         """Collapse text if it exceeds threshold (except in replay context)."""
         if context == "replay":
             return text
-        word_count = len(text.split())
-        if word_count > LARGE_PASTE_WORD_THRESHOLD:
-            return f"[pasted {word_count} words]"
+        line_count = text.count('\n') + 1
+        if line_count > LARGE_PASTE_LINE_THRESHOLD:
+            return f"[pasted {line_count} lines]"
         return text
 
     parts: list[str] = []
