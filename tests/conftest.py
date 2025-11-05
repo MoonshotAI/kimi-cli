@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 from kosong.chat_provider.mock import MockChatProvider
+from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE, ResolvedAgentSpec, load_agent_spec
-from kimi_cli.config import Config, get_default_config
+from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
@@ -33,7 +34,12 @@ from kimi_cli.tools.web.search import SearchWeb
 @pytest.fixture
 def config() -> Config:
     """Create a Config instance."""
-    return get_default_config()
+    conf = get_default_config()
+    conf.services.moonshot_search = MoonshotSearchConfig(
+        base_url="https://api.kimi.com/coding/v1/search",
+        api_key=SecretStr("test-api-key"),
+    )
+    return conf
 
 
 @pytest.fixture

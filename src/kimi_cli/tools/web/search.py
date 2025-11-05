@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 from kimi_cli.config import Config
 from kimi_cli.constant import USER_AGENT
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
+from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 
@@ -41,14 +42,11 @@ class SearchWeb(CallableTool2[Params]):
 
     def __init__(self, config: Config, **kwargs: Any):
         super().__init__(**kwargs)
-        if config.services.moonshot_search is not None:
-            self._base_url = config.services.moonshot_search.base_url
-            self._api_key = config.services.moonshot_search.api_key.get_secret_value()
-            self._custom_headers = config.services.moonshot_search.custom_headers or {}
-        else:
-            self._base_url = ""
-            self._api_key = ""
-            self._custom_headers = {}
+        if config.services.moonshot_search is None:
+            raise SkipThisTool()
+        self._base_url = config.services.moonshot_search.base_url
+        self._api_key = config.services.moonshot_search.api_key.get_secret_value()
+        self._custom_headers = config.services.moonshot_search.custom_headers or {}
 
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
