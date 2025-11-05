@@ -28,7 +28,7 @@ The `src/kimi_cli/cli.py` file must not import any modules from `kimi_cli` or `k
 
 **Requirements**
 
-The `src/kimi_cli/app.py` file must not import any UI-specific modules prefixed with `kimi_cli.ui` at the top level, instead, it UI-specific modules should be imported within functions as needed.
+The `src/kimi_cli/app.py` file must not import any UI-specific modules prefixed with `kimi_cli.ui` at the top level; instead, UI-specific modules should be imported within functions as needed.
 
 <examples>
 
