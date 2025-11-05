@@ -26,7 +26,7 @@ def message_stringify(message: Message, context: str = "default") -> str:
             return text
         word_count = len(text.split())
         if word_count > LARGE_PASTE_WORD_THRESHOLD:
-            return f"📋 pasted {word_count} words"
+            return f"[pasted {word_count} words]"
         return text
 
     parts: list[str] = []

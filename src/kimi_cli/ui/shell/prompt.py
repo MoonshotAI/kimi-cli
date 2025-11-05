@@ -395,9 +395,12 @@ def toast(message: str, duration: float = 5.0) -> None:
 
 
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
-    r"\[(?P<type>image|paste):(?P<id>[a-zA-Z0-9_\-\.]+)"
-    r"(?:,(?P<width>\d+)x(?P<height>\d+)|,(?P<words>\d+)words)?\]"
+    r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)"
+    r"(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
 )
+
+# Pattern for user-friendly large paste placeholder
+_LARGE_PASTE_PLACEHOLDER_RE = re.compile(r"\[pasted (\d+) words\]")
 
 
 class CustomPromptSession:
@@ -412,6 +415,8 @@ class CustomPromptSession:
         self._thinking: bool = False
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
+        self._placeholder_to_id: dict[str, str] = {}
+        """Mapping from placeholder text to paste id."""
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -470,8 +475,6 @@ class CustomPromptSession:
             def _paste(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
-                if self._try_paste_large_text(event):
-                    return
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
 
@@ -501,6 +504,16 @@ class CustomPromptSession:
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
         )
+
+        # Add callback to detect large text insertions (works with any paste method: Cmd-V, Ctrl-V, etc.)
+        self._pending_large_paste_replacement = False
+
+        def _on_text_insert_handler(buffer):
+            # Check if large text was just inserted (via paste)
+            self._check_and_replace_large_paste(buffer)
+
+        # Add handler to the event (use += to keep it as an Event object)
+        self._session.default_buffer.on_text_insert += _on_text_insert_handler
 
         self._status_refresh_task: asyncio.Task | None = None
         self._current_toast: str | None = None
@@ -563,6 +576,7 @@ class CustomPromptSession:
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
         self._attachment_parts.clear()
+        self._placeholder_to_id.clear()
 
     def _try_paste_image(self, event: KeyPressEvent) -> bool:
         """Try to paste an image from the clipboard. Return True if successful."""
@@ -603,35 +617,47 @@ class CustomPromptSession:
         event.app.invalidate()
         return True
 
-    def _try_paste_large_text(self, event: KeyPressEvent) -> bool:
-        """Try to paste large text as a collapsed placeholder. Return True if successful."""
-        # Get clipboard text
-        clipboard_data = event.app.clipboard.get_data()
-        text = clipboard_data.text
+    def _check_and_replace_large_paste(self, buffer) -> None:
+        """Check if large text was just pasted and replace with placeholder."""
+        if self._pending_large_paste_replacement:
+            return  # Already processing
 
-        if not text:
-            return False
+        # Get current document text
+        text = buffer.document.text
 
-        # Check if it's large enough to collapse
+        # Skip if text is short
+        if len(text) < 1000:  # Quick check before word count
+            return
+
+        # Check word count of entire buffer
         word_count = len(text.split())
         if word_count <= LARGE_PASTE_WORD_THRESHOLD:
-            return False  # Not large enough, fall through to normal paste
+            return
 
-        # Create attachment
-        paste_id = random_string(8)
-        self._attachment_parts[paste_id] = TextPart(text=text)
+        try:
+            self._pending_large_paste_replacement = True
 
-        logger.debug(
-            "Pasted large text: {paste_id}, {word_count} words",
-            paste_id=paste_id,
-            word_count=word_count,
-        )
+            # Create attachment for the pasted text
+            paste_id = random_string(8)
+            self._attachment_parts[paste_id] = TextPart(text=text)
 
-        # Insert placeholder in buffer
-        placeholder = f"[paste:{paste_id},{word_count}words]"
-        event.current_buffer.insert_text(placeholder)
-        event.app.invalidate()
-        return True
+            logger.debug(
+                "Detected large paste: {paste_id}, {word_count} words",
+                paste_id=paste_id,
+                word_count=word_count,
+            )
+
+            # Replace buffer content with user-friendly placeholder
+            # Store ID internally but show simple format to user
+            placeholder = f"[pasted {word_count} words]"
+            buffer.text = placeholder
+            buffer.cursor_position = len(placeholder)
+
+            # Store mapping from placeholder text to paste_id for later parsing
+            self._placeholder_to_id[placeholder] = paste_id
+
+        finally:
+            self._pending_large_paste_replacement = False
 
     async def prompt(self) -> UserInput:
         with patch_stdout():
@@ -642,6 +668,22 @@ class CustomPromptSession:
         # Parse rich content parts
         content: list[ContentPart] = []
         remaining_command = command
+
+        # First, check for large paste placeholder
+        paste_match = _LARGE_PASTE_PLACEHOLDER_RE.search(remaining_command)
+        if paste_match:
+            placeholder_text = paste_match.group(0)
+            paste_id = self._placeholder_to_id.get(placeholder_text)
+            if paste_id and paste_id in self._attachment_parts:
+                # Replace placeholder with actual text content
+                part = self._attachment_parts[paste_id]
+                content.append(part)
+                # Clean up
+                del self._placeholder_to_id[placeholder_text]
+                del self._attachment_parts[paste_id]
+                return UserInput(mode=self._mode, content=content, command=command)
+
+        # Parse image attachments
         while match := _ATTACHMENT_PLACEHOLDER_RE.search(remaining_command):
             start, end = match.span()
             if start > 0:

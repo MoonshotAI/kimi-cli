@@ -118,7 +118,7 @@ def test_stringify_large_text_collapsed_in_default_context():
     message = Message(role="user", content=large_text)
     result = message_stringify(message)
 
-    assert result == "📋 pasted 400 words"
+    assert result == "[pasted 400 words]"
 
 
 def test_stringify_large_text_full_in_replay_context():
@@ -141,7 +141,7 @@ def test_stringify_boundary_at_threshold():
 
     # 301 words should be collapsed
     result_301 = message_stringify(Message(role="user", content=text_301))
-    assert result_301 == "📋 pasted 301 words"
+    assert result_301 == "[pasted 301 words]"
 
 
 def test_stringify_mixed_content_with_large_text():
@@ -153,7 +153,7 @@ def test_stringify_mixed_content_with_large_text():
     message = Message(role="user", content=[text_part, image_part])
     result = message_stringify(message)
 
-    assert result == "📋 pasted 400 words[image_url]"
+    assert result == "[pasted 400 words][image_url]"
 
 
 def test_stringify_multiple_text_parts_evaluated_separately():
@@ -166,4 +166,4 @@ def test_stringify_multiple_text_parts_evaluated_separately():
     result = message_stringify(message)
 
     # Each part should be collapsed separately
-    assert result == "📋 pasted 350 words📋 pasted 350 words"
+    assert result == "[pasted 350 words][pasted 350 words]"
