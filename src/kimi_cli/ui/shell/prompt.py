@@ -479,6 +479,46 @@ class CustomPromptSession:
                 event.current_buffer.paste_clipboard_data(clipboard_data)
 
             shortcut_hints.append("ctrl-v: paste")
+
+            def _delete_placeholder_at_cursor(buff) -> bool:
+                """Delete placeholder at cursor position if present. Returns True if deleted."""
+                doc = buff.document
+                cursor = doc.cursor_position
+
+                for match in _LARGE_PASTE_PLACEHOLDER_RE.finditer(doc.text):
+                    start, end = match.span()
+                    if start <= cursor <= end:
+                        placeholder_text = match.group(0)
+                        buff.text = doc.text[:start] + doc.text[end:]
+                        buff.cursor_position = start
+                        if placeholder_text in self._placeholder_to_id:
+                            paste_id = self._placeholder_to_id.pop(placeholder_text)
+                            self._attachment_parts.pop(paste_id, None)
+                        return True
+
+                for match in _ATTACHMENT_PLACEHOLDER_RE.finditer(doc.text):
+                    start, end = match.span()
+                    if start <= cursor <= end:
+                        attachment_id = match.group("id")
+                        buff.text = doc.text[:start] + doc.text[end:]
+                        buff.cursor_position = start
+                        self._attachment_parts.pop(attachment_id, None)
+                        return True
+
+                return False
+
+            @_kb.add("backspace", eager=True)
+            def _smart_backspace(event: KeyPressEvent) -> None:
+                """Delete entire placeholder if cursor is within one, otherwise backspace normally."""
+                if not _delete_placeholder_at_cursor(event.current_buffer):
+                    event.current_buffer.delete_before_cursor(1)
+
+            @_kb.add("delete", eager=True)
+            def _smart_delete(event: KeyPressEvent) -> None:
+                """Delete entire placeholder if cursor is within one, otherwise delete normally."""
+                if not _delete_placeholder_at_cursor(event.current_buffer):
+                    event.current_buffer.delete(1)
+
             clipboard = PyperclipClipboard()
         else:
             clipboard = None
