@@ -4,18 +4,21 @@ from collections import deque
 from contextlib import asynccontextmanager, suppress
 from typing import override
 
+import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolResult
+from kosong.tooling import ToolOk, ToolResult, ToolReturnType
 from rich import box
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
 from rich.markdown import Heading, Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
+from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.wire import WireUISide
@@ -91,13 +94,64 @@ class _ContentBlock(_Block):
 
 
 class _ToolCallBlock(_Block):
-    def __init__(self) -> None:
-        pass
+    def __init__(self, tool_call: ToolCall):
+        self._tool_name = tool_call.function.name
+        self._lexer = streamingjson.Lexer()
+        if tool_call.function.arguments is not None:
+            self._lexer.append_string(tool_call.function.arguments)
+
+        self._title_markup = f"Using [blue]{self._tool_name}[/blue]"
+        self._subtitle = extract_subtitle(self._lexer, self._tool_name)
+        self._finished = False
+        self._spinner = Spinner("dots", text=self._spinner_markup)
+        self._renderable: RenderableType = Group(self._spinner)
 
     @property
     @override
     def renderable(self) -> RenderableType:
-        return Text("Tool Call Block Placeholder")
+        return self._renderable
+
+    @property
+    def finished(self) -> bool:
+        return self._finished
+
+    @property
+    def _spinner_markup(self) -> str:
+        return f"{self._title_markup} {self._subtitle_markup}"
+
+    @property
+    def _subtitle_markup(self) -> str:
+        subtitle = self._subtitle
+        return f"[grey50]({escape(subtitle)})[/grey50]" if subtitle else ""
+
+    def append_args_part(self, args_part: str):
+        if self.finished:
+            return
+        self._lexer.append_string(args_part)
+        # TODO: don't extract detail if it's already stable
+        new_subtitle = extract_subtitle(self._lexer, self._tool_name)
+        if new_subtitle and new_subtitle != self._subtitle:
+            self._subtitle = new_subtitle
+            self._spinner.update(text=self._spinner_markup)
+
+    def finish(self, result: ToolReturnType):
+        """
+        Finish the live display of a tool call.
+        After calling this, the `renderable` property should be re-rendered.
+        """
+        self._finished = True
+        lines = [Text.from_markup(f"Used [blue]{self._tool_name}[/blue] {self._subtitle_markup}")]
+        if result.brief:
+            lines.append(
+                Text.from_markup(
+                    result.brief,
+                    style="grey50" if isinstance(result, ToolOk) else "red",
+                )
+            )
+        self._renderable = _with_bullet(
+            Group(*lines),
+            "green" if isinstance(result, ToolOk) else "red",
+        )
 
 
 class _ApprovalPanel:
@@ -145,7 +199,7 @@ class _LiveView:
 
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks = dict[str, _ToolCallBlock]()
-        self._last_tool_call: _ToolCallBlock | None = None
+        self._last_tool_call_block: _ToolCallBlock | None = None
         self._approval_queue = deque[ApprovalRequest]()
         self._current_approval: _ApprovalPanel | None = None
         self._reject_all_following = False
@@ -245,6 +299,14 @@ class _LiveView:
             self._current_content_block = None
             self.refresh_soon()
 
+    def flush_tool_call(self, tool_call_id: str) -> None:
+        # TODO: maybe we need to maintain order
+        if block := self._tool_call_blocks.pop(tool_call_id, None):
+            console.print(block.renderable_final)
+            if self._last_tool_call_block == block:
+                self._last_tool_call_block = None
+            self.refresh_soon()
+
     def append_content(self, part: ContentPart) -> None:
         match part:
             case ThinkPart(think=text) | TextPart(text=text):
@@ -265,16 +327,22 @@ class _LiveView:
 
     def append_tool_call(self, tool_call: ToolCall) -> None:
         self.flush_content()
-        # console.print(tool_call)
-        pass
+        self._tool_call_blocks[tool_call.id] = _ToolCallBlock(tool_call)
+        self._last_tool_call_block = self._tool_call_blocks[tool_call.id]
+        self.refresh_soon()
 
     def append_tool_call_part(self, part: ToolCallPart) -> None:
-        # console.print(part)
-        pass
+        if not part.arguments_part:
+            return
+        if self._last_tool_call_block is None:
+            return
+        self._last_tool_call_block.append_args_part(part.arguments_part)
 
     def append_tool_result(self, result: ToolResult) -> None:
-        # console.print(result)
-        pass
+        if block := self._tool_call_blocks.get(result.tool_call_id):
+            block.finish(result.result)
+            self.flush_tool_call(result.tool_call_id)
+            self.refresh_soon()
 
     def request_approval(self, request: ApprovalRequest) -> None:
         # console.print(request)
