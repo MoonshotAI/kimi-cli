@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
@@ -18,9 +19,13 @@ from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
-from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
+
+if os.environ.get("KIMI_USE_NEW_LIVEVIEW") == "1":
+    from kimi_cli.ui.shell.visualize2 import visualize
+else:
+    from kimi_cli.ui.shell.visualize import visualize
 
 
 class ShellApp:
