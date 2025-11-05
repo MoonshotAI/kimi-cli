@@ -1,6 +1,3 @@
-RUFF := $(shell command -v ruff 2> /dev/null || echo "uv run ruff")
-PYRIGHT := $(shell command -v pyright 2> /dev/null || echo "uv run pyright")
-
 .DEFAULT_GOAL := prepare
 
 .PHONY: help
@@ -31,5 +28,9 @@ test: ## Run the test suite with pytest.
 .PHONY: build
 build: ## Build the standalone executable with PyInstaller.
 	uv run pyinstaller kimi.spec
+
+.PHONY: ai-test
+ai-test: ## Run the test suite with Kimi CLI.
+	uv run tests_ai/scripts/run.py tests_ai
 
 include src/kimi_cli/deps/Makefile
