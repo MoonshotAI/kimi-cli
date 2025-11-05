@@ -11,10 +11,9 @@ from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderR
 from rich.live import Live
 from rich.markdown import Heading, Markdown
 from rich.panel import Panel
-from rich.status import Status
-from rich.text import Text
-from rich.table import Table
 from rich.spinner import Spinner
+from rich.table import Table
+from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
@@ -235,12 +234,12 @@ class _LiveView:
                 self.request_approval(msg)
 
     def interrupt(self) -> None:
-        self.push_out_current_content_block()
+        self.flush_content()
 
     def finish(self) -> None:
-        self.push_out_current_content_block()
+        self.flush_content()
 
-    def push_out_current_content_block(self) -> None:
+    def flush_content(self) -> None:
         if self._current_content_block is not None:
             console.print(self._current_content_block.renderable_final)
             self._current_content_block = None
@@ -256,7 +255,7 @@ class _LiveView:
                     self._current_content_block = _ContentBlock(is_think)
                     self.refresh_soon()
                 elif self._current_content_block.is_think != is_think:
-                    self.push_out_current_content_block()
+                    self.flush_content()
                     self._current_content_block = _ContentBlock(is_think)
                     self.refresh_soon()
                 self._current_content_block.append(text)
@@ -265,7 +264,7 @@ class _LiveView:
                 pass
 
     def append_tool_call(self, tool_call: ToolCall) -> None:
-        self.push_out_current_content_block()
+        self.flush_content()
         # console.print(tool_call)
         pass
 
