@@ -9,7 +9,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.preview import Preview
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
-from kimi_cli.tools.utils import ToolRejectedError
+from kimi_cli.tools.utils import ToolRejectedError, load_desc
 
 
 class Params(BaseModel):
@@ -27,7 +27,7 @@ class Params(BaseModel):
 
 class WriteFile(CallableTool2[Params]):
     name: str = "WriteFile"
-    description: str = (Path(__file__).parent / "write.md").read_text(encoding="utf-8")
+    description: str = load_desc(Path(__file__).parent / "write.md")
     params: type[Params] = Params
 
     def __init__(

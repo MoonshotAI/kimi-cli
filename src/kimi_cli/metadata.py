@@ -23,7 +23,7 @@ class WorkDirMeta(BaseModel):
 
     @property
     def sessions_dir(self) -> Path:
-        path = get_share_dir() / "sessions" / md5(self.path.encode()).hexdigest()
+        path = get_share_dir() / "sessions" / md5(self.path.encode(encoding="utf-8")).hexdigest()
         path.mkdir(parents=True, exist_ok=True)
         return path
 

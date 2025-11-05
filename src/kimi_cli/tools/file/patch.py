@@ -10,7 +10,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.preview import Preview
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
-from kimi_cli.tools.utils import ToolRejectedError
+from kimi_cli.tools.utils import ToolRejectedError, load_desc
 
 
 def _parse_patch(diff_bytes: bytes) -> patch_ng.PatchSet | None:
@@ -50,7 +50,7 @@ class Params(BaseModel):
 
 class PatchFile(CallableTool2[Params]):
     name: str = "PatchFile"
-    description: str = (Path(__file__).parent / "patch.md").read_text(encoding="utf-8")
+    description: str = load_desc(Path(__file__).parent / "patch.md")
     params: type[Params] = Params
 
     def __init__(

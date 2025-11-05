@@ -8,6 +8,12 @@ from kosong.utils.typing import JsonType
 from kimi_cli.utils.string import shorten_middle
 
 
+class SkipThisTool(Exception):
+    """Raised when a tool decides to skip itself from the loading process."""
+
+    pass
+
+
 def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
     try:
         curr_args: JsonType = json.loads(lexer.complete_json())
