@@ -10,7 +10,7 @@ from kosong.tooling import ToolOk, ToolResult, ToolReturnType
 from rich import box
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
-from rich.markdown import Heading, Markdown
+from rich.markdown import Heading, Markdown, MarkdownContext, Paragraph
 from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
@@ -215,7 +215,7 @@ class _LiveView:
             self.compose(),
             console=console,
             refresh_per_second=10,
-            transient=False,
+            transient=True,
             vertical_overflow="visible",
         ) as live:
             async with _keyboard_listener(self):
@@ -288,10 +288,12 @@ class _LiveView:
                 self.request_approval(msg)
 
     def interrupt(self) -> None:
-        self.flush_content()
+        # TODO: finish all tool calls
+        self.flush_all()
 
     def finish(self) -> None:
-        self.flush_content()
+        # TODO: finish all tool calls
+        self.flush_all()
 
     def flush_content(self) -> None:
         if self._current_content_block is not None:
@@ -306,6 +308,11 @@ class _LiveView:
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
+
+    def flush_all(self) -> None:
+        self.flush_content()
+        for tool_call_id in list(self._tool_call_blocks.keys()):
+            self.flush_tool_call(tool_call_id)
 
     def append_content(self, part: ContentPart) -> None:
         match part:
