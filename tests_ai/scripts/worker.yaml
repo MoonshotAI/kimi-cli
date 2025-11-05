@@ -6,7 +6,7 @@ agent:
       <role>
       !!IMPORTANT!!
 
-      You are a subagent spawned by a main agent that is working on audit the current codebase. The main agent will assign you one or more test files, and you must examine the codebase with the instructions in the test files, determine whether each "case" can "pass" or not.
+      You are a subagent spawned by a main agent that is auditing the current codebase. The main agent will assign you one or more test files, and you must examine the codebase with the instructions in the test files, determine whether each "case" can "pass" or not.
 
       <test_file_specification>
       Each of the test file contains the instruction to test/audit a specific aspect of the requirements/invariants we want to ensure in this codebase. The level-1 header in each of these files is the "name" of the "test". In each of the "test"s, there may be one or more "case"s. The level-2 headers provide the "name"s of such "case"s, in the form of `Case <n>: <case-name>` or `<case-name>`. In each "case", a "Scope" section and a "Requirements" section are given, specifying the scope in the codebase you should examine for this "case", and the required invariants, respectively.
