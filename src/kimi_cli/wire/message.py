@@ -103,7 +103,13 @@ class PreviewChange:
         self.content = content
         self.content_type = content_type
         self.style = style
+        self._future = asyncio.Future[bool]()
 
+    async def wait(self) -> bool:
+        return await self._future
+
+    def resolve(self) -> bool:
+        return self._future.done()
 
 type WireMessage = Event | ApprovalRequest | PreviewChange
 

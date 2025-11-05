@@ -115,6 +115,7 @@ class PatchFile(CallableTool2[Params]):
             await self._preview.preview_text(
                 f"Patch file `{params.path}`",
                 params.diff,
+                "",
                 "diff",
             )
 

@@ -1,25 +1,9 @@
 import asyncio
 import difflib
-import re
 
 from pygments.lexers import get_lexer_for_filename
 
 from kimi_cli.wire.message import PreviewChange
-
-
-def parse_diff_header(diff_line: str) -> tuple[int, int, int, int]:
-    pattern = r"@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@"
-    match = re.match(pattern, diff_line)
-
-    if not match:
-        return (0, 0, 0, 0)
-
-    old_start, old_lines, new_start, new_lines = match.groups()
-
-    old_lines = int(old_lines) if old_lines else 1
-    new_lines = int(new_lines) if new_lines else 1
-
-    return (int(old_start), old_lines, int(new_start), new_lines)
 
 
 class Preview:
@@ -33,25 +17,27 @@ class Preview:
         except Exception:
             return "text"
 
-    async def preview_text(self, file_path: str, content: str, content_type: str = ""):
+    async def preview_text(
+        self, file_path: str, content: str, content_type: str = "", style: str = ""
+    ):
         title = file_path
         if not content_type:
             content_type = await self.get_lexer(file_path)
 
-        self._preview_queue.put_nowait(PreviewChange(title, content, content_type))
+        msg = PreviewChange(title, content, content_type, style)
+        self._preview_queue.put_nowait(msg)
+        await msg.wait()
 
     async def preview_diff(self, file_path: str, before: str, after: str):
         diff = difflib.unified_diff(
-            before.splitlines(keepends=True), after.splitlines(keepends=True), fromfile=file_path
+            before.splitlines(keepends=True), after.splitlines(keepends=True)
         )
-
-        # ignore --- +++
-        next(diff)
-        next(diff)
 
         content = "".join(diff)
         content_type = await self.get_lexer(file_path)
-        self._preview_queue.put_nowait(PreviewChange(file_path, content, content_type, "diff"))
+        msg = PreviewChange(file_path, content, content_type, "diff")
+        self._preview_queue.put_nowait(msg)
+        await msg.wait()
 
     async def fetch_request(self) -> PreviewChange:
         """

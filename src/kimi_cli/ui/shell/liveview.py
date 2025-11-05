@@ -228,7 +228,7 @@ class StepLiveView:
         elif content_type in {"text", "text only"}:
             body = Text(msg.content)
         elif msg.style == "diff":
-            body = DifferView.render(msg.file_path, msg.content, msg.content_type)
+            body = DifferView.get_view(msg.file_path, msg.content, msg.content_type)
         else:
             body = Syntax(
                 msg.content,
@@ -236,6 +236,7 @@ class StepLiveView:
                 theme="monokai",
                 line_numbers=True,
                 background_color="default",
+                padding=(0, 0),
             )
 
         width = int(console.width * 0.8)
@@ -245,6 +246,7 @@ class StepLiveView:
             width=width,
         )
         self._push_out(panel)
+        msg.resolve()
 
     def append_tool_call(self, tool_call: ToolCall):
         self._tool_calls[tool_call.id] = _ToolCallDisplay(tool_call)
@@ -471,7 +473,12 @@ class DifferView:
         return (int(old_start), old_lines, int(new_start), new_lines)
 
     @staticmethod
-    def render(file: str, code: str, lexer: str) -> RenderableType:
+    def get_view(file: str, code: str, lexer: str) -> RenderableType:
+        if not code:
+            return Group(
+                Text(f"Edit {file}\n", style="grey50"), Text("nothing changed", style="grey50")
+            )
+
         table = Table.grid(padding=(0, 1))
         table.add_column(style=DifferView.GRAY, no_wrap=True)  # line number
         table.add_column(style=DifferView.GRAY, no_wrap=True)  # Diff marker
@@ -479,6 +486,9 @@ class DifferView:
 
         ln = oln = nln = 0
         for line in code.splitlines():
+            if line.startswith("---") or line.startswith("+++"):
+                continue
+
             if line.startswith("@@"):
                 ln = oln = nln = DifferView.parse_diff_header(line)[0] - 1
                 if len(table.rows) > 0:
