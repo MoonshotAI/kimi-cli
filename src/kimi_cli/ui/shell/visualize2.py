@@ -13,6 +13,8 @@ from rich.markdown import Heading, Markdown
 from rich.panel import Panel
 from rich.status import Status
 from rich.text import Text
+from rich.table import Table
+from rich.spinner import Spinner
 
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
@@ -62,29 +64,30 @@ class _ContentBlock(_Block):
     def __init__(self, is_think: bool):
         self.is_think = is_think
         # self.text = Text(style="grey50 italic" if is_think else "")
-        self._composing_status = console.status(
+        self._composing_spinner = Spinner(
+            "dots",
             "Thinking..." if is_think else "Composing...",
-            spinner="dots",
         )
         self.raw_text = ""
 
     @property
     @override
     def renderable(self) -> RenderableType:
-        # return self.text
-        return self._composing_status
+        return self._composing_spinner
 
     @property
     @override
     def renderable_final(self) -> RenderableType:
-        return _LeftAlignedMarkdown(
-            self.raw_text,
-            justify="left",
-            style="grey50 italic" if self.is_think else "",
+        return _with_bullet(
+            _LeftAlignedMarkdown(
+                self.raw_text,
+                justify="left",
+                style="grey50 italic" if self.is_think else "",
+            ),
+            "grey50",
         )
 
     def append(self, content: str) -> None:
-        # self.text.append(content)
         self.raw_text += content
 
 
@@ -138,8 +141,8 @@ class _LiveView:
     def __init__(self, initial_status: StatusSnapshot, cancel_event: asyncio.Event | None = None):
         self._cancel_event = cancel_event
 
-        self._mooning_status: Status | None = None
-        self._compacting_status: Status | None = None
+        self._mooning_spinner: Spinner | None = None
+        self._compacting_spinner: Spinner | None = None
 
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks = dict[str, _ToolCallBlock]()
@@ -183,10 +186,10 @@ class _LiveView:
 
     def compose(self) -> RenderableType:
         blocks: list[RenderableType] = []
-        if self._mooning_status is not None:
-            blocks.append(self._mooning_status)
-        elif self._compacting_status is not None:
-            blocks.append(self._compacting_status)
+        if self._mooning_spinner is not None:
+            blocks.append(self._mooning_spinner)
+        elif self._compacting_spinner is not None:
+            blocks.append(self._compacting_spinner)
         else:
             if self._current_content_block is not None:
                 blocks.append(self._current_content_block.renderable)
@@ -202,21 +205,21 @@ class _LiveView:
         assert not isinstance(msg, StepInterrupted)  # handled in visualize_loop
 
         if isinstance(msg, StepBegin):
-            self._mooning_status = console.status("", spinner="moon")
+            self._mooning_spinner = Spinner("moon", "")
             # TODO: push out blocks of previous step
             self.refresh_soon()
             return
 
-        if self._mooning_status is not None:
-            self._mooning_status = None
+        if self._mooning_spinner is not None:
+            self._mooning_spinner = None
             self.refresh_soon()
 
         match msg:
             case CompactionBegin():
-                self._compacting_status = console.status("Compacting...", spinner="balloon")
+                self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
             case CompactionEnd():
-                self._compacting_status = None
+                self._compacting_spinner = None
                 self.refresh_soon()
             case StatusUpdate(status=status):
                 self._status_block.update(status)
@@ -310,3 +313,12 @@ class _LeftAlignedMarkdown(Markdown):
 
     elements = dict(Markdown.elements)
     elements["heading_open"] = _LeftAlignedHeading
+
+
+def _with_bullet(renderable: RenderableType, bullet_style: str) -> RenderableType:
+    table = Table.grid(padding=(0, 0))
+    table.expand = True
+    table.add_column(width=2, justify="left", style=bullet_style)
+    table.add_column(ratio=1)
+    table.add_row(Text("•"), renderable)
+    return table
