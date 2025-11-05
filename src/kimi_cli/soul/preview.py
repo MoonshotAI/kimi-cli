@@ -7,8 +7,9 @@ from kimi_cli.wire.message import PreviewChange
 
 
 class Preview:
-    def __init__(self):
+    def __init__(self, yolo: bool = False):
         self._preview_queue = asyncio.Queue[PreviewChange]()
+        self._yolo = yolo
 
     async def get_lexer(self, file_path: str):
         try:
@@ -20,6 +21,9 @@ class Preview:
     async def preview_text(
         self, file_path: str, content: str, content_type: str = "", style: str = ""
     ):
+        if self._yolo:
+            return
+
         title = file_path
         if not content_type:
             content_type = await self.get_lexer(file_path)
@@ -29,6 +33,9 @@ class Preview:
         await msg.wait()
 
     async def preview_diff(self, file_path: str, before: str, after: str):
+        if self._yolo:
+            return
+
         diff = difflib.unified_diff(
             before.splitlines(keepends=True), after.splitlines(keepends=True)
         )
@@ -40,7 +47,4 @@ class Preview:
         await msg.wait()
 
     async def fetch_request(self) -> PreviewChange:
-        """
-        Fetch an approval request from the queue. Intended to be called by the soul.
-        """
         return await self._preview_queue.get()

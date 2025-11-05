@@ -97,7 +97,7 @@ def approval() -> Approval:
 @pytest.fixture
 def preview() -> Preview:
     """Create a Preview instance."""
-    return Preview()
+    return Preview(yolo=True)
 
 
 @pytest.fixture

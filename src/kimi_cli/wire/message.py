@@ -89,14 +89,9 @@ class ApprovalRequest:
         return self._future.done()
 
 
-class PreviewType(Enum):
-    DIFF = "diff"
-    TEXT = "text"
-
-
 class PreviewChange:
     def __init__(
-        self, file_path: str, content: str, content_type: str = "markdown", style: str = "default"
+        self, file_path: str, content: str, content_type: str = "markdown", style: str = "auto"
     ):
         self.id = str(uuid.uuid4())
         self.file_path = file_path
@@ -108,8 +103,9 @@ class PreviewChange:
     async def wait(self) -> bool:
         return await self._future
 
-    def resolve(self) -> bool:
-        return self._future.done()
+    def resolve(self) -> None:
+        self._future.set_result(True)
+
 
 type WireMessage = Event | ApprovalRequest | PreviewChange
 
