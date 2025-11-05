@@ -14,6 +14,7 @@ Only write entries that are worth mentioning to users.
 ### Fixed
 
 - Fix Ctrl-W not working in some environments
+- Do not load SearchWeb tool when the search service is not configured
 
 ## [0.46] - 2025-11-03
 
