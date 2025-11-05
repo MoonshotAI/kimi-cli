@@ -1,9 +1,25 @@
 import asyncio
 import difflib
+import re
 
 from pygments.lexers import get_lexer_for_filename
 
 from kimi_cli.wire.message import PreviewChange
+
+
+def parse_diff_header(diff_line: str) -> tuple[int, int, int, int]:
+    pattern = r"@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@"
+    match = re.match(pattern, diff_line)
+
+    if not match:
+        return (0, 0, 0, 0)
+
+    old_start, old_lines, new_start, new_lines = match.groups()
+
+    old_lines = int(old_lines) if old_lines else 1
+    new_lines = int(new_lines) if new_lines else 1
+
+    return (int(old_start), old_lines, int(new_start), new_lines)
 
 
 class Preview:
@@ -21,6 +37,7 @@ class Preview:
         title = file_path
         if not content_type:
             content_type = await self.get_lexer(file_path)
+
         self._preview_queue.put_nowait(PreviewChange(title, content, content_type))
 
     async def preview_diff(self, file_path: str, before: str, after: str):
@@ -28,19 +45,13 @@ class Preview:
             before.splitlines(keepends=True), after.splitlines(keepends=True), fromfile=file_path
         )
 
-        breaker = ""
-        # ignore redundant lines
-        while not breaker.startswith("@@"):
-            breaker = next(diff)
+        # ignore --- +++
+        next(diff)
+        next(diff)
 
-        code = ""
-        delta = ["+", "-"]
-        for line in diff:
-            line = f"{line[0]} {line[1:]}" if line[0] in delta else f" {line}"
-            code += line
-
-        title = f"Edit {file_path}"
-        self._preview_queue.put_nowait(PreviewChange(title, code, "diff"))
+        content = "".join(diff)
+        content_type = await self.get_lexer(file_path)
+        self._preview_queue.put_nowait(PreviewChange(file_path, content, content_type, "diff"))
 
     async def fetch_request(self) -> PreviewChange:
         """

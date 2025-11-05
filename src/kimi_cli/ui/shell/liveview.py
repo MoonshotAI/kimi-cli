@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections import deque
 from typing import Literal
 
@@ -11,9 +12,11 @@ from rich.live import Live
 from rich.markdown import Heading, Markdown
 from rich.markup import escape
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.spinner import Spinner
 from rich.status import Status
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
@@ -215,7 +218,6 @@ class StepLiveView:
             self._live.update(self._compose())
 
     def append_preview(self, msg: PreviewChange):
-        MAX_TITLE_LENGTH = 70
         content_type = msg.content_type
         if content_type == "markdown":
             body = _LeftAlignedMarkdown(
@@ -225,22 +227,20 @@ class StepLiveView:
             )
         elif content_type in {"text", "text only"}:
             body = Text(msg.content)
+        elif msg.style == "diff":
+            body = DifferView.render(msg.file_path, msg.content, msg.content_type)
         else:
             body = Syntax(
                 msg.content,
                 content_type,
                 theme="monokai",
                 line_numbers=True,
+                background_color="default",
             )
 
         width = int(console.width * 0.8)
-        title = msg.title
-        if len(title) > MAX_TITLE_LENGTH:
-            title = "..." + title[-MAX_TITLE_LENGTH:]
-
         panel = Panel(
             body,
-            title=title,
             border_style="wheat4",
             width=width,
         )
@@ -448,3 +448,63 @@ class _LeftAlignedMarkdown(Markdown):
 
     elements = dict(Markdown.elements)
     elements["heading_open"] = _LeftAlignedHeading
+
+
+class DifferView:
+    RED = "#3A0003"
+    GREEN = "#242F12"
+    GRAY = "grey50"
+
+    @staticmethod
+    def parse_diff_header(diff_line: str) -> tuple[int, int, int, int]:
+        pattern = r"@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@"
+        match = re.match(pattern, diff_line)
+
+        if not match:
+            return (0, 0, 0, 0)
+
+        old_start, old_lines, new_start, new_lines = match.groups()
+
+        old_lines = int(old_lines) if old_lines else 1
+        new_lines = int(new_lines) if new_lines else 1
+
+        return (int(old_start), old_lines, int(new_start), new_lines)
+
+    @staticmethod
+    def render(file: str, code: str, lexer: str) -> RenderableType:
+        table = Table.grid(padding=(0, 1))
+        table.add_column(style=DifferView.GRAY, no_wrap=True)  # line number
+        table.add_column(style=DifferView.GRAY, no_wrap=True)  # Diff marker
+        table.add_column()  # code
+
+        ln = oln = nln = 0
+        for line in code.splitlines():
+            if line.startswith("@@"):
+                ln = oln = nln = DifferView.parse_diff_header(line)[0] - 1
+                if len(table.rows) > 0:
+                    table.add_row(Rule(style=DifferView.GRAY))
+                continue
+
+            if line.startswith("+"):
+                marker = Text("+", style="green")
+                syntax = Syntax(line[1:], lexer, theme="monokai", background_color=DifferView.GREEN)
+                nln += 1
+                ln = nln
+            elif line.startswith("-"):
+                syntax = Syntax(line[1:], lexer, theme="monokai", background_color=DifferView.RED)
+                marker = Text("-", style="red")
+                oln += 1
+                ln = oln
+            else:
+                marker = " "
+                syntax = Syntax(
+                    line[1:], lexer, theme="monokai", word_wrap=True, background_color="default"
+                )
+                oln += 1
+                nln += 1
+                ln += 1
+
+            table.add_row(Text(str(ln), style=DifferView.GRAY), marker, syntax)
+
+        text = Text(f"Edit {file}\n", style=DifferView.GRAY)
+        return Group(text, table)

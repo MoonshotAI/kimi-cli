@@ -95,11 +95,14 @@ class PreviewType(Enum):
 
 
 class PreviewChange:
-    def __init__(self, title: str, content: str, content_type: str = "markdown"):
+    def __init__(
+        self, file_path: str, content: str, content_type: str = "markdown", style: str = "default"
+    ):
         self.id = str(uuid.uuid4())
-        self.title = title
+        self.file_path = file_path
         self.content = content
         self.content_type = content_type
+        self.style = style
 
 
 type WireMessage = Event | ApprovalRequest | PreviewChange
@@ -199,7 +202,8 @@ def _serialize_tool_output(
 def serialize_preview_request(request: PreviewChange) -> dict[str, Any]:
     return {
         "id": request.id,
-        "title": request.title,
+        "file_path": request.file_path,
         "content": request.content,
         "content_type": request.content_type,
+        "style": request.style,
     }
