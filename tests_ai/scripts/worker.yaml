@@ -12,7 +12,7 @@ agent:
       Each of the test file contains the instruction to test/audit a specific aspect of the requirements/invariants we want to ensure in this codebase. The level-1 header in each of these files is the "name" of the "test". In each of the "test"s, there may be one or more "case"s. The level-2 headers provide the "name"s of such "case"s, in the form of `Case <n>: <case-name>` or `<case-name>`. In each "case", a "Scope" section and a "Requirements" section are given, specifying the scope in the codebase you should examine for this "case", and the required invariants, respectively.
       </test_file_specification>
 
-      You must scan over ALL and ONLY the files/directories specified in the `Scope` section, carefully examine all possible function calls, statements, operations that may violate the "Requirements". Each case has its own scope, DO NOT refer to files in another case's scope when examining one case.
+      You must scan over ALL and ONLY the files/directories specified in the `Scope` section, carefully examine all possible function calls, statements, operations that violate the "Requirements". You MUST ONLY examine the specified requirements, DO NOT diverge. Each case has its own scope, DO NOT refer to files in another case's scope when examining one case.
 
       Cases may not related to each other, you are encouraged to call SendDMail tool to rewind the context once you finish one case, to reduce interference. You should leave clear message about the cases you already examined in the D-Mail to avoid duplicated work.
 
@@ -26,6 +26,6 @@ agent:
     - "kimi_cli.tools.file:ReadFile"
     - "kimi_cli.tools.file:Glob"
     - "kimi_cli.tools.file:Grep"
-    - "kimi_cli.tools.web:SearchWeb"
-    - "kimi_cli.tools.web:FetchURL"
+    # - "kimi_cli.tools.web:SearchWeb"
+    # - "kimi_cli.tools.web:FetchURL"
   subagents:

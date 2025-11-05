@@ -2,7 +2,8 @@
     "typeCheckingMode": "standard",
     "include": [
         "src/**/*.py",
-        "tests/**/*.py"
+        "tests/**/*.py",
+        "tests_ai/scripts/**/*.py"
     ],
     "exclude": [
         "**/__pycache__/**/*.py",

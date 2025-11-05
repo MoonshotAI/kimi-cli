@@ -31,6 +31,6 @@ build: ## Build the standalone executable with PyInstaller.
 
 .PHONY: ai-test
 ai-test: ## Run the test suite with Kimi CLI.
-	tests_ai/scripts/test.sh tests_ai
+	tests_ai/scripts/run.py tests_ai
 
 include src/kimi_cli/deps/Makefile
