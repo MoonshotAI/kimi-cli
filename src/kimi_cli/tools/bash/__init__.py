@@ -46,11 +46,11 @@ class Bash(CallableTool2[Params]):
             return ToolRejectedError()
 
         def stdout_cb(line: bytes):
-            line_str = line.decode(errors="replace")
+            line_str = line.decode(encoding="utf-8", errors="replace")
             builder.write(line_str)
 
         def stderr_cb(line: bytes):
-            line_str = line.decode(errors="replace")
+            line_str = line.decode(encoding="utf-8", errors="replace")
             builder.write(line_str)
 
         try:

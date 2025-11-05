@@ -399,7 +399,7 @@ class CustomPromptSession:
     def __init__(self, status_provider: Callable[[], StatusSnapshot]):
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
-        work_dir_id = md5(str(Path.cwd()).encode()).hexdigest()
+        work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._last_history_content: str | None = None
@@ -734,7 +734,7 @@ def _cursor_column_unix() -> int | None:
                 break
             if not chunk:
                 break
-            response += chunk.decode(errors="ignore")
+            response += chunk.decode(encoding="utf-8", errors="ignore")
             match = _CURSOR_POSITION_RE.search(response)
             if match:
                 return int(match.group(2))

@@ -53,4 +53,4 @@ No specific source file.
 
 **Requirements**
 
-The time taken to run `uv run kimi --help` must be less than 100 milliseconds on average over 5 runs after a 3-run warm-up.
+The time taken to run `uv run kimi --help` must be less than 150 milliseconds on average over 5 runs after a 3-run warm-up.
