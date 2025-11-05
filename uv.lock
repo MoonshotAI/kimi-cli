@@ -4,14 +4,14 @@ requires-python = ">=3.13"
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.6.2"
+version = "0.6.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/59/5c6c8571dd1ae7a808b4208c7fbccab8f365762ead30980d08c0d3340747/agent_client_protocol-0.6.2.tar.gz", hash = "sha256:2260025f4acc15884ec982b0f484aeb60c49beef6c16e544b854b4c99aecb996", size = 150430, upload-time = "2025-10-25T18:29:03.176Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/fe/147187918c5ba695db537b3088c441bcace4ac9365fae532bf36b1494769/agent_client_protocol-0.6.3.tar.gz", hash = "sha256:ea01a51d5b55864c606401694dad429d83c5bedb476807d81b8208031d6cf3d8", size = 152382, upload-time = "2025-11-03T20:09:19.027Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/e1/f0e8b3bb757ebcbad5cd15886bca3d3c2fdd85ae4361de4952fb56e7fb74/agent_client_protocol-0.6.2-py3-none-any.whl", hash = "sha256:1f587b2acf19f7e0a57996426e67d4ac62270ca4f8374d416d56b2f3c91d9ed8", size = 47474, upload-time = "2025-10-25T18:29:01.825Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/2e/62d1770a489d3356cd75e19cd61583e7e411f1b00ab9859c73048621e4c2/agent_client_protocol-0.6.3-py3-none-any.whl", hash = "sha256:184264bd6988731613a49c9eb89d7ecd23c6afffe905c64f1b604a42a9b20aef", size = 47613, upload-time = "2025-11-03T20:09:17.427Z" },
 ]
 
 [[package]]
@@ -822,7 +822,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.46"
+version = "0.47"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -857,7 +857,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.6.2" },
+    { name = "agent-client-protocol", specifier = "==0.6.3" },
     { name = "aiofiles", specifier = "==25.1.0" },
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "click", specifier = "==8.3.0" },

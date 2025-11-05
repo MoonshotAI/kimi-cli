@@ -9,6 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.47] - 2025-11-05
+
+### Fixed
+
+- Fix Ctrl-W not working in some environments
+
 ## [0.46] - 2025-11-03
 
 ### Added
