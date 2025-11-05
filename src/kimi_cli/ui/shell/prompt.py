@@ -41,6 +41,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.message import LARGE_PASTE_WORD_THRESHOLD
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
@@ -394,7 +395,8 @@ def toast(message: str, duration: float = 5.0) -> None:
 
 
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
-    r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
+    r"\[(?P<type>image|paste):(?P<id>[a-zA-Z0-9_\-\.]+)"
+    r"(?:,(?P<width>\d+)x(?P<height>\d+)|,(?P<words>\d+)words)?\]"
 )
 
 
@@ -467,6 +469,8 @@ class CustomPromptSession:
             @_kb.add("c-v", eager=True)
             def _paste(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
+                    return
+                if self._try_paste_large_text(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
@@ -595,6 +599,36 @@ class CustomPromptSession:
         )
 
         placeholder = f"[image:{attachment_id},{image.width}x{image.height}]"
+        event.current_buffer.insert_text(placeholder)
+        event.app.invalidate()
+        return True
+
+    def _try_paste_large_text(self, event: KeyPressEvent) -> bool:
+        """Try to paste large text as a collapsed placeholder. Return True if successful."""
+        # Get clipboard text
+        clipboard_data = event.app.clipboard.get_data()
+        text = clipboard_data.text
+
+        if not text:
+            return False
+
+        # Check if it's large enough to collapse
+        word_count = len(text.split())
+        if word_count <= LARGE_PASTE_WORD_THRESHOLD:
+            return False  # Not large enough, fall through to normal paste
+
+        # Create attachment
+        paste_id = random_string(8)
+        self._attachment_parts[paste_id] = TextPart(text=text)
+
+        logger.debug(
+            "Pasted large text: {paste_id}, {word_count} words",
+            paste_id=paste_id,
+            word_count=word_count,
+        )
+
+        # Insert placeholder in buffer
+        placeholder = f"[paste:{paste_id},{word_count}words]"
         event.current_buffer.insert_text(placeholder)
         event.app.invalidate()
         return True
