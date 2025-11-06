@@ -162,14 +162,17 @@ class _ToolCallBlock:
             n_hidden = self._n_finished_subagent_tool_calls - MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
             lines.append(
                 _with_bullet(
-                    Text(f"{n_hidden} more tool calls ...", style="grey50 italic"),
+                    Text(
+                        f"{n_hidden} more tool call{'s' if n_hidden > 1 else ''} ...",
+                        style="grey50 italic",
+                    ),
                     bullet_style="grey50",
                 )
             )
         for sub_call, sub_result in self._finished_subagent_tool_calls:
-            lexer = streamingjson.Lexer()
-            lexer.append_string(sub_call.function.arguments or "")
-            argument = extract_key_argument(lexer, sub_call.function.name)
+            argument = extract_key_argument(
+                sub_call.function.arguments or "", sub_call.function.name
+            )
             lines.append(
                 _with_bullet(
                     Text.from_markup(
