@@ -687,6 +687,7 @@ class Markdown(JupyterMixin):
         inline_style_tags = self.inlines
         new_line = False
         _new_line_segment = Segment.line()
+        render_started = False
 
         for token in self._flatten_tokens(tokens):
             node_type = token.type
@@ -758,10 +759,13 @@ class Markdown(JupyterMixin):
                     )
 
                     if should_render:
-                        if new_line:
+                        if new_line and render_started:
                             yield _new_line_segment
 
-                        yield from console.render(element, context.options)
+                        rendered = console.render(element, context.options)
+                        for segment in rendered:
+                            render_started = True
+                            yield segment
                 elif self_closing:  # SELF-CLOSING tags (e.g. text, code, image)
                     context.stack.pop()
                     text = token.content
@@ -774,9 +778,12 @@ class Markdown(JupyterMixin):
                         and context.stack.top.on_child_close(context, element)
                     )
                     if should_render:
-                        if new_line and node_type != "inline":
+                        if new_line and node_type != "inline" and render_started:
                             yield _new_line_segment
-                        yield from console.render(element, context.options)
+                        rendered = console.render(element, context.options)
+                        for segment in rendered:
+                            render_started = True
+                            yield segment
 
                 if exiting or self_closing:
                     element.on_leave(context)
