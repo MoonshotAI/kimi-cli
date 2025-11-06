@@ -148,8 +148,8 @@ async def run_soul(
             pass
         except TimeoutError:
             logger.warning("UI loop timed out")
-
-        _current_wire.reset(wire_token)
+        finally:
+            _current_wire.reset(wire_token)
 
 
 _current_wire = ContextVar[Wire | None]("current_wire", default=None)

@@ -2,6 +2,7 @@ import asyncio
 from collections import deque
 from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
+from typing import NamedTuple
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
@@ -28,8 +29,11 @@ from kimi_cli.wire.message import (
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    SubagentEvent,
     WireMessage,
 )
+
+MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 
 
 async def visualize(
@@ -73,6 +77,10 @@ class _ContentBlock:
 
 
 class _ToolCallBlock:
+    class FinishedSubCall(NamedTuple):
+        call: ToolCall
+        result: ToolReturnType
+
     def __init__(self, tool_call: ToolCall):
         self._tool_name = tool_call.function.name
         self._lexer = streamingjson.Lexer()
@@ -81,6 +89,14 @@ class _ToolCallBlock:
 
         self._argument = extract_key_argument(self._lexer, self._tool_name)
         self._result: ToolReturnType | None = None
+
+        self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
+        self._last_subagent_tool_call: ToolCall | None = None
+        self._n_finished_subagent_tool_calls = 0
+        self._finished_subagent_tool_calls = deque[_ToolCallBlock.FinishedSubCall](
+            maxlen=MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
+        )
+
         self._spinning_dots = Spinner("dots", text="")
         self._renderable: RenderableType = self._compose()
 
@@ -108,10 +124,62 @@ class _ToolCallBlock:
         self._result = result
         self._renderable = self._compose()
 
+    def append_sub_tool_call(self, tool_call: ToolCall):
+        self._ongoing_subagent_tool_calls[tool_call.id] = tool_call
+        self._last_subagent_tool_call = tool_call
+
+    def append_sub_tool_call_part(self, tool_call_part: ToolCallPart):
+        if self._last_subagent_tool_call is None:
+            return
+        if not tool_call_part.arguments_part:
+            return
+        if self._last_subagent_tool_call.function.arguments is None:
+            self._last_subagent_tool_call.function.arguments = tool_call_part.arguments_part
+        else:
+            self._last_subagent_tool_call.function.arguments += tool_call_part.arguments_part
+
+    def finish_sub_tool_call(self, tool_result: ToolResult):
+        self._last_subagent_tool_call = None
+        sub_tool_call = self._ongoing_subagent_tool_calls.pop(tool_result.tool_call_id, None)
+        if sub_tool_call is None:
+            return
+
+        self._finished_subagent_tool_calls.append(
+            _ToolCallBlock.FinishedSubCall(
+                call=sub_tool_call,
+                result=tool_result.result,
+            )
+        )
+        self._n_finished_subagent_tool_calls += 1
+        self._renderable = self._compose()
+
     def _compose(self) -> RenderableType:
         lines: list[RenderableType] = [
             Text.from_markup(self._get_headline_markup()),
         ]
+
+        if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
+            n_hidden = self._n_finished_subagent_tool_calls - MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
+            lines.append(
+                _with_bullet(
+                    Text(f"{n_hidden} more tool calls ...", style="grey50 italic"),
+                    bullet_style="grey50",
+                )
+            )
+        for sub_call, sub_result in self._finished_subagent_tool_calls:
+            lexer = streamingjson.Lexer()
+            lexer.append_string(sub_call.function.arguments or "")
+            argument = extract_key_argument(lexer, sub_call.function.name)
+            lines.append(
+                _with_bullet(
+                    Text.from_markup(
+                        f"Used [blue]{sub_call.function.name}[/blue]"
+                        + (f" [grey50]({argument})[/grey50]" if argument else "")
+                    ),
+                    bullet_style="green" if isinstance(sub_result, ToolOk) else "red",
+                )
+            )
+
         if self._result is not None and self._result.brief:
             lines.append(
                 Markdown(
@@ -119,6 +187,7 @@ class _ToolCallBlock:
                     style="grey50" if isinstance(self._result, ToolOk) else "red",
                 )
             )
+
         if self.finished:
             return _with_bullet(
                 Group(*lines),
@@ -316,6 +385,8 @@ class _LiveView:
                 self.append_tool_result(msg)
             case ApprovalRequest():
                 self.request_approval(msg)
+            case SubagentEvent():
+                self.handle_subagent_event(msg)
 
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
         # handle ESC key to cancel the run
@@ -466,6 +537,24 @@ class _LiveView:
             self._current_approval_request_panel = _ApprovalRequestPanel(request)
             self.refresh_soon()
             break
+
+    def handle_subagent_event(self, event: SubagentEvent) -> None:
+        block = self._tool_call_blocks.get(event.task_tool_call_id)
+        if block is None:
+            return
+
+        match event.event:
+            case ToolCall() as tool_call:
+                block.append_sub_tool_call(tool_call)
+            case ToolCallPart() as tool_call_part:
+                block.append_sub_tool_call_part(tool_call_part)
+            case ToolResult() as tool_result:
+                block.finish_sub_tool_call(tool_result)
+                self.refresh_soon()
+            case _:
+                # ignore other events for now
+                # TODO: may need to handle multi-level nested subagents
+                pass
 
 
 def _with_bullet(
