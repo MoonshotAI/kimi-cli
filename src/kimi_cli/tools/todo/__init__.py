@@ -26,4 +26,4 @@ class SetTodoList(CallableTool2[Params]):
         rendered = ""
         for todo in params.todos:
             rendered += f"- {todo.title} [{todo.status}]\n"
-        return ToolOk(output=rendered)
+        return ToolOk(output="", message="Todo list updated", brief=rendered)

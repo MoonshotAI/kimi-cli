@@ -24,16 +24,10 @@ from kimi_cli.utils.signals import install_sigint_handler
 
 
 class ShellApp:
-    def __init__(
-        self,
-        soul: Soul,
-        welcome_info: list["WelcomeInfoItem"] | None = None,
-        markdown: bool = True,
-    ):
+    def __init__(self, soul: Soul, welcome_info: list["WelcomeInfoItem"] | None = None):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
-        self._markdown = markdown
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -186,7 +180,6 @@ class ShellApp:
                     wire,
                     initial_status=self.soul.status,
                     cancel_event=cancel_event,
-                    markdown=self._markdown,
                 ),
                 cancel_event,
             )

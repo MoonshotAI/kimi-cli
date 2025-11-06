@@ -5,8 +5,6 @@ from typing import cast
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.utils.typing import JsonType
 
-from kimi_cli.utils.string import shorten_middle
-
 
 class SkipThisTool(Exception):
     """Raised when a tool decides to skip itself from the loading process."""
@@ -14,7 +12,7 @@ class SkipThisTool(Exception):
     pass
 
 
-def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
+def extract_key_argument(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
     try:
         curr_args: JsonType = json.loads(lexer.complete_json())
     except json.JSONDecodeError:
@@ -34,18 +32,7 @@ def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
                 return None
             subtitle = str(curr_args["thought"])
         case "SetTodoList":
-            if not isinstance(curr_args, dict) or not curr_args.get("todos"):
-                return None
-
-            from kimi_cli.tools.todo import Params
-
-            try:
-                todo_params = Params.model_validate(curr_args)
-                for todo in todo_params.todos:
-                    subtitle += f"• {todo.title} [{todo.status}]\n"
-            except Exception:
-                return None
-            return "\n" + subtitle.strip()
+            return None
         case "Bash":
             if not isinstance(curr_args, dict) or not curr_args.get("command"):
                 return None
@@ -82,8 +69,6 @@ def extract_subtitle(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
             # lexer.json_content is list[str] based on streamingjson source code
             content: list[str] = cast(list[str], lexer.json_content)  # pyright: ignore[reportUnknownMemberType]
             subtitle = "".join(content)
-    if tool_name not in ["SetTodoList"]:
-        subtitle = shorten_middle(subtitle, width=50)
     return subtitle
 
 

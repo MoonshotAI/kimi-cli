@@ -15,8 +15,9 @@
         // "src/kimi_cli/ui/acp",
         "src/kimi_cli/ui/print",
         // "src/kimi_cli/ui/shell",
+        "src/kimi_cli/ui/shell/visualize.py",
         "src/kimi_cli/ui/wire",
-        "src/kimi_cli/utils",
+        "src/kimi_cli/utils/*.py",
         "src/kimi_cli/wire",
         "src/kimi_cli/*.py",
     ]
