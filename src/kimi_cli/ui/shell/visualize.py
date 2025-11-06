@@ -87,28 +87,6 @@ class _ToolCallBlock:
     def compose(self) -> RenderableType:
         return self._renderable
 
-    def _compose(self) -> RenderableType:
-        lines = [
-            Text.from_markup(self._get_headline_markup()),
-        ]
-        if self._result is not None and self._result.brief:
-            lines.append(
-                Text.from_markup(
-                    self._result.brief,
-                    style="grey50" if isinstance(self._result, ToolOk) else "red",
-                )
-            )
-        if self.finished:
-            return _with_bullet(
-                Group(*lines),
-                bullet_style="green" if isinstance(self._result, ToolOk) else "red",
-            )
-        else:
-            return _with_bullet(
-                Group(*lines),
-                bullet=self._spinning_dots,
-            )
-
     @property
     def finished(self) -> bool:
         return self._result is not None
@@ -129,6 +107,28 @@ class _ToolCallBlock:
     def finish(self, result: ToolReturnType):
         self._result = result
         self._renderable = self._compose()
+
+    def _compose(self) -> RenderableType:
+        lines: list[RenderableType] = [
+            Text.from_markup(self._get_headline_markup()),
+        ]
+        if self._result is not None and self._result.brief:
+            lines.append(
+                Markdown(
+                    self._result.brief,
+                    style="grey50" if isinstance(self._result, ToolOk) else "red",
+                )
+            )
+        if self.finished:
+            return _with_bullet(
+                Group(*lines),
+                bullet_style="green" if isinstance(self._result, ToolOk) else "red",
+            )
+        else:
+            return _with_bullet(
+                Group(*lines),
+                bullet=self._spinning_dots,
+            )
 
     def _get_headline_markup(self) -> str:
         return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
