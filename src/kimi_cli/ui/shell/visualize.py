@@ -223,7 +223,7 @@ class _LiveView:
         self._compacting_spinner: Spinner | None = None
 
         self._current_content_block: _ContentBlock | None = None
-        self._tool_call_blocks = dict[str, _ToolCallBlock]()
+        self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
         self._last_tool_call_block: _ToolCallBlock | None = None
         self._approval_queue = deque[ApprovalRequest]()
         self._current_approval: _ApprovalRequestPanel | None = None
