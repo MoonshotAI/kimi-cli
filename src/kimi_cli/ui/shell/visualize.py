@@ -95,10 +95,9 @@ class _ToolCallBlock(_Block):
         if tool_call.function.arguments is not None:
             self._lexer.append_string(tool_call.function.arguments)
 
-        self._title_markup = f"Using [blue]{self._tool_name}[/blue]"
-        self._subtitle = extract_subtitle(self._lexer, self._tool_name)
+        self._argument = extract_subtitle(self._lexer, self._tool_name)
         self._finished = False
-        self._spinner = Spinner("dots", text=self._spinner_markup)
+        self._spinner = Spinner("dots", text=self.get_headline_markup())
         self._renderable: RenderableType = Group(self._spinner)
 
     @property
@@ -110,24 +109,15 @@ class _ToolCallBlock(_Block):
     def finished(self) -> bool:
         return self._finished
 
-    @property
-    def _spinner_markup(self) -> str:
-        return f"{self._title_markup} {self._subtitle_markup}"
-
-    @property
-    def _subtitle_markup(self) -> str:
-        subtitle = self._subtitle
-        return f"[grey50]({escape(subtitle)})[/grey50]" if subtitle else ""
-
     def append_args_part(self, args_part: str):
         if self.finished:
             return
         self._lexer.append_string(args_part)
         # TODO: don't extract detail if it's already stable
         new_subtitle = extract_subtitle(self._lexer, self._tool_name)
-        if new_subtitle and new_subtitle != self._subtitle:
-            self._subtitle = new_subtitle
-            self._spinner.update(text=self._spinner_markup)
+        if new_subtitle and new_subtitle != self._argument:
+            self._argument = new_subtitle
+            self._spinner.update(text=self.get_headline_markup())
 
     def finish(self, result: ToolReturnType):
         """
@@ -135,7 +125,9 @@ class _ToolCallBlock(_Block):
         After calling this, the `renderable` property should be re-rendered.
         """
         self._finished = True
-        lines = [Text.from_markup(f"Used [blue]{self._tool_name}[/blue] {self._subtitle_markup}")]
+        lines = [
+            Text.from_markup(self.get_headline_markup()),
+        ]
         if result.brief:
             lines.append(
                 Text.from_markup(
@@ -146,6 +138,11 @@ class _ToolCallBlock(_Block):
         self._renderable = _with_bullet(
             Group(*lines),
             "green" if isinstance(result, ToolOk) else "red",
+        )
+
+    def get_headline_markup(self) -> str:
+        return f"{'Used' if self._finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
+            f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
         )
 
 
