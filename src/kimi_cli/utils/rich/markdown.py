@@ -25,8 +25,7 @@ _FALLBACK_STYLES: Mapping[str, Style] = {
     "markdown.paragraph": Style(),
     "markdown.h1": Style(color="bright_white", bold=True),
     "markdown.h1.underline": Style(color="bright_white", bold=True),
-    "markdown.h2": Style(color="white", bold=True),
-    "markdown.h2.underline": Style(color="grey70"),
+    "markdown.h2": Style(color="white", bold=True, underline=True),
     "markdown.h3": Style(bold=True),
     "markdown.h4": Style(bold=True),
     "markdown.h5": Style(bold=True),
@@ -201,11 +200,6 @@ class Heading(TextElement):
         if self.tag == "h1":
             underline = Text("═" * width)
             underline.stylize("markdown.h1.underline")
-            yield text
-            yield underline
-        elif self.tag == "h2":
-            underline = Text("─" * width)
-            underline.stylize("markdown.h2.underline")
             yield text
             yield underline
         else:
