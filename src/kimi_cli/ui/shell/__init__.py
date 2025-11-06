@@ -94,6 +94,16 @@ class ShellApp:
         if not command.strip():
             return
 
+        # Check if user is trying to use 'cd' command
+        stripped_cmd = command.strip()
+        if stripped_cmd.startswith("cd ") or stripped_cmd == "cd":
+            console.print(
+                "[yellow]Warning: The 'cd' command is not supported in shell mode.\n"
+                "Each command runs in a separate subprocess, "
+                "so directory changes are not preserved.[/yellow]"
+            )
+            return
+
         logger.info("Running shell command: {cmd}", cmd=command)
 
         proc: asyncio.subprocess.Process | None = None
