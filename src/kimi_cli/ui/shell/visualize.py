@@ -20,7 +20,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
-from kimi_cli.ui.shell.markdown import CustomMarkdown
+from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
@@ -77,9 +77,8 @@ class _ContentBlock(_Block):
     @override
     def renderable_final(self) -> RenderableType:
         return _with_bullet(
-            CustomMarkdown(
+            Markdown(
                 self.raw_text,
-                justify="left",
                 style="grey50 italic" if self.is_think else "",
             ),
             "grey50",
