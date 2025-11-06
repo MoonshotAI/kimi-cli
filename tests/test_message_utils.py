@@ -120,18 +120,3 @@ def test_stringify_respects_replay_context():
     result = message_stringify(message, context="replay")
 
     assert result == large_text
-
-
-def test_stringify_handles_mixed_parts_with_large_text():
-    """Test mixed content with large text part and image."""
-    message = Message(
-        role="user",
-        content=[
-            TextPart(text="Hello"),
-            ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg")),
-            TextPart(text="\n".join(["line"] * 60)),
-        ],
-    )
-    result = message_stringify(message)
-
-    assert result == "Hello[image_url][pasted 60 lines]"

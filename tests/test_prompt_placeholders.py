@@ -14,42 +14,34 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 class TestCursorBoundaryLogic:
     """Test cursor boundary conditions for placeholder deletion (the main bug we fixed)."""
 
-    def test_backspace_at_end_deletes_placeholder(self):
-        """Test backspace with cursor right after placeholder deletes it (key bug fix)."""
+    def test_backspace_boundary_conditions(self):
+        """Test backspace deletes when cursor is after placeholder, not before."""
         text = "prefix [text:abc12345,60 lines]"
         match = _ATTACHMENT_PLACEHOLDER_RE.search(text)
         start, end = match.span()
 
-        cursor = end  # Right after placeholder
-        should_delete = start < cursor <= end  # Backspace logic
+        # Backspace with cursor right after placeholder should delete (the bug fix)
+        cursor = end
+        should_delete = start < cursor <= end
         assert should_delete
 
-    def test_backspace_before_placeholder_does_not_delete(self):
-        """Test backspace before placeholder doesn't delete it."""
-        text = "prefix [text:abc12345,60 lines]"
-        match = _ATTACHMENT_PLACEHOLDER_RE.search(text)
-        start, end = match.span()
-
-        cursor = start  # Right before placeholder
-        should_delete = start < cursor <= end  # Backspace logic
+        # Backspace with cursor before placeholder should not delete
+        cursor = start
+        should_delete = start < cursor <= end
         assert not should_delete
 
-    def test_delete_at_start_deletes_placeholder(self):
-        """Test delete with cursor before placeholder deletes it."""
+    def test_delete_boundary_conditions(self):
+        """Test delete key deletes when cursor is before placeholder, not after."""
         text = "prefix [text:abc12345,60 lines]"
         match = _ATTACHMENT_PLACEHOLDER_RE.search(text)
         start, end = match.span()
 
-        cursor = start  # Right before placeholder
-        should_delete = start <= cursor < end  # Delete logic
+        # Delete with cursor before placeholder should delete
+        cursor = start
+        should_delete = start <= cursor < end
         assert should_delete
 
-    def test_delete_after_placeholder_does_not_delete(self):
-        """Test delete after placeholder doesn't delete it."""
-        text = "prefix [text:abc12345,60 lines] suffix"
-        match = _ATTACHMENT_PLACEHOLDER_RE.search(text)
-        start, end = match.span()
-
-        cursor = end  # Right after placeholder
-        should_delete = start <= cursor < end  # Delete logic
+        # Delete with cursor after placeholder should not delete
+        cursor = end
+        should_delete = start <= cursor < end
         assert not should_delete

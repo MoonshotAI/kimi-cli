@@ -464,14 +464,8 @@ class CustomPromptSession:
 
         shortcut_hints.append("ctrl-j: newline")
 
-        # Smart delete for placeholders
         def _delete_placeholder_at_cursor(buff, is_backspace: bool) -> bool:
-            """Delete placeholder at cursor position if present. Returns True if deleted.
-
-            Args:
-                buff: The buffer to check
-                is_backspace: True for backspace key, False for delete key
-            """
+            """Delete placeholder at cursor position if present, returning True if deleted."""
             doc = buff.document
             cursor = doc.cursor_position
 
@@ -499,7 +493,6 @@ class CustomPromptSession:
             """Delete entire placeholder if cursor is within/after one, otherwise backspace normally."""
             if not _delete_placeholder_at_cursor(event.current_buffer, is_backspace=True):
                 event.current_buffer.delete_before_cursor(1)
-            # Always sync tracking after modifications
             self._last_buffer_text = event.current_buffer.text
 
         @_kb.add("delete", eager=True)
@@ -507,7 +500,6 @@ class CustomPromptSession:
             """Delete entire placeholder if cursor is within/before one, otherwise delete normally."""
             if not _delete_placeholder_at_cursor(event.current_buffer, is_backspace=False):
                 event.current_buffer.delete(1)
-            # Always sync tracking after modifications
             self._last_buffer_text = event.current_buffer.text
 
         if is_clipboard_available():
@@ -516,7 +508,6 @@ class CustomPromptSession:
             def _paste(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
-                # For non-image pastes, use default behavior
                 # Large text detection happens in on_text_insert handler
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
@@ -549,7 +540,6 @@ class CustomPromptSession:
             bottom_toolbar=self._render_bottom_toolbar,
         )
 
-        # Add handler to detect and collapse large text pastes
         # This works for any paste method (Cmd-V, Ctrl-V, right-click, etc.)
         self._pending_large_paste_replacement = False
         self._last_buffer_text = ""
@@ -662,7 +652,7 @@ class CustomPromptSession:
         return True
 
     def _check_and_replace_large_paste(self, buffer) -> None:
-        """Check if large text was just pasted and replace ONLY the pasted part with placeholder."""
+        """Check if large text was pasted and replace only the pasted part with placeholder."""
         if self._pending_large_paste_replacement:
             return
 
@@ -682,7 +672,6 @@ class CustomPromptSession:
         try:
             self._pending_large_paste_replacement = True
 
-            # Create attachment for the pasted text only
             paste_id = random_string(8)
             self._attachment_parts[paste_id] = TextPart(text=inserted_text)
 
@@ -692,7 +681,6 @@ class CustomPromptSession:
                 line_count=inserted_line_count,
             )
 
-            # Replace buffer: keep prefix, replace inserted text with placeholder
             placeholder = f"[text:{paste_id},{inserted_line_count} lines]"
             buffer.text = previous_text + placeholder
             buffer.cursor_position = len(buffer.text)
@@ -706,10 +694,8 @@ class CustomPromptSession:
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
 
-        # Reset buffer tracking for next prompt
         self._last_buffer_text = ""
 
-        # Parse rich content parts
         content: list[ContentPart] = []
         remaining_command = command
 
