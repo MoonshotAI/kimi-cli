@@ -366,7 +366,6 @@ class _LiveView:
                     while self._approval_queue:
                         self._approval_queue.popleft().resolve(ApprovalResponse.REJECT)
                     self._reject_all_following = True
-                self._current_approval = None
                 self.show_next_approval_request()
             case _:
                 # just ignore any other keyboard event
@@ -460,10 +459,12 @@ class _LiveView:
 
         if self._current_approval is None:
             self.show_next_approval_request()
-            self.refresh_soon()
 
     def show_next_approval_request(self) -> None:
-        """Show the next approval request from the queue."""
+        """
+        Show the next approval request from the queue.
+        If there are no pending requests, clear the current approval panel.
+        """
         if not self._approval_queue:
             if self._current_approval is not None:
                 self._current_approval = None
