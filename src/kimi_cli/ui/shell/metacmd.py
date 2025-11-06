@@ -206,8 +206,8 @@ async def init(app: "ShellApp", args: list[str]):
         logger.info("Running `/init`")
         console.print("Analyzing the codebase...")
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
-        app.soul = KimiSoul(soul_bak._agent, soul_bak._runtime, context=tmp_context)
-        ok = await app._run_soul_command(prompts.INIT)
+        app.soul = KimiSoul(soul_bak.agent, soul_bak.runtime, context=tmp_context)
+        ok = await app.run_soul_command(prompts.INIT)
 
         if ok:
             console.print(
@@ -218,13 +218,13 @@ async def init(app: "ShellApp", args: list[str]):
             console.print("[red]Failed to analyze the codebase.[/red]")
 
     app.soul = soul_bak
-    agents_md = load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR)
+    agents_md = load_agents_md(soul_bak.runtime.builtin_args.KIMI_WORK_DIR)
     system_message = system(
         "The user just ran `/init` meta command. "
         "The system has analyzed the codebase and generated an `AGENTS.md` file. "
         f"Latest AGENTS.md file content:\n{agents_md}"
     )
-    await app.soul._context.append_message(Message(role="user", content=[system_message]))
+    await app.soul.context.append_message(Message(role="user", content=[system_message]))
 
 
 @meta_command(aliases=["reset"], kimi_soul_only=True)
@@ -232,11 +232,11 @@ async def clear(app: "ShellApp", args: list[str]):
     """Clear the context"""
     assert isinstance(app.soul, KimiSoul)
 
-    if app.soul._context.n_checkpoints == 0:
+    if app.soul.context.n_checkpoints == 0:
         console.print("[yellow]Context is empty.[/yellow]")
         return
 
-    await app.soul._context.revert_to(0)
+    await app.soul.context.revert_to(0)
     console.print("[green]✓[/green] Context has been cleared.")
 
 
@@ -245,7 +245,7 @@ async def compact(app: "ShellApp", args: list[str]):
     """Compact the context"""
     assert isinstance(app.soul, KimiSoul)
 
-    if app.soul._context.n_checkpoints == 0:
+    if app.soul.context.n_checkpoints == 0:
         console.print("[yellow]Context is empty.[/yellow]")
         return
 

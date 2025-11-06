@@ -96,6 +96,14 @@ class KimiSoul(Soul):
         return self._context
 
     @property
+    def agent(self) -> Agent:
+        return self._agent
+    
+    @property
+    def runtime(self) -> Runtime:
+        return self._runtime
+
+    @property
     def _context_usage(self) -> float:
         if self._runtime.llm is not None:
             return self._context.token_count / self._runtime.llm.max_context_size
