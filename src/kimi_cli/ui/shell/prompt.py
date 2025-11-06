@@ -29,7 +29,7 @@ from prompt_toolkit.completion import (
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Always, Never, has_completions
+from prompt_toolkit.filters import Always, Condition, Never, has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
@@ -44,6 +44,8 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
+PROMPT_SYMBOL_SHELL = "$"
+PROMPT_SYMBOL_THINKING = "💫"
 
 
 class MetaCommandCompleter(Completer):
@@ -474,13 +476,15 @@ class CustomPromptSession:
         else:
             clipboard = None
 
-        @_kb.add("tab", filter=~has_completions)
+        @Condition
+        def is_agent_mode() -> bool:
+            return self._mode == PromptMode.AGENT
+
+        @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
             self._thinking = not self._thinking
             event.app.invalidate()
-
-        shortcut_hints.append("tab: toggle thinking")
 
         self._shortcut_hints = shortcut_hints
         self._session = PromptSession(
@@ -499,9 +503,9 @@ class CustomPromptSession:
         self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
-        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else "$"
+        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
         if self._mode == PromptMode.AGENT and self._thinking:
-            symbol = "💫"
+            symbol = PROMPT_SYMBOL_THINKING
         return FormattedText([("bold", f"{getpass.getuser()}{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
@@ -663,12 +667,10 @@ class CustomPromptSession:
         columns -= len(now_text) + 2
 
         mode = str(self._mode).lower()
+        if self._mode == PromptMode.AGENT and self._thinking:
+            mode += " (thinking)"
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
-
-        if self._thinking:
-            fragments.extend([("", "t"), ("", " " * 2)])
-            columns -= len("t") + 2
 
         status = self._status_provider()
         status_text = self._format_status(status)
@@ -684,6 +686,8 @@ class CustomPromptSession:
                 *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
+            if self._mode == PromptMode.AGENT:
+                shortcuts.append("tab: toggle thinking")
             for shortcut in shortcuts:
                 if columns - len(status_text) > len(shortcut) + 2:
                     fragments.extend([("", shortcut), ("", " " * 2)])
