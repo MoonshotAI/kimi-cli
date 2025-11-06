@@ -26,7 +26,7 @@ class LLMProvider(BaseModel):
         return v.get_secret_value()
 
 
-LLMModelCapability = Literal["image_in"]
+LLMModelCapability = Literal["image_in", "thinking"]
 
 
 class LLMModel(BaseModel):

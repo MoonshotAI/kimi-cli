@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from functools import partial
 from typing import TYPE_CHECKING
 
+import httpx
 import kosong
 import tenacity
 from kosong import StepResult
@@ -312,6 +313,8 @@ class KimiSoul(Soul):
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
+        if isinstance(exception, httpx.RemoteProtocolError):
+            return True
         if isinstance(exception, (APIConnectionError, APITimeoutError)):
             return True
         return isinstance(exception, APIStatusError) and exception.status_code in (
@@ -323,14 +326,24 @@ class KimiSoul(Soul):
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
-        logger.info(
-            "Retrying {name} for the {n} time. Waiting {sleep} seconds.",
-            name=name,
-            n=retry_state.attempt_number,
-            sleep=retry_state.next_action.sleep
-            if retry_state.next_action is not None
-            else "unknown",
-        )
+        exception = retry_state.outcome.exception() if retry_state.outcome else None
+        
+        if isinstance(exception, httpx.RemoteProtocolError):
+            logger.warning(
+                "Response truncated due to network error (incomplete chunked read). "
+                "Retrying {name} (attempt {n})...",
+                name=name,
+                n=retry_state.attempt_number,
+            )
+        else:
+            logger.info(
+                "Retrying {name} for the {n} time. Waiting {sleep} seconds.",
+                name=name,
+                n=retry_state.attempt_number,
+                sleep=retry_state.next_action.sleep
+                if retry_state.next_action is not None
+                else "unknown",
+            )
 
 
 class BackToTheFuture(Exception):

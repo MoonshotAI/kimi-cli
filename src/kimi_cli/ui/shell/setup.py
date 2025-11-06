@@ -1,12 +1,19 @@
 import asyncio
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 import aiohttp
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
-from kimi_cli.config import LLMModel, LLMProvider, MoonshotSearchConfig, load_config, save_config
+from kimi_cli.config import (
+    LLMModel,
+    LLMModelCapability,
+    LLMProvider,
+    MoonshotSearchConfig,
+    load_config,
+    save_config,
+)
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
 from kimi_cli.utils.aiohttp import new_client_session
@@ -59,10 +66,16 @@ async def setup(app: "ShellApp", args: list[str]):
         base_url=result.platform.base_url,
         api_key=result.api_key,
     )
+
+    capabilities = None
+    if result.model_id in ("kimi-k2-thinking", "kimi-k2-thinking-turbo"):
+        capabilities = cast(set[LLMModelCapability], {"thinking"})
+
     config.models[result.model_id] = LLMModel(
         provider=result.platform.id,
         model=result.model_id,
         max_context_size=result.max_context_size,
+        capabilities=capabilities,
     )
     config.default_model = result.model_id
 

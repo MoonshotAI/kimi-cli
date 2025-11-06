@@ -24,6 +24,10 @@ class LLM:
     def supports_image_in(self) -> bool:
         return "image_in" in self.capabilities
 
+    @property
+    def supports_thinking(self) -> bool:
+        return "thinking" in self.capabilities
+
 
 def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
     """Override provider/model settings from environment variables.
@@ -77,18 +81,44 @@ def create_llm(
         case "kimi":
             from kosong.chat_provider.kimi import Kimi
 
-            chat_provider = Kimi(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
-                stream=stream,
-                default_headers={
-                    "User-Agent": USER_AGENT,
-                    **(provider.custom_headers or {}),
-                },
-            )
-            if session_id:
-                chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
+            if model.capabilities and "thinking" in model.capabilities:
+                chat_provider = Kimi(
+                    model=model.model,
+                    base_url=provider.base_url,
+                    api_key=provider.api_key.get_secret_value(),
+                    stream=stream,
+                    default_headers={
+                        "User-Agent": USER_AGENT,
+                        **(provider.custom_headers or {}),
+                    },
+                )
+
+                from kosong.chat_provider.kimi import Kimi as KimiProvider
+
+                generation_kwargs: KimiProvider.GenerationKwargs = {
+                    "temperature": 1.0,  # Temperature = 1.0 required for thinking models
+                    "max_tokens": 16384,  # Minimum 16,000 tokens for thinking models
+                }
+                if session_id:
+                    generation_kwargs["prompt_cache_key"] = session_id
+
+                chat_provider = chat_provider.with_generation_kwargs(**generation_kwargs)
+            else:
+                chat_provider = Kimi(
+                    model=model.model,
+                    base_url=provider.base_url,
+                    api_key=provider.api_key.get_secret_value(),
+                    stream=stream,
+                    default_headers={
+                        "User-Agent": USER_AGENT,
+                        **(provider.custom_headers or {}),
+                    },
+                )
+
+                if session_id:
+                    chat_provider = chat_provider.with_generation_kwargs(
+                        prompt_cache_key=session_id
+                    )
         case "openai_legacy":
             from kosong.chat_provider.openai_legacy import OpenAILegacy
 

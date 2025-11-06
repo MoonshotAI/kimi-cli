@@ -69,6 +69,16 @@ async def load_agent(
     if mcp_configs:
         await _load_mcp_tools(toolset, mcp_configs)
 
+    # Fix tool schemas for k2-thinking models which don't support JSON Schema $ref
+    logger.debug(
+        "Checking k2-thinking compatibility: llm={llm}, model_name={model_name}",
+        llm=runtime.llm,
+        model_name=runtime.llm.model_name if runtime.llm else None,
+    )
+    if runtime.llm and runtime.llm.supports_thinking:
+        logger.info("Patching tool schemas for k2-thinking model compatibility")
+        _patch_tools_for_k2_thinking(toolset)
+
     return Agent(
         name=agent_spec.name,
         system_prompt=system_prompt,
@@ -157,3 +167,30 @@ async def _load_mcp_tools(
             for tool in await client.list_tools():
                 toolset += MCPTool(tool, client)
     return toolset
+
+
+def _patch_tools_for_k2_thinking(toolset: CustomToolset) -> None:
+    """Patch tool schemas to inline $ref for k2-thinking compatibility.
+    
+    K2-thinking models don't support JSON Schema $ref and $defs, so we need to
+    inline all references in tool parameter schemas.
+    """
+    from kimi_cli.utils.schema import inline_json_schema_refs
+    
+    for tool in toolset.tools:
+        if hasattr(tool, "_base") and hasattr(tool._base, "parameters"):
+            original_schema = tool._base.parameters
+            patched_schema = inline_json_schema_refs(original_schema)
+            tool._base.parameters = patched_schema
+            logger.debug(
+                "Patched CallableTool2 schema for k2-thinking: {tool_name}",
+                tool_name=tool.name
+            )
+        elif hasattr(tool, "parameters"):
+            original_schema = tool.parameters
+            patched_schema = inline_json_schema_refs(original_schema)
+            tool.parameters = patched_schema  # type: ignore
+            logger.debug(
+                "Patched Tool schema for k2-thinking: {tool_name}",
+                tool_name=tool.name
+            )
