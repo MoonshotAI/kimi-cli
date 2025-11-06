@@ -394,6 +394,8 @@ def toast(message: str, duration: float = 5.0) -> None:
     _toast_queue.put_nowait((message, duration))
 
 
+# Matches both image and text placeholders:
+# [image:id,640x480] or [text:id,60 lines]
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>image|text):(?P<id>[a-zA-Z0-9_\-\.]+)"
     r"(?:,(?P<width>\d+)x(?P<height>\d+)|,(?P<line_count>\d+) lines)?\]"
@@ -474,10 +476,7 @@ class CustomPromptSession:
 
                 # Backspace: delete if cursor is inside OR right after placeholder
                 # Delete: delete if cursor is inside OR right before placeholder
-                if is_backspace:
-                    should_delete = start < cursor <= end
-                else:
-                    should_delete = start <= cursor < end
+                should_delete = start < cursor <= end if is_backspace else start <= cursor < end
 
                 if should_delete:
                     attachment_id = match.group("id")
@@ -490,14 +489,14 @@ class CustomPromptSession:
 
         @_kb.add("backspace", eager=True)
         def _smart_backspace(event: KeyPressEvent) -> None:
-            """Delete entire placeholder if cursor is within/after one, otherwise backspace normally."""
+            """Delete entire placeholder if cursor is within/after one, else backspace normally."""
             if not _delete_placeholder_at_cursor(event.current_buffer, is_backspace=True):
                 event.current_buffer.delete_before_cursor(1)
             self._last_buffer_text = event.current_buffer.text
 
         @_kb.add("delete", eager=True)
         def _smart_delete(event: KeyPressEvent) -> None:
-            """Delete entire placeholder if cursor is within/before one, otherwise delete normally."""
+            """Delete entire placeholder if cursor is within/before one, else delete normally."""
             if not _delete_placeholder_at_cursor(event.current_buffer, is_backspace=False):
                 event.current_buffer.delete(1)
             self._last_buffer_text = event.current_buffer.text
@@ -663,8 +662,8 @@ class CustomPromptSession:
         if not current_text.startswith(previous_text):
             return
 
-        inserted_text = current_text[len(previous_text):]
-        inserted_line_count = inserted_text.count('\n') + 1
+        inserted_text = current_text[len(previous_text) :]
+        inserted_line_count = inserted_text.count("\n") + 1
 
         if inserted_line_count <= LARGE_PASTE_LINE_THRESHOLD:
             return

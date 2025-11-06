@@ -18,7 +18,7 @@ def message_stringify(message: Message, context: str = "default") -> str:
         """Collapse text if it exceeds threshold (except in replay context)."""
         if context == "replay":
             return text
-        line_count = text.count('\n') + 1
+        line_count = text.count("\n") + 1
         if line_count > LARGE_PASTE_LINE_THRESHOLD:
             return f"[pasted {line_count} lines]"
         return text

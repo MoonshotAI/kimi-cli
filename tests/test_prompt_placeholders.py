@@ -2,8 +2,6 @@
 
 import re
 
-from kimi_cli.utils.message import LARGE_PASTE_LINE_THRESHOLD
-
 # The regex pattern from prompt.py
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>image|text):(?P<id>[a-zA-Z0-9_\-\.]+)"
@@ -18,6 +16,7 @@ class TestCursorBoundaryLogic:
         """Test backspace deletes when cursor is after placeholder, not before."""
         text = "prefix [text:abc12345,60 lines]"
         match = _ATTACHMENT_PLACEHOLDER_RE.search(text)
+        assert match is not None
         start, end = match.span()
 
         # Backspace with cursor right after placeholder should delete (the bug fix)
@@ -34,6 +33,7 @@ class TestCursorBoundaryLogic:
         """Test delete key deletes when cursor is before placeholder, not after."""
         text = "prefix [text:abc12345,60 lines]"
         match = _ATTACHMENT_PLACEHOLDER_RE.search(text)
+        assert match is not None
         start, end = match.span()
 
         # Delete with cursor before placeholder should delete

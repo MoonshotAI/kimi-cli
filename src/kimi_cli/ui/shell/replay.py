@@ -42,7 +42,8 @@ async def replay_recent_history(history: Sequence[Message]) -> None:
     for run in runs:
         wire = Wire()
         console.print(
-            f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(run.user_message, context='replay')}"
+            f"{getpass.getuser()}{PROMPT_SYMBOL} "
+            f"{message_stringify(run.user_message, context='replay')}"
         )
         ui_task = asyncio.create_task(
             visualize(wire.ui_side, initial_status=StatusSnapshot(context_usage=0.0))

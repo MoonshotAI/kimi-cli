@@ -103,7 +103,6 @@ def test_extract_text_from_empty_string():
     assert result == ""
 
 
-# New tests for large paste collapse feature
 def test_stringify_collapses_large_text_by_default():
     """Test that large text is collapsed in default context."""
     large_text = "\n".join(["line"] * 60)
