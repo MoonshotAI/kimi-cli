@@ -106,7 +106,7 @@ def _format_message(msg: Message, index: int) -> Panel:
         role_text += f" [dim]→ {msg.tool_call_id}[/dim]"
 
     # Format content
-    content_items: list = []
+    content_items: list[Text | Panel | Group] = []
 
     if isinstance(msg.content, str):
         content_items.append(Text(msg.content, style="white"))
