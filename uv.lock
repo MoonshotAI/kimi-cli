@@ -822,7 +822,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.47"
+version = "0.48"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -863,7 +863,7 @@ requires-dist = [
     { name = "click", specifier = "==8.3.0" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.17.0" },
+    { name = "kosong", specifier = "==0.18.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "patch-ng", specifier = "==1.19.0" },
     { name = "pillow", specifier = "==12.0.0" },
@@ -889,7 +889,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.17.0"
+version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -899,9 +899,9 @@ dependencies = [
     { name = "openai" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/c4/bdd293e2cfa9e6897c00a8f12311cad58940b3b7b91ab659154787925ec3/kosong-0.17.0.tar.gz", hash = "sha256:9c3eb8a93beeb2a1adc76f6256ae08c75c125ea4da659e5db07567b8897acfd5", size = 18861, upload-time = "2025-11-03T15:32:41.216Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/b5/7abcb82c44357d0df75bd91a1e84f54c746c0fcf653717110218db288dfa/kosong-0.18.0.tar.gz", hash = "sha256:8285a6a89167ae984be73d953672a0092650d84d449113d97d00dc18d945cdc3", size = 18820, upload-time = "2025-11-06T03:22:01.085Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/fc/425fee6395a0d01249a31e0312c3ba246190caf8948446f675e8663910e1/kosong-0.17.0-py3-none-any.whl", hash = "sha256:10301fb01f0a0e9a0837121017df37fce0bfdfb061c3fa9f20390d7b6c21293c", size = 30093, upload-time = "2025-11-03T15:32:40.196Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/db/5051139837be1a756d369c54f3d54cd7eee027a3aef789791b8faad13307/kosong-0.18.0-py3-none-any.whl", hash = "sha256:a35e2ea87ce9f4409b0cb88686c4343b2ffcc0434c88a754d4dcc294925b85d3", size = 30040, upload-time = "2025-11-06T03:22:00.134Z" },
 ]
 
 [[package]]
