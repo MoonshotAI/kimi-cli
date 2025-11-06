@@ -10,7 +10,7 @@ from kosong.tooling import ToolOk, ToolResult, ToolReturnType
 from rich import box
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
-from rich.markdown import Heading, Markdown, MarkdownContext, Paragraph
+from rich.markdown import Heading, Markdown
 from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
@@ -296,14 +296,21 @@ class _LiveView:
         self.flush_all()
 
     def flush_content(self) -> None:
+        """Flush the current content block."""
         if self._current_content_block is not None:
             console.print(self._current_content_block.renderable_final)
             self._current_content_block = None
             self.refresh_soon()
 
-    def flush_tool_call(self, tool_call_id: str) -> None:
-        # TODO: maybe we need to maintain order
-        if block := self._tool_call_blocks.pop(tool_call_id, None):
+    def flush_finished_tool_calls(self) -> None:
+        """Flush all leading finished tool call blocks."""
+        tool_call_ids = list(self._tool_call_blocks.keys())
+        for tool_call_id in tool_call_ids:
+            block = self._tool_call_blocks[tool_call_id]
+            if not block.finished:
+                break
+
+            self._tool_call_blocks.pop(tool_call_id)
             console.print(block.renderable_final)
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
@@ -311,8 +318,7 @@ class _LiveView:
 
     def flush_all(self) -> None:
         self.flush_content()
-        for tool_call_id in list(self._tool_call_blocks.keys()):
-            self.flush_tool_call(tool_call_id)
+        self.flush_finished_tool_calls()
 
     def append_content(self, part: ContentPart) -> None:
         match part:
@@ -348,8 +354,7 @@ class _LiveView:
     def append_tool_result(self, result: ToolResult) -> None:
         if block := self._tool_call_blocks.get(result.tool_call_id):
             block.finish(result.result)
-            self.flush_tool_call(result.tool_call_id)
-            self.refresh_soon()
+            self.flush_finished_tool_calls()
 
     def request_approval(self, request: ApprovalRequest) -> None:
         # console.print(request)
