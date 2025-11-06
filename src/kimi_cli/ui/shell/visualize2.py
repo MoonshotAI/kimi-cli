@@ -1,6 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
 from typing import override
 
@@ -10,6 +11,7 @@ from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
+from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
@@ -22,6 +24,7 @@ from kimi_cli.ui.shell.markdown import CustomMarkdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
+    ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
@@ -148,9 +151,53 @@ class _ToolCallBlock(_Block):
         )
 
 
-class _ApprovalPanel:
-    def __init__(self) -> None:
-        pass
+class _ApprovalRequestPanel:
+    def __init__(self, request: ApprovalRequest):
+        self.request = request
+        self.options = [
+            ("Approve", ApprovalResponse.APPROVE),
+            ("Approve for this session", ApprovalResponse.APPROVE_FOR_SESSION),
+            ("Reject, tell Kimi CLI what to do instead", ApprovalResponse.REJECT),
+        ]
+        self.selected_index = 0
+
+    def render(self) -> RenderableType:
+        """Render the approval menu as a panel."""
+        lines: list[RenderableType] = []
+
+        # Add request details
+        lines.append(
+            Text(f'{self.request.sender} is requesting approval to "{self.request.description}".')
+        )
+
+        lines.append(Text(""))  # Empty line
+
+        # Add menu options
+        for i, (option_text, _) in enumerate(self.options):
+            if i == self.selected_index:
+                lines.append(Text(f"→ {option_text}", style="cyan"))
+            else:
+                lines.append(Text(f"  {option_text}", style="grey50"))
+
+        content = Group(*lines)
+        return Panel.fit(
+            content,
+            title="[yellow]⚠ Approval Requested[/yellow]",
+            border_style="yellow",
+            padding=(1, 2),
+        )
+
+    def move_up(self):
+        """Move selection up."""
+        self.selected_index = (self.selected_index - 1) % len(self.options)
+
+    def move_down(self):
+        """Move selection down."""
+        self.selected_index = (self.selected_index + 1) % len(self.options)
+
+    def get_selected_response(self) -> ApprovalResponse:
+        """Get the approval response based on selected option."""
+        return self.options[self.selected_index][1]
 
 
 class _StatusBlock:
@@ -167,11 +214,11 @@ class _StatusBlock:
 
 
 @asynccontextmanager
-async def _keyboard_listener(view: "_LiveView"):
+async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
     async def _keyboard():
         try:
             async for event in listen_for_keyboard():
-                view.handle_keyboard_event(event)
+                handler(event)
         except asyncio.CancelledError:
             return
 
@@ -195,14 +242,11 @@ class _LiveView:
         self._tool_call_blocks = dict[str, _ToolCallBlock]()
         self._last_tool_call_block: _ToolCallBlock | None = None
         self._approval_queue = deque[ApprovalRequest]()
-        self._current_approval: _ApprovalPanel | None = None
+        self._current_approval: _ApprovalRequestPanel | None = None
         self._reject_all_following = False
         self._status_block = _StatusBlock(initial_status)
 
         self._need_recompose = False
-
-    def refresh_soon(self) -> None:
-        self._need_recompose = True
 
     async def visualize_loop(self, wire: WireUISide):
         with Live(
@@ -212,27 +256,37 @@ class _LiveView:
             transient=True,
             vertical_overflow="visible",
         ) as live:
-            async with _keyboard_listener(self):
+
+            def keyboard_handler(event: KeyEvent) -> None:
+                self.dispatch_keyboard_event(event)
+                if self._need_recompose:
+                    live.update(self.compose())
+                    self._need_recompose = False
+
+            async with _keyboard_listener(keyboard_handler):
                 while True:
                     try:
                         msg = await wire.receive()
                     except asyncio.QueueShutDown:
-                        self.finish()
+                        self.cleanup(is_interrupt=False)
                         live.update(self.compose())
                         break
 
                     if isinstance(msg, StepInterrupted):
-                        self.interrupt()
+                        self.cleanup(is_interrupt=True)
                         live.update(self.compose())
                         break
 
-                    self.dispatch(msg)
+                    self.dispatch_wire_message(msg)
                     if self._need_recompose:
                         live.update(self.compose())
                         self._need_recompose = False
 
+    def refresh_soon(self) -> None:
+        self._need_recompose = True
+
     def compose(self) -> RenderableType:
-        """Compose the Live view display content."""
+        """Compose the live view display content."""
         blocks: list[RenderableType] = []
         if self._mooning_spinner is not None:
             blocks.append(self._mooning_spinner)
@@ -243,16 +297,18 @@ class _LiveView:
                 blocks.append(self._current_content_block.renderable)
             for tool_call in self._tool_call_blocks.values():
                 blocks.append(tool_call.renderable)
+        if self._current_approval:
+            blocks.append(self._current_approval.render())
         blocks.append(self._status_block.renderable)
         return Group(*blocks)
 
-    def dispatch(self, msg: WireMessage) -> None:
+    def dispatch_wire_message(self, msg: WireMessage) -> None:
         """Dispatch the Wire message to UI components."""
         assert not isinstance(msg, StepInterrupted)  # handled in visualize_loop
 
         if isinstance(msg, StepBegin):
+            self.cleanup(is_interrupt=False)
             self._mooning_spinner = Spinner("moon", "")
-            # TODO: push out blocks of previous step
             self.refresh_soon()
             return
 
@@ -280,18 +336,62 @@ class _LiveView:
             case ApprovalRequest():
                 self.request_approval(msg)
 
-    def interrupt(self) -> None:
-        for block in self._tool_call_blocks.values():
-            if not block.finished:
-                block.finish(ToolError(message="", brief="Interrupted"))
-        self.flush_all()
+    def dispatch_keyboard_event(self, event: KeyEvent) -> None:
+        # handle ESC key to cancel the run
+        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
+            self._cancel_event.set()
+            return
 
-    def finish(self) -> None:
+        if not self._current_approval:
+            # just ignore any keyboard event when there's no approval request
+            return
+
+        match event:
+            case KeyEvent.UP:
+                self._current_approval.move_up()
+                self.refresh_soon()
+            case KeyEvent.DOWN:
+                self._current_approval.move_down()
+                self.refresh_soon()
+            case KeyEvent.ENTER:
+                resp = self._current_approval.get_selected_response()
+                self._current_approval.request.resolve(resp)
+                if resp == ApprovalResponse.APPROVE_FOR_SESSION:
+                    for request in self._approval_queue:
+                        # approve all queued requests with the same action
+                        if request.action == self._current_approval.request.action:
+                            request.resolve(ApprovalResponse.APPROVE_FOR_SESSION)
+                elif resp == ApprovalResponse.REJECT:
+                    # one rejection should stop the step immediately
+                    while self._approval_queue:
+                        self._approval_queue.popleft().resolve(ApprovalResponse.REJECT)
+                    self._reject_all_following = True
+                self._current_approval = None
+                self.show_next_approval_request()
+            case _:
+                # just ignore any other keyboard event
+                return
+
+    def cleanup(self, is_interrupt: bool) -> None:
+        """Cleanup the live view on step end or interruption."""
+        self.flush_content()
+
         for block in self._tool_call_blocks.values():
             if not block.finished:
                 # this should not happen, but just in case
-                block.finish(ToolOk(output=""))
-        self.flush_all()
+                block.finish(
+                    ToolError(message="", brief="Interrupted")
+                    if is_interrupt
+                    else ToolOk(output="")
+                )
+        self._last_tool_call_block = None
+        self.flush_finished_tool_calls()
+
+        for request in self._approval_queue:
+            if not request.resolved:
+                request.resolve(ApprovalResponse.REJECT)
+        self._current_approval = None
+        self._reject_all_following = False
 
     def flush_content(self) -> None:
         """Flush the current content block."""
@@ -313,10 +413,6 @@ class _LiveView:
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
-
-    def flush_all(self) -> None:
-        self.flush_content()
-        self.flush_finished_tool_calls()
 
     def append_content(self, part: ContentPart) -> None:
         match part:
@@ -355,18 +451,33 @@ class _LiveView:
             self.flush_finished_tool_calls()
 
     def request_approval(self, request: ApprovalRequest) -> None:
-        # console.print(request)
-        pass
-
-    def handle_keyboard_event(self, event: KeyEvent) -> None:
-        # handle ESC key to cancel the run
-        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
-            self._cancel_event.set()
+        # If we're rejecting all following requests, reject immediately
+        if self._reject_all_following:
+            request.resolve(ApprovalResponse.REJECT)
             return
 
-        if not self._current_approval:
-            # just ignore any keyboard event when there's no approval request
+        self._approval_queue.append(request)
+
+        if self._current_approval is None:
+            self.show_next_approval_request()
+            self.refresh_soon()
+
+    def show_next_approval_request(self) -> None:
+        """Show the next approval request from the queue."""
+        if not self._approval_queue:
+            if self._current_approval is not None:
+                self._current_approval = None
+                self.refresh_soon()
             return
+
+        while self._approval_queue:
+            request = self._approval_queue.popleft()
+            if request.resolved:
+                # skip resolved requests
+                continue
+            self._current_approval = _ApprovalRequestPanel(request)
+            self.refresh_soon()
+            break
 
 
 def _with_bullet(renderable: RenderableType, bullet_style: str) -> RenderableType:
