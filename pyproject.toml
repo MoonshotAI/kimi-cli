@@ -21,7 +21,7 @@ dependencies = [
     "trafilatura==2.0.0",
     "tenacity==9.1.2",
     "fastmcp==2.12.5",
-    "pydantic==2.12.3",
+    "pydantic==2.12.4",
     "httpx[socks]==0.28.1",
 ]
 
