@@ -200,11 +200,8 @@ class _StatusBlock:
 @asynccontextmanager
 async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
     async def _keyboard():
-        try:
-            async for event in listen_for_keyboard():
-                handler(event)
-        except asyncio.CancelledError:
-            return
+        async for event in listen_for_keyboard():
+            handler(event)
 
     task = asyncio.create_task(_keyboard())
     try:
@@ -225,8 +222,8 @@ class _LiveView:
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
         self._last_tool_call_block: _ToolCallBlock | None = None
-        self._approval_queue = deque[ApprovalRequest]()
-        self._current_approval: _ApprovalRequestPanel | None = None
+        self._approval_request_queue = deque[ApprovalRequest]()
+        self._current_approval_request_panel: _ApprovalRequestPanel | None = None
         self._reject_all_following = False
         self._status_block = _StatusBlock(initial_status)
 
@@ -281,8 +278,8 @@ class _LiveView:
                 blocks.append(self._current_content_block.compose())
             for tool_call in self._tool_call_blocks.values():
                 blocks.append(tool_call.compose())
-        if self._current_approval:
-            blocks.append(self._current_approval.render())
+        if self._current_approval_request_panel:
+            blocks.append(self._current_approval_request_panel.render())
         blocks.append(self._status_block.render())
         return Group(*blocks)
 
@@ -326,29 +323,33 @@ class _LiveView:
             self._cancel_event.set()
             return
 
-        if not self._current_approval:
+        if not self._current_approval_request_panel:
             # just ignore any keyboard event when there's no approval request
             return
 
         match event:
             case KeyEvent.UP:
-                self._current_approval.move_up()
+                self._current_approval_request_panel.move_up()
                 self.refresh_soon()
             case KeyEvent.DOWN:
-                self._current_approval.move_down()
+                self._current_approval_request_panel.move_down()
                 self.refresh_soon()
             case KeyEvent.ENTER:
-                resp = self._current_approval.get_selected_response()
-                self._current_approval.request.resolve(resp)
+                resp = self._current_approval_request_panel.get_selected_response()
+                self._current_approval_request_panel.request.resolve(resp)
                 if resp == ApprovalResponse.APPROVE_FOR_SESSION:
-                    for request in self._approval_queue:
+                    to_remove_from_queue: list[ApprovalRequest] = []
+                    for request in self._approval_request_queue:
                         # approve all queued requests with the same action
-                        if request.action == self._current_approval.request.action:
+                        if request.action == self._current_approval_request_panel.request.action:
                             request.resolve(ApprovalResponse.APPROVE_FOR_SESSION)
+                            to_remove_from_queue.append(request)
+                    for request in to_remove_from_queue:
+                        self._approval_request_queue.remove(request)
                 elif resp == ApprovalResponse.REJECT:
                     # one rejection should stop the step immediately
-                    while self._approval_queue:
-                        self._approval_queue.popleft().resolve(ApprovalResponse.REJECT)
+                    while self._approval_request_queue:
+                        self._approval_request_queue.popleft().resolve(ApprovalResponse.REJECT)
                     self._reject_all_following = True
                 self.show_next_approval_request()
             case _:
@@ -370,10 +371,10 @@ class _LiveView:
         self._last_tool_call_block = None
         self.flush_finished_tool_calls()
 
-        for request in self._approval_queue:
-            if not request.resolved:
-                request.resolve(ApprovalResponse.REJECT)
-        self._current_approval = None
+        while self._approval_request_queue:
+            # should not happen, but just in case
+            self._approval_request_queue.popleft().resolve(ApprovalResponse.REJECT)
+        self._current_approval_request_panel = None
         self._reject_all_following = False
 
     def flush_content(self) -> None:
@@ -427,11 +428,13 @@ class _LiveView:
         if self._last_tool_call_block is None:
             return
         self._last_tool_call_block.append_args_part(part.arguments_part)
+        self.refresh_soon()
 
     def append_tool_result(self, result: ToolResult) -> None:
         if block := self._tool_call_blocks.get(result.tool_call_id):
             block.finish(result.result)
             self.flush_finished_tool_calls()
+            self.refresh_soon()
 
     def request_approval(self, request: ApprovalRequest) -> None:
         # If we're rejecting all following requests, reject immediately
@@ -439,9 +442,9 @@ class _LiveView:
             request.resolve(ApprovalResponse.REJECT)
             return
 
-        self._approval_queue.append(request)
+        self._approval_request_queue.append(request)
 
-        if self._current_approval is None:
+        if self._current_approval_request_panel is None:
             self.show_next_approval_request()
 
     def show_next_approval_request(self) -> None:
@@ -449,18 +452,18 @@ class _LiveView:
         Show the next approval request from the queue.
         If there are no pending requests, clear the current approval panel.
         """
-        if not self._approval_queue:
-            if self._current_approval is not None:
-                self._current_approval = None
+        if not self._approval_request_queue:
+            if self._current_approval_request_panel is not None:
+                self._current_approval_request_panel = None
                 self.refresh_soon()
             return
 
-        while self._approval_queue:
-            request = self._approval_queue.popleft()
+        while self._approval_request_queue:
+            request = self._approval_request_queue.popleft()
             if request.resolved:
                 # skip resolved requests
                 continue
-            self._current_approval = _ApprovalRequestPanel(request)
+            self._current_approval_request_panel = _ApprovalRequestPanel(request)
             self.refresh_soon()
             break
 
