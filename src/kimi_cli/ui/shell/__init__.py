@@ -82,6 +82,15 @@ class ShellApp:
                     continue
 
                 logger.info("Running agent command: {command}", command=user_input.content)
+                if isinstance(self.soul, KimiSoul):
+                    try:
+                        self.soul.set_thinking_mode(user_input.thinking)
+                    except LLMNotSet:
+                        pass
+                    except NotImplementedError:
+                        console.print(
+                            "[yellow]Thinking mode not supported for current LLM[/yellow]"
+                        )
                 await self._run_soul_command(user_input.content)
 
         return True

@@ -1,5 +1,6 @@
 import os
-from typing import NamedTuple, cast, get_args
+from dataclasses import dataclass
+from typing import cast, get_args
 
 from kosong.base.chat_provider import ChatProvider
 from pydantic import SecretStr
@@ -8,7 +9,8 @@ from kimi_cli.config import LLMModel, LLMModelCapability, LLMProvider
 from kimi_cli.constant import USER_AGENT
 
 
-class LLM(NamedTuple):
+@dataclass(slots=True)
+class LLM:
     chat_provider: ChatProvider
     max_context_size: int
     capabilities: set[LLMModelCapability]
