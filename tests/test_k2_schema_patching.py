@@ -1,8 +1,6 @@
 """Test that tool schemas are patched correctly for k2-thinking models."""
 import json
 
-import pytest
-
 from kimi_cli.utils.schema import inline_json_schema_refs
 
 

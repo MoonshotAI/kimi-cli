@@ -42,7 +42,7 @@ class ShellApp:
         if isinstance(self.soul, KimiSoul):
             await replay_recent_history(self.soul.context.history)
 
-        with CustomPromptSession(lambda: self.soul.status) as prompt_session:
+        with CustomPromptSession(lambda: self.soul.status, self.soul) as prompt_session:
             while True:
                 try:
                     ensure_new_line()

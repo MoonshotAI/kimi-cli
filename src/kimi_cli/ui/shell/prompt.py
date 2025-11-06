@@ -13,7 +13,7 @@ from enum import Enum
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from kosong.base.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
@@ -42,6 +42,9 @@ from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import random_string
+
+if TYPE_CHECKING:
+    from kimi_cli.soul import Soul
 
 PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"
@@ -399,17 +402,22 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 
 
 class CustomPromptSession:
-    def __init__(self, status_provider: Callable[[], StatusSnapshot]):
+    def __init__(
+        self, 
+        status_provider: Callable[[], StatusSnapshot],
+        soul: "Soul | None" = None
+    ):
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
         work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
+        self._soul = soul
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking: bool = False
+        self._thinking_locked: bool = False
         self._attachment_parts: dict[str, ContentPart] = {}
-        """Mapping from attachment id to ContentPart."""
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -417,7 +425,6 @@ class CustomPromptSession:
             history.append_string(entry.content)
 
         if history_entries:
-            # for consecutive deduplication
             self._last_history_content = history_entries[-1].content
 
         # Build completers
@@ -480,9 +487,12 @@ class CustomPromptSession:
         def is_agent_mode() -> bool:
             return self._mode == PromptMode.AGENT
 
-        @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
+        @Condition
+        def can_toggle_thinking() -> bool:
+            return is_agent_mode() and not self._thinking_locked
+
+        @_kb.add("tab", filter=~has_completions & can_toggle_thinking, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
-            """Toggle thinking mode when Tab is pressed and no completions are shown."""
             self._thinking = not self._thinking
             event.app.invalidate()
 
@@ -501,6 +511,41 @@ class CustomPromptSession:
         self._status_refresh_task: asyncio.Task | None = None
         self._current_toast: str | None = None
         self._current_toast_duration: float = 0.0
+        self._initialize_thinking_mode()
+
+    def _initialize_thinking_mode(self) -> None:
+        """Initialize thinking mode based on the current model's capabilities."""
+        if self._soul is None:
+            return
+            
+        try:
+            from kimi_cli.soul.kimisoul import KimiSoul
+            
+            if isinstance(self._soul, KimiSoul):
+                if self._soul.is_dedicated_thinking_model:
+                    self._thinking = True
+                    self._thinking_locked = True
+                    logger.info(
+                        "Dedicated thinking model detected ({model}), "
+                        "thinking mode enabled and locked",
+                        model=self._soul.model,
+                    )
+                elif self._soul.supports_runtime_thinking_control:
+                    self._thinking = False
+                    self._thinking_locked = False
+                    logger.debug(
+                        "Model supports runtime control ({model}), thinking mode available",
+                        model=self._soul.model,
+                    )
+                else:
+                    self._thinking = False
+                    self._thinking_locked = True
+                    logger.debug(
+                        "Model does not support thinking ({model})",
+                        model=self._soul.model,
+                    )
+        except Exception as e:
+            logger.warning("Failed to initialize thinking mode: {error}", error=e)
 
     def _render_message(self) -> FormattedText:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
@@ -667,8 +712,11 @@ class CustomPromptSession:
         columns -= len(now_text) + 2
 
         mode = str(self._mode).lower()
-        if self._mode == PromptMode.AGENT and self._thinking:
-            mode += " (thinking)"
+        if self._mode == PromptMode.AGENT:
+            if self._thinking_locked and self._thinking:
+                mode += " (thinking:locked)"
+            elif self._thinking:
+                mode += " (thinking)"
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
 
@@ -686,7 +734,7 @@ class CustomPromptSession:
                 *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
-            if self._mode == PromptMode.AGENT:
+            if self._mode == PromptMode.AGENT and not self._thinking_locked:
                 shortcuts.append("tab: toggle thinking")
             for shortcut in shortcuts:
                 if columns - len(status_text) > len(shortcut) + 2:

@@ -102,6 +102,24 @@ class KimiSoul(Soul):
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
+    @property
+    def is_dedicated_thinking_model(self) -> bool:
+        """Check if the current model is a dedicated thinking model."""
+        if self._runtime.llm is None:
+            return False
+        
+        model_name = self._runtime.llm.model_name.lower()
+        return "k2-thinking" in model_name
+
+    @property
+    def supports_runtime_thinking_control(self) -> bool:
+        """Check if the model supports runtime thinking control via parameters."""
+        if self._runtime.llm is None:
+            return False
+        
+        model_name = self._runtime.llm.model_name.lower()
+        return "kimi" in model_name and not self.is_dedicated_thinking_model
+
     def set_thinking_mode(self, thinking: bool) -> None:
         """
         Set thinking mode for the soul.
@@ -113,25 +131,37 @@ class KimiSoul(Soul):
         if self._runtime.llm is None:
             raise LLMNotSet()
 
-        from kosong.chat_provider.kimi import Kimi
+        if self.is_dedicated_thinking_model:
+            logger.debug(
+                "Dedicated thinking model detected, ignoring thinking mode change: {thinking}",
+                thinking=thinking,
+            )
+            return
 
-        # TODO: seems we need to abstract this in ChatProvider level
-        if not isinstance(self._runtime.llm.chat_provider, Kimi):
+        if not self.supports_runtime_thinking_control:
             if not thinking:
-                # disable thinking mode for non-Kimi providers is a no-op
                 return
 
             raise NotImplementedError(
-                f"The LLM model '{self._runtime.llm.model_name}' does not support thinking mode."
+                f"The LLM model '{self._runtime.llm.model_name}' does not support "
+                "runtime thinking mode control. Consider using kimi-k2-thinking or "
+                "kimi-k2-thinking-turbo for thinking capabilities."
             )
 
-        kwargs: Kimi.GenerationKwargs = {}
-        logger.debug("Setting thinking mode: {thinking}", thinking=thinking)
-        if thinking:
-            kwargs["reasoning_effort"] = "medium"
-        self._runtime.llm.chat_provider = self._runtime.llm.chat_provider.with_generation_kwargs(
-            **kwargs
-        )
+        from kosong.chat_provider.kimi import Kimi
+
+        if isinstance(self._runtime.llm.chat_provider, Kimi):
+            kwargs: Kimi.GenerationKwargs = {}
+            logger.debug("Setting thinking mode: {thinking}", thinking=thinking)
+            if thinking:
+                kwargs["reasoning_effort"] = "medium"
+            provider = self._runtime.llm.chat_provider
+            self._runtime.llm.chat_provider = provider.with_generation_kwargs(**kwargs)
+        else:
+            provider_name = type(self._runtime.llm.chat_provider).__name__
+            raise NotImplementedError(
+                f"Runtime thinking control not yet implemented for {provider_name}"
+            )
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
