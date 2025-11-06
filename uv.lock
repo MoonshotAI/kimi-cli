@@ -822,7 +822,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.48"
+version = "0.49"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },

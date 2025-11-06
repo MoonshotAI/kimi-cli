@@ -9,6 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.49] - 2025-11-06
+
+### Fixed
+
+- Minor UX improvements
+
 ## [0.48] - 2025-11-06
 
 ### Added
