@@ -6,7 +6,7 @@ from typing import override
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolOk, ToolResult, ToolReturnType
+from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
 from rich import box
 from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
@@ -238,6 +238,7 @@ class _LiveView:
                         self._need_recompose = False
 
     def compose(self) -> RenderableType:
+        """Compose the Live view display content."""
         blocks: list[RenderableType] = []
         if self._mooning_spinner is not None:
             blocks.append(self._mooning_spinner)
@@ -251,10 +252,8 @@ class _LiveView:
         blocks.append(self._status_block.renderable)
         return Group(*blocks)
 
-    def dispatch(self, msg: WireMessage):
-        """
-        Dispatch the Wire message to UI components. Returns True if a full recompose is needed.
-        """
+    def dispatch(self, msg: WireMessage) -> None:
+        """Dispatch the Wire message to UI components."""
         assert not isinstance(msg, StepInterrupted)  # handled in visualize_loop
 
         if isinstance(msg, StepBegin):
@@ -288,11 +287,16 @@ class _LiveView:
                 self.request_approval(msg)
 
     def interrupt(self) -> None:
-        # TODO: finish all tool calls
+        for block in self._tool_call_blocks.values():
+            if not block.finished:
+                block.finish(ToolError(message="", brief="Interrupted"))
         self.flush_all()
 
     def finish(self) -> None:
-        # TODO: finish all tool calls
+        for block in self._tool_call_blocks.values():
+            if not block.finished:
+                # this should not happen, but just in case
+                block.finish(ToolOk(output=""))
         self.flush_all()
 
     def flush_content(self) -> None:
