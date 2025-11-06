@@ -6,6 +6,7 @@ import streamingjson
 from kosong.base.message import (
     ContentPart,
     TextPart,
+    ThinkPart,
     ToolCall,
     ToolCallPart,
 )
@@ -179,9 +180,11 @@ class ACPAgent:
 
             if isinstance(msg, TextPart):
                 await self._send_text(msg.text)
+            elif isinstance(msg, ThinkPart):
+                await self._send_think(msg.think)
             elif isinstance(msg, ContentPart):
                 logger.warning("Unsupported content part: {part}", part=msg)
-                await self._send_text(f"[{msg.__class__.__name__}]")
+                pass
             elif isinstance(msg, ToolCall):
                 await self._send_tool_call(msg)
             elif isinstance(msg, ToolCallPart):
@@ -207,6 +210,21 @@ class ACPAgent:
                 update=acp.schema.AgentMessageChunk(
                     content=acp.schema.TextContentBlock(type="text", text=text),
                     sessionUpdate="agent_message_chunk",
+                ),
+            )
+        )
+
+    async def _send_think(self, think: str):
+        """Send thinking content to client."""
+        if not self.session_id:
+            return
+
+        await self.connection.sessionUpdate(
+            acp.SessionNotification(
+                sessionId=self.session_id,
+                update=acp.schema.AgentThoughtChunk(
+                    content=acp.schema.TextContentBlock(type="text", text=think),
+                    sessionUpdate="agent_thought_chunk",
                 ),
             )
         )
