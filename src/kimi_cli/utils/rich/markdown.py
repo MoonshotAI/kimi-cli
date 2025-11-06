@@ -291,7 +291,7 @@ class TableElement(MarkdownElement):
         return False
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        table = Table(box=box.SIMPLE_HEAVY)
+        table = Table(box=box.SIMPLE_HEAVY, show_edge=False)
 
         if self.header is not None and self.header.row is not None:
             for column in self.header.row.cells:
