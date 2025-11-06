@@ -9,6 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.48] - 2025-11-06
+
+### Added
+
+- Support Kimi K2 thinking mode
+
 ## [0.47] - 2025-11-05
 
 ### Fixed
