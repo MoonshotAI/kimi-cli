@@ -1,9 +1,7 @@
 import asyncio
-from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
-from typing import override
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
@@ -17,7 +15,7 @@ from rich.table import Table
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
-from kimi_cli.tools import extract_subtitle
+from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.rich.markdown import Markdown
@@ -52,30 +50,16 @@ async def visualize(
     await view.visualize_loop(wire)
 
 
-class _Block(ABC):
-    @property
-    @abstractmethod
-    def renderable(self) -> RenderableType: ...
-
-    @property
-    def renderable_final(self) -> RenderableType:
-        return self.renderable
-
-
-class _ContentBlock(_Block):
+class _ContentBlock:
     def __init__(self, is_think: bool):
         self.is_think = is_think
         self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
         self.raw_text = ""
 
-    @property
-    @override
-    def renderable(self) -> RenderableType:
+    def render(self) -> RenderableType:
         return self._spinner
 
-    @property
-    @override
-    def renderable_final(self) -> RenderableType:
+    def render_final(self) -> RenderableType:
         return _with_bullet(
             Markdown(
                 self.raw_text,
@@ -88,21 +72,19 @@ class _ContentBlock(_Block):
         self.raw_text += content
 
 
-class _ToolCallBlock(_Block):
+class _ToolCallBlock:
     def __init__(self, tool_call: ToolCall):
         self._tool_name = tool_call.function.name
         self._lexer = streamingjson.Lexer()
         if tool_call.function.arguments is not None:
             self._lexer.append_string(tool_call.function.arguments)
 
-        self._argument = extract_subtitle(self._lexer, self._tool_name)
+        self._argument = extract_key_argument(self._lexer, self._tool_name)
         self._finished = False
-        self._spinner = Spinner("dots", text=self.get_headline_markup())
+        self._spinner = Spinner("dots", text=self._get_headline_markup())
         self._renderable: RenderableType = Group(self._spinner)
 
-    @property
-    @override
-    def renderable(self) -> RenderableType:
+    def render(self) -> RenderableType:
         return self._renderable
 
     @property
@@ -114,10 +96,10 @@ class _ToolCallBlock(_Block):
             return
         self._lexer.append_string(args_part)
         # TODO: don't extract detail if it's already stable
-        new_subtitle = extract_subtitle(self._lexer, self._tool_name)
-        if new_subtitle and new_subtitle != self._argument:
-            self._argument = new_subtitle
-            self._spinner.update(text=self.get_headline_markup())
+        argument = extract_key_argument(self._lexer, self._tool_name)
+        if argument and argument != self._argument:
+            self._argument = argument
+            self._spinner.update(text=self._get_headline_markup())
 
     def finish(self, result: ToolReturnType):
         """
@@ -126,7 +108,7 @@ class _ToolCallBlock(_Block):
         """
         self._finished = True
         lines = [
-            Text.from_markup(self.get_headline_markup()),
+            Text.from_markup(self._get_headline_markup()),
         ]
         if result.brief:
             lines.append(
@@ -140,7 +122,7 @@ class _ToolCallBlock(_Block):
             "green" if isinstance(result, ToolOk) else "red",
         )
 
-    def get_headline_markup(self) -> str:
+    def _get_headline_markup(self) -> str:
         return f"{'Used' if self._finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
             f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
         )
@@ -200,8 +182,7 @@ class _StatusBlock:
         self.text = Text("", justify="right", style="grey50")
         self.update(initial)
 
-    @property
-    def renderable(self) -> RenderableType:
+    def render(self) -> RenderableType:
         return self.text
 
     def update(self, status: StatusSnapshot) -> None:
@@ -289,12 +270,12 @@ class _LiveView:
             blocks.append(self._compacting_spinner)
         else:
             if self._current_content_block is not None:
-                blocks.append(self._current_content_block.renderable)
+                blocks.append(self._current_content_block.render())
             for tool_call in self._tool_call_blocks.values():
-                blocks.append(tool_call.renderable)
+                blocks.append(tool_call.render())
         if self._current_approval:
             blocks.append(self._current_approval.render())
-        blocks.append(self._status_block.renderable)
+        blocks.append(self._status_block.render())
         return Group(*blocks)
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
@@ -390,7 +371,7 @@ class _LiveView:
     def flush_content(self) -> None:
         """Flush the current content block."""
         if self._current_content_block is not None:
-            console.print(self._current_content_block.renderable_final)
+            console.print(self._current_content_block.render_final())
             self._current_content_block = None
             self.refresh_soon()
 
@@ -403,7 +384,7 @@ class _LiveView:
                 break
 
             self._tool_call_blocks.pop(tool_call_id)
-            console.print(block.renderable_final)
+            console.print(block.render())
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
