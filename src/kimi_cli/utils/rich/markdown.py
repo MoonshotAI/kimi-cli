@@ -21,6 +21,8 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text, TextType
 
+LIST_INDENT_WIDTH = 2
+
 _FALLBACK_STYLES: Mapping[str, Style] = {
     "markdown.paragraph": Style(),
     "markdown.h1": Style(color="bright_white", bold=True),
@@ -403,7 +405,30 @@ class ListItem(TextElement):
 
     style_name = "markdown.item"
 
-    def __init__(self) -> None:
+    @staticmethod
+    def _line_starts_with_list_marker(text: str) -> bool:
+        stripped = text.lstrip()
+        if not stripped:
+            return False
+        if stripped.startswith(("• ", "- ", "* ")):
+            return True
+        index = 0
+        while index < len(stripped) and stripped[index].isdigit():
+            index += 1
+        if index == 0 or index >= len(stripped):
+            return False
+        marker = stripped[index]
+        has_space = index + 1 < len(stripped) and stripped[index + 1] == " "
+        return marker in {".", ")"} and has_space
+
+    @classmethod
+    def create(cls, markdown: Markdown, token: Token) -> MarkdownElement:
+        # `list_item_open` levels grow by 2 for each nested list depth.
+        depth = max(0, (token.level - 1) // 2)
+        return cls(indent=depth)
+
+    def __init__(self, indent: int = 0) -> None:
+        self.indent = indent
         self.elements: Renderables = Renderables()
 
     def on_child_close(self, context: MarkdownContext, child: MarkdownElement) -> bool:
@@ -412,11 +437,27 @@ class ListItem(TextElement):
 
     def render_bullet(self, console: Console, options: ConsoleOptions) -> RenderResult:
         lines = console.render_lines(self.elements, options, style=self.style)
+        indent_padding_len = LIST_INDENT_WIDTH * self.indent
+        indent_text = " " * indent_padding_len
         bullet = Segment("• ")
         new_line = Segment("\n")
+        bullet_width = len(bullet.text)
         for first, line in loop_first(lines):
             if first:
+                if indent_text:
+                    yield Segment(indent_text)
                 yield bullet
+            else:
+                plain = "".join(segment.text for segment in line)
+                if self._line_starts_with_list_marker(plain):
+                    prefix = ""
+                else:
+                    existing = len(plain) - len(plain.lstrip(" "))
+                    target = indent_padding_len + bullet_width
+                    missing = max(0, target - existing)
+                    prefix = " " * missing
+                if prefix:
+                    yield Segment(prefix)
             yield from line
             yield new_line
 
@@ -425,10 +466,27 @@ class ListItem(TextElement):
     ) -> RenderResult:
         lines = console.render_lines(self.elements, options, style=self.style)
         new_line = Segment("\n")
-        numeral = Segment(f"{number}. ")
+        indent_padding_len = LIST_INDENT_WIDTH * self.indent
+        indent_text = " " * indent_padding_len
+        numeral_text = f"{number}. "
+        numeral = Segment(numeral_text)
+        numeral_width = len(numeral_text)
         for first, line in loop_first(lines):
             if first:
+                if indent_text:
+                    yield Segment(indent_text)
                 yield numeral
+            else:
+                plain = "".join(segment.text for segment in line)
+                if self._line_starts_with_list_marker(plain):
+                    prefix = ""
+                else:
+                    existing = len(plain) - len(plain.lstrip(" "))
+                    target = indent_padding_len + numeral_width
+                    missing = max(0, target - existing)
+                    prefix = " " * missing
+                if prefix:
+                    yield Segment(prefix)
             yield from line
             yield new_line
 
