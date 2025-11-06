@@ -7,12 +7,9 @@ from typing import override
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
-from rich import box
-from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
+from rich.console import Group, RenderableType
 from rich.live import Live
-from rich.markdown import Heading, Markdown
 from rich.markup import escape
-from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
@@ -21,6 +18,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_subtitle
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.ui.shell.markdown import CustomMarkdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
@@ -65,23 +63,19 @@ class _Block(ABC):
 class _ContentBlock(_Block):
     def __init__(self, is_think: bool):
         self.is_think = is_think
-        # self.text = Text(style="grey50 italic" if is_think else "")
-        self._composing_spinner = Spinner(
-            "dots",
-            "Thinking..." if is_think else "Composing...",
-        )
+        self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
         self.raw_text = ""
 
     @property
     @override
     def renderable(self) -> RenderableType:
-        return self._composing_spinner
+        return self._spinner
 
     @property
     @override
     def renderable_final(self) -> RenderableType:
         return _with_bullet(
-            _LeftAlignedMarkdown(
+            CustomMarkdown(
                 self.raw_text,
                 justify="left",
                 style="grey50 italic" if self.is_think else "",
@@ -373,29 +367,6 @@ class _LiveView:
         if not self._current_approval:
             # just ignore any keyboard event when there's no approval request
             return
-
-
-class _LeftAlignedHeading(Heading):
-    """Heading element with left-aligned content."""
-
-    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        text = self.text
-        text.justify = "left"
-        if self.tag == "h2":
-            text.stylize("bold")
-        if self.tag == "h1":
-            yield Panel(text, box=box.HEAVY, style="markdown.h1.border")
-        else:
-            if self.tag == "h2":
-                yield Text("")
-            yield text
-
-
-class _LeftAlignedMarkdown(Markdown):
-    """Markdown renderer that left-aligns headings."""
-
-    elements = dict(Markdown.elements)
-    elements["heading_open"] = _LeftAlignedHeading
 
 
 def _with_bullet(renderable: RenderableType, bullet_style: str) -> RenderableType:
