@@ -41,7 +41,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
-from kimi_cli.constants import LARGE_PASTE_LINE_THRESHOLD
+from kimi_cli.utils.message import LARGE_PASTE_LINE_THRESHOLD
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
@@ -464,60 +464,64 @@ class CustomPromptSession:
 
         shortcut_hints.append("ctrl-j: newline")
 
+        # Smart delete for placeholders
+        def _delete_placeholder_at_cursor(buff, is_backspace: bool) -> bool:
+            """Delete placeholder at cursor position if present. Returns True if deleted.
+
+            Args:
+                buff: The buffer to check
+                is_backspace: True for backspace key, False for delete key
+            """
+            doc = buff.document
+            cursor = doc.cursor_position
+
+            for match in _ATTACHMENT_PLACEHOLDER_RE.finditer(doc.text):
+                start, end = match.span()
+
+                # Backspace: delete if cursor is inside OR right after placeholder
+                # Delete: delete if cursor is inside OR right before placeholder
+                if is_backspace:
+                    should_delete = start < cursor <= end
+                else:
+                    should_delete = start <= cursor < end
+
+                if should_delete:
+                    attachment_id = match.group("id")
+                    buff.text = doc.text[:start] + doc.text[end:]
+                    buff.cursor_position = start
+                    self._attachment_parts.pop(attachment_id, None)
+                    return True
+
+            return False
+
+        @_kb.add("backspace", eager=True)
+        def _smart_backspace(event: KeyPressEvent) -> None:
+            """Delete entire placeholder if cursor is within/after one, otherwise backspace normally."""
+            if not _delete_placeholder_at_cursor(event.current_buffer, is_backspace=True):
+                event.current_buffer.delete_before_cursor(1)
+            # Always sync tracking after modifications
+            self._last_buffer_text = event.current_buffer.text
+
+        @_kb.add("delete", eager=True)
+        def _smart_delete(event: KeyPressEvent) -> None:
+            """Delete entire placeholder if cursor is within/before one, otherwise delete normally."""
+            if not _delete_placeholder_at_cursor(event.current_buffer, is_backspace=False):
+                event.current_buffer.delete(1)
+            # Always sync tracking after modifications
+            self._last_buffer_text = event.current_buffer.text
+
         if is_clipboard_available():
 
             @_kb.add("c-v", eager=True)
             def _paste(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
-
+                # For non-image pastes, use default behavior
+                # Large text detection happens in on_text_insert handler
                 clipboard_data = event.app.clipboard.get_data()
-                text = clipboard_data.text
+                event.current_buffer.paste_clipboard_data(clipboard_data)
 
-                line_count = text.count('\n') + 1
-                if line_count > LARGE_PASTE_LINE_THRESHOLD:
-                    paste_id = random_string(8)
-                    self._attachment_parts[paste_id] = TextPart(text=text)
-                    placeholder = f"[text:{paste_id},{line_count} lines]"
-
-                    logger.debug(
-                        "Pasting large text as placeholder: {paste_id}, {line_count} lines",
-                        paste_id=paste_id,
-                        line_count=line_count,
-                    )
-                    event.current_buffer.insert_text(placeholder)
-                else:
-                    event.current_buffer.paste_clipboard_data(clipboard_data)
-
-            shortcut_hints.append("ctrl-v: paste")
-
-            def _delete_placeholder_at_cursor(buff) -> bool:
-                """Delete placeholder at cursor position if present. Returns True if deleted."""
-                doc = buff.document
-                cursor = doc.cursor_position
-
-                for match in _ATTACHMENT_PLACEHOLDER_RE.finditer(doc.text):
-                    start, end = match.span()
-                    if start <= cursor <= end:
-                        attachment_id = match.group("id")
-                        buff.text = doc.text[:start] + doc.text[end:]
-                        buff.cursor_position = start
-                        self._attachment_parts.pop(attachment_id, None)
-                        return True
-
-                return False
-
-            @_kb.add("backspace", eager=True)
-            def _smart_backspace(event: KeyPressEvent) -> None:
-                """Delete entire placeholder if cursor is within one, otherwise backspace normally."""
-                if not _delete_placeholder_at_cursor(event.current_buffer):
-                    event.current_buffer.delete_before_cursor(1)
-
-            @_kb.add("delete", eager=True)
-            def _smart_delete(event: KeyPressEvent) -> None:
-                """Delete entire placeholder if cursor is within one, otherwise delete normally."""
-                if not _delete_placeholder_at_cursor(event.current_buffer):
-                    event.current_buffer.delete(1)
+            shortcut_hints.append("ctrl-v / cmd-v: paste")
 
             clipboard = PyperclipClipboard()
         else:
@@ -544,6 +548,17 @@ class CustomPromptSession:
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
         )
+
+        # Add handler to detect and collapse large text pastes
+        # This works for any paste method (Cmd-V, Ctrl-V, right-click, etc.)
+        self._pending_large_paste_replacement = False
+        self._last_buffer_text = ""
+
+        def _on_text_insert_handler(buffer):
+            self._check_and_replace_large_paste(buffer)
+            self._last_buffer_text = buffer.document.text
+
+        self._session.default_buffer.on_text_insert += _on_text_insert_handler
 
         self._status_refresh_task: asyncio.Task | None = None
         self._current_toast: str | None = None
@@ -646,11 +661,53 @@ class CustomPromptSession:
         event.app.invalidate()
         return True
 
+    def _check_and_replace_large_paste(self, buffer) -> None:
+        """Check if large text was just pasted and replace ONLY the pasted part with placeholder."""
+        if self._pending_large_paste_replacement:
+            return
+
+        current_text = buffer.document.text
+        previous_text = self._last_buffer_text
+
+        # Only handle appends (includes empty buffer case since "".startswith("") is True)
+        if not current_text.startswith(previous_text):
+            return
+
+        inserted_text = current_text[len(previous_text):]
+        inserted_line_count = inserted_text.count('\n') + 1
+
+        if inserted_line_count <= LARGE_PASTE_LINE_THRESHOLD:
+            return
+
+        try:
+            self._pending_large_paste_replacement = True
+
+            # Create attachment for the pasted text only
+            paste_id = random_string(8)
+            self._attachment_parts[paste_id] = TextPart(text=inserted_text)
+
+            logger.debug(
+                "Detected large paste: {paste_id}, {line_count} lines",
+                paste_id=paste_id,
+                line_count=inserted_line_count,
+            )
+
+            # Replace buffer: keep prefix, replace inserted text with placeholder
+            placeholder = f"[text:{paste_id},{inserted_line_count} lines]"
+            buffer.text = previous_text + placeholder
+            buffer.cursor_position = len(buffer.text)
+
+        finally:
+            self._pending_large_paste_replacement = False
+
     async def prompt(self) -> UserInput:
         with patch_stdout():
             command = str(await self._session.prompt_async()).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
+
+        # Reset buffer tracking for next prompt
+        self._last_buffer_text = ""
 
         # Parse rich content parts
         content: list[ContentPart] = []

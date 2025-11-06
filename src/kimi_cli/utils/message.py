@@ -1,6 +1,7 @@
 from kosong.base.message import Message, TextPart
 
-from kimi_cli.constants import LARGE_PASTE_LINE_THRESHOLD
+# Collapse text pastes with more than this many lines
+LARGE_PASTE_LINE_THRESHOLD = 50
 
 
 def message_extract_text(message: Message) -> str:
