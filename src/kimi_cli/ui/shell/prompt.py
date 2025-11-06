@@ -7,12 +7,13 @@ import os
 import re
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from datetime import datetime
 from enum import Enum
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
+from types import TracebackType
 from typing import override
 
 from kosong.base.message import ContentPart, ImageURLPart, TextPart
@@ -21,6 +22,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
+    CompleteEvent,
     Completer,
     Completion,
     DummyCompleter,
@@ -56,7 +58,7 @@ class MetaCommandCompleter(Completer):
     """
 
     @override
-    def get_completions(self, document, complete_event):
+    def get_completions(self, document: Document, complete_event: CompleteEvent):
         text = document.text_before_cursor
 
         # Only autocomplete when the input buffer has no other content.
@@ -301,7 +303,9 @@ class FileMentionCompleter(Completer):
             return False
 
     @override
-    def get_completions(self, document, complete_event):
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Generator[Completion]:
         fragment = self._extract_fragment(document.text_before_cursor)
         if fragment is None:
             return
@@ -434,7 +438,7 @@ class CustomPromptSession:
         shortcut_hints: list[str] = []
 
         @_kb.add("enter", filter=has_completions)
-        def _accept_completion(event: KeyPressEvent) -> None:
+        def _accept_completion(event: KeyPressEvent) -> None:  # pyright:ignore[reportUnusedFunction]
             """Accept the first completion when Enter is pressed and completions are shown."""
             buff = event.current_buffer
             if buff.complete_state and buff.complete_state.completions:
@@ -445,7 +449,7 @@ class CustomPromptSession:
                 buff.apply_completion(completion)
 
         @_kb.add("c-x", eager=True)
-        def _switch_mode(event: KeyPressEvent) -> None:
+        def _switch_mode(event: KeyPressEvent) -> None:  # pyright:ignore[reportUnusedFunction]
             self._mode = self._mode.toggle()
             # Apply mode-specific settings
             self._apply_mode(event)
@@ -456,7 +460,7 @@ class CustomPromptSession:
 
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
-        def _insert_newline(event: KeyPressEvent) -> None:
+        def _insert_newline(event: KeyPressEvent) -> None:  # pyright:ignore[reportUnusedFunction]
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
@@ -465,7 +469,7 @@ class CustomPromptSession:
         if is_clipboard_available():
 
             @_kb.add("c-v", eager=True)
-            def _paste(event: KeyPressEvent) -> None:
+            def _paste(event: KeyPressEvent) -> None:  # pyright:ignore[reportUnusedFunction]
                 if self._try_paste_image(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
@@ -481,13 +485,13 @@ class CustomPromptSession:
             return self._mode == PromptMode.AGENT
 
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
-        def _switch_thinking(event: KeyPressEvent) -> None:
+        def _switch_thinking(event: KeyPressEvent) -> None:  # pyright:ignore[reportUnusedFunction]
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
             self._thinking = not self._thinking
             event.app.invalidate()
 
-        self._shortcut_hints = shortcut_hints
-        self._session = PromptSession(
+        self._shortcut_hints: list[str] = shortcut_hints
+        self._session: PromptSession[str] = PromptSession(
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
@@ -498,7 +502,7 @@ class CustomPromptSession:
             bottom_toolbar=self._render_bottom_toolbar,
         )
 
-        self._status_refresh_task: asyncio.Task | None = None
+        self._status_refresh_task: asyncio.Task[None] | None = None
         self._current_toast: str | None = None
         self._current_toast_duration: float = 0.0
 
@@ -554,7 +558,12 @@ class CustomPromptSession:
         self._status_refresh_task = asyncio.create_task(_refresh(_REFRESH_INTERVAL))
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None

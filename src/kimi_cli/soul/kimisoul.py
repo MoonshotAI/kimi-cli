@@ -98,7 +98,7 @@ class KimiSoul(Soul):
     @property
     def agent(self) -> Agent:
         return self._agent
-    
+
     @property
     def runtime(self) -> Runtime:
         return self._runtime

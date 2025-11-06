@@ -155,7 +155,6 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-
     async def run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
         """public method to run soul command."""
         return await self._run_soul_command(user_input)
