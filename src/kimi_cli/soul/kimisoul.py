@@ -101,6 +101,37 @@ class KimiSoul(Soul):
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
+    def set_thinking_mode(self, thinking: bool) -> None:
+        """
+        Set thinking mode for the soul.
+
+        Raises:
+            LLMNotSet: When the LLM is not set.
+            NotImplementedError: When the LLM does not support thinking mode.
+        """
+        if self._runtime.llm is None:
+            raise LLMNotSet()
+
+        from kosong.chat_provider.kimi import Kimi
+
+        # TODO: seems we need to abstract this in ChatProvider level
+        if not isinstance(self._runtime.llm.chat_provider, Kimi):
+            if not thinking:
+                # disable thinking mode for non-Kimi providers is a no-op
+                return
+
+            raise NotImplementedError(
+                f"The LLM model '{self._runtime.llm.model_name}' does not support thinking mode."
+            )
+
+        kwargs: Kimi.GenerationKwargs = {}
+        logger.debug("Setting thinking mode: {thinking}", thinking=thinking)
+        if thinking:
+            kwargs["reasoning_effort"] = "medium"
+        self._runtime.llm.chat_provider = self._runtime.llm.chat_provider.with_generation_kwargs(
+            **kwargs
+        )
+
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 

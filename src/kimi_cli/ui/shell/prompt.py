@@ -369,6 +369,7 @@ class PromptMode(Enum):
 
 class UserInput(BaseModel):
     mode: PromptMode
+    thinking: bool
     command: str
     """The plain text representation of the user input."""
     content: list[ContentPart]
@@ -404,6 +405,7 @@ class CustomPromptSession:
         self._status_provider = status_provider
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
+        self._thinking: bool = False
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -472,6 +474,14 @@ class CustomPromptSession:
         else:
             clipboard = None
 
+        @_kb.add("tab", filter=~has_completions)
+        def _switch_thinking(event: KeyPressEvent) -> None:
+            """Toggle thinking mode when Tab is pressed and no completions are shown."""
+            self._thinking = not self._thinking
+            event.app.invalidate()
+
+        shortcut_hints.append("tab: toggle thinking")
+
         self._shortcut_hints = shortcut_hints
         self._session = PromptSession(
             message=self._render_message,
@@ -490,6 +500,8 @@ class CustomPromptSession:
 
     def _render_message(self) -> FormattedText:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else "$"
+        if self._mode == PromptMode.AGENT and self._thinking:
+            symbol = "💫"
         return FormattedText([("bold", f"{getpass.getuser()}{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
@@ -611,7 +623,12 @@ class CustomPromptSession:
         if remaining_command.strip():
             content.append(TextPart(text=remaining_command.strip()))
 
-        return UserInput(mode=self._mode, content=content, command=command)
+        return UserInput(
+            mode=self._mode,
+            thinking=self._thinking,
+            content=content,
+            command=command,
+        )
 
     def _append_history_entry(self, text: str) -> None:
         entry = _HistoryEntry(content=text.strip())
@@ -648,6 +665,10 @@ class CustomPromptSession:
         mode = str(self._mode).lower()
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
+
+        if self._thinking:
+            fragments.extend([("", "t"), ("", " " * 2)])
+            columns -= len("t") + 2
 
         status = self._status_provider()
         status_text = self._format_status(status)

@@ -379,7 +379,7 @@ class StepLiveViewWithMarkdown(StepLiveView):
             return
         self._buffer_status_active = True
         self._line_buffer.plain = ""
-        self._buffer_status_obj = Status("Thinking...", console=console, spinner="dots")
+        self._buffer_status_obj = Status("Composing...", console=console, spinner="dots")
         self._buffer_status = self._buffer_status_obj.renderable
         self._live.update(self._compose())
 

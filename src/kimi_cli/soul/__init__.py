@@ -6,6 +6,7 @@ from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from kosong.base.message import ContentPart
 
+from kimi_cli.config import LLMModelCapability
 from kimi_cli.llm import LLM
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
@@ -21,7 +22,7 @@ class LLMNotSet(Exception):
 class LLMNotSupported(Exception):
     """Raised when the LLM does not have required capabilities."""
 
-    def __init__(self, llm: LLM, capabilities: list[str]):
+    def __init__(self, llm: LLM, capabilities: list[LLMModelCapability]):
         self.llm = llm
         self.capabilities = capabilities
         capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
