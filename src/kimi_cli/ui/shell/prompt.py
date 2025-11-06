@@ -29,7 +29,7 @@ from prompt_toolkit.completion import (
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Always, Never, has_completions
+from prompt_toolkit.filters import Always, Condition, Never, has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
@@ -39,10 +39,13 @@ from pydantic import BaseModel, ValidationError
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
+from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
+PROMPT_SYMBOL_SHELL = "$"
+PROMPT_SYMBOL_THINKING = "💫"
 
 
 class MetaCommandCompleter(Completer):
@@ -368,6 +371,7 @@ class PromptMode(Enum):
 
 class UserInput(BaseModel):
     mode: PromptMode
+    thinking: bool
     command: str
     """The plain text representation of the user input."""
     content: list[ContentPart]
@@ -398,11 +402,12 @@ class CustomPromptSession:
     def __init__(self, status_provider: Callable[[], StatusSnapshot]):
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
-        work_dir_id = md5(str(Path.cwd()).encode()).hexdigest()
+        work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
+        self._thinking: bool = False
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -426,6 +431,7 @@ class CustomPromptSession:
 
         # Build key bindings
         _kb = KeyBindings()
+        shortcut_hints: list[str] = []
 
         @_kb.add("enter", filter=has_completions)
         def _accept_completion(event: KeyPressEvent) -> None:
@@ -438,12 +444,6 @@ class CustomPromptSession:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
 
-        @_kb.add("escape", "enter", eager=True)
-        @_kb.add("c-j", eager=True)
-        def _insert_newline(event: KeyPressEvent) -> None:
-            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
-            event.current_buffer.insert_text("\n")
-
         @_kb.add("c-x", eager=True)
         def _switch_mode(event: KeyPressEvent) -> None:
             self._mode = self._mode.toggle()
@@ -452,20 +452,48 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
-        @_kb.add("c-v", eager=True)
-        def _paste(event: KeyPressEvent) -> None:
-            if self._try_paste_image(event):
-                return
-            clipboard_data = event.app.clipboard.get_data()
-            event.current_buffer.paste_clipboard_data(clipboard_data)
+        shortcut_hints.append("ctrl-x: switch mode")
 
+        @_kb.add("escape", "enter", eager=True)
+        @_kb.add("c-j", eager=True)
+        def _insert_newline(event: KeyPressEvent) -> None:
+            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            event.current_buffer.insert_text("\n")
+
+        shortcut_hints.append("ctrl-j: newline")
+
+        if is_clipboard_available():
+
+            @_kb.add("c-v", eager=True)
+            def _paste(event: KeyPressEvent) -> None:
+                if self._try_paste_image(event):
+                    return
+                clipboard_data = event.app.clipboard.get_data()
+                event.current_buffer.paste_clipboard_data(clipboard_data)
+
+            shortcut_hints.append("ctrl-v: paste")
+            clipboard = PyperclipClipboard()
+        else:
+            clipboard = None
+
+        @Condition
+        def is_agent_mode() -> bool:
+            return self._mode == PromptMode.AGENT
+
+        @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
+        def _switch_thinking(event: KeyPressEvent) -> None:
+            """Toggle thinking mode when Tab is pressed and no completions are shown."""
+            self._thinking = not self._thinking
+            event.app.invalidate()
+
+        self._shortcut_hints = shortcut_hints
         self._session = PromptSession(
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
             complete_while_typing=True,
             key_bindings=_kb,
-            clipboard=PyperclipClipboard(),
+            clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
         )
@@ -475,7 +503,9 @@ class CustomPromptSession:
         self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
-        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else "$"
+        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
+        if self._mode == PromptMode.AGENT and self._thinking:
+            symbol = PROMPT_SYMBOL_THINKING
         return FormattedText([("bold", f"{getpass.getuser()}{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
@@ -597,7 +627,12 @@ class CustomPromptSession:
         if remaining_command.strip():
             content.append(TextPart(text=remaining_command.strip()))
 
-        return UserInput(mode=self._mode, content=content, command=command)
+        return UserInput(
+            mode=self._mode,
+            thinking=self._thinking,
+            content=content,
+            command=command,
+        )
 
     def _append_history_entry(self, text: str) -> None:
         entry = _HistoryEntry(content=text.strip())
@@ -632,6 +667,8 @@ class CustomPromptSession:
         columns -= len(now_text) + 2
 
         mode = str(self._mode).lower()
+        if self._mode == PromptMode.AGENT and self._thinking:
+            mode += " (thinking)"
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
 
@@ -646,11 +683,11 @@ class CustomPromptSession:
                 self._current_toast = None
         else:
             shortcuts = [
-                "ctrl-x: switch mode",
-                "ctrl-j: newline",
-                "ctrl-v: paste",
+                *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
+            if self._mode == PromptMode.AGENT:
+                shortcuts.append("tab: toggle thinking")
             for shortcut in shortcuts:
                 if columns - len(status_text) > len(shortcut) + 2:
                     fragments.extend([("", shortcut), ("", " " * 2)])
@@ -722,7 +759,7 @@ def _cursor_column_unix() -> int | None:
                 break
             if not chunk:
                 break
-            response += chunk.decode(errors="ignore")
+            response += chunk.decode(encoding="utf-8", errors="ignore")
             match = _CURSOR_POSITION_RE.search(response)
             if match:
                 return int(match.group(2))

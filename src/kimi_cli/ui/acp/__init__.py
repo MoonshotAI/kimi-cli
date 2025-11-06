@@ -13,7 +13,7 @@ from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
-from kimi_cli.tools import extract_subtitle
+from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
@@ -49,7 +49,7 @@ class _ToolCallState:
     def get_title(self) -> str:
         """Get the current title with subtitle if available."""
         tool_name = self.tool_call.function.name
-        subtitle = extract_subtitle(self.lexer, tool_name)
+        subtitle = extract_key_argument(self.lexer, tool_name)
         if subtitle:
             return f"{tool_name}: {subtitle}"
         return tool_name

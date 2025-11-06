@@ -4,13 +4,14 @@ from typing import Any, override
 from kosong.tooling import CallableTool2, ToolError, ToolReturnType
 
 from kimi_cli.soul.denwarenji import DenwaRenji, DenwaRenjiError, DMail
+from kimi_cli.tools.utils import load_desc
 
 NAME = "SendDMail"
 
 
 class SendDMail(CallableTool2[DMail]):
     name: str = NAME
-    description: str = (Path(__file__).parent / "dmail.md").read_text(encoding="utf-8")
+    description: str = load_desc(Path(__file__).parent / "dmail.md")
     params: type[DMail] = DMail
 
     def __init__(self, denwa_renji: DenwaRenji, **kwargs: Any) -> None:

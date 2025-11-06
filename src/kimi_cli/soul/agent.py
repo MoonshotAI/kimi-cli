@@ -13,6 +13,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.soul.toolset import CustomToolset
+from kimi_cli.tools import SkipThisTool
 from kimi_cli.utils.logging import logger
 
 
@@ -99,7 +100,11 @@ def _load_tools(
 ) -> list[str]:
     bad_tools: list[str] = []
     for tool_path in tool_paths:
-        tool = _load_tool(tool_path, dependencies)
+        try:
+            tool = _load_tool(tool_path, dependencies)
+        except SkipThisTool:
+            logger.info("Skipping tool: {tool_path}", tool_path=tool_path)
+            continue
         if tool:
             toolset += tool
         else:

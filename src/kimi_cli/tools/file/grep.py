@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 import kimi_cli
 from kimi_cli.share import get_share_dir
+from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
@@ -220,7 +221,7 @@ async def _ensure_rg_path() -> str:
 
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
-    description: str = (Path(__file__).parent / "grep.md").read_text(encoding="utf-8")
+    description: str = load_desc(Path(__file__).parent / "grep.md")
     params: type[Params] = Params
 
     @override

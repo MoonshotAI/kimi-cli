@@ -4,6 +4,8 @@ from typing import Literal, override
 from kosong.tooling import CallableTool2, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
+from kimi_cli.tools.utils import load_desc
+
 
 class Todo(BaseModel):
     title: str = Field(description="The title of the todo", min_length=1)
@@ -16,7 +18,7 @@ class Params(BaseModel):
 
 class SetTodoList(CallableTool2[Params]):
     name: str = "SetTodoList"
-    description: str = (Path(__file__).parent / "set_todo_list.md").read_text(encoding="utf-8")
+    description: str = load_desc(Path(__file__).parent / "set_todo_list.md")
     params: type[Params] = Params
 
     @override
@@ -24,4 +26,4 @@ class SetTodoList(CallableTool2[Params]):
         rendered = ""
         for todo in params.todos:
             rendered += f"- {todo.title} [{todo.status}]\n"
-        return ToolOk(output=rendered)
+        return ToolOk(output="", message="Todo list updated", brief=rendered)

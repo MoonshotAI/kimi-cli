@@ -127,7 +127,7 @@ class KimiCLI:
         finally:
             os.chdir(original_cwd)
 
-    async def run_shell_mode(self, command: str | None = None, markdown: bool = True) -> bool:
+    async def run_shell_mode(self, command: str | None = None) -> bool:
         from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
 
         welcome_info = [
@@ -167,7 +167,7 @@ class KimiCLI:
                 )
             )
         with self._app_env():
-            app = ShellApp(self._soul, welcome_info=welcome_info, markdown=markdown)
+            app = ShellApp(self._soul, welcome_info=welcome_info)
             return await app.run(command)
 
     async def run_print_mode(
