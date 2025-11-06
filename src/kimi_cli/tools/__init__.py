@@ -14,65 +14,72 @@ class SkipThisTool(Exception):
     pass
 
 
-def extract_key_argument(lexer: streamingjson.Lexer, tool_name: str) -> str | None:
+def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str) -> str | None:
+    if isinstance(json_content, streamingjson.Lexer):
+        json_str = json_content.complete_json()
+    else:
+        json_str = json_content
     try:
-        curr_args: JsonType = json.loads(lexer.complete_json())
+        curr_args: JsonType = json.loads(json_str)
     except json.JSONDecodeError:
         return None
     if not curr_args:
         return None
-    subtitle: str = ""
+    key_argument: str = ""
     match tool_name:
         case "Task":
             if not isinstance(curr_args, dict) or not curr_args.get("description"):
                 return None
-            subtitle = str(curr_args["description"])
+            key_argument = str(curr_args["description"])
         case "SendDMail":
             return "El Psy Kongroo"
         case "Think":
             if not isinstance(curr_args, dict) or not curr_args.get("thought"):
                 return None
-            subtitle = str(curr_args["thought"])
+            key_argument = str(curr_args["thought"])
         case "SetTodoList":
             return None
         case "Bash":
             if not isinstance(curr_args, dict) or not curr_args.get("command"):
                 return None
-            subtitle = str(curr_args["command"])
+            key_argument = str(curr_args["command"])
         case "ReadFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            subtitle = _normalize_path(str(curr_args["path"]))
+            key_argument = _normalize_path(str(curr_args["path"]))
         case "Glob":
             if not isinstance(curr_args, dict) or not curr_args.get("pattern"):
                 return None
-            subtitle = str(curr_args["pattern"])
+            key_argument = str(curr_args["pattern"])
         case "Grep":
             if not isinstance(curr_args, dict) or not curr_args.get("pattern"):
                 return None
-            subtitle = str(curr_args["pattern"])
+            key_argument = str(curr_args["pattern"])
         case "WriteFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            subtitle = _normalize_path(str(curr_args["path"]))
+            key_argument = _normalize_path(str(curr_args["path"]))
         case "StrReplaceFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            subtitle = _normalize_path(str(curr_args["path"]))
+            key_argument = _normalize_path(str(curr_args["path"]))
         case "SearchWeb":
             if not isinstance(curr_args, dict) or not curr_args.get("query"):
                 return None
-            subtitle = str(curr_args["query"])
+            key_argument = str(curr_args["query"])
         case "FetchURL":
             if not isinstance(curr_args, dict) or not curr_args.get("url"):
                 return None
-            subtitle = str(curr_args["url"])
+            key_argument = str(curr_args["url"])
         case _:
-            # lexer.json_content is list[str] based on streamingjson source code
-            content: list[str] = cast(list[str], lexer.json_content)  # pyright: ignore[reportUnknownMemberType]
-            subtitle = "".join(content)
-    subtitle = shorten_middle(subtitle, width=50)
-    return subtitle
+            if isinstance(json_content, streamingjson.Lexer):
+                # lexer.json_content is list[str] based on streamingjson source code
+                content: list[str] = cast(list[str], json_content.json_content)  # pyright: ignore[reportUnknownMemberType]
+                key_argument = "".join(content)
+            else:
+                key_argument = json_content
+    key_argument = shorten_middle(key_argument, width=50)
+    return key_argument
 
 
 def _normalize_path(path: str) -> str:
