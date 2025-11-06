@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
-from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.file import FileActions, FileOpsWindow
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 
 
@@ -52,10 +52,17 @@ class PatchFile(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "patch.md")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs: Any):
+    def __init__(
+        self,
+        builtin_args: BuiltinSystemPromptArgs,
+        approval: Approval,
+        file_ops_window: FileOpsWindow,
+        **kwargs: Any,
+    ):
         super().__init__(**kwargs)
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
+        self._file_ops_window = file_ops_window
 
     def _validate_path(self, path: Path) -> ToolError | None:
         """Validate that the path is safe to patch."""
@@ -102,6 +109,15 @@ class PatchFile(CallableTool2[Params]):
                 return ToolError(
                     message=f"`{params.path}` is not a file.",
                     brief="Invalid path",
+                )
+
+            if not self._file_ops_window.has_read(p):
+                return ToolError(
+                    message=(
+                        f"You must read `{params.path}` with the ReadFile tool before patching it. "
+                        "Call ReadFile first and then retry PatchFile."
+                    ),
+                    brief="Read file first",
                 )
 
             # Request approval

@@ -1,10 +1,29 @@
 from enum import Enum
+from pathlib import Path
 
 
 class FileOpsWindow:
-    """Maintains a window of file operations."""
+    """Track file operations within a session for safety checks."""
 
-    pass
+    def __init__(self) -> None:
+        self._read_files: set[str] = set()
+
+    @staticmethod
+    def _normalize(path: Path) -> str:
+        """Normalize paths for tracking."""
+        try:
+            return str(path.resolve())
+        except FileNotFoundError:
+            # Fallback to absolute path when resolving fails (e.g. deleted file)
+            return str(path.absolute())
+
+    def mark_read(self, path: Path) -> None:
+        """Record that a file has been read in the current session."""
+        self._read_files.add(self._normalize(path))
+
+    def has_read(self, path: Path) -> bool:
+        """Check if the file has been read previously in the session."""
+        return self._normalize(path) in self._read_files
 
 
 class FileActions(str, Enum):

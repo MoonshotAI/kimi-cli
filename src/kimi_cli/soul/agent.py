@@ -14,6 +14,7 @@ from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.soul.toolset import CustomToolset
 from kimi_cli.tools import SkipThisTool
+from kimi_cli.tools.file import FileOpsWindow
 from kimi_cli.utils.logging import logger
 
 
@@ -55,6 +56,7 @@ async def load_agent(
         Session: runtime.session,
         DenwaRenji: runtime.denwa_renji,
         Approval: runtime.approval,
+        FileOpsWindow: FileOpsWindow(),
     }
     tools = agent_spec.tools
     if agent_spec.exclude_tools:
