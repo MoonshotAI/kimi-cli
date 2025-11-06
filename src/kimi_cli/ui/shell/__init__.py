@@ -1,5 +1,4 @@
 import asyncio
-import os
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
@@ -19,26 +18,16 @@ from kimi_cli.ui.shell.metacmd import get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
+from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
 
-if os.environ.get("KIMI_USE_NEW_LIVEVIEW") == "1":
-    from kimi_cli.ui.shell.visualize2 import visualize
-else:
-    from kimi_cli.ui.shell.visualize import visualize
-
 
 class ShellApp:
-    def __init__(
-        self,
-        soul: Soul,
-        welcome_info: list["WelcomeInfoItem"] | None = None,
-        markdown: bool = True,
-    ):
+    def __init__(self, soul: Soul, welcome_info: list["WelcomeInfoItem"] | None = None):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
-        self._markdown = markdown
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -191,7 +180,6 @@ class ShellApp:
                     wire,
                     initial_status=self.soul.status,
                     cancel_event=cancel_event,
-                    markdown=self._markdown,
                 ),
                 cancel_event,
             )
