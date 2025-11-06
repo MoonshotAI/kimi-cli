@@ -5,6 +5,8 @@ from typing import cast
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.utils.typing import JsonType
 
+from kimi_cli.utils.string import shorten_middle
+
 
 class SkipThisTool(Exception):
     """Raised when a tool decides to skip itself from the loading process."""
@@ -69,6 +71,7 @@ def extract_key_argument(lexer: streamingjson.Lexer, tool_name: str) -> str | No
             # lexer.json_content is list[str] based on streamingjson source code
             content: list[str] = cast(list[str], lexer.json_content)  # pyright: ignore[reportUnknownMemberType]
             subtitle = "".join(content)
+    subtitle = shorten_middle(subtitle, width=50)
     return subtitle
 
 
