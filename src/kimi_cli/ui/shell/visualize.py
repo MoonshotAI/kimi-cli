@@ -56,16 +56,16 @@ class _ContentBlock:
         self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
         self.raw_text = ""
 
-    def render(self) -> RenderableType:
+    def compose(self) -> RenderableType:
         return self._spinner
 
-    def render_final(self) -> RenderableType:
+    def compose_final(self) -> RenderableType:
         return _with_bullet(
             Markdown(
                 self.raw_text,
                 style="grey50 italic" if self.is_think else "",
             ),
-            "grey50",
+            bullet_style="grey50",
         )
 
     def append(self, content: str) -> None:
@@ -80,50 +80,58 @@ class _ToolCallBlock:
             self._lexer.append_string(tool_call.function.arguments)
 
         self._argument = extract_key_argument(self._lexer, self._tool_name)
-        self._finished = False
-        self._spinner = Spinner("dots", text=self._get_headline_markup())
-        self._renderable: RenderableType = Group(self._spinner)
+        self._result: ToolReturnType | None = None
+        self._spinning_dots = Spinner("dots", text="")
+        self._renderable: RenderableType = self._compose()
 
-    def render(self) -> RenderableType:
+    def compose(self) -> RenderableType:
         return self._renderable
+
+    def _compose(self) -> RenderableType:
+        lines = [
+            Text.from_markup(self._get_headline_markup()),
+        ]
+        if self._result is not None and self._result.brief:
+            lines.append(
+                Text.from_markup(
+                    self._result.brief,
+                    style="grey50" if isinstance(self._result, ToolOk) else "red",
+                )
+            )
+        if self.finished:
+            return _with_bullet(
+                Group(*lines),
+                bullet_style="green" if isinstance(self._result, ToolOk) else "red",
+            )
+        else:
+            return _with_bullet(
+                Group(*lines),
+                bullet=self._spinning_dots,
+            )
 
     @property
     def finished(self) -> bool:
-        return self._finished
+        return self._result is not None
 
     def append_args_part(self, args_part: str):
         if self.finished:
             return
         self._lexer.append_string(args_part)
-        # TODO: don't extract detail if it's already stable
+        # TODO: maybe don't extract detail if it's already stable
         argument = extract_key_argument(self._lexer, self._tool_name)
         if argument and argument != self._argument:
             self._argument = argument
-            self._spinner.update(text=self._get_headline_markup())
+            self._renderable: RenderableType = _with_bullet(
+                Text.from_markup(self._get_headline_markup()),
+                bullet=self._spinning_dots,
+            )
 
     def finish(self, result: ToolReturnType):
-        """
-        Finish the live display of a tool call.
-        After calling this, the `renderable` property should be re-rendered.
-        """
-        self._finished = True
-        lines = [
-            Text.from_markup(self._get_headline_markup()),
-        ]
-        if result.brief:
-            lines.append(
-                Text.from_markup(
-                    result.brief,
-                    style="grey50" if isinstance(result, ToolOk) else "red",
-                )
-            )
-        self._renderable = _with_bullet(
-            Group(*lines),
-            "green" if isinstance(result, ToolOk) else "red",
-        )
+        self._result = result
+        self._renderable = self._compose()
 
     def _get_headline_markup(self) -> str:
-        return f"{'Used' if self._finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
+        return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
             f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
         )
 
@@ -270,9 +278,9 @@ class _LiveView:
             blocks.append(self._compacting_spinner)
         else:
             if self._current_content_block is not None:
-                blocks.append(self._current_content_block.render())
+                blocks.append(self._current_content_block.compose())
             for tool_call in self._tool_call_blocks.values():
-                blocks.append(tool_call.render())
+                blocks.append(tool_call.compose())
         if self._current_approval:
             blocks.append(self._current_approval.render())
         blocks.append(self._status_block.render())
@@ -371,7 +379,7 @@ class _LiveView:
     def flush_content(self) -> None:
         """Flush the current content block."""
         if self._current_content_block is not None:
-            console.print(self._current_content_block.render_final())
+            console.print(self._current_content_block.compose_final())
             self._current_content_block = None
             self.refresh_soon()
 
@@ -384,7 +392,7 @@ class _LiveView:
                 break
 
             self._tool_call_blocks.pop(tool_call_id)
-            console.print(block.render())
+            console.print(block.compose())
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
@@ -457,10 +465,17 @@ class _LiveView:
             break
 
 
-def _with_bullet(renderable: RenderableType, bullet_style: str) -> RenderableType:
+def _with_bullet(
+    renderable: RenderableType,
+    *,
+    bullet_style: str | None = None,
+    bullet: RenderableType | None = None,
+) -> RenderableType:
     table = Table.grid(padding=(0, 0))
     table.expand = True
     table.add_column(width=2, justify="left", style=bullet_style)
     table.add_column(ratio=1)
-    table.add_row(Text("•"), renderable)
+    if bullet is None:
+        bullet = Text("•")
+    table.add_row(bullet, renderable)
     return table
