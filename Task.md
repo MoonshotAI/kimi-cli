@@ -1,0 +1,1 @@
+输入kimi指令，会进入到交互命令行，此时如果按一下 Tab 键，会切换为 thinking mode ，如果再按一下 tab 键，会恢复回非 thinking mode ，那么按下tab键这个动作发生了什么，是否有办法让 kimi cli 一直保持在 thinking mode ，而不是进入后再按一下tab切换到thinking ，因为需要在 kimi --yolo --command 时启用 thinking 模式执行任务，不想进入到 cli 交互命令行后再切换。
