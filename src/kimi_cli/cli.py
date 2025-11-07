@@ -137,12 +137,6 @@ OutputFormat = Literal["text", "stream-json"]
     default=False,
     help="Automatically approve all actions. Default: no.",
 )
-@click.option(
-    "--markdown/--no-markdown",
-    is_flag=True,
-    default=True,
-    help="Enable/disable markdown rendering in shell UI. Default: yes.",
-)
 def kimi(
     verbose: bool,
     debug: bool,
@@ -157,7 +151,6 @@ def kimi(
     mcp_config_file: list[Path],
     mcp_config: list[str],
     yolo: bool,
-    markdown: bool,
 ):
     """Kimi, your next CLI agent."""
     from kimi_cli.app import KimiCLI
@@ -230,7 +223,7 @@ def kimi(
         )
         match ui:
             case "shell":
-                return await instance.run_shell_mode(command, markdown=markdown)
+                return await instance.run_shell_mode(command)
             case "print":
                 return await instance.run_print_mode(
                     input_format or "text",

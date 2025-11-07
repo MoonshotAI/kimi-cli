@@ -9,6 +9,13 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.50] - 2025-11-07
+
+### Changed
+
+- Improve UI look and feel
+- Improve Task tool observability
+
 ## [0.49] - 2025-11-06
 
 ### Fixed
