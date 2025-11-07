@@ -13,7 +13,7 @@ async def _reserve_rotation_path(path: Path) -> bool:
     """Atomically create an empty file as a reservation for *path*."""
 
     def _create() -> None:
-        fd = os.open(path, _ROTATION_OPEN_FLAGS, _ROTATION_FILE_MODE)
+        fd = os.open(str(path), _ROTATION_OPEN_FLAGS, _ROTATION_FILE_MODE)
         os.close(fd)
 
     try:
