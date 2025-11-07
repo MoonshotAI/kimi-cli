@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, get_args
@@ -250,6 +251,16 @@ def kimi(
 
 
 def main():
+    # Suppress tzlocal deprecation warning about /etc/timezone
+    # This warning appears on some Linux distributions (e.g., WSL2, Ubuntu) where
+    # /etc/timezone exists but is deprecated. tzlocal handles this correctly by
+    # ignoring the file, so the warning is not actionable for users.
+    # See: https://github.com/MoonshotAI/kimi-cli/issues/176
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*\/etc\/timezone.*deprecated.*",
+        category=UserWarning,
+    )
     kimi()
 
 
