@@ -137,6 +137,12 @@ OutputFormat = Literal["text", "stream-json"]
     default=False,
     help="Automatically approve all actions. Default: no.",
 )
+@click.option(
+    "--thinking",
+    is_flag=True,
+    default=False,
+    help="Enable thinking mode for compatible LLM models. Only supported in shell mode with Kimi provider. Default: no.",
+)
 def kimi(
     verbose: bool,
     debug: bool,
@@ -151,6 +157,7 @@ def kimi(
     mcp_config_file: list[Path],
     mcp_config: list[str],
     yolo: bool,
+    thinking: bool,
 ):
     """Kimi, your next CLI agent."""
     from kimi_cli.app import KimiCLI
@@ -202,6 +209,12 @@ def kimi(
             "Output format is only supported for print UI",
         )
 
+    if thinking and ui != "shell":
+        raise click.BadOptionUsage(
+            "--thinking", 
+            "Thinking mode is only supported in shell mode"
+        )
+
     try:
         mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in mcp_config_file]
     except json.JSONDecodeError as e:
@@ -223,7 +236,7 @@ def kimi(
         )
         match ui:
             case "shell":
-                return await instance.run_shell_mode(command)
+                return await instance.run_shell_mode(command, thinking_mode=thinking)
             case "print":
                 return await instance.run_print_mode(
                     input_format or "text",
