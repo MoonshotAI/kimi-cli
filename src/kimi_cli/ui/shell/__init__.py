@@ -96,6 +96,15 @@ class ShellApp:
 
         logger.info("Running shell command: {cmd}", cmd=command)
 
+        # First, try to handle as a built-in command
+        from kimi_cli.ui.shell.builtins import handle_builtin_command
+
+        builtin_result = await handle_builtin_command(command)
+        if builtin_result.handled:
+            # Command was handled by a built-in handler, no need to spawn subprocess
+            return
+
+        # Not a built-in command, run in subprocess
         proc: asyncio.subprocess.Process | None = None
 
         def _handler():

@@ -63,8 +63,7 @@ After setup, Kimi CLI will be ready to use. You can send `/help` to get more inf
 
 Kimi CLI is not only a coding agent, but also a shell. You can switch the mode by pressing `Ctrl-X`. In shell mode, you can directly run shell commands without leaving Kimi CLI.
 
-> [!NOTE]
-> Built-in shell commands like `cd` are not supported yet.
+Built-in shell commands like `cd` and `pwd` are supported and will affect the current working directory of the Kimi CLI session.
 
 ### Zsh integration
 
