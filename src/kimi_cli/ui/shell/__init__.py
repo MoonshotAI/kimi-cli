@@ -42,7 +42,27 @@ class ShellApp:
         if isinstance(self.soul, KimiSoul):
             await replay_recent_history(self.soul.context.history)
 
-        with CustomPromptSession(lambda: self.soul.status) as prompt_session:
+        # Load the last thinking mode preference from metadata
+        from kimi_cli.metadata import load_metadata
+
+        initial_thinking = False
+        try:
+            metadata = load_metadata()
+            work_dir = self.soul._runtime.session.work_dir
+            work_dir_meta = next(
+                (wd for wd in metadata.work_dirs if wd.path == str(work_dir)), None
+            )
+            if work_dir_meta is not None and work_dir_meta.last_thinking_mode is not None:
+                initial_thinking = work_dir_meta.last_thinking_mode
+                logger.debug(
+                    "Loaded thinking mode preference: {thinking}", thinking=initial_thinking
+                )
+        except Exception as e:
+            logger.warning("Failed to load thinking mode preference: {error}", error=e)
+
+        with CustomPromptSession(
+            lambda: self.soul.status, initial_thinking=initial_thinking
+        ) as prompt_session:
             while True:
                 try:
                     ensure_new_line()

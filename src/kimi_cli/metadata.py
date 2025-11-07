@@ -21,6 +21,9 @@ class WorkDirMeta(BaseModel):
     last_session_id: str | None = None
     """Last session ID of this work directory."""
 
+    last_thinking_mode: bool | None = None
+    """Last thinking mode preference for this work directory."""
+
     @property
     def sessions_dir(self) -> Path:
         path = get_share_dir() / "sessions" / md5(self.path.encode(encoding="utf-8")).hexdigest()

@@ -36,6 +36,7 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
 
+from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.metacmd import get_meta_commands
@@ -399,7 +400,9 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 
 
 class CustomPromptSession:
-    def __init__(self, status_provider: Callable[[], StatusSnapshot]):
+    def __init__(
+        self, status_provider: Callable[[], StatusSnapshot], initial_thinking: bool = False
+    ):
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
         work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
@@ -407,7 +410,8 @@ class CustomPromptSession:
         self._status_provider = status_provider
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
-        self._thinking: bool = False
+        self._thinking: bool = initial_thinking
+        self._work_dir: Path = Path.cwd()
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -485,6 +489,20 @@ class CustomPromptSession:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
             self._thinking = not self._thinking
             event.app.invalidate()
+            # Save the thinking mode preference to metadata
+            try:
+                metadata = load_metadata()
+                work_dir_meta = next(
+                    (wd for wd in metadata.work_dirs if wd.path == str(self._work_dir)), None
+                )
+                if work_dir_meta is not None:
+                    work_dir_meta.last_thinking_mode = self._thinking
+                    save_metadata(metadata)
+                    logger.debug(
+                        "Saved thinking mode preference: {thinking}", thinking=self._thinking
+                    )
+            except Exception as e:
+                logger.warning("Failed to save thinking mode preference: {error}", error=e)
 
         self._shortcut_hints = shortcut_hints
         self._session = PromptSession(
