@@ -22,6 +22,7 @@ Only write entries that are worth mentioning to users.
 - UI: Clear the screen for `/clear` meta command
 - Tool: Support auto-downloading ripgrep on Windows
 - CLI: Add `--thinking` option to start in thinking mode
+- ACP: Support thinking content in ACP mode
 
 ## [0.50] - 2025-11-07
 

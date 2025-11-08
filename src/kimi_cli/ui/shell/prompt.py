@@ -428,7 +428,7 @@ def _current_toast() -> _ToastEntry | None:
 
 
 def _toast_thinking(thinking: bool) -> None:
-    return toast(
+    toast(
         f"thinking {'on' if thinking else 'off'}, tab to toggle",
         duration=3.0,
         topic="thinking",
