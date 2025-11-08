@@ -8,6 +8,7 @@ from kosong.base.message import Message, TextPart
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.soul import StatusSnapshot
+from kimi_cli.soul.message import TOOL_NON_TEXT_USER_NOTICE
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
 from kimi_cli.ui.shell.visualize import visualize
@@ -53,15 +54,35 @@ async def replay_recent_history(history: Sequence[Message]) -> None:
             await ui_task
 
 
-def _is_user_message(message: Message) -> bool:
-    # FIXME: should consider non-text tool call results which are sent as user messages
+def _is_user_message(message: Message, previous: Message | None = None) -> bool:
     if message.role != "user":
         return False
-    return not message_extract_text(message).startswith("<system>CHECKPOINT")
+    if message_extract_text(message).startswith("<system>CHECKPOINT"):
+        return False
+    return not _is_tool_generated_user_message(message, previous)
+
+
+def _is_tool_generated_user_message(message: Message, previous: Message | None) -> bool:
+    if previous is None or previous.role != "tool":
+        return False
+    if not isinstance(message.content, list):
+        return False
+    if any(isinstance(part, TextPart) for part in message.content):
+        return False
+    if not isinstance(previous.content, list):
+        return False
+    return any(
+        isinstance(part, TextPart) and TOOL_NON_TEXT_USER_NOTICE in part.text
+        for part in previous.content
+    )
 
 
 def _find_replay_start(history: Sequence[Message]) -> int | None:
-    indices = [idx for idx, message in enumerate(history) if _is_user_message(message)]
+    indices = [
+        idx
+        for idx, message in enumerate(history)
+        if _is_user_message(message, history[idx - 1] if idx > 0 else None)
+    ]
     if not indices:
         return None
     # only replay last MAX_REPLAY_RUNS messages
@@ -71,8 +92,9 @@ def _find_replay_start(history: Sequence[Message]) -> int | None:
 def _build_replay_runs(history: Sequence[Message]) -> list[_ReplayRun]:
     runs: list[_ReplayRun] = []
     current_run: _ReplayRun | None = None
-    for message in history:
-        if _is_user_message(message):
+    for idx, message in enumerate(history):
+        previous = history[idx - 1] if idx > 0 else None
+        if _is_user_message(message, previous):
             # start a new run
             if current_run is not None:
                 runs.append(current_run)

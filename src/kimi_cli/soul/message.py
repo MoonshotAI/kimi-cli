@@ -3,6 +3,11 @@ from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
 
 
+TOOL_NON_TEXT_USER_NOTICE = (
+    "Tool output contains non-text parts. Non-text parts are sent as a user message below."
+)
+
+
 def system(message: str) -> ContentPart:
     return TextPart(text=f"<system>{message}</system>")
 
@@ -43,11 +48,7 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
             )
         ]
 
-    text_parts.append(
-        system(
-            "Tool output contains non-text parts. Non-text parts are sent as a user message below."
-        )
-    )
+    text_parts.append(system(TOOL_NON_TEXT_USER_NOTICE))
     return [
         Message(
             role="tool",
