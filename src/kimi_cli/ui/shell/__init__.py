@@ -15,12 +15,13 @@ from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancel
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
-from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
+from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
+from kimi_cli.utils.term import ensure_new_line
 
 
 class ShellApp:
