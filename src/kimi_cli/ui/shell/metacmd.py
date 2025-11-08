@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, NamedTuple, overload
 from kosong.base.message import Message
 from rich.panel import Panel
 
-from kimi_cli.cli import Reload
 import kimi_cli.prompts as prompts
+from kimi_cli.cli import Reload
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
