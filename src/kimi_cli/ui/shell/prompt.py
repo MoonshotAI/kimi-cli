@@ -6,7 +6,9 @@ import json
 import os
 import re
 import time
+from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from hashlib import md5
@@ -386,12 +388,43 @@ class UserInput(BaseModel):
 
 
 _REFRESH_INTERVAL = 1.0
-_toast_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
 
 
-def toast(message: str, duration: float = 5.0) -> None:
+@dataclass(slots=True)
+class _ToastEntry:
+    topic: str | None
+    """There can be only one toast of each non-None topic in the queue."""
+    message: str
+    duration: float
+
+
+_toast_queue = deque[_ToastEntry]()
+"""The queue of toasts to show, including the one currently being shown (the first one)."""
+
+
+def toast(
+    message: str,
+    duration: float = 5.0,
+    topic: str | None = None,
+    immediate: bool = False,
+) -> None:
     duration = max(duration, _REFRESH_INTERVAL)
-    _toast_queue.put_nowait((message, duration))
+    entry = _ToastEntry(topic=topic, message=message, duration=duration)
+    if topic is not None:
+        # Remove existing toasts with the same topic
+        for existing in list(_toast_queue):
+            if existing.topic == topic:
+                _toast_queue.remove(existing)
+    if immediate:
+        _toast_queue.appendleft(entry)
+    else:
+        _toast_queue.append(entry)
+
+
+def _current_toast() -> _ToastEntry | None:
+    if not _toast_queue:
+        return None
+    return _toast_queue[0]
 
 
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
@@ -487,6 +520,8 @@ class CustomPromptSession:
         def is_agent_mode() -> bool:
             return self._mode == PromptMode.AGENT
 
+        toast("thinking off, tab to toggle", duration=3.0, topic="thinking", immediate=True)
+
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
@@ -496,6 +531,12 @@ class CustomPromptSession:
                 )
                 return
             self._thinking = not self._thinking
+            toast(
+                f"thinking {'on' if self._thinking else 'off'}, tab to toggle",
+                duration=3.0,
+                topic="thinking",
+                immediate=True,
+            )
             event.app.invalidate()
 
         self._shortcut_hints = shortcut_hints
@@ -511,8 +552,6 @@ class CustomPromptSession:
         )
 
         self._status_refresh_task: asyncio.Task | None = None
-        self._current_toast: str | None = None
-        self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
@@ -691,12 +730,13 @@ class CustomPromptSession:
         status = self._status_provider()
         status_text = self._format_status(status)
 
-        if self._current_toast is not None:
-            fragments.extend([("", self._current_toast), ("", " " * 2)])
-            columns -= len(self._current_toast) + 2
-            self._current_toast_duration -= _REFRESH_INTERVAL
-            if self._current_toast_duration <= 0.0:
-                self._current_toast = None
+        current_toast = _current_toast()
+        if current_toast is not None:
+            fragments.extend([("", current_toast.message), ("", " " * 2)])
+            columns -= len(current_toast.message) + 2
+            current_toast.duration -= _REFRESH_INTERVAL
+            if current_toast.duration <= 0.0:
+                _toast_queue.popleft()
         else:
             shortcuts = [
                 *self._shortcut_hints,
@@ -708,9 +748,6 @@ class CustomPromptSession:
                     columns -= len(shortcut) + 2
                 else:
                     break
-
-        if self._current_toast is None and not _toast_queue.empty():
-            self._current_toast, self._current_toast_duration = _toast_queue.get_nowait()
 
         padding = max(1, columns - len(status_text))
         fragments.append(("", " " * padding))
