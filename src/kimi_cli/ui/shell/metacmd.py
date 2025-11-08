@@ -182,7 +182,7 @@ def version(app: "ShellApp", args: list[str]):
 @meta_command(name="release-notes")
 def release_notes(app: "ShellApp", args: list[str]):
     """Show release notes"""
-    text = format_release_notes(CHANGELOG)
+    text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
         console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
 
