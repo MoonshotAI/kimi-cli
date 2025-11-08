@@ -8,7 +8,16 @@ def test_pyinstaller_datas():
     from kimi_cli.utils.pyinstaller import datas
 
     project_root = Path(__file__).parent.parent
-    datas = [(Path(path).relative_to(project_root).as_posix(), dst) for path, dst in datas]
+    datas = [
+        (
+            Path(path)
+            .relative_to(project_root)
+            .as_posix()
+            .replace(".venv/Lib/site-packages", ".venv/lib/python3.13/site-packages"),
+            Path(dst).as_posix(),
+        )
+        for path, dst in datas
+    ]
 
     assert sorted(datas) == snapshot(
         [
