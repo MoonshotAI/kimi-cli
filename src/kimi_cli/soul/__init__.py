@@ -2,15 +2,16 @@ import asyncio
 import contextlib
 from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
-from typing import Any, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
 from kosong.base.message import ContentPart
 
-from kimi_cli.config import LLMModelCapability
-from kimi_cli.llm import LLM
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
+
+if TYPE_CHECKING:
+    from kimi_cli.llm import LLM, ModelCapability
 
 
 class LLMNotSet(Exception):
@@ -22,12 +23,12 @@ class LLMNotSet(Exception):
 class LLMNotSupported(Exception):
     """Raised when the LLM does not have required capabilities."""
 
-    def __init__(self, llm: LLM, capabilities: list[LLMModelCapability]):
+    def __init__(self, llm: "LLM", capabilities: "list[ModelCapability]"):
         self.llm = llm
         self.capabilities = capabilities
         capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
         super().__init__(
-            f"The LLM model '{llm.model_name}' does not support required {capabilities_str}: "
+            f"LLM model '{llm.model_name}' does not support required {capabilities_str}: "
             f"{', '.join(capabilities)}."
         )
 
@@ -55,8 +56,13 @@ class Soul(Protocol):
         ...
 
     @property
-    def model(self) -> str:
-        """The LLM model used by the soul. Empty string indicates no LLM configured."""
+    def model_name(self) -> str:
+        """The name of the LLM model used by the soul. Empty string indicates no LLM configured."""
+        ...
+
+    @property
+    def model_capabilities(self) -> "set[ModelCapability] | None":
+        """The capabilities of the LLM model used by the soul. None indicates no LLM configured."""
         ...
 
     @property

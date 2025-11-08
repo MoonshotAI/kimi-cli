@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_serializer, model_validator
 
 from kimi_cli.exception import ConfigError
+from kimi_cli.llm import ModelCapability, ProviderType
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
 
@@ -12,7 +13,7 @@ from kimi_cli.utils.logging import logger
 class LLMProvider(BaseModel):
     """LLM provider configuration."""
 
-    type: Literal["kimi", "openai_legacy", "openai_responses", "anthropic", "_chaos"]
+    type: ProviderType
     """Provider type"""
     base_url: str
     """API base URL"""
@@ -26,9 +27,6 @@ class LLMProvider(BaseModel):
         return v.get_secret_value()
 
 
-LLMModelCapability = Literal["image_in"]
-
-
 class LLMModel(BaseModel):
     """LLM model configuration."""
 
@@ -38,7 +36,7 @@ class LLMModel(BaseModel):
     """Model name"""
     max_context_size: int
     """Maximum context size (unit: tokens)"""
-    capabilities: set[LLMModelCapability] | None = None
+    capabilities: set[ModelCapability] | None = None
     """Model capabilities"""
 
 
