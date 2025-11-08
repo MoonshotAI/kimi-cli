@@ -6,6 +6,7 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
+from kimi_cli.tools.file import FileOpsWindow
 from kimi_cli.tools.utils import load_desc, truncate_line
 
 MAX_LINES = 1000
@@ -47,10 +48,13 @@ class ReadFile(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs: Any) -> None:
+    def __init__(
+        self, builtin_args: BuiltinSystemPromptArgs, file_ops_window: FileOpsWindow, **kwargs: Any
+    ) -> None:
         super().__init__(**kwargs)
 
         self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._file_ops_window = file_ops_window
 
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
@@ -107,6 +111,9 @@ class ReadFile(CallableTool2[Params]):
                     if n_bytes >= MAX_BYTES:
                         max_bytes_reached = True
                         break
+
+            # Mark file as read after successfully accessing it
+            self._file_ops_window.mark_read(p)
 
             # Format output with line numbers like `cat -n`
             lines_with_no: list[str] = []

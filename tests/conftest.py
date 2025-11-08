@@ -18,6 +18,7 @@ from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
+from kimi_cli.tools.file import FileOpsWindow
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep import Grep
 from kimi_cli.tools.file.patch import PatchFile
@@ -160,6 +161,12 @@ def think_tool() -> Think:
 
 
 @pytest.fixture
+def file_ops_window() -> FileOpsWindow:
+    """Track file reads within a test session."""
+    return FileOpsWindow()
+
+
+@pytest.fixture
 def set_todo_list_tool() -> SetTodoList:
     """Create a SetTodoList tool instance."""
     return SetTodoList()
@@ -173,9 +180,11 @@ def bash_tool(approval: Approval) -> Generator[Bash]:
 
 
 @pytest.fixture
-def read_file_tool(builtin_args: BuiltinSystemPromptArgs) -> ReadFile:
+def read_file_tool(
+    builtin_args: BuiltinSystemPromptArgs, file_ops_window: FileOpsWindow
+) -> ReadFile:
     """Create a ReadFile tool instance."""
-    return ReadFile(builtin_args)
+    return ReadFile(builtin_args, file_ops_window)
 
 
 @pytest.fixture
@@ -201,20 +210,24 @@ def write_file_tool(
 
 @pytest.fixture
 def str_replace_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+    builtin_args: BuiltinSystemPromptArgs,
+    approval: Approval,
+    file_ops_window: FileOpsWindow,
 ) -> Generator[StrReplaceFile]:
     """Create a StrReplaceFile tool instance."""
     with tool_call_context("StrReplaceFile"):
-        yield StrReplaceFile(builtin_args, approval)
+        yield StrReplaceFile(builtin_args, approval, file_ops_window)
 
 
 @pytest.fixture
 def patch_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
+    builtin_args: BuiltinSystemPromptArgs,
+    approval: Approval,
+    file_ops_window: FileOpsWindow,
 ) -> Generator[PatchFile]:
     """Create a PatchFile tool instance."""
     with tool_call_context("PatchFile"):
-        yield PatchFile(builtin_args, approval)
+        yield PatchFile(builtin_args, approval, file_ops_window)
 
 
 @pytest.fixture

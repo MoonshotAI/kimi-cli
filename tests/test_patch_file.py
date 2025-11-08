@@ -4,11 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from kimi_cli.tools.file.patch import Params, PatchFile, ToolError, ToolOk
+from kimi_cli.tools.file.patch import Params as PatchParams, PatchFile, ToolError, ToolOk
+from kimi_cli.tools.file.read import Params as ReadParams, ReadFile
+
+
+async def _mark_file_as_read(read_file_tool: ReadFile, path: Path) -> None:
+    """Ensure the file has been read before invoking patch tool."""
+    result = await read_file_tool(ReadParams(path=str(path)))
+    assert isinstance(result, ToolOk)
 
 
 @pytest.mark.asyncio
-async def test_simple_patch(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_simple_patch(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test basic patch application."""
     # Create test file
     test_file = temp_work_dir / "test.txt"
@@ -24,7 +33,9 @@ async def test_simple_patch(patch_file_tool: PatchFile, temp_work_dir: Path) -> 
  Line 3
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     assert isinstance(result, ToolOk)
     assert "successfully patched" in result.message
@@ -32,7 +43,29 @@ async def test_simple_patch(patch_file_tool: PatchFile, temp_work_dir: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_multiple_hunks(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_patch_requires_read(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+    """Ensure patch tool enforces prior ReadFile usage."""
+    test_file = temp_work_dir / "require_read_patch.txt"
+    test_file.write_text("one\ntwo\n")
+
+    patch = """--- test.txt
++++ test.txt
+@@ -1,2 +1,2 @@
+-one
++ONE
+ two
+"""
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
+
+    assert isinstance(result, ToolError)
+    assert "ReadFile" in result.message
+
+
+@pytest.mark.asyncio
+async def test_multiple_hunks(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test patch with multiple hunks."""
     test_file = temp_work_dir / "test.txt"
     test_file.write_text("Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n")
@@ -50,7 +83,9 @@ async def test_multiple_hunks(patch_file_tool: PatchFile, temp_work_dir: Path) -
 +Modified Line 5
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     assert isinstance(result, ToolOk)
     expected: str = "Line 1\nModified Line 2\nLine 3\nLine 4\nModified Line 5\n"
@@ -58,7 +93,9 @@ async def test_multiple_hunks(patch_file_tool: PatchFile, temp_work_dir: Path) -
 
 
 @pytest.mark.asyncio
-async def test_unicode_support(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_unicode_support(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test Unicode content patching."""
     test_file = temp_work_dir / "unicode.txt"
     test_file.write_text("Hello 世界\ncafé naïve\n", encoding="utf-8")
@@ -71,18 +108,22 @@ async def test_unicode_support(patch_file_tool: PatchFile, temp_work_dir: Path) 
  café naïve
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     assert isinstance(result, ToolOk)
     assert "Hello 地球" in test_file.read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio
-async def test_error_cases(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_error_cases(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test various error conditions."""
     # 1. Relative path error
     result = await patch_file_tool(
-        Params(
+        PatchParams(
             path="relative/path/file.txt",
             diff="--- test\n+++ test\n@@ -1 +1 @@\n-old\n+new\n",
         )
@@ -93,7 +134,7 @@ async def test_error_cases(patch_file_tool: PatchFile, temp_work_dir: Path) -> N
     # 2. Nonexistent file
     nonexistent: Path = temp_work_dir / "nonexistent.txt"
     result = await patch_file_tool(
-        Params(
+        PatchParams(
             path=str(nonexistent),
             diff="--- test\n+++ test\n@@ -1 +1 @@\n-old\n+new\n",
         )
@@ -104,12 +145,16 @@ async def test_error_cases(patch_file_tool: PatchFile, temp_work_dir: Path) -> N
     # 3. Invalid diff format
     test_file: Path = temp_work_dir / "test.txt"
     test_file.write_text("content")
-    result = await patch_file_tool(Params(path=str(test_file), diff="This is not a valid diff"))
+    await _mark_file_as_read(read_file_tool, test_file)
+    result = await patch_file_tool(
+        PatchParams(path=str(test_file), diff="This is not a valid diff")
+    )
     assert isinstance(result, ToolError)
     assert "invalid patch format" in result.message
 
     # 4. Mismatched patch
     test_file.write_text("Different content")
+    await _mark_file_as_read(read_file_tool, test_file)
     mismatch_patch: str = """--- test.txt	2023-01-01 00:00:00.000000000 +0000
 +++ test.txt	2023-01-01 00:00:00.000000000 +0000
 @@ -1,3 +1,3 @@
@@ -118,13 +163,15 @@ async def test_error_cases(patch_file_tool: PatchFile, temp_work_dir: Path) -> N
 +Modified second line
  Third line
 """
-    result = await patch_file_tool(Params(path=str(test_file), diff=mismatch_patch))
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=mismatch_patch))
     assert isinstance(result, ToolError)
     assert "Failed to apply patch" in result.message
 
 
 @pytest.mark.asyncio
-async def test_empty_file(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_empty_file(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test patching empty file."""
     test_file: Path = temp_work_dir / "empty.txt"
     test_file.write_text("")
@@ -136,7 +183,9 @@ async def test_empty_file(patch_file_tool: PatchFile, temp_work_dir: Path) -> No
 +Second line
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     # Empty file patch may succeed or fail depending on patch-ng judgment
     if isinstance(result, ToolOk):
@@ -146,7 +195,9 @@ async def test_empty_file(patch_file_tool: PatchFile, temp_work_dir: Path) -> No
 
 
 @pytest.mark.asyncio
-async def test_adding_lines(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_adding_lines(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test adding new lines."""
     test_file: Path = temp_work_dir / "test.txt"
     test_file.write_text("First line\nLast line\n")
@@ -159,14 +210,18 @@ async def test_adding_lines(patch_file_tool: PatchFile, temp_work_dir: Path) -> 
  Last line
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     assert isinstance(result, ToolOk)
     assert test_file.read_text() == "First line\nNew middle line\nLast line\n"
 
 
 @pytest.mark.asyncio
-async def test_removing_lines(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_removing_lines(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test removing lines."""
     test_file: Path = temp_work_dir / "test.txt"
     test_file.write_text("First line\nMiddle line to remove\nLast line\n")
@@ -179,14 +234,18 @@ async def test_removing_lines(patch_file_tool: PatchFile, temp_work_dir: Path) -
  Last line
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     assert isinstance(result, ToolOk)
     assert test_file.read_text() == "First line\nLast line\n"
 
 
 @pytest.mark.asyncio
-async def test_no_changes_made(patch_file_tool: PatchFile, temp_work_dir: Path) -> None:
+async def test_no_changes_made(
+    patch_file_tool: PatchFile, read_file_tool: ReadFile, temp_work_dir: Path
+) -> None:
     """Test patch that makes no changes."""
     test_file: Path = temp_work_dir / "test.txt"
     original_content: str = "Line 1\nLine 2\n"
@@ -200,7 +259,9 @@ async def test_no_changes_made(patch_file_tool: PatchFile, temp_work_dir: Path) 
  Line 2
 """
 
-    result = await patch_file_tool(Params(path=str(test_file), diff=patch))
+    await _mark_file_as_read(read_file_tool, test_file)
+
+    result = await patch_file_tool(PatchParams(path=str(test_file), diff=patch))
 
     assert isinstance(result, ToolError)
     assert "No changes were made" in result.message
