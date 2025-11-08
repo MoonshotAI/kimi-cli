@@ -16,8 +16,8 @@ Only write entries that are worth mentioning to users.
 - Lib: Add `"thinking"` to `ModelCapability`
 - Lib: Remove `LLM.supports_image_in` property
 - Lib: Add required `Soul.model_capabilities` property
-- Lib: Add `thinking: bool` parameter to `ShellApp.run` method
 - Lib: Rename `KimiSoul.set_thinking_mode` to `KimiSoul.set_thinking`
+- Lib: Add `KimiSoul.thinking` property
 - UI: Better checks and notices for LLM model capabilities
 - UI: Clear the screen for `/clear` meta command
 - Tool: Support auto-downloading ripgrep on Windows
