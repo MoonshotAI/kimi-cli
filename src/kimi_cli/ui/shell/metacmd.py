@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, NamedTuple, overload
 from kosong.base.message import Message
 from rich.panel import Panel
 
+from kimi_cli.cli import Reload
 import kimi_cli.prompts as prompts
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -233,11 +234,10 @@ async def clear(app: "ShellApp", args: list[str]):
     assert isinstance(app.soul, KimiSoul)
 
     if app.soul._context.n_checkpoints == 0:
-        console.print("[yellow]Context is empty.[/yellow]")
-        return
+        raise Reload()
 
     await app.soul._context.revert_to(0)
-    console.print("[green]✓[/green] Context has been cleared.")
+    raise Reload()
 
 
 @meta_command(kimi_soul_only=True)
