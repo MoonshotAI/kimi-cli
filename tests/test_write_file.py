@@ -104,9 +104,9 @@ async def test_write_with_relative_path(write_file_tool: WriteFile):
 
 
 @pytest.mark.asyncio
-async def test_write_outside_work_directory(write_file_tool: WriteFile):
+async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_file: Path):
     """Test writing outside the working directory (should fail)."""
-    result = await write_file_tool(Params(path="/tmp/outside.txt", content="content"))
+    result = await write_file_tool(Params(path=str(outside_file), content="content"))
 
     assert isinstance(result, ToolError)
     assert "outside the working directory" in result.message
