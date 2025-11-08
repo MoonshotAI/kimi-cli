@@ -154,7 +154,7 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=f"{self._soul.model} (from KIMI_MODEL_NAME)",
+                    value=f"{self._soul.model_name} (from KIMI_MODEL_NAME)",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )
@@ -162,7 +162,7 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=self._soul.model,
+                    value=self._soul.model_name,
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )

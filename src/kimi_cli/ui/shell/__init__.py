@@ -29,11 +29,11 @@ class ShellApp:
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
-    async def run(self, command: str | None = None) -> bool:
+    async def run(self, command: str | None = None, thinking: bool = False) -> bool:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self._run_soul_command(command)
+            return await self._run_soul_command(command, thinking)
 
         self._start_background_task(self._auto_update())
 
@@ -42,7 +42,10 @@ class ShellApp:
         if isinstance(self.soul, KimiSoul):
             await replay_recent_history(self.soul.context.history)
 
-        with CustomPromptSession(lambda: self.soul.status) as prompt_session:
+        with CustomPromptSession(
+            status_provider=lambda: self.soul.status,
+            model_capabilities=self.soul.model_capabilities or set(),
+        ) as prompt_session:
             while True:
                 try:
                     ensure_new_line()
@@ -75,17 +78,12 @@ class ShellApp:
                     await self._run_meta_command(user_input.command[1:])
                     continue
 
-                logger.info("Running agent command: {command}", command=user_input.content)
-                if isinstance(self.soul, KimiSoul):
-                    try:
-                        self.soul.set_thinking_mode(user_input.thinking)
-                    except LLMNotSet:
-                        pass
-                    except NotImplementedError:
-                        console.print(
-                            "[yellow]Thinking mode not supported for current LLM[/yellow]"
-                        )
-                await self._run_soul_command(user_input.content)
+                logger.info(
+                    "Running agent command: {command} with thinking {thinking}",
+                    command=user_input.content,
+                    thinking="on" if user_input.thinking else "off",
+                )
+                await self._run_soul_command(user_input.content, user_input.thinking)
 
         return True
 
@@ -155,7 +153,7 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-    async def _run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
+    async def _run_soul_command(self, user_input: str | list[ContentPart], thinking: bool) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -172,6 +170,9 @@ class ShellApp:
         remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
+            if isinstance(self.soul, KimiSoul):
+                self.soul.set_thinking(thinking)
+
             # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
@@ -188,6 +189,7 @@ class ShellApp:
             logger.error("LLM not set")
             console.print("[red]LLM not set, send /setup to configure[/red]")
         except LLMNotSupported as e:
+            # actually unsupported input/mode should already be blocked by prompt session
             logger.error(
                 "LLM model '{model_name}' does not support required capabilities: {capabilities}",
                 model_name=e.llm.model_name,

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import kosong
 import tenacity
 from kosong import StepResult
+from kosong.base.chat_provider import ThinkingEffort
 from kosong.base.message import ContentPart, ImageURLPart, Message
 from kosong.chat_provider import (
     APIConnectionError,
@@ -16,6 +17,7 @@ from kosong.chat_provider import (
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from kimi_cli.llm import ModelCapability
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -71,6 +73,7 @@ class KimiSoul(Soul):
         self._reserved_tokens = RESERVED_TOKENS
         if self._runtime.llm is not None:
             assert self._reserved_tokens <= self._runtime.llm.max_context_size
+        self._thinking_effort: ThinkingEffort = "off"
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -84,8 +87,14 @@ class KimiSoul(Soul):
         return self._agent.name
 
     @property
-    def model(self) -> str:
+    def model_name(self) -> str:
         return self._runtime.llm.chat_provider.model_name if self._runtime.llm else ""
+
+    @property
+    def model_capabilities(self) -> set[ModelCapability] | None:
+        if self._runtime.llm is None:
+            return None
+        return self._runtime.llm.capabilities
 
     @property
     def status(self) -> StatusSnapshot:
@@ -101,36 +110,19 @@ class KimiSoul(Soul):
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
-    def set_thinking_mode(self, thinking: bool) -> None:
+    def set_thinking(self, enabled: bool) -> None:
         """
-        Set thinking mode for the soul.
+        Enable/disable thinking mode for the soul.
 
         Raises:
             LLMNotSet: When the LLM is not set.
-            NotImplementedError: When the LLM does not support thinking mode.
+            LLMNotSupported: When the LLM does not support thinking mode.
         """
         if self._runtime.llm is None:
             raise LLMNotSet()
-
-        from kosong.chat_provider.kimi import Kimi
-
-        # TODO: seems we need to abstract this in ChatProvider level
-        if not isinstance(self._runtime.llm.chat_provider, Kimi):
-            if not thinking:
-                # disable thinking mode for non-Kimi providers is a no-op
-                return
-
-            raise NotImplementedError(
-                f"The LLM model '{self._runtime.llm.model_name}' does not support thinking mode."
-            )
-
-        kwargs: Kimi.GenerationKwargs = {}
-        logger.debug("Setting thinking mode: {thinking}", thinking=thinking)
-        if thinking:
-            kwargs["reasoning_effort"] = "medium"
-        self._runtime.llm.chat_provider = self._runtime.llm.chat_provider.with_generation_kwargs(
-            **kwargs
-        )
+        if enabled and "thinking" not in self._runtime.llm.capabilities:
+            raise LLMNotSupported(self._runtime.llm, ["thinking"])
+        self._thinking_effort = "high" if enabled else "off"
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
@@ -142,7 +134,7 @@ class KimiSoul(Soul):
         if (
             isinstance(user_input, list)
             and any(isinstance(part, ImageURLPart) for part in user_input)
-            and not self._runtime.llm.supports_image_in
+            and "image_in" not in self._runtime.llm.capabilities
         ):
             raise LLMNotSupported(self._runtime.llm, ["image_in"])
 
@@ -218,7 +210,7 @@ class KimiSoul(Soul):
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                chat_provider,
+                chat_provider.with_thinking(self._thinking_effort),
                 self._agent.system_prompt,
                 self._agent.toolset,
                 self._context.history,

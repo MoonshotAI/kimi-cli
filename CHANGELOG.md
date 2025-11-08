@@ -9,6 +9,17 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Lib: Rename `Soul.model` to `Soul.model_name`
+- Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `kimi_cli.llm`
+- Lib: Add `"thinking"` to `ModelCapability`
+- Lib: Remove `LLM.supports_image_in` property
+- Lib: Add required `Soul.model_capabilities` property
+- Lib: Add `thinking: bool` parameter to `ShellApp.run` method
+- Lib: Rename `KimiSoul.set_thinking_mode` to `KimiSoul.set_thinking`
+- UI: Better checks and notices for LLM model capabilities
+
 ## [0.50] - 2025-11-07
 
 ### Changed

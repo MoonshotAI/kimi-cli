@@ -36,8 +36,10 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
 
+from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
+from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
@@ -399,12 +401,18 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 
 
 class CustomPromptSession:
-    def __init__(self, status_provider: Callable[[], StatusSnapshot]):
+    def __init__(
+        self,
+        *,
+        status_provider: Callable[[], StatusSnapshot],
+        model_capabilities: set[ModelCapability],
+    ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
         work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
+        self._model_capabilities = model_capabilities
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking: bool = False
@@ -483,6 +491,11 @@ class CustomPromptSession:
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
+            if "thinking" not in self._model_capabilities:
+                console.print(
+                    "[yellow]Thinking mode is not supported by the selected LLM model[/yellow]"
+                )
+                return
             self._thinking = not self._thinking
             event.app.invalidate()
 
@@ -578,6 +591,10 @@ class CustomPromptSession:
         if image is None:
             return False
 
+        if "image_in" not in self._model_capabilities:
+            console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
+            return False
+
         attachment_id = f"{random_string(8)}.png"
         png_bytes = BytesIO()
         image.save(png_bytes, format="PNG")
@@ -600,7 +617,7 @@ class CustomPromptSession:
         return True
 
     async def prompt(self) -> UserInput:
-        with patch_stdout():
+        with patch_stdout(raw=True):
             command = str(await self._session.prompt_async()).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
@@ -686,8 +703,6 @@ class CustomPromptSession:
                 *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
-            if self._mode == PromptMode.AGENT:
-                shortcuts.append("tab: toggle thinking")
             for shortcut in shortcuts:
                 if columns - len(status_text) > len(shortcut) + 2:
                     fragments.extend([("", shortcut), ("", " " * 2)])
