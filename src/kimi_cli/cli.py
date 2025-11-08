@@ -137,6 +137,12 @@ OutputFormat = Literal["text", "stream-json"]
     default=False,
     help="Automatically approve all actions. Default: no.",
 )
+@click.option(
+    "--thinking",
+    is_flag=True,
+    default=False,
+    help="Enable thinking mode if supported. Default: no.",
+)
 def kimi(
     verbose: bool,
     debug: bool,
@@ -151,6 +157,7 @@ def kimi(
     mcp_config_file: list[Path],
     mcp_config: list[str],
     yolo: bool,
+    thinking: bool,
 ):
     """Kimi, your next CLI agent."""
     from kimi_cli.app import KimiCLI
@@ -219,6 +226,7 @@ def kimi(
             stream=ui != "print",  # use non-streaming mode only for print UI
             mcp_configs=mcp_configs,
             model_name=model_name,
+            thinking=thinking,
             agent_file=agent_file,
         )
         match ui:

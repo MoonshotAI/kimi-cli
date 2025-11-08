@@ -12,6 +12,7 @@ from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
+from kimi_cli.soul import LLMNotSet, LLMNotSupported
 from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -29,6 +30,7 @@ class KimiCLI:
         mcp_configs: list[dict[str, Any]] | None = None,
         config_file: Path | None = None,
         model_name: str | None = None,
+        thinking: bool = False,
         agent_file: Path | None = None,
     ) -> "KimiCLI":
         """
@@ -93,6 +95,10 @@ class KimiCLI:
             runtime,
             context=context,
         )
+        try:
+            soul.set_thinking(thinking)
+        except (LLMNotSet, LLMNotSupported) as e:
+            logger.warning("Failed to enable thinking mode: {error}", error=e)
         return KimiCLI(soul, runtime, env_overrides)
 
     def __init__(

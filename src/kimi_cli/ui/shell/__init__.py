@@ -30,11 +30,11 @@ class ShellApp:
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
-    async def run(self, command: str | None = None, thinking: bool = False) -> bool:
+    async def run(self, command: str | None = None) -> bool:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self._run_soul_command(command, thinking)
+            return await self._run_soul_command(command)
 
         self._start_background_task(self._auto_update())
 
@@ -46,6 +46,7 @@ class ShellApp:
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
+            initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
         ) as prompt_session:
             while True:
                 try:
@@ -154,7 +155,11 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-    async def _run_soul_command(self, user_input: str | list[ContentPart], thinking: bool) -> bool:
+    async def _run_soul_command(
+        self,
+        user_input: str | list[ContentPart],
+        thinking: bool | None = None,
+    ) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -171,7 +176,7 @@ class ShellApp:
         remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
-            if isinstance(self.soul, KimiSoul):
+            if isinstance(self.soul, KimiSoul) and thinking is not None:
                 self.soul.set_thinking(thinking)
 
             # Use lambda to pass cancel_event via closure

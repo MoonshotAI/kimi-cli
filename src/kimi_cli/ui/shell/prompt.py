@@ -427,6 +427,15 @@ def _current_toast() -> _ToastEntry | None:
     return _toast_queue[0]
 
 
+def _toast_thinking(thinking: bool) -> None:
+    return toast(
+        f"thinking {'on' if thinking else 'off'}, tab to toggle",
+        duration=3.0,
+        topic="thinking",
+        immediate=True,
+    )
+
+
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
 )
@@ -438,6 +447,7 @@ class CustomPromptSession:
         *,
         status_provider: Callable[[], StatusSnapshot],
         model_capabilities: set[ModelCapability],
+        initial_thinking: bool,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -447,7 +457,7 @@ class CustomPromptSession:
         self._model_capabilities = model_capabilities
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
-        self._thinking: bool = False
+        self._thinking = initial_thinking
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -520,7 +530,7 @@ class CustomPromptSession:
         def is_agent_mode() -> bool:
             return self._mode == PromptMode.AGENT
 
-        toast("thinking off, tab to toggle", duration=3.0, topic="thinking", immediate=True)
+        _toast_thinking(self._thinking)
 
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
@@ -531,12 +541,7 @@ class CustomPromptSession:
                 )
                 return
             self._thinking = not self._thinking
-            toast(
-                f"thinking {'on' if self._thinking else 'off'}, tab to toggle",
-                duration=3.0,
-                topic="thinking",
-                immediate=True,
-            )
+            _toast_thinking(self._thinking)
             event.app.invalidate()
 
         self._shortcut_hints = shortcut_hints

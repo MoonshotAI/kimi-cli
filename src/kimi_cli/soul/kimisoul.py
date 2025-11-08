@@ -110,6 +110,11 @@ class KimiSoul(Soul):
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
+    @property
+    def thinking(self) -> bool:
+        """Whether thinking mode is enabled."""
+        return self._thinking_effort != "off"
+
     def set_thinking(self, enabled: bool) -> None:
         """
         Enable/disable thinking mode for the soul.
