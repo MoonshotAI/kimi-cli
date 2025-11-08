@@ -1,5 +1,6 @@
 """Tests for the glob tool."""
 
+import platform
 from pathlib import Path
 
 import pytest
@@ -70,12 +71,13 @@ async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: Path):
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
-    assert "src/main.py" in result.output
-    assert "src/utils.py" in result.output
-    assert "src/main/app.py" in result.output
-    assert "src/main/config.py" in result.output
-    assert "src/test/test_app.py" in result.output
-    assert "src/test/test_config.py" in result.output
+    output = result.output.replace("\\", "/")  # Normalize for Windows paths
+    assert "src/main.py" in output
+    assert "src/utils.py" in output
+    assert "src/main/app.py" in output
+    assert "src/main/config.py" in output
+    assert "src/test/test_app.py" in output
+    assert "src/test/test_config.py" in output
     assert "Found 6 matches" in result.message
 
 
@@ -100,8 +102,9 @@ async def test_glob_recursive_in_subdirectory(glob_tool: Glob, test_files: Path)
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
-    assert "main/app.py" in result.output
-    assert "main/config.py" in result.output
+    output = result.output.replace("\\", "/")  # Normalize for Windows paths
+    assert "main/app.py" in output
+    assert "main/config.py" in output
     assert "Found 2 matches" in result.message
 
 
@@ -112,8 +115,9 @@ async def test_glob_test_files(glob_tool: Glob, test_files: Path):
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
-    assert "src/test/test_app.py" in result.output
-    assert "src/test/test_config.py" in result.output
+    output = result.output.replace("\\", "/")  # Normalize for Windows paths
+    assert "src/test/test_app.py" in output
+    assert "src/test/test_config.py" in output
     assert "Found 2 matches" in result.message
 
 
@@ -157,7 +161,8 @@ async def test_glob_with_relative_path(glob_tool: Glob):
 @pytest.mark.asyncio
 async def test_glob_outside_work_directory(glob_tool: Glob):
     """Test glob outside working directory (should fail)."""
-    result = await glob_tool(Params(pattern="*.py", directory="/tmp/outside"))
+    dir = "/tmp/outside" if platform.system() != "Windows" else "C:/tmp/outside"
+    result = await glob_tool(Params(pattern="*.py", directory=dir))
 
     assert isinstance(result, ToolError)
     assert "outside the working directory" in result.message
@@ -292,8 +297,9 @@ async def test_glob_wildcard_with_double_star_patterns(glob_tool: Glob, test_fil
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
-    assert "src/test/test_app.py" in result.output
-    assert "src/test/test_config.py" in result.output
+    output = result.output.replace("\\", "/")  # Normalize for Windows paths
+    assert "src/test/test_app.py" in output
+    assert "src/test/test_config.py" in output
 
 
 @pytest.mark.asyncio

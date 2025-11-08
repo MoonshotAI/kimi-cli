@@ -14,6 +14,10 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            binary_path: dist/kimi
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            binary_path: dist/kimi.exe
           # - runner: ubuntu-22.04-arm
           #   target: aarch64-unknown-linux-gnu
           # - runner: macos-13
@@ -24,6 +28,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install GNU Make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make -y
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -43,20 +51,31 @@ jobs:
         run: make check
 
       - name: Run tests
+        env:
+          PYTHONUTF8: "1"
         run: make test
 
       - name: Build standalone binary
         run: make build
 
       - name: Smoke test binary --help
+        shell: python
         run: |
-          ./dist/kimi --help | grep "Kimi" || { echo "Error: kimi --help did not produce expected output"; exit 1; }
+          import os
+          import subprocess
+
+          binary = os.path.abspath(os.environ["BINARY_PATH"])
+          result = subprocess.run([binary, "--help"], capture_output=True, text=True, check=True)
+          if "Kimi" not in result.stdout:
+              raise SystemExit("'Kimi' not found in --help output")
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}
-          path: dist/kimi
+          path: ${{ matrix.binary_path }}
           if-no-files-found: error
           retention-days: 7

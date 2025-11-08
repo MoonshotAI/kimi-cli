@@ -1,5 +1,6 @@
 """Test configuration and fixtures."""
 
+import platform
 import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -227,3 +228,15 @@ def search_web_tool(config: Config) -> SearchWeb:
 def fetch_url_tool() -> FetchURL:
     """Create a FetchURL tool instance."""
     return FetchURL()
+
+
+# misc fixtures
+
+
+@pytest.fixture
+def outside_file() -> Path:
+    """Return a path to a file outside the working directory."""
+    if platform.system() == "Windows":
+        return Path("C:/outside_file.txt")
+    else:
+        return Path("/outside_file.txt")

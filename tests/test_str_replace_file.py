@@ -132,10 +132,12 @@ async def test_replace_with_relative_path(str_replace_file_tool: StrReplaceFile)
 
 
 @pytest.mark.asyncio
-async def test_replace_outside_work_directory(str_replace_file_tool: StrReplaceFile):
+async def test_replace_outside_work_directory(
+    str_replace_file_tool: StrReplaceFile, outside_file: Path
+):
     """Test replacing outside the working directory (should fail)."""
     result = await str_replace_file_tool(
-        Params(path="/tmp/outside.txt", edit=Edit(old="old", new="new"))
+        Params(path=str(outside_file), edit=Edit(old="old", new="new"))
     )
 
     assert isinstance(result, ToolError)
