@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.51] - 2025-11-8
 
 - Lib: Rename `Soul.model` to `Soul.model_name`
 - Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `kimi_cli.llm`
