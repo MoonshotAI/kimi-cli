@@ -21,6 +21,7 @@ Only write entries that are worth mentioning to users.
 - UI: Better checks and notices for LLM model capabilities
 - UI: Clear the screen for `/clear` meta command
 - Tool: Support auto-downloading ripgrep on Windows
+- CLI: Add `--thinking` option to start in thinking mode
 
 ## [0.50] - 2025-11-07
 
