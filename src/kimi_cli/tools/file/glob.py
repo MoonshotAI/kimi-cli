@@ -1,10 +1,6 @@
 """Glob tool implementation."""
 
 import asyncio
-import os
-import stat
-from contextlib import suppress
-from datetime import datetime
 from pathlib import Path
 from typing import Any, override
 
@@ -13,42 +9,9 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
+from kimi_cli.utils.path import list_directory
 
 MAX_MATCHES = 1000
-# `ls` switches between time-of-day and year display when files are older than ~6 months.
-RECENT_FILE_DAYS_THRESHOLD = 182
-
-try:
-    import grp
-except ImportError:  # pragma: no cover
-    grp = None  # type: ignore[assignment]
-
-try:
-    import pwd
-except ImportError:  # pragma: no cover
-    pwd = None  # type: ignore[assignment]
-
-
-def _lookup_owner(uid: int) -> str:
-    """Resolve a uid to a user-friendly name."""
-    if pwd is None:  # pragma: no cover - Windows fallback
-        return str(uid)
-
-    try:
-        return pwd.getpwuid(uid).pw_name
-    except KeyError:  # pragma: no cover - uid without entry
-        return str(uid)
-
-
-def _lookup_group(gid: int) -> str:
-    """Resolve a gid to a user-friendly name."""
-    if grp is None:  # pragma: no cover - Windows fallback
-        return str(gid)
-
-    try:
-        return grp.getgrgid(gid).gr_name
-    except KeyError:  # pragma: no cover - gid without entry
-        return str(gid)
 
 
 class Params(BaseModel):
@@ -82,7 +45,7 @@ class Glob(CallableTool2[Params]):
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
         if pattern.startswith("**"):
-            ls_result = await self._format_workdir_listing()
+            ls_result = await asyncio.to_thread(list_directory, self._work_dir)
             return ToolError(
                 output=ls_result,
                 message=(
@@ -95,55 +58,6 @@ class Glob(CallableTool2[Params]):
                 brief="Unsafe pattern",
             )
         return None
-
-    async def _format_workdir_listing(self) -> str:
-        """Return a best-effort `ls -la` style listing for the working directory."""
-
-        def _collect_listing() -> list[tuple[str, os.stat_result]]:
-            entries: list[tuple[str, os.stat_result]] = []
-
-            with suppress(FileNotFoundError):
-                entries.append((".", self._work_dir.stat()))
-
-            parent_dir = self._work_dir.parent
-            if parent_dir != self._work_dir:
-                with suppress(FileNotFoundError, PermissionError):
-                    entries.append(("..", parent_dir.stat()))
-
-            scandir_entries: list[tuple[str, os.stat_result]] = []
-            try:
-                with os.scandir(self._work_dir) as it:
-                    for entry in it:
-                        with suppress(FileNotFoundError, PermissionError):
-                            scandir_entries.append((entry.name, entry.stat(follow_symlinks=False)))
-            except FileNotFoundError:
-                pass
-
-            scandir_entries.sort(key=lambda item: item[0])
-            entries.extend(scandir_entries)
-            return entries
-
-        def _format_entries(entries: list[tuple[str, os.stat_result]]) -> str:
-            now = datetime.now()
-            formatted: list[str] = []
-            for name, stats in entries:
-                mode = stat.filemode(stats.st_mode)
-                nlink = stats.st_nlink
-                owner = _lookup_owner(stats.st_uid)
-                group_name = _lookup_group(stats.st_gid)
-                size = stats.st_size
-                mtime = datetime.fromtimestamp(stats.st_mtime)
-                if abs((now - mtime).days) >= RECENT_FILE_DAYS_THRESHOLD:
-                    time_part = f"{mtime:%b} {mtime.day:2d}  {mtime:%Y}"
-                else:
-                    time_part = f"{mtime:%b} {mtime.day:2d} {mtime:%H:%M}"
-                formatted.append(
-                    f"{mode} {nlink:3d} {owner:<8} {group_name:<8} {size:8d} {time_part} {name}"
-                )
-            return "\n".join(formatted)
-
-        entries = await asyncio.to_thread(_collect_listing)
-        return await asyncio.to_thread(_format_entries, entries)
 
     def _validate_directory(self, directory: Path) -> ToolError | None:
         """Validate that the directory is safe to search."""
