@@ -51,6 +51,8 @@ jobs:
         run: make check
 
       - name: Run tests
+        env:
+          PYTHONUTF8: "1"
         run: make test
 
       - name: Build standalone binary
