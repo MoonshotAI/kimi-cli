@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from kosong.base.message import ContentPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.message import ContentPart
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table

@@ -4,7 +4,7 @@ from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
-from kosong.base.message import ContentPart
+from kosong.message import ContentPart
 
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide

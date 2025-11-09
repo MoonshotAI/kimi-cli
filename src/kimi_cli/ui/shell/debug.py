@@ -1,7 +1,7 @@
 import json
 from typing import TYPE_CHECKING
 
-from kosong.base.message import (
+from kosong.message import (
     AudioURLPart,
     ContentPart,
     ImageURLPart,

@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, overload
 
-from kosong.base.message import Message
+from kosong.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts

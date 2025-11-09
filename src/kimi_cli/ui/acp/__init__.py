@@ -4,14 +4,14 @@ from typing import Any
 
 import acp  # pyright: ignore[reportMissingTypeStubs]
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
-from kosong.base.message import (
+from kosong.chat_provider import ChatProviderError
+from kosong.message import (
     ContentPart,
     TextPart,
     ThinkPart,
     ToolCall,
     ToolCallPart,
 )
-from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul

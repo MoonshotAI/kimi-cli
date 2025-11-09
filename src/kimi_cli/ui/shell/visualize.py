@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
-from kosong.base.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
 from rich.console import Group, RenderableType
 from rich.live import Live
