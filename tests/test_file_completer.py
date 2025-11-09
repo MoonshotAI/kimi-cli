@@ -109,7 +109,9 @@ def test_basename_prefix_is_ranked_first(tmp_path: Path):
     texts = _completion_texts(completer, "@fetch")
 
     # Snapshot the full candidate list to keep order/content deterministic
-    assert texts == snapshot([
-        "src/kimi_cli/tools/web/fetch.py",
-        "src/kimi_cli/tools/file/patch.py",
-    ])
+    assert texts == snapshot(
+        [
+            "src/kimi_cli/tools/web/fetch.py",
+            "src/kimi_cli/tools/file/patch.py",
+        ]
+    )
