@@ -569,7 +569,7 @@ class CustomPromptSession:
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
-            complete_while_typing=True,
+            complete_while_typing=Condition(lambda: self._mode != PromptMode.SHELL),
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
@@ -605,11 +605,9 @@ class CustomPromptSession:
                     buff.cancel_completion()
             if buff is not None:
                 buff.completer = DummyCompleter()
-                buff.complete_while_typing = Never()
         else:
             if buff is not None:
                 buff.completer = self._agent_mode_completer
-                buff.complete_while_typing = Always()
 
     def __enter__(self) -> "CustomPromptSession":
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
