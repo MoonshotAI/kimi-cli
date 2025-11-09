@@ -197,6 +197,124 @@ def feedback(app: "ShellApp", args: list[str]):
     console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
 
 
+@meta_command
+async def usage(app: "ShellApp", args: list[str]):
+    """Display API usage information and remaining quota"""
+    import aiohttp
+    from rich.table import Table
+
+    from kimi_cli.config import load_config
+    from kimi_cli.utils.aiohttp import new_client_session
+
+    # Load configuration
+    config = load_config()
+
+    # Check if a model is configured
+    if not config.default_model or not config.models:
+        console.print("[red]No model configured. Please run /setup first.[/red]")
+        return
+
+    # Get the default model and provider
+    model = config.models[config.default_model]
+    provider = config.providers[model.provider]
+
+    if not provider.base_url or not provider.api_key:
+        console.print("[red]API configuration incomplete. Please run /setup first.[/red]")
+        return
+
+    # Try to fetch usage information from the API
+    usage_url = f"{provider.base_url}/usage"
+
+    try:
+        async with (
+            new_client_session() as session,
+            session.get(
+                usage_url,
+                headers={
+                    "Authorization": f"Bearer {provider.api_key.get_secret_value()}",
+                },
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response,
+        ):
+            if response.status == 404:
+                # Try alternative endpoint
+                usage_url = f"{provider.base_url}/account/usage"
+                async with session.get(
+                    usage_url,
+                    headers={
+                        "Authorization": f"Bearer {provider.api_key.get_secret_value()}",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as alt_response:
+                    if alt_response.status == 404:
+                        console.print(
+                            "[yellow]Usage endpoint not available for this API provider.[/yellow]"
+                        )
+                        return
+                    alt_response.raise_for_status()
+                    usage_data = await alt_response.json()
+            else:
+                response.raise_for_status()
+                usage_data = await response.json()
+
+    except aiohttp.ClientResponseError as e:
+        if e.status == 401:
+            console.print("[red]Authentication failed. Please check your API key.[/red]")
+        elif e.status == 403:
+            console.print(
+                "[red]Access forbidden. You may not have permission to view usage data.[/red]"
+            )
+        else:
+            console.print(f"[red]API error ({e.status}): {e.message}[/red]")
+        return
+    except aiohttp.ClientError as e:
+        console.print(f"[red]Network error: {e}[/red]")
+        return
+    except Exception as e:
+        logger.exception("Failed to fetch usage information:")
+        console.print(f"[red]Failed to fetch usage information: {e}[/red]")
+        return
+
+    # Display usage information
+    table = Table(title="API Usage Information", show_header=True, header_style="bold cyan")
+    table.add_column("Metric", style="cyan", no_wrap=True)
+    table.add_column("Value", style="white")
+
+    # Parse and display usage data based on common API response formats
+    if "data" in usage_data:
+        usage_data = usage_data["data"]
+
+    # Display available fields
+    if "total_usage" in usage_data or "usage" in usage_data:
+        usage = usage_data.get("total_usage") or usage_data.get("usage", 0)
+        table.add_row("Current Usage", f"{usage:,}")
+
+    if "total_quota" in usage_data or "quota" in usage_data:
+        quota = usage_data.get("total_quota") or usage_data.get("quota", 0)
+        table.add_row("Total Quota", f"{quota:,}")
+
+        # Calculate remaining and percentage if we have both usage and quota
+        if "total_usage" in usage_data or "usage" in usage_data:
+            usage = usage_data.get("total_usage") or usage_data.get("usage", 0)
+            remaining = quota - usage
+            percentage = (usage / quota * 100) if quota > 0 else 0
+
+            table.add_row("Remaining", f"{remaining:,}")
+            table.add_row("Usage Percentage", f"{percentage:.2f}%")
+
+    if "reset_date" in usage_data or "reset_time" in usage_data:
+        reset = usage_data.get("reset_date") or usage_data.get("reset_time")
+        table.add_row("Reset Date", str(reset))
+
+    # If no standard fields found, display raw data
+    if table.row_count == 0:
+        for key, value in usage_data.items():
+            if not key.startswith("_"):
+                table.add_row(key.replace("_", " ").title(), str(value))
+
+    console.print(table)
+
+
 @meta_command(kimi_soul_only=True)
 async def init(app: "ShellApp", args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
