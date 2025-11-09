@@ -19,8 +19,8 @@ from typing import override
 from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
-from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.application.current import get_app_or_none
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
     Completer,
@@ -31,7 +31,7 @@ from prompt_toolkit.completion import (
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Always, Condition, Never, has_completions
+from prompt_toolkit.filters import Condition, has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
