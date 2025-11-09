@@ -314,7 +314,26 @@ class FileMentionCompleter(Completer):
         mention_doc = Document(text=fragment, cursor_position=len(fragment))
         self._fragment_hint = fragment
         try:
-            yield from self._fuzzy.get_completions(mention_doc, complete_event)
+            # First, ask the fuzzy completer for candidates.
+            candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
+
+            # re-rank: prefer basename matches
+            frag_lower = fragment.lower()
+
+            def _rank(c: Completion) -> tuple:
+                path = c.text
+                base = path.rstrip("/").split("/")[-1].lower()
+                if base.startswith(frag_lower):
+                    cat = 0
+                elif frag_lower in base:
+                    cat = 1
+                else:
+                    cat = 2
+                # preserve original FuzzyCompleter's order in the same category
+                return (cat,)
+
+            candidates.sort(key=_rank)
+            yield from candidates
         finally:
             self._fragment_hint = None
 
