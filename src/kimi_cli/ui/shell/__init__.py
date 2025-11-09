@@ -61,14 +61,14 @@ class ShellApp:
                     continue
                 logger.debug("Got user input: {user_input}", user_input=user_input)
 
+                if user_input.mode == PromptMode.SHELL:
+                    await self._run_shell_command(user_input.command)
+                    continue
+
                 if user_input.command in ["exit", "quit", "/exit", "/quit"]:
                     logger.debug("Exiting by meta command")
                     console.print("Bye!")
                     break
-
-                if user_input.mode == PromptMode.SHELL:
-                    await self._run_shell_command(user_input.command)
-                    continue
 
                 if user_input.command.startswith("/"):
                     logger.debug("Running meta command: {command}", command=user_input.command)
