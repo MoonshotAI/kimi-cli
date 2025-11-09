@@ -19,6 +19,7 @@ from typing import override
 from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
@@ -574,6 +575,13 @@ class CustomPromptSession:
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
         )
+
+        # Allow completion to be triggered when the text is changed,
+        # such as when backspace is used to delete text.
+        @self._session.default_buffer.on_text_changed.add_handler
+        def trigger_complete(buffer: Buffer) -> None:
+            if buffer.complete_while_typing():
+                buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task | None = None
 
