@@ -21,6 +21,8 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text, TextType
 
+from kimi_cli.utils.terminal import get_code_theme
+
 LIST_INDENT_WIDTH = 2
 
 _FALLBACK_STYLES: Mapping[str, Style] = {
@@ -550,7 +552,7 @@ class MarkdownContext:
         style: Style,
         fallback_styles: Mapping[str, Style],
         inline_code_lexer: str | None = None,
-        inline_code_theme: str = "monokai",
+        inline_code_theme: str | None = None,
     ) -> None:
         self.console = console
         self.options = options
@@ -560,7 +562,8 @@ class MarkdownContext:
 
         self._syntax: Syntax | None = None
         if inline_code_lexer is not None:
-            self._syntax = Syntax("", inline_code_lexer, theme=inline_code_theme)
+            theme = inline_code_theme or get_code_theme()
+            self._syntax = Syntax("", inline_code_lexer, theme=theme)
 
     @property
     def current_style(self) -> Style:
@@ -609,7 +612,8 @@ class Markdown(JupyterMixin):
 
     Args:
         markup (str): A string containing markdown.
-        code_theme (str, optional): Pygments theme for code blocks. Defaults to "monokai".
+        code_theme (str, optional): Pygments theme for code blocks. Defaults to auto-detected
+            theme based on terminal background (github-light for light mode, monokai for dark mode).
             See https://pygments.org/styles/ for code themes.
         justify (JustifyMethod, optional): Justify value for paragraphs. Defaults to None.
         style (Union[str, Style], optional): Optional style to apply to markdown.
@@ -644,7 +648,7 @@ class Markdown(JupyterMixin):
     def __init__(
         self,
         markup: str,
-        code_theme: str = "monokai",
+        code_theme: str | None = None,
         justify: JustifyMethod | None = None,
         style: str | Style = "none",
         hyperlinks: bool = True,
@@ -654,12 +658,12 @@ class Markdown(JupyterMixin):
         parser = MarkdownIt().enable("strikethrough").enable("table")
         self.markup = markup
         self.parsed = parser.parse(markup)
-        self.code_theme = code_theme
+        self.code_theme = code_theme or get_code_theme()
         self.justify: JustifyMethod | None = justify
         self.style = style
         self.hyperlinks = hyperlinks
         self.inline_code_lexer = inline_code_lexer
-        self.inline_code_theme = inline_code_theme or code_theme
+        self.inline_code_theme = inline_code_theme or self.code_theme
 
     def _flatten_tokens(self, tokens: Iterable[Token]) -> Iterable[Token]:
         """Flattens the token stream."""

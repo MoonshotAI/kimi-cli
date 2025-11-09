@@ -19,6 +19,7 @@ from rich.text import Text
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
+from kimi_cli.utils.terminal import get_code_theme
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import ShellApp
@@ -65,7 +66,7 @@ def _format_tool_call(tool_call: ToolCall) -> Panel:
     args = tool_call.function.arguments or "{}"
     try:
         args_formatted = json.dumps(json.loads(args), indent=2)
-        args_syntax = Syntax(args_formatted, "json", theme="monokai", padding=(0, 1))
+        args_syntax = Syntax(args_formatted, "json", theme=get_code_theme(), padding=(0, 1))
     except json.JSONDecodeError:
         args_syntax = Text(args, style="red")
 
