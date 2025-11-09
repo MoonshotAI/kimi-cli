@@ -81,6 +81,10 @@ class _ToolCallBlock:
         call: ToolCall
         result: ToolReturnType
 
+    # Configuration for output display
+    MAX_OUTPUT_LINES = 100
+    MAX_OUTPUT_CHARS = 5000
+
     def __init__(self, tool_call: ToolCall):
         self._tool_name = tool_call.function.name
         self._lexer = streamingjson.Lexer()
@@ -183,13 +187,29 @@ class _ToolCallBlock:
                 )
             )
 
-        if self._result is not None and self._result.brief:
-            lines.append(
-                Markdown(
-                    self._result.brief,
-                    style="grey50" if isinstance(self._result, ToolOk) else "red",
+        # Display result information when finished
+        if self._result is not None:
+            # Show message if present and different from brief
+            if self._result.message and self._result.message != self._result.brief:
+                lines.append(
+                    Markdown(
+                        self._result.message,
+                        style="grey50" if isinstance(self._result, ToolOk) else "red",
+                    )
                 )
-            )
+            # Show brief if present and no message was shown
+            elif self._result.brief:
+                lines.append(
+                    Markdown(
+                        self._result.brief,
+                        style="grey50" if isinstance(self._result, ToolOk) else "red",
+                    )
+                )
+
+            # Show formatted output
+            formatted_output = self._format_output(self._result)
+            if formatted_output is not None:
+                lines.append(formatted_output)
 
         if self.finished:
             return _with_bullet(
@@ -206,6 +226,80 @@ class _ToolCallBlock:
         return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
             f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
         )
+
+    def _format_output(self, result: ToolReturnType) -> RenderableType | None:
+        """Format the tool result output for display."""
+        if not result.output:
+            return None
+
+        # Extract output text
+        output_text = ""
+        if isinstance(result.output, str):
+            output_text = result.output
+        elif isinstance(result.output, ContentPart):
+            # Handle ContentPart - for now just show a placeholder
+            # In the future, we could render images, etc.
+            if hasattr(result.output, "text"):
+                output_text = result.output.text  # type: ignore
+            else:
+                return Text(f"[{result.output.__class__.__name__}]", style="grey50 italic")
+        elif isinstance(result.output, list):
+            # Handle sequence of ContentParts
+            parts = []
+            for part in result.output:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif hasattr(part, "text"):
+                    parts.append(part.text)  # type: ignore
+            output_text = "\n".join(parts) if parts else ""
+
+        if not output_text or not output_text.strip():
+            return None
+
+        # Truncate if necessary
+        lines = output_text.splitlines()
+        total_lines = len(lines)
+        truncated = False
+
+        # Check character limit
+        if len(output_text) > self.MAX_OUTPUT_CHARS:
+            output_text = output_text[: self.MAX_OUTPUT_CHARS]
+            lines = output_text.splitlines()
+            truncated = True
+
+        # Check line limit
+        if len(lines) > self.MAX_OUTPUT_LINES:
+            lines = lines[: self.MAX_OUTPUT_LINES]
+            truncated = True
+
+        # Build the output display
+        display_lines: list[RenderableType] = []
+
+        # Determine style based on result type
+        output_style = "grey50" if isinstance(result, ToolOk) else "red"
+
+        # Add the output content
+        output_content = "\n".join(lines)
+        if output_content.strip():
+            # Use a panel for better visual separation
+            display_lines.append(
+                Panel(
+                    Text(output_content, style=output_style),
+                    border_style=output_style,
+                    padding=(0, 1),
+                    expand=False,
+                )
+            )
+
+        # Add truncation notice if needed
+        if truncated:
+            hidden_lines = total_lines - len(lines) if total_lines > len(lines) else 0
+            truncation_msg = "... output truncated"
+            if hidden_lines > 0:
+                truncation_msg += f" ({hidden_lines} more lines)"
+            display_lines.append(Text(truncation_msg, style="grey50 italic"))
+
+        return Group(*display_lines) if display_lines else None
 
 
 class _ApprovalRequestPanel:
