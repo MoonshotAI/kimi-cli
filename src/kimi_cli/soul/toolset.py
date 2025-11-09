@@ -1,7 +1,7 @@
 from contextvars import ContextVar
 from typing import override
 
-from kosong.base.message import ToolCall
+from kosong.message import ToolCall
 from kosong.tooling import HandleResult
 from kosong.tooling.simple import SimpleToolset
 

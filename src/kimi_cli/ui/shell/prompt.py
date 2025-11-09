@@ -16,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import override
 
-from kosong.base.message import ContentPart, ImageURLPart, TextPart
+from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none

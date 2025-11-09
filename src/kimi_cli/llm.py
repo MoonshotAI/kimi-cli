@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast, get_args
 
-from kosong.base.chat_provider import ChatProvider
+from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT

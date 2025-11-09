@@ -129,7 +129,7 @@ def agent_spec() -> ResolvedAgentSpec:
 @contextmanager
 def tool_call_context(tool_name: str) -> Generator[None]:
     """Create a tool call context."""
-    from kosong.base.message import ToolCall
+    from kosong.message import ToolCall
 
     from kimi_cli.soul.toolset import current_tool_call
 

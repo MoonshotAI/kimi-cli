@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 import kosong
 import tenacity
 from kosong import StepResult
-from kosong.base.chat_provider import ThinkingEffort
-from kosong.base.message import ContentPart, ImageURLPart, Message
 from kosong.chat_provider import (
     APIConnectionError,
     APIStatusError,
     APITimeoutError,
     ChatProviderError,
+    ThinkingEffort,
 )
+from kosong.message import ContentPart, ImageURLPart, Message
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
