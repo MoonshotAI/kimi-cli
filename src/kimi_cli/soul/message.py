@@ -2,9 +2,11 @@ from kosong.base.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
 
+from kimi_cli.utils.string import sanitize_text
+
 
 def system(message: str) -> ContentPart:
-    return TextPart(text=f"<system>{message}</system>")
+    return TextPart(text=sanitize_text(f"<system>{message}</system>"))
 
 
 def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
@@ -16,7 +18,7 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
             message += "\nThis is an unexpected error and the tool is probably not working."
         content: list[ContentPart] = [system(f"ERROR: {message}")]
         if tool_result.result.output:
-            content.append(TextPart(text=tool_result.result.output))
+            content.append(TextPart(text=sanitize_text(tool_result.result.output)))
         return [
             Message(
                 role="tool",
@@ -66,7 +68,7 @@ def tool_ok_to_message_content(result: ToolOk) -> list[ContentPart]:
     match output := result.output:
         case str(text):
             if text:
-                content.append(TextPart(text=text))
+                content.append(TextPart(text=sanitize_text(text)))
         case ContentPart():
             content.append(output)
         case _:

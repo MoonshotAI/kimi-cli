@@ -9,6 +9,7 @@ import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.string import sanitize_text
 
 
 @runtime_checkable
@@ -90,7 +91,7 @@ class SimpleCompaction(Compaction):
             system("Previous context has been compacted. Here is the compaction output:")
         ]
         content.extend(
-            [TextPart(text=compacted_msg.content)]
+            [TextPart(text=sanitize_text(compacted_msg.content))]
             if isinstance(compacted_msg.content, str)
             else compacted_msg.content
         )

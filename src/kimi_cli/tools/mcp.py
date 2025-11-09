@@ -7,6 +7,8 @@ from fastmcp.client.transports import ClientTransport
 from kosong.base.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
 from kosong.tooling import CallableTool, ToolOk, ToolReturnType
 
+from kimi_cli.utils.string import sanitize_text
+
 
 class MCPTool[T: ClientTransport](CallableTool):
     def __init__(self, mcp_tool: mcp.Tool, client: fastmcp.Client[T], **kwargs: Any):
@@ -30,7 +32,7 @@ def convert_tool_result(result: CallToolResult) -> ToolReturnType:
     for part in result.content:
         match part:
             case mcp.types.TextContent(text=text):
-                content.append(TextPart(text=text))
+                content.append(TextPart(text=sanitize_text(text)))
             case mcp.types.ImageContent(data=data, mimeType=mimeType):
                 content.append(
                     ImageURLPart(
