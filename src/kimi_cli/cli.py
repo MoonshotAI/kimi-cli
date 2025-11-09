@@ -3,9 +3,9 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Annotated, Any, Literal
 
-import click
+import typer
 
 from kimi_cli.constant import VERSION
 
@@ -16,150 +16,185 @@ class Reload(Exception):
     pass
 
 
+cli = typer.Typer(
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help="Kimi, your next CLI agent.",
+)
+
 UIMode = Literal["shell", "print", "acp", "wire"]
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
 
-@click.command(context_settings=dict(help_option_names=["-h", "--help"]))
-@click.version_option(VERSION)
-@click.option(
-    "--verbose",
-    is_flag=True,
-    default=False,
-    help="Print verbose information. Default: no.",
-)
-@click.option(
-    "--debug",
-    is_flag=True,
-    default=False,
-    help="Log debug information. Default: no.",
-)
-@click.option(
-    "--agent-file",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="Custom agent specification file. Default: builtin default agent.",
-)
-@click.option(
-    "--model",
-    "-m",
-    "model_name",
-    type=str,
-    default=None,
-    help="LLM model to use. Default: default model set in config file.",
-)
-@click.option(
-    "--work-dir",
-    "-w",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    default=Path.cwd(),
-    help="Working directory for the agent. Default: current directory.",
-)
-@click.option(
-    "--continue",
-    "-C",
-    "continue_",
-    is_flag=True,
-    default=False,
-    help="Continue the previous session for the working directory. Default: no.",
-)
-@click.option(
-    "--command",
-    "-c",
-    "--query",
-    "-q",
-    "command",
-    type=str,
-    default=None,
-    help="User query to the agent. Default: prompt interactively.",
-)
-@click.option(
-    "--ui",
-    "ui",
-    type=click.Choice(get_args(UIMode)),
-    default="shell",
-    help="UI mode to use. Default: shell.",
-)
-@click.option(
-    "--print",
-    "ui",
-    flag_value="print",
-    help="Run in print mode. Shortcut for `--ui print`. Note: print mode implicitly adds `--yolo`.",
-)
-@click.option(
-    "--acp",
-    "ui",
-    flag_value="acp",
-    help="Start ACP server. Shortcut for `--ui acp`.",
-)
-@click.option(
-    "--input-format",
-    type=click.Choice(get_args(InputFormat)),
-    default=None,
-    help=(
-        "Input format to use. Must be used with `--print` "
-        "and the input must be piped in via stdin. "
-        "Default: text."
-    ),
-)
-@click.option(
-    "--output-format",
-    type=click.Choice(get_args(OutputFormat)),
-    default=None,
-    help="Output format to use. Must be used with `--print`. Default: text.",
-)
-@click.option(
-    "--mcp-config-file",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-    multiple=True,
-    help=(
-        "MCP config file to load. Add this option multiple times to specify multiple MCP configs. "
-        "Default: none."
-    ),
-)
-@click.option(
-    "--mcp-config",
-    type=str,
-    multiple=True,
-    help=(
-        "MCP config JSON to load. Add this option multiple times to specify multiple MCP configs. "
-        "Default: none."
-    ),
-)
-@click.option(
-    "--yolo",
-    "--yes",
-    "-y",
-    "--auto-approve",
-    "yolo",
-    is_flag=True,
-    default=False,
-    help="Automatically approve all actions. Default: no.",
-)
-@click.option(
-    "--thinking",
-    is_flag=True,
-    default=False,
-    help="Enable thinking mode if supported. Default: no.",
-)
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(VERSION)
+        raise typer.Exit()
+
+
+@cli.command()
 def kimi(
-    verbose: bool,
-    debug: bool,
-    agent_file: Path | None,
-    model_name: str | None,
-    work_dir: Path,
-    continue_: bool,
-    command: str | None,
-    ui: UIMode,
-    input_format: InputFormat | None,
-    output_format: OutputFormat | None,
-    mcp_config_file: list[Path],
-    mcp_config: list[str],
-    yolo: bool,
-    thinking: bool,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            help="Show version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Print verbose information. Default: no.",
+        ),
+    ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option(
+            "--debug",
+            help="Log debug information. Default: no.",
+        ),
+    ] = False,
+    agent_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--agent-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Custom agent specification file. Default: builtin default agent.",
+        ),
+    ] = None,
+    model_name: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            "-m",
+            help="LLM model to use. Default: default model set in config file.",
+        ),
+    ] = None,
+    work_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--work-dir",
+            "-w",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            writable=True,
+            help="Working directory for the agent. Default: current directory.",
+        ),
+    ] = None,
+    continue_: Annotated[
+        bool,
+        typer.Option(
+            "--continue",
+            "-C",
+            help="Continue the previous session for the working directory. Default: no.",
+        ),
+    ] = False,
+    command: Annotated[
+        str | None,
+        typer.Option(
+            "--command",
+            "-c",
+            "--query",
+            "-q",
+            help="User query to the agent. Default: prompt interactively.",
+        ),
+    ] = None,
+    print_mode: Annotated[
+        bool,
+        typer.Option(
+            "--print",
+            help=(
+                "Run in print mode (non-interactive). Note: print mode implicitly adds `--yolo`."
+            ),
+        ),
+    ] = False,
+    acp_mode: Annotated[
+        bool,
+        typer.Option(
+            "--acp",
+            help="Run as ACP server.",
+        ),
+    ] = False,
+    wire_mode: Annotated[
+        bool,
+        typer.Option(
+            "--wire",
+            help="Run as Wire server (experimental).",
+        ),
+    ] = False,
+    input_format: Annotated[
+        InputFormat | None,
+        typer.Option(
+            "--input-format",
+            help=(
+                "Input format to use. Must be used with `--print` "
+                "and the input must be piped in via stdin. "
+                "Default: text."
+            ),
+        ),
+    ] = None,
+    output_format: Annotated[
+        OutputFormat | None,
+        typer.Option(
+            "--output-format",
+            help="Output format to use. Must be used with `--print`. Default: text.",
+        ),
+    ] = None,
+    mcp_config_file: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--mcp-config-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help=(
+                "MCP config file to load. Add this option multiple times to specify multiple MCP "
+                "configs. Default: none."
+            ),
+        ),
+    ] = None,
+    mcp_config: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--mcp-config",
+            help=(
+                "MCP config JSON to load. Add this option multiple times to specify multiple MCP "
+                "configs. Default: none."
+            ),
+        ),
+    ] = None,
+    yolo: Annotated[
+        bool,
+        typer.Option(
+            "--yolo",
+            "--yes",
+            "-y",
+            "--auto-approve",
+            help="Automatically approve all actions. Default: no.",
+        ),
+    ] = False,
+    thinking: Annotated[
+        bool,
+        typer.Option(
+            "--thinking",
+            help="Enable thinking mode if supported. Default: no.",
+        ),
+    ] = False,
 ):
     """Kimi, your next CLI agent."""
+    del version  # handled in the callback
+
     from kimi_cli.app import KimiCLI
     from kimi_cli.session import Session
     from kimi_cli.share import get_share_dir
@@ -168,7 +203,27 @@ def kimi(
     def _noop_echo(*args: Any, **kwargs: Any):
         pass
 
-    echo: Callable[..., None] = click.echo if verbose else _noop_echo
+    special_flags = {
+        "--print": print_mode,
+        "--acp": acp_mode,
+        "--wire": wire_mode,
+    }
+    active_specials = [flag for flag, active in special_flags.items() if active]
+    if len(active_specials) > 1:
+        raise typer.BadParameter(
+            f"Cannot combine {', '.join(active_specials)}.",
+            param_hint=active_specials[0],
+        )
+
+    ui: UIMode = "shell"
+    if print_mode:
+        ui = "print"
+    elif acp_mode:
+        ui = "acp"
+    elif wire_mode:
+        ui = "wire"
+
+    echo: Callable[..., None] = typer.echo if verbose else _noop_echo
 
     if debug:
         logger.enable("kosong")
@@ -180,12 +235,13 @@ def kimi(
         retention="10 days",
     )
 
-    work_dir = work_dir.absolute()
+    work_dir = (work_dir or Path.cwd()).absolute()
     if continue_:
         session = Session.continue_(work_dir)
         if session is None:
-            raise click.BadOptionUsage(
-                "--continue", "No previous session found for the working directory"
+            raise typer.BadParameter(
+                "No previous session found for the working directory",
+                param_hint="--continue",
             )
         echo(f"✓ Continuing previous session: {session.id}")
     else:
@@ -196,28 +252,31 @@ def kimi(
     if command is not None:
         command = command.strip()
         if not command:
-            raise click.BadOptionUsage("--command", "Command cannot be empty")
+            raise typer.BadParameter("Command cannot be empty", param_hint="--command")
 
     if input_format is not None and ui != "print":
-        raise click.BadOptionUsage(
-            "--input-format",
+        raise typer.BadParameter(
             "Input format is only supported for print UI",
+            param_hint="--input-format",
         )
     if output_format is not None and ui != "print":
-        raise click.BadOptionUsage(
-            "--output-format",
+        raise typer.BadParameter(
             "Output format is only supported for print UI",
+            param_hint="--output-format",
         )
 
-    try:
-        mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in mcp_config_file]
-    except json.JSONDecodeError as e:
-        raise click.BadOptionUsage("--mcp-config-file", f"Invalid JSON: {e}") from e
+    file_configs = list(mcp_config_file or [])
+    raw_mcp_config = list(mcp_config or [])
 
     try:
-        mcp_configs += [json.loads(conf) for conf in mcp_config]
+        mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in file_configs]
     except json.JSONDecodeError as e:
-        raise click.BadOptionUsage("--mcp-config", f"Invalid JSON: {e}") from e
+        raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config-file") from e
+
+    try:
+        mcp_configs += [json.loads(conf) for conf in raw_mcp_config]
+    except json.JSONDecodeError as e:
+        raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
     async def _run() -> bool:
         instance = await KimiCLI.create(
@@ -257,9 +316,5 @@ def kimi(
             continue
 
 
-def main():
-    kimi()
-
-
 if __name__ == "__main__":
-    main()
+    cli()
