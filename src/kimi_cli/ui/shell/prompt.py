@@ -148,7 +148,9 @@ class FileMentionCompleter(Completer):
             "vendor",
         ),
     }
-    _IGNORED_NAMES = frozenset(name for group in _IGNORED_NAME_GROUPS.values() for name in group)
+    _IGNORED_NAMES = frozenset(
+        name for group in _IGNORED_NAME_GROUPS.values() for name in group
+    )
     _IGNORED_PATTERN_PARTS: tuple[str, ...] = (
         r".*_cache$",
         r".*-cache$",
@@ -480,6 +482,24 @@ class CustomPromptSession:
         def is_agent_mode() -> bool:
             return self._mode == PromptMode.AGENT
 
+        @_kb.add("backspace", filter=is_agent_mode, eager=True)
+        def _backspace_with_completion(event: KeyPressEvent) -> None:
+            """Delete character and refresh completions in agent mode."""
+            buff = event.current_buffer
+            if buff.cursor_position > 0:
+                buff.delete_before_cursor(count=1)
+                # Trigger completion refresh after deletion
+                buff.start_completion(select_first=False)
+
+        @_kb.add("delete", filter=is_agent_mode, eager=True)
+        def _delete_with_completion(event: KeyPressEvent) -> None:
+            """Delete character forward and refresh completions in agent mode."""
+            buff = event.current_buffer
+            if buff.cursor_position < len(buff.text):
+                buff.delete(count=1)
+                # Trigger completion refresh after deletion
+                buff.start_completion(select_first=False)
+
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
@@ -503,7 +523,9 @@ class CustomPromptSession:
         self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
-        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
+        symbol = (
+            PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
+        )
         if self._mode == PromptMode.AGENT and self._thinking:
             symbol = PROMPT_SYMBOL_THINKING
         return FormattedText([("bold", f"{getpass.getuser()}{symbol} ")])
@@ -511,7 +533,11 @@ class CustomPromptSession:
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
         try:
-            buff = event.current_buffer if event is not None else self._session.default_buffer
+            buff = (
+                event.current_buffer
+                if event is not None
+                else self._session.default_buffer
+            )
         except Exception:
             buff = None
 
@@ -529,7 +555,10 @@ class CustomPromptSession:
                 buff.complete_while_typing = Always()
 
     def __enter__(self) -> "CustomPromptSession":
-        if self._status_refresh_task is not None and not self._status_refresh_task.done():
+        if (
+            self._status_refresh_task is not None
+            and not self._status_refresh_task.done()
+        ):
             return self
 
         async def _refresh(interval: float) -> None:
@@ -542,7 +571,9 @@ class CustomPromptSession:
                     try:
                         asyncio.get_running_loop()
                     except RuntimeError:
-                        logger.warning("No running loop found, exiting status refresh task")
+                        logger.warning(
+                            "No running loop found, exiting status refresh task"
+                        )
                         self._status_refresh_task = None
                         break
 
@@ -555,7 +586,10 @@ class CustomPromptSession:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
-        if self._status_refresh_task is not None and not self._status_refresh_task.done():
+        if (
+            self._status_refresh_task is not None
+            and not self._status_refresh_task.done()
+        ):
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
         self._attachment_parts.clear()
@@ -602,7 +636,9 @@ class CustomPromptSession:
     async def prompt(self) -> UserInput:
         with patch_stdout():
             command = str(await self._session.prompt_async()).strip()
-            command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
+            command = command.replace(
+                "\x00", ""
+            )  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
 
         # Parse rich content parts
@@ -696,7 +732,9 @@ class CustomPromptSession:
                     break
 
         if self._current_toast is None and not _toast_queue.empty():
-            self._current_toast, self._current_toast_duration = _toast_queue.get_nowait()
+            self._current_toast, self._current_toast_duration = (
+                _toast_queue.get_nowait()
+            )
 
         padding = max(1, columns - len(status_text))
         fragments.append(("", " " * padding))
