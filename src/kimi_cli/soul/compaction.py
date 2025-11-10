@@ -73,22 +73,23 @@ class SimpleCompaction(Compaction):
         # Call generate to get the compacted context
         # TODO: set max completion tokens
         logger.debug("Compacting context...")
-        compacted_msg, usage = await generate(
+        result = await generate(
             chat_provider=llm.chat_provider,
             system_prompt="You are a helpful assistant that compacts conversation context.",
             tools=[],
             history=[compact_message],
         )
-        if usage:
+        if result.usage:
             logger.debug(
                 "Compaction used {input} input tokens and {output} output tokens",
-                input=usage.input,
-                output=usage.output,
+                input=result.usage.input,
+                output=result.usage.output,
             )
 
         content: list[ContentPart] = [
             system("Previous context has been compacted. Here is the compaction output:")
         ]
+        compacted_msg = result.message
         content.extend(
             [TextPart(text=compacted_msg.content)]
             if isinstance(compacted_msg.content, str)

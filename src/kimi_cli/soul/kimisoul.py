@@ -8,6 +8,7 @@ import tenacity
 from kosong import StepResult
 from kosong.chat_provider import (
     APIConnectionError,
+    APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
     ChatProviderError,
@@ -41,6 +42,12 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
 )
+
+if TYPE_CHECKING:
+
+    def type_check(soul: "KimiSoul"):
+        _: Soul = soul
+
 
 RESERVED_TOKENS = 50_000
 
@@ -309,7 +316,7 @@ class KimiSoul(Soul):
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
-        if isinstance(exception, (APIConnectionError, APITimeoutError)):
+        if isinstance(exception, (APIConnectionError, APITimeoutError, APIEmptyResponseError)):
             return True
         return isinstance(exception, APIStatusError) and exception.status_code in (
             429,  # Too Many Requests
@@ -339,9 +346,3 @@ class BackToTheFuture(Exception):
     def __init__(self, checkpoint_id: int, messages: Sequence[Message]):
         self.checkpoint_id = checkpoint_id
         self.messages = messages
-
-
-if TYPE_CHECKING:
-
-    def type_check(kimi_soul: KimiSoul):
-        _: Soul = kimi_soul
