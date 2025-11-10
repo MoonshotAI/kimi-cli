@@ -91,10 +91,8 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        env:
-          TAG: ${{ github.ref_name }}
         with:
-          name: kimi-${TAG}-${{ matrix.target }}
+          name: kimi-${{ github.ref_name }}-${{ matrix.target }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 7
