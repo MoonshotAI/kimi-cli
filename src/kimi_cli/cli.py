@@ -21,6 +21,10 @@ InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
 
+_LOG_LEVEL_OPTION = "--log-level"
+_DEFAULT_LOG_LEVEL_KEY = "default"
+
+
 @click.command(context_settings=dict(help_option_names=["-h", "--help"]))
 @click.version_option(VERSION)
 @click.option(
@@ -34,6 +38,16 @@ OutputFormat = Literal["text", "stream-json"]
     is_flag=True,
     default=False,
     help="Log debug information. Default: no.",
+)
+@click.option(
+    "--log-level",
+    "-L",
+    "log_level_override",
+    multiple=True,
+    help=(
+        "Override log level per module. Use `module=LEVEL` to target a specific module "
+        "(e.g. `-L kimi_cli.tools=DEBUG`) or just `LEVEL` to change the default level."
+    ),
 )
 @click.option(
     "--agent-file",
@@ -140,6 +154,7 @@ OutputFormat = Literal["text", "stream-json"]
 def kimi(
     verbose: bool,
     debug: bool,
+    log_level_override: tuple[str, ...],
     agent_file: Path | None,
     model_name: str | None,
     work_dir: Path,
@@ -156,8 +171,10 @@ def kimi(
     from kimi_cli.app import KimiCLI
     from kimi_cli.session import Session
     from kimi_cli.share import get_share_dir
-    from kimi_cli.utils.logging import logger
+    from kimi_cli.config import load_config
+    from kimi_cli.utils.logging import configure_file_logging, logger
 
+    config = load_config()
     def _noop_echo(*args: Any, **kwargs: Any):
         pass
 
@@ -165,13 +182,18 @@ def kimi(
 
     if debug:
         logger.enable("kosong")
-    logger.add(
-        get_share_dir() / "logs" / "kimi.log",
-        # FIXME: configure level for different modules
-        level="TRACE" if debug else "INFO",
-        rotation="06:00",
-        retention="10 days",
-    )
+    config_levels = dict(config.logging.levels)
+    cli_levels = _parse_log_level_overrides(log_level_override)
+    merged_levels = {**config_levels, **cli_levels}
+    base_level = "TRACE" if debug else "INFO"
+    try:
+        configure_file_logging(
+            get_share_dir() / "logs" / "kimi.log",
+            base_level=base_level,
+            module_levels=merged_levels,
+        )
+    except ValueError as exc:
+        raise click.BadOptionUsage("--log-level", str(exc)) from exc
 
     work_dir = work_dir.absolute()
     if continue_:
@@ -220,6 +242,7 @@ def kimi(
             mcp_configs=mcp_configs,
             model_name=model_name,
             agent_file=agent_file,
+            config=config,
         )
         match ui:
             case "shell":
@@ -247,6 +270,39 @@ def kimi(
             break
         except Reload:
             continue
+
+
+def _parse_log_level_overrides(values: tuple[str, ...]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for raw in values:
+        entry = raw.strip()
+        if not entry:
+            raise click.BadOptionUsage(_LOG_LEVEL_OPTION, "Log level override cannot be empty")
+        if "=" in entry:
+            module, level = entry.split("=", 1)
+            module = module.strip()
+            if not module:
+                raise click.BadOptionUsage(
+                    _LOG_LEVEL_OPTION,
+                    "Module name is required before '=' when using --log-level",
+                )
+        else:
+            module = _DEFAULT_LOG_LEVEL_KEY
+            level = entry
+        level = level.strip()
+        if not level:
+            raise click.BadOptionUsage(_LOG_LEVEL_OPTION, "Log level cannot be empty")
+        overrides[_normalize_module_key(module)] = level
+    return overrides
+
+
+def _normalize_module_key(module: str) -> str:
+    cleaned = module.strip().rstrip(".")
+    if not cleaned:
+        return _DEFAULT_LOG_LEVEL_KEY
+    if cleaned.lower() == _DEFAULT_LOG_LEVEL_KEY:
+        return _DEFAULT_LOG_LEVEL_KEY
+    return cleaned
 
 
 def main():

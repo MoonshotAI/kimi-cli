@@ -9,7 +9,7 @@ from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.cli import InputFormat, OutputFormat
-from kimi_cli.config import LLMModel, LLMProvider, load_config
+from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
 from kimi_cli.soul.agent import load_agent
@@ -28,6 +28,7 @@ class KimiCLI:
         stream: bool = True,  # TODO: remove this when we have a correct print mode impl
         mcp_configs: list[dict[str, Any]] | None = None,
         config_file: Path | None = None,
+        config: Config | None = None,
         model_name: str | None = None,
         agent_file: Path | None = None,
     ) -> "KimiCLI":
@@ -39,6 +40,7 @@ class KimiCLI:
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
             stream (bool, optional): Use stream mode when calling LLM API. Defaults to True.
             config_file (Path | None, optional): Path to the configuration file. Defaults to None.
+            config (Config | None, optional): Preloaded configuration. Defaults to None.
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
 
@@ -47,7 +49,7 @@ class KimiCLI:
             ConfigError(KimiCLIException): When the configuration is invalid.
             AgentSpecError(KimiCLIException): When the agent specification is invalid.
         """
-        config = load_config(config_file)
+        config = config or load_config(config_file)
         logger.info("Loaded config: {config}", config=config)
 
         model: LLMModel | None = None
