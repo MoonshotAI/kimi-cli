@@ -70,6 +70,7 @@ def test_pyinstaller_datas():
                 "src/kimi_cli/tools/bash/bash.md",
                 "kimi_cli/tools/bash",
             ),
+            ("src/kimi_cli/tools/bash/cmd.md", "kimi_cli/tools/bash"),
             (
                 "src/kimi_cli/tools/dmail/dmail.md",
                 "kimi_cli/tools/dmail",
