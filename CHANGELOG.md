@@ -12,7 +12,11 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - CLI: Remove `--ui` option in favor of `--print`, `--acp`, and `--wire` flags (shell is still the default)
-- Loop: Add retry for LLM empty responses
+- CLI: More intuitive session continuation behavior
+- Core: Add retry for LLM empty responses
+- Tool: Change `Bash` tool to `CMD` tool on Windows
+- UI: Fix completion after backspacing
+- UI: Fix code block rendering issues on light background colors
 
 ## [0.51] - 2025-11-8
 

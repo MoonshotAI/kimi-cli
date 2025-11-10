@@ -39,7 +39,7 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
             key_argument = str(curr_args["thought"])
         case "SetTodoList":
             return None
-        case "Bash":
+        case "Bash" | "CMD":
             if not isinstance(curr_args, dict) or not curr_args.get("command"):
                 return None
             key_argument = str(curr_args["command"])

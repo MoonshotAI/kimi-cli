@@ -27,7 +27,6 @@ class Session(NamedTuple):
         session_id = str(uuid.uuid4())
         if _history_file is None:
             history_file = work_dir_meta.sessions_dir / f"{session_id}.jsonl"
-            work_dir_meta.last_session_id = session_id
         else:
             logger.warning(
                 "Using provided history file: {history_file}", history_file=_history_file
@@ -79,3 +78,26 @@ class Session(NamedTuple):
             work_dir=work_dir,
             history_file=history_file,
         )
+
+    def mark_as_last(self) -> None:
+        """Mark this session as the last completed session for its work directory."""
+        metadata = load_metadata()
+        work_dir_meta = next(
+            (wd for wd in metadata.work_dirs if wd.path == str(self.work_dir)), None
+        )
+
+        if work_dir_meta is None:
+            logger.warning(
+                "Work directory metadata missing when marking last session, recreating: {work_dir}",
+                work_dir=self.work_dir,
+            )
+            work_dir_meta = WorkDirMeta(path=str(self.work_dir))
+            metadata.work_dirs.append(work_dir_meta)
+
+        work_dir_meta.last_session_id = self.id
+        logger.debug(
+            "Updated last session for work directory: {work_dir} -> {session_id}",
+            work_dir=self.work_dir,
+            session_id=self.id,
+        )
+        save_metadata(metadata)
