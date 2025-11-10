@@ -11,11 +11,12 @@ from kimi_cli.soul.agent import Agent, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.runtime import Runtime
+from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
 from kimi_cli.wire import WireUISide
-from kimi_cli.wire.message import ApprovalRequest, WireMessage
+from kimi_cli.wire.message import ApprovalRequest, SubagentEvent, WireMessage
 
 # Maximum continuation attempts for task summary
 MAX_CONTINUE_ATTEMPTS = 1
@@ -117,11 +118,20 @@ class Task(CallableTool2[Params]):
         """Run subagent with optional continuation for task summary."""
         super_wire = get_wire_or_none()
         assert super_wire is not None
+        current_tool_call = get_current_tool_call_or_none()
+        assert current_tool_call is not None
+        current_tool_call_id = current_tool_call.id
 
         def _super_wire_send(msg: WireMessage) -> None:
             if isinstance(msg, ApprovalRequest):
                 super_wire.soul_side.send(msg)
-            # TODO: visualize subagent behavior by sending other messages in some way
+                return
+
+            event = SubagentEvent(
+                task_tool_call_id=current_tool_call_id,
+                event=msg,
+            )
+            super_wire.soul_side.send(event)
 
         async def _ui_loop_fn(wire: WireUISide) -> None:
             while True:

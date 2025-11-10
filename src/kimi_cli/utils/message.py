@@ -1,4 +1,4 @@
-from kosong.base.message import Message, TextPart
+from kosong.message import Message, TextPart
 
 
 def message_extract_text(message: Message) -> str:

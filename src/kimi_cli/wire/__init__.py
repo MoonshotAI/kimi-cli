@@ -1,6 +1,6 @@
 import asyncio
 
-from kosong.base.message import ContentPart, ToolCallPart
+from kosong.message import ContentPart, ToolCallPart
 
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import WireMessage
@@ -40,7 +40,10 @@ class WireSoulSide:
     def send(self, msg: WireMessage) -> None:
         if not isinstance(msg, ContentPart | ToolCallPart):
             logger.debug("Sending wire message: {msg}", msg=msg)
-        self._queue.put_nowait(msg)
+        try:
+            self._queue.put_nowait(msg)
+        except asyncio.QueueShutDown:
+            logger.info("Failed to send wire message, queue is shut down: {msg}", msg=msg)
 
 
 class WireUISide:

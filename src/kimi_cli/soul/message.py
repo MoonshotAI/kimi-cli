@@ -1,4 +1,4 @@
-from kosong.base.message import ContentPart, Message, TextPart
+from kosong.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
 

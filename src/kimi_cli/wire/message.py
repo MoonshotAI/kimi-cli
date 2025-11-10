@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from kosong.base.message import ContentPart, ToolCall, ToolCallPart
+from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolOk, ToolResult
 
 if TYPE_CHECKING:
@@ -42,8 +42,13 @@ class StatusUpdate(NamedTuple):
     status: "StatusSnapshot"
 
 
+class SubagentEvent(NamedTuple):
+    task_tool_call_id: str
+    event: "Event"
+
+
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
-type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult
+type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | SubagentEvent
 
 
 class ApprovalResponse(Enum):
@@ -129,6 +134,14 @@ def serialize_event(event: Event) -> dict[str, Any]:
             return {
                 "type": "tool_result",
                 "payload": serialize_tool_result(event),
+            }
+        case SubagentEvent():
+            return {
+                "type": "subagent_event",
+                "payload": {
+                    "task_tool_call_id": event.task_tool_call_id,
+                    "event": serialize_event(event.event),
+                },
             }
 
 

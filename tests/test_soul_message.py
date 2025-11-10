@@ -1,4 +1,4 @@
-from kosong.base.message import ImageURLPart, Message, TextPart
+from kosong.message import ImageURLPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
 from kimi_cli.soul.message import system, tool_ok_to_message_content, tool_result_to_messages
