@@ -309,9 +309,10 @@ def kimi(
     while True:
         try:
             succeeded = asyncio.run(_run())
-            if not succeeded:
-                sys.exit(1)
-            break
+            if succeeded:
+                session.mark_as_last()
+                break
+            sys.exit(1)
         except Reload:
             continue
 
