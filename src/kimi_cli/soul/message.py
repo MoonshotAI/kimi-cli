@@ -2,7 +2,6 @@ from kosong.base.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
 
-
 TOOL_NON_TEXT_USER_NOTICE = (
     "Tool output contains non-text parts. Non-text parts are sent as a user message below."
 )
