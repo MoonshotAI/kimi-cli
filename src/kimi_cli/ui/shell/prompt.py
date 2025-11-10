@@ -569,7 +569,7 @@ class CustomPromptSession:
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
-            complete_while_typing=Condition(lambda: self._mode != PromptMode.SHELL),
+            complete_while_typing=Condition(lambda: self._mode == PromptMode.AGENT),
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
