@@ -118,8 +118,8 @@ _KIMI_ANSI_THEME = ANSISyntaxTheme(
 )
 
 
-def _resolve_code_theme(theme: str | SyntaxTheme) -> str | SyntaxTheme:
-    if isinstance(theme, str) and theme.lower() == _KIMI_ANSI_THEME_NAME:
+def _resolve_code_theme(theme: str) -> str | SyntaxTheme:
+    if theme.lower() == _KIMI_ANSI_THEME_NAME:
         return _KIMI_ANSI_THEME
     return theme
 
