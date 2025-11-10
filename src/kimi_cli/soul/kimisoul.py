@@ -214,7 +214,7 @@ class KimiSoul(Soul):
         )
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
-            return await kosong.step(
+            res = await kosong.step(
                 chat_provider.with_thinking(self._thinking_effort),
                 self._agent.system_prompt,
                 self._agent.toolset,
@@ -222,6 +222,10 @@ class KimiSoul(Soul):
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
             )
+            # LLM API returned empty response. This is likely a transient error.
+            if not res.message.tool_calls and not res.message.content:
+                raise APIEmptyResponseError("The API returned an empty response.")
+            return res
 
         result = await _kosong_step_with_retry()
         logger.debug("Got step result: {result}", result=result)
@@ -309,7 +313,7 @@ class KimiSoul(Soul):
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
-        if isinstance(exception, (APIConnectionError, APITimeoutError)):
+        if isinstance(exception, (APIConnectionError, APITimeoutError, APIEmptyResponseError)):
             return True
         return isinstance(exception, APIStatusError) and exception.status_code in (
             429,  # Too Many Requests
@@ -345,3 +349,7 @@ if TYPE_CHECKING:
 
     def type_check(kimi_soul: KimiSoul):
         _: Soul = kimi_soul
+
+
+class APIEmptyResponseError(ChatProviderError):
+    """The API returned an empty response."""
