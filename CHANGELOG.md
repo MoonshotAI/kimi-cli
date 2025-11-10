@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 - CLI: More intuitive session continuation behavior
 - Core: Add retry for LLM empty responses
 - Tool: Change `Bash` tool to `CMD` tool on Windows
+- UI: Fix completion after backspacing
+- UI: Fix code block rendering issues on light background colors
 
 ## [0.51] - 2025-11-8
 
