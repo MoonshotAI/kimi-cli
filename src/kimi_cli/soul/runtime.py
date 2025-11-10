@@ -10,6 +10,7 @@ from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.utils.environment import EnvironmentContext, collect_environment_context
 from kimi_cli.utils.logging import logger
 
 
@@ -24,6 +25,8 @@ class BuiltinSystemPromptArgs(NamedTuple):
     """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
+    KIMI_ENV_CONTEXT: str
+    """Environment summary for prompt injection."""
 
 
 def load_agents_md(work_dir: Path) -> str | None:
@@ -68,6 +71,7 @@ class Runtime(NamedTuple):
     builtin_args: BuiltinSystemPromptArgs
     denwa_renji: DenwaRenji
     approval: Approval
+    environment: EnvironmentContext
 
     @staticmethod
     async def create(
@@ -76,9 +80,10 @@ class Runtime(NamedTuple):
         session: Session,
         yolo: bool,
     ) -> "Runtime":
-        ls_output, agents_md = await asyncio.gather(
+        ls_output, agents_md, environment = await asyncio.gather(
             asyncio.to_thread(_list_work_dir, session.work_dir),
             asyncio.to_thread(load_agents_md, session.work_dir),
+            asyncio.to_thread(collect_environment_context, session.work_dir),
         )
 
         return Runtime(
@@ -90,7 +95,9 @@ class Runtime(NamedTuple):
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
+                KIMI_ENV_CONTEXT=environment.as_prompt(),
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
+            environment=environment,
         )

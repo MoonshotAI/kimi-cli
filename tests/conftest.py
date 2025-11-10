@@ -30,6 +30,7 @@ from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
+from kimi_cli.utils.environment import EnvironmentContext
 
 
 @pytest.fixture
@@ -68,13 +69,28 @@ def temp_share_dir() -> Generator[Path]:
 
 
 @pytest.fixture
-def builtin_args(temp_work_dir: Path) -> BuiltinSystemPromptArgs:
+def environment_context() -> EnvironmentContext:
+    """Fake environment context for tests."""
+
+    return EnvironmentContext(
+        os_name="TestOS",
+        os_version="1.0",
+        machine="x86_64",
+        shell="/bin/sh",
+    )
+
+
+@pytest.fixture
+def builtin_args(
+    temp_work_dir: Path, environment_context: EnvironmentContext
+) -> BuiltinSystemPromptArgs:
     """Create builtin arguments with temporary work directory."""
     return BuiltinSystemPromptArgs(
         KIMI_NOW="1970-01-01T00:00:00+00:00",
         KIMI_WORK_DIR=temp_work_dir,
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
+        KIMI_ENV_CONTEXT=environment_context.as_prompt(),
     )
 
 
@@ -108,6 +124,7 @@ def runtime(
     denwa_renji: DenwaRenji,
     session: Session,
     approval: Approval,
+    environment_context: EnvironmentContext,
 ) -> Runtime:
     """Create a Runtime instance."""
     return Runtime(
@@ -117,6 +134,7 @@ def runtime(
         denwa_renji=denwa_renji,
         session=session,
         approval=approval,
+        environment=environment_context,
     )
 
 

@@ -12,9 +12,10 @@ from kimi_cli.soul.runtime import Runtime
 @pytest.mark.asyncio
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
-    assert agent.system_prompt.replace(
+    normalized = agent.system_prompt.replace(
         f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
-    ) == snapshot(
+    )
+    assert normalized == snapshot(
         """\
 You are Kimi CLI. You are an interactive CLI agent specializing in software engineering tasks. Your primary goal is to help users safely and efficiently, adhering strictly to the following instructions and utilizing your available tools.
 
@@ -60,6 +61,13 @@ When working on existing codebase, you should:
 ## Operating System
 
 The operating environment is not in a sandbox. Any action especially mutation you do will immediately affect the user's system. So you MUST be extremely cautious. Unless being explicitly instructed to do so, you should never access (read/write/execute) files outside of the working directory.
+
+Current host summary:
+
+```
+- OS: TestOS 1.0 (x86_64)
+- Shell: /bin/sh
+```
 
 ## Working Directory
 
