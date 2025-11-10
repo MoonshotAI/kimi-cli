@@ -48,7 +48,15 @@ class ShellApp:
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
-            initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
+            initial_thinking=(
+                isinstance(self.soul, KimiSoul)
+                and (
+                    self.soul.thinking
+                    # kimi-for-coding always thinking
+                    or (self.soul.model_name == "kimi-for-coding")
+                )
+            ),
+            model_name=self.soul.model_name,
         ) as prompt_session:
             while True:
                 try:

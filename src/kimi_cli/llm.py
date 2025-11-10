@@ -146,6 +146,7 @@ def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCap
     if provider.type != "kimi":
         return capabilities
 
+    # kimi-for-coding always thinking
     if model.model == "kimi-for-coding" or "thinking" in model.model:
         capabilities.add("thinking")
     return capabilities

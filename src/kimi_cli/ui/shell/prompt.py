@@ -470,6 +470,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         model_capabilities: set[ModelCapability],
         initial_thinking: bool,
+        model_name: str | None = None,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -477,6 +478,7 @@ class CustomPromptSession:
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._model_capabilities = model_capabilities
+        self._model_name = model_name
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = initial_thinking
@@ -560,6 +562,11 @@ class CustomPromptSession:
             if "thinking" not in self._model_capabilities:
                 console.print(
                     "[yellow]Thinking mode is not supported by the selected LLM model[/yellow]"
+                )
+                return
+            if self._thinking and self._model_name == "kimi-for-coding":
+                console.print(
+                    "[yellow]Thinking mode cannot be turned off for the kimi-for-coding model.[/yellow]"
                 )
                 return
             self._thinking = not self._thinking
