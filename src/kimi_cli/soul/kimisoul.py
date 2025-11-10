@@ -8,6 +8,7 @@ import tenacity
 from kosong import StepResult
 from kosong.chat_provider import (
     APIConnectionError,
+    APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
     ChatProviderError,
@@ -41,6 +42,12 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
 )
+
+if TYPE_CHECKING:
+
+    def type_check(soul: "KimiSoul"):
+        _: Soul = soul
+
 
 RESERVED_TOKENS = 50_000
 
@@ -214,7 +221,7 @@ class KimiSoul(Soul):
         )
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
-            res = await kosong.step(
+            return await kosong.step(
                 chat_provider.with_thinking(self._thinking_effort),
                 self._agent.system_prompt,
                 self._agent.toolset,
@@ -222,10 +229,6 @@ class KimiSoul(Soul):
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
             )
-            # LLM API returned empty response. This is likely a transient error.
-            if not res.message.tool_calls and not res.message.content:
-                raise APIEmptyResponseError("The API returned an empty response.")
-            return res
 
         result = await _kosong_step_with_retry()
         logger.debug("Got step result: {result}", result=result)
@@ -343,13 +346,3 @@ class BackToTheFuture(Exception):
     def __init__(self, checkpoint_id: int, messages: Sequence[Message]):
         self.checkpoint_id = checkpoint_id
         self.messages = messages
-
-
-if TYPE_CHECKING:
-
-    def type_check(kimi_soul: KimiSoul):
-        _: Soul = kimi_soul
-
-
-class APIEmptyResponseError(ChatProviderError):
-    """The API returned an empty response."""
