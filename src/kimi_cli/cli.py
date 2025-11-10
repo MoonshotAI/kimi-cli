@@ -29,7 +29,7 @@ OutputFormat = Literal["text", "stream-json"]
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(VERSION)
+        typer.echo(f"kimi, version {VERSION}")
         raise typer.Exit()
 
 
@@ -309,9 +309,10 @@ def kimi(
     while True:
         try:
             succeeded = asyncio.run(_run())
-            if not succeeded:
-                sys.exit(1)
-            break
+            if succeeded:
+                session.mark_as_last()
+                break
+            sys.exit(1)
         except Reload:
             continue
 
