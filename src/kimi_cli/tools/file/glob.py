@@ -4,12 +4,12 @@ import asyncio
 from pathlib import Path
 from typing import Any, override
 
-import aiofiles.os
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
+from kimi_cli.utils.path import list_directory
 
 MAX_MATCHES = 1000
 
@@ -45,10 +45,9 @@ class Glob(CallableTool2[Params]):
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
         if pattern.startswith("**"):
-            # TODO: give a `ls -la` result as the output
-            ls_result = await aiofiles.os.listdir(self._work_dir)
+            ls_result = await asyncio.to_thread(list_directory, self._work_dir)
             return ToolError(
-                output="\n".join(ls_result),
+                output=ls_result,
                 message=(
                     f"Pattern `{pattern}` starts with '**' which is not allowed. "
                     "This would recursively search all directories and may include large "
