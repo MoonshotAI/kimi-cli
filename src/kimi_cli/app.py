@@ -12,6 +12,7 @@ from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
+from kimi_cli.soul import LLMNotSet, LLMNotSupported
 from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -29,6 +30,7 @@ class KimiCLI:
         mcp_configs: list[dict[str, Any]] | None = None,
         config_file: Path | None = None,
         model_name: str | None = None,
+        thinking: bool = False,
         agent_file: Path | None = None,
     ) -> "KimiCLI":
         """
@@ -93,6 +95,10 @@ class KimiCLI:
             runtime,
             context=context,
         )
+        try:
+            soul.set_thinking(thinking)
+        except (LLMNotSet, LLMNotSupported) as e:
+            logger.warning("Failed to enable thinking mode: {error}", error=e)
         return KimiCLI(soul, runtime, env_overrides)
 
     def __init__(
@@ -154,7 +160,7 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=f"{self._soul.model} (from KIMI_MODEL_NAME)",
+                    value=f"{self._soul.model_name} (from KIMI_MODEL_NAME)",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )
@@ -162,7 +168,7 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=self._soul.model,
+                    value=self._soul.model_name,
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )

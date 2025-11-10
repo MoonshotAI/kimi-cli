@@ -9,6 +9,25 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- CLI: Remove `--ui` option in favor of `--print`, `--acp`, and `--wire` flags (shell is still the default)
+
+## [0.51] - 2025-11-8
+
+- Lib: Rename `Soul.model` to `Soul.model_name`
+- Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `kimi_cli.llm`
+- Lib: Add `"thinking"` to `ModelCapability`
+- Lib: Remove `LLM.supports_image_in` property
+- Lib: Add required `Soul.model_capabilities` property
+- Lib: Rename `KimiSoul.set_thinking_mode` to `KimiSoul.set_thinking`
+- Lib: Add `KimiSoul.thinking` property
+- UI: Better checks and notices for LLM model capabilities
+- UI: Clear the screen for `/clear` meta command
+- Tool: Support auto-downloading ripgrep on Windows
+- CLI: Add `--thinking` option to start in thinking mode
+- ACP: Support thinking content in ACP mode
+
 ## [0.50] - 2025-11-07
 
 ### Changed

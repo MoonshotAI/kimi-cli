@@ -5,8 +5,8 @@ from functools import partial
 from pathlib import Path
 
 import aiofiles
-from kosong.base.message import Message
 from kosong.chat_provider import ChatProviderError
+from kosong.message import Message
 from rich import print
 
 from kimi_cli.cli import InputFormat, OutputFormat

@@ -1,7 +1,7 @@
 # ruff: noqa
 
 from inline_snapshot import snapshot
-from kosong.base.tool import Tool
+from kosong.tooling import Tool
 import pytest
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE

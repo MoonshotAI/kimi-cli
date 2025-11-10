@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from kosong.base.message import ContentPart, ToolCall, ToolCallPart
+from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolOk, ToolResult
 
 if TYPE_CHECKING:

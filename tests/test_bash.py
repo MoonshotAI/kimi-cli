@@ -1,5 +1,6 @@
 """Tests for the shell tool."""
 
+import platform
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,10 @@ from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.bash import Bash, Params
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
+
+pytestmark = pytest.mark.skipif(
+    platform.system() == "Windows", reason="Bash tool tests are disabled on Windows."
+)
 
 
 @pytest.mark.asyncio

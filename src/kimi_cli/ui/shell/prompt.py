@@ -5,9 +5,10 @@ import getpass
 import json
 import os
 import re
-import sys
 import time
+from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from hashlib import md5
@@ -15,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import override
 
-from kosong.base.message import ContentPart, ImageURLPart, TextPart
+from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
@@ -36,8 +37,10 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
 
+from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
+from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
@@ -311,7 +314,26 @@ class FileMentionCompleter(Completer):
         mention_doc = Document(text=fragment, cursor_position=len(fragment))
         self._fragment_hint = fragment
         try:
-            yield from self._fuzzy.get_completions(mention_doc, complete_event)
+            # First, ask the fuzzy completer for candidates.
+            candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
+
+            # re-rank: prefer basename matches
+            frag_lower = fragment.lower()
+
+            def _rank(c: Completion) -> tuple:
+                path = c.text
+                base = path.rstrip("/").split("/")[-1].lower()
+                if base.startswith(frag_lower):
+                    cat = 0
+                elif frag_lower in base:
+                    cat = 1
+                else:
+                    cat = 2
+                # preserve original FuzzyCompleter's order in the same category
+                return (cat,)
+
+            candidates.sort(key=_rank)
+            yield from candidates
         finally:
             self._fragment_hint = None
 
@@ -385,12 +407,52 @@ class UserInput(BaseModel):
 
 
 _REFRESH_INTERVAL = 1.0
-_toast_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
 
 
-def toast(message: str, duration: float = 5.0) -> None:
+@dataclass(slots=True)
+class _ToastEntry:
+    topic: str | None
+    """There can be only one toast of each non-None topic in the queue."""
+    message: str
+    duration: float
+
+
+_toast_queue = deque[_ToastEntry]()
+"""The queue of toasts to show, including the one currently being shown (the first one)."""
+
+
+def toast(
+    message: str,
+    duration: float = 5.0,
+    topic: str | None = None,
+    immediate: bool = False,
+) -> None:
     duration = max(duration, _REFRESH_INTERVAL)
-    _toast_queue.put_nowait((message, duration))
+    entry = _ToastEntry(topic=topic, message=message, duration=duration)
+    if topic is not None:
+        # Remove existing toasts with the same topic
+        for existing in list(_toast_queue):
+            if existing.topic == topic:
+                _toast_queue.remove(existing)
+    if immediate:
+        _toast_queue.appendleft(entry)
+    else:
+        _toast_queue.append(entry)
+
+
+def _current_toast() -> _ToastEntry | None:
+    if not _toast_queue:
+        return None
+    return _toast_queue[0]
+
+
+def _toast_thinking(thinking: bool) -> None:
+    toast(
+        f"thinking {'on' if thinking else 'off'}, tab to toggle",
+        duration=3.0,
+        topic="thinking",
+        immediate=True,
+    )
 
 
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
@@ -399,15 +461,22 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 
 
 class CustomPromptSession:
-    def __init__(self, status_provider: Callable[[], StatusSnapshot]):
+    def __init__(
+        self,
+        *,
+        status_provider: Callable[[], StatusSnapshot],
+        model_capabilities: set[ModelCapability],
+        initial_thinking: bool,
+    ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
         work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
+        self._model_capabilities = model_capabilities
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
-        self._thinking: bool = False
+        self._thinking = initial_thinking
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -480,10 +549,18 @@ class CustomPromptSession:
         def is_agent_mode() -> bool:
             return self._mode == PromptMode.AGENT
 
+        _toast_thinking(self._thinking)
+
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _switch_thinking(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
+            if "thinking" not in self._model_capabilities:
+                console.print(
+                    "[yellow]Thinking mode is not supported by the selected LLM model[/yellow]"
+                )
+                return
             self._thinking = not self._thinking
+            _toast_thinking(self._thinking)
             event.app.invalidate()
 
         self._shortcut_hints = shortcut_hints
@@ -499,8 +576,6 @@ class CustomPromptSession:
         )
 
         self._status_refresh_task: asyncio.Task | None = None
-        self._current_toast: str | None = None
-        self._current_toast_duration: float = 0.0
 
     def _render_message(self) -> FormattedText:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
@@ -578,6 +653,10 @@ class CustomPromptSession:
         if image is None:
             return False
 
+        if "image_in" not in self._model_capabilities:
+            console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
+            return False
+
         attachment_id = f"{random_string(8)}.png"
         png_bytes = BytesIO()
         image.save(png_bytes, format="PNG")
@@ -600,7 +679,7 @@ class CustomPromptSession:
         return True
 
     async def prompt(self) -> UserInput:
-        with patch_stdout():
+        with patch_stdout(raw=True):
             command = str(await self._session.prompt_async()).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
         self._append_history_entry(command)
@@ -675,28 +754,24 @@ class CustomPromptSession:
         status = self._status_provider()
         status_text = self._format_status(status)
 
-        if self._current_toast is not None:
-            fragments.extend([("", self._current_toast), ("", " " * 2)])
-            columns -= len(self._current_toast) + 2
-            self._current_toast_duration -= _REFRESH_INTERVAL
-            if self._current_toast_duration <= 0.0:
-                self._current_toast = None
+        current_toast = _current_toast()
+        if current_toast is not None:
+            fragments.extend([("", current_toast.message), ("", " " * 2)])
+            columns -= len(current_toast.message) + 2
+            current_toast.duration -= _REFRESH_INTERVAL
+            if current_toast.duration <= 0.0:
+                _toast_queue.popleft()
         else:
             shortcuts = [
                 *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
-            if self._mode == PromptMode.AGENT:
-                shortcuts.append("tab: toggle thinking")
             for shortcut in shortcuts:
                 if columns - len(status_text) > len(shortcut) + 2:
                     fragments.extend([("", shortcut), ("", " " * 2)])
                     columns -= len(shortcut) + 2
                 else:
                     break
-
-        if self._current_toast is None and not _toast_queue.empty():
-            self._current_toast, self._current_toast_duration = _toast_queue.get_nowait()
 
         padding = max(1, columns - len(status_text))
         fragments.append(("", " " * padding))
@@ -708,107 +783,3 @@ class CustomPromptSession:
     def _format_status(status: StatusSnapshot) -> str:
         bounded = max(0.0, min(status.context_usage, 1.0))
         return f"context: {bounded:.1%}"
-
-
-def ensure_new_line() -> None:
-    """Ensure the next prompt starts at column 0 regardless of prior command output."""
-
-    if not sys.stdout.isatty() or not sys.stdin.isatty():
-        return
-
-    needs_break = True
-    if sys.platform == "win32":
-        column = _cursor_column_windows()
-        needs_break = column not in (None, 0)
-    else:
-        column = _cursor_column_unix()
-        needs_break = column not in (None, 1)
-
-    if needs_break:
-        _write_newline()
-
-
-def _cursor_column_unix() -> int | None:
-    assert sys.platform != "win32"
-
-    import select
-    import termios
-    import tty
-
-    _CURSOR_QUERY = "\x1b[6n"
-    _CURSOR_POSITION_RE = re.compile(r"\x1b\[(\d+);(\d+)R")
-
-    fd = sys.stdin.fileno()
-    oldterm = termios.tcgetattr(fd)
-
-    try:
-        tty.setcbreak(fd)
-        sys.stdout.write(_CURSOR_QUERY)
-        sys.stdout.flush()
-
-        response = ""
-        deadline = time.monotonic() + 0.2
-        while time.monotonic() < deadline:
-            timeout = max(0.01, deadline - time.monotonic())
-            ready, _, _ = select.select([sys.stdin], [], [], timeout)
-            if not ready:
-                continue
-            try:
-                chunk = os.read(fd, 32)
-            except OSError:
-                break
-            if not chunk:
-                break
-            response += chunk.decode(encoding="utf-8", errors="ignore")
-            match = _CURSOR_POSITION_RE.search(response)
-            if match:
-                return int(match.group(2))
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, oldterm)
-
-    return None
-
-
-def _cursor_column_windows() -> int | None:
-    assert sys.platform == "win32"
-
-    import ctypes
-    from ctypes import wintypes
-
-    kernel32 = ctypes.windll.kernel32
-    _STD_OUTPUT_HANDLE = -11  # Windows API constant for standard output handle
-    handle = kernel32.GetStdHandle(_STD_OUTPUT_HANDLE)
-    invalid_handle_value = ctypes.c_void_p(-1).value
-    if handle in (0, invalid_handle_value):
-        return None
-
-    class COORD(ctypes.Structure):
-        _fields_ = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
-
-    class SMALL_RECT(ctypes.Structure):
-        _fields_ = [
-            ("Left", wintypes.SHORT),
-            ("Top", wintypes.SHORT),
-            ("Right", wintypes.SHORT),
-            ("Bottom", wintypes.SHORT),
-        ]
-
-    class CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", COORD),
-            ("dwCursorPosition", COORD),
-            ("wAttributes", wintypes.WORD),
-            ("srWindow", SMALL_RECT),
-            ("dwMaximumWindowSize", COORD),
-        ]
-
-    csbi = CONSOLE_SCREEN_BUFFER_INFO()
-    if not kernel32.GetConsoleScreenBufferInfo(handle, ctypes.byref(csbi)):
-        return None
-
-    return int(csbi.dwCursorPosition.X)
-
-
-def _write_newline() -> None:
-    sys.stdout.write("\n")
-    sys.stdout.flush()

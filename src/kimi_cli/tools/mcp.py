@@ -4,7 +4,7 @@ import fastmcp
 import mcp
 from fastmcp.client.client import CallToolResult
 from fastmcp.client.transports import ClientTransport
-from kosong.base.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
+from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
 from kosong.tooling import CallableTool, ToolOk, ToolReturnType
 
 

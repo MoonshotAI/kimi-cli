@@ -2,8 +2,8 @@ from collections.abc import Sequence
 from string import Template
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from kosong.base import generate
-from kosong.base.message import ContentPart, Message, TextPart
+from kosong import generate
+from kosong.message import ContentPart, Message, TextPart
 
 import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM

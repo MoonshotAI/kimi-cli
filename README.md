@@ -15,7 +15,7 @@ Kimi CLI is a new CLI agent that can help you with your software development tas
 
 ## Key features
 
-- Shell-like UI and raw shell command execution
+- Shell-like UI and shell command execution
 - Zsh integration
 - [Agent Client Protocol] support
 - MCP support

@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "0.50"
+version = "0.51"
 description = "Kimi CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -8,8 +8,8 @@ dependencies = [
     "agent-client-protocol==0.6.3",
     "aiofiles==25.1.0",
     "aiohttp==3.13.2",
-    "click==8.3.0",
-    "kosong==0.18.0",
+    "typer==0.20.0",
+    "kosong==0.21.0",
     "loguru==0.7.3",
     "patch-ng==1.19.0",
     "prompt-toolkit==3.0.52",
@@ -27,12 +27,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "inline-snapshot[black]>=0.31.0",
+    "inline-snapshot[black]>=0.31.1",
     "pyinstaller>=6.16.0",
     "pyright>=1.1.407",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
-    "ruff>=0.14.1",
+    "ruff>=0.14.4",
 ]
 
 [build-system]
@@ -44,7 +44,7 @@ module-name = ["kimi_cli"]
 source-exclude = ["tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [project.scripts]
-kimi = "kimi_cli.cli:main"
+kimi = "kimi_cli.cli:cli"
 
 [tool.ruff]
 line-length = 100
