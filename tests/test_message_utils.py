@@ -101,3 +101,21 @@ def test_extract_text_from_empty_string():
     result = message_extract_text(message)
 
     assert result == ""
+
+
+def test_stringify_collapses_large_text_by_default():
+    """Test that large text is collapsed in default context."""
+    large_text = "\n".join(["line"] * 60)
+    message = Message(role="user", content=large_text)
+    result = message_stringify(message)
+
+    assert result == "[pasted 60 lines]"
+
+
+def test_stringify_respects_replay_context():
+    """Test that large text is shown in full in replay context."""
+    large_text = "\n".join(["line"] * 60)
+    message = Message(role="user", content=large_text)
+    result = message_stringify(message, context="replay")
+
+    assert result == large_text
