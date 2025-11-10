@@ -59,18 +59,12 @@ def test_pyinstaller_datas():
             ),
             ("src/kimi_cli/agents/default/agent.yaml", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
-            ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
-            (
-                f"src/kimi_cli/deps/bin/{'rg.exe' if platform.system() == 'Windows' else 'rg'}",
-                "kimi_cli/deps/bin",
-            ),
-            ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
+            ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"), ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
             ("src/kimi_cli/prompts/init.md", "kimi_cli/prompts"),
             (
                 "src/kimi_cli/tools/bash/bash.md",
                 "kimi_cli/tools/bash",
-            ),
-            (
+            ), ("src/kimi_cli/tools/bash/cmd.md", "kimi_cli/tools/bash"), (
                 "src/kimi_cli/tools/dmail/dmail.md",
                 "kimi_cli/tools/dmail",
             ),

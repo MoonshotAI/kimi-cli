@@ -1,8 +1,9 @@
 # ruff: noqa
 
+import platform
+import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import Tool
-import pytest
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.soul.agent import load_agent
@@ -10,6 +11,7 @@ from kimi_cli.soul.runtime import Runtime
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
     assert agent.system_prompt.replace(

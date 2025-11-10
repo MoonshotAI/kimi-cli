@@ -1,5 +1,6 @@
 # ruff: noqa
 
+import platform
 from pathlib import Path
 from inline_snapshot import snapshot
 
@@ -96,7 +97,7 @@ Test agents content
 """,
                 [
                     "Think",
-                    "Bash",
+                    "CMD" if platform.system() == "Windows" else "Bash",
                     "ReadFile",
                     "Glob",
                     "Grep",
