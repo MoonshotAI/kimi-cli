@@ -220,9 +220,7 @@ async def test_next_available_rotation_concurrent_calls(tmp_path):
     """Concurrent reservations must yield unique paths."""
 
     target = tmp_path / "events.log"
-    results = await asyncio.gather(
-        *(next_available_rotation(target) for _ in range(5))
-    )
+    results = await asyncio.gather(*(next_available_rotation(target) for _ in range(5)))
 
     assert len({path.name for path in results}) == 5
     assert {path.name for path in results} == {
