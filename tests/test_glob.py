@@ -233,6 +233,7 @@ async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_d
     assert "starts with '**' which is not allowed" in result.message
     assert "Use more specific patterns instead" in result.message
     # Should include directory listing
+    assert isinstance(result.output, str)
     assert "file1.txt" in result.output
     assert "file2.py" in result.output
     assert "src" in result.output
