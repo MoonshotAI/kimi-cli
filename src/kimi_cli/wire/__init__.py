@@ -1,6 +1,6 @@
 import asyncio
 
-from kosong.base.message import ContentPart, ToolCallPart
+from kosong.message import ContentPart, ToolCallPart
 
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import WireMessage

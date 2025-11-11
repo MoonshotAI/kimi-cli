@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-import click
 import pytest
+import typer
 
 from kimi_cli.cli import _parse_log_level_overrides
 from kimi_cli.utils.logging import _ModuleLevelFilter
@@ -58,7 +58,7 @@ def test_parse_log_level_overrides_is_case_insensitive():
 
 
 def test_parse_log_level_overrides_rejects_missing_module():
-    with pytest.raises(click.BadOptionUsage):
+    with pytest.raises(typer.BadParameter):
         _parse_log_level_overrides(("=INFO",))
 
 

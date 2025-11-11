@@ -1,4 +1,5 @@
 import asyncio
+import platform
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, override
@@ -25,9 +26,13 @@ class Params(BaseModel):
     )
 
 
+_NAME = "CMD" if platform.system() == "Windows" else "Bash"
+_DESC_FILE = "cmd.md" if platform.system() == "Windows" else "bash.md"
+
+
 class Bash(CallableTool2[Params]):
-    name: str = "Bash"
-    description: str = load_desc(Path(__file__).parent / "bash.md", {})
+    name: str = _NAME
+    description: str = load_desc(Path(__file__).parent / _DESC_FILE, {})
     params: type[Params] = Params
 
     def __init__(self, approval: Approval, **kwargs: Any):

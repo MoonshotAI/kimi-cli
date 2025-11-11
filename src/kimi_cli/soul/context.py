@@ -4,7 +4,7 @@ from pathlib import Path
 
 import aiofiles
 import aiofiles.os
-from kosong.base.message import Message
+from kosong.message import Message
 
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger

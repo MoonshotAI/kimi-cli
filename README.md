@@ -15,7 +15,7 @@ Kimi CLI is a new CLI agent that can help you with your software development tas
 
 ## Key features
 
-- Shell-like UI and raw shell command execution
+- Shell-like UI and shell command execution
 - Zsh integration
 - [Agent Client Protocol] support
 - MCP support
@@ -24,9 +24,6 @@ Kimi CLI is a new CLI agent that can help you with your software development tas
 [Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
 
 ## Installation
-
-> [!IMPORTANT]
-> Kimi CLI currently only supports macOS and Linux. Windows support is coming soon.
 
 Kimi CLI is published as a Python package on PyPI. We highly recommend installing it with [uv](https://docs.astral.sh/uv/). If you have not installed uv yet, please follow the instructions [here](https://docs.astral.sh/uv/getting-started/installation/) to install it first.
 
