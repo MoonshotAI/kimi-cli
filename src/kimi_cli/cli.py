@@ -1,9 +1,9 @@
 import asyncio
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Annotated, Any, Iterable, Literal
+from typing import Annotated, Any, Literal
 
 import typer
 
