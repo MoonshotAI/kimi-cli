@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections import deque
 from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
@@ -11,7 +12,9 @@ from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.spinner import Spinner
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
@@ -26,6 +29,7 @@ from kimi_cli.wire.message import (
     ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
+    PreviewChange,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -390,6 +394,8 @@ class _LiveView:
                 self.request_approval(msg)
             case SubagentEvent():
                 self.handle_subagent_event(msg)
+            case PreviewChange():
+                self.append_preview(msg)
 
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
         # handle ESC key to cancel the run
@@ -559,6 +565,36 @@ class _LiveView:
                 # TODO: may need to handle multi-level nested subagents
                 pass
 
+    def append_preview(self, msg: PreviewChange):
+        content_type = msg.content_type
+        if content_type == "markdown":
+            body = Markdown(
+                msg.content,
+                justify="left",
+            )
+        elif content_type in {"text", "text only"}:
+            body = Text(msg.content)
+        elif msg.style == "diff":
+            body = _DiffView.get_view(msg.file_path, msg.content, msg.content_type)
+        else:
+            body = Syntax(
+                msg.content,
+                content_type,
+                theme="monokai",
+                line_numbers=True,
+                background_color="default",
+                padding=(0, 0),
+            )
+
+        width = int(console.width * 0.8)
+        panel = Panel(
+            body,
+            border_style="wheat4",
+            width=width,
+        )
+        console.print(panel)
+        msg.resolve()
+
 
 def _with_bullet(
     renderable: RenderableType,
@@ -574,3 +610,71 @@ def _with_bullet(
         bullet = Text("•")
     table.add_row(bullet, renderable)
     return table
+
+
+class _DiffView:
+    RED = "#3A0003"
+    GREEN = "#242F12"
+    GRAY = "grey50"
+
+    @staticmethod
+    def parse_diff_header(diff_line: str) -> tuple[int, int, int, int]:
+        pattern = r"@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@"
+        match = re.match(pattern, diff_line)
+
+        if not match:
+            return (0, 0, 0, 0)
+
+        old_start, old_lines, new_start, new_lines = match.groups()
+
+        old_lines = int(old_lines) if old_lines else 1
+        new_lines = int(new_lines) if new_lines else 1
+
+        return (int(old_start), old_lines, int(new_start), new_lines)
+
+    @staticmethod
+    def get_view(file: str, code: str, lexer: str) -> RenderableType:
+        if not code:
+            return Group(
+                Text(f"Edit {file}\n", style="grey50"), Text("nothing changed", style="grey50")
+            )
+
+        table = Table.grid(padding=(0, 1))
+        table.add_column(style=_DiffView.GRAY, no_wrap=True)  # line number
+        table.add_column(style=_DiffView.GRAY, no_wrap=True)  # Diff marker
+        table.add_column()  # code
+
+        ln = oln = nln = 0
+        for line in code.splitlines():
+            if line.startswith("---") or line.startswith("+++"):
+                continue
+
+            if line.startswith("@@"):
+                ln = oln = nln = _DiffView.parse_diff_header(line)[0] - 1
+                if len(table.rows) > 0:
+                    table.add_row(Rule(style=_DiffView.GRAY))
+                continue
+
+            if line.startswith("+"):
+                marker = Text("+", style="green")
+                syntax = Syntax(line[1:], lexer, theme="monokai", background_color=_DiffView.GREEN)
+                nln += 1
+                ln = nln
+            elif line.startswith("-"):
+                syntax = Syntax(line[1:], lexer, theme="monokai", background_color=_DiffView.RED)
+                marker = Text("-", style="red")
+                oln += 1
+                ln = oln
+            else:
+                marker = " "
+                syntax = Syntax(
+                    line[1:], lexer, theme="monokai", word_wrap=True, background_color="default"
+                )
+                oln += 1
+                nln += 1
+                ln += 1
+
+            table.add_row(Text(str(ln), style=_DiffView.GRAY), marker, syntax)
+
+        text = Text(f"Edit {file}\n", style=_DiffView.GRAY)
+        return Group(text, table)

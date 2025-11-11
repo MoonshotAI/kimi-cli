@@ -48,7 +48,15 @@ class SubagentEvent(NamedTuple):
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
-type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | SubagentEvent
+type Event = (
+    ControlFlowEvent
+    | ContentPart
+    | ToolCall
+    | ToolCallPart
+    | ToolResult
+    | SubagentEvent
+    | PreviewChange
+)
 
 
 class ApprovalResponse(Enum):
@@ -94,7 +102,25 @@ class ApprovalRequest:
         return self._future.done()
 
 
-type WireMessage = Event | ApprovalRequest
+class PreviewChange:
+    def __init__(
+        self, file_path: str, content: str, content_type: str = "markdown", style: str = "auto"
+    ):
+        self.id = str(uuid.uuid4())
+        self.file_path = file_path
+        self.content = content
+        self.content_type = content_type
+        self.style = style
+        self._future = asyncio.Future[bool]()
+
+    async def wait(self) -> bool:
+        return await self._future
+
+    def resolve(self) -> None:
+        self._future.set_result(True)
+
+
+type WireMessage = Event | ApprovalRequest | PreviewChange
 
 
 def serialize_event(event: Event) -> dict[str, Any]:
@@ -144,6 +170,12 @@ def serialize_event(event: Event) -> dict[str, Any]:
                 },
             }
 
+        case PreviewChange():
+            return {
+                "type": "preview_request",
+                "payload": serialize_preview_request(event),
+            }
+
 
 def serialize_approval_request(request: ApprovalRequest) -> dict[str, Any]:
     """
@@ -189,3 +221,13 @@ def _serialize_tool_output(
         return output.model_dump(mode="json", exclude_none=True)
     else:  # Sequence[ContentPart]
         return [part.model_dump(mode="json", exclude_none=True) for part in output]
+
+
+def serialize_preview_request(request: PreviewChange) -> dict[str, Any]:
+    return {
+        "id": request.id,
+        "file_path": request.file_path,
+        "content": request.content,
+        "content_type": request.content_type,
+        "style": request.style,
+    }

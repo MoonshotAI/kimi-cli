@@ -10,6 +10,7 @@ from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.preview import Preview
 from kimi_cli.utils.logging import logger
 
 
@@ -68,6 +69,7 @@ class Runtime(NamedTuple):
     builtin_args: BuiltinSystemPromptArgs
     denwa_renji: DenwaRenji
     approval: Approval
+    preview: Preview
 
     @staticmethod
     async def create(
@@ -93,4 +95,5 @@ class Runtime(NamedTuple):
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
+            preview=Preview(),
         )
