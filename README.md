@@ -157,7 +157,7 @@ You can also persist the mapping in `~/.kimi/config.json`:
 }
 ```
 
-Module names act as prefixes, so `kimi_cli.tools` applies to all nested modules under that namespace.
+Module names act as prefixes and are case-insensitive, so `KIMI_CLI.Tools` works the same as `kimi_cli.tools` for all nested modules.
 
 ## Development
 

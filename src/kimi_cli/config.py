@@ -92,8 +92,13 @@ class LoggingConfig(BaseModel):
             try:
                 logger.level(level_name)
             except ValueError as exc:  # pragma: no cover - loguru raises ValueError
-                raise ValueError(f"Invalid log level '{level_name}' for module '{module_name}'") from exc
-            normalized[module_name] = level_name
+                raise ValueError(
+                    f"Invalid log level '{level_name}' for module '{module_name}'"
+                ) from exc
+            key = module_name.rstrip(".").lower()
+            if not key:
+                key = "default"
+            normalized[key] = level_name
         self.levels = normalized
         return self
 
@@ -108,7 +113,10 @@ class Config(BaseModel):
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
-    logging: LoggingConfig = Field(default_factory=LoggingConfig, description="Logging configuration")
+    logging: LoggingConfig = Field(
+        default_factory=LoggingConfig,
+        description="Logging configuration",
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

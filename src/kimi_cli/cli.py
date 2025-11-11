@@ -169,12 +169,13 @@ def kimi(
 ):
     """Kimi, your next CLI agent."""
     from kimi_cli.app import KimiCLI
+    from kimi_cli.config import load_config
     from kimi_cli.session import Session
     from kimi_cli.share import get_share_dir
-    from kimi_cli.config import load_config
     from kimi_cli.utils.logging import configure_file_logging, logger
 
     config = load_config()
+
     def _noop_echo(*args: Any, **kwargs: Any):
         pass
 
@@ -298,11 +299,12 @@ def _parse_log_level_overrides(values: tuple[str, ...]) -> dict[str, str]:
 
 def _normalize_module_key(module: str) -> str:
     cleaned = module.strip().rstrip(".")
-    if not cleaned:
+    normalized = cleaned.lower()
+    if not normalized:
         return _DEFAULT_LOG_LEVEL_KEY
-    if cleaned.lower() == _DEFAULT_LOG_LEVEL_KEY:
+    if normalized == _DEFAULT_LOG_LEVEL_KEY:
         return _DEFAULT_LOG_LEVEL_KEY
-    return cleaned
+    return normalized
 
 
 def main():

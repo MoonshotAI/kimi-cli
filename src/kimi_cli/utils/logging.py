@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import IO, Mapping
+from typing import IO, TYPE_CHECKING, Any
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from loguru import Record
+else:  # pragma: no cover - runtime fallback for typing-only import
+    Record = dict[str, Any]  # type: ignore[assignment]
 
 MODULE_ROOTS = ("kimi_cli", "kosong")
 DEFAULT_LEVEL_KEY = "default"
@@ -38,8 +44,8 @@ def configure_file_logging(
 def _normalize_levels(levels: Mapping[str, str], base_level: str) -> dict[str, int]:
     normalized: dict[str, int] = {}
     for module, level_name in levels.items():
-        key = module.strip().rstrip(".") or DEFAULT_LEVEL_KEY
-        if key.lower() == DEFAULT_LEVEL_KEY:
+        key = module.strip().rstrip(".").lower() or DEFAULT_LEVEL_KEY
+        if key == DEFAULT_LEVEL_KEY:
             key = DEFAULT_LEVEL_KEY
         normalized[key] = _level_to_no(level_name)
     if DEFAULT_LEVEL_KEY not in normalized:
@@ -66,7 +72,7 @@ class _ModuleLevelFilter:
             reverse=True,
         )
 
-    def __call__(self, record: dict) -> bool:
+    def __call__(self, record: Record) -> bool:
         module_path = self._derive_module_path(record)
         threshold = self._resolve_threshold(module_path)
         return record["level"].no >= threshold
@@ -79,7 +85,7 @@ class _ModuleLevelFilter:
         return self._levels[DEFAULT_LEVEL_KEY]
 
     @staticmethod
-    def _derive_module_path(record: dict) -> str | None:
+    def _derive_module_path(record: Record) -> str | None:
         file_info = record.get("file")
         path_str = getattr(file_info, "path", None)
         if not path_str:
@@ -87,9 +93,10 @@ class _ModuleLevelFilter:
         path = Path(path_str)
         module_parts = path.with_suffix("").parts
         for idx, part in enumerate(module_parts):
-            if part in MODULE_ROOTS:
-                return ".".join(module_parts[idx:])
-        return record.get("module")
+            if part.lower() in MODULE_ROOTS:
+                return ".".join(module_parts[idx:]).lower()
+        module_name = record.get("module")
+        return module_name.lower() if module_name else None
 
 
 class StreamToLogger(IO[str]):
