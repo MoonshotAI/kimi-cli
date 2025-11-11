@@ -211,6 +211,7 @@ async def test_next_available_rotation_creates_placeholder(tmp_path):
     target = tmp_path / "log.txt"
     reserved = await next_available_rotation(target)
 
+    assert reserved is not None
     assert reserved == tmp_path / "log_1.txt"
     assert reserved.exists()
 
@@ -222,8 +223,10 @@ async def test_next_available_rotation_concurrent_calls(tmp_path):
     target = tmp_path / "events.log"
     results = await asyncio.gather(*(next_available_rotation(target) for _ in range(5)))
 
-    assert len({path.name for path in results}) == 5
-    assert {path.name for path in results} == {
+    assert all(path is not None for path in results)
+    names = {path.name for path in results if path is not None}
+    assert len(names) == 5
+    assert names == {
         "events_1.log",
         "events_2.log",
         "events_3.log",
