@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from kosong.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
@@ -16,7 +18,7 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
             message += "\nThis is an unexpected error and the tool is probably not working."
         content: list[ContentPart] = [system(f"ERROR: {message}")]
         if tool_result.result.output:
-            content.append(TextPart(text=tool_result.result.output))
+            content.extend(_output_to_content_parts(tool_result.result.output))
         return [
             Message(
                 role="tool",
@@ -63,7 +65,17 @@ def tool_ok_to_message_content(result: ToolOk) -> list[ContentPart]:
     content: list[ContentPart] = []
     if result.message:
         content.append(system(result.message))
-    match output := result.output:
+    content.extend(_output_to_content_parts(result.output))
+    if not content:
+        content.append(system("Tool output is empty."))
+    return content
+
+
+def _output_to_content_parts(
+    output: str | ContentPart | Sequence[ContentPart],
+) -> list[ContentPart]:
+    content: list[ContentPart] = []
+    match output:
         case str(text):
             if text:
                 content.append(TextPart(text=text))
@@ -71,6 +83,4 @@ def tool_ok_to_message_content(result: ToolOk) -> list[ContentPart]:
             content.append(output)
         case _:
             content.extend(output)
-    if not content:
-        content.append(system("Tool output is empty."))
     return content

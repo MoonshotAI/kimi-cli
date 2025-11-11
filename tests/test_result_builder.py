@@ -89,6 +89,7 @@ def test_error_with_truncation():
     builder.write("Very long output that exceeds limit")
     result = builder.error("Command failed", brief="Failed")
 
+    assert isinstance(result.output, str)
     assert "[...truncated]" in result.output
     assert "Command failed" in result.message
     assert "Output is truncated" in result.message
