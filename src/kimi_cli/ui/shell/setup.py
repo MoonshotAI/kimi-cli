@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from typing import TYPE_CHECKING, NamedTuple
 
 import aiohttp
@@ -6,10 +7,12 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
+from kimi_cli.cli import Exit
 from kimi_cli.config import LLMModel, LLMProvider, MoonshotSearchConfig, load_config, save_config
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
 from kimi_cli.utils.aiohttp import new_client_session
+from kimi_cli.utils.term import wait_for_key_press
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import ShellApp
@@ -73,13 +76,25 @@ async def setup(app: "ShellApp", args: list[str]):
         )
 
     save_config(config)
-    console.print("[green]✓[/green] Kimi CLI has been setup! Reloading...")
-    await asyncio.sleep(1)
-    console.clear()
 
-    from kimi_cli.cli import Reload
+    # Check if running in PyInstaller bundle
+    is_frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
-    raise Reload
+    if is_frozen:
+        # In PyInstaller bundle, can't reload automatically
+        console.print("[green]✓[/green] Kimi CLI has been setup!")
+        console.print("[yellow]Please restart Kimi CLI to apply the new configuration.[/yellow]")
+        wait_for_key_press("Press any key to exit...")
+        raise Exit(0)  # Exit the application cleanly
+    else:
+        # In development environment, can reload automatically
+        console.print("[green]✓[/green] Kimi CLI has been setup! Reloading...")
+        await asyncio.sleep(1)
+        console.clear()
+
+        from kimi_cli.cli import Reload
+
+        raise Reload
 
 
 class _SetupResult(NamedTuple):
@@ -187,6 +202,17 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 @meta_command
 def reload(app: "ShellApp", args: list[str]):
     """Reload configuration"""
-    from kimi_cli.cli import Reload
+    # Check if running in PyInstaller bundle
+    is_frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
-    raise Reload
+    if is_frozen:
+        # In PyInstaller bundle, can't reload automatically
+        console.print("[yellow]Cannot reload configuration in packaged application.[/yellow]")
+        console.print("[yellow]Please restart Kimi CLI to apply configuration changes.[/yellow]")
+        wait_for_key_press("Press any key to exit...")
+        raise Exit(0)  # Exit the application cleanly
+    else:
+        # In development environment, can reload automatically
+        from kimi_cli.cli import Reload
+
+        raise Reload

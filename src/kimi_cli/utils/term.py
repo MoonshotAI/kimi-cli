@@ -108,6 +108,41 @@ def _write_newline() -> None:
     sys.stdout.flush()
 
 
+def wait_for_key_press(message: str = "Press any key to continue...") -> None:
+    """Wait for user to press any key, with a prompt message.
+
+    Args:
+        message: The message to display to the user.
+    """
+    if not sys.stdout.isatty() or not sys.stdin.isatty():
+        # Non-interactive environment, just return
+        return
+
+    sys.stdout.write(message)
+    sys.stdout.flush()
+
+    if sys.platform == "win32":
+        # Windows implementation
+        import msvcrt
+
+        msvcrt.getch()
+    else:
+        # Unix-like systems
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        oldterm = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, oldterm)
+
+    # Write a newline to move to the next line
+    sys.stdout.write("\n")
+
+
 if __name__ == "__main__":
     print("test", end="", flush=True)
     ensure_new_line()

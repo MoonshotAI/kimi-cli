@@ -16,6 +16,15 @@ class Reload(Exception):
     pass
 
 
+class Exit(Exception):
+    """Normal exit from application."""
+
+    def __init__(self, code: int = 0):
+        self.code = code
+
+    pass
+
+
 cli = typer.Typer(
     add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -315,6 +324,8 @@ def kimi(
             sys.exit(1)
         except Reload:
             continue
+        except Exit as e:
+            sys.exit(e.code)
 
 
 if __name__ == "__main__":
