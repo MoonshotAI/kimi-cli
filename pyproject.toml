@@ -30,8 +30,8 @@ dev = [
     "inline-snapshot[black]>=0.31.1",
     "pyinstaller>=6.16.0",
     "pyright>=1.1.407",
-    "pytest>=8.4.2",
-    "pytest-asyncio>=1.2.0",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.3.0",
     "ruff>=0.14.4",
 ]
 
