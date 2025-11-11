@@ -1,4 +1,4 @@
-from kosong.base.message import ImageURLPart, Message, TextPart  # type: ignore[import]
+from kosong.message import ImageURLPart, Message, TextPart
 
 from kimi_cli.soul.message import TOOL_NON_TEXT_USER_NOTICE, system
 from kimi_cli.ui.shell.replay import _is_user_message
