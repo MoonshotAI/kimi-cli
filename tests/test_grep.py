@@ -248,11 +248,14 @@ async def test_grep_multiline_mode(grep_tool: Grep):
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create a file with multiline content
         test_file = Path(temp_dir) / "multiline.py"
-        test_file.write_text("""def function():
+        test_file.write_text(
+            """def function():
     '''This is a
     multiline docstring'''
     pass
-""")
+""",
+            newline="\n",
+        )
 
         # Test multiline pattern
         result = await grep_tool(

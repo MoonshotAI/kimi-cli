@@ -4,7 +4,7 @@ import getpass
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from kosong.base.message import Message, TextPart
+from kosong.message import Message, TextPart
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.soul import StatusSnapshot

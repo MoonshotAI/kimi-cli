@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from inline_snapshot import snapshot
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
@@ -86,3 +87,31 @@ def test_at_guard_prevents_email_like_fragments(tmp_path: Path):
     texts = _completion_texts(completer, "email@example.com")
 
     assert not texts
+
+
+def test_basename_prefix_is_ranked_first(tmp_path: Path):
+    """Prefer basename prefix matches over cross-segment fuzzy matches.
+
+    For query 'fetch', we want '.../fetch.py' to appear before paths that only
+    match by spreading characters across segments like 'file/patch.py'.
+    """
+    # Build a small tree mimicking the real project structure
+    (tmp_path / "src" / "kimi_cli" / "tools" / "web").mkdir(parents=True)
+    (tmp_path / "src" / "kimi_cli" / "tools" / "file").mkdir(parents=True)
+
+    fetch_py = tmp_path / "src" / "kimi_cli" / "tools" / "web" / "fetch.py"
+    fetch_py.write_text("# fetch\n")
+    patch_py = tmp_path / "src" / "kimi_cli" / "tools" / "file" / "patch.py"
+    patch_py.write_text("# patch\n")
+
+    completer = FileMentionCompleter(tmp_path)
+
+    texts = _completion_texts(completer, "@fetch")
+
+    # Snapshot the full candidate list to keep order/content deterministic
+    assert texts == snapshot(
+        [
+            "src/kimi_cli/tools/web/fetch.py",
+            "src/kimi_cli/tools/file/patch.py",
+        ]
+    )

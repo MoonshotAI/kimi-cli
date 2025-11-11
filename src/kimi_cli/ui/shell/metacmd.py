@@ -4,10 +4,11 @@ from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, overload
 
-from kosong.base.message import Message
+from kosong.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
+from kimi_cli.cli import Reload
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
@@ -181,7 +182,7 @@ def version(app: "ShellApp", args: list[str]):
 @meta_command(name="release-notes")
 def release_notes(app: "ShellApp", args: list[str]):
     """Show release notes"""
-    text = format_release_notes(CHANGELOG)
+    text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
         console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
 
@@ -207,7 +208,7 @@ async def init(app: "ShellApp", args: list[str]):
         console.print("Analyzing the codebase...")
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
         app.soul = KimiSoul(soul_bak._agent, soul_bak._runtime, context=tmp_context)
-        ok = await app._run_soul_command(prompts.INIT)
+        ok = await app._run_soul_command(prompts.INIT, thinking=False)
 
         if ok:
             console.print(
@@ -233,11 +234,10 @@ async def clear(app: "ShellApp", args: list[str]):
     assert isinstance(app.soul, KimiSoul)
 
     if app.soul._context.n_checkpoints == 0:
-        console.print("[yellow]Context is empty.[/yellow]")
-        return
+        raise Reload()
 
     await app.soul._context.revert_to(0)
-    console.print("[green]✓[/green] Context has been cleared.")
+    raise Reload()
 
 
 @meta_command(kimi_soul_only=True)

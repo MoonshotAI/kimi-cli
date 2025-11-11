@@ -1,5 +1,6 @@
 """Tests for the shell tool."""
 
+import platform
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,10 @@ from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.bash import Bash, Params
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
+
+pytestmark = pytest.mark.skipif(
+    platform.system() == "Windows", reason="Bash tool tests are disabled on Windows."
+)
 
 
 @pytest.mark.asyncio
@@ -24,6 +29,7 @@ async def test_command_with_error(bash_tool: Bash):
     """Test executing a command that returns an error."""
     result = await bash_tool(Params(command="ls /nonexistent/directory"))
     assert isinstance(result, ToolError)
+    assert isinstance(result.output, str)
     assert "No such file or directory" in result.output
     assert "Command failed with exit code:" in result.message
     assert "Failed with exit code:" in result.brief

@@ -9,7 +9,7 @@ Kimi CLI is an interactive command-line interface agent specializing in software
 - **Language**: Python 3.13+
 - **Package Management**: uv (modern Python package manager)
 - **Build System**: uv_build
-- **CLI Framework**: Click
+- **CLI Framework**: Typer
 - **LLM Integration**: kosong (custom LLM framework)
 - **Async Runtime**: asyncio
 - **Testing**: pytest with asyncio support
