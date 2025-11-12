@@ -17,6 +17,7 @@ Only write entries that are worth mentioning to users.
 - Tool: Add approval request for MCP tools
 - Tool: Disable `Think` tool in default agent
 - CLI: Restore thinking mode from last time when `--thinking` is not specified
+- CLI: Fix `/reload` not working in binary packed by PyInstaller
 
 ## [0.52] - 2025-11-10
 
