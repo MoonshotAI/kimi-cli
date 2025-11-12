@@ -45,8 +45,6 @@ def _normalize_levels(levels: Mapping[str, str], base_level: str) -> dict[str, i
     normalized: dict[str, int] = {}
     for module, level_name in levels.items():
         key = module.strip().rstrip(".").lower() or DEFAULT_LEVEL_KEY
-        if key == DEFAULT_LEVEL_KEY:
-            key = DEFAULT_LEVEL_KEY
         normalized[key] = _level_to_no(level_name)
     if DEFAULT_LEVEL_KEY not in normalized:
         normalized[DEFAULT_LEVEL_KEY] = _level_to_no(base_level)
