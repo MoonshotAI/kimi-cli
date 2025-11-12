@@ -84,10 +84,8 @@ def test_tool_error_result():
     tool_error = ToolError(message="Error occurred", brief="Brief error", output="Error details")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_error)
 
-    messages = tool_result_to_messages(tool_result)
+    message = tool_result_to_messages(tool_result)
 
-    assert len(messages) == 1
-    message = messages[0]
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
@@ -102,10 +100,8 @@ def test_tool_error_without_output():
     tool_error = ToolError(message="Error occurred", brief="Brief error")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_error)
 
-    messages = tool_result_to_messages(tool_result)
+    message = tool_result_to_messages(tool_result)
 
-    assert len(messages) == 1
-    message = messages[0]
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert isinstance(message.content, list)
@@ -118,10 +114,8 @@ def test_tool_ok_with_text_only():
     tool_ok = ToolOk(output="Simple output", message="Done")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
-    messages = tool_result_to_messages(tool_result)
+    message = tool_result_to_messages(tool_result)
 
-    assert len(messages) == 1
-    message = messages[0]
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
@@ -139,29 +133,19 @@ def test_tool_ok_with_non_text_parts():
     tool_ok = ToolOk(output=[text_part, image_part], message="Mixed content")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
-    messages = tool_result_to_messages(tool_result)
+    # With current implementation, non-text parts are included in the same message
+    message = tool_result_to_messages(tool_result)
 
-    assert len(messages) == 2
+    assert isinstance(message, Message)
+    assert message.role == "tool"
+    assert message.tool_call_id == "call_123"
+    assert isinstance(message.content, list)
 
-    # First message: tool role with text parts + notification
-    tool_message = messages[0]
-    assert tool_message.role == "tool"
-    assert tool_message.tool_call_id == "call_123"
-    assert isinstance(tool_message.content, list)
-
-    # Should have system message + text part + notification
-    text_parts = [part for part in tool_message.content if isinstance(part, TextPart)]
-    assert len(text_parts) == 3
-    assert text_parts[0].text == "<system>Mixed content</system>"
-    assert text_parts[1].text == "Text content"
-    assert "non-text parts" in text_parts[2].text
-
-    # Second message: user role with non-text parts
-    user_message = messages[1]
-    assert user_message.role == "user"
-    assert isinstance(user_message.content, list)
-    assert len(user_message.content) == 1
-    assert user_message.content[0] == image_part
+    # Should have system message + text part + image part
+    assert len(message.content) == 3
+    assert message.content[0] == system("Mixed content")
+    assert message.content[1] == text_part
+    assert message.content[2] == image_part
 
 
 def test_tool_ok_with_only_non_text_parts():
@@ -170,20 +154,16 @@ def test_tool_ok_with_only_non_text_parts():
     tool_ok = ToolOk(output=image_part)
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
-    messages = tool_result_to_messages(tool_result)
+    # With current implementation, non-text parts are included in the same message
+    message = tool_result_to_messages(tool_result)
 
-    assert len(messages) == 2
-
-    # First message should have notification about non-text parts
-    tool_message = messages[0]
-    assert tool_message.role == "tool"
-    text_parts = [part for part in tool_message.content if isinstance(part, TextPart)]
-    assert any("non-text parts" in part.text for part in text_parts)
-
-    # Second message should have the non-text part
-    user_message = messages[1]
-    assert user_message.role == "user"
-    assert user_message.content == [image_part]
+    assert isinstance(message, Message)
+    assert message.role == "tool"
+    assert message.tool_call_id == "call_123"
+    assert isinstance(message.content, list)
+    # Should have only the image part (no text parts)
+    assert len(message.content) == 1
+    assert message.content[0] == image_part
 
 
 def test_tool_ok_with_only_text_parts():
@@ -191,10 +171,9 @@ def test_tool_ok_with_only_text_parts():
     tool_ok = ToolOk(output="Just text")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
-    messages = tool_result_to_messages(tool_result)
+    message = tool_result_to_messages(tool_result)
 
-    assert len(messages) == 1
-    message = messages[0]
+    assert isinstance(message, Message)
     assert message.role == "tool"
     assert isinstance(message.content, list)
     assert len(message.content) == 1
