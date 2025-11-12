@@ -281,7 +281,7 @@ def kimi(
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
     async def _run() -> bool:
-        from kimi_cli.metadata import load_metadata, save_metadata
+        from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 
         if thinking is None:
             metadata = load_metadata()
@@ -325,8 +325,6 @@ def kimi(
             )
 
             if work_dir_meta is None:
-                from kimi_cli.metadata import WorkDirMeta
-
                 logger.warning(
                     "Work dir metadata missing when marking last session, recreating: {work_dir}",
                     work_dir=session.work_dir,
