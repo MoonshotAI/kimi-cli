@@ -317,9 +317,28 @@ def kimi(
                 succeeded = await instance.run_wire_server()
 
         if succeeded:
-            session.mark_as_last()
             metadata = load_metadata()
+
+            # Update work_dir metadata with last session
+            work_dir_meta = next(
+                (wd for wd in metadata.work_dirs if wd.path == str(session.work_dir)), None
+            )
+
+            if work_dir_meta is None:
+                from kimi_cli.metadata import WorkDirMeta
+
+                logger.warning(
+                    "Work dir metadata missing when marking last session, recreating: {work_dir}",
+                    work_dir=session.work_dir,
+                )
+                work_dir_meta = WorkDirMeta(path=str(session.work_dir))
+                metadata.work_dirs.append(work_dir_meta)
+
+            work_dir_meta.last_session_id = session.id
+
+            # Update thinking mode
             metadata.thinking = instance.soul.thinking
+
             save_metadata(metadata)
 
         return succeeded
