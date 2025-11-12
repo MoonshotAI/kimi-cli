@@ -82,7 +82,7 @@ class LoggingConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_levels(self) -> "LoggingConfig":
+    def validate_levels(self) -> LoggingConfig:
         normalized: dict[str, str] = {}
         for module, level in self.levels.items():
             module_name = module.strip()
