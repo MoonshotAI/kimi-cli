@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - UI: Remove unnecessary trailing spaces in console output
+- Core: Throw error when there are unsupported message parts
 
 ## [0.52] - 2025-11-10
 

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from kosong.message import ContentPart, Message, TextPart
+from kosong.message import ContentPart, ImageURLPart, Message, TextPart, ThinkPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
+
+from kimi_cli.llm import ModelCapability
 
 
 def system(message: str) -> ContentPart:
     return TextPart(text=f"<system>{message}</system>")
 
 
-def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
-    """Convert a tool result to a list of messages."""
+def tool_result_to_message(tool_result: ToolResult) -> Message:
+    """Convert a tool result to a message."""
     if isinstance(tool_result.result, ToolError):
         assert tool_result.result.message, "ToolError should have a message"
         message = tool_result.result.message
@@ -21,45 +23,14 @@ def tool_result_to_messages(tool_result: ToolResult) -> list[Message]:
         content: list[ContentPart] = [system(f"ERROR: {message}")]
         if tool_result.result.output:
             content.extend(_output_to_content_parts(tool_result.result.output))
-        return [
-            Message(
-                role="tool",
-                content=content,
-                tool_call_id=tool_result.tool_call_id,
-            )
-        ]
+    else:
+        content = tool_ok_to_message_content(tool_result.result)
 
-    content = tool_ok_to_message_content(tool_result.result)
-    text_parts: list[ContentPart] = []
-    non_text_parts: list[ContentPart] = []
-    for part in content:
-        if isinstance(part, TextPart):
-            text_parts.append(part)
-        else:
-            non_text_parts.append(part)
-
-    if not non_text_parts:
-        return [
-            Message(
-                role="tool",
-                content=text_parts,
-                tool_call_id=tool_result.tool_call_id,
-            )
-        ]
-
-    text_parts.append(
-        system(
-            "Tool output contains non-text parts. Non-text parts are sent as a user message below."
-        )
+    return Message(
+        role="tool",
+        content=content,
+        tool_call_id=tool_result.tool_call_id,
     )
-    return [
-        Message(
-            role="tool",
-            content=text_parts,
-            tool_call_id=tool_result.tool_call_id,
-        ),
-        Message(role="user", content=non_text_parts),
-    ]
 
 
 def tool_ok_to_message_content(result: ToolOk) -> list[ContentPart]:
@@ -86,3 +57,18 @@ def _output_to_content_parts(
         case _:
             content.extend(output)
     return content
+
+
+def check_message(
+    message: Message, model_capabilities: set[ModelCapability]
+) -> set[ModelCapability]:
+    """Check the message content, return the missing model capabilities."""
+    if isinstance(message.content, str):
+        return set()
+    capabilities_needed = set[ModelCapability]()
+    for part in message.content:
+        if isinstance(part, ImageURLPart):
+            capabilities_needed.add("image_in")
+        elif isinstance(part, ThinkPart):
+            capabilities_needed.add("thinking")
+    return capabilities_needed - model_capabilities
