@@ -12,13 +12,13 @@ from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
-from rich.table import Table
 from rich.text import Text
 
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
@@ -64,7 +64,7 @@ class _ContentBlock:
         return self._spinner
 
     def compose_final(self) -> RenderableType:
-        return _with_bullet(
+        return BulletColumns(
             Markdown(
                 self.raw_text,
                 style="grey50 italic" if self.is_think else "",
@@ -115,7 +115,7 @@ class _ToolCallBlock:
         argument = extract_key_argument(self._lexer, self._tool_name)
         if argument and argument != self._argument:
             self._argument = argument
-            self._renderable: RenderableType = _with_bullet(
+            self._renderable: RenderableType = BulletColumns(
                 Text.from_markup(self._get_headline_markup()),
                 bullet=self._spinning_dots,
             )
@@ -161,7 +161,7 @@ class _ToolCallBlock:
         if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
             n_hidden = self._n_finished_subagent_tool_calls - MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
             lines.append(
-                _with_bullet(
+                BulletColumns(
                     Text(
                         f"{n_hidden} more tool call{'s' if n_hidden > 1 else ''} ...",
                         style="grey50 italic",
@@ -174,7 +174,7 @@ class _ToolCallBlock:
                 sub_call.function.arguments or "", sub_call.function.name
             )
             lines.append(
-                _with_bullet(
+                BulletColumns(
                     Text.from_markup(
                         f"Used [blue]{sub_call.function.name}[/blue]"
                         + (f" [grey50]({argument})[/grey50]" if argument else "")
@@ -192,12 +192,12 @@ class _ToolCallBlock:
             )
 
         if self.finished:
-            return _with_bullet(
+            return BulletColumns(
                 Group(*lines),
                 bullet_style="green" if isinstance(self._result, ToolOk) else "red",
             )
         else:
-            return _with_bullet(
+            return BulletColumns(
                 Group(*lines),
                 bullet=self._spinning_dots,
             )
@@ -558,19 +558,3 @@ class _LiveView:
                 # ignore other events for now
                 # TODO: may need to handle multi-level nested subagents
                 pass
-
-
-def _with_bullet(
-    renderable: RenderableType,
-    *,
-    bullet_style: str | None = None,
-    bullet: RenderableType | None = None,
-) -> RenderableType:
-    table = Table.grid(padding=(0, 0))
-    table.expand = True
-    table.add_column(width=2, justify="left", style=bullet_style)
-    table.add_column(ratio=1)
-    if bullet is None:
-        bullet = Text("•")
-    table.add_row(bullet, renderable)
-    return table
