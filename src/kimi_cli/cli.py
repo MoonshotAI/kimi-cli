@@ -352,4 +352,7 @@ def kimi(
 
 
 if __name__ == "__main__":
-    cli()
+    if "kimi_cli.cli" not in sys.modules:
+        sys.modules["kimi_cli.cli"] = sys.modules[__name__]
+
+    sys.exit(cli())
