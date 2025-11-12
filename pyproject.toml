@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "0.52"
+version = "0.53"
 description = "Kimi CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -9,7 +9,7 @@ dependencies = [
     "aiofiles==25.1.0",
     "aiohttp==3.13.2",
     "typer==0.20.0",
-    "kosong==0.23.0",
+    "kosong==0.24.0",
     "loguru==0.7.3",
     "patch-ng==1.19.0",
     "prompt-toolkit==3.0.52",
@@ -30,7 +30,7 @@ dev = [
     "inline-snapshot[black]>=0.31.1",
     "pyinstaller>=6.16.0",
     "pyright>=1.1.407",
-    "pytest>=9.0.0",
+    "pytest>=9.0.1",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.14.4",
 ]

@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.53] - 2025-11-12
 
 - UI: Remove unnecessary trailing spaces in console output
 - Core: Throw error when there are unsupported message parts
