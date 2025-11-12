@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from rich.columns import Columns
 from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
 from rich.measure import Measurement
