@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - UI: Remove unnecessary trailing spaces in console output
 - Core: Throw error when there are unsupported message parts
+- MetaCmd: Add `/yolo` meta command to enable YOLO mode after startup
 
 ## [0.52] - 2025-11-10
 

@@ -257,6 +257,15 @@ async def compact(app: ShellApp, args: list[str]):
     console.print("[green]✓[/green] Context has been compacted.")
 
 
+@meta_command(kimi_soul_only=True)
+async def yolo(app: ShellApp, args: list[str]):
+    """Enable YOLO mode (auto approve all actions)"""
+    assert isinstance(app.soul, KimiSoul)
+
+    app.soul._runtime.approval.set_yolo(True)
+    console.print("[green]✓[/green] Life is short, use YOLO!")
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401
     setup,  # noqa: F401
