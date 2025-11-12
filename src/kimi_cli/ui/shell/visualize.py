@@ -226,7 +226,10 @@ class _ApprovalRequestPanel:
 
         # Add request details
         lines.append(
-            Text(f'{self.request.sender} is requesting approval to "{self.request.description}".')
+            Text.assemble(
+                Text.from_markup(f"[blue]{self.request.sender}[/blue]"),
+                Text(f' is requesting approval to "{self.request.description}".'),
+            )
         )
 
         lines.append(Text(""))  # Empty line
