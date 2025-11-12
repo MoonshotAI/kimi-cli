@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -27,7 +29,7 @@ class AgentSpec(BaseModel):
     )
     tools: list[str] | None = Field(default=None, description="Tools")  # required
     exclude_tools: list[str] | None = Field(default=None, description="Tools to exclude")
-    subagents: dict[str, "SubagentSpec"] | None = Field(default=None, description="Subagents")
+    subagents: dict[str, SubagentSpec] | None = Field(default=None, description="Subagents")
 
 
 class SubagentSpec(BaseModel):
@@ -45,7 +47,7 @@ class ResolvedAgentSpec(NamedTuple):
     system_prompt_args: dict[str, str]
     tools: list[str]
     exclude_tools: list[str]
-    subagents: dict[str, "SubagentSpec"]
+    subagents: dict[str, SubagentSpec]
 
 
 def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:

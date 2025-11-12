@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -46,7 +48,7 @@ _PLATFORMS = [
 
 
 @meta_command
-async def setup(app: "ShellApp", args: list[str]):
+async def setup(app: ShellApp, args: list[str]):
     """Setup Kimi CLI"""
     result = await _setup()
     if not result:
@@ -185,7 +187,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 
 
 @meta_command
-def reload(app: "ShellApp", args: list[str]):
+def reload(app: ShellApp, args: list[str]):
     """Reload configuration"""
     from kimi_cli.cli import Reload
 

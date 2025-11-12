@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Execute AI-driven audits and emit pytest-style results."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import shutil

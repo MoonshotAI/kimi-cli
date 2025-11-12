@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+<<<<<<< HEAD
 from collections.abc import Mapping
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
+=======
+from typing import IO
+>>>>>>> upstream/main
 
 from loguru import logger
 

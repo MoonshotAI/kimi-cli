@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import uuid
 from collections.abc import Sequence
@@ -39,12 +41,12 @@ class CompactionEnd:
 
 
 class StatusUpdate(NamedTuple):
-    status: "StatusSnapshot"
+    status: StatusSnapshot
 
 
 class SubagentEvent(NamedTuple):
     task_tool_call_id: str
-    event: "Event"
+    event: Event
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate

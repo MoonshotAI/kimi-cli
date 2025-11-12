@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 from collections.abc import Callable, Coroutine
@@ -23,7 +25,7 @@ class LLMNotSet(Exception):
 class LLMNotSupported(Exception):
     """Raised when the LLM does not have required capabilities."""
 
-    def __init__(self, llm: "LLM", capabilities: "list[ModelCapability]"):
+    def __init__(self, llm: LLM, capabilities: list[ModelCapability]):
         self.llm = llm
         self.capabilities = capabilities
         capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
@@ -61,7 +63,7 @@ class Soul(Protocol):
         ...
 
     @property
-    def model_capabilities(self) -> "set[ModelCapability] | None":
+    def model_capabilities(self) -> set[ModelCapability] | None:
         """The capabilities of the LLM model used by the soul. None indicates no LLM configured."""
         ...
 
@@ -96,7 +98,7 @@ class RunCancelled(Exception):
 
 
 async def run_soul(
-    soul: "Soul",
+    soul: Soul,
     user_input: str | list[ContentPart],
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,

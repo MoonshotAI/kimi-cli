@@ -1,5 +1,7 @@
 """Tests for agent loading functionality."""
 
+from __future__ import annotations
+
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
