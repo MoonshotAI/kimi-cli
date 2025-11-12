@@ -29,12 +29,11 @@ class MCPTool[T: ClientTransport](CallableTool):
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
-        self._approval = runtime.approval
         self._action_name = f"mcp:{mcp_tool.name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnType:
         description = f"Call MCP tool `{self._mcp_tool.name}`."
-        if not await self._approval.request(self.name, self._action_name, description):
+        if not await self._runtime.approval.request(self.name, self._action_name, description):
             return ToolRejectedError()
 
         async with self._client as client:
