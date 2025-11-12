@@ -69,7 +69,7 @@ async def load_agent(
 
     assert isinstance(toolset, CustomToolset)
     if mcp_configs:
-        await _load_mcp_tools(toolset, mcp_configs)
+        await _load_mcp_tools(toolset, mcp_configs, runtime)
 
     return Agent(
         name=agent_spec.name,
@@ -142,6 +142,7 @@ def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType |
 async def _load_mcp_tools(
     toolset: CustomToolset,
     mcp_configs: list[dict[str, Any]],
+    runtime: Runtime,
 ):
     """
     Raises:
@@ -157,5 +158,5 @@ async def _load_mcp_tools(
         client = fastmcp.Client(mcp_config)
         async with client:
             for tool in await client.list_tools():
-                toolset += MCPTool(tool, client)
+                toolset += MCPTool(tool, client, runtime=runtime)
     return toolset

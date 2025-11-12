@@ -7,9 +7,19 @@ from fastmcp.client.transports import ClientTransport
 from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
 from kosong.tooling import CallableTool, ToolError, ToolOk, ToolReturnType
 
+from kimi_cli.soul.runtime import Runtime
+from kimi_cli.tools.utils import ToolRejectedError
+
 
 class MCPTool[T: ClientTransport](CallableTool):
-    def __init__(self, mcp_tool: mcp.Tool, client: fastmcp.Client[T], **kwargs: Any):
+    def __init__(
+        self,
+        mcp_tool: mcp.Tool,
+        client: fastmcp.Client[T],
+        *,
+        runtime: Runtime,
+        **kwargs: Any,
+    ):
         super().__init__(
             name=mcp_tool.name,
             description=mcp_tool.description or "",
@@ -18,8 +28,14 @@ class MCPTool[T: ClientTransport](CallableTool):
         )
         self._mcp_tool = mcp_tool
         self._client = client
+        self._runtime = runtime
+        self._action_name = f"mcp:{mcp_tool.name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnType:
+        description = f"Call MCP tool `{self._mcp_tool.name}`."
+        if not await self._runtime.approval.request(self.name, self._action_name, description):
+            return ToolRejectedError()
+
         async with self._client as client:
             result = await client.call_tool(
                 self._mcp_tool.name, kwargs, timeout=20, raise_on_error=False
