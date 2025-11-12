@@ -14,7 +14,7 @@ def system(message: str) -> ContentPart:
 
 
 def tool_result_to_message(tool_result: ToolResult) -> Message:
-    """Convert a tool result to a list of messages."""
+    """Convert a tool result to a message."""
     if isinstance(tool_result.result, ToolError):
         assert tool_result.result.message, "ToolError should have a message"
         message = tool_result.result.message
