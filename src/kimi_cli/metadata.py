@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from hashlib import md5
 from pathlib import Path

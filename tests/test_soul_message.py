@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kosong.message import ImageURLPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
@@ -132,7 +134,7 @@ def meta_command(
 
 
 @meta_command(aliases=["quit"])
-def exit(app: "ShellApp", args: list[str]):
+def exit(app: ShellApp, args: list[str]):
     """Exit the application"""
     # should be handled by `ShellApp`
     raise NotImplementedError
@@ -153,7 +155,7 @@ Meta commands are also available:
 
 
 @meta_command(aliases=["h", "?"])
-def help(app: "ShellApp", args: list[str]):
+def help(app: ShellApp, args: list[str]):
     """Show help information"""
     console.print(
         Panel(
@@ -172,7 +174,7 @@ def help(app: "ShellApp", args: list[str]):
 
 
 @meta_command
-def version(app: "ShellApp", args: list[str]):
+def version(app: ShellApp, args: list[str]):
     """Show version information"""
     from kimi_cli.constant import VERSION
 
@@ -180,7 +182,7 @@ def version(app: "ShellApp", args: list[str]):
 
 
 @meta_command(name="release-notes")
-def release_notes(app: "ShellApp", args: list[str]):
+def release_notes(app: ShellApp, args: list[str]):
     """Show release notes"""
     text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
@@ -188,7 +190,7 @@ def release_notes(app: "ShellApp", args: list[str]):
 
 
 @meta_command
-def feedback(app: "ShellApp", args: list[str]):
+def feedback(app: ShellApp, args: list[str]):
     """Submit feedback to make Kimi CLI better"""
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
@@ -198,7 +200,7 @@ def feedback(app: "ShellApp", args: list[str]):
 
 
 @meta_command(kimi_soul_only=True)
-async def init(app: "ShellApp", args: list[str]):
+async def init(app: ShellApp, args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -229,7 +231,7 @@ async def init(app: "ShellApp", args: list[str]):
 
 
 @meta_command(aliases=["reset"], kimi_soul_only=True)
-async def clear(app: "ShellApp", args: list[str]):
+async def clear(app: ShellApp, args: list[str]):
     """Clear the context"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -241,7 +243,7 @@ async def clear(app: "ShellApp", args: list[str]):
 
 
 @meta_command(kimi_soul_only=True)
-async def compact(app: "ShellApp", args: list[str]):
+async def compact(app: ShellApp, args: list[str]):
     """Compact the context"""
     assert isinstance(app.soul, KimiSoul)
 

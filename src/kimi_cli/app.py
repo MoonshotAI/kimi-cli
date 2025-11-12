@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import os
 import warnings
@@ -32,7 +34,7 @@ class KimiCLI:
         model_name: str | None = None,
         thinking: bool = False,
         agent_file: Path | None = None,
-    ) -> "KimiCLI":
+    ) -> KimiCLI:
         """
         Create a KimiCLI instance.
 

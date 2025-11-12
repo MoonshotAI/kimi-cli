@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 
 from kosong.message import ContentPart, ToolCallPart
@@ -17,11 +19,11 @@ class Wire:
         self._ui_side = WireUISide(self._queue)
 
     @property
-    def soul_side(self) -> "WireSoulSide":
+    def soul_side(self) -> WireSoulSide:
         return self._soul_side
 
     @property
-    def ui_side(self) -> "WireUISide":
+    def ui_side(self) -> WireUISide:
         return self._ui_side
 
     def shutdown(self) -> None:
