@@ -63,6 +63,8 @@ def check_message(
     message: Message, model_capabilities: set[ModelCapability]
 ) -> set[ModelCapability]:
     """Check the message content, return the missing model capabilities."""
+    if isinstance(message.content, str):
+        return set()
     capabilities_needed = set[ModelCapability]()
     for part in message.content:
         if isinstance(part, ImageURLPart):
