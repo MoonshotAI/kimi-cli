@@ -3,7 +3,13 @@ from __future__ import annotations
 from kosong.message import ImageURLPart, Message, TextPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
-from kimi_cli.soul.message import system, tool_ok_to_message_content, tool_result_to_messages
+from kimi_cli.llm import ModelCapability
+from kimi_cli.soul.message import (
+    check_message,
+    system,
+    tool_ok_to_message_content,
+    tool_result_to_message,
+)
 
 
 def test_system_message_creation():
@@ -84,7 +90,7 @@ def test_tool_error_result():
     tool_error = ToolError(message="Error occurred", brief="Brief error", output="Error details")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_error)
 
-    message = tool_result_to_messages(tool_result)
+    message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
@@ -100,7 +106,7 @@ def test_tool_error_without_output():
     tool_error = ToolError(message="Error occurred", brief="Brief error")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_error)
 
-    message = tool_result_to_messages(tool_result)
+    message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
@@ -114,7 +120,7 @@ def test_tool_ok_with_text_only():
     tool_ok = ToolOk(output="Simple output", message="Done")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
-    message = tool_result_to_messages(tool_result)
+    message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
@@ -134,7 +140,7 @@ def test_tool_ok_with_non_text_parts():
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
     # With current implementation, non-text parts are included in the same message
-    message = tool_result_to_messages(tool_result)
+    message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
@@ -155,7 +161,7 @@ def test_tool_ok_with_only_non_text_parts():
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
     # With current implementation, non-text parts are included in the same message
-    message = tool_result_to_messages(tool_result)
+    message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
@@ -171,10 +177,83 @@ def test_tool_ok_with_only_text_parts():
     tool_ok = ToolOk(output="Just text")
     tool_result = ToolResult(tool_call_id="call_123", result=tool_ok)
 
-    message = tool_result_to_messages(tool_result)
+    message = tool_result_to_message(tool_result)
 
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert isinstance(message.content, list)
     assert len(message.content) == 1
     assert message.content[0] == TextPart(text="Just text")
+
+
+def test_check_message_with_image_and_image_capability():
+    """Test check_message with ImageURLPart when model has image_in capability."""
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg"))
+    message = Message(role="user", content=[image_part])
+    model_capabilities: set[ModelCapability] = {"image_in", "thinking"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == set()
+
+
+def test_check_message_with_image_no_image_capability():
+    """Test check_message with ImageURLPart when model lacks image_in capability."""
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg"))
+    message = Message(role="user", content=[image_part])
+    model_capabilities: set[ModelCapability] = {"thinking"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == {"image_in"}
+
+
+def test_check_message_with_think_and_think_capability():
+    """Test check_message with ThinkPart when model has thinking capability."""
+    from kosong.message import ThinkPart
+
+    think_part = ThinkPart(think="This is a thinking process")
+    message = Message(role="assistant", content=[think_part])
+    model_capabilities: set[ModelCapability] = {"image_in", "thinking"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == set()
+
+
+def test_check_message_with_think_no_think_capability():
+    """Test check_message with ThinkPart when model lacks thinking capability."""
+    from kosong.message import ThinkPart
+
+    think_part = ThinkPart(think="This is a thinking process")
+    message = Message(role="assistant", content=[think_part])
+    model_capabilities: set[ModelCapability] = {"image_in"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == {"thinking"}
+
+
+def test_check_message_with_mixed_parts_partial_capabilities():
+    """Test check_message with both ImageURLPart and ThinkPart, model has only one capability."""
+    from kosong.message import ThinkPart
+
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg"))
+    think_part = ThinkPart(think="Thinking...")
+    message = Message(role="user", content=[image_part, think_part])
+    model_capabilities: set[ModelCapability] = {"image_in"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == {"thinking"}
+
+
+def test_check_message_with_text_only():
+    """Test check_message with only TextPart (no special capabilities needed)."""
+    text_part = TextPart(text="Just a text message")
+    message = Message(role="user", content=[text_part])
+    model_capabilities: set[ModelCapability] = set()
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == set()

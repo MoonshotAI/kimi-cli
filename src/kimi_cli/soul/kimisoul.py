@@ -16,7 +16,7 @@ from kosong.chat_provider import (
     ChatProviderError,
     ThinkingEffort,
 )
-from kosong.message import ContentPart, ImageURLPart, Message
+from kosong.message import ContentPart, Message
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
@@ -32,7 +32,7 @@ from kimi_cli.soul import (
 from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.message import system, tool_result_to_messages
+from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.runtime import Runtime
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
@@ -145,15 +145,12 @@ class KimiSoul(Soul):
         if self._runtime.llm is None:
             raise LLMNotSet()
 
-        if (
-            isinstance(user_input, list)
-            and any(isinstance(part, ImageURLPart) for part in user_input)
-            and "image_in" not in self._runtime.llm.capabilities
-        ):
-            raise LLMNotSupported(self._runtime.llm, ["image_in"])
+        user_message = Message(role="user", content=user_input)
+        if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
+            raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
-        await self._context.append_message(Message(role="user", content=user_input))
+        await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
         await self._agent_loop()
 
@@ -281,14 +278,26 @@ class KimiSoul(Soul):
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
+
+        assert self._runtime.llm is not None
+        tool_messages = [tool_result_to_message(tr) for tr in tool_results]
+        for tm in tool_messages:
+            if missing_caps := check_message(tm, self._runtime.llm.capabilities):
+                logger.warning(
+                    "Tool result message requires unsupported capabilities: {caps}",
+                    caps=missing_caps,
+                )
+                raise LLMNotSupported(self._runtime.llm, list(missing_caps))
+
         await self._context.append_message(result.message)
         if result.usage is not None:
             await self._context.update_token_count(result.usage.total)
 
+        logger.debug(
+            "Appending tool messages to context: {tool_messages}", tool_messages=tool_messages
+        )
+        await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
-        for tool_result in tool_results:
-            logger.debug("Appending tool result to context: {tool_result}", tool_result=tool_result)
-            await self._context.append_message(tool_result_to_messages(tool_result))
 
     async def compact_context(self) -> None:
         """

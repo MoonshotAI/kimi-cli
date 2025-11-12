@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from kosong.message import ContentPart, Message, TextPart
+from kosong.message import ContentPart, ImageURLPart, Message, TextPart, ThinkPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 from kosong.tooling.error import ToolRuntimeError
+
+from kimi_cli.llm import ModelCapability
 
 
 def system(message: str) -> ContentPart:
     return TextPart(text=f"<system>{message}</system>")
 
 
-def tool_result_to_messages(tool_result: ToolResult) -> Message:
+def tool_result_to_message(tool_result: ToolResult) -> Message:
     """Convert a tool result to a list of messages."""
     if isinstance(tool_result.result, ToolError):
         assert tool_result.result.message, "ToolError should have a message"
@@ -55,3 +57,16 @@ def _output_to_content_parts(
         case _:
             content.extend(output)
     return content
+
+
+def check_message(
+    message: Message, model_capabilities: set[ModelCapability]
+) -> set[ModelCapability]:
+    """Check the message content, return the missing model capabilities."""
+    capabilities_needed = set[ModelCapability]()
+    for part in message.content:
+        if isinstance(part, ImageURLPart):
+            capabilities_needed.add("image_in")
+        elif isinstance(part, ThinkPart):
+            capabilities_needed.add("thinking")
+    return capabilities_needed - model_capabilities
