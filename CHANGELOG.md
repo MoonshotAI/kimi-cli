@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 - Core: Throw error when there are unsupported message parts
 - MetaCmd: Add `/yolo` meta command to enable YOLO mode after startup
 - Tool: Add approval request for MCP tools
+- Tool: Disable `Think` tool in default agent
+- CLI: Restore thinking mode from last time when `--thinking` is not specified
 
 ## [0.52] - 2025-11-10
 
