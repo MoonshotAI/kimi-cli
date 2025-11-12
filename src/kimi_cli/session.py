@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from pathlib import Path
 from typing import NamedTuple
@@ -14,7 +16,7 @@ class Session(NamedTuple):
     history_file: Path
 
     @staticmethod
-    def create(work_dir: Path, _history_file: Path | None = None) -> "Session":
+    def create(work_dir: Path, _history_file: Path | None = None) -> Session:
         """Create a new session for a work directory."""
         logger.debug("Creating new session for work directory: {work_dir}", work_dir=work_dir)
 
@@ -53,7 +55,7 @@ class Session(NamedTuple):
         )
 
     @staticmethod
-    def continue_(work_dir: Path) -> "Session | None":
+    def continue_(work_dir: Path) -> Session | None:
         """Get the last session for a work directory."""
         logger.debug("Continuing session for work directory: {work_dir}", work_dir=work_dir)
 

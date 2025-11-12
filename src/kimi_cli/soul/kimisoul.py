@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Sequence
 from functools import partial
@@ -45,7 +47,7 @@ from kimi_cli.wire.message import (
 
 if TYPE_CHECKING:
 
-    def type_check(soul: "KimiSoul"):
+    def type_check(soul: KimiSoul):
         _: Soul = soul
 
 

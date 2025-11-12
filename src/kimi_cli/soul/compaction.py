@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
 from string import Template
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

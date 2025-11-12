@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast, get_args
@@ -27,7 +29,7 @@ class LLM:
         return self.chat_provider.model_name
 
 
-def augment_provider_with_env_vars(provider: "LLMProvider", model: "LLMModel") -> dict[str, str]:
+def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
     """Override provider/model settings from environment variables.
 
     Returns:
@@ -69,8 +71,8 @@ def augment_provider_with_env_vars(provider: "LLMProvider", model: "LLMModel") -
 
 
 def create_llm(
-    provider: "LLMProvider",
-    model: "LLMModel",
+    provider: LLMProvider,
+    model: LLMModel,
     *,
     stream: bool = True,
     session_id: str | None = None,
@@ -139,7 +141,7 @@ def create_llm(
     )
 
 
-def _derive_capabilities(provider: "LLMProvider", model: "LLMModel") -> set[ModelCapability]:
+def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCapability]:
     capabilities = model.capabilities or set()
     if provider.type != "kimi":
         return capabilities

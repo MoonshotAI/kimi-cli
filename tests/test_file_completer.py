@@ -1,5 +1,7 @@
 """Tests for the shell file mention completer."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from inline_snapshot import snapshot

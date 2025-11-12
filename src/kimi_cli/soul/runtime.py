@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import subprocess
 import sys
@@ -75,7 +77,7 @@ class Runtime(NamedTuple):
         llm: LLM | None,
         session: Session,
         yolo: bool,
-    ) -> "Runtime":
+    ) -> Runtime:
         ls_output, agents_md = await asyncio.gather(
             asyncio.to_thread(_list_work_dir, session.work_dir),
             asyncio.to_thread(load_agents_md, session.work_dir),

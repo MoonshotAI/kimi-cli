@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from kimi_cli.soul.runtime import load_agents_md

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none

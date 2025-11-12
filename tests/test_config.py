@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from inline_snapshot import snapshot
 
 from kimi_cli.config import (
