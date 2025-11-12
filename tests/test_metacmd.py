@@ -310,16 +310,23 @@ class TestWaitForKeyPress:
         mock_stdout.isatty.return_value = True
         mock_stdin.isatty.return_value = True
 
-        with patch("sys.platform", "win32"), patch("msvcrt.getch") as mock_getch:
-            wait_for_key_press("Test message")
+        with patch("sys.platform", "win32"):
+            from types import ModuleType
+            from unittest.mock import Mock
 
-            # Verify message was written
-            mock_stdout.write.assert_any_call("Test message")
-            mock_stdout.write.assert_any_call("\n")
-            mock_stdout.flush.assert_called()
+            module = ModuleType("msvcrt")
+            module.getch = Mock()
 
-            # Verify getch was called
-            mock_getch.assert_called_once()
+            with patch.dict("sys.modules", {"msvcrt": module}):
+                wait_for_key_press("Test message")
+
+                # Verify message was written
+                mock_stdout.write.assert_any_call("Test message")
+                mock_stdout.write.assert_any_call("\n")
+                mock_stdout.flush.assert_called()
+
+                # Verify getch was called
+                module.getch.assert_called_once()
 
     @patch("sys.stdout")
     @patch("sys.stdin")
