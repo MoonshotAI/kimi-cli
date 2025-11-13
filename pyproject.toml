@@ -20,7 +20,7 @@ dependencies = [
     "streamingjson==0.0.5",
     "trafilatura==2.0.0",
     "tenacity==9.1.2",
-    "fastmcp==2.12.5",
+    "fastmcp==2.13.0.2",
     "pydantic==2.12.4",
     "httpx[socks]==0.28.1",
 ]
