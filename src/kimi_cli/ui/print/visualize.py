@@ -11,8 +11,6 @@ from kimi_cli.soul.message import tool_result_to_message
 from kimi_cli.wire import WireMessage, WireUISide
 from kimi_cli.wire.message import StepBegin, StepInterrupted
 
-type ContentEvent = ContentPart | ToolCall | ToolCallPart | ToolResult
-
 
 class Printer(Protocol):
     def feed(self, msg: WireMessage) -> None: ...
@@ -49,10 +47,6 @@ class JsonPrinter(Printer):
         tool_call: ToolCall
         tool_result: ToolResult | None
 
-        @property
-        def finished(self) -> bool:
-            return self.tool_result is not None
-
     def __init__(self) -> None:
         self._content_buffer: list[ContentPart] = []
         """The buffer to merge content parts."""
@@ -62,7 +56,7 @@ class JsonPrinter(Printer):
 
     def feed(self, msg: WireMessage) -> None:
         match msg:
-            case StepBegin():
+            case StepBegin() | StepInterrupted():
                 self.flush()
             case ContentPart() as part:
                 # merge with previous parts as much as possible
@@ -93,8 +87,10 @@ class JsonPrinter(Printer):
         tool_calls: list[ToolCall] = []
         tool_results: list[ToolResult] = []
         for state in self._tool_call_buffer.values():
+            if state.tool_result is None:
+                # this should only happen when interrupted
+                continue
             tool_calls.append(state.tool_call)
-            assert state.tool_result is not None
             tool_results.append(state.tool_result)
 
         message = Message(
