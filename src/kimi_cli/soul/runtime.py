@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
 
 from kimi_cli.config import Config
 from kimi_cli.llm import LLM
@@ -15,7 +15,8 @@ from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.utils.logging import logger
 
 
-class BuiltinSystemPromptArgs(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BuiltinSystemPromptArgs:
     """Builtin system prompt arguments."""
 
     KIMI_NOW: str
@@ -61,7 +62,8 @@ def _list_work_dir(work_dir: Path) -> str:
     return ls.stdout.strip()
 
 
-class Runtime(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Runtime:
     """Agent runtime."""
 
     config: Config

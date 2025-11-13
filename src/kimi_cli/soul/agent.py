@@ -3,8 +3,9 @@ from __future__ import annotations
 import importlib
 import inspect
 import string
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 from kosong.tooling import CallableTool, CallableTool2, Toolset
 
@@ -19,7 +20,8 @@ from kimi_cli.tools import SkipThisTool
 from kimi_cli.utils.logging import logger
 
 
-class Agent(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Agent:
     """The loaded agent."""
 
     name: str
@@ -88,7 +90,7 @@ def _load_system_prompt(
         builtin_args=builtin_args,
         spec_args=args,
     )
-    return string.Template(system_prompt).substitute(builtin_args._asdict(), **args)
+    return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
 
 
 type ToolType = CallableTool | CallableTool2[Any]
