@@ -97,7 +97,8 @@ class Context:
         if rotated_file_path is None:
             logger.error("No available rotation path found")
             raise RuntimeError("No available rotation path found")
-        await aiofiles.os.rename(self._file_backend, rotated_file_path)
+        # issue #268 we need to use replace instead of rename to support different systems
+        await aiofiles.os.replace(self._file_backend, rotated_file_path)
         logger.debug(
             "Rotated history file: {rotated_file_path}", rotated_file_path=rotated_file_path
         )
