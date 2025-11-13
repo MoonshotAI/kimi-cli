@@ -148,6 +148,14 @@ class KimiCLI:
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )
+        if self._env_overrides.get("KIMI_API_KEY"):
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="API Key",
+                    value="****** (from KIMI_API_KEY)",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
         if not self._runtime.llm:
             welcome_info.append(
                 WelcomeInfoItem(
