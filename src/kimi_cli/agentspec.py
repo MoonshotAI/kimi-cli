@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -39,7 +40,8 @@ class SubagentSpec(BaseModel):
     description: str = Field(description="Subagent description")
 
 
-class ResolvedAgentSpec(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ResolvedAgentSpec:
     """Resolved agent specification."""
 
     name: str

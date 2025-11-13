@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 
 
-class Session(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Session:
     """A session of a work directory."""
 
     id: str

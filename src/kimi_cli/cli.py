@@ -292,7 +292,6 @@ def kimi(
         instance = await KimiCLI.create(
             session,
             yolo=yolo or (ui == "print"),  # print mode implies yolo
-            stream=ui != "print",  # use non-streaming mode only for print UI
             mcp_configs=mcp_configs,
             model_name=model_name,
             thinking=thinking_mode,

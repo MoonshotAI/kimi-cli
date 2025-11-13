@@ -3,8 +3,9 @@ from __future__ import annotations
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, overload
+from typing import TYPE_CHECKING, overload
 
 from kosong.message import Message
 from rich.panel import Panel
@@ -36,7 +37,8 @@ This is quite similar to the `Soul.run` method.
 """
 
 
-class MetaCommand(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MetaCommand:
     name: str
     description: str
     func: MetaCmdFunc

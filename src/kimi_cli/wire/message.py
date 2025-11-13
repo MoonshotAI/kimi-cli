@@ -4,34 +4,43 @@ import asyncio
 import uuid
 from collections.abc import Sequence
 from enum import Enum
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import Any
 
 from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolOk, ToolResult
+from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    from kimi_cli.soul import StatusSnapshot
+from kimi_cli.soul import StatusSnapshot
 
 
-class StepBegin(NamedTuple):
+class StepBegin(BaseModel):
+    """
+    Indicates the beginning of a new agent step.
+    This event must be sent before any other event in the step.
+    """
+
     n: int
+    """The step number."""
 
 
-class StepInterrupted:
+class StepInterrupted(BaseModel):
+    """Indicates the current step was interrupted, either by user intervention or an error."""
+
     pass
 
 
-class CompactionBegin:
+class CompactionBegin(BaseModel):
     """
     Indicates that a compaction just began.
-    This event must be sent during a step, which means, between `StepBegin` and `StepInterrupted`.
-    And, there must be a `CompactionEnd` directly following this event.
+    This event must be sent during a step, which means, between `StepBegin` and the next
+    `StepBegin` or `StepInterrupted`. And, there must be a `CompactionEnd` directly following
+    this event.
     """
 
     pass
 
 
-class CompactionEnd:
+class CompactionEnd(BaseModel):
     """
     Indicates that a compaction just ended.
     This event must be sent directly after a `CompactionBegin` event.
@@ -40,17 +49,22 @@ class CompactionEnd:
     pass
 
 
-class StatusUpdate(NamedTuple):
+class StatusUpdate(BaseModel):
     status: StatusSnapshot
+    """The snapshot of the current soul status."""
 
 
-class SubagentEvent(NamedTuple):
+class SubagentEvent(BaseModel):
     task_tool_call_id: str
+    """The ID of the task tool call associated with this subagent."""
     event: Event
+    """The event from the subagent."""
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
+"""Any control flow event."""
 type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | SubagentEvent
+"""Any event, including control flow and content/tooling events."""
 
 
 class ApprovalResponse(Enum):
@@ -59,20 +73,16 @@ class ApprovalResponse(Enum):
     REJECT = "reject"
 
 
-class ApprovalRequest:
-    def __init__(self, tool_call_id: str, sender: str, action: str, description: str):
-        self.id = str(uuid.uuid4())
-        self.tool_call_id = tool_call_id
-        self.sender = sender
-        self.action = action
-        self.description = description
-        self._future = asyncio.Future[ApprovalResponse]()
+class ApprovalRequest(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    tool_call_id: str
+    sender: str
+    action: str
+    description: str
 
-    def __repr__(self) -> str:
-        return (
-            f"ApprovalRequest(id={self.id}, tool_call_id={self.tool_call_id}, "
-            f"sender={self.sender}, action={self.action}, description={self.description})"
-        )
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._future = asyncio.Future[ApprovalResponse]()
 
     async def wait(self) -> ApprovalResponse:
         """
@@ -94,9 +104,6 @@ class ApprovalRequest:
     def resolved(self) -> bool:
         """Whether the request is resolved."""
         return self._future.done()
-
-
-type WireMessage = Event | ApprovalRequest
 
 
 def serialize_event(event: Event) -> dict[str, Any]:

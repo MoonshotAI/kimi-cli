@@ -50,7 +50,12 @@ class Approval:
         if action in self._auto_approve_actions:
             return True
 
-        request = ApprovalRequest(tool_call.id, sender, action, description)
+        request = ApprovalRequest(
+            tool_call_id=tool_call.id,
+            sender=sender,
+            action=action,
+            description=description,
+        )
         self._request_queue.put_nowait(request)
         response = await request.wait()
         logger.debug("Received approval response: {response}", response=response)

@@ -9,6 +9,13 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
+- Print: Fix `stream-json` output format missing the last assistant message
+- UI: Add warning when API key is overridden by `KIMI_API_KEY` environment variable
+- UI: Make a bell sound when there's an approval request
+
 ## [0.53] - 2025-11-12
 
 - UI: Remove unnecessary trailing spaces in console output

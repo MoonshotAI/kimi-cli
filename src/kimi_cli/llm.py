@@ -74,7 +74,6 @@ def create_llm(
     provider: LLMProvider,
     model: LLMModel,
     *,
-    stream: bool = True,
     session_id: str | None = None,
 ) -> LLM:
     match provider.type:
@@ -85,7 +84,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
                 default_headers={
                     "User-Agent": USER_AGENT,
                     **(provider.custom_headers or {}),
@@ -100,7 +98,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -109,7 +106,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
@@ -118,7 +114,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
                 default_max_tokens=50000,
             )
         case "_chaos":
