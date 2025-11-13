@@ -4,13 +4,13 @@ import asyncio
 import contextlib
 from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from kosong.message import ContentPart
 
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire import Wire, WireMessage, WireUISide
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
@@ -45,7 +45,8 @@ class MaxStepsReached(Exception):
         self.n_steps = n_steps
 
 
-class StatusSnapshot(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatusSnapshot:
     context_usage: float
     """The usage of the context, in percentage."""
 

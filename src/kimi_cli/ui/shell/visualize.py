@@ -22,7 +22,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
-from kimi_cli.wire import WireUISide
+from kimi_cli.wire import WireMessage, WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
@@ -32,7 +32,6 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
-    WireMessage,
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4

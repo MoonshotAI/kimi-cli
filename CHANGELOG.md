@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
+
 ## [0.53] - 2025-11-12
 
 - UI: Remove unnecessary trailing spaces in console output
