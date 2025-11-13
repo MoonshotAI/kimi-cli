@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.54] - 2025-11-13
 
 - Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
 - Print: Fix `stream-json` output format missing the last assistant message
