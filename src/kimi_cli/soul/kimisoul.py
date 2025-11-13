@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Sequence
 from functools import partial
 from typing import TYPE_CHECKING
-
+from dataclasses import replace
 import kosong
 import tenacity
 from kosong import StepResult
@@ -233,6 +233,12 @@ class KimiSoul(Soul):
         logger.debug("Got step result: {result}", result=result)
         if result.usage is not None:
             # mark the token count for the context before the step
+            if result.usage.input_other is None:
+                logger.warning("input_other is None in token usage, setting to 0")
+                # Create new usage with input_other=0
+                new_usage = replace(result.usage, input_other=0)
+                # Create new StepResult with updated usage
+                result = replace(result, usage=new_usage)
             await self._context.update_token_count(result.usage.input)
             wire_send(StatusUpdate(status=self.status))
 
