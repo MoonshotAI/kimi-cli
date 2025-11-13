@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Print: Fix `stream-json` output format missing the last assistant message
 - UI: Add warning when API key is overridden by `KIMI_API_KEY` environment variable
 - UI: Make a bell sound when there's an approval request
+- Core: Fix context compaction and clearing on Windows
 
 ## [0.53] - 2025-11-12
 
