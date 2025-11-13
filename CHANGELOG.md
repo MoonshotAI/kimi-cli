@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
+- Print: Fix `stream-json` output format missing the last assistant message
 
 ## [0.53] - 2025-11-12
 
