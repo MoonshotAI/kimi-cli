@@ -523,6 +523,7 @@ class _LiveView:
         self._approval_request_queue.append(request)
 
         if self._current_approval_request_panel is None:
+            console.bell()
             self.show_next_approval_request()
 
     def show_next_approval_request(self) -> None:
