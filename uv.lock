@@ -811,7 +811,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.53"
+version = "0.54"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -851,7 +851,7 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.24.0" },
+    { name = "kosong", specifier = "==0.25.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "patch-ng", specifier = "==1.19.0" },
     { name = "pillow", specifier = "==12.0.0" },
@@ -878,7 +878,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.24.0"
+version = "0.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -887,10 +887,11 @@ dependencies = [
     { name = "openai" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/a7/ccd25127f814ce97fd2c0bf9ab590550171973f86bb8f938e2503788655f/kosong-0.24.0.tar.gz", hash = "sha256:5ecb5cab7bb99057565fa54e05201346dcdecfe5c9d2c21573367ac4cc3d35db", size = 23900, upload-time = "2025-11-12T08:41:41.803Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/cb/705713862738c55a814347b30c374c2e01ce8080a6aa418ca0bf10970f18/kosong-0.25.0.tar.gz", hash = "sha256:b372a5298eebf500c07e1d893bfcb059443c770d436bb66c159cf35279456c48", size = 24426, upload-time = "2025-11-13T06:07:29.254Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/39/0c489a0c159c052d1e13408b0f73dda9288ce3bc681466cfc9f1a7edc16c/kosong-0.24.0-py3-none-any.whl", hash = "sha256:fd77ac816c6d58f093256b05904db10637535edeebcca0caf8bb68d29bbe7179", size = 37020, upload-time = "2025-11-12T08:41:40.802Z" },
+    { url = "https://files.pythonhosted.org/packages/22/7c/e97c959a51a1ef646c3b0d0daa2261eb3eacba77c7f00f17ff1306a28ebf/kosong-0.25.0-py3-none-any.whl", hash = "sha256:c2cfd180f7d9fbfa72af0432aacf6ffef082da5164f5621c589ff0eee0ad5137", size = 37746, upload-time = "2025-11-13T06:07:28.114Z" },
 ]
 
 [[package]]
@@ -1191,7 +1192,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.6.1"
+version = "2.7.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1203,9 +1204,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/44/303deb97be7c1c9b53118b52825cbd1557aeeff510f3a52566b1fa66f6a2/openai-2.6.1.tar.gz", hash = "sha256:27ae704d190615fca0c0fc2b796a38f8b5879645a3a52c9c453b23f97141bb49", size = 593043, upload-time = "2025-10-24T13:29:52.79Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/e3/cec27fa28ef36c4ccea71e9e8c20be9b8539618732989a82027575aab9d4/openai-2.7.2.tar.gz", hash = "sha256:082ef61163074d8efad0035dd08934cf5e3afd37254f70fc9165dd6a8c67dcbd", size = 595732, upload-time = "2025-11-10T16:42:31.108Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/0e/331df43df633e6105ff9cf45e0ce57762bd126a45ac16b25a43f6738d8a2/openai-2.6.1-py3-none-any.whl", hash = "sha256:904e4b5254a8416746a2f05649594fa41b19d799843cd134dac86167e094edef", size = 1005551, upload-time = "2025-10-24T13:29:50.973Z" },
+    { url = "https://files.pythonhosted.org/packages/25/66/22cfe4b695b5fd042931b32c67d685e867bfd169ebf46036b95b57314c33/openai-2.7.2-py3-none-any.whl", hash = "sha256:116f522f4427f8a0a59b51655a356da85ce092f3ed6abeca65f03c8be6e073d9", size = 1008375, upload-time = "2025-11-10T16:42:28.574Z" },
 ]
 
 [[package]]
