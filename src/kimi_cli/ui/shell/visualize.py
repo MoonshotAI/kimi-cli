@@ -23,7 +23,7 @@ from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.diff import format_diff_for_display
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
-from kimi_cli.wire import WireUISide
+from kimi_cli.wire import WireMessage, WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
@@ -33,7 +33,6 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
-    WireMessage,
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
@@ -228,7 +227,10 @@ class _ApprovalRequestPanel:
 
         # Add request details
         lines.append(
-            Text(f'{self.request.sender} is requesting approval to "{self.request.description}".')
+            Text.assemble(
+                Text.from_markup(f"[blue]{self.request.sender}[/blue]"),
+                Text(f' is requesting approval to "{self.request.description}".'),
+            )
         )
 
         # Add diff preview if available
@@ -556,6 +558,7 @@ class _LiveView:
         self._approval_request_queue.append(request)
 
         if self._current_approval_request_panel is None:
+            console.bell()
             self.show_next_approval_request()
 
     def show_next_approval_request(self) -> None:

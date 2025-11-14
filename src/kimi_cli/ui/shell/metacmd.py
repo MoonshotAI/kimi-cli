@@ -3,8 +3,9 @@ from __future__ import annotations
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, overload
+from typing import TYPE_CHECKING, overload
 
 from kosong.message import Message
 from rich.panel import Panel
@@ -36,7 +37,8 @@ This is quite similar to the `Soul.run` method.
 """
 
 
-class MetaCommand(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MetaCommand:
     name: str
     description: str
     func: MetaCmdFunc
@@ -255,6 +257,15 @@ async def compact(app: ShellApp, args: list[str]):
     with console.status("[cyan]Compacting...[/cyan]"):
         await app.soul.compact_context()
     console.print("[green]✓[/green] Context has been compacted.")
+
+
+@meta_command(kimi_soul_only=True)
+async def yolo(app: ShellApp, args: list[str]):
+    """Enable YOLO mode (auto approve all actions)"""
+    assert isinstance(app.soul, KimiSoul)
+
+    app.soul._runtime.approval.set_yolo(True)
+    console.print("[green]✓[/green] Life is short, use YOLO!")
 
 
 from . import (  # noqa: E402

@@ -98,7 +98,6 @@ Test agents content
 ---\
 """,
                 [
-                    "Think",
                     "CMD" if platform.system() == "Windows" else "Bash",
                     "ReadFile",
                     "Glob",
