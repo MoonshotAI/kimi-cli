@@ -85,7 +85,6 @@ def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
         KIMI_NOW="1970-01-01T00:00:00+00:00",
         KIMI_WORK_DIR=temp_work_dir,
         KIMI_WORK_DIR_LS="Test ls content",
-        KIMI_AGENTS_MD="Test agents content",
     )
 
 
@@ -137,6 +136,7 @@ def runtime(
         session=session,
         approval=approval,
         labor_market=labor_market,
+        agents_md="Test agents content",
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",

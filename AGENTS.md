@@ -173,7 +173,6 @@ Builtin variables available in system prompts:
 - `${KIMI_NOW}`: Current timestamp
 - `${KIMI_WORK_DIR}`: Working directory path
 - `${KIMI_WORK_DIR_LS}`: Directory listing output
-- `${KIMI_AGENTS_MD}`: Project AGENTS.md content
 
 ## Deployment
 

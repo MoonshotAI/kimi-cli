@@ -35,8 +35,6 @@ class BuiltinSystemPromptArgs:
     """The absolute path of current working directory."""
     KIMI_WORK_DIR_LS: str
     """The directory listing of current working directory."""
-    KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
-    """The content of AGENTS.md."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -63,6 +61,7 @@ class Runtime:
     denwa_renji: DenwaRenji
     approval: Approval
     labor_market: LaborMarket
+    agents_md: str
 
     @staticmethod
     async def create(
@@ -84,11 +83,11 @@ class Runtime:
                 KIMI_NOW=datetime.now().astimezone().isoformat(),
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
-                KIMI_AGENTS_MD=agents_md or "",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
             labor_market=LaborMarket(),
+            agents_md=agents_md or "",            
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
