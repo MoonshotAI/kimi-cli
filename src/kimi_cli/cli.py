@@ -10,12 +10,11 @@ from typing import Annotated, Any, Literal
 import typer
 
 from kimi_cli.constant import VERSION
+from kimi_cli.i18n import get_prompt          # ➜ 1. TEK EKLEME (import)
 
 
 class Reload(Exception):
     """Reload configuration."""
-
-    pass
 
 
 cli = typer.Typer(
@@ -193,6 +192,13 @@ def kimi(
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
+    lang: Annotated[                       # ➜ 2. TEK EKLEME (parametre)
+        str,
+        typer.Option(
+            "--lang",
+            help="System prompt language: en, tr, de, es  (default: en)",
+        ),
+    ] = "en",
 ):
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
@@ -231,7 +237,6 @@ def kimi(
         logger.enable("kosong")
     logger.add(
         get_share_dir() / "logs" / "kimi.log",
-        # FIXME: configure level for different modules
         level="TRACE" if debug else "INFO",
         rotation="06:00",
         retention="10 days",
@@ -289,13 +294,17 @@ def kimi(
         else:
             thinking_mode = thinking
 
+        # ➜ 3. TEK KULLANIM: dilimize göre prompt
+        system_prompt_text = get_prompt(lang)
+
         instance = await KimiCLI.create(
             session,
-            yolo=yolo or (ui == "print"),  # print mode implies yolo
+            yolo=yolo or (ui == "print"),
             mcp_configs=mcp_configs,
             model_name=model_name,
             thinking=thinking_mode,
             agent_file=agent_file,
+            system_prompt=system_prompt_text,   # ← mevcut KimiCLI zaten bunu bekliyorsa
         )
         match ui:
             case "shell":
@@ -317,12 +326,9 @@ def kimi(
 
         if succeeded:
             metadata = load_metadata()
-
-            # Update work_dir metadata with last session
             work_dir_meta = next(
                 (wd for wd in metadata.work_dirs if wd.path == str(session.work_dir)), None
             )
-
             if work_dir_meta is None:
                 logger.warning(
                     "Work dir metadata missing when marking last session, recreating: {work_dir}",
@@ -330,12 +336,8 @@ def kimi(
                 )
                 work_dir_meta = WorkDirMeta(path=str(session.work_dir))
                 metadata.work_dirs.append(work_dir_meta)
-
             work_dir_meta.last_session_id = session.id
-
-            # Update thinking mode
             metadata.thinking = instance.soul.thinking
-
             save_metadata(metadata)
 
         return succeeded
