@@ -17,6 +17,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
 from kimi_cli.soul.runtime import load_agents_md
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.session_mgmt import get_session_manager
 from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.logging import logger
 
@@ -266,6 +267,63 @@ async def yolo(app: ShellApp, args: list[str]):
 
     app.soul._runtime.approval.set_yolo(True)
     console.print("[green]✓[/green] Life is short, use YOLO!")
+
+
+@meta_command(kimi_soul_only=True)
+async def save(app: ShellApp, args: list[str]):
+    """Save the current session with a given ID"""
+    assert isinstance(app.soul, KimiSoul)
+
+    if not args:
+        console.print("[red]Usage: /save <id>[/red]")
+        console.print("[grey50]Example: /save my-project-analysis[/grey50]")
+
+        # Show available saved sessions
+        session_manager = get_session_manager()
+        saved_sessions = session_manager.list_saved_sessions()
+        if saved_sessions:
+            console.print("\n[yellow]Saved sessions:[/yellow]")
+            for session_id in saved_sessions:
+                console.print(f"  • {session_id}")
+        return
+
+    session_id = args[0]
+    session_manager = get_session_manager()
+
+    # Save the session
+    await session_manager.save_session(session_id, app.soul.context, app.soul)
+
+
+@meta_command(kimi_soul_only=True)
+async def resume(app: ShellApp, args: list[str]):
+    """Resume a previously saved session"""
+    assert isinstance(app.soul, KimiSoul)
+
+    if not args:
+        console.print("[red]Usage: /resume <id>[/red]")
+        console.print("[grey50]Example: /resume my-project-analysis[/grey50]")
+
+        # Show available saved sessions
+        session_manager = get_session_manager()
+        saved_sessions = session_manager.list_saved_sessions()
+        if saved_sessions:
+            console.print("\n[yellow]Available sessions:[/yellow]")
+            for session_id in saved_sessions:
+                console.print(f"  • {session_id}")
+        else:
+            console.print("\n[yellow]No saved sessions found.[/yellow]")
+        return
+
+    session_id = args[0]
+    session_manager = get_session_manager()
+
+    # Load the session
+    success = await session_manager.load_session(session_id, app.soul.context, app.soul)
+    if success:
+        # Reload the UI to reflect the new context
+        from kimi_cli.cli import Reload
+
+        raise Reload()
 
 
 from . import (  # noqa: E402
