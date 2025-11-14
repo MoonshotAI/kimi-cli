@@ -11,6 +11,7 @@ from kosong.tooling import ToolOk, ToolResult
 
 if TYPE_CHECKING:
     from kimi_cli.soul import StatusSnapshot
+    from kimi_cli.utils.diff import FileDiff
 
 
 class StepBegin(NamedTuple):
@@ -60,18 +61,27 @@ class ApprovalResponse(Enum):
 
 
 class ApprovalRequest:
-    def __init__(self, tool_call_id: str, sender: str, action: str, description: str):
+    def __init__(
+        self,
+        tool_call_id: str,
+        sender: str,
+        action: str,
+        description: str,
+        diff: FileDiff | None = None,
+    ):
         self.id = str(uuid.uuid4())
         self.tool_call_id = tool_call_id
         self.sender = sender
         self.action = action
         self.description = description
+        self.diff = diff
         self._future = asyncio.Future[ApprovalResponse]()
 
     def __repr__(self) -> str:
         return (
             f"ApprovalRequest(id={self.id}, tool_call_id={self.tool_call_id}, "
-            f"sender={self.sender}, action={self.action}, description={self.description})"
+            f"sender={self.sender}, action={self.action}, description={self.description}, "
+            f"diff={self.diff})"
         )
 
     async def wait(self) -> ApprovalResponse:
@@ -151,13 +161,15 @@ def serialize_approval_request(request: ApprovalRequest) -> dict[str, Any]:
     """
     Convert an ApprovalRequest into a JSON-serializable dictionary.
     """
-    return {
+    result = {
         "id": request.id,
         "tool_call_id": request.tool_call_id,
         "sender": request.sender,
         "action": request.action,
         "description": request.description,
+        "diff": request.diff,
     }
+    return result
 
 
 def serialize_tool_result(result: ToolResult) -> dict[str, Any]:

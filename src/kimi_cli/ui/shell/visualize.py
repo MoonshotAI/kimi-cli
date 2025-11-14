@@ -20,6 +20,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.utils.diff import format_diff_for_display
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
@@ -219,6 +220,7 @@ class _ApprovalRequestPanel:
             ("Reject, tell Kimi CLI what to do instead", ApprovalResponse.REJECT),
         ]
         self.selected_index = 0
+        self.show_diff = False  # Collapsed by default
 
     def render(self) -> RenderableType:
         """Render the approval menu as a panel."""
@@ -228,6 +230,30 @@ class _ApprovalRequestPanel:
         lines.append(
             Text(f'{self.request.sender} is requesting approval to "{self.request.description}".')
         )
+
+        # Add diff preview if available
+        if self.request.diff and self.request.diff.should_show_diff():
+            diff_text = format_diff_for_display(self.request.diff)
+            if diff_text:
+                lines.append(Text(""))  # Empty line
+                lines.append(Text("Changes:", style="bold"))
+
+                # Add expandable diff section
+                if self.show_diff:
+                    lines.append(Text.from_markup(diff_text))
+                    lines.append(
+                        Text.from_markup(
+                            "[green]Press 'd' to collapse diff[/green]",
+                            style="grey50 italic",
+                        )
+                    )
+                else:
+                    lines.append(
+                        Text.from_markup(
+                            "[green]Press 'd' to expand diff[/green]",
+                            style="grey50 italic",
+                        )
+                    )
 
         lines.append(Text(""))  # Empty line
 
@@ -253,6 +279,11 @@ class _ApprovalRequestPanel:
     def move_down(self):
         """Move selection down."""
         self.selected_index = (self.selected_index + 1) % len(self.options)
+
+    def toggle_diff(self):
+        """Toggle diff visibility."""
+        if self.request.diff and self.request.diff.should_show_diff():
+            self.show_diff = not self.show_diff
 
     def get_selected_response(self) -> ApprovalResponse:
         """Get the approval response based on selected option."""
@@ -428,6 +459,10 @@ class _LiveView:
                         self._approval_request_queue.popleft().resolve(ApprovalResponse.REJECT)
                     self._reject_all_following = True
                 self.show_next_approval_request()
+            case KeyEvent.LETTER_D:
+                if self._current_approval_request_panel:
+                    self._current_approval_request_panel.toggle_diff()
+                    self.refresh_soon()
             case _:
                 # just ignore any other keyboard event
                 return

@@ -16,6 +16,7 @@ class KeyEvent(Enum):
     ENTER = auto()
     ESCAPE = auto()
     TAB = auto()
+    LETTER_D = auto()
 
 
 async def listen_for_keyboard() -> AsyncGenerator[KeyEvent]:
@@ -109,6 +110,8 @@ def _listen_for_keyboard_unix(
                 emit(KeyEvent.ENTER)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
+            elif c == b"d":
+                emit(KeyEvent.LETTER_D)
     finally:
         # restore the terminal settings
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
@@ -155,6 +158,8 @@ def _listen_for_keyboard_windows(
                 emit(KeyEvent.ENTER)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
+            elif c == b"d":
+                emit(KeyEvent.LETTER_D)
         else:
             if cancel.is_set():
                 break

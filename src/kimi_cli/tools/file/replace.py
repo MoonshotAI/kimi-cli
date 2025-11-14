@@ -9,6 +9,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
+from kimi_cli.utils.diff import generate_file_diff
 
 
 class Edit(BaseModel):
@@ -91,24 +92,30 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                FileActions.EDIT,
-                f"Edit file `{params.path}`",
-            ):
-                return ToolRejectedError()
-
             # Read the file content
             async with aiofiles.open(p, encoding="utf-8", errors="replace") as f:
-                content = await f.read()
+                original_content = await f.read()
 
-            original_content = content
+            content = original_content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
             # Apply all edits
             for edit in edits:
                 content = self._apply_edit(content, edit)
+
+            # Generate diff for approval
+            diff = generate_file_diff(
+                p, content, is_new_file=False, original_content=original_content
+            )
+
+            # Request approval with diff
+            if not await self._approval.request(
+                self.name,
+                FileActions.EDIT,
+                f"Edit file `{params.path}`",
+                diff=diff,
+            ):
+                return ToolRejectedError()
 
             # Check if any changes were made
             if content == original_content:

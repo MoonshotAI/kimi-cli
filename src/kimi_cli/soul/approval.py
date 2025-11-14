@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
+from kimi_cli.utils.diff import FileDiff
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import ApprovalRequest, ApprovalResponse
 
@@ -17,7 +18,9 @@ class Approval:
     def set_yolo(self, yolo: bool) -> None:
         self._yolo = yolo
 
-    async def request(self, sender: str, action: str, description: str) -> bool:
+    async def request(
+        self, sender: str, action: str, description: str, diff: FileDiff | None = None
+    ) -> bool:
         """
         Request approval for the given action. Intended to be called by tools.
 
@@ -50,7 +53,7 @@ class Approval:
         if action in self._auto_approve_actions:
             return True
 
-        request = ApprovalRequest(tool_call.id, sender, action, description)
+        request = ApprovalRequest(tool_call.id, sender, action, description, diff)
         self._request_queue.put_nowait(request)
         response = await request.wait()
         logger.debug("Received approval response: {response}", response=response)

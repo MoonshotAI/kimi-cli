@@ -9,6 +9,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
+from kimi_cli.utils.diff import generate_file_diff
 
 
 class Params(BaseModel):
@@ -89,11 +90,18 @@ class WriteFile(CallableTool2[Params]):
                     brief="Invalid write mode",
                 )
 
-            # Request approval
+            diff = generate_file_diff(
+                p,
+                params.content,
+                is_new_file=not p.exists(),
+                append=(params.mode == "append"),
+            )
+            # Request approval with diff
             if not await self._approval.request(
                 self.name,
                 FileActions.EDIT,
                 f"Write file `{params.path}`",
+                diff=diff,
             ):
                 return ToolRejectedError()
 
