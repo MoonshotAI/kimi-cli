@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from kosong.message import ContentPart
 
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire import Wire, WireMessage, WireUISide
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
@@ -23,7 +25,7 @@ class LLMNotSet(Exception):
 class LLMNotSupported(Exception):
     """Raised when the LLM does not have required capabilities."""
 
-    def __init__(self, llm: "LLM", capabilities: "list[ModelCapability]"):
+    def __init__(self, llm: LLM, capabilities: list[ModelCapability]):
         self.llm = llm
         self.capabilities = capabilities
         capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
@@ -43,7 +45,8 @@ class MaxStepsReached(Exception):
         self.n_steps = n_steps
 
 
-class StatusSnapshot(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatusSnapshot:
     context_usage: float
     """The usage of the context, in percentage."""
 
@@ -61,7 +64,7 @@ class Soul(Protocol):
         ...
 
     @property
-    def model_capabilities(self) -> "set[ModelCapability] | None":
+    def model_capabilities(self) -> set[ModelCapability] | None:
         """The capabilities of the LLM model used by the soul. None indicates no LLM configured."""
         ...
 
@@ -96,7 +99,7 @@ class RunCancelled(Exception):
 
 
 async def run_soul(
-    soul: "Soul",
+    soul: Soul,
     user_input: str | list[ContentPart],
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,

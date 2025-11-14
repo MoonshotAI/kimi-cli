@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # ruff: noqa
 
 import platform
@@ -140,20 +142,6 @@ Examples:
                         },
                     },
                     "required": ["description", "subagent_name", "prompt"],
-                    "type": "object",
-                },
-            ),
-            Tool(
-                name="Think",
-                description="Use the tool to think about something. It will not obtain new information or change the database, but just append the thought to the log. Use it when complex reasoning or some cache memory is needed.\n",
-                parameters={
-                    "properties": {
-                        "thought": {
-                            "description": "A thought to think about.",
-                            "type": "string",
-                        }
-                    },
-                    "required": ["thought"],
                     "type": "object",
                 },
             ),

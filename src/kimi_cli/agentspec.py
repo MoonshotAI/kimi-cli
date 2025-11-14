@@ -1,5 +1,8 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -27,7 +30,7 @@ class AgentSpec(BaseModel):
     )
     tools: list[str] | None = Field(default=None, description="Tools")  # required
     exclude_tools: list[str] | None = Field(default=None, description="Tools to exclude")
-    subagents: dict[str, "SubagentSpec"] | None = Field(default=None, description="Subagents")
+    subagents: dict[str, SubagentSpec] | None = Field(default=None, description="Subagents")
 
 
 class SubagentSpec(BaseModel):
@@ -37,7 +40,8 @@ class SubagentSpec(BaseModel):
     description: str = Field(description="Subagent description")
 
 
-class ResolvedAgentSpec(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ResolvedAgentSpec:
     """Resolved agent specification."""
 
     name: str
@@ -45,7 +49,7 @@ class ResolvedAgentSpec(NamedTuple):
     system_prompt_args: dict[str, str]
     tools: list[str]
     exclude_tools: list[str]
-    subagents: dict[str, "SubagentSpec"]
+    subagents: dict[str, SubagentSpec]
 
 
 def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:

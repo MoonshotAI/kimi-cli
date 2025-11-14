@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # ruff: noqa
 
 import platform
@@ -96,7 +98,6 @@ Test agents content
 ---\
 """,
                 [
-                    "Think",
                     "CMD" if platform.system() == "Windows" else "Bash",
                     "ReadFile",
                     "Glob",

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast, get_args
@@ -27,7 +29,7 @@ class LLM:
         return self.chat_provider.model_name
 
 
-def augment_provider_with_env_vars(provider: "LLMProvider", model: "LLMModel") -> dict[str, str]:
+def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
     """Override provider/model settings from environment variables.
 
     Returns:
@@ -69,10 +71,9 @@ def augment_provider_with_env_vars(provider: "LLMProvider", model: "LLMModel") -
 
 
 def create_llm(
-    provider: "LLMProvider",
-    model: "LLMModel",
+    provider: LLMProvider,
+    model: LLMModel,
     *,
-    stream: bool = True,
     session_id: str | None = None,
 ) -> LLM:
     match provider.type:
@@ -83,7 +84,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
                 default_headers={
                     "User-Agent": USER_AGENT,
                     **(provider.custom_headers or {}),
@@ -98,7 +98,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -107,7 +106,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
@@ -116,7 +114,6 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
-                stream=stream,
                 default_max_tokens=50000,
             )
         case "_chaos":
@@ -139,7 +136,7 @@ def create_llm(
     )
 
 
-def _derive_capabilities(provider: "LLMProvider", model: "LLMModel") -> set[ModelCapability]:
+def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCapability]:
     capabilities = model.capabilities or set()
     if provider.type != "kimi":
         return capabilities

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import contextlib
@@ -385,7 +387,7 @@ class PromptMode(Enum):
     AGENT = "agent"
     SHELL = "shell"
 
-    def toggle(self) -> "PromptMode":
+    def toggle(self) -> PromptMode:
         return PromptMode.SHELL if self == PromptMode.AGENT else PromptMode.AGENT
 
     def __str__(self) -> str:
@@ -609,7 +611,7 @@ class CustomPromptSession:
             if buff is not None:
                 buff.completer = self._agent_mode_completer
 
-    def __enter__(self) -> "CustomPromptSession":
+    def __enter__(self) -> CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             return self
 

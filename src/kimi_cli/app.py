@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import os
 import warnings
@@ -26,20 +28,18 @@ class KimiCLI:
         session: Session,
         *,
         yolo: bool = False,
-        stream: bool = True,  # TODO: remove this when we have a correct print mode impl
         mcp_configs: list[dict[str, Any]] | None = None,
         config_file: Path | None = None,
         model_name: str | None = None,
         thinking: bool = False,
         agent_file: Path | None = None,
-    ) -> "KimiCLI":
+    ) -> KimiCLI:
         """
         Create a KimiCLI instance.
 
         Args:
             session (Session): A session created by `Session.create` or `Session.continue_`.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
-            stream (bool, optional): Use stream mode when calling LLM API. Defaults to True.
             config_file (Path | None, optional): Path to the configuration file. Defaults to None.
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
@@ -79,7 +79,7 @@ class KimiCLI:
         else:
             logger.info("Using LLM provider: {provider}", provider=provider)
             logger.info("Using LLM model: {model}", model=model)
-            llm = create_llm(provider, model, stream=stream, session_id=session.id)
+            llm = create_llm(provider, model, session_id=session.id)
 
         runtime = await Runtime.create(config, llm, session, yolo)
 
@@ -145,6 +145,14 @@ class KimiCLI:
                 WelcomeInfoItem(
                     name="API URL",
                     value=f"{base_url} (from KIMI_BASE_URL)",
+                    level=WelcomeInfoItem.Level.WARN,
+                )
+            )
+        if self._env_overrides.get("KIMI_API_KEY"):
+            welcome_info.append(
+                WelcomeInfoItem(
+                    name="API Key",
+                    value="****** (from KIMI_API_KEY)",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )

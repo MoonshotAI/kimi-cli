@@ -1,5 +1,7 @@
 """Simplified tests for PatchFile tool - focusing on current behavior."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest

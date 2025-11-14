@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
@@ -25,7 +27,7 @@ from kimi_cli.utils.term import ensure_new_line
 
 
 class ShellApp:
-    def __init__(self, soul: Soul, welcome_info: list["WelcomeInfoItem"] | None = None):
+    def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()

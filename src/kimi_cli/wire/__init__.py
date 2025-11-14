@@ -1,9 +1,18 @@
+from __future__ import annotations
+
 import asyncio
+from typing import TYPE_CHECKING
 
 from kosong.message import ContentPart, ToolCallPart
 
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.message import WireMessage
+
+if TYPE_CHECKING:
+    from kimi_cli.wire.message import ApprovalRequest, Event
+
+
+type WireMessage = Event | ApprovalRequest
+"""Any message sent over the `Wire`."""
 
 
 class Wire:
@@ -17,11 +26,11 @@ class Wire:
         self._ui_side = WireUISide(self._queue)
 
     @property
-    def soul_side(self) -> "WireSoulSide":
+    def soul_side(self) -> WireSoulSide:
         return self._soul_side
 
     @property
-    def ui_side(self) -> "WireUISide":
+    def ui_side(self) -> WireUISide:
         return self._ui_side
 
     def shutdown(self) -> None:

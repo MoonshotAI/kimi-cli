@@ -1,5 +1,7 @@
 """Tests for ToolResultBuilder."""
 
+from __future__ import annotations
+
 from kimi_cli.tools.utils import ToolResultBuilder
 
 
