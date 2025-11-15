@@ -33,6 +33,15 @@ def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSyste
     assert "test_value" in prompt
 
 
+def test_load_system_prompt_missing_builtin_arg(
+    legacy_system_prompt_file: Path, builtin_args: BuiltinSystemPromptArgs
+):
+    """Missing args should not raise errors so existing prompts stay compatible."""
+    prompt = _load_system_prompt(legacy_system_prompt_file, {}, builtin_args)
+
+    assert "${KIMI_AGENTS_MD}" in prompt
+
+
 def test_load_tools_valid(runtime: Runtime):
     """Test loading valid tools."""
     tool_paths = ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
@@ -113,5 +122,17 @@ def system_prompt_file() -> Generator[Path, Any, Any]:
 
         system_md = tmpdir / "system.md"
         system_md.write_text("Test system prompt with ${KIMI_NOW} and ${CUSTOM_ARG}")
+
+        yield system_md
+
+
+@pytest.fixture
+def legacy_system_prompt_file() -> Generator[Path, Any, Any]:
+    """System prompt referencing legacy builtin args that may be removed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        system_md = tmpdir / "system.md"
+        system_md.write_text("Legacy system prompt keeps ${KIMI_AGENTS_MD}")
 
         yield system_md
