@@ -76,7 +76,6 @@ def builtin_args(temp_work_dir: Path) -> BuiltinSystemPromptArgs:
         KIMI_NOW="1970-01-01T00:00:00+00:00",
         KIMI_WORK_DIR=temp_work_dir,
         KIMI_WORK_DIR_LS="Test ls content",
-        KIMI_AGENTS_MD="Test agents content",
     )
 
 
@@ -119,6 +118,7 @@ def runtime(
         denwa_renji=denwa_renji,
         session=session,
         approval=approval,
+        agents_md="Test agents content",
     )
 
 

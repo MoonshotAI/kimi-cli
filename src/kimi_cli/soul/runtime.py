@@ -25,8 +25,6 @@ class BuiltinSystemPromptArgs:
     """The current working directory."""
     KIMI_WORK_DIR_LS: str
     """The directory listing of current working directory."""
-    KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
-    """The content of AGENTS.md."""
 
 
 def load_agents_md(work_dir: Path) -> str | None:
@@ -72,6 +70,7 @@ class Runtime:
     builtin_args: BuiltinSystemPromptArgs
     denwa_renji: DenwaRenji
     approval: Approval
+    agents_md: str
 
     @staticmethod
     async def create(
@@ -93,8 +92,8 @@ class Runtime:
                 KIMI_NOW=datetime.now().astimezone().isoformat(),
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
-                KIMI_AGENTS_MD=agents_md or "",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
+            agents_md=agents_md or "",
         )

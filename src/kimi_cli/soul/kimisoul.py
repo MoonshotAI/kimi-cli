@@ -83,6 +83,7 @@ class KimiSoul(Soul):
         if self._runtime.llm is not None:
             assert self._reserved_tokens <= self._runtime.llm.max_context_size
         self._thinking_effort: ThinkingEffort = "off"
+        self._initial_context_prepared = bool(context.history)
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -145,6 +146,8 @@ class KimiSoul(Soul):
         if self._runtime.llm is None:
             raise LLMNotSet()
 
+        await self._ensure_initial_system_messages()
+
         user_message = Message(role="user", content=user_input)
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
@@ -153,6 +156,21 @@ class KimiSoul(Soul):
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
         await self._agent_loop()
+
+    async def _ensure_initial_system_messages(self) -> None:
+        if self._initial_context_prepared:
+            return
+        if self._context.history:
+            self._initial_context_prepared = True
+            return
+        agents_message = self._agents_md_message()
+        if agents_message is None:
+            self._initial_context_prepared = True
+            return
+
+        await self._context.append_message(agents_message)
+        logger.info("Injected AGENTS.md content into the conversation context")
+        self._initial_context_prepared = True
 
     async def _agent_loop(self):
         """The main agent loop for one run."""
@@ -321,9 +339,29 @@ class KimiSoul(Soul):
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
         compacted_messages = await _compact_with_retry()
+        agents_message = self._agents_md_message()
+        if agents_message is not None:
+            compacted_messages = list(compacted_messages)
+            insert_index = 1 if compacted_messages else 0
+            compacted_messages.insert(insert_index, agents_message)
+            logger.info("Re-injected AGENTS.md content after compaction")
         await self._context.revert_to(0)
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
+
+    def _agents_md_message(self) -> Message | None:
+        if not self._runtime.agents_md:
+            return None
+
+        md_path = self._runtime.session.work_dir / "AGENTS.md"
+        message = (
+            "Markdown files named `AGENTS.md` usually contain the background, structure, "
+            "coding styles, user preferences, and other relevant information about the project. "
+            "Use this information to understand the project context. The following content is the "
+            f"current `{md_path}`:"
+        )
+        payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
+        return Message(role="assistant", content=[system(payload)])
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
