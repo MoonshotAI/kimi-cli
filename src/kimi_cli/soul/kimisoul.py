@@ -181,7 +181,8 @@ class KimiSoul:
             "Markdown files named `AGENTS.md` usually contain the background, structure, "
             "coding styles, user preferences, and other relevant information about the project. "
             "Use this information to understand the project context. The following content is the "
-            f"current `{md_path}`:")
+            f"current `{md_path}`:"
+        )
         payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
         await self._context.append_message(
             Message(
