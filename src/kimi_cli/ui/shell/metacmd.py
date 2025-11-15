@@ -207,6 +207,16 @@ async def init(app: Shell, args: list[str]):
     assert isinstance(app.soul, KimiSoul)
 
     soul_bak = app.soul
+    work_dir = soul_bak._runtime.session.work_dir
+    for filename in ("AGENTS.md", "agents.md"):
+        agents_path = work_dir / filename
+        if agents_path.is_file():
+            logger.info("Skipping `/init`, {path} already exists", path=agents_path)
+            console.print(
+                "[yellow]AGENTS.md already exists here. Skipping /init to avoid overwriting it.[/yellow]"
+            )
+            return
+
     with tempfile.TemporaryDirectory() as temp_dir:
         logger.info("Running `/init`")
         console.print("Analyzing the codebase...")
