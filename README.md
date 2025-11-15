@@ -132,6 +132,30 @@ Run `kimi` with `--mcp-config-file` option to connect to the specified MCP serve
 kimi --mcp-config-file /path/to/mcp.json
 ```
 
+### Logging configuration
+
+Kimi CLI writes logs to `~/.kimi/logs/kimi.log`. By default the log level is `INFO` (or `TRACE` when `--debug` is passed). Use `-L/--log-level` to override a specific module or the default level:
+
+```sh
+# Increase verbosity for tools while keeping the rest quiet
+kimi -L kimi_cli.tools=DEBUG -L WARNING
+```
+
+You can also persist the mapping in `~/.kimi/config.json`:
+
+```json
+{
+  "logging": {
+    "levels": {
+      "default": "INFO",
+      "kosong": "WARNING"
+    }
+  }
+}
+```
+
+Module names act as prefixes and are case-insensitive, so `KIMI_CLI.Tools` works the same as `kimi_cli.tools` for all nested modules.
+
 ## Development
 
 To develop Kimi CLI, run:

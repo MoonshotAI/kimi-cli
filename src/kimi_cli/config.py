@@ -73,6 +73,36 @@ class Services(BaseModel):
     """Moonshot Search configuration."""
 
 
+class LoggingConfig(BaseModel):
+    """Logging configuration."""
+
+    levels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of module prefixes to log levels.",
+    )
+
+    @model_validator(mode="after")
+    def validate_levels(self) -> LoggingConfig:
+        normalized: dict[str, str] = {}
+        for module, level in self.levels.items():
+            module_name = module.strip()
+            if not module_name:
+                raise ValueError("Module name in logging.levels cannot be empty")
+            level_name = level.strip().upper()
+            try:
+                logger.level(level_name)
+            except ValueError as exc:  # pragma: no cover - loguru raises ValueError
+                raise ValueError(
+                    f"Invalid log level '{level_name}' for module '{module_name}'"
+                ) from exc
+            key = module_name.rstrip(".").lower()
+            if not key:
+                key = "default"
+            normalized[key] = level_name
+        self.levels = normalized
+        return self
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -83,6 +113,10 @@ class Config(BaseModel):
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
+    logging: LoggingConfig = Field(
+        default_factory=LoggingConfig,
+        description="Logging configuration",
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -106,6 +140,7 @@ def get_default_config() -> Config:
         models={},
         providers={},
         services=Services(),
+        logging=LoggingConfig(),
     )
 
 

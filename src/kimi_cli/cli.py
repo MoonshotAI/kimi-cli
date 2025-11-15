@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -27,6 +27,9 @@ cli = typer.Typer(
 UIMode = Literal["shell", "print", "acp", "wire"]
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
+
+_LOG_LEVEL_OPTION = "--log-level"
+_DEFAULT_LOG_LEVEL_KEY = "default"
 
 
 def _version_callback(value: bool) -> None:
@@ -61,6 +64,17 @@ def kimi(
             help="Log debug information. Default: no.",
         ),
     ] = False,
+    log_level_override: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--log-level",
+            "-L",
+            help=(
+                "Override log level per module. Use `module=LEVEL` (case-insensitive) or just "
+                "`LEVEL` to change the default level."
+            ),
+        ),
+    ] = None,
     agent_file: Annotated[
         Path | None,
         typer.Option(
@@ -198,9 +212,12 @@ def kimi(
     del version  # handled in the callback
 
     from kimi_cli.app import KimiCLI
+    from kimi_cli.config import load_config
     from kimi_cli.session import Session
     from kimi_cli.share import get_share_dir
-    from kimi_cli.utils.logging import logger
+    from kimi_cli.utils.logging import configure_file_logging, logger
+
+    config = load_config()
 
     def _noop_echo(*args: Any, **kwargs: Any):
         pass
@@ -229,13 +246,18 @@ def kimi(
 
     if debug:
         logger.enable("kosong")
-    logger.add(
-        get_share_dir() / "logs" / "kimi.log",
-        # FIXME: configure level for different modules
-        level="TRACE" if debug else "INFO",
-        rotation="06:00",
-        retention="10 days",
-    )
+    config_levels = dict(config.logging.levels)
+    cli_levels = _parse_log_level_overrides(log_level_override or [])
+    merged_levels = {**config_levels, **cli_levels}
+    base_level = "TRACE" if debug else "INFO"
+    try:
+        configure_file_logging(
+            get_share_dir() / "logs" / "kimi.log",
+            base_level=base_level,
+            module_levels=merged_levels,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint=_LOG_LEVEL_OPTION) from exc
 
     work_dir = (work_dir or Path.cwd()).absolute()
     if continue_:
@@ -296,6 +318,7 @@ def kimi(
             model_name=model_name,
             thinking=thinking_mode,
             agent_file=agent_file,
+            config=config,
         )
         match ui:
             case "shell":
@@ -348,6 +371,47 @@ def kimi(
             sys.exit(1)
         except Reload:
             continue
+
+
+def _parse_log_level_overrides(values: Iterable[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for raw in values:
+        entry = raw.strip()
+        if not entry:
+            raise typer.BadParameter(
+                "Log level override cannot be empty",
+                param_hint=_LOG_LEVEL_OPTION,
+            )
+        if "=" in entry:
+            module, level = entry.split("=", 1)
+            module = module.strip()
+            if not module:
+                raise typer.BadParameter(
+                    "Module name is required before '=' when using --log-level",
+                    param_hint=_LOG_LEVEL_OPTION,
+                )
+        else:
+            module = _DEFAULT_LOG_LEVEL_KEY
+            level = entry
+        level = level.strip()
+        if not level:
+            raise typer.BadParameter("Log level cannot be empty", param_hint=_LOG_LEVEL_OPTION)
+        overrides[_normalize_module_key(module)] = level
+    return overrides
+
+
+def _normalize_module_key(module: str) -> str:
+    cleaned = module.strip().rstrip(".")
+    normalized = cleaned.lower()
+    if not normalized:
+        return _DEFAULT_LOG_LEVEL_KEY
+    if normalized == _DEFAULT_LOG_LEVEL_KEY:
+        return _DEFAULT_LOG_LEVEL_KEY
+    return normalized
+
+
+def main() -> None:
+    cli()
 
 
 if __name__ == "__main__":
