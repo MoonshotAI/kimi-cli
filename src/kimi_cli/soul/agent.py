@@ -219,7 +219,8 @@ def _load_system_prompt(
         builtin_args=builtin_args,
         spec_args=args,
     )
-    return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
+    template = string.Template(system_prompt)
+    return template.safe_substitute(asdict(builtin_args), **args)
 
 
 # TODO: maybe move to `KimiToolset`
