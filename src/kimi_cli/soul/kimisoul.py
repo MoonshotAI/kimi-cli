@@ -172,24 +172,12 @@ class KimiSoul:
         if self._context.history:
             self._initial_context_prepared = True
             return
-        if not self._runtime.agents_md:
+        agents_message = self._agents_md_message()
+        if agents_message is None:
             self._initial_context_prepared = True
             return
 
-        md_path = self._runtime.session.work_dir / "AGENTS.md"
-        message = (
-            "Markdown files named `AGENTS.md` usually contain the background, structure, "
-            "coding styles, user preferences, and other relevant information about the project. "
-            "Use this information to understand the project context. The following content is the "
-            f"current `{md_path}`:"
-        )
-        payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
-        await self._context.append_message(
-            Message(
-                role="assistant",
-                content=[system(payload)],
-            )
-        )
+        await self._context.append_message(agents_message)
         logger.info("Injected AGENTS.md content into the conversation context")
         self._initial_context_prepared = True
 
@@ -380,9 +368,29 @@ class KimiSoul:
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
         compacted_messages = await _compact_with_retry()
+        agents_message = self._agents_md_message()
+        if agents_message is not None:
+            compacted_messages = list(compacted_messages)
+            insert_index = 1 if compacted_messages else 0
+            compacted_messages.insert(insert_index, agents_message)
+            logger.info("Re-injected AGENTS.md content after compaction")
         await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
+
+    def _agents_md_message(self) -> Message | None:
+        if not self._runtime.agents_md:
+            return None
+
+        md_path = self._runtime.session.work_dir / "AGENTS.md"
+        message = (
+            "Markdown files named `AGENTS.md` usually contain the background, structure, "
+            "coding styles, user preferences, and other relevant information about the project. "
+            "Use this information to understand the project context. The following content is the "
+            f"current `{md_path}`:"
+        )
+        payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
+        return Message(role="assistant", content=[system(payload)])
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
