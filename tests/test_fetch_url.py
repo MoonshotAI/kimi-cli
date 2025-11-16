@@ -27,8 +27,8 @@ class MockServerFactory(Protocol):
 
 
 @pytest_asyncio.fixture
-async def mock_html_server() -> AsyncIterator[MockServerFactory]:
-    """Provide a temporary HTTP server factory that returns static HTML."""
+async def mock_http_server() -> AsyncIterator[MockServerFactory]:
+    """Provide a temporary HTTP server factory that returns static content."""
 
     runners: list[web.AppRunner] = []
 
@@ -165,12 +165,12 @@ async def test_fetch_url_javascript_driven_site(fetch_url_tool: FetchURL) -> Non
 @pytest.mark.asyncio
 async def test_fetch_url_mocked_http_responses(
     fetch_url_tool: FetchURL,
-    mock_html_server: MockServerFactory,
+    mock_http_server: MockServerFactory,
 ) -> None:
     """Test fetching multiple mocked HTTP responses."""
 
     async def mocked_fetch(resp: str, *, content_type: str = "text/html") -> ToolReturnType:
-        server_url = await mock_html_server(resp, content_type=content_type)
+        server_url = await mock_http_server(resp, content_type=content_type)
         return await fetch_url_tool(Params(url=f"{server_url}/"))
 
     # plain markdown. Real example: https://lucumr.pocoo.org/2025/10/17/code.md
