@@ -184,8 +184,8 @@ This is a markdown document.
     assert result.output == snapshot(plain_markdown)
     assert result.message == "The returned content is the full content of the page."
 
-    # markdown with front-matter. Real example: https://langfuse.com/docs.md
-    markdown_with_front_matter = """\
+    # Real example: https://langfuse.com/docs.md
+    complex_markdown = """\
 ---
 title: Markdown Documentation
 description: This is a sample markdown document with front-matter.
@@ -198,9 +198,9 @@ This is a markdown document.
 <div><p>But has some html</p></div>
 """
     result = await mocked_fetch(
-        markdown_with_front_matter,
+        complex_markdown,
         content_type="text/markdown; charset=utf-8",
     )
     assert isinstance(result, ToolOk)
-    assert result.output == snapshot(markdown_with_front_matter)
+    assert result.output == snapshot(complex_markdown)
     assert result.message == "The returned content is the full content of the page."
