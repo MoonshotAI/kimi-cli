@@ -4,11 +4,50 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
+
 import pytest
+import pytest_asyncio
+from aiohttp import web
 from inline_snapshot import snapshot
-from kosong.tooling import ToolError, ToolOk
+from kosong.tooling import ToolError, ToolOk, ToolReturnType
 
 from kimi_cli.tools.web.fetch import FetchURL, Params
+
+
+MockServerFactory = Callable[[str], Awaitable[str]]
+
+
+@pytest_asyncio.fixture
+async def mock_html_server() -> AsyncIterator[MockServerFactory]:
+    """Provide a temporary HTTP server factory that returns static HTML."""
+
+    runners: list[web.AppRunner] = []
+
+    async def start_server(response_html: str) -> str:
+        async def handler(_: web.Request) -> web.Response:
+            return web.Response(text=response_html, content_type="text/html")
+
+        app = web.Application()
+        app.router.add_get("/", handler)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host="127.0.0.1", port=0)
+        await site.start()
+
+        sockets = site._server.sockets  # type: ignore[attr-defined]
+        assert sockets, "Server failed to bind to a port."
+        port = sockets[0].getsockname()[1]
+
+        runners.append(runner)
+        return f"http://127.0.0.1:{port}"
+
+    try:
+        yield start_server
+    finally:
+        for runner in runners:
+            await runner.cleanup()
 
 
 @pytest.mark.asyncio
@@ -96,3 +135,57 @@ async def test_fetch_url_javascript_driven_site(fetch_url_tool: FetchURL) -> Non
     # If it fails, should indicate extraction issues
     if isinstance(result, ToolError):
         assert "failed to extract meaningful content" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_mocked_http_responses(
+    fetch_url_tool: FetchURL,
+    mock_html_server: MockServerFactory,
+) -> None:
+    """Test fetching multiple mocked HTTP responses."""
+
+    async def mocked_fetch(resp: str) -> ToolReturnType:
+        server_url = await mock_html_server(resp)
+        return await fetch_url_tool(Params(url=f"{server_url}/"))
+
+    # plain markdown. Real example: https://lucumr.pocoo.org/2025/10/17/code.md
+    result = await mocked_fetch(
+        """\
+# Title
+
+This is a markdown document.
+""",
+    )
+    assert result == snapshot(
+        ToolError(
+            message="Failed to extract meaningful content from the page. This may indicate the page content is not suitable for text extraction, or the page requires JavaScript to render its content.",
+            brief="No content extracted",
+        )
+    )
+
+    # markdown with front-matter. Real example: https://langfuse.com/docs.md
+    result = await mocked_fetch(
+        """
+---
+title: Markdown Documentation
+description: This is a sample markdown document with front-matter.
+---
+
+# Title
+
+This is a markdown document.
+
+<div><p>But has some html</p></div>
+    """
+    )
+    assert result == snapshot(
+        ToolOk(
+            output="""\
+---
+---
+--- title: Markdown Documentation description: This is a sample markdown document with front-matter. --- # Title This is a markdown document.
+But has some html\
+""",
+            message="The returned content is the main text content extracted from the page.",
+        )
+    )
