@@ -4,18 +4,26 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
 from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk, ToolReturnType
+from typing import Protocol
 
 from kimi_cli.tools.web.fetch import FetchURL, Params
 
 
-MockServerFactory = Callable[[str], Awaitable[str]]
+class MockServerFactory(Protocol):
+    async def __call__(
+        self,
+        response_body: str,
+        *,
+        content_type: str = "text/html",
+        status: int = 200,
+    ) -> str: ...
 
 
 @pytest_asyncio.fixture
@@ -24,9 +32,26 @@ async def mock_html_server() -> AsyncIterator[MockServerFactory]:
 
     runners: list[web.AppRunner] = []
 
-    async def start_server(response_html: str) -> str:
-        async def handler(_: web.Request) -> web.Response:
-            return web.Response(text=response_html, content_type="text/html")
+    async def start_server(
+        response_body: str,
+        *,
+        content_type: str = "text/html",
+        status: int = 200,
+    ) -> str:
+        async def handler(request: web.Request) -> web.Response:  # noqa: ARG001
+            ct_part, sep, charset_part = content_type.partition(";")
+            charset_value: str | None = None
+            if sep:
+                _, _, charset_value = charset_part.partition("=")
+                charset_value = charset_value.strip() or None
+
+            content_type_value = ct_part.strip() or None
+            return web.Response(
+                text=response_body,
+                status=status,
+                content_type=content_type_value,
+                charset=charset_value,
+            )
 
         app = web.Application()
         app.router.add_get("/", handler)
@@ -144,28 +169,23 @@ async def test_fetch_url_mocked_http_responses(
 ) -> None:
     """Test fetching multiple mocked HTTP responses."""
 
-    async def mocked_fetch(resp: str) -> ToolReturnType:
-        server_url = await mock_html_server(resp)
+    async def mocked_fetch(resp: str, *, content_type: str = "text/html") -> ToolReturnType:
+        server_url = await mock_html_server(resp, content_type=content_type)
         return await fetch_url_tool(Params(url=f"{server_url}/"))
 
     # plain markdown. Real example: https://lucumr.pocoo.org/2025/10/17/code.md
-    result = await mocked_fetch(
-        """\
+    plain_markdown = """\
 # Title
 
 This is a markdown document.
-""",
-    )
-    assert result == snapshot(
-        ToolError(
-            message="Failed to extract meaningful content from the page. This may indicate the page content is not suitable for text extraction, or the page requires JavaScript to render its content.",
-            brief="No content extracted",
-        )
-    )
+"""
+    result = await mocked_fetch(plain_markdown, content_type="text/markdown; charset=utf-8")
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(plain_markdown)
+    assert result.message == "The returned content is the full content of the page."
 
     # markdown with front-matter. Real example: https://langfuse.com/docs.md
-    result = await mocked_fetch(
-        """
+    markdown_with_front_matter = """\
 ---
 title: Markdown Documentation
 description: This is a sample markdown document with front-matter.
@@ -176,16 +196,11 @@ description: This is a sample markdown document with front-matter.
 This is a markdown document.
 
 <div><p>But has some html</p></div>
-    """
+"""
+    result = await mocked_fetch(
+        markdown_with_front_matter,
+        content_type="text/markdown; charset=utf-8",
     )
-    assert result == snapshot(
-        ToolOk(
-            output="""\
----
----
---- title: Markdown Documentation description: This is a sample markdown document with front-matter. --- # Title This is a markdown document.
-But has some html\
-""",
-            message="The returned content is the main text content extracted from the page.",
-        )
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(markdown_with_front_matter)
+    assert result.message == "The returned content is the full content of the page."
