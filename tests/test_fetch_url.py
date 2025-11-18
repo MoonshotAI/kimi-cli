@@ -4,14 +4,13 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Protocol
 
 import pytest
 import pytest_asyncio
 from aiohttp import web
 from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk, ToolReturnType
-from typing import Protocol
 
 from kimi_cli.tools.web.fetch import FetchURL, Params
 
