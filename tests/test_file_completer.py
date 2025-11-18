@@ -8,10 +8,10 @@ from inline_snapshot import snapshot
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
-from kimi_cli.ui.shell.prompt import FileMentionCompleter
+from kimi_cli.ui.shell.prompt import LocalFileMentionCompleter
 
 
-def _completion_texts(completer: FileMentionCompleter, text: str) -> list[str]:
+def _completion_texts(completer: LocalFileMentionCompleter, text: str) -> list[str]:
     document = Document(text=text, cursor_position=len(text))
     event = CompleteEvent(completion_requested=True)
     return [completion.text for completion in completer.get_completions(document, event)]
@@ -24,7 +24,7 @@ def test_top_level_paths_skip_ignored_names(tmp_path: Path):
     (tmp_path / ".DS_Store").write_text("")
     (tmp_path / "README.md").write_text("hello")
 
-    completer = FileMentionCompleter(tmp_path)
+    completer = LocalFileMentionCompleter(tmp_path)
 
     texts = _completion_texts(completer, "@")
 
@@ -41,7 +41,7 @@ def test_directory_completion_continues_after_slash(tmp_path: Path):
     nested = src / "module.py"
     nested.write_text("print('hi')\n")
 
-    completer = FileMentionCompleter(tmp_path)
+    completer = LocalFileMentionCompleter(tmp_path)
 
     texts = _completion_texts(completer, "@src/")
 
@@ -58,7 +58,7 @@ def test_completed_file_short_circuits_completions(tmp_path: Path):
     nested_dir.mkdir(parents=True)
     (nested_dir / "README.md").write_text("nested\n")
 
-    completer = FileMentionCompleter(tmp_path)
+    completer = LocalFileMentionCompleter(tmp_path)
 
     texts = _completion_texts(completer, "@AGENTS.md")
 
@@ -73,7 +73,7 @@ def test_limit_is_enforced(tmp_path: Path):
         (tmp_path / f"file{index}.txt").write_text("x")
 
     limit = 8
-    completer = FileMentionCompleter(tmp_path, limit=limit)
+    completer = LocalFileMentionCompleter(tmp_path, limit=limit)
 
     texts = _completion_texts(completer, "@")
 
@@ -84,7 +84,7 @@ def test_at_guard_prevents_email_like_fragments(tmp_path: Path):
     """Ignore `@` that are embedded inside identifiers (e.g. emails)."""
     (tmp_path / "example.py").write_text("")
 
-    completer = FileMentionCompleter(tmp_path)
+    completer = LocalFileMentionCompleter(tmp_path)
 
     texts = _completion_texts(completer, "email@example.com")
 
@@ -106,7 +106,7 @@ def test_basename_prefix_is_ranked_first(tmp_path: Path):
     patch_py = tmp_path / "src" / "kimi_cli" / "tools" / "file" / "patch.py"
     patch_py.write_text("# patch\n")
 
-    completer = FileMentionCompleter(tmp_path)
+    completer = LocalFileMentionCompleter(tmp_path)
 
     texts = _completion_texts(completer, "@fetch")
 

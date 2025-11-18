@@ -1,3 +1,8 @@
+"""
+The local version of the Grep tool using ripgrep.
+Be cautious that `KaosPath` is not used in this implementation.
+"""
+
 import asyncio
 import platform
 import shutil
