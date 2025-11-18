@@ -591,7 +591,7 @@ class CustomPromptSession:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
         if self._mode == PromptMode.AGENT and self._thinking:
             symbol = PROMPT_SYMBOL_THINKING
-        return FormattedText([("bold", f"{getpass.getuser()}{symbol} ")])
+        return FormattedText([("bold", f"{getpass.getuser()}@{Path.cwd().name}{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
