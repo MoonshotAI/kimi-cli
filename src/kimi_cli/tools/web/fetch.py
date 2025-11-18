@@ -45,7 +45,12 @@ class FetchURL(CallableTool2[Params]):
                         brief=f"HTTP {response.status} error",
                     )
 
-                html = await response.text()
+                resp_text = await response.text()
+
+                content_type = response.headers.get(aiohttp.hdrs.CONTENT_TYPE, "").lower()
+                if content_type.startswith(("text/plain", "text/markdown")):
+                    builder.write(resp_text)
+                    return builder.ok("The returned content is the full content of the page.")
         except aiohttp.ClientError as e:
             return builder.error(
                 (
@@ -55,14 +60,14 @@ class FetchURL(CallableTool2[Params]):
                 brief="Network error",
             )
 
-        if not html:
+        if not resp_text:
             return builder.ok(
                 "The response body is empty.",
                 brief="Empty response body",
             )
 
         extracted_text = trafilatura.extract(
-            html,
+            resp_text,
             include_comments=True,
             include_tables=True,
             include_formatting=False,

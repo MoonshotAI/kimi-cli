@@ -1,5 +1,7 @@
 """Test configuration and fixtures."""
 
+from __future__ import annotations
+
 import platform
 import tempfile
 from collections.abc import Generator

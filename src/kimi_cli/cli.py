@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import sys
@@ -29,7 +31,7 @@ OutputFormat = Literal["text", "stream-json"]
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(VERSION)
+        typer.echo(f"kimi, version {VERSION}")
         raise typer.Exit()
 
 
@@ -185,19 +187,18 @@ def kimi(
         ),
     ] = False,
     thinking: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--thinking",
-            help="Enable thinking mode if supported. Default: no.",
+            help="Enable thinking mode if supported. Default: same as last time.",
         ),
-    ] = False,
+    ] = None,
 ):
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
 
-    from kimi_cli.app import KimiCLI
+    from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.session import Session
-    from kimi_cli.share import get_share_dir
     from kimi_cli.utils.logging import logger
 
     def _noop_echo(*args: Any, **kwargs: Any):
@@ -224,16 +225,7 @@ def kimi(
         ui = "wire"
 
     echo: Callable[..., None] = typer.echo if verbose else _noop_echo
-
-    if debug:
-        logger.enable("kosong")
-    logger.add(
-        get_share_dir() / "logs" / "kimi.log",
-        # FIXME: configure level for different modules
-        level="TRACE" if debug else "INFO",
-        rotation="06:00",
-        retention="10 days",
-    )
+    enable_logging(debug)
 
     work_dir = (work_dir or Path.cwd()).absolute()
     if continue_:
@@ -279,20 +271,27 @@ def kimi(
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
     async def _run() -> bool:
+        from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
+
+        if thinking is None:
+            metadata = load_metadata()
+            thinking_mode = metadata.thinking
+        else:
+            thinking_mode = thinking
+
         instance = await KimiCLI.create(
             session,
             yolo=yolo or (ui == "print"),  # print mode implies yolo
-            stream=ui != "print",  # use non-streaming mode only for print UI
             mcp_configs=mcp_configs,
             model_name=model_name,
-            thinking=thinking,
+            thinking=thinking_mode,
             agent_file=agent_file,
         )
         match ui:
             case "shell":
-                return await instance.run_shell_mode(command)
+                succeeded = await instance.run_shell_mode(command)
             case "print":
-                return await instance.run_print_mode(
+                succeeded = await instance.run_print_mode(
                     input_format or "text",
                     output_format or "text",
                     command,
@@ -300,21 +299,49 @@ def kimi(
             case "acp":
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
-                return await instance.run_acp_server()
+                succeeded = await instance.run_acp_server()
             case "wire":
                 if command is not None:
                     logger.warning("Wire server ignores command argument")
-                return await instance.run_wire_server()
+                succeeded = await instance.run_wire_server()
+
+        if succeeded:
+            metadata = load_metadata()
+
+            # Update work_dir metadata with last session
+            work_dir_meta = next(
+                (wd for wd in metadata.work_dirs if wd.path == str(session.work_dir)), None
+            )
+
+            if work_dir_meta is None:
+                logger.warning(
+                    "Work dir metadata missing when marking last session, recreating: {work_dir}",
+                    work_dir=session.work_dir,
+                )
+                work_dir_meta = WorkDirMeta(path=str(session.work_dir))
+                metadata.work_dirs.append(work_dir_meta)
+
+            work_dir_meta.last_session_id = session.id
+
+            # Update thinking mode
+            metadata.thinking = instance.soul.thinking
+
+            save_metadata(metadata)
+
+        return succeeded
 
     while True:
         try:
             succeeded = asyncio.run(_run())
-            if not succeeded:
-                sys.exit(1)
-            break
+            if succeeded:
+                break
+            sys.exit(1)
         except Reload:
             continue
 
 
 if __name__ == "__main__":
-    cli()
+    if "kimi_cli.cli" not in sys.modules:
+        sys.modules["kimi_cli.cli"] = sys.modules[__name__]
+
+    sys.exit(cli())

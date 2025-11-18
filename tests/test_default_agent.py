@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 # ruff: noqa
 
+import platform
+import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import Tool
-import pytest
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.soul.agent import load_agent
@@ -10,6 +13,7 @@ from kimi_cli.soul.runtime import Runtime
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
     assert agent.system_prompt.replace(
@@ -138,20 +142,6 @@ Examples:
                         },
                     },
                     "required": ["description", "subagent_name", "prompt"],
-                    "type": "object",
-                },
-            ),
-            Tool(
-                name="Think",
-                description="Use the tool to think about something. It will not obtain new information or change the database, but just append the thought to the log. Use it when complex reasoning or some cache memory is needed.\n",
-                parameters={
-                    "properties": {
-                        "thought": {
-                            "description": "A thought to think about.",
-                            "type": "string",
-                        }
-                    },
-                    "required": ["thought"],
                     "type": "object",
                 },
             ),

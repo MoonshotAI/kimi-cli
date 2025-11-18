@@ -9,9 +9,32 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.54] - 2025-11-13
+
+- Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
+- Print: Fix `stream-json` output format missing the last assistant message
+- UI: Add warning when API key is overridden by `KIMI_API_KEY` environment variable
+- UI: Make a bell sound when there's an approval request
+- Core: Fix context compaction and clearing on Windows
+
+## [0.53] - 2025-11-12
+
+- UI: Remove unnecessary trailing spaces in console output
+- Core: Throw error when there are unsupported message parts
+- MetaCmd: Add `/yolo` meta command to enable YOLO mode after startup
+- Tool: Add approval request for MCP tools
+- Tool: Disable `Think` tool in default agent
+- CLI: Restore thinking mode from last time when `--thinking` is not specified
+- CLI: Fix `/reload` not working in binary packed by PyInstaller
+
+## [0.52] - 2025-11-10
 
 - CLI: Remove `--ui` option in favor of `--print`, `--acp`, and `--wire` flags (shell is still the default)
+- CLI: More intuitive session continuation behavior
+- Core: Add retry for LLM empty responses
+- Tool: Change `Bash` tool to `CMD` tool on Windows
+- UI: Fix completion after backspacing
+- UI: Fix code block rendering issues on light background colors
 
 ## [0.51] - 2025-11-8
 

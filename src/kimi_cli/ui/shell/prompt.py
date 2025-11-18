@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import contextlib
@@ -20,6 +22,7 @@ from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
     Completer,
@@ -30,7 +33,7 @@ from prompt_toolkit.completion import (
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Always, Condition, Never, has_completions
+from prompt_toolkit.filters import Condition, has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
@@ -384,7 +387,7 @@ class PromptMode(Enum):
     AGENT = "agent"
     SHELL = "shell"
 
-    def toggle(self) -> "PromptMode":
+    def toggle(self) -> PromptMode:
         return PromptMode.SHELL if self == PromptMode.AGENT else PromptMode.AGENT
 
     def __str__(self) -> str:
@@ -568,12 +571,19 @@ class CustomPromptSession:
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
-            complete_while_typing=True,
+            complete_while_typing=Condition(lambda: self._mode == PromptMode.AGENT),
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
         )
+
+        # Allow completion to be triggered when the text is changed,
+        # such as when backspace is used to delete text.
+        @self._session.default_buffer.on_text_changed.add_handler
+        def trigger_complete(buffer: Buffer) -> None:
+            if buffer.complete_while_typing():
+                buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task | None = None
 
@@ -597,13 +607,11 @@ class CustomPromptSession:
                     buff.cancel_completion()
             if buff is not None:
                 buff.completer = DummyCompleter()
-                buff.complete_while_typing = Never()
         else:
             if buff is not None:
                 buff.completer = self._agent_mode_completer
-                buff.complete_while_typing = Always()
 
-    def __enter__(self) -> "CustomPromptSession":
+    def __enter__(self) -> CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             return self
 
