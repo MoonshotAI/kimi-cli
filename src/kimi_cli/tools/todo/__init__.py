@@ -25,5 +25,11 @@ class SetTodoList(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnType:
         rendered = ""
         for todo in params.todos:
-            rendered += f"- {todo.title} [{todo.status}]\n"
+            match todo.status:
+                case "Done":
+                    rendered += f"- ~~{todo.title}~~ [{todo.status}]\n"
+                case "In Progress":
+                    rendered += f"- **{todo.title}** [{todo.status}]\n"
+                case _:
+                    rendered += f"- {todo.title} [{todo.status}]\n"
         return ToolOk(output="", message="Todo list updated", brief=rendered)

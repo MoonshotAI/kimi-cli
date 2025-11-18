@@ -38,7 +38,7 @@ class MCPTool[T: ClientTransport](CallableTool):
 
         async with self._client as client:
             result = await client.call_tool(
-                self._mcp_tool.name, kwargs, timeout=20, raise_on_error=False
+                self._mcp_tool.name, kwargs, timeout=60, raise_on_error=False
             )
             return convert_tool_result(result)
 
