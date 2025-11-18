@@ -1,5 +1,8 @@
 """Test configuration and fixtures."""
 
+from __future__ import annotations
+
+import platform
 import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -128,7 +131,7 @@ def agent_spec() -> ResolvedAgentSpec:
 @contextmanager
 def tool_call_context(tool_name: str) -> Generator[None]:
     """Create a tool call context."""
-    from kosong.base.message import ToolCall
+    from kosong.message import ToolCall
 
     from kimi_cli.soul.toolset import current_tool_call
 
@@ -227,3 +230,15 @@ def search_web_tool(config: Config) -> SearchWeb:
 def fetch_url_tool() -> FetchURL:
     """Create a FetchURL tool instance."""
     return FetchURL()
+
+
+# misc fixtures
+
+
+@pytest.fixture
+def outside_file() -> Path:
+    """Return a path to a file outside the working directory."""
+    if platform.system() == "Windows":
+        return Path("C:/outside_file.txt")
+    else:
+        return Path("/outside_file.txt")

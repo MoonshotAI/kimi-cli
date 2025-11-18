@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, overload
+from typing import TYPE_CHECKING, overload
 
-from kosong.base.message import Message
+from kosong.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
+from kimi_cli.cli import Reload
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
@@ -33,7 +37,8 @@ This is quite similar to the `Soul.run` method.
 """
 
 
-class MetaCommand(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MetaCommand:
     name: str
     description: str
     func: MetaCmdFunc
@@ -131,7 +136,7 @@ def meta_command(
 
 
 @meta_command(aliases=["quit"])
-def exit(app: "ShellApp", args: list[str]):
+def exit(app: ShellApp, args: list[str]):
     """Exit the application"""
     # should be handled by `ShellApp`
     raise NotImplementedError
@@ -152,7 +157,7 @@ Meta commands are also available:
 
 
 @meta_command(aliases=["h", "?"])
-def help(app: "ShellApp", args: list[str]):
+def help(app: ShellApp, args: list[str]):
     """Show help information"""
     console.print(
         Panel(
@@ -171,7 +176,7 @@ def help(app: "ShellApp", args: list[str]):
 
 
 @meta_command
-def version(app: "ShellApp", args: list[str]):
+def version(app: ShellApp, args: list[str]):
     """Show version information"""
     from kimi_cli.constant import VERSION
 
@@ -179,15 +184,15 @@ def version(app: "ShellApp", args: list[str]):
 
 
 @meta_command(name="release-notes")
-def release_notes(app: "ShellApp", args: list[str]):
+def release_notes(app: ShellApp, args: list[str]):
     """Show release notes"""
-    text = format_release_notes(CHANGELOG)
+    text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
         console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
 
 
 @meta_command
-def feedback(app: "ShellApp", args: list[str]):
+def feedback(app: ShellApp, args: list[str]):
     """Submit feedback to make Kimi CLI better"""
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
@@ -197,7 +202,7 @@ def feedback(app: "ShellApp", args: list[str]):
 
 
 @meta_command(kimi_soul_only=True)
-async def init(app: "ShellApp", args: list[str]):
+async def init(app: ShellApp, args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -207,7 +212,7 @@ async def init(app: "ShellApp", args: list[str]):
         console.print("Analyzing the codebase...")
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
         app.soul = KimiSoul(soul_bak._agent, soul_bak._runtime, context=tmp_context)
-        ok = await app._run_soul_command(prompts.INIT)
+        ok = await app._run_soul_command(prompts.INIT, thinking=False)
 
         if ok:
             console.print(
@@ -228,20 +233,19 @@ async def init(app: "ShellApp", args: list[str]):
 
 
 @meta_command(aliases=["reset"], kimi_soul_only=True)
-async def clear(app: "ShellApp", args: list[str]):
+async def clear(app: ShellApp, args: list[str]):
     """Clear the context"""
     assert isinstance(app.soul, KimiSoul)
 
     if app.soul._context.n_checkpoints == 0:
-        console.print("[yellow]Context is empty.[/yellow]")
-        return
+        raise Reload()
 
     await app.soul._context.revert_to(0)
-    console.print("[green]✓[/green] Context has been cleared.")
+    raise Reload()
 
 
 @meta_command(kimi_soul_only=True)
-async def compact(app: "ShellApp", args: list[str]):
+async def compact(app: ShellApp, args: list[str]):
     """Compact the context"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -253,6 +257,15 @@ async def compact(app: "ShellApp", args: list[str]):
     with console.status("[cyan]Compacting...[/cyan]"):
         await app.soul.compact_context()
     console.print("[green]✓[/green] Context has been compacted.")
+
+
+@meta_command(kimi_soul_only=True)
+async def yolo(app: ShellApp, args: list[str]):
+    """Enable YOLO mode (auto approve all actions)"""
+    assert isinstance(app.soul, KimiSoul)
+
+    app.soul._runtime.approval.set_yolo(True)
+    console.print("[green]✓[/green] Life is short, use YOLO!")
 
 
 from . import (  # noqa: E402

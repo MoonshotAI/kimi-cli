@@ -1,6 +1,8 @@
 """Tests for message utility functions."""
 
-from kosong.base.message import ImageURLPart, Message, TextPart
+from __future__ import annotations
+
+from kosong.message import ImageURLPart, Message, TextPart
 
 from kimi_cli.utils.message import message_extract_text, message_stringify
 

@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 # ruff: noqa
 
+import platform
+import pytest
 from inline_snapshot import snapshot
 
 from kimi_cli.tools.bash import Bash
@@ -104,6 +108,7 @@ However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use t
     )
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 def test_bash_description(bash_tool: Bash):
     """Test the description of Bash tool."""
     assert bash_tool.base.description == snapshot(

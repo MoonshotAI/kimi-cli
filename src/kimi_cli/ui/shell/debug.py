@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 from typing import TYPE_CHECKING
 
-from kosong.base.message import (
+from kosong.message import (
     AudioURLPart,
     ContentPart,
     ImageURLPart,
@@ -142,7 +144,7 @@ def _format_message(msg: Message, index: int) -> Panel:
 
 
 @meta_command(kimi_soul_only=True)
-def debug(app: "ShellApp", args: list[str]):
+def debug(app: ShellApp, args: list[str]):
     """Debug the context"""
     assert isinstance(app.soul, KimiSoul)
 

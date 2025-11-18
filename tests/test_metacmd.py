@@ -1,5 +1,7 @@
 """Tests for meta command functionality using inline-snapshot."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import pytest

@@ -24,10 +24,16 @@ jobs:
             target: x86_64-apple-darwin
           - runner: macos-14
             target: aarch64-apple-darwin
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install GNU Make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make -y
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -47,26 +53,47 @@ jobs:
         run: make build
 
       - name: Package artifact
-        shell: bash
+        shell: python
         env:
           TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
         run: |
-          set -euxo pipefail
-          mkdir -p artifacts
-          # package the binary as tar.gz; keep filename with target and tag
-          cp dist/kimi artifacts/kimi
-          FILENAME="kimi-${TAG}-${{ matrix.target }}.tar.gz"
-          tar -C artifacts -czf "artifacts/${FILENAME}" kimi
-          rm -f artifacts/kimi
-          echo "Built artifact: artifacts/${FILENAME}"
+          import os
+          import pathlib
+          import tarfile
+          import zipfile
+
+          tag = os.environ["TAG"]
+          target = os.environ["TARGET"]
+
+          dist_dir = pathlib.Path("dist")
+          artifacts_dir = pathlib.Path("artifacts")
+          artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+          is_windows = "windows" in target
+          binary_name = "kimi.exe" if is_windows else "kimi"
+          binary_path = dist_dir / binary_name
+          if not binary_path.exists():
+              raise SystemExit(f"Binary not found at {binary_path}")
+
+          archive_ext = "zip" if is_windows else "tar.gz"
+          archive_name = f"kimi-{tag}-{target}.{archive_ext}"
+          archive_path = artifacts_dir / archive_name
+
+          if is_windows:
+              with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+                  archive_file.write(binary_path, arcname=binary_name)
+          else:
+              with tarfile.open(archive_path, "w:gz") as archive_file:
+                  archive_file.add(binary_path, arcname=binary_name)
+
+          print(f"Built artifact: {archive_path}")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        env:
-          TAG: ${{ github.ref_name }}
         with:
-          name: kimi-${TAG}-${{ matrix.target }}
-          path: artifacts/*.tar.gz
+          name: kimi-${{ github.ref_name }}-${{ matrix.target }}
+          path: artifacts/*
           if-no-files-found: error
           retention-days: 7
 
@@ -89,7 +116,8 @@ jobs:
         run: |
           set -euxo pipefail
           cd downloads
-          for f in *.tar.gz; do
+          shopt -s nullglob
+          for f in *.tar.gz *.zip; do
             sha256sum "$f" > "$f.sha256"
             echo "sha256($(basename "$f"))=$(cut -d' ' -f1 "$f.sha256")"
           done
@@ -103,7 +131,9 @@ jobs:
           generate_release_notes: true
           files: |
             downloads/*.tar.gz
+            downloads/*.zip
             downloads/*.tar.gz.sha256
+            downloads/*.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

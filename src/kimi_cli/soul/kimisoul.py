@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Sequence
 from functools import partial
@@ -6,16 +8,19 @@ from typing import TYPE_CHECKING
 import kosong
 import tenacity
 from kosong import StepResult
-from kosong.base.message import ContentPart, ImageURLPart, Message
 from kosong.chat_provider import (
     APIConnectionError,
+    APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
     ChatProviderError,
+    ThinkingEffort,
 )
+from kosong.message import ContentPart, Message
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from kimi_cli.llm import ModelCapability
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -27,7 +32,7 @@ from kimi_cli.soul import (
 from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.message import system, tool_result_to_messages
+from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.runtime import Runtime
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
@@ -39,6 +44,12 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
 )
+
+if TYPE_CHECKING:
+
+    def type_check(soul: KimiSoul):
+        _: Soul = soul
+
 
 RESERVED_TOKENS = 50_000
 
@@ -71,6 +82,7 @@ class KimiSoul(Soul):
         self._reserved_tokens = RESERVED_TOKENS
         if self._runtime.llm is not None:
             assert self._reserved_tokens <= self._runtime.llm.max_context_size
+        self._thinking_effort: ThinkingEffort = "off"
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -84,8 +96,14 @@ class KimiSoul(Soul):
         return self._agent.name
 
     @property
-    def model(self) -> str:
+    def model_name(self) -> str:
         return self._runtime.llm.chat_provider.model_name if self._runtime.llm else ""
+
+    @property
+    def model_capabilities(self) -> set[ModelCapability] | None:
+        if self._runtime.llm is None:
+            return None
+        return self._runtime.llm.capabilities
 
     @property
     def status(self) -> StatusSnapshot:
@@ -101,6 +119,25 @@ class KimiSoul(Soul):
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
+    @property
+    def thinking(self) -> bool:
+        """Whether thinking mode is enabled."""
+        return self._thinking_effort != "off"
+
+    def set_thinking(self, enabled: bool) -> None:
+        """
+        Enable/disable thinking mode for the soul.
+
+        Raises:
+            LLMNotSet: When the LLM is not set.
+            LLMNotSupported: When the LLM does not support thinking mode.
+        """
+        if self._runtime.llm is None:
+            raise LLMNotSet()
+        if enabled and "thinking" not in self._runtime.llm.capabilities:
+            raise LLMNotSupported(self._runtime.llm, ["thinking"])
+        self._thinking_effort = "high" if enabled else "off"
+
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
@@ -108,15 +145,12 @@ class KimiSoul(Soul):
         if self._runtime.llm is None:
             raise LLMNotSet()
 
-        if (
-            isinstance(user_input, list)
-            and any(isinstance(part, ImageURLPart) for part in user_input)
-            and not self._runtime.llm.supports_image_in
-        ):
-            raise LLMNotSupported(self._runtime.llm, ["image_in"])
+        user_message = Message(role="user", content=user_input)
+        if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
+            raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
-        await self._context.append_message(Message(role="user", content=user_input))
+        await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
         await self._agent_loop()
 
@@ -131,7 +165,7 @@ class KimiSoul(Soul):
 
         step_no = 1
         while True:
-            wire_send(StepBegin(step_no))
+            wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
             # FIXME: It's possible that a subagent's approval task steals approval request
             # from the main agent. We must ensure that the Task tool will redirect them
@@ -187,7 +221,7 @@ class KimiSoul(Soul):
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                chat_provider,
+                chat_provider.with_thinking(self._thinking_effort),
                 self._agent.system_prompt,
                 self._agent.toolset,
                 self._context.history,
@@ -244,14 +278,26 @@ class KimiSoul(Soul):
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
+
+        assert self._runtime.llm is not None
+        tool_messages = [tool_result_to_message(tr) for tr in tool_results]
+        for tm in tool_messages:
+            if missing_caps := check_message(tm, self._runtime.llm.capabilities):
+                logger.warning(
+                    "Tool result message requires unsupported capabilities: {caps}",
+                    caps=missing_caps,
+                )
+                raise LLMNotSupported(self._runtime.llm, list(missing_caps))
+
         await self._context.append_message(result.message)
         if result.usage is not None:
             await self._context.update_token_count(result.usage.total)
 
+        logger.debug(
+            "Appending tool messages to context: {tool_messages}", tool_messages=tool_messages
+        )
+        await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
-        for tool_result in tool_results:
-            logger.debug("Appending tool result to context: {tool_result}", tool_result=tool_result)
-            await self._context.append_message(tool_result_to_messages(tool_result))
 
     async def compact_context(self) -> None:
         """
@@ -281,7 +327,7 @@ class KimiSoul(Soul):
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
-        if isinstance(exception, (APIConnectionError, APITimeoutError)):
+        if isinstance(exception, (APIConnectionError, APITimeoutError, APIEmptyResponseError)):
             return True
         return isinstance(exception, APIStatusError) and exception.status_code in (
             429,  # Too Many Requests
@@ -311,9 +357,3 @@ class BackToTheFuture(Exception):
     def __init__(self, checkpoint_id: int, messages: Sequence[Message]):
         self.checkpoint_id = checkpoint_id
         self.messages = messages
-
-
-if TYPE_CHECKING:
-
-    def type_check(kimi_soul: KimiSoul):
-        _: Soul = kimi_soul

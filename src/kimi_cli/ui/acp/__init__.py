@@ -1,27 +1,34 @@
+from __future__ import annotations
+
 import asyncio
 import uuid
+from typing import Any
 
-import acp
-import streamingjson
-from kosong.base.message import (
+import acp  # pyright: ignore[reportMissingTypeStubs]
+import streamingjson  # pyright: ignore[reportMissingTypeStubs]
+from kosong.chat_provider import ChatProviderError
+from kosong.message import (
     ContentPart,
     TextPart,
+    ThinkPart,
     ToolCall,
     ToolCallPart,
 )
-from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
-from kimi_cli.tools import extract_subtitle
+from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
+    CompactionBegin,
+    CompactionEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    SubagentEvent,
 )
 
 
@@ -49,7 +56,7 @@ class _ToolCallState:
     def get_title(self) -> str:
         """Get the current title with subtitle if available."""
         tool_name = self.tool_call.function.name
-        subtitle = extract_subtitle(self.lexer, tool_name)
+        subtitle = extract_key_argument(self.lexer, tool_name)
         if subtitle:
             return f"{tool_name}: {subtitle}"
         return tool_name
@@ -116,12 +123,12 @@ class ACPAgent:
         logger.warning("Set session mode: {mode}", mode=params.modeId)
         return None
 
-    async def extMethod(self, method: str, params: dict) -> dict:
+    async def extMethod(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Handle extension method."""
         logger.warning("Unsupported extension method: {method}", method=method)
         return {}
 
-    async def extNotification(self, method: str, params: dict) -> None:
+    async def extNotification(self, method: str, params: dict[str, Any]) -> None:
         """Handle extension notification."""
         logger.warning("Unsupported extension notification: {method}", method=method)
 
@@ -172,29 +179,51 @@ class ACPAgent:
             self.run_state.cancel_event.set()
 
     async def _stream_events(self, wire: WireUISide):
-        assert isinstance(await wire.receive(), StepBegin)
-
         while True:
             msg = await wire.receive()
+            match msg:
+                case StepBegin():
+                    pass
+                case StepInterrupted():
+                    break
+                case CompactionBegin():
+                    pass
+                case CompactionEnd():
+                    pass
+                case StatusUpdate():
+                    pass
+                case ThinkPart(think=think):
+                    await self._send_thinking(think)
+                case TextPart(text=text):
+                    await self._send_text(text)
+                case ContentPart():
+                    logger.warning("Unsupported content part: {part}", part=msg)
+                    await self._send_text(f"[{msg.__class__.__name__}]")
+                case ToolCall():
+                    await self._send_tool_call(msg)
+                case ToolCallPart():
+                    await self._send_tool_call_part(msg)
+                case ToolResult():
+                    await self._send_tool_result(msg)
+                case SubagentEvent():
+                    pass
+                case ApprovalRequest():
+                    await self._handle_approval_request(msg)
 
-            if isinstance(msg, TextPart):
-                await self._send_text(msg.text)
-            elif isinstance(msg, ContentPart):
-                logger.warning("Unsupported content part: {part}", part=msg)
-                await self._send_text(f"[{msg.__class__.__name__}]")
-            elif isinstance(msg, ToolCall):
-                await self._send_tool_call(msg)
-            elif isinstance(msg, ToolCallPart):
-                await self._send_tool_call_part(msg)
-            elif isinstance(msg, ToolResult):
-                await self._send_tool_result(msg)
-            elif isinstance(msg, ApprovalRequest):
-                await self._handle_approval_request(msg)
-            elif isinstance(msg, StatusUpdate):
-                # TODO: stream status if needed
-                pass
-            elif isinstance(msg, StepInterrupted):
-                break
+    async def _send_thinking(self, think: str):
+        """Send thinking content to client."""
+        if not self.session_id:
+            return
+
+        await self.connection.sessionUpdate(
+            acp.SessionNotification(
+                sessionId=self.session_id,
+                update=acp.schema.AgentThoughtChunk(
+                    content=acp.schema.TextContentBlock(type="text", text=think),
+                    sessionUpdate="agent_thought_chunk",
+                ),
+            )
+        )
 
     async def _send_text(self, text: str):
         """Send text chunk to client."""
@@ -383,7 +412,13 @@ def _tool_result_to_acp_content(
     | acp.schema.FileEditToolCallContent
     | acp.schema.TerminalToolCallContent
 ]:
-    def _to_acp_content(part: ContentPart) -> acp.schema.ContentToolCallContent:
+    def _to_acp_content(
+        part: ContentPart,
+    ) -> (
+        acp.schema.ContentToolCallContent
+        | acp.schema.FileEditToolCallContent
+        | acp.schema.TerminalToolCallContent
+    ):
         if isinstance(part, TextPart):
             return acp.schema.ContentToolCallContent(
                 type="content", content=acp.schema.TextContentBlock(type="text", text=part.text)
@@ -397,7 +432,13 @@ def _tool_result_to_acp_content(
                 ),
             )
 
-    content = []
+    content: list[
+        (
+            acp.schema.ContentToolCallContent
+            | acp.schema.FileEditToolCallContent
+            | acp.schema.TerminalToolCallContent
+        )
+    ] = []
     if isinstance(tool_result.output, str):
         content.append(_to_acp_content(TextPart(text=tool_result.output)))
     elif isinstance(tool_result.output, ContentPart):

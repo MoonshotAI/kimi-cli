@@ -6,16 +6,19 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.agentspec import ResolvedAgentSpec, SubagentSpec
+from kimi_cli.exception import AgentSpecError
 from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
 from kimi_cli.soul.agent import Agent, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.runtime import Runtime
+from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
-from kimi_cli.wire import WireUISide
-from kimi_cli.wire.message import ApprovalRequest, WireMessage
+from kimi_cli.wire import WireMessage, WireUISide
+from kimi_cli.wire.message import ApprovalRequest, SubagentEvent
 
 # Maximum continuation attempts for task summary
 MAX_CONTINUE_ATTEMPTS = 1
@@ -95,8 +98,16 @@ class Task(CallableTool2[Params]):
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
         if self._load_task is not None:
-            await self._load_task
-            self._load_task = None
+            try:
+                await self._load_task
+            except AgentSpecError as e:
+                logger.exception("Failed to load subagents:")
+                return ToolError(
+                    message=f"Failed to load subagents: {e}",
+                    brief="Failed to load subagents",
+                )
+            finally:
+                self._load_task = None
 
         if params.subagent_name not in self._subagents:
             return ToolError(
@@ -117,11 +128,20 @@ class Task(CallableTool2[Params]):
         """Run subagent with optional continuation for task summary."""
         super_wire = get_wire_or_none()
         assert super_wire is not None
+        current_tool_call = get_current_tool_call_or_none()
+        assert current_tool_call is not None
+        current_tool_call_id = current_tool_call.id
 
         def _super_wire_send(msg: WireMessage) -> None:
             if isinstance(msg, ApprovalRequest):
                 super_wire.soul_side.send(msg)
-            # TODO: visualize subagent behavior by sending other messages in some way
+                return
+
+            event = SubagentEvent(
+                task_tool_call_id=current_tool_call_id,
+                event=msg,
+            )
+            super_wire.soul_side.send(event)
 
         async def _ui_loop_fn(wire: WireUISide) -> None:
             while True:

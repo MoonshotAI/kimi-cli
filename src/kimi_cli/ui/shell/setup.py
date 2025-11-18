@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -20,7 +22,7 @@ class _Platform(NamedTuple):
     name: str
     base_url: str
     search_url: str | None = None
-    allowed_models: list[str] | None = None
+    allowed_prefixes: list[str] | None = None
 
 
 _PLATFORMS = [
@@ -34,19 +36,19 @@ _PLATFORMS = [
         id="moonshot-cn",
         name="Moonshot AI 开放平台 (moonshot.cn)",
         base_url="https://api.moonshot.cn/v1",
-        allowed_models=["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "kimi-k2-0711-preview"],
+        allowed_prefixes=["kimi-k2-"],
     ),
     _Platform(
         id="moonshot-ai",
         name="Moonshot AI Open Platform (moonshot.ai)",
         base_url="https://api.moonshot.ai/v1",
-        allowed_models=["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "kimi-k2-0711-preview"],
+        allowed_prefixes=["kimi-k2-"],
     ),
 ]
 
 
 @meta_command
-async def setup(app: "ShellApp", args: list[str]):
+async def setup(app: ShellApp, args: list[str]):
     """Setup Kimi CLI"""
     result = await _setup()
     if not result:
@@ -127,11 +129,13 @@ async def _setup() -> _SetupResult | None:
     model_dict = {model["id"]: model for model in resp_json["data"]}
 
     # select the model
-    if platform.allowed_models is None:
-        model_ids = [model["id"] for model in resp_json["data"]]
-    else:
-        id_set = set(model["id"] for model in resp_json["data"])
-        model_ids = [model_id for model_id in platform.allowed_models if model_id in id_set]
+    model_ids: list[str] = [model["id"] for model in resp_json["data"]]
+    if platform.allowed_prefixes is not None:
+        model_ids = [
+            model_id
+            for model_id in model_ids
+            if model_id.startswith(tuple(platform.allowed_prefixes))
+        ]
 
     if not model_ids:
         console.print("[red]No models available for the selected platform[/red]")
@@ -183,7 +187,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 
 
 @meta_command
-def reload(app: "ShellApp", args: list[str]):
+def reload(app: ShellApp, args: list[str]):
     """Reload configuration"""
     from kimi_cli.cli import Reload
 

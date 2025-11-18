@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
 
 from kimi_cli.config import Config
 from kimi_cli.llm import LLM
@@ -12,7 +14,8 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
 
 
-class BuiltinSystemPromptArgs(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BuiltinSystemPromptArgs:
     """Builtin system prompt arguments."""
 
     KIMI_NOW: str
@@ -38,7 +41,8 @@ def load_agents_md(work_dir: Path) -> str | None:
     return None
 
 
-class Runtime(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Runtime:
     """Agent runtime."""
 
     config: Config
@@ -54,7 +58,7 @@ class Runtime(NamedTuple):
         llm: LLM | None,
         session: Session,
         yolo: bool,
-    ) -> "Runtime":
+    ) -> Runtime:
         ls_output, agents_md = await asyncio.gather(
             asyncio.to_thread(list_directory, session.work_dir),
             asyncio.to_thread(load_agents_md, session.work_dir),

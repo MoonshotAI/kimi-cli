@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 from collections.abc import Sequence
 from pathlib import Path
 
 import aiofiles
 import aiofiles.os
-from kosong.base.message import Message
+from kosong.message import Message
 
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
@@ -95,7 +97,7 @@ class Context:
         if rotated_file_path is None:
             logger.error("No available rotation path found")
             raise RuntimeError("No available rotation path found")
-        await aiofiles.os.rename(self._file_backend, rotated_file_path)
+        await aiofiles.os.replace(self._file_backend, rotated_file_path)
         logger.debug(
             "Rotated history file: {rotated_file_path}", rotated_file_path=rotated_file_path
         )

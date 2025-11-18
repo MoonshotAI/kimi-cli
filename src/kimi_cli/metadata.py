@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from hashlib import md5
 from pathlib import Path
@@ -31,9 +33,11 @@ class WorkDirMeta(BaseModel):
 class Metadata(BaseModel):
     """Kimi metadata structure."""
 
-    work_dirs: list[WorkDirMeta] = Field(
-        default_factory=list[WorkDirMeta], description="Work directory list"
-    )
+    work_dirs: list[WorkDirMeta] = Field(default_factory=list[WorkDirMeta])
+    """Work directory list."""
+
+    thinking: bool = False
+    """Whether the last session was in thinking mode."""
 
 
 def load_metadata() -> Metadata:

@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from kosong.base.message import ContentPart
 from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.message import ContentPart
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -15,25 +17,20 @@ from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancel
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import get_meta_command
-from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, ensure_new_line, toast
+from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
+from kimi_cli.utils.term import ensure_new_line
 
 
 class ShellApp:
-    def __init__(
-        self,
-        soul: Soul,
-        welcome_info: list["WelcomeInfoItem"] | None = None,
-        markdown: bool = True,
-    ):
+    def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
-        self._markdown = markdown
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -48,7 +45,11 @@ class ShellApp:
         if isinstance(self.soul, KimiSoul):
             await replay_recent_history(self.soul.context.history)
 
-        with CustomPromptSession(lambda: self.soul.status) as prompt_session:
+        with CustomPromptSession(
+            status_provider=lambda: self.soul.status,
+            model_capabilities=self.soul.model_capabilities or set(),
+            initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
+        ) as prompt_session:
             while True:
                 try:
                     ensure_new_line()
@@ -81,8 +82,12 @@ class ShellApp:
                     await self._run_meta_command(user_input.command[1:])
                     continue
 
-                logger.info("Running agent command: {command}", command=user_input.content)
-                await self._run_soul_command(user_input.content)
+                logger.info(
+                    "Running agent command: {command} with thinking {thinking}",
+                    command=user_input.content,
+                    thinking="on" if user_input.thinking else "off",
+                )
+                await self._run_soul_command(user_input.content, user_input.thinking)
 
         return True
 
@@ -152,7 +157,11 @@ class ShellApp:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-    async def _run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
+    async def _run_soul_command(
+        self,
+        user_input: str | list[ContentPart],
+        thinking: bool | None = None,
+    ) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -169,6 +178,9 @@ class ShellApp:
         remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
+            if isinstance(self.soul, KimiSoul) and thinking is not None:
+                self.soul.set_thinking(thinking)
+
             # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
@@ -177,7 +189,6 @@ class ShellApp:
                     wire,
                     initial_status=self.soul.status,
                     cancel_event=cancel_event,
-                    markdown=self._markdown,
                 ),
                 cancel_event,
             )
@@ -186,6 +197,7 @@ class ShellApp:
             logger.error("LLM not set")
             console.print("[red]LLM not set, send /setup to configure[/red]")
         except LLMNotSupported as e:
+            # actually unsupported input/mode should already be blocked by prompt session
             logger.error(
                 "LLM model '{model_name}' does not support required capabilities: {capabilities}",
                 model_name=e.llm.model_name,
@@ -217,14 +229,18 @@ class ShellApp:
         return False
 
     async def _auto_update(self) -> None:
-        toast("checking for updates...", duration=2.0)
+        toast("checking for updates...", topic="update", duration=2.0)
         result = await do_update(print=False, check_only=True)
         if result == UpdateResult.UPDATE_AVAILABLE:
             while True:
-                toast("new version found, run `uv tool upgrade kimi-cli` to upgrade", duration=30.0)
+                toast(
+                    "new version found, run `uv tool upgrade kimi-cli` to upgrade",
+                    topic="update",
+                    duration=30.0,
+                )
                 await asyncio.sleep(60.0)
         elif result == UpdateResult.UPDATED:
-            toast("auto updated, restart to use the new version", duration=5.0)
+            toast("auto updated, restart to use the new version", topic="update", duration=5.0)
 
     def _start_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro)
