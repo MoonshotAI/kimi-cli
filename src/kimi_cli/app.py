@@ -21,6 +21,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.runtime import Runtime
 from kimi_cli.utils.logging import StreamToLogger, logger
+from kimi_cli.utils.path import shorten_home
 
 
 def enable_logging(debug: bool = False) -> None:
@@ -150,7 +151,9 @@ class KimiCLI:
         from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
 
         welcome_info = [
-            WelcomeInfoItem(name="Directory", value=str(self._runtime.session.work_dir)),
+            WelcomeInfoItem(
+                name="Directory", value=str(shorten_home(self._runtime.session.work_dir))
+            ),
             WelcomeInfoItem(name="Session", value=self._runtime.session.id),
         ]
         if base_url := self._env_overrides.get("KIMI_BASE_URL"):

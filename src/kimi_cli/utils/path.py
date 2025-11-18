@@ -72,3 +72,15 @@ def list_directory(work_dir: Path) -> str:
             errors="replace",
         )
     return ls.stdout.strip()
+
+
+def shorten_home(path: Path) -> Path:
+    """
+    Convert absolute path to use `~` for home directory.
+    """
+    try:
+        home = Path.home()
+        p = path.relative_to(home)
+        return Path("~") / p
+    except ValueError:
+        return path
