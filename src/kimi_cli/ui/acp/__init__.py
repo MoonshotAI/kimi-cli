@@ -68,7 +68,6 @@ class _RunState:
         """Map of tool call ID (LLM-side ID) to tool call state."""
         self.last_tool_call: _ToolCallState | None = None
         self.cancel_event = asyncio.Event()
-        self.in_thinking = False
 
 
 class ACPAgent:
@@ -182,15 +181,6 @@ class ACPAgent:
     async def _stream_events(self, wire: WireUISide):
         while True:
             msg = await wire.receive()
-
-            assert self.run_state is not None
-            if isinstance(msg, ThinkPart) and not self.run_state.in_thinking:
-                await self._send_text("<think>\n")
-                self.run_state.in_thinking = True
-            if not isinstance(msg, ThinkPart) and self.run_state.in_thinking:
-                await self._send_text("\n\n</think>\n\n")
-                self.run_state.in_thinking = False
-
             match msg:
                 case StepBegin():
                     pass
@@ -203,7 +193,7 @@ class ACPAgent:
                 case StatusUpdate():
                     pass
                 case ThinkPart(think=think):
-                    await self._send_text(think)
+                    await self._send_thinking(think)
                 case TextPart(text=text):
                     await self._send_text(text)
                 case ContentPart():
@@ -219,6 +209,21 @@ class ACPAgent:
                     pass
                 case ApprovalRequest():
                     await self._handle_approval_request(msg)
+
+    async def _send_thinking(self, think: str):
+        """Send thinking content to client."""
+        if not self.session_id:
+            return
+
+        await self.connection.sessionUpdate(
+            acp.SessionNotification(
+                sessionId=self.session_id,
+                update=acp.schema.AgentThoughtChunk(
+                    content=acp.schema.TextContentBlock(type="text", text=think),
+                    sessionUpdate="agent_thought_chunk",
+                ),
+            )
+        )
 
     async def _send_text(self, text: str):
         """Send text chunk to client."""
