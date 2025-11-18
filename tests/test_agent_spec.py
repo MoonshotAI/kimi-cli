@@ -121,7 +121,7 @@ agent:
 def test_load_agent_spec_nonexistent_file():
     """Test loading nonexistent agent spec file raises AssertionError."""
     nonexistent = Path("/nonexistent/agent.yaml")
-    with pytest.raises(AssertionError, match="expect agent file to exist"):
+    with pytest.raises(AgentSpecError, match="Agent spec file not found: /nonexistent/agent.yaml"):
         load_agent_spec(nonexistent)
 
 
