@@ -79,7 +79,10 @@ def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
 
 
 def _load_agent_spec(agent_file: Path) -> AgentSpec:
-    assert agent_file.is_file(), "expect agent file to exist"
+    if not agent_file.exists():
+        raise AgentSpecError(f"Agent spec file not found: {agent_file}")
+    if not agent_file.is_file():
+        raise AgentSpecError(f"Agent spec path is not a file: {agent_file}")
     try:
         with open(agent_file, encoding="utf-8") as f:
             data: dict[str, Any] = yaml.safe_load(f)
@@ -92,15 +95,17 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
 
     agent_spec = AgentSpec(**data.get("agent", {}))
     if agent_spec.system_prompt_path is not None:
-        agent_spec.system_prompt_path = agent_file.parent / agent_spec.system_prompt_path
+        agent_spec.system_prompt_path = (
+            agent_file.parent / agent_spec.system_prompt_path
+        ).absolute()
     if agent_spec.subagents is not None:
         for v in agent_spec.subagents.values():
-            v.path = agent_file.parent / v.path
+            v.path = (agent_file.parent / v.path).absolute()
     if agent_spec.extend:
         if agent_spec.extend == "default":
             base_agent_file = DEFAULT_AGENT_FILE
         else:
-            base_agent_file = agent_file.parent / agent_spec.extend
+            base_agent_file = (agent_file.parent / agent_spec.extend).absolute()
         base_agent_spec = _load_agent_spec(base_agent_file)
         if agent_spec.name is not None:
             base_agent_spec.name = agent_spec.name

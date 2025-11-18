@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -121,7 +122,10 @@ agent:
 def test_load_agent_spec_nonexistent_file():
     """Test loading nonexistent agent spec file raises AssertionError."""
     nonexistent = Path("/nonexistent/agent.yaml")
-    with pytest.raises(AssertionError, match="expect agent file to exist"):
+    with pytest.raises(
+        AgentSpecError,
+        match=re.compile(r"Agent spec file not found: [\\/]nonexistent[\\/]agent.yaml"),
+    ):
         load_agent_spec(nonexistent)
 
 
