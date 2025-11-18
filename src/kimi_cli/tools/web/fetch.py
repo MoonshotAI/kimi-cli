@@ -47,8 +47,8 @@ class FetchURL(CallableTool2[Params]):
 
                 resp_text = await response.text()
 
-                ctype = response.headers.get(aiohttp.hdrs.CONTENT_TYPE, "").lower()
-                if ctype.startswith("text/plain") or ctype.startswith("text/markdown"):
+                content_type = response.headers.get(aiohttp.hdrs.CONTENT_TYPE, "").lower()
+                if content_type.startswith(("text/plain", "text/markdown")):
                     builder.write(resp_text)
                     return builder.ok("The returned content is the full content of the page.")
         except aiohttp.ClientError as e:

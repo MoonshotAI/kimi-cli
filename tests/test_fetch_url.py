@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Protocol
+from collections.abc import AsyncIterator
+from typing import Protocol
 
 import pytest
 import pytest_asyncio
