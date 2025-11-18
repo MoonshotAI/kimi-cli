@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
@@ -98,11 +99,11 @@ class ShellApp:
 
         # Check if user is trying to use 'cd' command
         stripped_cmd = command.strip()
-        if stripped_cmd.startswith("cd ") or stripped_cmd == "cd":
+        split_cmd = shlex.split(stripped_cmd)
+        if len(split_cmd) == 2 and split_cmd[0] == "cd":
             console.print(
-                "[yellow]Warning: The 'cd' command is not supported in shell mode.\n"
-                "Each command runs in a separate subprocess, "
-                "so directory changes are not preserved.[/yellow]"
+                "[yellow]Warning: Directory changes are not preserved across command executions."
+                "[/yellow]"
             )
             return
 
