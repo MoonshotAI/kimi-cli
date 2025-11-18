@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import aiofiles.os
@@ -50,3 +52,23 @@ async def next_available_rotation(path: Path) -> Path | None:
         if await _reserve_rotation_path(next_path):
             return next_path
         next_num += 1
+
+
+def list_directory(work_dir: Path) -> str:
+    if sys.platform == "win32":
+        ls = subprocess.run(
+            ["cmd", "/c", "dir", work_dir],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    else:
+        ls = subprocess.run(
+            ["ls", "-la", work_dir],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    return ls.stdout.strip()
