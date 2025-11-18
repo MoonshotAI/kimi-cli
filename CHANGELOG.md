@@ -9,6 +9,17 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.55] - 2025-11-18
+
+- Lib: Add `kimi_cli.app.enable_logging` function to enable logging when directly using `KimiCLI` class
+- Core: Fix relative path resolution in agent spec files
+- Core: Prevent from panic when LLM API connection failed
+- Tool: Optimize `FetchURL` tool for better content extraction
+- Tool: Increase MCP tool call timeout to 60 seconds
+- Tool: Provide better error message in `Glob` tool when pattern is `**`
+- ACP: Fix thinking content not displayed properly
+- UI: Minor UI improvements in shell mode
+
 ## [0.54] - 2025-11-13
 
 - Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`

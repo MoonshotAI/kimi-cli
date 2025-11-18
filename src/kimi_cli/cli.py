@@ -197,9 +197,8 @@ def kimi(
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
 
-    from kimi_cli.app import KimiCLI
+    from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.session import Session
-    from kimi_cli.share import get_share_dir
     from kimi_cli.utils.logging import logger
 
     def _noop_echo(*args: Any, **kwargs: Any):
@@ -226,16 +225,7 @@ def kimi(
         ui = "wire"
 
     echo: Callable[..., None] = typer.echo if verbose else _noop_echo
-
-    if debug:
-        logger.enable("kosong")
-    logger.add(
-        get_share_dir() / "logs" / "kimi.log",
-        # FIXME: configure level for different modules
-        level="TRACE" if debug else "INFO",
-        rotation="06:00",
-        retention="10 days",
-    )
+    enable_logging(debug)
 
     work_dir = (work_dir or Path.cwd()).absolute()
     if continue_:

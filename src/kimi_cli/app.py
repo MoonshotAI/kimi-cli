@@ -14,12 +14,26 @@ from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
+from kimi_cli.share import get_share_dir
 from kimi_cli.soul import LLMNotSet, LLMNotSupported
 from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.runtime import Runtime
 from kimi_cli.utils.logging import StreamToLogger, logger
+from kimi_cli.utils.path import shorten_home
+
+
+def enable_logging(debug: bool = False) -> None:
+    if debug:
+        logger.enable("kosong")
+    logger.add(
+        get_share_dir() / "logs" / "kimi.log",
+        # FIXME: configure level for different modules
+        level="TRACE" if debug else "INFO",
+        rotation="06:00",
+        retention="10 days",
+    )
 
 
 class KimiCLI:
@@ -137,7 +151,9 @@ class KimiCLI:
         from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
 
         welcome_info = [
-            WelcomeInfoItem(name="Directory", value=str(self._runtime.session.work_dir)),
+            WelcomeInfoItem(
+                name="Directory", value=str(shorten_home(self._runtime.session.work_dir))
+            ),
             WelcomeInfoItem(name="Session", value=self._runtime.session.id),
         ]
         if base_url := self._env_overrides.get("KIMI_BASE_URL"):
