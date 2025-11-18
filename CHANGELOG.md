@@ -16,7 +16,7 @@ Only write entries that are worth mentioning to users.
 - Core: Prevent from panic when LLM API connection failed
 - Tool: Optimize `FetchURL` tool for better content extraction
 - Tool: Increase MCP tool call timeout to 60 seconds
-- Tool: Provider better error message in `Glob` tool when pattern is `**`
+- Tool: Provide better error message in `Glob` tool when pattern is `**`
 - ACP: Fix thinking content not displayed properly
 - UI: Minor UI improvements in shell mode
 
