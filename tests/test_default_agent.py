@@ -165,28 +165,25 @@ Abusing this tool to track too small steps will just waste your time and make yo
 However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use todo list at first, then realize the task is too simple and you can simply stop using it; or, sometimes, you may realize the task is complex after a few steps and then you can start using todo list to break it down.
 """,
                 parameters={
-                    "$defs": {
-                        "Todo": {
-                            "properties": {
-                                "title": {
-                                    "description": "The title of the todo",
-                                    "minLength": 1,
-                                    "type": "string",
-                                },
-                                "status": {
-                                    "description": "The status of the todo",
-                                    "enum": ["Pending", "In Progress", "Done"],
-                                    "type": "string",
-                                },
-                            },
-                            "required": ["title", "status"],
-                            "type": "object",
-                        }
-                    },
                     "properties": {
                         "todos": {
                             "description": "The updated todo list",
-                            "items": {"$ref": "#/$defs/Todo"},
+                            "items": {
+                                "properties": {
+                                    "title": {
+                                        "description": "The title of the todo",
+                                        "minLength": 1,
+                                        "type": "string",
+                                    },
+                                    "status": {
+                                        "description": "The status of the todo",
+                                        "enum": ["Pending", "In Progress", "Done"],
+                                        "type": "string",
+                                    },
+                                },
+                                "required": ["title", "status"],
+                                "type": "object",
+                            },
                             "type": "array",
                         }
                     },
@@ -447,27 +444,6 @@ Replace specific strings within a specified file.
 - You should prefer this tool over WriteFile tool and Bash `sed` command.
 """,
                 parameters={
-                    "$defs": {
-                        "Edit": {
-                            "properties": {
-                                "old": {
-                                    "description": "The old string to replace. Can be multi-line.",
-                                    "type": "string",
-                                },
-                                "new": {
-                                    "description": "The new string to replace with. Can be multi-line.",
-                                    "type": "string",
-                                },
-                                "replace_all": {
-                                    "default": False,
-                                    "description": "Whether to replace all occurrences.",
-                                    "type": "boolean",
-                                },
-                            },
-                            "required": ["old", "new"],
-                            "type": "object",
-                        }
-                    },
                     "properties": {
                         "path": {
                             "description": "The absolute path to the file to edit.",
@@ -475,8 +451,47 @@ Replace specific strings within a specified file.
                         },
                         "edit": {
                             "anyOf": [
-                                {"$ref": "#/$defs/Edit"},
-                                {"items": {"$ref": "#/$defs/Edit"}, "type": "array"},
+                                {
+                                    "properties": {
+                                        "old": {
+                                            "description": "The old string to replace. Can be multi-line.",
+                                            "type": "string",
+                                        },
+                                        "new": {
+                                            "description": "The new string to replace with. Can be multi-line.",
+                                            "type": "string",
+                                        },
+                                        "replace_all": {
+                                            "default": False,
+                                            "description": "Whether to replace all occurrences.",
+                                            "type": "boolean",
+                                        },
+                                    },
+                                    "required": ["old", "new"],
+                                    "type": "object",
+                                },
+                                {
+                                    "items": {
+                                        "properties": {
+                                            "old": {
+                                                "description": "The old string to replace. Can be multi-line.",
+                                                "type": "string",
+                                            },
+                                            "new": {
+                                                "description": "The new string to replace with. Can be multi-line.",
+                                                "type": "string",
+                                            },
+                                            "replace_all": {
+                                                "default": False,
+                                                "description": "Whether to replace all occurrences.",
+                                                "type": "boolean",
+                                            },
+                                        },
+                                        "required": ["old", "new"],
+                                        "type": "object",
+                                    },
+                                    "type": "array",
+                                },
                             ],
                             "description": "The edit(s) to apply to the file. You can provide a single edit or a list of edits here.",
                         },

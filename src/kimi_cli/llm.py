@@ -12,7 +12,14 @@ from kimi_cli.constant import USER_AGENT
 if TYPE_CHECKING:
     from kimi_cli.config import LLMModel, LLMProvider
 
-type ProviderType = Literal["kimi", "openai_legacy", "openai_responses", "anthropic", "_chaos"]
+type ProviderType = Literal[
+    "kimi",
+    "openai_legacy",
+    "openai_responses",
+    "anthropic",
+    "google_genai",
+    "_chaos",
+]
 
 type ModelCapability = Literal["image_in", "thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability))
@@ -115,6 +122,14 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
                 default_max_tokens=50000,
+            )
+        case "google_genai":
+            from kosong.contrib.chat_provider.google_genai import GoogleGenAI
+
+            chat_provider = GoogleGenAI(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
             )
         case "_chaos":
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
