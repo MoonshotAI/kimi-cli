@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncGenerator
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from kimi_cli.kaos.path import KaosPath
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 type StrOrKaosPath = str | KaosPath
 
 
+@runtime_checkable
 class Kaos(Protocol):
     """Kimi Agent Operating System (KAOS) interface."""
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import aiofiles
 import aiofiles.os
@@ -12,8 +12,13 @@ import aiopath
 from kimi_cli.kaos import Kaos, StrOrKaosPath
 from kimi_cli.kaos.path import KaosPath
 
+if TYPE_CHECKING:
 
-class LocalKaos(Kaos):
+    def type_check(local: LocalKaos) -> None:
+        _: Kaos = local
+
+
+class LocalKaos:
     """
     A KAOS implementation that directly interacts with the local filesystem.
     """
