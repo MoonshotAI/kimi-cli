@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- LLM: Add support for Google GenAI provider
+
 ## [0.55] - 2025-11-18
 
 - Lib: Add `kimi_cli.app.enable_logging` function to enable logging when directly using `KimiCLI` class
