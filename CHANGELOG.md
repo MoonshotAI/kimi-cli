@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.56] - 2025-11-19
 
 - LLM: Add support for Google GenAI provider
 
