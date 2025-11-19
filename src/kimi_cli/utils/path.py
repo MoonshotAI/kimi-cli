@@ -8,7 +8,7 @@ from stat import S_ISDIR
 
 import aiofiles.os
 
-from kimi_cli.kaos.path import KaosPath
+from kaos.path import KaosPath
 
 _ROTATION_OPEN_FLAGS = os.O_CREAT | os.O_EXCL | os.O_WRONLY
 _ROTATION_FILE_MODE = 0o600

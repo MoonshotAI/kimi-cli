@@ -9,8 +9,8 @@ import aiofiles
 import aiofiles.os
 import aiopath
 
-from kimi_cli.kaos import Kaos, StrOrKaosPath
-from kimi_cli.kaos.path import KaosPath
+from kaos import Kaos, StrOrKaosPath
+from kaos.path import KaosPath
 
 if TYPE_CHECKING:
 

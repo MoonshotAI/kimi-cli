@@ -6,7 +6,7 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from kimi_cli.kaos.path import KaosPath
+    from kaos.path import KaosPath
 
 
 type StrOrKaosPath = str | KaosPath

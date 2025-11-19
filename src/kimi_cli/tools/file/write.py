@@ -4,7 +4,7 @@ from typing import Any, Literal, override
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
-from kimi_cli.kaos.path import KaosPath
+from kaos.path import KaosPath
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.file import FileActions

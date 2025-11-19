@@ -4,7 +4,7 @@ from typing import cast
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.utils.typing import JsonType
 
-from kimi_cli.kaos.path import KaosPath
+from kaos.path import KaosPath
 from kimi_cli.utils.string import shorten_middle
 
 

@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from stat import S_ISDIR, S_ISREG
 from typing import Literal
 
-from kimi_cli import kaos
+import kaos
 
 
 class KaosPath(PurePosixPath):

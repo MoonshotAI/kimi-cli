@@ -4,8 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 
+from kaos.path import KaosPath
 from kimi_cli.config import Config
-from kimi_cli.kaos.path import KaosPath
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval

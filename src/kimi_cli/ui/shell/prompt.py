@@ -40,7 +40,7 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
 
-from kimi_cli.kaos.path import KaosPath
+from kaos.path import KaosPath
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot

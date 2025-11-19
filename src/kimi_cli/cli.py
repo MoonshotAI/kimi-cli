@@ -196,10 +196,10 @@ def kimi(
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
 
+    from kaos import current_kaos
+    from kaos.local import LocalKaos
+    from kaos.path import KaosPath
     from kimi_cli.app import KimiCLI, enable_logging
-    from kimi_cli.kaos import current_kaos
-    from kimi_cli.kaos.local import LocalKaos
-    from kimi_cli.kaos.path import KaosPath
     from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.utils.logging import logger

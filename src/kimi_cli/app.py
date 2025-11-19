@@ -8,11 +8,11 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from kimi_cli import kaos
+import kaos
+from kaos.path import KaosPath
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
-from kimi_cli.kaos.path import KaosPath
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
