@@ -15,7 +15,7 @@ from kimi_cli.kaos.path import KaosPath
 
 class LocalKaos(Kaos):
     """
-    A Kaos implementation that directly interacts with the local filesystem.
+    A KAOS implementation that directly interacts with the local filesystem.
     """
 
     def gethome(self) -> KaosPath:
