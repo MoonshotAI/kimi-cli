@@ -213,7 +213,7 @@ class _ApprovalRequestPanel:
     def __init__(self, request: ApprovalRequest):
         self.request = request
         self.options = [
-            ("Approve", ApprovalResponse.APPROVE),
+            ("Approve once", ApprovalResponse.APPROVE),
             ("Approve for this session", ApprovalResponse.APPROVE_FOR_SESSION),
             ("Reject, tell Kimi CLI what to do instead", ApprovalResponse.REJECT),
         ]
