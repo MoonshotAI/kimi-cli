@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - LLM: Fix Google GenAI provider when thinking toggle is not on
+- UI: Improve approval request wordings
 
 ## [0.56] - 2025-11-19
 

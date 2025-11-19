@@ -361,7 +361,7 @@ class ACPAgent:
             options=[
                 acp.schema.PermissionOption(
                     optionId="approve",
-                    name="Approve",
+                    name="Approve once",
                     kind="allow_once",
                 ),
                 acp.schema.PermissionOption(
