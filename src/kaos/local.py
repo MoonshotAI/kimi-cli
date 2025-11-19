@@ -42,8 +42,12 @@ class LocalKaos:
         for entry in await aiofiles.os.listdir(local_path):
             yield KaosPath.from_local_path(local_path / entry)
 
-    async def glob(self, pattern: str, *, case_sensitive: bool = True) -> AsyncGenerator[KaosPath]:
-        async for entry in aiopath.AsyncPath.glob(pattern, case_sensitive=case_sensitive):
+    async def glob(
+        self, path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
+    ) -> AsyncGenerator[KaosPath]:
+        local_path = path.to_local_path() if isinstance(path, KaosPath) else Path(path)
+        async_local_path = aiopath.AsyncPath(local_path)
+        async for entry in async_local_path.glob(pattern, case_sensitive=case_sensitive):
             yield KaosPath.from_local_path(entry)
 
     async def readtext(
@@ -81,3 +85,10 @@ class LocalKaos:
         local_path = path.to_local_path() if isinstance(path, KaosPath) else Path(path)
         async with aiofiles.open(local_path, mode=mode, encoding=encoding, errors=errors) as f:
             return await f.write(data)
+
+    async def mkdir(
+        self, path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        local_path = path.to_local_path() if isinstance(path, KaosPath) else Path(path)
+        async_local_path = aiopath.AsyncPath(local_path)
+        await async_local_path.mkdir(parents=parents, exist_ok=exist_ok)

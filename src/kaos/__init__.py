@@ -36,8 +36,10 @@ class Kaos(Protocol):
         """Iterate over the entries in a directory."""
         ...
 
-    def glob(self, pattern: str, *, case_sensitive: bool = True) -> AsyncGenerator[KaosPath]:
-        """Search for files/directories matching a pattern."""
+    def glob(
+        self, path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
+    ) -> AsyncGenerator[KaosPath]:
+        """Search for files/directories matching a pattern in the given path."""
         ...
 
     async def readtext(
@@ -70,6 +72,12 @@ class Kaos(Protocol):
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> int:
         """Write text data to the file, returning the number of characters written."""
+        ...
+
+    async def mkdir(
+        self, path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        """Create a directory at the given path."""
         ...
 
 
@@ -115,11 +123,13 @@ async def iterdir(path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
     return kaos.iterdir(path)
 
 
-async def glob(pattern: str, *, case_sensitive: bool = True) -> AsyncGenerator[KaosPath]:
+async def glob(
+    path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
+) -> AsyncGenerator[KaosPath]:
     kaos = _get_kaos_or_none()
     if kaos is None:
         raise RuntimeError("No Kaos context is set")
-    return kaos.glob(pattern, case_sensitive=case_sensitive)
+    return kaos.glob(path, pattern, case_sensitive=case_sensitive)
 
 
 async def readtext(
@@ -158,3 +168,10 @@ async def writetext(
     if kaos is None:
         raise RuntimeError("No Kaos context is set")
     return await kaos.writetext(path, data, mode=mode, encoding=encoding, errors=errors)
+
+
+async def mkdir(path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False) -> None:
+    kaos = _get_kaos_or_none()
+    if kaos is None:
+        raise RuntimeError("No Kaos context is set")
+    return await kaos.mkdir(path, parents=parents, exist_ok=exist_ok)

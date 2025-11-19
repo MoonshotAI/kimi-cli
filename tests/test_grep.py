@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from kosong.tooling import ToolError, ToolOk
 
-from kimi_cli.tools.file.grep import Grep, Params
+from kimi_cli.tools.file.grep_local import Grep, Params
 
 
 @pytest.fixture

@@ -89,7 +89,7 @@ class KaosPath(PurePosixPath):
 
     async def glob(self, pattern: str, *, case_sensitive: bool = True) -> AsyncGenerator[KaosPath]:
         """Return all paths matching the pattern under this directory."""
-        return await kaos.glob(pattern, case_sensitive=case_sensitive)
+        return await kaos.glob(self, pattern, case_sensitive=case_sensitive)
 
     async def read_text(
         self,
@@ -140,3 +140,7 @@ class KaosPath(PurePosixPath):
             encoding=encoding,
             errors=errors,
         )
+
+    async def mkdir(self, parents: bool = False, exist_ok: bool = False) -> None:
+        """Create a directory at this path."""
+        return await kaos.mkdir(self, parents=parents, exist_ok=exist_ok)

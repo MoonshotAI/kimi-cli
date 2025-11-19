@@ -12,6 +12,9 @@ import pytest
 from kosong.chat_provider.mock import MockChatProvider
 from pydantic import SecretStr
 
+from kaos import current_kaos
+from kaos.local import LocalKaos
+from kaos.path import KaosPath
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE, ResolvedAgentSpec, load_agent_spec
 from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
 from kimi_cli.llm import LLM
@@ -22,8 +25,7 @@ from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
 from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
-from kimi_cli.tools.file.grep import Grep
-from kimi_cli.tools.file.patch import PatchFile
+from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
@@ -56,10 +58,14 @@ def llm() -> LLM:
 
 
 @pytest.fixture
-def temp_work_dir() -> Generator[Path]:
+def temp_work_dir() -> Generator[KaosPath]:
     """Create a temporary working directory for tests."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
+    token = current_kaos.set(LocalKaos())
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield KaosPath.from_local_path(Path(tmpdir))
+    finally:
+        current_kaos.reset(token)
 
 
 @pytest.fixture
@@ -70,7 +76,7 @@ def temp_share_dir() -> Generator[Path]:
 
 
 @pytest.fixture
-def builtin_args(temp_work_dir: Path) -> BuiltinSystemPromptArgs:
+def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
     """Create builtin arguments with temporary work directory."""
     return BuiltinSystemPromptArgs(
         KIMI_NOW="1970-01-01T00:00:00+00:00",
@@ -87,7 +93,7 @@ def denwa_renji() -> DenwaRenji:
 
 
 @pytest.fixture
-def session(temp_work_dir: Path, temp_share_dir: Path) -> Session:
+def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
     """Create a Session instance."""
     return Session(
         id="test",
@@ -209,15 +215,6 @@ def str_replace_file_tool(
     """Create a StrReplaceFile tool instance."""
     with tool_call_context("StrReplaceFile"):
         yield StrReplaceFile(builtin_args, approval)
-
-
-@pytest.fixture
-def patch_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
-) -> Generator[PatchFile]:
-    """Create a PatchFile tool instance."""
-    with tool_call_context("PatchFile"):
-        yield PatchFile(builtin_args, approval)
 
 
 @pytest.fixture
