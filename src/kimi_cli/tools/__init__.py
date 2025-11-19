@@ -83,7 +83,7 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
 
 
 def _normalize_path(path: str) -> str:
-    cwd = str(KaosPath.cwd().resolve())
+    cwd = str(KaosPath.cwd().canonical())
     if path.startswith(cwd):
         path = path[len(cwd) :].lstrip("/\\")
     return path

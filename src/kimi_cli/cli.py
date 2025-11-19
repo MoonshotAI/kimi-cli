@@ -197,6 +197,8 @@ def kimi(
     del version  # handled in the callback
 
     from kimi_cli.app import KimiCLI, enable_logging
+    from kimi_cli.kaos import current_kaos
+    from kimi_cli.kaos.local import LocalKaos
     from kimi_cli.kaos.path import KaosPath
     from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
     from kimi_cli.session import Session
@@ -223,8 +225,6 @@ def kimi(
         ui = "acp"
     elif wire_mode:
         ui = "wire"
-
-    work_dir = KaosPath.from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
     if command is not None:
         command = command.strip()
@@ -256,6 +256,8 @@ def kimi(
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
     async def _run() -> bool:
+        work_dir = KaosPath.from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+
         if continue_:
             session = await Session.continue_(work_dir)
             if session is None:
@@ -326,12 +328,13 @@ def kimi(
 
         return succeeded
 
+    current_kaos.set(LocalKaos())
     while True:
         try:
             succeeded = asyncio.run(_run())
             if succeeded:
                 break
-            sys.exit(1)
+            raise typer.Exit(code=1)
         except Reload:
             continue
 

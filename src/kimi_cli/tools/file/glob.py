@@ -61,7 +61,7 @@ class Glob(CallableTool2[Params]):
 
     async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
         """Validate that the directory is safe to search."""
-        resolved_dir = await directory.resolve()
+        resolved_dir = directory.canonical()
 
         # Ensure the directory is within work directory
         if not str(resolved_dir).startswith(str(self._work_dir)):

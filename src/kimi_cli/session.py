@@ -23,7 +23,7 @@ class Session:
     @staticmethod
     async def create(work_dir: KaosPath, _history_file: Path | None = None) -> Session:
         """Create a new session for a work directory."""
-        work_dir = await work_dir.resolve()
+        work_dir = work_dir.canonical()
         logger.debug("Creating new session for work directory: {work_dir}", work_dir=work_dir)
 
         metadata = load_metadata()
@@ -63,7 +63,7 @@ class Session:
     @staticmethod
     async def continue_(work_dir: KaosPath) -> Session | None:
         """Get the last session for a work directory."""
-        work_dir = await work_dir.resolve()
+        work_dir = work_dir.canonical()
         logger.debug("Continuing session for work directory: {work_dir}", work_dir=work_dir)
 
         metadata = load_metadata()
