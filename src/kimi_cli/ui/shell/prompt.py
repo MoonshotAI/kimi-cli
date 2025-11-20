@@ -498,7 +498,7 @@ class CustomPromptSession:
             [
                 MetaCommandCompleter(),
                 # TODO(kaos): we need an async KaosFileMentionCompleter
-                LocalFileMentionCompleter(Path.cwd()),
+                LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
             deduplicate=True,
         )
