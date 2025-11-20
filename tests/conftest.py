@@ -63,7 +63,7 @@ def temp_work_dir() -> Generator[KaosPath]:
     token = current_kaos.set(LocalKaos())
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            yield KaosPath.from_local_path(Path(tmpdir))
+            yield KaosPath.unsafe_from_local_path(Path(tmpdir))
     finally:
         current_kaos.reset(token)
 

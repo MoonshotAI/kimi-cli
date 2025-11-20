@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncGenerator
 from contextvars import ContextVar
+from pathlib import PurePath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -15,6 +16,10 @@ type StrOrKaosPath = str | KaosPath
 @runtime_checkable
 class Kaos(Protocol):
     """Kimi Agent Operating System (KAOS) interface."""
+
+    def pathclass(self) -> type[PurePath]:
+        """Get the path class used under `KaosPath`."""
+        ...
 
     def gethome(self) -> KaosPath:
         """Get the home directory path."""
@@ -86,6 +91,13 @@ current_kaos = ContextVar[Kaos | None]("current_kaos", default=None)
 
 def _get_kaos_or_none() -> Kaos | None:
     return current_kaos.get()
+
+
+def pathclass() -> type[PurePath]:
+    kaos = _get_kaos_or_none()
+    if kaos is None:
+        raise RuntimeError("No Kaos context is set")
+    return kaos.pathclass()
 
 
 def gethome() -> KaosPath:

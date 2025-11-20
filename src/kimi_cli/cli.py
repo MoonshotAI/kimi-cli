@@ -256,7 +256,9 @@ def kimi(
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
     async def _run() -> bool:
-        work_dir = KaosPath.from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+        work_dir = (
+            KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+        )
 
         if continue_:
             session = await Session.continue_(work_dir)

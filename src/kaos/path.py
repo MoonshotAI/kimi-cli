@@ -1,29 +1,112 @@
 from __future__ import annotations
 
+import ntpath
 import os
 import posixpath
 from collections.abc import AsyncGenerator
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 from stat import S_ISDIR, S_ISREG
-from typing import Literal
+from typing import Any, Literal
 
 import kaos
 
 
-class KaosPath(PurePosixPath):
+class KaosPath:
     """
     A path abstraction for KAOS filesystem.
     """
 
-    @classmethod
-    def from_local_path(cls, path: Path) -> KaosPath:
-        """Create a KaosPath from a local Path."""
-        return cls(str(path.as_posix()))
+    def __init__(self, *args: str) -> None:
+        self._path: PurePath = kaos.pathclass()(*args)
 
-    def to_local_path(self) -> Path:
-        """Convert the KaosPath to a local Path."""
-        posix_path = self.as_posix()
-        return Path(posix_path.replace("/", os.sep))
+    @classmethod
+    def unsafe_from_local_path(cls, path: Path) -> KaosPath:
+        """
+        Create a `KaosPath` from a local `Path`.
+        Only use this if you are sure that `LocalKaos` is being used.
+        """
+        return cls(str(path))
+
+    def unsafe_to_local_path(self) -> Path:
+        """
+        Convert the `KaosPath` to a local `Path`.
+        Only use this if you are sure that `LocalKaos` is being used.
+        """
+        return Path(str(self._path))
+
+    def __lt__(self, other: KaosPath) -> bool:
+        return self._path.__lt__(other._path)
+
+    def __le__(self, other: KaosPath) -> bool:
+        return self._path.__le__(other._path)
+
+    def __gt__(self, other: KaosPath) -> bool:
+        return self._path.__gt__(other._path)
+
+    def __ge__(self, other: KaosPath) -> bool:
+        return self._path.__ge__(other._path)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, KaosPath):
+            return NotImplemented
+        return self._path.__eq__(other._path)
+
+    def __repr__(self) -> str:
+        return f"KaosPath({repr(str(self._path))})"
+
+    def __str__(self) -> str:
+        return str(self._path)
+
+    @property
+    def name(self) -> str:
+        """Return the final component of the path."""
+        return self._path.name
+
+    @property
+    def parent(self) -> KaosPath:
+        """Return the parent directory of the path."""
+        return KaosPath(str(self._path.parent))
+
+    def is_absolute(self) -> bool:
+        """Return True if the path is absolute."""
+        return self._path.is_absolute()
+
+    def joinpath(self, *other: str) -> KaosPath:
+        """Join this path with other path components."""
+        return KaosPath(str(self._path.joinpath(*other)))
+
+    def __truediv__(self, other: str | KaosPath) -> KaosPath:
+        """Join this path with another path using the `/` operator."""
+        p = other._path if isinstance(other, KaosPath) else other
+        ret = KaosPath()
+        ret._path = self._path.__truediv__(p)
+        return ret
+
+    def canonical(self) -> KaosPath:
+        """
+        Make the path absolute, resolving all `.` and `..` in the path.
+        Unlike `pathlib.Path.resolve`, this method does not resolve symlinks.
+        """
+        abs_path = self if self.is_absolute() else kaos.getcwd().joinpath(str(self._path))
+
+        # Normalize the path (handle . and ..) but preserve the format
+        path_parser = kaos.pathclass().parser
+        assert path_parser in (posixpath, ntpath), (
+            "Path class should be either PurePosixPath or PureWindowsPath"
+        )
+        normalized = path_parser.normpath(abs_path._path)
+        assert isinstance(normalized, str)
+
+        # `normpath` might strip trailing slash, but we want to preserve it for directories
+        # However, since we don't access the filesystem, we can't know if it's a directory
+        # So we follow the pathlib behavior which doesn't preserve trailing slashes
+
+        return KaosPath(normalized)
+
+    def relative_to(self, other: KaosPath) -> KaosPath:
+        """Return the relative path from `other` to this path."""
+        relative_path = self._path.relative_to(other._path)
+        return KaosPath(str(relative_path))
 
     @classmethod
     def home(cls) -> KaosPath:
@@ -34,26 +117,6 @@ class KaosPath(PurePosixPath):
     def cwd(cls) -> KaosPath:
         """Return the current working directory as a KaosPath."""
         return kaos.getcwd()
-
-    def canonical(self) -> KaosPath:
-        """
-        Make the path absolute, resolving all `.` and `..` in the path.
-        Unlike `pathlib.Path.resolve`, this method does not resolve symlinks.
-        """
-        # If the path is relative, make it absolute by prepending the current working directory
-        if not self.is_absolute():
-            abs_path = posixpath.join(kaos.getcwd().as_posix(), self.as_posix())
-        else:
-            abs_path = self.as_posix()
-
-        # Normalize the path (handle . and ..) but preserve the format
-        normalized = posixpath.normpath(abs_path)
-
-        # posixpath.normpath might strip trailing slash, but we want to preserve it for directories
-        # However, since we don't access the filesystem, we can't know if it's a directory
-        # So we follow the pathlib behavior which doesn't preserve trailing slashes
-
-        return KaosPath(normalized)
 
     async def stat(self, follow_symlinks: bool = True) -> os.stat_result:
         """Return an os.stat_result for the path."""
