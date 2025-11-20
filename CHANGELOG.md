@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - LLM: Fix Google GenAI provider when thinking toggle is not on
 - UI: Improve approval request wordings
+- Tool: Remove `PatchFile` tool
 
 ## [0.56] - 2025-11-19
 

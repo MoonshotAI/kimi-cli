@@ -23,7 +23,6 @@ from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep import Grep
-from kimi_cli.tools.file.patch import PatchFile
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
@@ -209,15 +208,6 @@ def str_replace_file_tool(
     """Create a StrReplaceFile tool instance."""
     with tool_call_context("StrReplaceFile"):
         yield StrReplaceFile(builtin_args, approval)
-
-
-@pytest.fixture
-def patch_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
-) -> Generator[PatchFile]:
-    """Create a PatchFile tool instance."""
-    with tool_call_context("PatchFile"):
-        yield PatchFile(builtin_args, approval)
 
 
 @pytest.fixture
