@@ -11,7 +11,7 @@ from kosong.message import Message, TextPart
 from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.toolset import CustomToolset
+from kimi_cli.soul.toolset import KimiToolset
 
 
 @pytest.mark.asyncio
@@ -73,3 +73,25 @@ async def test_compaction_reinjects_agents_md(runtime, tmp_path):
     assert history[2] is preserved_assistant
     assert history[3] is preserved_user
     assert history[-1].role == "user"
+
+
+@pytest.mark.asyncio
+async def test_kimisoul_backfills_agents_md_into_existing_history(runtime, tmp_path):
+    """Ensure AGENTS.md is injected when restoring a history without it."""
+
+    context = Context(tmp_path / "history.jsonl")
+    await context.append_message(Message(role="user", content="Prior conversation"))
+    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=CustomToolset())
+    soul = KimiSoul(agent, runtime, context=context)
+
+    await soul._ensure_initial_system_messages()
+
+    assert len(context.history) == 2
+    agents_message = context.history[-1]
+    assert agents_message.role == "assistant"
+    assert isinstance(agents_message.content, list)
+    assert isinstance(agents_message.content[0], TextPart)
+    assert runtime.agents_md in agents_message.content[0].text
+
+    await soul._ensure_initial_system_messages()
+    assert len(context.history) == 2
