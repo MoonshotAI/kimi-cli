@@ -367,10 +367,14 @@ class KimiSoul:
                 raise LLMNotSet()
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
-        compacted_messages = await _compact_with_retry()
+        compacted_messages = list(await _compact_with_retry())
+        await self._context.revert_to(0)
+
         agents_message = self._agents_md_message()
         if agents_message is not None:
-            compacted_messages = list(compacted_messages)
+            removed = await self._remove_pre_checkpoint_agents_md_messages()
+            if removed:
+                logger.info("Dropped pre-checkpoint AGENTS.md content before compaction append")
             insert_index = 1 if compacted_messages else 0
             compacted_messages.insert(insert_index, agents_message)
             logger.info("Re-injected AGENTS.md content after compaction")
@@ -392,19 +396,36 @@ class KimiSoul:
         payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
         return Message(role="assistant", content=[system(payload)])
 
+    def _is_agents_md_message(self, message: Message) -> bool:
+        if not self._runtime.agents_md:
+            return False
+        if message.role != "assistant":
+            return False
+        if not isinstance(message.content, list):
+            return False
+        return any(
+            isinstance(part, TextPart) and self._runtime.agents_md in part.text
+            for part in message.content
+        )
+
     def _agents_md_present(self) -> bool:
         if not self._runtime.agents_md:
             return True
 
-        for message in self._context.history:
-            if message.role != "assistant":
-                continue
-            if not isinstance(message.content, list):
-                continue
-            for part in message.content:
-                if isinstance(part, TextPart) and self._runtime.agents_md in part.text:
-                    return True
-        return False
+        return any(self._is_agents_md_message(message) for message in self._context.history)
+
+    async def _remove_pre_checkpoint_agents_md_messages(self) -> bool:
+        if not self._runtime.agents_md:
+            return False
+
+        history = list(self._context.history)
+        filtered_history = [m for m in history if not self._is_agents_md_message(m)]
+        if len(filtered_history) == len(history):
+            return False
+
+        await self._context.reset_history(filtered_history)
+        logger.info("Removed AGENTS.md content inserted before first checkpoint")
+        return True
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:

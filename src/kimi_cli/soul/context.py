@@ -154,6 +154,16 @@ class Context:
         self._token_count = 0
         self._next_checkpoint_id = 0
 
+    async def reset_history(self, history: Sequence[Message]) -> None:
+        """Replace the history with the provided messages and reset counters."""
+        self._history = list(history)
+        self._token_count = 0
+        self._next_checkpoint_id = 0
+
+        async with aiofiles.open(self._file_backend, "w", encoding="utf-8") as f:
+            for message in self._history:
+                await f.write(message.model_dump_json(exclude_none=True) + "\n")
+
     async def append_message(self, message: Message | Sequence[Message]):
         logger.debug("Appending message(s) to context: {message}", message=message)
         messages = message if isinstance(message, Sequence) else [message]

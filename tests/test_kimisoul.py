@@ -76,6 +76,54 @@ async def test_compaction_reinjects_agents_md(runtime, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_compaction_replaces_pre_checkpoint_agents_md(runtime, tmp_path):
+    """Ensure pre-checkpoint AGENTS.md content is removed before reinjection."""
+
+    context = Context(tmp_path / "history.jsonl")
+    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
+    soul = KimiSoul(agent, runtime, context=context)
+
+    await soul._ensure_initial_system_messages()
+    pre_checkpoint_agents = context.history[0]
+    await soul._checkpoint()
+    await context.append_message(Message(role="user", content="Hello"))
+
+    summary = Message(role="assistant", content="Summary")
+    preserved_assistant = Message(role="assistant", content="Assistant reply")
+    preserved_user = Message(role="user", content="Most recent question")
+
+    mock_compaction = SimpleNamespace()
+    mock_compaction.compact = AsyncMock(
+        return_value=[summary, preserved_assistant, preserved_user]
+    )
+    soul._compaction = mock_compaction  # type: ignore[assignment]
+
+    await soul.compact_context()
+
+    def is_agents_md_message(message: Message) -> bool:
+        if message.role != "assistant" or not isinstance(message.content, list):
+            return False
+        return any(
+            isinstance(part, TextPart) and runtime.agents_md in part.text
+            for part in message.content
+        )
+
+    history = list(context.history)
+    assert len(history) == 4
+    assert sum(1 for message in history if is_agents_md_message(message)) == 1
+    assert history[0] is summary
+    reinjected = history[1]
+    assert reinjected is not pre_checkpoint_agents
+    assert reinjected.role == "assistant"
+    assert isinstance(reinjected.content, list)
+    assert isinstance(reinjected.content[0], TextPart)
+    assert runtime.agents_md in reinjected.content[0].text
+    assert history[2] is preserved_assistant
+    assert history[3] is preserved_user
+    assert history[-1].role == "user"
+
+
+@pytest.mark.asyncio
 async def test_kimisoul_backfills_agents_md_into_existing_history(runtime, tmp_path):
     """Ensure AGENTS.md is injected when restoring a history without it."""
 
