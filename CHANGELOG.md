@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Core: Fix field inheritance of agent spec files when using `extend`
+
 ## [0.57] - 2025-11-20
 
 - LLM: Fix Google GenAI provider when thinking toggle is not on

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 from pydantic import BaseModel, Field
@@ -17,20 +17,31 @@ def get_agents_dir() -> Path:
 DEFAULT_AGENT_FILE = get_agents_dir() / "default" / "agent.yaml"
 
 
+class Inherit(NamedTuple):
+    """Marker class for inheritance in agent spec."""
+
+
+inherit = Inherit()
+
+
 class AgentSpec(BaseModel):
     """Agent specification."""
 
     extend: str | None = Field(default=None, description="Agent file to extend")
-    name: str | None = Field(default=None, description="Agent name")  # required
-    system_prompt_path: Path | None = Field(
-        default=None, description="System prompt path"
+    name: str | Inherit = Field(default=inherit, description="Agent name")  # required
+    system_prompt_path: Path | Inherit = Field(
+        default=inherit, description="System prompt path"
     )  # required
     system_prompt_args: dict[str, str] = Field(
         default_factory=dict, description="System prompt arguments"
     )
-    tools: list[str] | None = Field(default=None, description="Tools")  # required
-    exclude_tools: list[str] | None = Field(default=None, description="Tools to exclude")
-    subagents: dict[str, SubagentSpec] | None = Field(default=None, description="Subagents")
+    tools: list[str] | None | Inherit = Field(default=inherit, description="Tools")  # required
+    exclude_tools: list[str] | None | Inherit = Field(
+        default=inherit, description="Tools to exclude"
+    )
+    subagents: dict[str, SubagentSpec] | None | Inherit = Field(
+        default=inherit, description="Subagents"
+    )
 
 
 class SubagentSpec(BaseModel):
@@ -62,17 +73,21 @@ def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
     """
     agent_spec = _load_agent_spec(agent_file)
     assert agent_spec.extend is None, "agent extension should be recursively resolved"
-    if agent_spec.name is None:
+    if isinstance(agent_spec.name, Inherit):
         raise AgentSpecError("Agent name is required")
-    if agent_spec.system_prompt_path is None:
+    if isinstance(agent_spec.system_prompt_path, Inherit):
         raise AgentSpecError("System prompt path is required")
-    if agent_spec.tools is None:
+    if isinstance(agent_spec.tools, Inherit):
         raise AgentSpecError("Tools are required")
+    if isinstance(agent_spec.exclude_tools, Inherit):
+        agent_spec.exclude_tools = []
+    if isinstance(agent_spec.subagents, Inherit):
+        agent_spec.subagents = {}
     return ResolvedAgentSpec(
         name=agent_spec.name,
         system_prompt_path=agent_spec.system_prompt_path,
         system_prompt_args=agent_spec.system_prompt_args,
-        tools=agent_spec.tools,
+        tools=agent_spec.tools or [],
         exclude_tools=agent_spec.exclude_tools or [],
         subagents=agent_spec.subagents or {},
     )
@@ -94,11 +109,11 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
         raise AgentSpecError(f"Unsupported agent spec version: {version}")
 
     agent_spec = AgentSpec(**data.get("agent", {}))
-    if agent_spec.system_prompt_path is not None:
+    if isinstance(agent_spec.system_prompt_path, Path):
         agent_spec.system_prompt_path = (
             agent_file.parent / agent_spec.system_prompt_path
         ).absolute()
-    if agent_spec.subagents is not None:
+    if isinstance(agent_spec.subagents, dict):
         for v in agent_spec.subagents.values():
             v.path = (agent_file.parent / v.path).absolute()
     if agent_spec.extend:
@@ -107,18 +122,18 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
         else:
             base_agent_file = (agent_file.parent / agent_spec.extend).absolute()
         base_agent_spec = _load_agent_spec(base_agent_file)
-        if agent_spec.name is not None:
+        if not isinstance(agent_spec.name, Inherit):
             base_agent_spec.name = agent_spec.name
-        if agent_spec.system_prompt_path is not None:
+        if not isinstance(agent_spec.system_prompt_path, Inherit):
             base_agent_spec.system_prompt_path = agent_spec.system_prompt_path
         for k, v in agent_spec.system_prompt_args.items():
             # system prompt args should be merged instead of overwritten
             base_agent_spec.system_prompt_args[k] = v
-        if agent_spec.tools is not None:
+        if not isinstance(agent_spec.tools, Inherit):
             base_agent_spec.tools = agent_spec.tools
-        if agent_spec.exclude_tools is not None:
+        if not isinstance(agent_spec.exclude_tools, Inherit):
             base_agent_spec.exclude_tools = agent_spec.exclude_tools
-        if agent_spec.subagents is not None:
+        if not isinstance(agent_spec.subagents, Inherit):
             base_agent_spec.subagents = agent_spec.subagents
         agent_spec = base_agent_spec
     return agent_spec
