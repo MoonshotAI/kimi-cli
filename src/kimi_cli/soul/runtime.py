@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
+from kaos.path import KaosPath
 from kimi_cli.config import Config
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
@@ -20,23 +20,23 @@ class BuiltinSystemPromptArgs:
 
     KIMI_NOW: str
     """The current datetime."""
-    KIMI_WORK_DIR: Path
-    """The current working directory."""
+    KIMI_WORK_DIR: KaosPath
+    """The absolute path of current working directory."""
     KIMI_WORK_DIR_LS: str
     """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
 
 
-def load_agents_md(work_dir: Path) -> str | None:
+async def load_agents_md(work_dir: KaosPath) -> str | None:
     paths = [
         work_dir / "AGENTS.md",
         work_dir / "agents.md",
     ]
     for path in paths:
-        if path.is_file():
+        if await path.is_file():
             logger.info("Loaded agents.md: {path}", path=path)
-            return path.read_text(encoding="utf-8").strip()
+            return (await path.read_text()).strip()
     logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
     return None
 
@@ -60,8 +60,8 @@ class Runtime:
         yolo: bool,
     ) -> Runtime:
         ls_output, agents_md = await asyncio.gather(
-            asyncio.to_thread(list_directory, session.work_dir),
-            asyncio.to_thread(load_agents_md, session.work_dir),
+            list_directory(session.work_dir),
+            load_agents_md(session.work_dir),
         )
 
         return Runtime(

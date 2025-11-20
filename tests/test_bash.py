@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import platform
-from pathlib import Path
 
 import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk
 
+from kaos.path import KaosPath
 from kimi_cli.tools.shell import Params, Shell
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
 
@@ -118,7 +118,7 @@ async def test_environment_variables(shell_tool: Shell):
 
 
 @pytest.mark.asyncio
-async def test_file_operations(shell_tool: Shell, temp_work_dir: Path):
+async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     """Test basic file operations."""
     # Create a test file
     result = await shell_tool(

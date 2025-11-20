@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-import subprocess
-import sys
 from pathlib import Path
+from stat import S_ISDIR
 
 import aiofiles.os
+
+from kaos.path import KaosPath
 
 _ROTATION_OPEN_FLAGS = os.O_CREAT | os.O_EXCL | os.O_WRONLY
 _ROTATION_FILE_MODE = 0o600
@@ -54,33 +55,31 @@ async def next_available_rotation(path: Path) -> Path | None:
         next_num += 1
 
 
-def list_directory(work_dir: Path) -> str:
-    if sys.platform == "win32":
-        ls = subprocess.run(
-            ["cmd", "/c", "dir", work_dir],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-    else:
-        ls = subprocess.run(
-            ["ls", "-la", work_dir],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-    return ls.stdout.strip()
+async def list_directory(work_dir: KaosPath) -> str:
+    entries: list[str] = []
+    async for entry in await work_dir.iterdir():
+        st = await entry.stat()
+        mode = "d" if S_ISDIR(st.st_mode) else "-"
+        mode += "r" if st.st_mode & 0o400 else "-"
+        mode += "w" if st.st_mode & 0o200 else "-"
+        mode += "x" if st.st_mode & 0o100 else "-"
+        mode += "r" if st.st_mode & 0o040 else "-"
+        mode += "w" if st.st_mode & 0o020 else "-"
+        mode += "x" if st.st_mode & 0o010 else "-"
+        mode += "r" if st.st_mode & 0o004 else "-"
+        mode += "w" if st.st_mode & 0o002 else "-"
+        mode += "x" if st.st_mode & 0o001 else "-"
+        entries.append(f"{mode} {st.st_size:>10} {entry.name}")
+    return "\n".join(entries)
 
 
-def shorten_home(path: Path) -> Path:
+def shorten_home(path: KaosPath) -> KaosPath:
     """
     Convert absolute path to use `~` for home directory.
     """
     try:
-        home = Path.home()
+        home = KaosPath.home()
         p = path.relative_to(home)
-        return Path("~") / p
-    except ValueError:
+        return KaosPath("~") / p
+    except Exception:
         return path

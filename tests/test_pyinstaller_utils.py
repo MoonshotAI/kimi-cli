@@ -124,7 +124,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.dmail",
             "kimi_cli.tools.file",
             "kimi_cli.tools.file.glob",
-            "kimi_cli.tools.file.grep",
+            "kimi_cli.tools.file.grep_local",
             "kimi_cli.tools.file.read",
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.write",

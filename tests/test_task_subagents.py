@@ -6,10 +6,11 @@ import platform
 from pathlib import Path
 from inline_snapshot import snapshot
 
+from kaos.path import KaosPath
 from kimi_cli.tools.multiagent.task import Task
 
 
-def test_task_subagents(task_tool: Task, temp_work_dir: Path):
+def test_task_subagents(task_tool: Task, temp_work_dir: KaosPath):
     subagents = [
         (
             agent.name,

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import warnings
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
 from pydantic import SecretStr
 
+import kaos
+from kaos.path import KaosPath
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
@@ -135,17 +136,17 @@ class KimiCLI:
         """Get the Session instance."""
         return self._runtime.session
 
-    @contextlib.contextmanager
-    def _app_env(self) -> Generator[None]:
-        original_cwd = Path.cwd()
-        os.chdir(self._runtime.session.work_dir)
+    @contextlib.asynccontextmanager
+    async def _app_env(self) -> AsyncGenerator[None]:
+        original_cwd = KaosPath.cwd()
+        await kaos.chdir(self._runtime.session.work_dir)
         try:
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             with contextlib.redirect_stderr(StreamToLogger()):
                 yield
         finally:
-            os.chdir(original_cwd)
+            await kaos.chdir(original_cwd)
 
     async def run_shell_mode(self, command: str | None = None) -> bool:
         from kimi_cli.ui.shell import ShellApp, WelcomeInfoItem
@@ -196,7 +197,7 @@ class KimiCLI:
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )
-        with self._app_env():
+        async with self._app_env():
             app = ShellApp(self._soul, welcome_info=welcome_info)
             return await app.run(command)
 
@@ -208,7 +209,7 @@ class KimiCLI:
     ) -> bool:
         from kimi_cli.ui.print import PrintApp
 
-        with self._app_env():
+        async with self._app_env():
             app = PrintApp(
                 self._soul,
                 input_format,
@@ -220,13 +221,13 @@ class KimiCLI:
     async def run_acp_server(self) -> bool:
         from kimi_cli.ui.acp import ACPServer
 
-        with self._app_env():
+        async with self._app_env():
             app = ACPServer(self._soul)
             return await app.run()
 
     async def run_wire_server(self) -> bool:
         from kimi_cli.ui.wire import WireServer
 
-        with self._app_env():
+        async with self._app_env():
             server = WireServer(self._soul)
             return await server.run()

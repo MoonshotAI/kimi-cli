@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from kaos.path import KaosPath
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 
@@ -13,12 +14,16 @@ class Session:
     """A session of a work directory."""
 
     id: str
-    work_dir: Path
+    """The session ID."""
+    work_dir: KaosPath
+    """The absolute path of the work directory."""
     history_file: Path
+    """The absolute path to the file storing the message history."""
 
     @staticmethod
-    def create(work_dir: Path, _history_file: Path | None = None) -> Session:
+    async def create(work_dir: KaosPath, _history_file: Path | None = None) -> Session:
         """Create a new session for a work directory."""
+        work_dir = work_dir.canonical()
         logger.debug("Creating new session for work directory: {work_dir}", work_dir=work_dir)
 
         metadata = load_metadata()
@@ -56,8 +61,9 @@ class Session:
         )
 
     @staticmethod
-    def continue_(work_dir: Path) -> Session | None:
+    async def continue_(work_dir: KaosPath) -> Session | None:
         """Get the last session for a work directory."""
+        work_dir = work_dir.canonical()
         logger.debug("Continuing session for work directory: {work_dir}", work_dir=work_dir)
 
         metadata = load_metadata()

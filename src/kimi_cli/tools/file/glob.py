@@ -1,12 +1,12 @@
 """Glob tool implementation."""
 
-import asyncio
 from pathlib import Path
 from typing import Any, override
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
+from kaos.path import KaosPath
 from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.path import list_directory
@@ -45,7 +45,7 @@ class Glob(CallableTool2[Params]):
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
         if pattern.startswith("**"):
-            ls_result = await asyncio.to_thread(list_directory, self._work_dir)
+            ls_result = await list_directory(self._work_dir)
             return ToolError(
                 output=ls_result,
                 message=(
@@ -59,13 +59,12 @@ class Glob(CallableTool2[Params]):
             )
         return None
 
-    def _validate_directory(self, directory: Path) -> ToolError | None:
+    async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
         """Validate that the directory is safe to search."""
-        resolved_dir = directory.resolve()
-        resolved_work_dir = self._work_dir.resolve()
+        resolved_dir = directory.canonical()
 
         # Ensure the directory is within work directory
-        if not str(resolved_dir).startswith(str(resolved_work_dir)):
+        if not str(resolved_dir).startswith(str(self._work_dir)):
             return ToolError(
                 message=(
                     f"`{directory}` is outside the working directory. "
@@ -83,7 +82,7 @@ class Glob(CallableTool2[Params]):
             if pattern_error:
                 return pattern_error
 
-            dir_path = Path(params.directory) if params.directory else self._work_dir
+            dir_path = KaosPath(params.directory) if params.directory else self._work_dir
 
             if not dir_path.is_absolute():
                 return ToolError(
@@ -95,30 +94,29 @@ class Glob(CallableTool2[Params]):
                 )
 
             # Validate directory safety
-            dir_error = self._validate_directory(dir_path)
+            dir_error = await self._validate_directory(dir_path)
             if dir_error:
                 return dir_error
 
-            if not dir_path.exists():
+            if not await dir_path.exists():
                 return ToolError(
                     message=f"`{params.directory}` does not exist.",
                     brief="Directory not found",
                 )
-            if not dir_path.is_dir():
+            if not await dir_path.is_dir():
                 return ToolError(
                     message=f"`{params.directory}` is not a directory.",
                     brief="Invalid directory",
                 )
 
-            def _glob(pattern: str) -> list[Path]:
-                return list(dir_path.glob(pattern))
-
             # Perform the glob search - users can use ** directly in pattern
-            matches = await asyncio.to_thread(_glob, params.pattern)
+            matches: list[KaosPath] = []
+            async for match in await dir_path.glob(params.pattern):
+                matches.append(match)
 
             # Filter out directories if not requested
             if not params.include_dirs:
-                matches = [p for p in matches if p.is_file()]
+                matches = [p for p in matches if await p.is_file()]
 
             # Sort for consistent output
             matches.sort()

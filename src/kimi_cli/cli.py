@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 import typer
 
@@ -80,7 +79,7 @@ def kimi(
             help="LLM model to use. Default: default model set in config file.",
         ),
     ] = None,
-    work_dir: Annotated[
+    local_work_dir: Annotated[
         Path | None,
         typer.Option(
             "--work-dir",
@@ -197,12 +196,15 @@ def kimi(
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
 
+    from kaos import current_kaos
+    from kaos.local import LocalKaos
+    from kaos.path import KaosPath
     from kimi_cli.app import KimiCLI, enable_logging
+    from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.utils.logging import logger
 
-    def _noop_echo(*args: Any, **kwargs: Any):
-        pass
+    enable_logging(debug)
 
     special_flags = {
         "--print": print_mode,
@@ -223,23 +225,6 @@ def kimi(
         ui = "acp"
     elif wire_mode:
         ui = "wire"
-
-    echo: Callable[..., None] = typer.echo if verbose else _noop_echo
-    enable_logging(debug)
-
-    work_dir = (work_dir or Path.cwd()).absolute()
-    if continue_:
-        session = Session.continue_(work_dir)
-        if session is None:
-            raise typer.BadParameter(
-                "No previous session found for the working directory",
-                param_hint="--continue",
-            )
-        echo(f"✓ Continuing previous session: {session.id}")
-    else:
-        session = Session.create(work_dir)
-        echo(f"✓ Created new session: {session.id}")
-    echo(f"✓ Session history file: {session.history_file}")
 
     if command is not None:
         command = command.strip()
@@ -271,7 +256,22 @@ def kimi(
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
     async def _run() -> bool:
-        from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
+        work_dir = (
+            KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+        )
+
+        if continue_:
+            session = await Session.continue_(work_dir)
+            if session is None:
+                raise typer.BadParameter(
+                    "No previous session found for the working directory",
+                    param_hint="--continue",
+                )
+            logger.info("Continuing previous session: {session_id}", session_id=session.id)
+        else:
+            session = await Session.create(work_dir)
+            logger.info("Created new session: {session_id}", session_id=session.id)
+        logger.debug("Session history file: {history_file}", history_file=session.history_file)
 
         if thinking is None:
             metadata = load_metadata()
@@ -330,12 +330,13 @@ def kimi(
 
         return succeeded
 
+    current_kaos.set(LocalKaos())
     while True:
         try:
             succeeded = asyncio.run(_run())
             if succeeded:
                 break
-            sys.exit(1)
+            raise typer.Exit(code=1)
         except Reload:
             continue
 

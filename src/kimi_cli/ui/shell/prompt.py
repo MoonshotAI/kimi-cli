@@ -40,6 +40,7 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
 
+from kaos.path import KaosPath
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
@@ -93,7 +94,7 @@ class MetaCommandCompleter(Completer):
                 )
 
 
-class FileMentionCompleter(Completer):
+class LocalFileMentionCompleter(Completer):
     """Offer fuzzy `@` path completion by indexing workspace files."""
 
     _FRAGMENT_PATTERN = re.compile(r"[^\s@]+")
@@ -285,7 +286,7 @@ class FileMentionCompleter(Completer):
 
         if index > 0:
             prev = text[index - 1]
-            if prev.isalnum() or prev in FileMentionCompleter._TRIGGER_GUARDS:
+            if prev.isalnum() or prev in LocalFileMentionCompleter._TRIGGER_GUARDS:
                 return None
 
         fragment = text[index + 1 :]
@@ -473,7 +474,7 @@ class CustomPromptSession:
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
-        work_dir_id = md5(str(Path.cwd()).encode(encoding="utf-8")).hexdigest()
+        work_dir_id = md5(str(KaosPath.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._model_capabilities = model_capabilities
@@ -496,7 +497,8 @@ class CustomPromptSession:
         self._agent_mode_completer = merge_completers(
             [
                 MetaCommandCompleter(),
-                FileMentionCompleter(Path.cwd()),
+                # TODO(kaos): we need an async KaosFileMentionCompleter
+                LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
             deduplicate=True,
         )
@@ -591,7 +593,7 @@ class CustomPromptSession:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
         if self._mode == PromptMode.AGENT and self._thinking:
             symbol = PROMPT_SYMBOL_THINKING
-        return FormattedText([("bold", f"{getpass.getuser()}@{Path.cwd().name}{symbol} ")])
+        return FormattedText([("bold", f"{getpass.getuser()}@{KaosPath.cwd().name}{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
