@@ -30,7 +30,7 @@ def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSyste
 
 def test_load_tools_valid(runtime: Runtime):
     """Test loading valid tools."""
-    tool_paths = ["kimi_cli.tools.think:Think", "kimi_cli.tools.bash:Bash"]
+    tool_paths = ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
     toolset = KimiToolset()
     bad_tools = _load_tools(
         toolset,

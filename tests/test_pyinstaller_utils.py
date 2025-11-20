@@ -69,11 +69,6 @@ def test_pyinstaller_datas():
             ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
             ("src/kimi_cli/prompts/init.md", "kimi_cli/prompts"),
             (
-                "src/kimi_cli/tools/bash/bash.md",
-                "kimi_cli/tools/bash",
-            ),
-            ("src/kimi_cli/tools/bash/cmd.md", "kimi_cli/tools/bash"),
-            (
                 "src/kimi_cli/tools/dmail/dmail.md",
                 "kimi_cli/tools/dmail",
             ),
@@ -97,6 +92,8 @@ def test_pyinstaller_datas():
                 "src/kimi_cli/tools/file/write.md",
                 "kimi_cli/tools/file",
             ),
+            ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/cmd.md", "kimi_cli/tools/shell"),
             (
                 "src/kimi_cli/tools/task/task.md",
                 "kimi_cli/tools/task",
@@ -127,7 +124,6 @@ def test_pyinstaller_hiddenimports():
     assert sorted(hiddenimports) == snapshot(
         [
             "kimi_cli.tools",
-            "kimi_cli.tools.bash",
             "kimi_cli.tools.dmail",
             "kimi_cli.tools.file",
             "kimi_cli.tools.file.glob",
@@ -136,6 +132,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.write",
             "kimi_cli.tools.mcp",
+            "kimi_cli.tools.shell",
             "kimi_cli.tools.task",
             "kimi_cli.tools.test",
             "kimi_cli.tools.think",

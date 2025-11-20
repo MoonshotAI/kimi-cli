@@ -25,7 +25,6 @@ The stdout and stderr will be combined and returned as a string. The output may 
 - File viewing/editing: cat, grep, head, tail, diff, patch
 - Text processing: awk, sed, sort, uniq, wc
 - System information/operations: ps, kill, top, df, free, uname, whoami, id, date
-- Package management: pip, uv, npm, yarn, bun, cargo
 - Network operations: curl, wget, ping, telnet, ssh
 - Archive operations: tar, zip, unzip
 - Other: Other commands available in the shell environment. Check the existence of a command by running `which <command>` before using it.

@@ -83,7 +83,7 @@ Use this as your basic understanding of the project structure.
 
 ## Date and Time
 
-The current date and time in ISO format is `1970-01-01T00:00:00+00:00`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Bash tool with proper command.
+The current date and time in ISO format is `1970-01-01T00:00:00+00:00`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Shell tool with proper command.
 
 # Project Information
 
@@ -98,7 +98,7 @@ Test agents content
 ---\
 """,
                 [
-                    "CMD" if platform.system() == "Windows" else "Bash",
+                    "Shell",
                     "ReadFile",
                     "Glob",
                     "Grep",

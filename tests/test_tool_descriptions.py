@@ -6,7 +6,7 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.bash import Bash
+from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep import Grep
@@ -109,9 +109,9 @@ However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use t
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
-def test_bash_description(bash_tool: Bash):
-    """Test the description of Bash tool."""
-    assert bash_tool.base.description == snapshot(
+def test_shell_description(shell_tool: Shell):
+    """Test the description of Shell tool."""
+    assert shell_tool.base.description == snapshot(
         """\
 Execute a shell command. Use this tool to explore the filesystem, edit files, run scripts, get system information, etc.
 
@@ -140,7 +140,6 @@ The stdout and stderr will be combined and returned as a string. The output may 
 - File viewing/editing: cat, grep, head, tail, diff, patch
 - Text processing: awk, sed, sort, uniq, wc
 - System information/operations: ps, kill, top, df, free, uname, whoami, id, date
-- Package management: pip, uv, npm, yarn, bun, cargo
 - Network operations: curl, wget, ping, telnet, ssh
 - Archive operations: tar, zip, unzip
 - Other: Other commands available in the shell environment. Check the existence of a command by running `which <command>` before using it.
@@ -163,7 +162,7 @@ Read content from a file.
 - Any lines longer than 2000 characters will be truncated, ending with "...".
 - The system will notify you when there is any limitation hit when reading the file.
 - This tool is a tool that you typically want to use in parallel. Always read multiple files in one response when possible.
-- This tool can only read text files. To list directories, you must use the Glob tool or `ls` command via the Bash tool. To read other file types, use appropriate commands via the Bash tool.
+- This tool can only read text files. To list directories, you must use the Glob tool or `ls` command via the Shell tool. To read other file types, use appropriate commands via the Shell tool.
 - If the file doesn't exist or path is invalid, an error will be returned.
 - If you want to search for a certain content/pattern, prefer Grep tool over ReadFile.
 """
@@ -202,7 +201,7 @@ def test_grep_description(grep_tool: Grep):
 A powerful search tool based-on ripgrep.
 
 **Tips:**
-- ALWAYS use Grep tool instead of running `grep` or `rg` command with Bash tool.
+- ALWAYS use Grep tool instead of running `grep` or `rg` command with Shell tool.
 - Use the ripgrep pattern syntax, not grep syntax. E.g. you need to escape braces like `\\\\{` to search for `{`.
 """
     )
@@ -231,7 +230,7 @@ Replace specific strings within a specified file.
 - Only use this tool on text files.
 - Multi-line strings are supported.
 - Can specify a single edit or a list of edits in one call.
-- You should prefer this tool over WriteFile tool and Bash `sed` command.
+- You should prefer this tool over WriteFile tool and Shell `sed` command.
 """
     )
 

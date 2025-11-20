@@ -152,7 +152,7 @@ Selected ruff rules:
 
 ### Available Tools
 
-- **Bash**: Execute shell commands
+- **Shell**: Execute shell commands
 - **ReadFile**: Read file contents with line limits
 - **WriteFile**: Write content to files
 - **Glob**: File pattern matching

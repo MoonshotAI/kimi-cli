@@ -44,8 +44,8 @@ def test_load_agent_spec_with_exclude_tools(agent_file_with_tools: Path):
     """Test loading agent spec with excluded tools."""
     spec = load_agent_spec(agent_file_with_tools)
 
-    assert spec.tools == snapshot(["kimi_cli.tools.think:Think", "kimi_cli.tools.bash:Bash"])
-    assert spec.exclude_tools == snapshot(["kimi_cli.tools.bash:Bash"])
+    assert spec.tools == snapshot(["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"])
+    assert spec.exclude_tools == snapshot(["kimi_cli.tools.shell:Shell"])
 
 
 def test_load_agent_spec_extension(agent_file_extending: Path):
@@ -85,7 +85,7 @@ agent:
             [
                 "kimi_cli.tools.task:Task",
                 "kimi_cli.tools.todo:SetTodoList",
-                "kimi_cli.tools.bash:Bash",
+                "kimi_cli.tools.shell:Shell",
                 "kimi_cli.tools.file:ReadFile",
                 "kimi_cli.tools.file:Glob",
                 "kimi_cli.tools.file:Grep",
@@ -234,8 +234,8 @@ version: 1
 agent:
   name: "Test Agent"
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.think:Think", "kimi_cli.tools.bash:Bash"]
-  exclude_tools: ["kimi_cli.tools.bash:Bash"]
+  tools: ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
+  exclude_tools: ["kimi_cli.tools.shell:Shell"]
 """)
 
         yield agent_yaml
