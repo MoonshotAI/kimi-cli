@@ -5,11 +5,11 @@ agent:
   system_prompt_args:
     ROLE_ADDITIONAL: ""
   tools:
-    - "kimi_cli.tools.task:Task"
+    - "kimi_cli.tools.multiagent:Task"
     # - "kimi_cli.tools.dmail:SendDMail"
     # - "kimi_cli.tools.think:Think"
     - "kimi_cli.tools.todo:SetTodoList"
-    - "kimi_cli.tools.bash:Bash"
+    - "kimi_cli.tools.shell:Shell"
     - "kimi_cli.tools.file:ReadFile"
     - "kimi_cli.tools.file:Glob"
     - "kimi_cli.tools.file:Grep"

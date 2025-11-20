@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.bash import Bash
+from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.task import Task
+from kimi_cli.tools.multiagent.task import Task
 from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
@@ -108,9 +108,9 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
     )
 
 
-def test_bash_params_schema(bash_tool: Bash):
-    """Test the schema of Bash tool parameters."""
-    assert bash_tool.base.parameters == snapshot(
+def test_shell_params_schema(shell_tool: Shell):
+    """Test the schema of Shell tool parameters."""
+    assert shell_tool.base.parameters == snapshot(
         {
             "properties": {
                 "command": {

@@ -7,7 +7,7 @@ from pathlib import Path
 from inline_snapshot import snapshot
 
 from kaos.path import KaosPath
-from kimi_cli.tools.task import Task
+from kimi_cli.tools.multiagent.task import Task
 
 
 def test_task_subagents(task_tool: Task, temp_work_dir: KaosPath):
@@ -84,7 +84,7 @@ Use this as your basic understanding of the project structure.
 
 ## Date and Time
 
-The current date and time in ISO format is `1970-01-01T00:00:00+00:00`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Bash tool with proper command.
+The current date and time in ISO format is `1970-01-01T00:00:00+00:00`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Shell tool with proper command.
 
 # Project Information
 
@@ -99,7 +99,7 @@ Test agents content
 ---\
 """,
                 [
-                    "CMD" if platform.system() == "Windows" else "Bash",
+                    "Shell",
                     "ReadFile",
                     "Glob",
                     "Grep",
