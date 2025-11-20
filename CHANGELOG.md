@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - Core: Fix field inheritance of agent spec files when using `extend`
+- Core: Support using MCP tools in subagents
 
 ## [0.57] - 2025-11-20
 

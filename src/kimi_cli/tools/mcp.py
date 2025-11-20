@@ -7,7 +7,7 @@ from fastmcp.client.transports import ClientTransport
 from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart
 from kosong.tooling import CallableTool, ToolError, ToolOk, ToolReturnType
 
-from kimi_cli.soul.runtime import Runtime
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import ToolRejectedError
 
 

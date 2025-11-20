@@ -49,7 +49,7 @@ Examples:
 
 **Available Subagents:**
 
-- `coder`: Good at general software engineering tasks.
+- `mocker`: The mock agent for testing purposes.
 """
     )
 
