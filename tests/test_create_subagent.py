@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk
