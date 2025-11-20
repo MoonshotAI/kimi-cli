@@ -19,7 +19,7 @@ async def test_kimisoul_injects_agents_md(runtime, tmp_path):
     """Ensure AGENTS.md content is seeded into an empty context."""
 
     context = Context(tmp_path / "history.jsonl")
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=CustomToolset())
+    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
 
     soul = KimiSoul(agent, runtime, context=context)
 
@@ -44,7 +44,7 @@ async def test_compaction_reinjects_agents_md(runtime, tmp_path):
     """Ensure AGENTS.md content is re-added after compaction."""
 
     context = Context(tmp_path / "history.jsonl")
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=CustomToolset())
+    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
     soul = KimiSoul(agent, runtime, context=context)
 
     await soul._checkpoint()
@@ -81,7 +81,7 @@ async def test_kimisoul_backfills_agents_md_into_existing_history(runtime, tmp_p
 
     context = Context(tmp_path / "history.jsonl")
     await context.append_message(Message(role="user", content="Prior conversation"))
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=CustomToolset())
+    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
     soul = KimiSoul(agent, runtime, context=context)
 
     await soul._ensure_initial_system_messages()
