@@ -34,7 +34,7 @@ agent:
       Beside the `report.json`, you must also compile a concise human-readable summary in the final response, containing the passed and failed test cases, and suggestions on how to fix the failed ones.
       </role>
   tools:
-    - "kimi_cli.tools.task:Task"
+    - "kimi_cli.tools.multiagent:Task"
     - "kimi_cli.tools.think:Think"
     - "kimi_cli.tools.todo:SetTodoList"
     - "kimi_cli.tools.shell:Shell"

@@ -83,7 +83,7 @@ agent:
         )
         assert spec.tools == snapshot(
             [
-                "kimi_cli.tools.task:Task",
+                "kimi_cli.tools.multiagent:Task",
                 "kimi_cli.tools.todo:SetTodoList",
                 "kimi_cli.tools.shell:Shell",
                 "kimi_cli.tools.file:ReadFile",
