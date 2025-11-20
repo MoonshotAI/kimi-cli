@@ -57,7 +57,7 @@ Use this as your basic understanding of the project structure.
 
 ## Date and Time
 
-The current date and time in ISO format is `${KIMI_NOW}`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Bash tool with proper command.
+The current date and time in ISO format is `${KIMI_NOW}`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Shell tool with proper command.
 
 # Project Information
 
