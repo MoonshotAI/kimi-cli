@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - UI: Improve approval request wordings
 - Tool: Remove `PatchFile` tool
 - Tool: Rename `Bash`/`CMD` tool to `Shell` tool
+- Tool: Move `Task` tool to `kimi_cli.tools.multiagent` module
 
 ## [0.56] - 2025-11-19
 
