@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.57] - 2025-11-20
 
 - LLM: Fix Google GenAI provider when thinking toggle is not on
 - UI: Improve approval request wordings
