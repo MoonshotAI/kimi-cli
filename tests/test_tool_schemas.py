@@ -8,7 +8,7 @@ from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep import Grep
-from kimi_cli.tools.file.patch import PatchFile
+
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
@@ -340,26 +340,6 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
                 },
             },
             "required": ["path", "edit"],
-            "type": "object",
-        }
-    )
-
-
-def test_patch_file_params_schema(patch_file_tool: PatchFile):
-    """Test the schema of PatchFile tool parameters."""
-    assert patch_file_tool.base.parameters == snapshot(
-        {
-            "properties": {
-                "path": {
-                    "description": "The absolute path to the file to apply the patch to.",
-                    "type": "string",
-                },
-                "diff": {
-                    "description": "The diff content in unified format to apply.",
-                    "type": "string",
-                },
-            },
-            "required": ["path", "diff"],
             "type": "object",
         }
     )

@@ -10,7 +10,7 @@ from kimi_cli.tools.bash import Bash
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep import Grep
-from kimi_cli.tools.file.patch import PatchFile
+
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
@@ -232,22 +232,6 @@ Replace specific strings within a specified file.
 - Multi-line strings are supported.
 - Can specify a single edit or a list of edits in one call.
 - You should prefer this tool over WriteFile tool and Bash `sed` command.
-"""
-    )
-
-
-def test_patch_file_description(patch_file_tool: PatchFile):
-    """Test the description of PatchFile tool."""
-    assert patch_file_tool.base.description == snapshot(
-        """\
-Apply a unified diff patch to a file.
-
-**Tips:**
-- The patch must be in unified diff format, the format used by `diff -u` and `git diff`.
-- Only use this tool on text files.
-- The tool will fail with error returned if the patch doesn't apply cleanly.
-- The file must exist before applying the patch.
-- You should prefer this tool over WriteFile tool and Bash `sed` command when editing an existing file.
 """
     )
 

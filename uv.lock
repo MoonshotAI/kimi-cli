@@ -863,7 +863,6 @@ dependencies = [
     { name = "httpx", extra = ["socks"] },
     { name = "kosong" },
     { name = "loguru" },
-    { name = "patch-ng" },
     { name = "pillow" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
@@ -895,7 +894,6 @@ requires-dist = [
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
     { name = "kosong", specifier = "==0.26.2" },
     { name = "loguru", specifier = "==0.7.3" },
-    { name = "patch-ng", specifier = "==1.19.0" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.4" },
@@ -1330,12 +1328,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/4f/78/d9b09ba24bb36ef8b
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/31/ba45bf0b2aa7898d81cbbfac0e88c267befb59ad91a19e36e1bc5578ddb1/parse-1.20.2-py2.py3-none-any.whl", hash = "sha256:967095588cb802add9177d0c0b6133b5ba33b1ea9007ca800e526f42a85af558", size = 20126, upload-time = "2024-06-11T04:41:55.057Z" },
 ]
-
-[[package]]
-name = "patch-ng"
-version = "1.19.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/65/bb/ebd7c6058dcfbf634986f9a8b3fb638f3269501c73701a48b7530042da5b/patch-ng-1.19.0.tar.gz", hash = "sha256:27484792f4ac1c15fe2f3e4cecf74bb9833d33b75c715b71d199f7e1e7d1f786", size = 18488, upload-time = "2025-10-08T15:17:19.616Z" }
 
 [[package]]
 name = "pathable"
