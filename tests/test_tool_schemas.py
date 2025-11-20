@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
+from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
@@ -37,6 +38,26 @@ def test_task_params_schema(task_tool: Task):
                 },
             },
             "required": ["description", "subagent_name", "prompt"],
+            "type": "object",
+        }
+    )
+
+
+def test_create_subagent_params_schema(create_subagent_tool: CreateSubagent):
+    """Test the schema of CreateSubagent tool parameters."""
+    assert create_subagent_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "name": {
+                    "description": "Unique name for this agent configuration (e.g., 'summarizer', 'code_reviewer'). This name will be used to reference the agent in the Task tool.",
+                    "type": "string",
+                },
+                "system_prompt": {
+                    "description": "System prompt defining the agent's role, capabilities, and boundaries.",
+                    "type": "string",
+                },
+            },
+            "required": ["name", "system_prompt"],
             "type": "object",
         }
     )

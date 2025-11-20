@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from kosong.chat_provider.mock import MockChatProvider
+from kosong.tooling import Toolset
 from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
@@ -22,12 +23,14 @@ from kimi_cli.session import Session
 from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs, LaborMarket, Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
+from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.multiagent.task import Task
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
@@ -147,6 +150,11 @@ def runtime(
     return rt
 
 
+@pytest.fixture
+def toolset() -> Toolset:
+    return KimiToolset()
+
+
 @contextmanager
 def tool_call_context(tool_name: str) -> Generator[None]:
     """Create a tool call context."""
@@ -167,6 +175,14 @@ def tool_call_context(tool_name: str) -> Generator[None]:
 def task_tool(labor_market: LaborMarket, runtime: Runtime) -> Task:
     """Create a Task tool instance."""
     return Task(labor_market, runtime)
+
+
+@pytest.fixture
+def create_subagent_tool(
+    labor_market: LaborMarket, toolset: Toolset, runtime: Runtime
+) -> CreateSubagent:
+    """Create a CreateSubagent tool instance."""
+    return CreateSubagent(labor_market, toolset, runtime)
 
 
 @pytest.fixture

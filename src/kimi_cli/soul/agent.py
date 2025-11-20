@@ -168,7 +168,9 @@ async def load_agent(
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
+    toolset = KimiToolset()
     tool_deps = {
+        Toolset: toolset,
         Runtime: runtime,
         Config: runtime.config,
         BuiltinSystemPromptArgs: runtime.builtin_args,
@@ -181,7 +183,6 @@ async def load_agent(
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
-    toolset = KimiToolset()
     bad_tools = _load_tools(toolset, tools, tool_deps)
     if bad_tools:
         raise ValueError(f"Invalid tools: {bad_tools}")
