@@ -5,7 +5,7 @@ agent:
     ROLE_ADDITIONAL: |
       You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You need to provide a comprehensive summary on what you have done and learned in your final message. If you wrote or modified any files, you must mention them in the summary.
   exclude_tools:
-    - "kimi_cli.tools.task:Task"
+    - "kimi_cli.tools.multiagent:Task"
     - "kimi_cli.tools.dmail:SendDMail"
     - "kimi_cli.tools.todo:SetTodoList"
   subagents: # make sure no subagents are provided

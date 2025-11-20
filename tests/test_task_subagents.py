@@ -6,7 +6,7 @@ import platform
 from pathlib import Path
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.task import Task
+from kimi_cli.tools.multiagent.task import Task
 
 
 def test_task_subagents(task_tool: Task, temp_work_dir: Path):
