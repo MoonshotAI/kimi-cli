@@ -7,7 +7,7 @@ from kimi_cli.tools.multiagent.create import CreateSubagent, Params
 
 @pytest.mark.asyncio
 async def test_create_subagent(create_subagent_tool: CreateSubagent):
-    """Test the description of CreateSubagent tool."""
+    """Test creating a subagent."""
     result = await create_subagent_tool(
         Params(
             name="test_agent",
