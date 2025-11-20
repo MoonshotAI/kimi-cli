@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, overload
 
@@ -233,7 +233,9 @@ async def init(app: Shell, args: list[str]):
             console.print("[red]Failed to analyze the codebase.[/red]")
 
     app.soul = soul_bak
-    agents_md = load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR)
+    agents_md = load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR) or ""
+    soul_bak._runtime = replace(soul_bak._runtime, agents_md=agents_md)
+    soul_bak._initial_context_prepared = soul_bak._agents_md_present()
     system_message = system(
         "The user just ran `/init` meta command. "
         "The system has analyzed the codebase and generated an `AGENTS.md` file. "
