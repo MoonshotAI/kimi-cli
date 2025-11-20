@@ -16,7 +16,7 @@ from kosong.chat_provider import (
     APITimeoutError,
     ThinkingEffort,
 )
-from kosong.message import ContentPart, Message
+from kosong.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
@@ -83,7 +83,7 @@ class KimiSoul:
         if self._runtime.llm is not None:
             assert self._reserved_tokens <= self._runtime.llm.max_context_size
         self._thinking_effort: ThinkingEffort = "off"
-        self._initial_context_prepared = bool(context.history)
+        self._initial_context_prepared = self._agents_md_present()
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -169,11 +169,11 @@ class KimiSoul:
     async def _ensure_initial_system_messages(self) -> None:
         if self._initial_context_prepared:
             return
-        if self._context.history:
-            self._initial_context_prepared = True
-            return
         agents_message = self._agents_md_message()
         if agents_message is None:
+            self._initial_context_prepared = True
+            return
+        if self._agents_md_present():
             self._initial_context_prepared = True
             return
 
@@ -391,6 +391,20 @@ class KimiSoul:
         )
         payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
         return Message(role="assistant", content=[system(payload)])
+
+    def _agents_md_present(self) -> bool:
+        if not self._runtime.agents_md:
+            return True
+
+        for message in self._context.history:
+            if message.role != "assistant":
+                continue
+            if not isinstance(message.content, list):
+                continue
+            for part in message.content:
+                if isinstance(part, TextPart) and self._runtime.agents_md in part.text:
+                    return True
+        return False
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
