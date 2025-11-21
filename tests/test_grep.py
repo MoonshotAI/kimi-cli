@@ -6,9 +6,11 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.file.grep_local import Grep, Params
+from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
 
 
 @pytest.fixture
@@ -242,6 +244,32 @@ async def test_grep_head_limit(grep_tool: Grep, temp_test_files):
     ]
     assert len(lines) <= 2
     assert "... (results truncated to 2 lines)" in result.output
+
+
+@pytest.mark.asyncio
+async def test_grep_output_truncation(grep_tool: Grep):
+    """Ensure extremely long output is truncated automatically."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_file = Path(temp_dir) / "big.txt"
+        test_file.write_text(
+            "match line with filler content that keeps growing for truncation purposes\n" * 2000
+        )
+
+        result = await grep_tool(
+            Params.model_validate(
+                {
+                    "pattern": "match",
+                    "path": temp_dir,
+                    "output_mode": "content",
+                    "-n": True,
+                }
+            )
+        )
+
+        assert isinstance(result, ToolOk)
+        assert isinstance(result.output, str)
+        assert result.message == snapshot("Output is truncated to fit in the message.")
+        assert len(result.output) < DEFAULT_MAX_CHARS + 100
 
 
 @pytest.mark.asyncio
