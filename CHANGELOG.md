@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.58] - 2025-11-21
 
 - Core: Fix field inheritance of agent spec files when using `extend`
 - Core: Support using MCP tools in subagents
