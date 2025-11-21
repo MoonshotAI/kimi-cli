@@ -267,9 +267,8 @@ async def test_fetch_url_with_service() -> None:
 
         assert isinstance(result, ToolOk)
         assert result.output == expected_content
-        assert (
-            result.message
-            == "The returned content is the main text content extracted from the page."
+        assert result.message == snapshot(
+            "The returned content is the main content extracted from the page."
         )
 
     finally:
