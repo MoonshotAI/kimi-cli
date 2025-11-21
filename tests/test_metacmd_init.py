@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from dataclasses import replace
+from typing import cast
 
 import pytest
 from kosong.message import TextPart
@@ -34,8 +36,9 @@ async def test_init_refreshes_runtime_agents_md(runtime, temp_work_dir):
     await agents_md_path.write_text(generated_agents_md)
 
     app = ShellApp(soul)
+    assert isinstance(app.soul, KimiSoul)
 
-    await init_meta_command(app, [])
+    await cast(Awaitable[None], init_meta_command(app, []))
 
     assert app.soul._runtime.agents_md == generated_agents_md
     assert app.soul._initial_context_prepared is False
