@@ -13,6 +13,8 @@ from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.tools.multiagent.create import CreateSubagent
+from kimi_cli.tools.multiagent.create import Params as CreateSubagentParams
 from kimi_cli.ui.shell import ShellApp
 from kimi_cli.ui.shell.metacmd import init as init_meta_command
 
@@ -53,4 +55,51 @@ async def test_init_refreshes_runtime_agents_md(runtime, temp_work_dir):
     assert any(
         isinstance(part, TextPart) and generated_agents_md in part.text
         for part in agents_message.content
+    )
+
+
+@pytest.mark.asyncio
+async def test_init_updates_tool_runtime_and_subagents(runtime, temp_work_dir):
+    """Ensure `/init` refresh applies to tools and new subagents."""
+
+    runtime_with_stale_agents = replace(runtime, agents_md="Stale AGENTS.md content")
+    context = Context(temp_work_dir / "history.jsonl")
+    toolset = KimiToolset()
+    create_tool = CreateSubagent(toolset, runtime_with_stale_agents)
+    toolset.add(create_tool)
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=toolset,
+        runtime=runtime_with_stale_agents,
+    )
+    soul = KimiSoul(agent, context=context)
+    app = ShellApp(soul)
+    assert isinstance(app.soul, KimiSoul)
+    kimi_soul = app.soul
+
+    refreshed_agents_md = "Refreshed AGENTS.md content"
+    await (temp_work_dir / "AGENTS.md").write_text(refreshed_agents_md)
+
+    await cast(Awaitable[None], init_meta_command(app, []))
+
+    assert kimi_soul._runtime.agents_md == refreshed_agents_md
+    assert kimi_soul._agent.runtime.agents_md == refreshed_agents_md
+    assert create_tool._runtime.agents_md == refreshed_agents_md
+
+    await create_tool(CreateSubagentParams(name="helper", system_prompt="You are a helper agent"))
+
+    helper_agent = kimi_soul._runtime.labor_market.dynamic_subagents["helper"]
+    assert helper_agent.runtime.agents_md == refreshed_agents_md
+
+    helper_soul = KimiSoul(helper_agent, context=Context(temp_work_dir / "helper_history.jsonl"))
+    await helper_soul._ensure_initial_system_messages()
+
+    assert helper_soul.context.history
+    helper_agents_message = helper_soul.context.history[-1]
+    assert helper_agents_message.role == "assistant"
+    assert isinstance(helper_agents_message.content, list)
+    assert any(
+        isinstance(part, TextPart) and refreshed_agents_md in part.text
+        for part in helper_agents_message.content
     )
