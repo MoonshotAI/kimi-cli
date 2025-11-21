@@ -67,7 +67,6 @@ class KimiSoul(Soul):
 
         Args:
             agent (Agent): The agent to run.
-            runtime (Runtime): Runtime parameters and states.
             context (Context): The context of the agent.
         """
         self._agent = agent
