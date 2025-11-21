@@ -12,10 +12,10 @@ from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
 from kimi_cli.cli import Reload
+from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
-from kimi_cli.soul.runtime import load_agents_md
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.logging import logger
@@ -211,7 +211,7 @@ async def init(app: ShellApp, args: list[str]):
         logger.info("Running `/init`")
         console.print("Analyzing the codebase...")
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
-        app.soul = KimiSoul(soul_bak._agent, soul_bak._runtime, context=tmp_context)
+        app.soul = KimiSoul(soul_bak._agent, context=tmp_context)
         ok = await app._run_soul_command(prompts.INIT, thinking=False)
 
         if ok:

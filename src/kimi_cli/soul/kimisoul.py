@@ -33,7 +33,6 @@ from kimi_cli.soul.agent import Agent
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
-from kimi_cli.soul.runtime import Runtime
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
@@ -60,7 +59,6 @@ class KimiSoul(Soul):
     def __init__(
         self,
         agent: Agent,
-        runtime: Runtime,
         *,
         context: Context,
     ):
@@ -73,11 +71,11 @@ class KimiSoul(Soul):
             context (Context): The context of the agent.
         """
         self._agent = agent
-        self._runtime = runtime
-        self._denwa_renji = runtime.denwa_renji
-        self._approval = runtime.approval
+        self._runtime = agent.runtime
+        self._denwa_renji = agent.runtime.denwa_renji
+        self._approval = agent.runtime.approval
         self._context = context
-        self._loop_control = runtime.config.loop_control
+        self._loop_control = agent.runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
         self._reserved_tokens = RESERVED_TOKENS
         if self._runtime.llm is not None:

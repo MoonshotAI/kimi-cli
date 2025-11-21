@@ -17,10 +17,9 @@ from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import LLMNotSet, LLMNotSupported
-from kimi_cli.soul.agent import load_agent
+from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.runtime import Runtime
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.path import shorten_home
 
@@ -105,11 +104,7 @@ class KimiCLI:
         context = Context(session.history_file)
         await context.restore()
 
-        soul = KimiSoul(
-            agent,
-            runtime,
-            context=context,
-        )
+        soul = KimiSoul(agent, context=context)
         try:
             soul.set_thinking(thinking)
         except (LLMNotSet, LLMNotSupported) as e:
