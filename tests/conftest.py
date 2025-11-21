@@ -250,9 +250,9 @@ def search_web_tool(config: Config) -> SearchWeb:
 
 
 @pytest.fixture
-def fetch_url_tool() -> FetchURL:
+def fetch_url_tool(config: Config) -> FetchURL:
     """Create a FetchURL tool instance."""
-    return FetchURL()
+    return FetchURL(config)
 
 
 # misc fixtures

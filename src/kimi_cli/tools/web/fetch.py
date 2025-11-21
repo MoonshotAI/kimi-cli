@@ -1,13 +1,17 @@
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import aiohttp
 import trafilatura
-from kosong.tooling import CallableTool2, ToolReturnType
+from kosong.tooling import CallableTool2, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
+from kimi_cli.config import Config
+from kimi_cli.constant import USER_AGENT
+from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
+from kimi_cli.utils.logging import logger
 
 
 class Params(BaseModel):
@@ -19,9 +23,20 @@ class FetchURL(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "fetch.md", {})
     params: type[Params] = Params
 
+    def __init__(self, config: Config, **kwargs: Any):
+        super().__init__(**kwargs)
+        self._service_config = config.services.moonshot_fetch
+
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
         builder = ToolResultBuilder(max_line_length=None)
+
+        if self._service_config:
+            result = await self._fetch_with_service(params, builder)
+            if isinstance(result, ToolOk):
+                return result
+            logger.warning("Failed to fetch URL via service: {error}", error=result.message)
+            # fallback to local fetch if service fetch fails
 
         try:
             async with (
@@ -88,13 +103,36 @@ class FetchURL(CallableTool2[Params]):
         builder.write(extracted_text)
         return builder.ok("The returned content is the main text content extracted from the page.")
 
+    async def _fetch_with_service(
+        self, params: Params, builder: ToolResultBuilder
+    ) -> ToolReturnType:
+        assert self._service_config is not None
 
-if __name__ == "__main__":
-    import asyncio
+        tool_call = get_current_tool_call_or_none()
+        assert tool_call is not None, "Tool call is expected to be set"
 
-    async def main():
-        fetch_url_tool = FetchURL()
-        result = await fetch_url_tool(Params(url="https://trafilatura.readthedocs.io/en/latest/"))
-        print(result)
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Authorization": f"Bearer {self._service_config.api_key.get_secret_value()}",
+            "Accept": "text/markdown",
+            "X-Msh-Tool-Call-Id": tool_call.id,
+            **(self._service_config.custom_headers or {}),
+        }
 
-    asyncio.run(main())
+        async with (
+            new_client_session() as session,
+            session.post(
+                self._service_config.base_url,
+                headers=headers,
+                json={"url": params.url},
+            ) as response,
+        ):
+            if response.status != 200:
+                return builder.error(
+                    f"Failed to fetch URL via service. Status: {response.status}.",
+                    brief="Failed to fetch URL via fetch service",
+                )
+
+            content = await response.text()
+            builder.write(content)
+            return builder.ok("The returned content is the main content extracted from the page.")

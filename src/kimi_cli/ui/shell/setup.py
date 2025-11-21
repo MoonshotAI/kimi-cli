@@ -8,7 +8,14 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
-from kimi_cli.config import LLMModel, LLMProvider, MoonshotSearchConfig, load_config, save_config
+from kimi_cli.config import (
+    LLMModel,
+    LLMProvider,
+    MoonshotFetchConfig,
+    MoonshotSearchConfig,
+    load_config,
+    save_config,
+)
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
 from kimi_cli.utils.aiohttp import new_client_session
@@ -22,6 +29,7 @@ class _Platform(NamedTuple):
     name: str
     base_url: str
     search_url: str | None = None
+    fetch_url: str | None = None
     allowed_prefixes: list[str] | None = None
 
 
@@ -31,6 +39,7 @@ _PLATFORMS = [
         name="Kimi For Coding",
         base_url="https://api.kimi.com/coding/v1",
         search_url="https://api.kimi.com/coding/v1/search",
+        fetch_url="https://api.kimi.com/coding/v1/fetch",
     ),
     _Platform(
         id="moonshot-cn",
@@ -71,6 +80,12 @@ async def setup(app: ShellApp, args: list[str]):
     if result.platform.search_url:
         config.services.moonshot_search = MoonshotSearchConfig(
             base_url=result.platform.search_url,
+            api_key=result.api_key,
+        )
+
+    if result.platform.fetch_url:
+        config.services.moonshot_fetch = MoonshotFetchConfig(
+            base_url=result.platform.fetch_url,
             api_key=result.api_key,
         )
 

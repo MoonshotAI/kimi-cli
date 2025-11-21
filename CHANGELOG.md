@@ -14,6 +14,7 @@ Only write entries that are worth mentioning to users.
 - Core: Fix field inheritance of agent spec files when using `extend`
 - Core: Support using MCP tools in subagents
 - Tool: Add `CreateSubagent` tool to create subagents dynamically (not enabled in default agent)
+- Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi for Coding plan
 
 ## [0.57] - 2025-11-20
 
