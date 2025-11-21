@@ -19,9 +19,14 @@ async def test_kimisoul_injects_agents_md(runtime, tmp_path):
     """Ensure AGENTS.md content is seeded into an empty context."""
 
     context = Context(tmp_path / "history.jsonl")
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime,
+    )
 
-    soul = KimiSoul(agent, runtime, context=context)
+    soul = KimiSoul(agent, context=context)
 
     await soul._ensure_initial_system_messages()
 
@@ -44,8 +49,13 @@ async def test_compaction_reinjects_agents_md(runtime, tmp_path):
     """Ensure AGENTS.md content is re-added after compaction."""
 
     context = Context(tmp_path / "history.jsonl")
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
-    soul = KimiSoul(agent, runtime, context=context)
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=context)
 
     await soul._checkpoint()
     await context.append_message(Message(role="user", content="Hello"))
@@ -55,9 +65,7 @@ async def test_compaction_reinjects_agents_md(runtime, tmp_path):
     preserved_user = Message(role="user", content="Most recent question")
 
     mock_compaction = SimpleNamespace()
-    mock_compaction.compact = AsyncMock(
-        return_value=[summary, preserved_assistant, preserved_user]
-    )
+    mock_compaction.compact = AsyncMock(return_value=[summary, preserved_assistant, preserved_user])
     soul._compaction = mock_compaction  # type: ignore[assignment]
 
     await soul.compact_context()
@@ -80,8 +88,13 @@ async def test_compaction_replaces_pre_checkpoint_agents_md(runtime, tmp_path):
     """Ensure pre-checkpoint AGENTS.md content is removed before reinjection."""
 
     context = Context(tmp_path / "history.jsonl")
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
-    soul = KimiSoul(agent, runtime, context=context)
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=context)
 
     await soul._ensure_initial_system_messages()
     pre_checkpoint_agents = context.history[0]
@@ -93,9 +106,7 @@ async def test_compaction_replaces_pre_checkpoint_agents_md(runtime, tmp_path):
     preserved_user = Message(role="user", content="Most recent question")
 
     mock_compaction = SimpleNamespace()
-    mock_compaction.compact = AsyncMock(
-        return_value=[summary, preserved_assistant, preserved_user]
-    )
+    mock_compaction.compact = AsyncMock(return_value=[summary, preserved_assistant, preserved_user])
     soul._compaction = mock_compaction  # type: ignore[assignment]
 
     await soul.compact_context()
@@ -129,8 +140,13 @@ async def test_kimisoul_backfills_agents_md_into_existing_history(runtime, tmp_p
 
     context = Context(tmp_path / "history.jsonl")
     await context.append_message(Message(role="user", content="Prior conversation"))
-    agent = Agent(name="Test Agent", system_prompt="You are a test agent", toolset=KimiToolset())
-    soul = KimiSoul(agent, runtime, context=context)
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=context)
 
     await soul._ensure_initial_system_messages()
 
