@@ -5,8 +5,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from inline_snapshot import snapshot
 import pytest
+from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.file.grep_local import Grep, Params
