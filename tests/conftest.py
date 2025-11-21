@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 from kosong.chat_provider.mock import MockChatProvider
-from kosong.tooling import Toolset
 from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
@@ -143,7 +142,7 @@ def runtime(
             name="Mocker",
             system_prompt="You are a mock agent for testing.",
             toolset=EmptyToolset(),
-            runtime=rt.copy_for_subagent(),
+            runtime=rt.copy_for_fixed_subagent(),
         ),
         "The mock agent for testing purposes.",
     )
@@ -151,7 +150,7 @@ def runtime(
 
 
 @pytest.fixture
-def toolset() -> Toolset:
+def toolset() -> KimiToolset:
     return KimiToolset()
 
 
@@ -172,17 +171,15 @@ def tool_call_context(tool_name: str) -> Generator[None]:
 
 
 @pytest.fixture
-def task_tool(labor_market: LaborMarket, runtime: Runtime) -> Task:
+def task_tool(runtime: Runtime) -> Task:
     """Create a Task tool instance."""
-    return Task(labor_market, runtime)
+    return Task(runtime)
 
 
 @pytest.fixture
-def create_subagent_tool(
-    labor_market: LaborMarket, toolset: Toolset, runtime: Runtime
-) -> CreateSubagent:
+def create_subagent_tool(toolset: KimiToolset, runtime: Runtime) -> CreateSubagent:
     """Create a CreateSubagent tool instance."""
-    return CreateSubagent(labor_market, toolset, runtime)
+    return CreateSubagent(toolset, runtime)
 
 
 @pytest.fixture

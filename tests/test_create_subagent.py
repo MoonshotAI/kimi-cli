@@ -22,7 +22,7 @@ async def test_create_subagent(create_subagent_tool: CreateSubagent):
             message="Subagent 'test_agent' created successfully.",
         )
     )
-    assert "test_agent" in create_subagent_tool._labor_market.subagents
+    assert "test_agent" in create_subagent_tool._runtime.labor_market.subagents
 
 
 @pytest.mark.asyncio
@@ -35,7 +35,7 @@ async def test_create_existing_subagent(create_subagent_tool: CreateSubagent):
             system_prompt="You are an existing agent.",
         )
     )
-    assert "existing_agent" in create_subagent_tool._labor_market.subagents
+    assert "existing_agent" in create_subagent_tool._runtime.labor_market.subagents
 
     # Try to create the same subagent again
     result = await create_subagent_tool(
@@ -50,4 +50,4 @@ async def test_create_existing_subagent(create_subagent_tool: CreateSubagent):
             brief="Subagent already exists",
         )
     )
-    assert "existing_agent" in create_subagent_tool._labor_market.subagents
+    assert "existing_agent" in create_subagent_tool._runtime.labor_market.subagents

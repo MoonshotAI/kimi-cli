@@ -6,7 +6,7 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
-from kimi_cli.soul.agent import Agent, LaborMarket, Runtime
+from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
@@ -48,20 +48,20 @@ class Task(CallableTool2[Params]):
     name: str = "Task"
     params: type[Params] = Params
 
-    def __init__(self, labor_market: LaborMarket, runtime: Runtime, **kwargs: Any):
+    def __init__(self, runtime: Runtime, **kwargs: Any):
         super().__init__(
             description=load_desc(
                 Path(__file__).parent / "task.md",
                 {
                     "SUBAGENTS_MD": "\n".join(
                         f"- `{name}`: {desc}"
-                        for name, desc in labor_market.fixed_subagent_descs.items()
+                        for name, desc in runtime.labor_market.fixed_subagent_descs.items()
                     ),
                 },
             ),
             **kwargs,
         )
-        self._labor_market = labor_market
+        self._labor_market = runtime.labor_market
         self._session = runtime.session
 
     async def _get_subagent_history_file(self) -> Path:

@@ -91,8 +91,8 @@ class Runtime:
             labor_market=LaborMarket(),
         )
 
-    def copy_for_subagent(self) -> Runtime:
-        """Clone runtime for subagent."""
+    def copy_for_fixed_subagent(self) -> Runtime:
+        """Clone runtime for fixed subagent."""
         return Runtime(
             config=self.config,
             llm=self.llm,
@@ -100,7 +100,19 @@ class Runtime:
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval,
-            labor_market=LaborMarket(),  # and its own LaborMarket
+            labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
+        )
+
+    def copy_for_dynamic_subagent(self) -> Runtime:
+        """Clone runtime for dynamic subagent."""
+        return Runtime(
+            config=self.config,
+            llm=self.llm,
+            session=self.session,
+            builtin_args=self.builtin_args,
+            denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
+            approval=self.approval,
+            labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
         )
 
 
@@ -163,14 +175,14 @@ async def load_agent(
         logger.debug("Loading subagent: {subagent_name}", subagent_name=subagent_name)
         subagent = await load_agent(
             subagent_spec.path,
-            runtime.copy_for_subagent(),
+            runtime.copy_for_fixed_subagent(),
             mcp_configs=mcp_configs,
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
     toolset = KimiToolset()
     tool_deps = {
-        Toolset: toolset,
+        KimiToolset: toolset,
         Runtime: runtime,
         Config: runtime.config,
         BuiltinSystemPromptArgs: runtime.builtin_args,
