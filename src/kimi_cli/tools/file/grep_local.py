@@ -15,12 +15,12 @@ from typing import override
 
 import aiohttp
 import ripgrepy  # pyright: ignore[reportMissingTypeStubs]
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolReturnType
 from pydantic import BaseModel, Field
 
 import kimi_cli
 from kimi_cli.share import get_share_dir
-from kimi_cli.tools.utils import load_desc
+from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
@@ -247,6 +247,9 @@ class Grep(CallableTool2[Params]):
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
         try:
+            builder = ToolResultBuilder()
+            message = ""
+
             # Initialize ripgrep with pattern and path
             rg_path = await _ensure_rg_path()
             logger.debug("Using ripgrep binary: {rg_bin}", rg_bin=rg_path)
@@ -293,12 +296,15 @@ class Grep(CallableTool2[Params]):
                 if len(lines) > params.head_limit:
                     lines = lines[: params.head_limit]
                     output = "\n".join(lines)
+                    message = f"Results truncated to first {params.head_limit} lines"
                     if params.output_mode in ["content", "files_with_matches", "count_matches"]:
                         output += f"\n... (results truncated to {params.head_limit} lines)"
 
             if not output:
-                return ToolOk(output="", message="No matches found")
-            return ToolOk(output=output)
+                return builder.ok(message="No matches found")
+
+            builder.write(output)
+            return builder.ok(message=message)
 
         except Exception as e:
             return ToolError(
