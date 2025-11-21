@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Core: Support using MCP tools in subagents
 - Tool: Add `CreateSubagent` tool to create subagents dynamically (not enabled in default agent)
 - Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi for Coding plan
+- Tool: Truncate Grep tool output to avoid exceeding token limit
 
 ## [0.57] - 2025-11-20
 
