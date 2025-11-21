@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -159,3 +160,40 @@ async def test_kimisoul_backfills_agents_md_into_existing_history(runtime, tmp_p
 
     await soul._ensure_initial_system_messages()
     assert len(context.history) == 2
+
+
+@pytest.mark.asyncio
+async def test_kimisoul_replaces_agents_md_after_refresh(runtime, tmp_path):
+    """Ensure refreshed AGENTS.md content replaces stale instructions in history."""
+
+    context = Context(tmp_path / "history.jsonl")
+    original_agents_md = "Original AGENTS.md content"
+    runtime_with_original = replace(runtime, agents_md=original_agents_md)
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime_with_original,
+    )
+    soul = KimiSoul(agent, context=context)
+
+    await soul._ensure_initial_system_messages()
+    assert len(context.history) == 1
+
+    refreshed_agents_md = "Refreshed AGENTS.md content"
+    updated_runtime = replace(soul._runtime, agents_md=refreshed_agents_md)
+    soul._runtime = updated_runtime
+    soul._agent = replace(soul._agent, runtime=updated_runtime)
+    soul._initial_context_prepared = soul._agents_md_present()
+
+    await soul._ensure_initial_system_messages()
+
+    history = list(context.history)
+    assert len(history) == 1
+    agents_message = history[0]
+    assert soul._is_agents_md_message(agents_message)
+    assert isinstance(agents_message.content, list)
+    assert isinstance(agents_message.content[0], TextPart)
+    text = agents_message.content[0].text
+    assert refreshed_agents_md in text
+    assert original_agents_md not in text
