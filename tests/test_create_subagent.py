@@ -45,3 +45,19 @@ async def test_create_existing_subagent(create_subagent_tool: CreateSubagent):
     assert result.message == snapshot("Subagent with name 'existing_agent' already exists.")
     assert result.brief == snapshot("Subagent already exists")
     assert "existing_agent" in create_subagent_tool._runtime.labor_market.subagents
+
+
+@pytest.mark.asyncio
+async def test_create_subagent_preserves_agents_md(create_subagent_tool: CreateSubagent):
+    """Ensure cloned runtime keeps AGENTS.md content."""
+    parent_agents_md = create_subagent_tool._runtime.agents_md
+
+    await create_subagent_tool(
+        Params(
+            name="agents_md_subagent",
+            system_prompt="You are a test agent with agents_md.",
+        )
+    )
+
+    agents_md_subagent = create_subagent_tool._runtime.labor_market.subagents["agents_md_subagent"]
+    assert agents_md_subagent.runtime.agents_md == parent_agents_md
