@@ -213,7 +213,7 @@ async def init(app: Shell, args: list[str]):
         if agents_path.is_file():
             logger.info("Skipping `/init`, {path} already exists", path=agents_path)
             console.print(
-                "[yellow]AGENTS.md already exists here. Skipping /init to avoid overwriting it.[/yellow]"
+                "[yellow]AGENTS.md already exists. Skipping /init to avoid overwriting it.[/yellow]"
             )
             return
 

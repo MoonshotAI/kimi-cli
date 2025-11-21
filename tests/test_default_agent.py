@@ -614,19 +614,7 @@ Use this as your basic understanding of the project structure.
 
 ## Date and Time
 
-The current date and time in ISO format is `1970-01-01T00:00:00+00:00`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Shell tool with proper command.
-
-# Project Information
-
-Markdown files named `AGENTS.md` usually contain the background, structure, coding styles, user preferences and other relevant information about the project. You should use this information to understand the project and the user's preferences. `AGENTS.md` files may exist at different locations in the project, but typically there is one in the project root. The following content between two `---`s is the content of the root-level `AGENTS.md` file.
-
-`/path/to/work/dir/AGENTS.md`:
-
----
-
-Test agents content
-
----\
+The current date and time in ISO format is `1970-01-01T00:00:00+00:00`. This is only a reference for you when searching the web, or checking file modification time, etc. If you need the exact time, use Shell tool with proper command.\
 """,
                 [
                     "Shell",

@@ -87,7 +87,7 @@ class Runtime:
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
             labor_market=LaborMarket(),
-            agents_md=agents_md or "",            
+            agents_md=agents_md or "",
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -100,6 +100,7 @@ class Runtime:
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval,
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
+            agents_md=self.agents_md,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -112,6 +113,7 @@ class Runtime:
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
+            agents_md=self.agents_md,
         )
 
 
