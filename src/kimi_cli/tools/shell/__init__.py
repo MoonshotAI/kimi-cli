@@ -82,6 +82,13 @@ async def _stream_subprocess(
     stderr_cb: Callable[[bytes], None],
     timeout: int,
 ) -> int:
+    if platform.system() == "Windows":
+        # Use cmd.exe explicitly so Windows syntax (e.g., %VAR%) works.
+        args = ["cmd.exe", "/d", "/s", "/c", command]
+    else:
+        # Use bash for POSIX features relied on by tests (pipes, env, etc.).
+        args = ["bash", "-c", command]
+
     async def _read_stream(stream: asyncio.StreamReader, cb: Callable[[bytes], None]):
         while True:
             line = await stream.readline()
@@ -91,8 +98,8 @@ async def _stream_subprocess(
                 break
 
     # FIXME: if the event loop is cancelled, an exception may be raised when the process finishes
-    process = await asyncio.create_subprocess_shell(
-        command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    process = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
     assert process.stdout is not None, "stdout is None"
