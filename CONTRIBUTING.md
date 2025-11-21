@@ -9,16 +9,16 @@ We welcome all kinds of contributions, including bug fixes, features, document i
 
 ## Pre-commit hooks
 
-We run formatting, checks, and tests locally via [pre-commit](https://pre-commit.com/).
+We run formatting and checks locally via [pre-commit](https://pre-commit.com/).
 
 1. Install pre-commit (pick one): `uv tool install pre-commit`, `pipx install pre-commit`, or
    `pip install pre-commit`.
 2. Install the hooks in this repo (commit + push): `pre-commit install --hook-type pre-commit --hook-type pre-push`.
 3. Optionally run on all files before sending a PR: `pre-commit run --all-files`.
 
-After installation, formatting and checks run on every commit; tests run on push. You can skip for an
-intermediate commit with `git commit --no-verify`, or trigger all hooks manually with
+After installation, formatting and checks run on every commit. You can skip for an intermediate
+commit with `git commit --no-verify`, or trigger all hooks manually with
 `pre-commit run --all-files --hook-stage push`.
 
-The hooks execute `make format`, `make check`, and `make test`, so ensure `make prepare` (or
-`uv sync`) has been run and test dependencies are available locally.
+The hooks execute `make format` and `make check`, so ensure `make prepare` (or `uv sync`) has been
+run and dependencies are available locally.
