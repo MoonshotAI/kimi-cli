@@ -51,7 +51,7 @@ async def test_command_chaining(shell_tool: Shell):
 @pytest.mark.asyncio
 async def test_environment_variables(shell_tool: Shell):
     """Environment variables should be usable within one cmd session."""
-    result = await shell_tool(Params(command='set "TEST_VAR=test_value" && echo %TEST_VAR%'))
+    result = await shell_tool(Params(command="set TEST_VAR=test_value&& echo %TEST_VAR%"))
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
