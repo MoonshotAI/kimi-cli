@@ -6,6 +6,7 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 
+from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
@@ -49,7 +50,26 @@ Examples:
 
 **Available Subagents:**
 
-- `coder`: Good at general software engineering tasks.
+- `mocker`: The mock agent for testing purposes.
+"""
+    )
+
+
+def test_create_subagent_description(create_subagent_tool: CreateSubagent):
+    """Test the description of CreateSubagent tool."""
+    assert create_subagent_tool.base.description == snapshot(
+        """\
+Create a custom subagent with specific system prompt and name for reuse.
+
+Usage:
+- Define specialized agents with custom roles and boundaries
+- Created agents can be referenced by name in the Task tool
+- Use this when you need a specific agent type not covered by predefined agents
+- The created agent configuration will be saved and can be used immediately
+
+Example workflow:
+1. Use CreateSubagent to define a specialized agent (e.g., 'code_reviewer')
+2. Use the Task tool with agent='code_reviewer' to launch the created agent
 """
     )
 

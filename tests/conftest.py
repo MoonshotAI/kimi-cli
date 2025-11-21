@@ -10,24 +10,26 @@ from pathlib import Path
 
 import pytest
 from kosong.chat_provider.mock import MockChatProvider
+from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
 from kaos import current_kaos
 from kaos.local import LocalKaos
 from kaos.path import KaosPath
-from kimi_cli.agentspec import DEFAULT_AGENT_FILE, ResolvedAgentSpec, load_agent_spec
 from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
+from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs, LaborMarket, Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
-from kimi_cli.soul.runtime import BuiltinSystemPromptArgs, Runtime
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
+from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.multiagent.task import Task
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
@@ -109,6 +111,12 @@ def approval() -> Approval:
 
 
 @pytest.fixture
+def labor_market() -> LaborMarket:
+    """Create a LaborMarket instance."""
+    return LaborMarket()
+
+
+@pytest.fixture
 def runtime(
     config: Config,
     llm: LLM,
@@ -116,22 +124,34 @@ def runtime(
     denwa_renji: DenwaRenji,
     session: Session,
     approval: Approval,
+    labor_market: LaborMarket,
 ) -> Runtime:
     """Create a Runtime instance."""
-    return Runtime(
+    rt = Runtime(
         config=config,
         llm=llm,
         builtin_args=builtin_args,
         denwa_renji=denwa_renji,
         session=session,
         approval=approval,
+        labor_market=labor_market,
     )
+    rt.labor_market.add_fixed_subagent(
+        "mocker",
+        Agent(
+            name="Mocker",
+            system_prompt="You are a mock agent for testing.",
+            toolset=EmptyToolset(),
+            runtime=rt.copy_for_fixed_subagent(),
+        ),
+        "The mock agent for testing purposes.",
+    )
+    return rt
 
 
 @pytest.fixture
-def agent_spec() -> ResolvedAgentSpec:
-    """Create a AgentSpec instance."""
-    return load_agent_spec(DEFAULT_AGENT_FILE)
+def toolset() -> KimiToolset:
+    return KimiToolset()
 
 
 @contextmanager
@@ -151,9 +171,15 @@ def tool_call_context(tool_name: str) -> Generator[None]:
 
 
 @pytest.fixture
-def task_tool(agent_spec: ResolvedAgentSpec, runtime: Runtime) -> Task:
+def task_tool(runtime: Runtime) -> Task:
     """Create a Task tool instance."""
-    return Task(agent_spec, runtime)
+    return Task(runtime)
+
+
+@pytest.fixture
+def create_subagent_tool(toolset: KimiToolset, runtime: Runtime) -> CreateSubagent:
+    """Create a CreateSubagent tool instance."""
+    return CreateSubagent(toolset, runtime)
 
 
 @pytest.fixture

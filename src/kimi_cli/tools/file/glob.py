@@ -7,7 +7,7 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
 from pydantic import BaseModel, Field
 
 from kaos.path import KaosPath
-from kimi_cli.soul.runtime import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.path import list_directory
 
