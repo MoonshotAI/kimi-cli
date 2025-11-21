@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
@@ -208,32 +209,40 @@ async def init(app: Shell, args: list[str]):
 
     soul_bak = app.soul
     work_dir = soul_bak._runtime.session.work_dir
+    existing_agents_path: Path | None = None
     for filename in ("AGENTS.md", "agents.md"):
         agents_path = work_dir / filename
-        if agents_path.is_file():
+        agents_exists = agents_path.is_file()
+        if inspect.isawaitable(agents_exists):
+            agents_exists = await agents_exists
+        if agents_exists:
+            existing_agents_path = Path(str(agents_path))
             logger.info("Skipping `/init`, {path} already exists", path=agents_path)
             console.print(
                 "[yellow]AGENTS.md already exists. Skipping /init to avoid overwriting it.[/yellow]"
             )
-            return
+            break
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        logger.info("Running `/init`")
-        console.print("Analyzing the codebase...")
-        tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
-        app.soul = KimiSoul(soul_bak._agent, context=tmp_context)
-        ok = await app._run_soul_command(prompts.INIT, thinking=False)
+    if existing_agents_path is None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logger.info("Running `/init`")
+            console.print("Analyzing the codebase...")
+            tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
+            app.soul = KimiSoul(soul_bak._agent, context=tmp_context)
+            ok = await app._run_soul_command(prompts.INIT, thinking=False)
 
-        if ok:
-            console.print(
-                "Codebase analyzed successfully! "
-                "An [underline]AGENTS.md[/underline] file has been created."
-            )
-        else:
-            console.print("[red]Failed to analyze the codebase.[/red]")
+            if ok:
+                console.print(
+                    "Codebase analyzed successfully! "
+                    "An [underline]AGENTS.md[/underline] file has been created."
+                )
+            else:
+                console.print("[red]Failed to analyze the codebase.[/red]")
+    else:
+        logger.info("Reloading existing AGENTS.md: {path}", path=existing_agents_path)
 
     app.soul = soul_bak
-    agents_md = load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR) or ""
+    agents_md = await load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR) or ""
     soul_bak._runtime = replace(soul_bak._runtime, agents_md=agents_md)
     soul_bak._initial_context_prepared = soul_bak._agents_md_present()
     system_message = system(
