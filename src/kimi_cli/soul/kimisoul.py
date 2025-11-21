@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -54,6 +55,7 @@ if TYPE_CHECKING:
 
 
 RESERVED_TOKENS = 50_000
+AGENTS_MD_MARKER = "kimi-cli::agents-md"
 
 
 class KimiSoul:
@@ -173,6 +175,7 @@ class KimiSoul:
         if agents_message is None:
             self._initial_context_prepared = True
             return
+        await self._remove_stale_agents_md_messages()
         if self._agents_md_present():
             self._initial_context_prepared = True
             return
@@ -382,6 +385,13 @@ class KimiSoul:
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
 
+    def _agents_md_digest(self) -> str:
+        return hashlib.sha256(self._runtime.agents_md.encode()).hexdigest()
+
+    def _agents_md_marker(self) -> str:
+        digest = self._agents_md_digest()
+        return f"{AGENTS_MD_MARKER}:{digest}"
+
     def _agents_md_message(self) -> Message | None:
         if not self._runtime.agents_md:
             return None
@@ -393,26 +403,50 @@ class KimiSoul:
             "Use this information to understand the project context. The following content is the "
             f"current `{md_path}`:"
         )
-        payload = f"{message}\n\n---\n{self._runtime.agents_md}\n---"
+        payload = f"{self._agents_md_marker()}\n{message}\n\n---\n{self._runtime.agents_md}\n---"
         return Message(role="assistant", content=[system(payload)])
 
     def _is_agents_md_message(self, message: Message) -> bool:
-        if not self._runtime.agents_md:
-            return False
         if message.role != "assistant":
             return False
         if not isinstance(message.content, list):
             return False
         return any(
-            isinstance(part, TextPart) and self._runtime.agents_md in part.text
-            for part in message.content
+            isinstance(part, TextPart) and AGENTS_MD_MARKER in part.text for part in message.content
         )
+
+    def _agents_md_message_matches_runtime(self, message: Message) -> bool:
+        if not self._runtime.agents_md:
+            return False
+        if not self._is_agents_md_message(message):
+            return False
+        marker = self._agents_md_marker()
+        return any(isinstance(part, TextPart) and marker in part.text for part in message.content)
 
     def _agents_md_present(self) -> bool:
         if not self._runtime.agents_md:
             return True
 
-        return any(self._is_agents_md_message(message) for message in self._context.history)
+        return any(
+            self._agents_md_message_matches_runtime(message) for message in self._context.history
+        )
+
+    async def _remove_stale_agents_md_messages(self) -> bool:
+        if not self._runtime.agents_md:
+            return False
+
+        history = list(self._context.history)
+        filtered_history = [
+            m
+            for m in history
+            if not self._is_agents_md_message(m) or self._agents_md_message_matches_runtime(m)
+        ]
+        if len(filtered_history) == len(history):
+            return False
+
+        await self._context.reset_history(filtered_history)
+        logger.info("Removed stale AGENTS.md content before reinjection")
+        return True
 
     async def _remove_pre_checkpoint_agents_md_messages(self) -> bool:
         if not self._runtime.agents_md:
