@@ -1,11 +1,14 @@
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import aiohttp
 import trafilatura
 from kosong.tooling import CallableTool2, ToolReturnType
 from pydantic import BaseModel, Field
 
+from kimi_cli.config import Config
+from kimi_cli.constant import USER_AGENT
+from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 
@@ -19,9 +22,23 @@ class FetchURL(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "fetch.md", {})
     params: type[Params] = Params
 
+    def __init__(self, config: Config | None = None, **kwargs: Any):
+        super().__init__(**kwargs)
+        self._base_url: str | None = None
+        self._api_key: str | None = None
+        self._custom_headers: dict[str, str] = {}
+
+        if config and config.services.moonshot_fetch:
+            self._base_url = config.services.moonshot_fetch.base_url
+            self._api_key = config.services.moonshot_fetch.api_key.get_secret_value()
+            self._custom_headers = config.services.moonshot_fetch.custom_headers or {}
+
     @override
     async def __call__(self, params: Params) -> ToolReturnType:
         builder = ToolResultBuilder(max_line_length=None)
+
+        if self._base_url and self._api_key:
+            return await self._fetch_with_service(params, builder)
 
         try:
             async with (
@@ -87,6 +104,43 @@ class FetchURL(CallableTool2[Params]):
 
         builder.write(extracted_text)
         return builder.ok("The returned content is the main text content extracted from the page.")
+
+    async def _fetch_with_service(
+        self, params: Params, builder: ToolResultBuilder
+    ) -> ToolReturnType:
+        assert self._base_url is not None
+        assert self._api_key is not None
+
+        tool_call = get_current_tool_call_or_none()
+        assert tool_call is not None, "Tool call is expected to be set"
+
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Authorization": f"Bearer {self._api_key}",
+            "Accept": "text/markdown",
+            "X-Msh-Tool-Call-Id": tool_call.id,
+            **self._custom_headers,
+        }
+
+        async with (
+            new_client_session() as session,
+            session.post(
+                self._base_url,
+                headers=headers,
+                json={"url": params.url},
+            ) as response,
+        ):
+            if response.status != 200:
+                return builder.error(
+                    f"Failed to fetch URL via service. Status: {response.status}.",
+                    brief="Failed to fetch URL via fetch service",
+                )
+
+            content = await response.text()
+            builder.write(content)
+            return builder.ok(
+                "The returned content is the main text content extracted from the page."
+            )
 
 
 if __name__ == "__main__":

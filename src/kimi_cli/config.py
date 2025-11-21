@@ -66,11 +66,28 @@ class MoonshotSearchConfig(BaseModel):
         return v.get_secret_value()
 
 
+class MoonshotFetchConfig(BaseModel):
+    """Moonshot Fetch configuration."""
+
+    base_url: str
+    """Base URL for Moonshot Fetch service."""
+    api_key: SecretStr
+    """API key for Moonshot Fetch service."""
+    custom_headers: dict[str, str] | None = None
+    """Custom headers to include in API requests."""
+
+    @field_serializer("api_key", when_used="json")
+    def dump_secret(self, v: SecretStr):
+        return v.get_secret_value()
+
+
 class Services(BaseModel):
     """Services configuration."""
 
     moonshot_search: MoonshotSearchConfig | None = None
     """Moonshot Search configuration."""
+    moonshot_fetch: MoonshotFetchConfig | None = None
+    """Moonshot Fetch configuration."""
 
 
 class Config(BaseModel):
