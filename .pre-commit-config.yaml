@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: make-format
+        name: make format
+        entry: make format
+        language: system
+        pass_filenames: false
+      - id: make-check
+        name: make check
+        entry: make check
+        language: system
+        pass_filenames: false
+      - id: make-test
+        name: make test
+        entry: make test
+        language: system
+        pass_filenames: false
