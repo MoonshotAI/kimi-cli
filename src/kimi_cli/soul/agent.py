@@ -5,7 +5,7 @@ import importlib
 import inspect
 import string
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -92,28 +92,18 @@ class Runtime:
 
     def copy_for_fixed_subagent(self) -> Runtime:
         """Clone runtime for fixed subagent."""
-        return Runtime(
-            config=self.config,
-            llm=self.llm,
-            session=self.session,
-            builtin_args=self.builtin_args,
+        return replace(
+            self,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
-            agents_md=self.agents_md,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
         """Clone runtime for dynamic subagent."""
-        return Runtime(
-            config=self.config,
-            llm=self.llm,
-            session=self.session,
-            builtin_args=self.builtin_args,
+        return replace(
+            self,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
-            agents_md=self.agents_md,
         )
 
 
