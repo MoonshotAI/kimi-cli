@@ -1,24 +1,11 @@
-Create a dynamic subagent configuration on-the-fly.
+Create a custom subagent with specific system prompt and name for reuse.
 
-**Use Case**: When you need specialized agent capabilities that aren't available in pre-configured subagents. You can define a custom system prompt tailored for specific tasks and create a subagent dynamically.
+Usage:
+- Define specialized agents with custom roles and boundaries
+- Created agents can be referenced by name in the Task tool
+- Use this when you need a specific agent type not covered by predefined agents
+- The created agent configuration will be saved and can be used immediately
 
-**Dynamic vs Pre-configured Subagents**:
-- Dynamic subagents (created via CreateSubagent) are temporary and only exist for the current session
-- Pre-configured subagents are defined in agent YAML files and persist across sessions
-
-**Common Scenarios**:
-
-1. Create a specialized "Java Expert" subagent when working with Java code:
-    ```yaml
-    name: java_expert
-    system_prompt: "You are an expert Java developer specializing in Spring Boot..."
-    tools: ["ReadFile", "WriteFile", "Grep", "SearchWeb", "Shell"]
-    ```
-2. Create a "Documentation Writer" subagent for generating documentation:
-    ```yaml
-    name: doc_writer
-    system_prompt: "You excel at writing clear, concise technical documentation..."
-    tools: ["ReadFile", "Shell", "SearchWeb"]
-    ```
-
-**Note**: The created subagent is immediately available for use with the Task tool.
+Example workflow:
+1. Use CreateSubagent to define a specialized agent (e.g., 'code_reviewer')
+2. Use the Task tool with agent='code_reviewer' to launch the created agent
