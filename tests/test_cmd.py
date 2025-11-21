@@ -63,7 +63,7 @@ async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     """Basic file write/read using cmd redirection."""
     file_path = temp_work_dir / "test_file.txt"
 
-    create_result = await shell_tool(Params(command=f'echo "Test content" > "{file_path}"'))
+    create_result = await shell_tool(Params(command=f'echo Test content> "{file_path}"'))
     assert create_result == snapshot(ToolOk(output="", message="Command executed successfully."))
 
     read_result = await shell_tool(Params(command=f'type "{file_path}"'))
