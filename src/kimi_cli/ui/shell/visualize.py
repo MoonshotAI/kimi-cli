@@ -116,7 +116,7 @@ class _ToolCallBlock:
         argument = extract_key_argument(self._lexer, self._tool_name)
         if argument and argument != self._argument:
             self._argument = argument
-            self._renderable: RenderableType = BulletColumns(
+            self._renderable = BulletColumns(
                 Text.from_markup(self._get_headline_markup()),
                 bullet=self._spinning_dots,
             )
