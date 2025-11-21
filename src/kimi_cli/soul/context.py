@@ -8,13 +8,16 @@ import aiofiles
 import aiofiles.os
 from kosong.message import Message
 
+from kaos.path import KaosPath
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
 
 
 class Context:
-    def __init__(self, file_backend: Path):
+    def __init__(self, file_backend: Path | KaosPath):
+        if isinstance(file_backend, KaosPath):
+            file_backend = file_backend.unsafe_to_local_path()
         self._file_backend = file_backend
         self._history: list[Message] = []
         self._token_count: int = 0
