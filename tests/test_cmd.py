@@ -41,7 +41,7 @@ async def test_command_with_error(shell_tool: Shell):
 @pytest.mark.asyncio
 async def test_command_chaining(shell_tool: Shell):
     """Chaining commands with && should work."""
-    result = await shell_tool(Params(command="echo First && echo Second"))
+    result = await shell_tool(Params(command="echo First&& echo Second"))
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
