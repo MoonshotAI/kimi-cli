@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -197,3 +198,61 @@ async def test_kimisoul_replaces_agents_md_after_refresh(runtime, tmp_path):
     text = agents_message.content[0].text
     assert refreshed_agents_md in text
     assert original_agents_md not in text
+
+
+@pytest.mark.asyncio
+async def test_refresh_agents_md_preserves_checkpoints(runtime, tmp_path):
+    """Refreshing AGENTS.md should not drop checkpoint metadata."""
+
+    context = Context(tmp_path / "history.jsonl")
+    original_agents_md = "Original AGENTS.md content"
+    runtime_with_original = replace(runtime, agents_md=original_agents_md)
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime_with_original,
+    )
+    soul = KimiSoul(agent, context=context)
+
+    await soul._ensure_initial_system_messages()
+    await soul._checkpoint()
+    await context.append_message(Message(role="user", content="Hello"))
+    assert context.n_checkpoints == 1
+
+    refreshed_agents_md = "Refreshed AGENTS.md content"
+    updated_runtime = replace(runtime_with_original, agents_md=refreshed_agents_md)
+    soul._runtime = updated_runtime
+    soul._agent = replace(soul._agent, runtime=updated_runtime)
+    soul._initial_context_prepared = soul._agents_md_present()
+
+    await soul._ensure_initial_system_messages()
+
+    history = list(context.history)
+    assert context.n_checkpoints == 1
+    assert any(
+        soul._is_agents_md_message(message)
+        and isinstance(message.content, list)
+        and isinstance(message.content[0], TextPart)
+        and refreshed_agents_md in message.content[0].text
+        for message in history
+    )
+    assert not any(
+        soul._is_agents_md_message(message)
+        and isinstance(message.content, list)
+        and isinstance(message.content[0], TextPart)
+        and original_agents_md in message.content[0].text
+        for message in history
+    )
+
+    checkpoint_records = []
+    history_file = tmp_path / "history.jsonl"
+    for line in history_file.read_text().splitlines():
+        if not line.strip():
+            continue
+        line_json = json.loads(line)
+        if line_json.get("role") == "_checkpoint":
+            checkpoint_records.append(line_json)
+
+    assert checkpoint_records
+    assert checkpoint_records[-1]["id"] == 0

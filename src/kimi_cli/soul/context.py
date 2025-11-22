@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import aiofiles
@@ -166,6 +166,57 @@ class Context:
         async with aiofiles.open(self._file_backend, "w", encoding="utf-8") as f:
             for message in self._history:
                 await f.write(message.model_dump_json(exclude_none=True) + "\n")
+
+    async def filter_messages(self, keep: Callable[[Message], bool]) -> bool:
+        """
+        Rewrite the history file, keeping messages that satisfy the predicate.
+        Checkpoint and usage records are preserved in place. Returns True when any message is
+        removed.
+        """
+        if not self._file_backend.exists():
+            filtered_history = [message for message in self._history if keep(message)]
+            removed = len(filtered_history) != len(self._history)
+            self._history = filtered_history
+            return removed
+
+        self._token_count = 0
+        self._next_checkpoint_id = 0
+        temp_file = self._file_backend.with_suffix(self._file_backend.suffix + ".tmp")
+        removed = False
+        new_history: list[Message] = []
+
+        async with (
+            aiofiles.open(self._file_backend, encoding="utf-8") as src,
+            aiofiles.open(temp_file, "w", encoding="utf-8") as dst,
+        ):
+            async for line in src:
+                if not line.strip():
+                    continue
+
+                line_json = json.loads(line)
+                role = line_json.get("role")
+                if role == "_usage":
+                    self._token_count = line_json["token_count"]
+                    await dst.write(line)
+                    continue
+                if role == "_checkpoint":
+                    self._next_checkpoint_id = line_json["id"] + 1
+                    await dst.write(line)
+                    continue
+
+                message = Message.model_validate(line_json)
+                if keep(message):
+                    new_history.append(message)
+                    await dst.write(message.model_dump_json(exclude_none=True) + "\n")
+                else:
+                    removed = True
+
+        self._history = new_history
+        if removed:
+            await aiofiles.os.replace(temp_file, self._file_backend)
+        else:
+            await aiofiles.os.remove(temp_file)
+        return removed
 
     async def append_message(self, message: Message | Sequence[Message]):
         logger.debug("Appending message(s) to context: {message}", message=message)

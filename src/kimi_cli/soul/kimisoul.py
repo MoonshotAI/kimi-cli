@@ -435,31 +435,22 @@ class KimiSoul:
         if not self._runtime.agents_md:
             return False
 
-        history = list(self._context.history)
-        filtered_history = [
-            m
-            for m in history
-            if not self._is_agents_md_message(m) or self._agents_md_message_matches_runtime(m)
-        ]
-        if len(filtered_history) == len(history):
-            return False
-
-        await self._context.reset_history(filtered_history)
-        logger.info("Removed stale AGENTS.md content before reinjection")
-        return True
+        removed = await self._context.filter_messages(
+            lambda m: not self._is_agents_md_message(m)
+            or self._agents_md_message_matches_runtime(m)
+        )
+        if removed:
+            logger.info("Removed stale AGENTS.md content before reinjection")
+        return removed
 
     async def _remove_pre_checkpoint_agents_md_messages(self) -> bool:
         if not self._runtime.agents_md:
             return False
 
-        history = list(self._context.history)
-        filtered_history = [m for m in history if not self._is_agents_md_message(m)]
-        if len(filtered_history) == len(history):
-            return False
-
-        await self._context.reset_history(filtered_history)
-        logger.info("Removed AGENTS.md content inserted before first checkpoint")
-        return True
+        removed = await self._context.filter_messages(lambda m: not self._is_agents_md_message(m))
+        if removed:
+            logger.info("Removed AGENTS.md content inserted before first checkpoint")
+        return removed
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
