@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import uuid
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -100,6 +101,14 @@ def kimi(
             help="Continue the previous session for the working directory. Default: no.",
         ),
     ] = False,
+    resume: Annotated[
+        str | None,
+        typer.Option(
+            "--resume",
+            "-r",
+            help="Resume a session by its ID (UUID). Cannot be used with --continue.",
+        ),
+    ] = None,
     command: Annotated[
         str | None,
         typer.Option(
@@ -226,6 +235,23 @@ def kimi(
     elif wire_mode:
         ui = "wire"
 
+    # Validate mutually exclusive options
+    if continue_ and resume is not None:
+        raise typer.BadParameter(
+            "Cannot use both --continue and --resume",
+            param_hint="--resume",
+        )
+
+    # Validate session ID format if provided
+    if resume is not None:
+        try:
+            uuid.UUID(resume)
+        except ValueError:
+            raise typer.BadParameter(
+                f"Invalid session ID format: {resume}. Expected a UUID.",
+                param_hint="--resume",
+            )
+
     if command is not None:
         command = command.strip()
         if not command:
@@ -260,7 +286,25 @@ def kimi(
             KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
         )
 
-        if continue_:
+        # Load session based on options
+        if resume is not None:
+            # Resume by session ID
+            session = Session.load_by_id(resume)
+            if session is None:
+                raise typer.BadParameter(
+                    f"Session not found: {resume}",
+                    param_hint="--resume",
+                )
+            # Warn if work directory differs from session's work directory
+            if work_dir != session.work_dir:
+                logger.warning(
+                    "Work directory differs from session's work directory. "
+                    "Using session's work directory: {session_work_dir}",
+                    session_work_dir=session.work_dir,
+                )
+            logger.info("Resuming session: {session_id}", session_id=session.id)
+        elif continue_:
+            # Continue last session for work directory
             session = await Session.continue_(work_dir)
             if session is None:
                 raise typer.BadParameter(
@@ -269,6 +313,7 @@ def kimi(
                 )
             logger.info("Continuing previous session: {session_id}", session_id=session.id)
         else:
+            # Create new session
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
         logger.debug("Session history file: {history_file}", history_file=session.history_file)

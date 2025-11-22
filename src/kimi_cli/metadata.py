@@ -39,6 +39,9 @@ class Metadata(BaseModel):
     thinking: bool = False
     """Whether the last session was in thinking mode."""
 
+    session_to_workdir: dict[str, str] = Field(default_factory=dict)
+    """Mapping from session ID to work directory path for quick session lookup."""
+
 
 def load_metadata() -> Metadata:
     metadata_file = get_metadata_file()
