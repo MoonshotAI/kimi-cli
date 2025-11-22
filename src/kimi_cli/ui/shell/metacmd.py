@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import inspect
 import tempfile
 import webbrowser
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, Protocol, TypeGuard, overload
 
 from kosong.message import Message
 from rich.panel import Panel
 
 import kimi_cli.prompts as prompts
 from kimi_cli.cli import Reload
-from kimi_cli.soul.agent import load_agents_md
+from kimi_cli.soul.agent import Agent, LaborMarket, Runtime, load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.message import system
@@ -201,29 +202,99 @@ def feedback(app: ShellApp, args: list[str]):
     console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
 
 
+class _RuntimeAware(Protocol):
+    _runtime: Runtime
+
+
+def _has_runtime_attr(tool: object) -> TypeGuard[_RuntimeAware]:
+    return hasattr(tool, "_runtime")
+
+
+def _sync_tool_runtime(tool: object, runtime: Runtime) -> None:
+    if _has_runtime_attr(tool):
+        tool._runtime = runtime
+
+
+def _sync_agent_runtime(agent: Agent, runtime: Runtime) -> Agent:
+    synced_agent = replace(agent, runtime=runtime)
+    toolset_inner = getattr(synced_agent.toolset, "_inner", None)
+    if toolset_inner is not None and hasattr(toolset_inner, "_tool_dict"):
+        for tool in toolset_inner._tool_dict.values():
+            _sync_tool_runtime(tool, runtime)
+    else:
+        for tool in synced_agent.toolset.tools:
+            _sync_tool_runtime(tool, runtime)
+    return synced_agent
+
+
+def _sync_labor_market_runtimes(labor_market: LaborMarket, agents_md: str) -> None:
+    visited: set[int] = set()
+
+    def _sync_market(market: LaborMarket):
+        market_id = id(market)
+        if market_id in visited:
+            return
+        visited.add(market_id)
+
+        for name, agent in list(market.fixed_subagents.items()):
+            updated_agent = _sync_agent_runtime(agent, replace(agent.runtime, agents_md=agents_md))
+            market.fixed_subagents[name] = updated_agent
+            _sync_market(updated_agent.runtime.labor_market)
+
+        for name, agent in list(market.dynamic_subagents.items()):
+            updated_agent = _sync_agent_runtime(agent, replace(agent.runtime, agents_md=agents_md))
+            market.dynamic_subagents[name] = updated_agent
+            _sync_market(updated_agent.runtime.labor_market)
+
+    _sync_market(labor_market)
+
+
 @meta_command(kimi_soul_only=True)
 async def init(app: ShellApp, args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     assert isinstance(app.soul, KimiSoul)
 
     soul_bak = app.soul
-    with tempfile.TemporaryDirectory() as temp_dir:
-        logger.info("Running `/init`")
-        console.print("Analyzing the codebase...")
-        tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
-        app.soul = KimiSoul(soul_bak._agent, context=tmp_context)
-        ok = await app._run_soul_command(prompts.INIT, thinking=False)
-
-        if ok:
+    work_dir = soul_bak._runtime.session.work_dir
+    existing_agents_path: Path | None = None
+    for filename in ("AGENTS.md", "agents.md"):
+        agents_path = work_dir / filename
+        agents_exists = agents_path.is_file()
+        if inspect.isawaitable(agents_exists):
+            agents_exists = await agents_exists
+        if agents_exists:
+            existing_agents_path = Path(str(agents_path))
+            logger.info("Skipping `/init`, {path} already exists", path=agents_path)
             console.print(
-                "Codebase analyzed successfully! "
-                "An [underline]AGENTS.md[/underline] file has been created."
+                "[yellow]AGENTS.md already exists. Skipping /init to avoid overwriting it.[/yellow]"
             )
-        else:
-            console.print("[red]Failed to analyze the codebase.[/red]")
+            break
+
+    if existing_agents_path is None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logger.info("Running `/init`")
+            console.print("Analyzing the codebase...")
+            tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
+            app.soul = KimiSoul(soul_bak._agent, context=tmp_context)
+            ok = await app._run_soul_command(prompts.INIT, thinking=False)
+
+            if ok:
+                console.print(
+                    "Codebase analyzed successfully! "
+                    "An [underline]AGENTS.md[/underline] file has been created."
+                )
+            else:
+                console.print("[red]Failed to analyze the codebase.[/red]")
+    else:
+        logger.info("Reloading existing AGENTS.md: {path}", path=existing_agents_path)
 
     app.soul = soul_bak
-    agents_md = load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR)
+    agents_md = await load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR) or ""
+    new_runtime = replace(soul_bak._runtime, agents_md=agents_md)
+    soul_bak._runtime = new_runtime
+    soul_bak._agent = _sync_agent_runtime(soul_bak._agent, new_runtime)
+    _sync_labor_market_runtimes(new_runtime.labor_market, new_runtime.agents_md)
+    soul_bak._initial_context_prepared = soul_bak._agents_md_present()
     system_message = system(
         "The user just ran `/init` meta command. "
         "The system has analyzed the codebase and generated an `AGENTS.md` file. "

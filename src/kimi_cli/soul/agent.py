@@ -5,7 +5,7 @@ import importlib
 import inspect
 import string
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -35,8 +35,6 @@ class BuiltinSystemPromptArgs:
     """The absolute path of current working directory."""
     KIMI_WORK_DIR_LS: str
     """The directory listing of current working directory."""
-    KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
-    """The content of AGENTS.md."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -63,6 +61,7 @@ class Runtime:
     denwa_renji: DenwaRenji
     approval: Approval
     labor_market: LaborMarket
+    agents_md: str
 
     @staticmethod
     async def create(
@@ -84,34 +83,26 @@ class Runtime:
                 KIMI_NOW=datetime.now().astimezone().isoformat(),
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
-                KIMI_AGENTS_MD=agents_md or "",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
             labor_market=LaborMarket(),
+            agents_md=agents_md or "",
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
         """Clone runtime for fixed subagent."""
-        return Runtime(
-            config=self.config,
-            llm=self.llm,
-            session=self.session,
-            builtin_args=self.builtin_args,
+        return replace(
+            self,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
         """Clone runtime for dynamic subagent."""
-        return Runtime(
-            config=self.config,
-            llm=self.llm,
-            session=self.session,
-            builtin_args=self.builtin_args,
+        return replace(
+            self,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
         )
 
@@ -220,7 +211,8 @@ def _load_system_prompt(
         builtin_args=builtin_args,
         spec_args=args,
     )
-    return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
+    template = string.Template(system_prompt)
+    return template.safe_substitute(asdict(builtin_args), **args)
 
 
 # TODO: maybe move to `KimiToolset`

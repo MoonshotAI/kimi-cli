@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Sequence
 from functools import partial
 from typing import TYPE_CHECKING
@@ -16,7 +17,7 @@ from kosong.chat_provider import (
     ChatProviderError,
     ThinkingEffort,
 )
-from kosong.message import ContentPart, Message
+from kosong.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
 
 
 RESERVED_TOKENS = 50_000
+AGENTS_MD_MARKER = "kimi-cli::agents-md"
 
 
 class KimiSoul(Soul):
@@ -80,6 +82,7 @@ class KimiSoul(Soul):
         if self._runtime.llm is not None:
             assert self._reserved_tokens <= self._runtime.llm.max_context_size
         self._thinking_effort: ThinkingEffort = "off"
+        self._initial_context_prepared = self._agents_md_present()
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -142,6 +145,8 @@ class KimiSoul(Soul):
         if self._runtime.llm is None:
             raise LLMNotSet()
 
+        await self._ensure_initial_system_messages()
+
         user_message = Message(role="user", content=user_input)
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
@@ -150,6 +155,22 @@ class KimiSoul(Soul):
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
         await self._agent_loop()
+
+    async def _ensure_initial_system_messages(self) -> None:
+        if self._initial_context_prepared:
+            return
+        agents_message = self._agents_md_message()
+        if agents_message is None:
+            self._initial_context_prepared = True
+            return
+        await self._remove_stale_agents_md_messages()
+        if self._agents_md_present():
+            self._initial_context_prepared = True
+            return
+
+        await self._context.append_message(agents_message)
+        logger.info("Injected AGENTS.md content into the conversation context")
+        self._initial_context_prepared = True
 
     async def _agent_loop(self):
         """The main agent loop for one run."""
@@ -317,10 +338,87 @@ class KimiSoul(Soul):
                 raise LLMNotSet()
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
-        compacted_messages = await _compact_with_retry()
+        compacted_messages = list(await _compact_with_retry())
         await self._context.revert_to(0)
+
+        agents_message = self._agents_md_message()
+        if agents_message is not None:
+            removed = await self._remove_pre_checkpoint_agents_md_messages()
+            if removed:
+                logger.info("Dropped pre-checkpoint AGENTS.md content before compaction append")
+            insert_index = 1 if compacted_messages else 0
+            compacted_messages.insert(insert_index, agents_message)
+            logger.info("Re-injected AGENTS.md content after compaction")
+
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
+
+    def _agents_md_digest(self) -> str:
+        return hashlib.sha256(self._runtime.agents_md.encode()).hexdigest()
+
+    def _agents_md_marker(self) -> str:
+        digest = self._agents_md_digest()
+        return f"{AGENTS_MD_MARKER}:{digest}"
+
+    def _agents_md_message(self) -> Message | None:
+        if not self._runtime.agents_md:
+            return None
+
+        md_path = self._runtime.session.work_dir / "AGENTS.md"
+        message = (
+            "Markdown files named `AGENTS.md` usually contain the background, structure, "
+            "coding styles, user preferences, and other relevant information about the project. "
+            "Use this information to understand the project context. The following content is the "
+            f"current `{md_path}`:"
+        )
+        payload = f"{self._agents_md_marker()}\n{message}\n\n---\n{self._runtime.agents_md}\n---"
+        return Message(role="assistant", content=[system(payload)])
+
+    def _is_agents_md_message(self, message: Message) -> bool:
+        if message.role != "assistant":
+            return False
+        if not isinstance(message.content, list):
+            return False
+        return any(
+            isinstance(part, TextPart) and AGENTS_MD_MARKER in part.text for part in message.content
+        )
+
+    def _agents_md_message_matches_runtime(self, message: Message) -> bool:
+        if not self._runtime.agents_md:
+            return False
+        if not self._is_agents_md_message(message):
+            return False
+        marker = self._agents_md_marker()
+        return any(isinstance(part, TextPart) and marker in part.text for part in message.content)
+
+    def _agents_md_present(self) -> bool:
+        if not self._runtime.agents_md:
+            return True
+
+        return any(
+            self._agents_md_message_matches_runtime(message) for message in self._context.history
+        )
+
+    async def _remove_stale_agents_md_messages(self) -> bool:
+        if not self._runtime.agents_md:
+            return False
+
+        removed = await self._context.filter_messages(
+            lambda m: not self._is_agents_md_message(m)
+            or self._agents_md_message_matches_runtime(m)
+        )
+        if removed:
+            logger.info("Removed stale AGENTS.md content before reinjection")
+        return removed
+
+    async def _remove_pre_checkpoint_agents_md_messages(self) -> bool:
+        if not self._runtime.agents_md:
+            return False
+
+        removed = await self._context.filter_messages(lambda m: not self._is_agents_md_message(m))
+        if removed:
+            logger.info("Removed AGENTS.md content inserted before first checkpoint")
+        return removed
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
