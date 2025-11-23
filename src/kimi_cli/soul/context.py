@@ -10,6 +10,7 @@ from kosong.message import Message
 
 from kaos.path import KaosPath
 from kimi_cli.soul.message import system
+from kimi_cli.utils.history import filter_messages
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
 
@@ -226,6 +227,19 @@ class Context:
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
             for message in messages:
                 await f.write(message.model_dump_json(exclude_none=True) + "\n")
+
+    async def filter_history(self, keep: Callable[[Message], bool]) -> bool:
+        result = await filter_messages(
+            file_backend=self._file_backend,
+            history=self._history,
+            token_count=self._token_count,
+            next_checkpoint_id=self._next_checkpoint_id,
+            keep=keep,
+        )
+        self._history = result.history
+        self._token_count = result.token_count
+        self._next_checkpoint_id = result.next_checkpoint_id
+        return result.removed
 
     async def update_token_count(self, token_count: int):
         logger.debug("Updating token count in context: {token_count}", token_count=token_count)

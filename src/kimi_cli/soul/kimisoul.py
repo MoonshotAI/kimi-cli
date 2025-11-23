@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -431,11 +431,14 @@ class KimiSoul:
             self._agents_md_message_matches_runtime(message) for message in self._context.history
         )
 
+    async def _filter_context_history(self, keep: Callable[[Message], bool]) -> bool:
+        return await self._context.filter_history(keep)
+
     async def _remove_stale_agents_md_messages(self) -> bool:
         if not self._runtime.agents_md:
             return False
 
-        removed = await self._context.filter_messages(
+        removed = await self._filter_context_history(
             lambda m: not self._is_agents_md_message(m)
             or self._agents_md_message_matches_runtime(m)
         )
@@ -447,7 +450,7 @@ class KimiSoul:
         if not self._runtime.agents_md:
             return False
 
-        removed = await self._context.filter_messages(lambda m: not self._is_agents_md_message(m))
+        removed = await self._filter_context_history(lambda m: not self._is_agents_md_message(m))
         if removed:
             logger.info("Removed AGENTS.md content inserted before first checkpoint")
         return removed
