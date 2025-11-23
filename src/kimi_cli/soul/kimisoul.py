@@ -121,6 +121,23 @@ class KimiSoul:
         return self._context
 
     @property
+    def runtime(self) -> Runtime:
+        """Expose the current runtime in a read-only way."""
+        return self._runtime
+
+    @property
+    def agent(self) -> Agent:
+        """Expose the current agent in a read-only way."""
+        return self._agent
+
+    def update_runtime(self, runtime: Runtime, *, agent: Agent) -> None:
+        """Update runtime and agent after external runtime changes (e.g. AGENTS.md reload)."""
+        self._runtime = runtime
+        self._agent = agent
+        # Re-evaluate whether initial AGENTS.md system messages need to be injected.
+        self._initial_context_prepared = self._agents_md_present()
+
+    @property
     def _context_usage(self) -> float:
         if self._runtime.llm is not None:
             return self._context.token_count / self._runtime.llm.max_context_size

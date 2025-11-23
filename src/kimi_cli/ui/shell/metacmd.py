@@ -254,8 +254,8 @@ async def init(app: Shell, args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     assert isinstance(app.soul, KimiSoul)
 
-    soul_bak = app.soul
-    work_dir = soul_bak._runtime.session.work_dir
+    original_soul = app.soul
+    work_dir = original_soul.runtime.session.work_dir
     existing_agents_path: Path | None = None
     for filename in ("AGENTS.md", "agents.md"):
         agents_path = work_dir / filename
@@ -275,7 +275,7 @@ async def init(app: Shell, args: list[str]):
             logger.info("Running `/init`")
             console.print("Analyzing the codebase...")
             tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
-            app.soul = KimiSoul(soul_bak._agent, context=tmp_context)
+            app.soul = KimiSoul(original_soul.agent, context=tmp_context)
             ok = await app._run_soul_command(prompts.INIT, thinking=False)
 
             if ok:
@@ -288,19 +288,18 @@ async def init(app: Shell, args: list[str]):
     else:
         logger.info("Reloading existing AGENTS.md: {path}", path=existing_agents_path)
 
-    app.soul = soul_bak
-    agents_md = await load_agents_md(soul_bak._runtime.builtin_args.KIMI_WORK_DIR) or ""
-    new_runtime = replace(soul_bak._runtime, agents_md=agents_md)
-    soul_bak._runtime = new_runtime
-    soul_bak._agent = _sync_agent_runtime(soul_bak._agent, new_runtime)
+    app.soul = original_soul
+    agents_md = await load_agents_md(original_soul.runtime.builtin_args.KIMI_WORK_DIR) or ""
+    new_runtime = replace(original_soul.runtime, agents_md=agents_md)
+    updated_agent = _sync_agent_runtime(original_soul.agent, new_runtime)
     _sync_labor_market_runtimes(new_runtime.labor_market, new_runtime.agents_md)
-    soul_bak._initial_context_prepared = soul_bak._agents_md_present()
+    original_soul.update_runtime(new_runtime, agent=updated_agent)
     system_message = system(
         "The user just ran `/init` meta command. "
         "The system has analyzed the codebase and generated an `AGENTS.md` file. "
         f"Latest AGENTS.md file content:\n{agents_md}"
     )
-    await app.soul._context.append_message(Message(role="user", content=[system_message]))
+    await app.soul.context.append_message(Message(role="user", content=[system_message]))
 
 
 @meta_command(aliases=["reset"], kimi_soul_only=True)
