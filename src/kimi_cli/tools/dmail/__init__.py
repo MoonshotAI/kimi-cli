@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
-from kosong.tooling import CallableTool2, ToolError, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 
 from kimi_cli.soul.denwarenji import DenwaRenji, DenwaRenjiError, DMail
 from kimi_cli.tools.utils import load_desc
@@ -14,12 +14,12 @@ class SendDMail(CallableTool2[DMail]):
     description: str = load_desc(Path(__file__).parent / "dmail.md")
     params: type[DMail] = DMail
 
-    def __init__(self, denwa_renji: DenwaRenji, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, denwa_renji: DenwaRenji) -> None:
+        super().__init__()
         self._denwa_renji = denwa_renji
 
     @override
-    async def __call__(self, params: DMail) -> ToolReturnType:
+    async def __call__(self, params: DMail) -> ToolReturnValue:
         try:
             self._denwa_renji.send_dmail(params)
         except DenwaRenjiError as e:

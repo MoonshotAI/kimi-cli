@@ -1,7 +1,7 @@
 import asyncio
 from typing import override
 
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from pydantic import BaseModel
 
 
@@ -16,7 +16,7 @@ class Plus(CallableTool2[PlusParams]):
     params: type[PlusParams] = PlusParams
 
     @override
-    async def __call__(self, params: PlusParams) -> ToolReturnType:
+    async def __call__(self, params: PlusParams) -> ToolReturnValue:
         return ToolOk(output=str(params.a + params.b))
 
 
@@ -31,7 +31,7 @@ class Compare(CallableTool2[CompareParams]):
     params: type[CompareParams] = CompareParams
 
     @override
-    async def __call__(self, params: CompareParams) -> ToolReturnType:
+    async def __call__(self, params: CompareParams) -> ToolReturnValue:
         if params.a > params.b:
             return ToolOk(output="greater")
         elif params.a < params.b:
@@ -50,6 +50,6 @@ class Panic(CallableTool2[PanicParams]):
     params: type[PanicParams] = PanicParams
 
     @override
-    async def __call__(self, params: PanicParams) -> ToolReturnType:
+    async def __call__(self, params: PanicParams) -> ToolReturnValue:
         await asyncio.sleep(2)
         raise Exception(f"panicked with a message with {len(params.message)} characters")

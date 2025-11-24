@@ -1,9 +1,9 @@
 """Glob tool implementation."""
 
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kaos.path import KaosPath
@@ -38,8 +38,8 @@ class Glob(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
+        super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
@@ -75,7 +75,7 @@ class Glob(CallableTool2[Params]):
         return None
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         try:
             # Validate pattern safety
             pattern_error = await self._validate_pattern(params.pattern)

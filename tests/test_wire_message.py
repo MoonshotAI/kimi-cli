@@ -59,13 +59,13 @@ async def test_wire_message_serialization():
 
     # msg = ToolResult(
     #     tool_call_id="call_123",
-    #     result=ToolOk(output="success", message="Command completed", brief="ls output"),
+    #     return_value=ToolOk(output="success", message="Command completed", brief="ls output"),
     # )
     # assert msg.model_dump(exclude_none=True) == snapshot()
 
     # msg = ToolResult(
     #     tool_call_id="call_456",
-    #     result=ToolError(output="error", message="Command failed", brief="Error output"),
+    #     return_value=ToolError(output="error", message="Command failed", brief="Error output"),
     # )
     # assert msg.model_dump(exclude_none=True) == snapshot()
 

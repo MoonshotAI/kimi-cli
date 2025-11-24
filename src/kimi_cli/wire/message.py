@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Sequence
 from enum import Enum
 from typing import Any
 
 from kosong.message import ContentPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolOk, ToolResult
+from kosong.tooling import ToolResult
+from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul import StatusSnapshot
@@ -142,7 +142,7 @@ def serialize_event(event: Event) -> dict[str, Any]:
         case ToolResult():
             return {
                 "type": "tool_result",
-                "payload": serialize_tool_result(event),
+                "payload": event.model_dump(mode="json", exclude_none=True),
             }
         case SubagentEvent():
             return {
@@ -154,7 +154,7 @@ def serialize_event(event: Event) -> dict[str, Any]:
             }
 
 
-def serialize_approval_request(request: ApprovalRequest) -> dict[str, Any]:
+def serialize_approval_request(request: ApprovalRequest) -> dict[str, JsonType]:
     """
     Convert an ApprovalRequest into a JSON-serializable dictionary.
     """
@@ -165,36 +165,3 @@ def serialize_approval_request(request: ApprovalRequest) -> dict[str, Any]:
         "action": request.action,
         "description": request.description,
     }
-
-
-def serialize_tool_result(result: ToolResult) -> dict[str, Any]:
-    if isinstance(result.result, ToolOk):
-        ok = True
-        result_data = {
-            "output": _serialize_tool_output(result.result.output),
-            "message": result.result.message,
-            "brief": result.result.brief,
-        }
-    else:
-        ok = False
-        result_data = {
-            "output": result.result.output,
-            "message": result.result.message,
-            "brief": result.result.brief,
-        }
-    return {
-        "tool_call_id": result.tool_call_id,
-        "ok": ok,
-        "result": result_data,
-    }
-
-
-def _serialize_tool_output(
-    output: str | ContentPart | Sequence[ContentPart],
-) -> str | list[Any] | dict[str, Any]:
-    if isinstance(output, str):
-        return output
-    elif isinstance(output, ContentPart):
-        return output.model_dump(mode="json", exclude_none=True)
-    else:  # Sequence[ContentPart]
-        return [part.model_dump(mode="json", exclude_none=True) for part in output]

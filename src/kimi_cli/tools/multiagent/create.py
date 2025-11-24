@@ -1,7 +1,6 @@
 from pathlib import Path
-from typing import Any
 
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Agent, Runtime
@@ -26,12 +25,12 @@ class CreateSubagent(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "create.md")
     params: type[Params] = Params
 
-    def __init__(self, toolset: KimiToolset, runtime: Runtime, **kwargs: Any):
-        super().__init__(**kwargs)
+    def __init__(self, toolset: KimiToolset, runtime: Runtime):
+        super().__init__()
         self._toolset = toolset
         self._runtime = runtime
 
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         if params.name in self._runtime.labor_market.subagents:
             return ToolError(
                 message=f"Subagent with name '{params.name}' already exists.",

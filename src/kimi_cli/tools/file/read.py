@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kaos.path import KaosPath
@@ -47,13 +47,12 @@ class ReadFile(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
+        super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         # TODO: checks:
         # - check if the path may contain secrets
         # - check if the file format is readable

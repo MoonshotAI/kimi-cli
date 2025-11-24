@@ -2,9 +2,9 @@ import asyncio
 import platform
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
-from kosong.tooling import CallableTool2, ToolReturnType
+from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.approval import Approval
@@ -34,12 +34,12 @@ class Shell(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / _DESC_FILE, {})
     params: type[Params] = Params
 
-    def __init__(self, approval: Approval, **kwargs: Any):
-        super().__init__(**kwargs)
+    def __init__(self, approval: Approval):
+        super().__init__()
         self._approval = approval
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder()
 
         if not await self._approval.request(

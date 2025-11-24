@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Any, Literal, override
+from typing import Literal, override
 
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kaos.path import KaosPath
@@ -29,8 +29,8 @@ class WriteFile(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "write.md")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs: Any):
-        super().__init__(**kwargs)
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval):
+        super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
 
@@ -51,7 +51,7 @@ class WriteFile(CallableTool2[Params]):
         return None
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         # TODO: checks:
         # - check if the path may contain secrets
         # - check if the file format is writable

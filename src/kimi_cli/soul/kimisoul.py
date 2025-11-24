@@ -240,7 +240,7 @@ class KimiSoul(Soul):
         # shield the context manipulation from interruption
         await asyncio.shield(self._grow_context(result, results))
 
-        rejected = any(isinstance(result.result, ToolRejectedError) for result in results)
+        rejected = any(isinstance(result.return_value, ToolRejectedError) for result in results)
         if rejected:
             _ = self._denwa_renji.fetch_pending_dmail()
             return True

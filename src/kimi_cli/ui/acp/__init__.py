@@ -14,7 +14,7 @@ from kosong.message import (
     ToolCall,
     ToolCallPart,
 )
-from kosong.tooling import ToolError, ToolOk, ToolResult
+from kosong.tooling import ToolError, ToolResult, ToolReturnValue
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.tools import extract_key_argument
@@ -306,8 +306,8 @@ class ACPAgent:
         if not self.session_id:
             return
 
-        tool_result = result.result
-        is_error = isinstance(tool_result, ToolError)
+        tool_ret = result.return_value
+        is_error = isinstance(tool_ret, ToolError)
 
         state = self.run_state.tool_calls.pop(result.tool_call_id, None)
         if state is None:
@@ -321,7 +321,7 @@ class ACPAgent:
         )
 
         if state.tool_call.function.name == "SetTodoList" and not is_error:
-            update.content = _tool_result_to_acp_content(tool_result)
+            update.content = _tool_result_to_acp_content(tool_ret)
 
         await self.connection.sessionUpdate(
             acp.SessionNotification(sessionId=self.session_id, update=update)
@@ -406,7 +406,7 @@ class ACPAgent:
 
 
 def _tool_result_to_acp_content(
-    tool_result: ToolOk | ToolError,
+    tool_ret: ToolReturnValue,
 ) -> list[
     acp.schema.ContentToolCallContent
     | acp.schema.FileEditToolCallContent
@@ -432,21 +432,11 @@ def _tool_result_to_acp_content(
                 ),
             )
 
-    content: list[
-        (
-            acp.schema.ContentToolCallContent
-            | acp.schema.FileEditToolCallContent
-            | acp.schema.TerminalToolCallContent
-        )
-    ] = []
-    if isinstance(tool_result.output, str):
-        content.append(_to_acp_content(TextPart(text=tool_result.output)))
-    elif isinstance(tool_result.output, ContentPart):
-        content.append(_to_acp_content(tool_result.output))
-    elif isinstance(tool_result.output, list):
-        content.extend(_to_acp_content(part) for part in tool_result.output)
-
-    return content
+    return (
+        [_to_acp_content(TextPart(text=tool_ret.output))]
+        if isinstance(tool_ret.output, str)
+        else [_to_acp_content(part) for part in tool_ret.output]
+    )
 
 
 class ACPServer:
