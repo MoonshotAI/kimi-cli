@@ -190,6 +190,9 @@ class KimiSoul:
             return
         agents_message = self._agents_md_message()
         if agents_message is None:
+            await self._remove_agents_md_messages(
+                reason="Removed AGENTS.md content after AGENTS.md was deleted"
+            )
             self._initial_context_prepared = True
             return
         await self._remove_stale_agents_md_messages()
@@ -441,9 +444,6 @@ class KimiSoul:
         return any(isinstance(part, TextPart) and marker in part.text for part in message.content)
 
     def _agents_md_present(self) -> bool:
-        if not self._runtime.agents_md:
-            return True
-
         return any(
             self._agents_md_message_matches_runtime(message) for message in self._context.history
         )
@@ -451,23 +451,36 @@ class KimiSoul:
     async def _filter_context_history(self, keep: Callable[[Message], bool]) -> bool:
         return await self._context.filter_history(keep)
 
+    async def _remove_agents_md_messages(
+        self, *, reason: str, keep: Callable[[Message], bool] | None = None
+    ) -> bool:
+        predicate = self._keep_non_agents_md_message if keep is None else keep
+        removed = await self._filter_context_history(predicate)
+        if removed:
+            logger.info(reason)
+        return removed
+
+    def _keep_non_agents_md_message(self, message: Message) -> bool:
+        return not self._is_agents_md_message(message)
+
     async def _remove_stale_agents_md_messages(self) -> bool:
         if not self._runtime.agents_md:
             return False
 
-        removed = await self._filter_context_history(
-            lambda m: not self._is_agents_md_message(m)
-            or self._agents_md_message_matches_runtime(m)
+        def _keep_latest_agents_md(message: Message) -> bool:
+            return self._keep_non_agents_md_message(message) or (
+                self._agents_md_message_matches_runtime(message)
+            )
+
+        return await self._remove_agents_md_messages(
+            reason="Removed stale AGENTS.md content before reinjection",
+            keep=_keep_latest_agents_md,
         )
-        if removed:
-            logger.info("Removed stale AGENTS.md content before reinjection")
-        return removed
 
     async def _remove_pre_checkpoint_agents_md_messages(self) -> bool:
         if not self._runtime.agents_md:
             return False
-
-        removed = await self._filter_context_history(lambda m: not self._is_agents_md_message(m))
+        removed = await self._filter_context_history(self._keep_non_agents_md_message)
         if removed:
             logger.info("Removed AGENTS.md content inserted before first checkpoint")
         return removed

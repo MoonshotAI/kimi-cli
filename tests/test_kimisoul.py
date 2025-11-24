@@ -164,6 +164,35 @@ async def test_kimisoul_backfills_agents_md_into_existing_history(runtime, tmp_p
 
 
 @pytest.mark.asyncio
+async def test_kimisoul_removes_agents_md_when_deleted(runtime, tmp_path):
+    """Remove AGENTS.md instructions when the file is deleted."""
+
+    context = Context(tmp_path / "history.jsonl")
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="You are a test agent",
+        toolset=KimiToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=context)
+
+    await soul._ensure_initial_system_messages()
+    await context.append_message(Message(role="user", content="Hello"))
+
+    updated_runtime = replace(runtime, agents_md="")
+    updated_agent = replace(agent, runtime=updated_runtime)
+    soul.update_runtime(updated_runtime, agent=updated_agent)
+
+    await soul._ensure_initial_system_messages()
+
+    assert len(context.history) == 1
+    remaining = context.history[0]
+    assert remaining.role == "user"
+    assert remaining.content == "Hello"
+    assert not any(soul._is_agents_md_message(message) for message in context.history)
+
+
+@pytest.mark.asyncio
 async def test_kimisoul_replaces_agents_md_after_refresh(runtime, tmp_path):
     """Ensure refreshed AGENTS.md content replaces stale instructions in history."""
 
