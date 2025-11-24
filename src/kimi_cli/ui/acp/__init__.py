@@ -432,10 +432,11 @@ def _tool_result_to_acp_content(
                 ),
             )
 
-    return [
-        _to_acp_content(TextPart(text=part) if isinstance(part, str) else part)
-        for part in tool_ret.output
-    ]
+    return (
+        [_to_acp_content(TextPart(text=tool_ret.output))]
+        if isinstance(tool_ret.output, str)
+        else [_to_acp_content(part) for part in tool_ret.output]
+    )
 
 
 class ACPServer:
