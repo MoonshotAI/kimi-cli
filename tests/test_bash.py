@@ -21,9 +21,9 @@ pytestmark = pytest.mark.skipif(
 async def test_simple_command(shell_tool: Shell):
     """Test executing a simple command."""
     result = await shell_tool(Params(command="echo 'Hello World'"))
-    assert result == snapshot(
-        ToolOk(output="Hello World\n", message="Command executed successfully.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("Hello World\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
@@ -41,37 +41,33 @@ async def test_command_with_error(shell_tool: Shell):
 async def test_command_chaining(shell_tool: Shell):
     """Test command chaining with &&."""
     result = await shell_tool(Params(command="echo 'First' && echo 'Second'"))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("""\
 First
 Second
-""",
-            message="Command executed successfully.",
-        )
-    )
+""")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
 async def test_command_sequential(shell_tool: Shell):
     """Test sequential command execution with ;."""
     result = await shell_tool(Params(command="echo 'One'; echo 'Two'"))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("""\
 One
 Two
-""",
-            message="Command executed successfully.",
-        )
-    )
+""")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
 async def test_command_conditional(shell_tool: Shell):
     """Test conditional command execution with ||."""
     result = await shell_tool(Params(command="false || echo 'Success'"))
-    assert result == snapshot(ToolOk(output="Success\n", message="Command executed successfully."))
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("Success\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
@@ -96,25 +92,27 @@ async def test_multiple_pipes(shell_tool: Shell):
 async def test_command_with_timeout(shell_tool: Shell):
     """Test command execution with timeout."""
     result = await shell_tool(Params(command="sleep 0.1", timeout=1))
-    assert result == snapshot(ToolOk(output="", message="Command executed successfully."))
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
 async def test_command_timeout_expires(shell_tool: Shell):
     """Test command that times out."""
     result = await shell_tool(Params(command="sleep 2", timeout=1))
-    assert result == snapshot(
-        ToolError(message="Command killed by timeout (1s)", brief="Killed by timeout (1s)")
-    )
+    assert isinstance(result, ToolError)
+    assert result.message == snapshot("Command killed by timeout (1s)")
+    assert result.brief == snapshot("Killed by timeout (1s)")
 
 
 @pytest.mark.asyncio
 async def test_environment_variables(shell_tool: Shell):
     """Test setting and using environment variables."""
     result = await shell_tool(Params(command="export TEST_VAR='test_value' && echo $TEST_VAR"))
-    assert result == snapshot(
-        ToolOk(output="test_value\n", message="Command executed successfully.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("test_value\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
@@ -124,40 +122,42 @@ async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     result = await shell_tool(
         Params(command=f"echo 'Test content' > {temp_work_dir}/test_file.txt")
     )
-    assert result == snapshot(ToolOk(output="", message="Command executed successfully."))
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("")
+    assert result.message == snapshot("Command executed successfully.")
 
     # Read the file
     result = await shell_tool(Params(command=f"cat {temp_work_dir}/test_file.txt"))
-    assert result == snapshot(
-        ToolOk(output="Test content\n", message="Command executed successfully.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("Test content\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
 async def test_text_processing(shell_tool: Shell):
     """Test text processing commands."""
     result = await shell_tool(Params(command="echo 'apple banana cherry' | sed 's/banana/orange/'"))
-    assert result == snapshot(
-        ToolOk(output="apple orange cherry\n", message="Command executed successfully.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("apple orange cherry\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
 async def test_command_substitution(shell_tool: Shell):
     """Test command substitution with a portable command."""
     result = await shell_tool(Params(command='echo "Result: $(echo hello)"'))
-    assert result == snapshot(
-        ToolOk(output="Result: hello\n", message="Command executed successfully.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("Result: hello\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio
 async def test_arithmetic_substitution(shell_tool: Shell):
     """Test arithmetic substitution - more portable than date command."""
     result = await shell_tool(Params(command='echo "Answer: $((2 + 2))"'))
-    assert result == snapshot(
-        ToolOk(output="Answer: 4\n", message="Command executed successfully.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("Answer: 4\n")
+    assert result.message == snapshot("Command executed successfully.")
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, override
 
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
@@ -76,7 +76,7 @@ class Task(CallableTool2[Params]):
         return sub_history_file
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         subagents = self._labor_market.subagents
 
         if params.subagent_name not in subagents:
@@ -94,7 +94,7 @@ class Task(CallableTool2[Params]):
                 brief="Failed to run subagent",
             )
 
-    async def _run_subagent(self, agent: Agent, prompt: str) -> ToolReturnType:
+    async def _run_subagent(self, agent: Agent, prompt: str) -> ToolReturnValue:
         """Run subagent with optional continuation for task summary."""
         super_wire = get_wire_or_none()
         assert super_wire is not None

@@ -16,12 +16,9 @@ async def test_create_subagent(create_subagent_tool: CreateSubagent):
             system_prompt="You are a test agent.",
         )
     )
-    assert result == snapshot(
-        ToolOk(
-            output="Available subagents: mocker, test_agent",
-            message="Subagent 'test_agent' created successfully.",
-        )
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("Available subagents: mocker, test_agent")
+    assert result.message == snapshot("Subagent 'test_agent' created successfully.")
     assert "test_agent" in create_subagent_tool._runtime.labor_market.subagents
 
 
@@ -44,10 +41,7 @@ async def test_create_existing_subagent(create_subagent_tool: CreateSubagent):
             system_prompt="You are an existing agent.",
         )
     )
-    assert result == snapshot(
-        ToolError(
-            message="Subagent with name 'existing_agent' already exists.",
-            brief="Subagent already exists",
-        )
-    )
+    assert isinstance(result, ToolError)
+    assert result.message == snapshot("Subagent with name 'existing_agent' already exists.")
+    assert result.brief == snapshot("Subagent already exists")
     assert "existing_agent" in create_subagent_tool._runtime.labor_market.subagents

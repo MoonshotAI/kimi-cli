@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 from inline_snapshot import snapshot
-from kosong.tooling import ToolError, ToolOk, ToolReturnType
+from kosong.tooling import ToolError, ToolOk, ToolReturnValue
 
 from kimi_cli.tools.web.fetch import FetchURL, Params
 
@@ -169,7 +169,7 @@ async def test_fetch_url_mocked_http_responses(
 ) -> None:
     """Test fetching multiple mocked HTTP responses."""
 
-    async def mocked_fetch(resp: str, *, content_type: str = "text/html") -> ToolReturnType:
+    async def mocked_fetch(resp: str, *, content_type: str = "text/html") -> ToolReturnValue:
         server_url = await mock_http_server(resp, content_type=content_type)
         return await fetch_url_tool(Params(url=f"{server_url}/"))
 

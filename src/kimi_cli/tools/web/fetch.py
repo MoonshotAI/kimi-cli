@@ -3,7 +3,7 @@ from typing import Any, override
 
 import aiohttp
 import trafilatura
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.config import Config
@@ -28,7 +28,7 @@ class FetchURL(CallableTool2[Params]):
         self._service_config = config.services.moonshot_fetch
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder(max_line_length=None)
 
         if self._service_config:
@@ -105,7 +105,7 @@ class FetchURL(CallableTool2[Params]):
 
     async def _fetch_with_service(
         self, params: Params, builder: ToolResultBuilder
-    ) -> ToolReturnType:
+    ) -> ToolReturnValue:
         assert self._service_config is not None
 
         tool_call = get_current_tool_call_or_none()

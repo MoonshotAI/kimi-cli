@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, override
 
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kaos.path import KaosPath
@@ -61,7 +61,7 @@ class StrReplaceFile(CallableTool2[Params]):
             return content.replace(edit.old, edit.new, 1)
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         try:
             p = KaosPath(params.path)
 

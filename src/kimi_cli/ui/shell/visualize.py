@@ -8,7 +8,7 @@ from typing import NamedTuple
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnType
+from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnValue
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
@@ -80,7 +80,7 @@ class _ContentBlock:
 class _ToolCallBlock:
     class FinishedSubCall(NamedTuple):
         call: ToolCall
-        result: ToolReturnType
+        result: ToolReturnValue
 
     def __init__(self, tool_call: ToolCall):
         self._tool_name = tool_call.function.name
@@ -89,7 +89,7 @@ class _ToolCallBlock:
             self._lexer.append_string(tool_call.function.arguments)
 
         self._argument = extract_key_argument(self._lexer, self._tool_name)
-        self._result: ToolReturnType | None = None
+        self._result: ToolReturnValue | None = None
 
         self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
         self._last_subagent_tool_call: ToolCall | None = None
@@ -121,7 +121,7 @@ class _ToolCallBlock:
                 bullet=self._spinning_dots,
             )
 
-    def finish(self, result: ToolReturnType):
+    def finish(self, result: ToolReturnValue):
         self._result = result
         self._renderable = self._compose()
 
@@ -148,7 +148,7 @@ class _ToolCallBlock:
         self._finished_subagent_tool_calls.append(
             _ToolCallBlock.FinishedSubCall(
                 call=sub_tool_call,
-                result=tool_result.result,
+                result=tool_result.return_value,
             )
         )
         self._n_finished_subagent_tool_calls += 1
@@ -510,7 +510,7 @@ class _LiveView:
 
     def append_tool_result(self, result: ToolResult) -> None:
         if block := self._tool_call_blocks.get(result.tool_call_id):
-            block.finish(result.result)
+            block.finish(result.return_value)
             self.flush_finished_tool_calls()
             self.refresh_soon()
 

@@ -15,7 +15,7 @@ from typing import override
 
 import aiohttp
 import ripgrepy  # pyright: ignore[reportMissingTypeStubs]
-from kosong.tooling import CallableTool2, ToolError, ToolReturnType
+from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 import kimi_cli
@@ -245,7 +245,7 @@ class Grep(CallableTool2[Params]):
     params: type[Params] = Params
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         try:
             builder = ToolResultBuilder()
             message = ""

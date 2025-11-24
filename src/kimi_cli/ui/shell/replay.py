@@ -100,7 +100,9 @@ def _build_replay_runs(history: Sequence[Message]) -> list[_ReplayRun]:
                 result = ToolError(message="", output="", brief="")
             else:
                 result = ToolOk(output=message.content)
-            current_run.events.append(ToolResult(tool_call_id=message.tool_call_id, result=result))
+            current_run.events.append(
+                ToolResult(tool_call_id=message.tool_call_id, return_value=result)
+            )
     if current_run is not None:
         runs.append(current_run)
     return runs

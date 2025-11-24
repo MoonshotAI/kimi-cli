@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, override
 
-from kosong.tooling import CallableTool2, ToolReturnType
+from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field, ValidationError
 
 from kimi_cli.config import Config
@@ -49,7 +49,7 @@ class SearchWeb(CallableTool2[Params]):
         self._custom_headers = config.services.moonshot_search.custom_headers or {}
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder(max_line_length=None)
 
         if not self._base_url or not self._api_key:

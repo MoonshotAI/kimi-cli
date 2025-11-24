@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal, override
 
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnType
+from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.tools.utils import load_desc
@@ -22,7 +22,7 @@ class SetTodoList(CallableTool2[Params]):
     params: type[Params] = Params
 
     @override
-    async def __call__(self, params: Params) -> ToolReturnType:
+    async def __call__(self, params: Params) -> ToolReturnValue:
         rendered = ""
         for todo in params.todos:
             match todo.status:

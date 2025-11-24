@@ -27,17 +27,18 @@ Line 5: End of file"""
 async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading an entire file."""
     result = await read_file_tool(Params(path=str(sample_file)))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(
+        """\
      1	Line 1: Hello World
      2	Line 2: This is a test file
      3	Line 3: With multiple lines
      4	Line 4: For testing purposes
      5	Line 5: End of file\
-""",
-            message="5 lines read from file starting from line 1. End of file reached.",
-        )
+"""
+    )
+    assert result.message == snapshot(
+        "5 lines read from file starting from line 1. End of file reached."
     )
 
 
@@ -45,15 +46,16 @@ async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath)
 async def test_read_with_line_offset(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading from a specific line offset."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=3))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(
+        """\
      3	Line 3: With multiple lines
      4	Line 4: For testing purposes
      5	Line 5: End of file\
-""",
-            message="3 lines read from file starting from line 3. End of file reached.",
-        )
+"""
+    )
+    assert result.message == snapshot(
+        "3 lines read from file starting from line 3. End of file reached."
     )
 
 
@@ -61,30 +63,28 @@ async def test_read_with_line_offset(read_file_tool: ReadFile, sample_file: Kaos
 async def test_read_with_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading a specific number of lines."""
     result = await read_file_tool(Params(path=str(sample_file), n_lines=2))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(
+        """\
      1	Line 1: Hello World
      2	Line 2: This is a test file
-""",
-            message="2 lines read from file starting from line 1.",
-        )
+"""
     )
+    assert result.message == snapshot("2 lines read from file starting from line 1.")
 
 
 @pytest.mark.asyncio
 async def test_read_with_line_offset_and_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading with both line offset and n_lines."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=2, n_lines=2))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(
+        """\
      2	Line 2: This is a test file
      3	Line 3: With multiple lines
-""",
-            message="2 lines read from file starting from line 2.",
-        )
+"""
     )
+    assert result.message == snapshot("2 lines read from file starting from line 2.")
 
 
 @pytest.mark.asyncio
@@ -92,39 +92,30 @@ async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: Ka
     """Test reading a non-existent file."""
     nonexistent_file = temp_work_dir / "nonexistent.txt"
     result = await read_file_tool(Params(path=str(nonexistent_file)))
-    assert result == snapshot(
-        ToolError(
-            message=(f"`{nonexistent_file}` does not exist."),
-            brief="File not found",
-        )
-    )
+    assert isinstance(result, ToolError)
+    assert result.message == snapshot(f"`{nonexistent_file}` does not exist.")
+    assert result.brief == snapshot("File not found")
 
 
 @pytest.mark.asyncio
 async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test attempting to read a directory."""
     result = await read_file_tool(Params(path=str(temp_work_dir)))
-    assert result == snapshot(
-        ToolError(
-            message=(f"`{temp_work_dir}` is not a file."),
-            brief="Invalid path",
-        )
-    )
+    assert isinstance(result, ToolError)
+    assert result.message == snapshot(f"`{temp_work_dir}` is not a file.")
+    assert result.brief == snapshot("Invalid path")
 
 
 @pytest.mark.asyncio
 async def test_read_with_relative_path(read_file_tool: ReadFile):
     """Test reading with a relative path (should fail)."""
     result = await read_file_tool(Params(path="relative/path/file.txt"))
-    assert result == snapshot(
-        ToolError(
-            message=(
-                "`relative/path/file.txt` is not an absolute path. You must provide an absolute "
-                "path to read a file."
-            ),
-            brief="Invalid path",
-        )
+    assert isinstance(result, ToolError)
+    assert result.message == snapshot(
+        "`relative/path/file.txt` is not an absolute path. You must provide an absolute "
+        "path to read a file."
     )
+    assert result.brief == snapshot("Invalid path")
 
 
 @pytest.mark.asyncio
@@ -134,18 +125,18 @@ async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     await empty_file.write_text("")
 
     result = await read_file_tool(Params(path=str(empty_file)))
-    assert result == snapshot(
-        ToolOk(output="", message="No lines read from file. End of file reached.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("")
+    assert result.message == snapshot("No lines read from file. End of file reached.")
 
 
 @pytest.mark.asyncio
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading with line offset beyond file length."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=10))
-    assert result == snapshot(
-        ToolOk(output="", message="No lines read from file. End of file reached.")
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("")
+    assert result.message == snapshot("No lines read from file. End of file reached.")
 
 
 @pytest.mark.asyncio
@@ -156,14 +147,15 @@ async def test_read_unicode_file(read_file_tool: ReadFile, temp_work_dir: KaosPa
     await unicode_file.write_text(content, encoding="utf-8")
 
     result = await read_file_tool(Params(path=str(unicode_file)))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(
+        """\
      1	Hello 世界 🌍
      2	Unicode test: café, naïve, résumé\
-""",
-            message="2 lines read from file starting from line 1. End of file reached.",
-        )
+"""
+    )
+    assert result.message == snapshot(
+        "2 lines read from file starting from line 1. End of file reached."
     )
 
 
@@ -172,36 +164,33 @@ async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test edge cases for line offset reading."""
     # Test reading from line 1 (should be same as default)
     result = await read_file_tool(Params(path=str(sample_file), line_offset=1))
-    assert result == snapshot(
-        ToolOk(
-            output="""\
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot(
+        """\
      1	Line 1: Hello World
      2	Line 2: This is a test file
      3	Line 3: With multiple lines
      4	Line 4: For testing purposes
      5	Line 5: End of file\
-""",
-            message="5 lines read from file starting from line 1. End of file reached.",
-        )
+"""
+    )
+    assert result.message == snapshot(
+        "5 lines read from file starting from line 1. End of file reached."
     )
 
     # Test reading from line 5 (last line)
     result = await read_file_tool(Params(path=str(sample_file), line_offset=5))
-    assert result == snapshot(
-        ToolOk(
-            output="     5\tLine 5: End of file",
-            message="1 lines read from file starting from line 5. End of file reached.",
-        )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("     5\tLine 5: End of file")
+    assert result.message == snapshot(
+        "1 lines read from file starting from line 5. End of file reached."
     )
 
     # Test reading with offset and n_lines combined
     result = await read_file_tool(Params(path=str(sample_file), line_offset=2, n_lines=1))
-    assert result == snapshot(
-        ToolOk(
-            output="     2\tLine 2: This is a test file\n",
-            message="1 lines read from file starting from line 2.",
-        )
-    )
+    assert isinstance(result, ToolOk)
+    assert result.output == snapshot("     2\tLine 2: This is a test file\n")
+    assert result.message == snapshot("1 lines read from file starting from line 2.")
 
 
 @pytest.mark.asyncio
