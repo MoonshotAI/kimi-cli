@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
@@ -32,8 +32,8 @@ class StrReplaceFile(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "replace.md")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval, **kwargs: Any):
-        super().__init__(**kwargs)
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval):
+        super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
         self._approval = approval
 

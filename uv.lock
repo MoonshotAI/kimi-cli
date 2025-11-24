@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "0.74.0"
+version = "0.74.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -169,9 +169,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5b/f9/baa1b885c8664b446e6a13003938046901e54ffd70b532bbebd01256e34b/anthropic-0.74.0.tar.gz", hash = "sha256:114ec10cb394b6764e199da06335da4747b019c5629e53add33572f66964ad99", size = 428958, upload-time = "2025-11-18T15:29:47.579Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/7b/609eea5c54ae69b1a4a94169d4b0c86dc5c41b43509989913f6cdc61b81d/anthropic-0.74.1.tar.gz", hash = "sha256:04c087b2751385c524f6d332d066a913870e4de8b3e335fb0a0c595f1f88dc6e", size = 428981, upload-time = "2025-11-19T22:17:31.533Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/27/8c404b290ec650e634eacc674df943913722ec21097b0476d68458250c2f/anthropic-0.74.0-py3-none-any.whl", hash = "sha256:df29b8dfcdbd2751fa31177f643d8d8f66c5315fe06bdc42f9139e9f00d181d5", size = 371474, upload-time = "2025-11-18T15:29:45.748Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/45/6b18d0692302b8cbc01a10c35b43953d3c4172fbd4f83337b8ed21a8eaa4/anthropic-0.74.1-py3-none-any.whl", hash = "sha256:b07b998d1cee7f41d9f02530597d7411672b362cc2417760a40c0167b81c6e65", size = 371473, upload-time = "2025-11-19T22:17:29.998Z" },
 ]
 
 [[package]]
@@ -930,7 +930,7 @@ requires-dist = [
     { name = "aiopath", specifier = ">=0.7.7" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.26.2" },
+    { name = "kosong", specifier = "==0.27.1" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
@@ -956,7 +956,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.26.2"
+version = "0.27.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -968,9 +968,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/b0/96f7ef4795ae8981d7cabb7df1987524778a08314ed2923598342cc3a2d6/kosong-0.26.2.tar.gz", hash = "sha256:6372e7f94f809cb351c9c6ae587cf58bd9d38e5ba9d63b2c312c610db343f229", size = 28928, upload-time = "2025-11-19T18:32:24.934Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/32/befe7787d6dd5a841257ec00de2504f3c7d51cba95a9b17cc61ef7f9a755/kosong-0.27.1.tar.gz", hash = "sha256:de9134058ae437b1c8905e69e828740c5511818e6eaf394eae6c6473d1aec0d5", size = 29444, upload-time = "2025-11-24T12:20:06.386Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/10/e56d2ce800e68e38ba43b8721c07ca1542ef3afab37594eb6167ae0f305c/kosong-0.26.2-py3-none-any.whl", hash = "sha256:d442daaddca52bb7320fa06b8e6b49f9b7df39dcf93babc2d8221baa57c0535b", size = 44394, upload-time = "2025-11-19T18:32:23.731Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/35/f4d0ffb7f1230128e5155621d2a23db9e653db645c697f5a33d92b13fe5f/kosong-0.27.1-py3-none-any.whl", hash = "sha256:5b6e5680ac602ca7bbd10216fec327b53357f7e77d33e6bf50e202595f73be21", size = 44979, upload-time = "2025-11-24T12:20:05.148Z" },
 ]
 
 [[package]]

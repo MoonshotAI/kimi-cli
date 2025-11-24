@@ -2,7 +2,7 @@ import asyncio
 import platform
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
@@ -34,8 +34,8 @@ class Shell(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / _DESC_FILE, {})
     params: type[Params] = Params
 
-    def __init__(self, approval: Approval, **kwargs: Any):
-        super().__init__(**kwargs)
+    def __init__(self, approval: Approval):
+        super().__init__()
         self._approval = approval
 
     @override

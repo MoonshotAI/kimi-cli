@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
@@ -47,9 +47,8 @@ class ReadFile(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-
+    def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
+        super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
     @override

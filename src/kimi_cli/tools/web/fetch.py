@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 import aiohttp
 import trafilatura
@@ -23,8 +23,8 @@ class FetchURL(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "fetch.md", {})
     params: type[Params] = Params
 
-    def __init__(self, config: Config, **kwargs: Any):
-        super().__init__(**kwargs)
+    def __init__(self, config: Config):
+        super().__init__()
         self._service_config = config.services.moonshot_fetch
 
     @override

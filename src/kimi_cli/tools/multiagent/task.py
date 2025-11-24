@@ -1,6 +1,6 @@
 import asyncio
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
@@ -48,7 +48,7 @@ class Task(CallableTool2[Params]):
     name: str = "Task"
     params: type[Params] = Params
 
-    def __init__(self, runtime: Runtime, **kwargs: Any):
+    def __init__(self, runtime: Runtime):
         super().__init__(
             description=load_desc(
                 Path(__file__).parent / "task.md",
@@ -59,7 +59,6 @@ class Task(CallableTool2[Params]):
                     ),
                 },
             ),
-            **kwargs,
         )
         self._labor_market = runtime.labor_market
         self._session = runtime.session

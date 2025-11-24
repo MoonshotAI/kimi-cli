@@ -257,14 +257,16 @@ def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType |
     if cls is None:
         return None
     args: list[type[Any]] = []
-    for param in inspect.signature(cls).parameters.values():
-        if param.kind == inspect.Parameter.KEYWORD_ONLY:
-            # once we encounter a keyword-only parameter, we stop injecting dependencies
-            break
-        # all positional parameters should be dependencies to be injected
-        if param.annotation not in dependencies:
-            raise ValueError(f"Tool dependency not found: {param.annotation}")
-        args.append(dependencies[param.annotation])
+    if "__init__" in cls.__dict__:
+        # the tool class overrides the `__init__` of base class
+        for param in inspect.signature(cls).parameters.values():
+            if param.kind == inspect.Parameter.KEYWORD_ONLY:
+                # once we encounter a keyword-only parameter, we stop injecting dependencies
+                break
+            # all positional parameters should be dependencies to be injected
+            if param.annotation not in dependencies:
+                raise ValueError(f"Tool dependency not found: {param.annotation}")
+            args.append(dependencies[param.annotation])
     return cls(*args)
 
 

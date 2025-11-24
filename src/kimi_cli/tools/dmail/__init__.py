@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 
@@ -14,8 +14,8 @@ class SendDMail(CallableTool2[DMail]):
     description: str = load_desc(Path(__file__).parent / "dmail.md")
     params: type[DMail] = DMail
 
-    def __init__(self, denwa_renji: DenwaRenji, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, denwa_renji: DenwaRenji) -> None:
+        super().__init__()
         self._denwa_renji = denwa_renji
 
     @override
