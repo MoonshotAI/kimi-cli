@@ -26,7 +26,7 @@ def tool_result_to_message(tool_result: ToolResult) -> Message:
     else:
         content: list[ContentPart] = []
         if tool_result.return_value.message:
-            content = [system(tool_result.return_value.message)]
+            content.append(system(tool_result.return_value.message))
         if tool_result.return_value.output:
             content.extend(_output_to_content_parts(tool_result.return_value.output))
         if not content:
