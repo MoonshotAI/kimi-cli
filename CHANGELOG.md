@@ -11,7 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
-- Session: Move context file location to `.kimi/sessions/{workdir_name}_{workdir_md5}/{session_id}/context.jsonl`
+- Core: Move context file location to `.kimi/sessions/{workdir_name}_{workdir_md5}/{session_id}/context.jsonl`
+- Lib: Move `WireMessage` type alias to `kimi_cli.wire.message`
+- Lib: Add `kimi_cli.wire.message.Request` type alias request messages (which currently only includes `ApprovalRequest`)
+- Lib: Add `kimi_cli.wire.message.is_event`, `is_request` and `is_wire_message` utility functions to check the type of wire messages
+- Lib: Add `kimi_cli.wire.serde` module for serialization and deserialization of wire messages
+- Lib: Change `StatusUpdate` wire message to not using `kimi_cli.soul.StatusSnapshot`
 
 ## [0.58] - 2025-11-21
 
