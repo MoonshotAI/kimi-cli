@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from kosong.message import ContentPart
 
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import Wire, WireMessage, WireUISide
+from kimi_cli.wire import Wire, WireUISide
+from kimi_cli.wire.message import WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability

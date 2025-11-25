@@ -8,8 +8,8 @@ from kosong.tooling import ToolResult
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
-from kimi_cli.wire import WireMessage, WireUISide
-from kimi_cli.wire.message import StepBegin, StepInterrupted
+from kimi_cli.wire import WireUISide
+from kimi_cli.wire.message import StepBegin, StepInterrupted, WireMessage
 
 
 class Printer(Protocol):

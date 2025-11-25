@@ -1,18 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from kosong.message import ContentPart, ToolCallPart
 
 from kimi_cli.utils.logging import logger
-
-if TYPE_CHECKING:
-    from kimi_cli.wire.message import ApprovalRequest, Event
-
-
-type WireMessage = Event | ApprovalRequest
-"""Any message sent over the `Wire`."""
+from kimi_cli.wire.message import WireMessage
 
 
 class Wire:

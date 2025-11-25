@@ -17,9 +17,8 @@ from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
     Event,
-    serialize_approval_request,
-    serialize_event,
 )
+from kimi_cli.wire.serde import serialize_wire_message
 
 from .jsonrpc import (
     JSONRPC_MESSAGE_ADAPTER,
@@ -251,17 +250,11 @@ class WireServer:
             await self._send_response(msg_id, {"status": "ok"})
 
     async def _send_event(self, event: Event) -> None:
-        await self._send_notification("event", serialize_event(event))
+        await self._send_notification("event", serialize_wire_message(event))
 
     async def _request_approval(self, request: ApprovalRequest) -> ApprovalResponse:
         self._pending_requests[request.id] = request
-
-        await self._send_request(
-            request.id,
-            "request",
-            {"type": "approval", "payload": serialize_approval_request(request)},
-        )
-
+        await self._send_request(request.id, "request", serialize_wire_message(request))
         try:
             return await request.wait()
         finally:

@@ -9,13 +9,12 @@ from dataclasses import dataclass
 from kosong.message import Message, TextPart
 from kosong.tooling import ToolError, ToolOk
 
-from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.message import message_extract_text, message_stringify
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import ContentPart, StepBegin, ToolCall, ToolResult
+from kimi_cli.wire.message import ContentPart, StatusUpdate, StepBegin, ToolCall, ToolResult
 
 MAX_REPLAY_RUNS = 5
 
@@ -45,7 +44,7 @@ async def replay_recent_history(history: Sequence[Message]) -> None:
         wire = Wire()
         console.print(f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(run.user_message)}")
         ui_task = asyncio.create_task(
-            visualize(wire.ui_side, initial_status=StatusSnapshot(context_usage=0.0))
+            visualize(wire.ui_side, initial_status=StatusUpdate(context_usage=None))
         )
         for event in run.events:
             wire.soul_side.send(event)
