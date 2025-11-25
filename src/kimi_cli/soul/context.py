@@ -92,14 +92,14 @@ class Context:
             logger.error("Checkpoint {checkpoint_id} does not exist", checkpoint_id=checkpoint_id)
             raise ValueError(f"Checkpoint {checkpoint_id} does not exist")
 
-        # rotate the history file
+        # rotate the context file
         rotated_file_path = await next_available_rotation(self._file_backend)
         if rotated_file_path is None:
             logger.error("No available rotation path found")
             raise RuntimeError("No available rotation path found")
         await aiofiles.os.replace(self._file_backend, rotated_file_path)
         logger.debug(
-            "Rotated history file: {rotated_file_path}", rotated_file_path=rotated_file_path
+            "Rotated context file: {rotated_file_path}", rotated_file_path=rotated_file_path
         )
 
         # restore the context until the specified checkpoint

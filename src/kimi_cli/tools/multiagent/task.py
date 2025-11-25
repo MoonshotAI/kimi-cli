@@ -64,7 +64,7 @@ class Task(CallableTool2[Params]):
         self._session = runtime.session
 
     async def _get_subagent_context_file(self) -> Path:
-        """Generate a unique history file path for subagent."""
+        """Generate a unique context file path for subagent."""
         main_context_file = self._session.context_file
         subagent_base_name = f"{main_context_file.stem}_sub"
         main_context_file.parent.mkdir(parents=True, exist_ok=True)  # just in case
