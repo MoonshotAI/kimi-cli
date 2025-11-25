@@ -8,7 +8,7 @@ from typing import Any, cast
 from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, ValidationError, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from kimi_cli.utils.typing import flatten_union
 
@@ -76,10 +76,10 @@ class SubagentEvent(BaseModel):
         if is_wire_message(value):
             if is_event(value):
                 return value
-            raise ValidationError("SubagentEvent event must be an Event")
+            raise ValueError("SubagentEvent event must be an Event")
 
         if not isinstance(value, dict):
-            raise ValidationError("SubagentEvent event must be a dict")
+            raise ValueError("SubagentEvent event must be a dict")
         event_type = cast(dict[str, Any], value).get("type")
         event_payload = cast(dict[str, Any], value).get("payload")
         envelope = WireMessageEnvelope.model_validate(
@@ -87,7 +87,7 @@ class SubagentEvent(BaseModel):
         )
         event = envelope.to_wire_message()
         if not is_event(event):
-            raise ValidationError("SubagentEvent event must be an Event")
+            raise ValueError("SubagentEvent event must be an Event")
         return cast(Event, event)
 
 
