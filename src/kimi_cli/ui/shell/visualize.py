@@ -16,13 +16,12 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
-from kimi_cli.soul import StatusSnapshot
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
-from kimi_cli.wire import WireMessage, WireUISide
+from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
@@ -32,6 +31,7 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    WireMessage,
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
@@ -40,7 +40,7 @@ MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 async def visualize(
     wire: WireUISide,
     *,
-    initial_status: StatusSnapshot,
+    initial_status: StatusUpdate,
     cancel_event: asyncio.Event | None = None,
 ):
     """
@@ -262,15 +262,16 @@ class _ApprovalRequestPanel:
 
 
 class _StatusBlock:
-    def __init__(self, initial: StatusSnapshot) -> None:
+    def __init__(self, initial: StatusUpdate) -> None:
         self.text = Text("", justify="right", style="grey50")
         self.update(initial)
 
     def render(self) -> RenderableType:
         return self.text
 
-    def update(self, status: StatusSnapshot) -> None:
-        self.text.plain = f"context: {status.context_usage:.1%}"
+    def update(self, status: StatusUpdate) -> None:
+        if status.context_usage is not None:
+            self.text.plain = f"context: {status.context_usage:.1%}"
 
 
 @asynccontextmanager
@@ -289,7 +290,7 @@ async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
 
 
 class _LiveView:
-    def __init__(self, initial_status: StatusSnapshot, cancel_event: asyncio.Event | None = None):
+    def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
         self._cancel_event = cancel_event
 
         self._mooning_spinner: Spinner | None = None
@@ -380,8 +381,8 @@ class _LiveView:
             case CompactionEnd():
                 self._compacting_spinner = None
                 self.refresh_soon()
-            case StatusUpdate(status=status):
-                self._status_block.update(status)
+            case StatusUpdate():
+                self._status_block.update(msg)
             case ContentPart():
                 self.append_content(msg)
             case ToolCall():

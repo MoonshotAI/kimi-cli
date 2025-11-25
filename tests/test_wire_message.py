@@ -1,8 +1,8 @@
 import pytest
 from inline_snapshot import snapshot
 from kosong.message import ImageURLPart, TextPart, ToolCall, ToolCallPart
+from kosong.tooling import DisplayBlock, ToolResult, ToolReturnValue
 
-from kimi_cli.soul import StatusSnapshot
 from kimi_cli.wire.message import (
     ApprovalRequest,
     CompactionBegin,
@@ -11,7 +11,18 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    WireMessage,
+    is_event,
+    is_request,
+    is_wire_message,
 )
+from kimi_cli.wire.serde import deserialize_wire_message, serialize_wire_message
+
+
+def _test_serde(msg: WireMessage):
+    serialized = serialize_wire_message(msg)
+    deserialized = deserialize_wire_message(serialized)
+    assert deserialized == msg
 
 
 @pytest.mark.asyncio
@@ -19,75 +30,150 @@ async def test_wire_message_serialization():
     """Test serialization of all WireMessage types."""
 
     msg = StepBegin(n=1)
-    assert msg.model_dump(exclude_none=True) == snapshot({"n": 1})
+    assert serialize_wire_message(msg) == snapshot({"type": "StepBegin", "payload": {"n": 1}})
+    _test_serde(msg)
 
     msg = StepInterrupted()
-    assert msg.model_dump(exclude_none=True) == snapshot({})
+    assert serialize_wire_message(msg) == snapshot({"type": "StepInterrupted", "payload": {}})
+    _test_serde(msg)
 
     msg = CompactionBegin()
-    assert msg.model_dump(exclude_none=True) == snapshot({})
+    assert serialize_wire_message(msg) == snapshot({"type": "CompactionBegin", "payload": {}})
+    _test_serde(msg)
 
     msg = CompactionEnd()
-    assert msg.model_dump(exclude_none=True) == snapshot({})
+    assert serialize_wire_message(msg) == snapshot({"type": "CompactionEnd", "payload": {}})
+    _test_serde(msg)
 
-    status = StatusSnapshot(context_usage=0.5)
-    msg = StatusUpdate(status=status)
-    assert msg.model_dump(exclude_none=True) == snapshot({"status": {"context_usage": 0.5}})
+    msg = StatusUpdate(context_usage=0.5)
+    assert serialize_wire_message(msg) == snapshot(
+        {"type": "StatusUpdate", "payload": {"context_usage": 0.5}}
+    )
+    _test_serde(msg)
 
     msg = TextPart(text="Hello world")
-    assert msg.model_dump(exclude_none=True) == snapshot({"type": "text", "text": "Hello world"})
+    assert serialize_wire_message(msg) == snapshot(
+        {"type": "ContentPart", "payload": {"type": "text", "text": "Hello world"}}
+    )
+    _test_serde(msg)
 
     msg = ImageURLPart(image_url=ImageURLPart.ImageURL(url="http://example.com/image.png"))
-    assert msg.model_dump(exclude_none=True) == snapshot(
-        {"type": "image_url", "image_url": {"url": "http://example.com/image.png"}}
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "ContentPart",
+            "payload": {
+                "type": "image_url",
+                "image_url": {"url": "http://example.com/image.png", "id": None},
+            },
+        }
     )
+    _test_serde(msg)
 
     msg = ToolCall(
         id="call_123",
         function=ToolCall.FunctionBody(name="bash", arguments='{"command": "ls -la"}'),
     )
-    assert msg.model_dump(exclude_none=True) == snapshot(
+    assert serialize_wire_message(msg) == snapshot(
         {
-            "type": "function",
-            "id": "call_123",
-            "function": {"name": "bash", "arguments": '{"command": "ls -la"}'},
+            "type": "ToolCall",
+            "payload": {
+                "type": "function",
+                "id": "call_123",
+                "function": {"name": "bash", "arguments": '{"command": "ls -la"}'},
+                "extras": None,
+            },
         }
     )
+    _test_serde(msg)
 
     msg = ToolCallPart(arguments_part="}")
-    assert msg.model_dump(exclude_none=True) == snapshot({"arguments_part": "}"})
-
-    # msg = ToolResult(
-    #     tool_call_id="call_123",
-    #     return_value=ToolOk(output="success", message="Command completed", brief="ls output"),
-    # )
-    # assert msg.model_dump(exclude_none=True) == snapshot()
-
-    # msg = ToolResult(
-    #     tool_call_id="call_456",
-    #     return_value=ToolError(output="error", message="Command failed", brief="Error output"),
-    # )
-    # assert msg.model_dump(exclude_none=True) == snapshot()
-
-    subagent_event = StepBegin(n=2)
-    msg = SubagentEvent(task_tool_call_id="task_789", event=subagent_event)
-    assert msg.model_dump(exclude_none=True) == snapshot(
-        {"task_tool_call_id": "task_789", "event": {"n": 2}}
+    assert serialize_wire_message(msg) == snapshot(
+        {"type": "ToolCallPart", "payload": {"arguments_part": "}"}}
     )
+    _test_serde(msg)
+
+    msg = ToolResult(
+        tool_call_id="call_123",
+        return_value=ToolReturnValue(
+            is_error=False,
+            output="",
+            message="Command completed",
+            display=[DisplayBlock(type="brief", data="Command completed")],
+        ),
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "ToolResult",
+            "payload": {
+                "tool_call_id": "call_123",
+                "return_value": {
+                    "is_error": False,
+                    "output": "",
+                    "message": "Command completed",
+                    "display": [{"type": "brief", "data": "Command completed"}],
+                    "extras": None,
+                },
+            },
+        }
+    )
+    _test_serde(msg)
+
+    msg = SubagentEvent(
+        task_tool_call_id="task_789",
+        event=StepBegin(n=2),
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "SubagentEvent",
+            "payload": {
+                "task_tool_call_id": "task_789",
+                "event": {"type": "StepBegin", "payload": {"n": 2}},
+            },
+        }
+    )
+    _test_serde(msg)
 
     msg = ApprovalRequest(
+        id="request_123",
         tool_call_id="call_999",
         sender="bash",
         action="Execute dangerous command",
         description="This command will delete files",
     )
-    dumped = msg.model_dump(exclude_none=True)
-    del dumped["id"]
-    assert dumped == snapshot(
+    assert serialize_wire_message(msg) == snapshot(
         {
-            "tool_call_id": "call_999",
-            "sender": "bash",
-            "action": "Execute dangerous command",
-            "description": "This command will delete files",
+            "type": "ApprovalRequest",
+            "payload": {
+                "id": "request_123",
+                "tool_call_id": "call_999",
+                "sender": "bash",
+                "action": "Execute dangerous command",
+                "description": "This command will delete files",
+            },
         }
     )
+    _test_serde(msg)
+
+
+@pytest.mark.asyncio
+async def test_type_inspection():
+    msg = StepBegin(n=1)
+    assert is_wire_message(msg)
+    assert is_event(msg)
+    assert not is_request(msg)
+
+    msg = TextPart(text="Hello world")
+    assert is_wire_message(msg)
+    assert is_event(msg)
+    assert not is_request(msg)
+
+    msg = ApprovalRequest(
+        id="request_123",
+        tool_call_id="call_999",
+        sender="bash",
+        action="Execute dangerous command",
+        description="This command will delete files",
+    )
+    assert is_wire_message(msg)
+    assert not is_event(msg)
+    assert is_request(msg)

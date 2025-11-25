@@ -25,6 +25,7 @@ from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.term import ensure_new_line
+from kimi_cli.wire.message import StatusUpdate
 
 
 class ShellApp:
@@ -198,7 +199,7 @@ class ShellApp:
                 user_input,
                 lambda wire: visualize(
                     wire,
-                    initial_status=self.soul.status,
+                    initial_status=StatusUpdate(context_usage=self.soul.status.context_usage),
                     cancel_event=cancel_event,
                 ),
                 cancel_event,

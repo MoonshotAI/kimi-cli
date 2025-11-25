@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import uuid
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from kimi_cli.soul import StatusSnapshot
+from kimi_cli.utils.typing import flatten_union
 
 
 class StepBegin(BaseModel):
@@ -50,8 +50,13 @@ class CompactionEnd(BaseModel):
 
 
 class StatusUpdate(BaseModel):
-    status: StatusSnapshot
-    """The snapshot of the current soul status."""
+    """
+    An update on the current status of the soul.
+    None fields indicate no change from the previous status.
+    """
+
+    context_usage: float | None
+    """The usage of the context, in percentage."""
 
 
 class SubagentEvent(BaseModel):
@@ -59,6 +64,31 @@ class SubagentEvent(BaseModel):
     """The ID of the task tool call associated with this subagent."""
     event: Event
     """The event from the subagent."""
+
+    @field_serializer("event", when_used="json")
+    def _serialize_event(self, event: Event) -> dict[str, Any]:
+        envelope = WireMessageEnvelope.from_wire_message(event)
+        return envelope.model_dump(mode="json")
+
+    @field_validator("event", mode="before")
+    @classmethod
+    def _validate_event(cls, value: Any) -> Event:
+        if is_wire_message(value):
+            if is_event(value):
+                return value
+            raise ValueError("SubagentEvent event must be an Event")
+
+        if not isinstance(value, dict):
+            raise ValueError("SubagentEvent event must be a dict")
+        event_type = cast(dict[str, Any], value).get("type")
+        event_payload = cast(dict[str, Any], value).get("payload")
+        envelope = WireMessageEnvelope.model_validate(
+            {"type": event_type, "payload": event_payload}
+        )
+        event = envelope.to_wire_message()
+        if not is_event(event):
+            raise ValueError("SubagentEvent event must be an Event")
+        return cast(Event, event)
 
 
 type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
@@ -106,62 +136,63 @@ class ApprovalRequest(BaseModel):
         return self._future.done()
 
 
-def serialize_event(event: Event) -> dict[str, Any]:
-    """
-    Convert an event message into a JSON-serializable dictionary.
-    """
-    match event:
-        case StepBegin():
-            return {"type": "step_begin", "payload": {"n": event.n}}
-        case StepInterrupted():
-            return {"type": "step_interrupted"}
-        case CompactionBegin():
-            return {"type": "compaction_begin"}
-        case CompactionEnd():
-            return {"type": "compaction_end"}
-        case StatusUpdate():
-            return {
-                "type": "status_update",
-                "payload": {"context_usage": event.status.context_usage},
-            }
-        case ContentPart():
-            return {
-                "type": "content_part",
-                "payload": event.model_dump(mode="json", exclude_none=True),
-            }
-        case ToolCall():
-            return {
-                "type": "tool_call",
-                "payload": event.model_dump(mode="json", exclude_none=True),
-            }
-        case ToolCallPart():
-            return {
-                "type": "tool_call_part",
-                "payload": event.model_dump(mode="json", exclude_none=True),
-            }
-        case ToolResult():
-            return {
-                "type": "tool_result",
-                "payload": event.model_dump(mode="json", exclude_none=True),
-            }
-        case SubagentEvent():
-            return {
-                "type": "subagent_event",
-                "payload": {
-                    "task_tool_call_id": event.task_tool_call_id,
-                    "event": serialize_event(event.event),
-                },
-            }
+type Request = ApprovalRequest
+"""Any request. Request is a message that expects a response."""
+
+type WireMessage = Event | Request
+"""Any message sent over the `Wire`."""
 
 
-def serialize_approval_request(request: ApprovalRequest) -> dict[str, JsonType]:
-    """
-    Convert an ApprovalRequest into a JSON-serializable dictionary.
-    """
-    return {
-        "id": request.id,
-        "tool_call_id": request.tool_call_id,
-        "sender": request.sender,
-        "action": request.action,
-        "description": request.description,
-    }
+_EVENT_TYPES: tuple[type[Event]] = flatten_union(Event)
+_REQUEST_TYPES: tuple[type[Request]] = flatten_union(Request)
+_WIRE_MESSAGE_TYPES: tuple[type[WireMessage]] = flatten_union(WireMessage)
+
+
+def is_event(msg: Any) -> bool:
+    """Check if the message is an Event."""
+    return isinstance(msg, _EVENT_TYPES)
+
+
+def is_request(msg: Any) -> bool:
+    """Check if the message is a Request."""
+    return isinstance(msg, _REQUEST_TYPES)
+
+
+def is_wire_message(msg: Any) -> bool:
+    """Check if the message is a WireMessage."""
+    return isinstance(msg, _WIRE_MESSAGE_TYPES)
+
+
+_NAME_TO_WIRE_MESSAGE_TYPE: dict[str, type[WireMessage]] = {
+    cls.__name__: cls for cls in _WIRE_MESSAGE_TYPES
+}
+
+
+class WireMessageEnvelope(BaseModel):
+    type: str
+    payload: dict[str, JsonType]
+
+    @classmethod
+    def from_wire_message(cls, msg: WireMessage) -> WireMessageEnvelope:
+        typename: str | None = None
+        for name, typ in _NAME_TO_WIRE_MESSAGE_TYPE.items():
+            if issubclass(type(msg), typ):
+                typename = name
+                break
+        assert typename is not None, f"Unknown wire message type: {type(msg)}"
+        return cls(
+            type=typename,
+            payload=msg.model_dump(mode="json"),
+        )
+
+    def to_wire_message(self) -> WireMessage:
+        """
+        Convert the envelope back into a `WireMessage`.
+
+        Raises:
+            ValueError: If the message type is unknown or the payload is invalid.
+        """
+        msg_type = _NAME_TO_WIRE_MESSAGE_TYPE.get(self.type)
+        if msg_type is None:
+            raise ValueError(f"Unknown wire message type: {self.type}")
+        return msg_type.model_validate(self.payload)
