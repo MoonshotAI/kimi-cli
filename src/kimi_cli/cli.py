@@ -200,7 +200,7 @@ def kimi(
     from kaos.local import LocalKaos
     from kaos.path import KaosPath
     from kimi_cli.app import KimiCLI, enable_logging
-    from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
+    from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.utils.logging import logger
 
@@ -271,7 +271,7 @@ def kimi(
         else:
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
-        logger.debug("Session history file: {history_file}", history_file=session.history_file)
+        logger.debug("Context file: {context_file}", context_file=session.context_file)
 
         if thinking is None:
             metadata = load_metadata()
@@ -309,17 +309,14 @@ def kimi(
             metadata = load_metadata()
 
             # Update work_dir metadata with last session
-            work_dir_meta = next(
-                (wd for wd in metadata.work_dirs if wd.path == str(session.work_dir)), None
-            )
+            work_dir_meta = metadata.get_work_dir_meta(session.work_dir)
 
             if work_dir_meta is None:
                 logger.warning(
                     "Work dir metadata missing when marking last session, recreating: {work_dir}",
                     work_dir=session.work_dir,
                 )
-                work_dir_meta = WorkDirMeta(path=str(session.work_dir))
-                metadata.work_dirs.append(work_dir_meta)
+                work_dir_meta = metadata.new_work_dir_meta(session.work_dir)
 
             work_dir_meta.last_session_id = session.id
 

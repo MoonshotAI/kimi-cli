@@ -101,7 +101,7 @@ class KimiCLI:
             agent_file = DEFAULT_AGENT_FILE
         agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
 
-        context = Context(session.history_file)
+        context = Context(session.context_file)
         await context.restore()
 
         soul = KimiSoul(agent, context=context)
@@ -209,7 +209,7 @@ class KimiCLI:
                 self._soul,
                 input_format,
                 output_format,
-                self._runtime.session.history_file,
+                self._runtime.session.context_file,
             )
             return await app.run(command)
 

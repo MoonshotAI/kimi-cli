@@ -100,7 +100,7 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
     return Session(
         id="test",
         work_dir=temp_work_dir,
-        history_file=temp_share_dir / "history.jsonl",
+        context_file=temp_share_dir / "history.jsonl",
     )
 
 
