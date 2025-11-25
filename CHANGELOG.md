@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Session: Move context file location to `.kimi/sessions/{workdir_name}_{workdir_md5}/{session_id}/context.jsonl`
+
 ## [0.58] - 2025-11-21
 
 - Core: Fix field inheritance of agent spec files when using `extend`

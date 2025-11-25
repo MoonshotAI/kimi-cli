@@ -63,16 +63,16 @@ class Task(CallableTool2[Params]):
         self._labor_market = runtime.labor_market
         self._session = runtime.session
 
-    async def _get_subagent_history_file(self) -> Path:
-        """Generate a unique history file path for subagent."""
-        main_history_file = self._session.history_file
-        subagent_base_name = f"{main_history_file.stem}_sub"
-        main_history_file.parent.mkdir(parents=True, exist_ok=True)  # just in case
-        sub_history_file = await next_available_rotation(
-            main_history_file.parent / f"{subagent_base_name}{main_history_file.suffix}"
+    async def _get_subagent_context_file(self) -> Path:
+        """Generate a unique context file path for subagent."""
+        main_context_file = self._session.context_file
+        subagent_base_name = f"{main_context_file.stem}_sub"
+        main_context_file.parent.mkdir(parents=True, exist_ok=True)  # just in case
+        sub_context_file = await next_available_rotation(
+            main_context_file.parent / f"{subagent_base_name}{main_context_file.suffix}"
         )
-        assert sub_history_file is not None
-        return sub_history_file
+        assert sub_context_file is not None
+        return sub_context_file
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -117,8 +117,8 @@ class Task(CallableTool2[Params]):
                 msg = await wire.receive()
                 _super_wire_send(msg)
 
-        subagent_history_file = await self._get_subagent_history_file()
-        context = Context(file_backend=subagent_history_file)
+        subagent_context_file = await self._get_subagent_context_file()
+        context = Context(file_backend=subagent_context_file)
         soul = KimiSoul(agent, context=context)
 
         try:
