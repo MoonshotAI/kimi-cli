@@ -11,6 +11,7 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TurnBegin,
     WireMessage,
     is_event,
     is_request,
@@ -28,6 +29,26 @@ def _test_serde(msg: WireMessage):
 @pytest.mark.asyncio
 async def test_wire_message_serialization():
     """Test serialization of all WireMessage types."""
+
+    msg = TurnBegin(user_input="Hello, world!")
+    assert serialize_wire_message(msg) == snapshot(
+        {"type": "TurnBegin", "payload": {"user_input": "Hello, world!"}}
+    )
+    _test_serde(msg)
+
+    msg = TurnBegin(user_input=[TextPart(text="Hello"), TextPart(text="world!")])
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "TurnBegin",
+            "payload": {
+                "user_input": [
+                    {"type": "text", "text": "Hello"},
+                    {"type": "text", "text": "world!"},
+                ]
+            },
+        }
+    )
+    _test_serde(msg)
 
     msg = StepBegin(n=1)
     assert serialize_wire_message(msg) == snapshot({"type": "StepBegin", "payload": {"n": 1}})
