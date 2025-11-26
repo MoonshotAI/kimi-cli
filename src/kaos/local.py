@@ -6,9 +6,9 @@ from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
 
 if os.name == "nt":
-    from pathlib import PureWindowsPath
+    from pathlib import PureWindowsPath as PurePathClass
 else:
-    from pathlib import PurePosixPath
+    from pathlib import PurePosixPath as PurePathClass
 
 import aiofiles
 import aiofiles.os
@@ -31,7 +31,7 @@ class LocalKaos:
     name: str = "local"
 
     def pathclass(self) -> type[PurePath]:
-        return PureWindowsPath if os.name == "nt" else PurePosixPath
+        return PurePathClass
 
     def gethome(self) -> KaosPath:
         return KaosPath.unsafe_from_local_path(Path.home())
