@@ -69,6 +69,10 @@ class StatusUpdate(BaseModel):
 
 
 class SubagentEvent(BaseModel):
+    """
+    An event from a subagent.
+    """
+
     task_tool_call_id: str
     """The ID of the task tool call associated with this subagent."""
     event: Event
@@ -100,29 +104,11 @@ class SubagentEvent(BaseModel):
         return cast(Event, event)
 
 
-type Event = (
-    TurnBegin
-    | StepBegin
-    | StepInterrupted
-    | CompactionBegin
-    | CompactionEnd
-    | StatusUpdate
-    | ContentPart
-    | ToolCall
-    | ToolCallPart
-    | ToolResult
-    | SubagentEvent
-)
-"""Any event, including control flow and content/tooling events."""
-
-
-class ApprovalResponse(Enum):
-    APPROVE = "approve"
-    APPROVE_FOR_SESSION = "approve_for_session"
-    REJECT = "reject"
-
-
 class ApprovalRequest(BaseModel):
+    """
+    A request for user approval before proceeding with an action.
+    """
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     tool_call_id: str
     sender: str
@@ -153,6 +139,53 @@ class ApprovalRequest(BaseModel):
     def resolved(self) -> bool:
         """Whether the request is resolved."""
         return self._future.done()
+
+
+class ApprovalResponse(Enum):
+    APPROVE = "approve"
+    APPROVE_FOR_SESSION = "approve_for_session"
+    REJECT = "reject"
+
+
+class ApprovalRequestResolved(BaseModel):
+    """
+    Indicates that an approval request has been resolved.
+    """
+
+    request_id: str
+    """The ID of the resolved approval request."""
+    response: ApprovalResponse
+    """The response to the approval request."""
+
+    @field_serializer("response")
+    def _serialize_response(self, response: ApprovalResponse) -> str:
+        return response.value
+
+    @field_validator("response", mode="before")
+    @classmethod
+    def _validate_response(cls, value: Any) -> ApprovalResponse:
+        if isinstance(value, ApprovalResponse):
+            return value
+        if isinstance(value, str):
+            return ApprovalResponse(value)
+        raise ValueError("Invalid ApprovalResponse value")
+
+
+type Event = (
+    TurnBegin
+    | StepBegin
+    | StepInterrupted
+    | CompactionBegin
+    | CompactionEnd
+    | StatusUpdate
+    | ContentPart
+    | ToolCall
+    | ToolCallPart
+    | ToolResult
+    | SubagentEvent
+    | ApprovalRequestResolved
+)
+"""Any event, including control flow and content/tooling events."""
 
 
 type Request = ApprovalRequest

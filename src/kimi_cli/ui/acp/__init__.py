@@ -23,6 +23,7 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.message import (
     ApprovalRequest,
+    ApprovalRequestResolved,
     ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
@@ -217,6 +218,8 @@ class ACPAgent:
                 case ToolResult():
                     await self._send_tool_result(msg)
                 case SubagentEvent():
+                    pass
+                case ApprovalRequestResolved():
                     pass
                 case ApprovalRequest():
                     await self._handle_approval_request(msg)

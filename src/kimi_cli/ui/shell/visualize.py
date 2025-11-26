@@ -25,6 +25,7 @@ from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
     ApprovalRequest,
+    ApprovalRequestResolved,
     ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
@@ -396,10 +397,13 @@ class _LiveView:
                 self.append_tool_call_part(msg)
             case ToolResult():
                 self.append_tool_result(msg)
-            case ApprovalRequest():
-                self.request_approval(msg)
             case SubagentEvent():
                 self.handle_subagent_event(msg)
+            case ApprovalRequestResolved():
+                # we don't need to handle this because the request is resolved on UI
+                pass
+            case ApprovalRequest():
+                self.request_approval(msg)
 
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
         # handle ESC key to cancel the run
