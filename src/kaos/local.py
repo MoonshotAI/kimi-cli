@@ -28,6 +28,8 @@ class LocalKaos:
     A KAOS implementation that directly interacts with the local filesystem.
     """
 
+    name: str = "local"
+
     def pathclass(self) -> type[PurePath]:
         return PureWindowsPath if os.name == "nt" else PurePosixPath
 
@@ -100,3 +102,7 @@ class LocalKaos:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
         async_local_path = aiopath.AsyncPath(local_path)
         await async_local_path.mkdir(parents=parents, exist_ok=exist_ok)
+
+
+local_kaos = LocalKaos()
+"""The default local KAOS instance."""

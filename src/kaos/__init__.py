@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import contextvars
 import os
 from collections.abc import AsyncGenerator
-from contextvars import ContextVar
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -16,6 +16,9 @@ type StrOrKaosPath = str | KaosPath
 @runtime_checkable
 class Kaos(Protocol):
     """Kimi Agent Operating System (KAOS) interface."""
+
+    name: str
+    """The name of the KAOS implementation."""
 
     def pathclass(self) -> type[PurePath]:
         """Get the path class used under `KaosPath`."""
@@ -86,62 +89,55 @@ class Kaos(Protocol):
         ...
 
 
-current_kaos = ContextVar[Kaos | None]("current_kaos", default=None)
+def get_current_kaos() -> Kaos:
+    """Get the current KAOS instance."""
+    from kaos._current import current_kaos
 
-
-def _get_kaos_or_none() -> Kaos | None:
     return current_kaos.get()
 
 
+def set_current_kaos(kaos: Kaos) -> contextvars.Token[Kaos]:
+    """Set the current KAOS instance."""
+    from kaos._current import current_kaos
+
+    return current_kaos.set(kaos)
+
+
+def reset_current_kaos(token: contextvars.Token[Kaos]) -> None:
+    """Reset the current KAOS instance."""
+    from kaos._current import current_kaos
+
+    current_kaos.reset(token)
+
+
 def pathclass() -> type[PurePath]:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return kaos.pathclass()
+    return get_current_kaos().pathclass()
 
 
 def gethome() -> KaosPath:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return kaos.gethome()
+    return get_current_kaos().gethome()
 
 
 def getcwd() -> KaosPath:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return kaos.getcwd()
+    return get_current_kaos().getcwd()
 
 
 async def chdir(path: StrOrKaosPath) -> None:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    await kaos.chdir(path)
+    await get_current_kaos().chdir(path)
 
 
 async def stat(path: StrOrKaosPath, *, follow_symlinks: bool = True) -> os.stat_result:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return await kaos.stat(path, follow_symlinks=follow_symlinks)
+    return await get_current_kaos().stat(path, follow_symlinks=follow_symlinks)
 
 
 async def iterdir(path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return kaos.iterdir(path)
+    return get_current_kaos().iterdir(path)
 
 
 async def glob(
     path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
 ) -> AsyncGenerator[KaosPath]:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return kaos.glob(path, pattern, case_sensitive=case_sensitive)
+    return get_current_kaos().glob(path, pattern, case_sensitive=case_sensitive)
 
 
 async def readtext(
@@ -150,10 +146,7 @@ async def readtext(
     encoding: str = "utf-8",
     errors: Literal["strict", "ignore", "replace"] = "strict",
 ) -> str:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return await kaos.readtext(path, encoding=encoding, errors=errors)
+    return await get_current_kaos().readtext(path, encoding=encoding, errors=errors)
 
 
 async def readlines(
@@ -162,10 +155,7 @@ async def readlines(
     encoding: str = "utf-8",
     errors: Literal["strict", "ignore", "replace"] = "strict",
 ) -> AsyncGenerator[str]:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return kaos.readlines(path, encoding=encoding, errors=errors)
+    return get_current_kaos().readlines(path, encoding=encoding, errors=errors)
 
 
 async def writetext(
@@ -176,14 +166,10 @@ async def writetext(
     encoding: str = "utf-8",
     errors: Literal["strict", "ignore", "replace"] = "strict",
 ) -> int:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return await kaos.writetext(path, data, mode=mode, encoding=encoding, errors=errors)
+    return await get_current_kaos().writetext(
+        path, data, mode=mode, encoding=encoding, errors=errors
+    )
 
 
 async def mkdir(path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False) -> None:
-    kaos = _get_kaos_or_none()
-    if kaos is None:
-        raise RuntimeError("No Kaos context is set")
-    return await kaos.mkdir(path, parents=parents, exist_ok=exist_ok)
+    return await get_current_kaos().mkdir(path, parents=parents, exist_ok=exist_ok)

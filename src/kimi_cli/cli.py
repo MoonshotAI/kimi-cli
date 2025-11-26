@@ -196,8 +196,6 @@ def kimi(
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
 
-    from kaos import current_kaos
-    from kaos.local import LocalKaos
     from kaos.path import KaosPath
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.metadata import load_metadata, save_metadata
@@ -327,7 +325,6 @@ def kimi(
 
         return succeeded
 
-    current_kaos.set(LocalKaos())
     while True:
         try:
             succeeded = asyncio.run(_run())

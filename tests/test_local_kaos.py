@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
-from kaos import current_kaos
+from kaos import reset_current_kaos, set_current_kaos
 from kaos.local import LocalKaos
 from kaos.path import KaosPath
 
@@ -14,14 +14,14 @@ from kaos.path import KaosPath
 def local_kaos(tmp_path):
     """Set LocalKaos as the current Kaos and switch cwd to a temp directory."""
     local = LocalKaos()
-    token = current_kaos.set(local)
+    token = set_current_kaos(local)
     old_cwd = Path.cwd()
     os.chdir(tmp_path)
     try:
         yield local, tmp_path
     finally:
         os.chdir(old_cwd)
-        current_kaos.reset(token)
+        reset_current_kaos(token)
 
 
 def test_pathclass_gethome_and_getcwd(local_kaos):

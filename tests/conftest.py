@@ -13,7 +13,7 @@ from kosong.chat_provider.mock import MockChatProvider
 from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
-from kaos import current_kaos
+from kaos import get_current_kaos, reset_current_kaos, set_current_kaos
 from kaos.local import LocalKaos
 from kaos.path import KaosPath
 from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
@@ -63,12 +63,12 @@ def llm() -> LLM:
 @pytest.fixture
 def temp_work_dir() -> Generator[KaosPath]:
     """Create a temporary working directory for tests."""
-    token = current_kaos.set(LocalKaos())
+    token = set_current_kaos(LocalKaos())
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             yield KaosPath.unsafe_from_local_path(Path(tmpdir))
     finally:
-        current_kaos.reset(token)
+        reset_current_kaos(token)
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
     return Session(
         id="test",
         work_dir=temp_work_dir,
-        work_dir_meta=WorkDirMeta(path=str(temp_work_dir)),
+        work_dir_meta=WorkDirMeta(path=str(temp_work_dir), kaos=get_current_kaos().name),
         context_file=temp_share_dir / "history.jsonl",
     )
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from kaos import current_kaos
+from kaos import reset_current_kaos, set_current_kaos
 from kaos.local import LocalKaos
 from kaos.path import KaosPath
 
@@ -13,14 +13,14 @@ from kaos.path import KaosPath
 @pytest.fixture
 def kaos_cwd(tmp_path):
     """Set LocalKaos as the current Kaos and switch cwd to a temp directory."""
-    token = current_kaos.set(LocalKaos())
+    token = set_current_kaos(LocalKaos())
     old_cwd = Path.cwd()
     os.chdir(tmp_path)
     try:
         yield tmp_path
     finally:
         os.chdir(old_cwd)
-        current_kaos.reset(token)
+        reset_current_kaos(token)
 
 
 def test_join_and_parent(kaos_cwd):
