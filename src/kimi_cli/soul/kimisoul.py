@@ -29,7 +29,7 @@ from kimi_cli.soul import (
     StatusSnapshot,
     wire_send,
 )
-from kimi_cli.soul.agent import Agent
+from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 RESERVED_TOKENS = 50_000
 
 
-class KimiSoul(Soul):
+class KimiSoul:
     """The soul of Kimi CLI."""
 
     def __init__(
@@ -105,6 +105,10 @@ class KimiSoul(Soul):
     @property
     def status(self) -> StatusSnapshot:
         return StatusSnapshot(context_usage=self._context_usage)
+
+    @property
+    def runtime(self) -> Runtime:
+        return self._runtime
 
     @property
     def context(self) -> Context:
