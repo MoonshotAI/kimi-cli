@@ -483,7 +483,7 @@ class _LiveView:
             self.refresh_soon()
 
     def repeat_user_input(self, user_input: str | list[ContentPart]) -> None:
-        console.print(Panel(message_content_to_text(user_input)))
+        console.print(Panel(Text(message_content_to_text(user_input))))
 
     def append_content(self, part: ContentPart) -> None:
         match part:
