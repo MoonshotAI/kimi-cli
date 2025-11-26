@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import kosong
@@ -120,6 +121,10 @@ class KimiSoul:
         if self._runtime.llm is not None:
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
+
+    @property
+    def wire_file_backend(self) -> Path:
+        return self._runtime.session.dir / "wire.jsonl"
 
     @property
     def thinking(self) -> bool:

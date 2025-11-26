@@ -11,6 +11,7 @@ from kosong.chat_provider import ChatProviderError
 from pydantic import ValidationError
 
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.message import (
@@ -81,6 +82,7 @@ class _SoulRunner:
                 user_input,
                 self._ui_loop,
                 self._cancel_event,
+                self._soul.wire_file_backend if isinstance(self._soul, KimiSoul) else None,
             )
         except LLMNotSet:
             return ("error", (-32001, "LLM is not configured"))
