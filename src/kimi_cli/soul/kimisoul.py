@@ -42,6 +42,7 @@ from kimi_cli.wire.message import (
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    TurnBegin,
 )
 
 if TYPE_CHECKING:
@@ -143,6 +144,8 @@ class KimiSoul:
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
     async def run(self, user_input: str | list[ContentPart]):
+        wire_send(TurnBegin(user_input=user_input))
+
         if self._runtime.llm is None:
             raise LLMNotSet()
 

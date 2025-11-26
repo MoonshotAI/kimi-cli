@@ -13,6 +13,15 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 from kimi_cli.utils.typing import flatten_union
 
 
+class TurnBegin(BaseModel):
+    """
+    Indicates the beginning of a new agent turn.
+    This event must be sent before any other event in the turn.
+    """
+
+    user_input: str | list[ContentPart]
+
+
 class StepBegin(BaseModel):
     """
     Indicates the beginning of a new agent step.
@@ -91,7 +100,9 @@ class SubagentEvent(BaseModel):
         return cast(Event, event)
 
 
-type ControlFlowEvent = StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
+type ControlFlowEvent = (
+    TurnBegin | StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
+)
 """Any control flow event."""
 type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | SubagentEvent
 """Any event, including control flow and content/tooling events."""

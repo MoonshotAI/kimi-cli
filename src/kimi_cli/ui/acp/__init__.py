@@ -29,6 +29,7 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TurnBegin,
 )
 
 
@@ -182,6 +183,8 @@ class ACPAgent:
         while True:
             msg = await wire.receive()
             match msg:
+                case TurnBegin():
+                    pass
                 case StepBegin():
                     pass
                 case StepInterrupted():
