@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import WireUISide
+from kimi_cli.wire import Wire
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
@@ -101,9 +101,10 @@ class _SoulRunner:
             return ("error", (-32099, f"Run failed: {e}"))
         return ("ok", {"status": "finished"})
 
-    async def _ui_loop(self, wire: WireUISide) -> None:
+    async def _ui_loop(self, wire: Wire) -> None:
+        wire_ui = wire.ui_side(merge=False)
         while True:
-            message = await wire.receive()
+            message = await wire_ui.receive()
             if isinstance(message, ApprovalRequest):
                 response = await self._request_approval(message)
                 message.resolve(response)

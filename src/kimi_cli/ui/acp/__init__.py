@@ -20,7 +20,7 @@ from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_so
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import WireUISide
+from kimi_cli.wire import Wire
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalResponse,
@@ -186,9 +186,10 @@ class ACPAgent:
             logger.info("Cancelling running prompt")
             self.run_state.cancel_event.set()
 
-    async def _stream_events(self, wire: WireUISide):
+    async def _stream_events(self, wire: Wire):
+        wire_ui = wire.ui_side(merge=False)
         while True:
-            msg = await wire.receive()
+            msg = await wire_ui.receive()
             match msg:
                 case TurnBegin():
                     pass
