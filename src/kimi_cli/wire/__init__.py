@@ -4,13 +4,14 @@ import asyncio
 import json
 import time
 from pathlib import Path
+from typing import cast
 
 import aiofiles
-from kosong.message import ContentPart, ToolCallPart
+from kosong.message import ContentPart, MergeableMixin, ToolCallPart
 
 from kimi_cli.utils.broadcast import BroadcastQueue
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire.message import WireMessage, is_wire_message
 from kimi_cli.wire.serde import serialize_wire_message
 
 
@@ -93,7 +94,7 @@ class WireRecorder:
 
     def __init__(self, file_backend: Path, queue: asyncio.Queue[WireMessage]) -> None:
         self._file_backend = file_backend
-        self._merge_buffer: ContentPart | None = None
+        self._merge_buffer: MergeableMixin | None = None
         self._task = asyncio.create_task(self._consume_loop(queue))
 
     async def _consume_loop(self, queue: asyncio.Queue[WireMessage]) -> None:
@@ -107,7 +108,7 @@ class WireRecorder:
 
     async def _feed(self, msg: WireMessage) -> None:
         match msg:
-            case ContentPart():
+            case MergeableMixin():
                 if self._merge_buffer is None:
                     self._merge_buffer = msg
                 elif self._merge_buffer.merge_in_place(msg):
@@ -121,7 +122,8 @@ class WireRecorder:
 
     async def _flush(self) -> None:
         if self._merge_buffer is not None:
-            await self._record(self._merge_buffer)
+            assert is_wire_message(self._merge_buffer)
+            await self._record(cast(WireMessage, self._merge_buffer))
             self._merge_buffer = None
 
     async def _record(self, msg: WireMessage) -> None:
