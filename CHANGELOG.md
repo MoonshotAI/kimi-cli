@@ -16,7 +16,11 @@ Only write entries that are worth mentioning to users.
 - Lib: Add `kimi_cli.wire.message.Request` type alias request messages (which currently only includes `ApprovalRequest`)
 - Lib: Add `kimi_cli.wire.message.is_event`, `is_request` and `is_wire_message` utility functions to check the type of wire messages
 - Lib: Add `kimi_cli.wire.serde` module for serialization and deserialization of wire messages
-- Lib: Change `StatusUpdate` wire message to not using `kimi_cli.soul.StatusSnapshot`
+- Lib: Change `StatusUpdate` Wire message to not using `kimi_cli.soul.StatusSnapshot`
+- Core: Record Wire messages to a JSONL file in session directory
+- Core: Introduce `TurnBegin` Wire message to mark the beginning of each agent turn
+- UI: Print user input again with a panel in shell mode
+- Lib: Add `Session.dir` property to get the session directory path
 
 ## [0.58] - 2025-11-21
 
