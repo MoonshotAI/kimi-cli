@@ -29,7 +29,7 @@ from kimi_cli.soul import (
     StatusSnapshot,
     wire_send,
 )
-from kimi_cli.soul.agent import Agent
+from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
@@ -42,6 +42,7 @@ from kimi_cli.wire.message import (
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    TurnBegin,
 )
 
 if TYPE_CHECKING:
@@ -53,7 +54,7 @@ if TYPE_CHECKING:
 RESERVED_TOKENS = 50_000
 
 
-class KimiSoul(Soul):
+class KimiSoul:
     """The soul of Kimi CLI."""
 
     def __init__(
@@ -107,6 +108,10 @@ class KimiSoul(Soul):
         return StatusSnapshot(context_usage=self._context_usage)
 
     @property
+    def runtime(self) -> Runtime:
+        return self._runtime
+
+    @property
     def context(self) -> Context:
         return self._context
 
@@ -139,6 +144,8 @@ class KimiSoul(Soul):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
     async def run(self, user_input: str | list[ContentPart]):
+        wire_send(TurnBegin(user_input=user_input))
+
         if self._runtime.llm is None:
             raise LLMNotSet()
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from kaos.path import KaosPath
-from kimi_cli.metadata import load_metadata, save_metadata
+from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 
 
@@ -17,8 +17,17 @@ class Session:
     """The session ID."""
     work_dir: KaosPath
     """The absolute path of the work directory."""
+    work_dir_meta: WorkDirMeta
+    """The metadata of the work directory."""
     context_file: Path
     """The absolute path to the file storing the message history."""
+
+    @property
+    def dir(self) -> Path:
+        """The absolute path of the session directory."""
+        path = self.work_dir_meta.sessions_dir / self.id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     @staticmethod
     async def create(work_dir: KaosPath, _context_file: Path | None = None) -> Session:
@@ -59,6 +68,7 @@ class Session:
         return Session(
             id=session_id,
             work_dir=work_dir,
+            work_dir_meta=work_dir_meta,
             context_file=context_file,
         )
 
@@ -88,5 +98,6 @@ class Session:
         return Session(
             id=session_id,
             work_dir=work_dir,
+            work_dir_meta=work_dir_meta,
             context_file=context_file,
         )

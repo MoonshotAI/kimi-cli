@@ -16,6 +16,7 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
+from kimi_cli.soul.message import message_content_to_text
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
@@ -31,6 +32,7 @@ from kimi_cli.wire.message import (
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TurnBegin,
     WireMessage,
 )
 
@@ -371,10 +373,13 @@ class _LiveView:
             return
 
         if self._mooning_spinner is not None:
+            # any message other than StepBegin should end the mooning state
             self._mooning_spinner = None
             self.refresh_soon()
 
         match msg:
+            case TurnBegin():
+                self.repeat_user_input(msg.user_input)
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
@@ -476,6 +481,9 @@ class _LiveView:
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
+
+    def repeat_user_input(self, user_input: str | list[ContentPart]) -> None:
+        console.print(Panel(Text(message_content_to_text(user_input))))
 
     def append_content(self, part: ContentPart) -> None:
         match part:

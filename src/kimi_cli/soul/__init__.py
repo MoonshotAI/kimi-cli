@@ -118,7 +118,10 @@ async def run_soul(
         MaxStepsReached: When the maximum number of steps is reached.
         RunCancelled: When the run is cancelled by the cancel event.
     """
-    wire = Wire()
+    from kimi_cli.soul.kimisoul import KimiSoul
+
+    file_backend = soul.runtime.session.dir / "wire.jsonl" if isinstance(soul, KimiSoul) else None
+    wire = Wire(file_backend=file_backend)
     wire_token = _current_wire.set(wire)
 
     logger.debug("Starting UI loop with function: {ui_loop_fn}", ui_loop_fn=ui_loop_fn)
