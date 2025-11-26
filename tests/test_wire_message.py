@@ -1,7 +1,10 @@
+import inspect
+
 import pytest
 from inline_snapshot import snapshot
 from kosong.message import ImageURLPart, TextPart, ToolCall, ToolCallPart
 from kosong.tooling import DisplayBlock, ToolResult, ToolReturnValue
+from pydantic import BaseModel
 
 from kimi_cli.wire.message import (
     ApprovalRequest,
@@ -13,6 +16,7 @@ from kimi_cli.wire.message import (
     SubagentEvent,
     TurnBegin,
     WireMessage,
+    WireMessageEnvelope,
     is_event,
     is_request,
     is_wire_message,
@@ -27,7 +31,7 @@ def _test_serde(msg: WireMessage):
 
 
 @pytest.mark.asyncio
-async def test_wire_message_serialization():
+async def test_wire_message_serde():
     """Test serialization of all WireMessage types."""
 
     msg = TurnBegin(user_input="Hello, world!")
@@ -198,3 +202,19 @@ async def test_type_inspection():
     assert is_wire_message(msg)
     assert not is_event(msg)
     assert is_request(msg)
+
+
+def test_wire_message_type_alias():
+    import kimi_cli.wire.message
+
+    module = kimi_cli.wire.message
+    wire_message_types = {
+        obj
+        for _, obj in inspect.getmembers(module, inspect.isclass)
+        if obj.__module__ == module.__name__
+        and issubclass(obj, BaseModel)
+        and obj is not WireMessageEnvelope
+    }
+
+    for type_ in wire_message_types:
+        assert type_ in module._WIRE_MESSAGE_TYPES

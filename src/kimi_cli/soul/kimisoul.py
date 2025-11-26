@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import kosong
@@ -13,7 +14,6 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
-    ChatProviderError,
     ThinkingEffort,
 )
 from kosong.message import ContentPart, Message
@@ -122,6 +122,10 @@ class KimiSoul:
         return 0.0
 
     @property
+    def wire_file_backend(self) -> Path:
+        return self._runtime.session.dir / "wire.jsonl"
+
+    @property
     def thinking(self) -> bool:
         """Whether thinking mode is enabled."""
         return self._thinking_effort != "off"
@@ -144,8 +148,6 @@ class KimiSoul:
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
     async def run(self, user_input: str | list[ContentPart]):
-        wire_send(TurnBegin(user_input=user_input))
-
         if self._runtime.llm is None:
             raise LLMNotSet()
 
@@ -153,6 +155,7 @@ class KimiSoul:
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
+        wire_send(TurnBegin(user_input=user_input))
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
@@ -167,14 +170,19 @@ class KimiSoul:
                 request = await self._approval.fetch_request()
                 wire_send(request)
 
-        step_no = 1
+        step_no = 0
         while True:
+            step_no += 1
+            if step_no > self._loop_control.max_steps_per_run:
+                raise MaxStepsReached(self._loop_control.max_steps_per_run)
+
             wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
             # FIXME: It's possible that a subagent's approval task steals approval request
             # from the main agent. We must ensure that the Task tool will redirect them
             # to the main wire. See `_SubWire` for more details. Later we need to figure
             # out a better solution.
+            back_to_the_future: BackToTheFuture | None = None
             try:
                 # compact the context if needed
                 if (
@@ -191,11 +199,10 @@ class KimiSoul:
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
                 finished = await self._step()
             except BackToTheFuture as e:
-                await self._context.revert_to(e.checkpoint_id)
-                await self._checkpoint()
-                await self._context.append_message(e.messages)
-                continue
-            except (ChatProviderError, asyncio.CancelledError):
+                back_to_the_future = e
+                finished = False
+            except Exception:
+                # any other exception should interrupt the step
                 wire_send(StepInterrupted())
                 # break the agent loop
                 raise
@@ -205,9 +212,10 @@ class KimiSoul:
             if finished:
                 return
 
-            step_no += 1
-            if step_no > self._loop_control.max_steps_per_run:
-                raise MaxStepsReached(self._loop_control.max_steps_per_run)
+            if back_to_the_future is not None:
+                await self._context.revert_to(back_to_the_future.checkpoint_id)
+                await self._checkpoint()
+                await self._context.append_message(back_to_the_future.messages)
 
     async def _step(self) -> bool:
         """Run an single step and return whether the run should be stopped."""

@@ -13,7 +13,7 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
-from kimi_cli.wire import WireUISide
+from kimi_cli.wire import Wire
 from kimi_cli.wire.message import ApprovalRequest, SubagentEvent, WireMessage
 
 # Maximum continuation attempts for task summary
@@ -112,9 +112,10 @@ class Task(CallableTool2[Params]):
             )
             super_wire.soul_side.send(event)
 
-        async def _ui_loop_fn(wire: WireUISide) -> None:
+        async def _ui_loop_fn(wire: Wire) -> None:
+            wire_ui = wire.ui_side(merge=True)
             while True:
-                msg = await wire.receive()
+                msg = await wire_ui.receive()
                 _super_wire_send(msg)
 
         subagent_context_file = await self._get_subagent_context_file()

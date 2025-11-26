@@ -100,11 +100,19 @@ class SubagentEvent(BaseModel):
         return cast(Event, event)
 
 
-type ControlFlowEvent = (
-    TurnBegin | StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
+type Event = (
+    TurnBegin
+    | StepBegin
+    | StepInterrupted
+    | CompactionBegin
+    | CompactionEnd
+    | StatusUpdate
+    | ContentPart
+    | ToolCall
+    | ToolCallPart
+    | ToolResult
+    | SubagentEvent
 )
-"""Any control flow event."""
-type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | SubagentEvent
 """Any event, including control flow and content/tooling events."""
 
 

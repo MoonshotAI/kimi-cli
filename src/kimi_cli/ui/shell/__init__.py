@@ -198,11 +198,12 @@ class ShellApp:
                 self.soul,
                 user_input,
                 lambda wire: visualize(
-                    wire,
+                    wire.ui_side(merge=False),  # shell UI maintain its own merge buffer
                     initial_status=StatusUpdate(context_usage=self.soul.status.context_usage),
                     cancel_event=cancel_event,
                 ),
                 cancel_event,
+                self.soul.wire_file_backend if isinstance(self.soul, KimiSoul) else None,
             )
             return True
         except LLMNotSet:
