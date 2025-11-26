@@ -28,7 +28,7 @@ class BroadcastQueue[T]:
         for queue in self._queues:
             queue.put_nowait(item)
 
-    async def shutdown(self, immediate: bool = False) -> None:
+    def shutdown(self, immediate: bool = False) -> None:
         """Close all subscription queues."""
         for queue in self._queues:
             queue.shutdown(immediate=immediate)

@@ -63,7 +63,7 @@ async def test_shutdown():
     queue1 = broadcast.subscribe()
     queue2 = broadcast.subscribe()
 
-    await broadcast.shutdown()
+    broadcast.shutdown()
 
     with pytest.raises(asyncio.QueueShutDown):
         queue1.get_nowait()
