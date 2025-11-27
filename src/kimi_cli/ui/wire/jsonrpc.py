@@ -53,7 +53,7 @@ class JSONRPCRequestMessage(_MessageBase):
     def _validate_params(cls, value: Any) -> Request:
         if is_request(value):
             return value
-        raise NotImplementedError("Event message deserialization is not implemented.")
+        raise NotImplementedError("Request message deserialization is not implemented.")
 
 
 class JSONRPCPromptMessage(_MessageBase):
@@ -75,7 +75,7 @@ class JSONRPCCancelMessage(_MessageBase):
 
     @model_serializer()
     def _serialize(self) -> dict[str, Any]:
-        raise NotImplementedError("Interrupt message serialization is not implemented.")
+        raise NotImplementedError("Cancel message serialization is not implemented.")
 
 
 class _ResponseBase(_MessageBase):
@@ -97,7 +97,10 @@ class JSONRPCErrorResponse(_ResponseBase):
 
 
 class JSONRPCApprovalRequestResult(ApprovalRequestResolved):
-    """The `JSONRPCSuccessResponse.result` field should be able to be parsed into this type."""
+    """
+    The `JSONRPCSuccessResponse.result` field for approval request responses should be able to
+    be parsed into this type.
+    """
 
     pass
 
@@ -110,3 +113,23 @@ JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
 type JSONRPCOutMessage = (
     JSONRPCEventMessage | JSONRPCRequestMessage | JSONRPCSuccessResponse | JSONRPCErrorResponse
 )
+
+
+class ErrorCodes:
+    INVALID_STATE = -32000
+    """The server is in an invalid state to process the request."""
+    LLM_NOT_SET = -32001
+    """The LLM is not set."""
+    LLM_NOT_SUPPORTED = -32002
+    """The specified LLM is not supported."""
+    CHAT_PROVIDER_ERROR = -32003
+    """There was an error from the chat provider."""
+
+
+class Statuses:
+    FINISHED = "finished"
+    """The agent run has finished successfully."""
+    CANCELLED = "cancelled"
+    """The agent run was cancelled by the user."""
+    MAX_STEPS_REACHED = "max_steps_reached"
+    """The agent run reached the maximum number of steps."""

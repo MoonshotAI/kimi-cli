@@ -14,6 +14,7 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.message import ApprovalRequest, Request
 
 from .jsonrpc import (
+    ErrorCodes,
     JSONRPCApprovalRequestResult,
     JSONRPCCancelMessage,
     JSONRPCErrorObject,
@@ -25,6 +26,7 @@ from .jsonrpc import (
     JSONRPCPromptMessage,
     JSONRPCRequestMessage,
     JSONRPCSuccessResponse,
+    Statuses,
 )
 
 
@@ -108,6 +110,9 @@ class WireServer:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._write_task
 
+        await asyncio.gather(*self._dispatch_tasks, return_exceptions=True)
+        self._dispatch_tasks.clear()
+
         if self._writer is not None:
             self._writer.close()
             with contextlib.suppress(Exception):
@@ -118,16 +123,20 @@ class WireServer:
 
     async def _dispatch_msg(self, msg: JSONRPCInMessage) -> None:
         resp: JSONRPCSuccessResponse | JSONRPCErrorResponse | None = None
-        match msg:
-            case JSONRPCPromptMessage():
-                resp = await self._handle_prompt(msg)
-            case JSONRPCCancelMessage():
-                resp = await self._handle_cancel(msg)
-            case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
-                await self._handle_response(msg)
+        try:
+            match msg:
+                case JSONRPCPromptMessage():
+                    resp = await self._handle_prompt(msg)
+                case JSONRPCCancelMessage():
+                    resp = await self._handle_cancel(msg)
+                case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
+                    await self._handle_response(msg)
 
-        if resp is not None:
-            await self._send_msg(resp)
+            if resp is not None:
+                await self._send_msg(resp)
+        except Exception:
+            logger.exception("Unexpected error dispatching JSONRPC message:")
+            raise
 
     async def _send_msg(self, msg: JSONRPCOutMessage) -> None:
         try:
@@ -147,7 +156,7 @@ class WireServer:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(
-                    code=-32000, message="An agent turn is already in progress"
+                    code=ErrorCodes.INVALID_STATE, message="An agent turn is already in progress"
                 ),
             )
 
@@ -162,36 +171,35 @@ class WireServer:
             )
             return JSONRPCSuccessResponse(
                 id=msg.id,
-                result={"status": "finished"},
+                result={"status": Statuses.FINISHED},
             )
         except LLMNotSet:
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(code=-32001, message="LLM is not set"),
+                error=JSONRPCErrorObject(code=ErrorCodes.LLM_NOT_SET, message="LLM is not set"),
             )
         except LLMNotSupported as e:
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(code=-32003, message=str(e)),
+                error=JSONRPCErrorObject(code=ErrorCodes.LLM_NOT_SUPPORTED, message=str(e)),
             )
         except ChatProviderError as e:
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(code=-32002, message=f"LLM provider error: {e}"),
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.CHAT_PROVIDER_ERROR, message=f"LLM provider error: {e}"
+                ),
             )
         except MaxStepsReached as e:
             return JSONRPCSuccessResponse(
                 id=msg.id,
-                result={"status": "max_steps_reached", "steps": e.n_steps},
+                result={"status": Statuses.MAX_STEPS_REACHED, "steps": e.n_steps},
             )
         except RunCancelled:
             return JSONRPCSuccessResponse(
                 id=msg.id,
-                result={"status": "cancelled"},
+                result={"status": Statuses.CANCELLED},
             )
-        except BaseException:
-            logger.exception("Unexpected error:")
-            raise  # re-raise unknown error
         finally:
             self._cancel_event = None
 
@@ -201,7 +209,9 @@ class WireServer:
         if not self._soul_is_running:
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(code=-32000, message="No agent turn is in progress"),
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE, message="No agent turn is in progress"
+                ),
             )
 
         assert self._cancel_event is not None
