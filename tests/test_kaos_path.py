@@ -81,3 +81,10 @@ async def test_iterdir_and_glob_from_kaos_path(kaos_cwd):
 
     globbed = [entry.name async for entry in await base_dir.glob("*.txt")]
     assert set(globbed) == {"one.txt", "three.txt"}
+
+
+@pytest.mark.asyncio
+async def test_read_write_bytes(kaos_cwd):
+    file_path = KaosPath("data.bin")
+    await file_path.write_bytes(b"\x00\x01\xff")
+    assert await file_path.read_bytes() == b"\x00\x01\xff"
