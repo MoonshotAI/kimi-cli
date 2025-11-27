@@ -305,7 +305,8 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
 
     rows: list[RenderableType] = [table]
 
-    rows.append(Text(""))  # Empty line
+    if info_items:
+        rows.append(Text(""))  # empty line
     for item in info_items:
         rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
 
