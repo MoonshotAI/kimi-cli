@@ -133,6 +133,9 @@ class Context:
         This is almost equivalent to revert_to(0), but without relying on the assumption
         that the first checkpoint exists.
         File backend will be rotated.
+
+        Raises:
+            RuntimeError: When no available rotation path is found.
         """
 
         logger.debug("Clearing context")
