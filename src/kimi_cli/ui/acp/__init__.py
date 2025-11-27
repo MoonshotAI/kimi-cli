@@ -458,7 +458,7 @@ class ACP:
     def __init__(self, soul: Soul):
         self.soul = soul
 
-    async def run(self) -> bool:
+    async def run(self):
         """Run the ACP server."""
         logger.info("Starting ACP server on stdio")
 
@@ -476,5 +476,3 @@ class ACP:
 
         # Keep running - connection handles everything
         await asyncio.Event().wait()
-
-        return True

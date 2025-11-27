@@ -297,11 +297,13 @@ def kimi(
             case "acp":
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
-                succeeded = await instance.run_acp()
+                await instance.run_acp()
+                succeeded = True
             case "wire":
                 if command is not None:
                     logger.warning("Wire server ignores command argument")
-                succeeded = await instance.run_wire_stdio()
+                await instance.run_wire_stdio()
+                succeeded = True
 
         if succeeded:
             metadata = load_metadata()

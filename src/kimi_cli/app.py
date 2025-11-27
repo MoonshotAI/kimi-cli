@@ -215,19 +215,18 @@ class KimiCLI:
             )
             return await print_.run(command)
 
-    async def run_acp(self) -> bool:
+    async def run_acp(self) -> None:
         """Run the Kimi CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
 
         async with self._app_env():
             acp = ACP(self._soul)
-            return await acp.run()
+            await acp.run()
 
-    async def run_wire_stdio(self) -> bool:
+    async def run_wire_stdio(self) -> None:
         """Run the Kimi CLI instance as Wire server over stdio."""
         from kimi_cli.ui.wire import WireOverStdio
 
         async with self._app_env():
             server = WireOverStdio(self._soul)
             await server.serve()
-            return True
