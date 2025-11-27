@@ -189,12 +189,12 @@ class KimiCLI:
                     msg = await wire_ui.receive()
                     yield msg
             except asyncio.QueueShutDown:
+                pass
+            finally:
                 # stop consuming Wire messages
                 stop_ui_loop.set()
-                await asyncio.sleep(0.0)
-
-            # wait for the soul task to finish, or raise
-            await soul_task
+                # wait for the soul task to finish, or raise
+                await soul_task
 
     async def run_shell(self, command: str | None = None) -> bool:
         """Run the Kimi CLI instance with shell UI."""
