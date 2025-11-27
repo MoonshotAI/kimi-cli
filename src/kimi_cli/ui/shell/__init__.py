@@ -28,7 +28,7 @@ from kimi_cli.utils.term import ensure_new_line
 from kimi_cli.wire.message import StatusUpdate
 
 
-class ShellApp:
+class Shell:
     def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])

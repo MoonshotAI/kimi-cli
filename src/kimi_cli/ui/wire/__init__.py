@@ -30,7 +30,7 @@ from .jsonrpc import (
 )
 
 
-class WireServer:
+class WireOverStdio:
     def __init__(self, soul: Soul):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None

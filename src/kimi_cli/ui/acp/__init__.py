@@ -452,7 +452,7 @@ def _tool_result_to_acp_content(
     )
 
 
-class ACPServer:
+class ACP:
     """ACP server using the official acp library."""
 
     def __init__(self, soul: Soul):

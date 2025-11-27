@@ -287,9 +287,9 @@ def kimi(
         )
         match ui:
             case "shell":
-                succeeded = await instance.run_shell_mode(command)
+                succeeded = await instance.run_shell(command)
             case "print":
-                succeeded = await instance.run_print_mode(
+                succeeded = await instance.run_print(
                     input_format or "text",
                     output_format or "text",
                     command,
@@ -297,11 +297,11 @@ def kimi(
             case "acp":
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
-                succeeded = await instance.run_acp_server()
+                succeeded = await instance.run_acp()
             case "wire":
                 if command is not None:
                     logger.warning("Wire server ignores command argument")
-                succeeded = await instance.run_wire_server()
+                succeeded = await instance.run_wire_stdio()
 
         if succeeded:
             metadata = load_metadata()

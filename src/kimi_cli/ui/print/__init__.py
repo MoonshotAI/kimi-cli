@@ -19,7 +19,7 @@ from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.signals import install_sigint_handler
 
 
-class PrintApp:
+class Print:
     """
     An app implementation that prints the agent behavior to the console.
 
