@@ -101,7 +101,7 @@ class SimpleCompaction(Compaction):
             content.extend(
                 part for part in compacted_msg.content if not isinstance(part, ThinkPart)
             )
-        compacted_messages: list[Message] = [Message(role="assistant", content=content)]
+        compacted_messages: list[Message] = [Message(role="user", content=content)]
         compacted_messages.extend(to_preserve)
         return compacted_messages
 
