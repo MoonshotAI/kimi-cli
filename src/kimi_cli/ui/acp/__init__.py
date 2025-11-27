@@ -23,7 +23,7 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.message import (
     ApprovalRequest,
-    ApprovalResponse,
+    ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
@@ -218,6 +218,8 @@ class ACPAgent:
                     await self._send_tool_result(msg)
                 case SubagentEvent():
                     pass
+                case ApprovalRequestResolved():
+                    pass
                 case ApprovalRequest():
                     await self._handle_approval_request(msg)
 
@@ -345,13 +347,13 @@ class ACPAgent:
         assert self.run_state is not None
         if not self.session_id:
             logger.warning("No session ID, auto-rejecting approval request")
-            request.resolve(ApprovalResponse.REJECT)
+            request.resolve("reject")
             return
 
         state = self.run_state.tool_calls.get(request.tool_call_id, None)
         if state is None:
             logger.warning("Tool call not found: {id}", id=request.tool_call_id)
-            request.resolve(ApprovalResponse.REJECT)
+            request.resolve("reject")
             return
 
         # Create permission request with options
@@ -399,21 +401,21 @@ class ACPAgent:
                 # selected
                 if response.outcome.optionId == "approve":
                     logger.debug("Permission granted for: {action}", action=request.action)
-                    request.resolve(ApprovalResponse.APPROVE)
+                    request.resolve("approve")
                 elif response.outcome.optionId == "approve_for_session":
                     logger.debug("Permission granted for session: {action}", action=request.action)
-                    request.resolve(ApprovalResponse.APPROVE_FOR_SESSION)
+                    request.resolve("approve_for_session")
                 else:
                     logger.debug("Permission denied for: {action}", action=request.action)
-                    request.resolve(ApprovalResponse.REJECT)
+                    request.resolve("reject")
             else:
                 # cancelled
                 logger.debug("Permission request cancelled for: {action}", action=request.action)
-                request.resolve(ApprovalResponse.REJECT)
+                request.resolve("reject")
         except Exception:
             logger.exception("Error handling approval request:")
             # On error, reject the request
-            request.resolve(ApprovalResponse.REJECT)
+            request.resolve("reject")
 
 
 def _tool_result_to_acp_content(

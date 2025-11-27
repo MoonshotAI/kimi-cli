@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Literal, cast, get_args
 
 import acp  # pyright: ignore[reportMissingTypeStubs]
 from kosong.chat_provider import ChatProviderError
@@ -14,11 +14,7 @@ from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancel
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import (
-    ApprovalRequest,
-    ApprovalResponse,
-    Event,
-)
+from kimi_cli.wire.message import ApprovalRequest, Event
 from kimi_cli.wire.serde import serialize_wire_message
 
 from .jsonrpc import (
@@ -37,7 +33,7 @@ class _SoulRunner:
         self,
         soul: Soul,
         send_event: Callable[[Event], Awaitable[None]],
-        request_approval: Callable[[ApprovalRequest], Awaitable[ApprovalResponse]],
+        request_approval: Callable[[ApprovalRequest], Awaitable[ApprovalRequest.Response]],
     ):
         self._soul = soul
         self._send_event = send_event
@@ -207,7 +203,7 @@ class WireServer:
 
         try:
             if isinstance(message, JSONRPCErrorResponse):
-                pending.resolve(ApprovalResponse.REJECT)
+                pending.resolve("reject")
             else:
                 response = self._parse_approval_response(message.result)
                 pending.resolve(response)
@@ -255,7 +251,7 @@ class WireServer:
     async def _send_event(self, event: Event) -> None:
         await self._send_notification("event", serialize_wire_message(event))
 
-    async def _request_approval(self, request: ApprovalRequest) -> ApprovalResponse:
+    async def _request_approval(self, request: ApprovalRequest) -> ApprovalRequest.Response:
         self._pending_requests[request.id] = request
         await self._send_request(request.id, "request", serialize_wire_message(request))
         try:
@@ -263,15 +259,15 @@ class WireServer:
         finally:
             self._pending_requests.pop(request.id, None)
 
-    def _parse_approval_response(self, result: dict[str, Any]) -> ApprovalResponse:
+    def _parse_approval_response(self, result: dict[str, Any]) -> ApprovalRequest.Response:
         value = result.get("response")
         try:
-            if isinstance(value, ApprovalResponse):
-                return value
-            return ApprovalResponse(str(value))
+            if value in get_args(ApprovalRequest.Response):
+                return cast(ApprovalRequest.Response, value)
+            return "reject"
         except ValueError:
             logger.warning("Unknown approval response: {value}", value=value)
-            return ApprovalResponse.REJECT
+            return "reject"
 
     async def _write_loop(self) -> None:
         assert self._writer is not None
@@ -326,7 +322,7 @@ class WireServer:
 
         for request in self._pending_requests.values():
             if not request.resolved:
-                request.resolve(ApprovalResponse.REJECT)
+                request.resolve("reject")
         self._pending_requests.clear()
 
         if self._writer is not None:

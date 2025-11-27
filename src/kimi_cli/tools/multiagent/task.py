@@ -14,7 +14,12 @@ from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import ApprovalRequest, SubagentEvent, WireMessage
+from kimi_cli.wire.message import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
+    SubagentEvent,
+    WireMessage,
+)
 
 # Maximum continuation attempts for task summary
 MAX_CONTINUE_ATTEMPTS = 1
@@ -102,7 +107,8 @@ class Task(CallableTool2[Params]):
         current_tool_call_id = current_tool_call.id
 
         def _super_wire_send(msg: WireMessage) -> None:
-            if isinstance(msg, ApprovalRequest):
+            if isinstance(msg, ApprovalRequest | ApprovalRequestResolved):
+                # ApprovalRequest and ApprovalRequestResolved should be root level Wire messages
                 super_wire.soul_side.send(msg)
                 return
 

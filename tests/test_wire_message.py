@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from kimi_cli.wire.message import (
     ApprovalRequest,
+    ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
@@ -157,6 +158,21 @@ async def test_wire_message_serde():
         }
     )
     _test_serde(msg)
+
+    msg = ApprovalRequestResolved(
+        request_id="request_123",
+        response="approve",
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "ApprovalRequestResolved",
+            "payload": {"request_id": "request_123", "response": "approve"},
+        }
+    )
+    _test_serde(msg)
+
+    with pytest.raises(ValueError):
+        ApprovalRequestResolved(request_id="request_123", response="invalid_response")  # type: ignore
 
     msg = ApprovalRequest(
         id="request_123",
