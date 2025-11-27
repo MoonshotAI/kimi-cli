@@ -116,7 +116,7 @@ class ApprovalRequest(BaseModel):
 
     type Response = Literal["approve", "approve_for_session", "reject"]
 
-    # Note that the above fields is just a copy of `kimi_cli.soul.approval.Request`, but
+    # Note that the above fields are just a copy of `kimi_cli.soul.approval.Request`, but
     # we cannot directly use that class here because we want to avoid dependency from Wire
     # to Soul.
 
