@@ -73,7 +73,7 @@ class SimpleCompaction(Compaction):
         # Create input message for compaction
         compact_message = Message(role="user", content=compact_prompt)
 
-        # Call generate to get the compacted context
+        # Call kosong.step to get the compacted context
         # TODO: set max completion tokens
         logger.debug("Compacting context...")
         result = await kosong.step(
