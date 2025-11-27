@@ -193,7 +193,6 @@ class ShellApp:
             if isinstance(self.soul, KimiSoul) and thinking is not None:
                 self.soul.set_thinking(thinking)
 
-            # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
                 user_input,

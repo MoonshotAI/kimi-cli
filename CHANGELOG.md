@@ -22,6 +22,7 @@ Only write entries that are worth mentioning to users.
 - UI: Print user input again with a panel in shell mode
 - Lib: Add `Session.dir` property to get the session directory path
 - UI: Improve "Approve for session" experience when there are multiple parallel subagents
+- Wire: Reimplement Wire server mode (which is enabled with `--wire` option)
 
 ## [0.58] - 2025-11-21
 

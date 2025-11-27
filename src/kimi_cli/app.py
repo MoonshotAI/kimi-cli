@@ -225,4 +225,5 @@ class KimiCLI:
 
         async with self._app_env():
             server = WireServer(self._soul)
-            return await server.run()
+            await server.serve()
+            return True
