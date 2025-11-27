@@ -138,7 +138,7 @@ def meta_command(
 @meta_command(aliases=["quit"])
 def exit(app: Shell, args: list[str]):
     """Exit the application"""
-    # should be handled by `ShellApp`
+    # should be handled by `Shell`
     raise NotImplementedError
 
 
