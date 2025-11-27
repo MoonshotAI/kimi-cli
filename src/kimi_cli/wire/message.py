@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
-from enum import Enum
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, field_serializer, field_validator
 
 from kimi_cli.utils.typing import flatten_union
 
@@ -77,6 +75,7 @@ class SubagentEvent(BaseModel):
     """The ID of the task tool call associated with this subagent."""
     event: Event
     """The event from the subagent."""
+    # TODO: maybe restrict the event types? to exclude approval request, etc.
 
     @field_serializer("event", when_used="json")
     def _serialize_event(self, event: Event) -> dict[str, Any]:
@@ -109,17 +108,23 @@ class ApprovalRequest(BaseModel):
     A request for user approval before proceeding with an action.
     """
 
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    id: str
     tool_call_id: str
     sender: str
     action: str
     description: str
 
+    type Response = Literal["approve", "approve_for_session", "reject"]
+
+    # Note that the above fields is just a copy of `kimi_cli.soul.approval.Request`, but
+    # we cannot directly use that class here because we want to avoid dependency from Wire
+    # to Soul.
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future = asyncio.Future[ApprovalResponse]()
+        self._future = asyncio.Future[ApprovalRequest.Response]()
 
-    async def wait(self) -> ApprovalResponse:
+    async def wait(self) -> Response:
         """
         Wait for the request to be resolved or cancelled.
 
@@ -128,7 +133,7 @@ class ApprovalRequest(BaseModel):
         """
         return await self._future
 
-    def resolve(self, response: ApprovalResponse) -> None:
+    def resolve(self, response: ApprovalRequest.Response) -> None:
         """
         Resolve the approval request with the given response.
         This will cause the `wait()` method to return the response.
@@ -141,12 +146,6 @@ class ApprovalRequest(BaseModel):
         return self._future.done()
 
 
-class ApprovalResponse(Enum):
-    APPROVE = "approve"
-    APPROVE_FOR_SESSION = "approve_for_session"
-    REJECT = "reject"
-
-
 class ApprovalRequestResolved(BaseModel):
     """
     Indicates that an approval request has been resolved.
@@ -154,21 +153,8 @@ class ApprovalRequestResolved(BaseModel):
 
     request_id: str
     """The ID of the resolved approval request."""
-    response: ApprovalResponse
+    response: ApprovalRequest.Response
     """The response to the approval request."""
-
-    @field_serializer("response")
-    def _serialize_response(self, response: ApprovalResponse) -> str:
-        return response.value
-
-    @field_validator("response", mode="before")
-    @classmethod
-    def _validate_response(cls, value: Any) -> ApprovalResponse:
-        if isinstance(value, ApprovalResponse):
-            return value
-        if isinstance(value, str):
-            return ApprovalResponse(value)
-        raise ValueError("Invalid ApprovalResponse value")
 
 
 type Event = (

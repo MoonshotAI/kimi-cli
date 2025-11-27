@@ -37,6 +37,8 @@ from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
@@ -168,7 +170,22 @@ class KimiSoul:
         async def _pipe_approval_to_wire():
             while True:
                 request = await self._approval.fetch_request()
-                wire_send(request)
+                # Here we decouple the wire approval request and the soul approval request.
+                wire_request = ApprovalRequest(
+                    id=request.id,
+                    action=request.action,
+                    description=request.description,
+                    sender=request.sender,
+                    tool_call_id=request.tool_call_id,
+                )
+                wire_send(wire_request)
+                # We wait for the request to be resolved over the wire, which means that,
+                # for each soul, we will have only one approval request waiting on the wire
+                # at a time. However, be aware that subagents (which have their own souls) may
+                # also send approval requests to the root wire.
+                resp = await wire_request.wait()
+                self._approval.resolve_request(request.id, resp)
+                wire_send(ApprovalRequestResolved(request_id=request.id, response=resp))
 
         step_no = 0
         while True:
