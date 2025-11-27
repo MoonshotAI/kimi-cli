@@ -21,6 +21,7 @@ Only write entries that are worth mentioning to users.
 - Core: Introduce `TurnBegin` Wire message to mark the beginning of each agent turn
 - UI: Print user input again with a panel in shell mode
 - Lib: Add `Session.dir` property to get the session directory path
+- UI: Improve "Approve for session" experience when there are multiple parallel subagents
 
 ## [0.58] - 2025-11-21
 
