@@ -136,7 +136,7 @@ class KimiCLI:
         return self._runtime.session
 
     @contextlib.asynccontextmanager
-    async def _app_env(self) -> AsyncGenerator[None]:
+    async def _env(self) -> AsyncGenerator[None]:
         original_cwd = KaosPath.cwd()
         await kaos.chdir(self._runtime.session.work_dir)
         try:
@@ -171,27 +171,30 @@ class KimiCLI:
             MaxStepsReached: When the maximum number of steps is reached.
             RunCancelled: When the run is cancelled by the cancel event.
         """
-        wire_future = asyncio.Future[WireUISide]()
-        stop_ui_loop = asyncio.Event()
+        async with self._env():
+            wire_future = asyncio.Future[WireUISide]()
+            stop_ui_loop = asyncio.Event()
 
-        async def _ui_loop_fn(wire: Wire) -> None:
-            wire_future.set_result(wire.ui_side(merge=merge_wire_messages))
-            await stop_ui_loop.wait()
+            async def _ui_loop_fn(wire: Wire) -> None:
+                wire_future.set_result(wire.ui_side(merge=merge_wire_messages))
+                await stop_ui_loop.wait()
 
-        soul_task = asyncio.create_task(run_soul(self.soul, user_input, _ui_loop_fn, cancel_event))
+            soul_task = asyncio.create_task(
+                run_soul(self.soul, user_input, _ui_loop_fn, cancel_event)
+            )
 
-        try:
-            wire_ui = await wire_future
-            while True:
-                msg = await wire_ui.receive()
-                yield msg
-        except asyncio.QueueShutDown:
-            # stop consuming Wire messages
-            stop_ui_loop.set()
-            await asyncio.sleep(0.0)
+            try:
+                wire_ui = await wire_future
+                while True:
+                    msg = await wire_ui.receive()
+                    yield msg
+            except asyncio.QueueShutDown:
+                # stop consuming Wire messages
+                stop_ui_loop.set()
+                await asyncio.sleep(0.0)
 
-        # wait for the soul task to finish, or raise
-        await soul_task
+            # wait for the soul task to finish, or raise
+            await soul_task
 
     async def run_shell(self, command: str | None = None) -> bool:
         """Run the Kimi CLI instance with shell UI."""
@@ -243,7 +246,7 @@ class KimiCLI:
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )
-        async with self._app_env():
+        async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
             return await shell.run(command)
 
@@ -256,7 +259,7 @@ class KimiCLI:
         """Run the Kimi CLI instance with print UI."""
         from kimi_cli.ui.print import Print
 
-        async with self._app_env():
+        async with self._env():
             print_ = Print(
                 self._soul,
                 input_format,
@@ -269,7 +272,7 @@ class KimiCLI:
         """Run the Kimi CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
 
-        async with self._app_env():
+        async with self._env():
             acp = ACP(self._soul)
             await acp.run()
 
@@ -277,6 +280,6 @@ class KimiCLI:
         """Run the Kimi CLI instance as Wire server over stdio."""
         from kimi_cli.ui.wire import WireOverStdio
 
-        async with self._app_env():
+        async with self._env():
             server = WireOverStdio(self._soul)
             await server.serve()
