@@ -4,8 +4,9 @@ from collections.abc import Sequence
 from string import Template
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from kosong import generate
+import kosong
 from kosong.message import ContentPart, Message, TextPart
+from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM
@@ -75,10 +76,10 @@ class SimpleCompaction(Compaction):
         # Call generate to get the compacted context
         # TODO: set max completion tokens
         logger.debug("Compacting context...")
-        result = await generate(
+        result = await kosong.step(
             chat_provider=llm.chat_provider,
             system_prompt="You are a helpful assistant that compacts conversation context.",
-            tools=[],
+            toolset=EmptyToolset(),
             history=[compact_message],
         )
         if result.usage:
