@@ -15,6 +15,7 @@ from kosong.chat_provider import (
     APIStatusError,
     APITimeoutError,
     ThinkingEffort,
+    TokenUsage,
 )
 from kosong.message import ContentPart, Message
 from kosong.tooling import ToolResult
@@ -262,7 +263,8 @@ class KimiSoul:
         logger.debug("Got step result: {result}", result=result)
         if result.usage is not None:
             # mark the token count for the context before the step
-            await self._context.update_token_count(result.usage.input)
+            input_tokens, _ = self._safe_usage(result.usage)
+            await self._context.update_token_count(input_tokens)
             wire_send(StatusUpdate(context_usage=self.status.context_usage))
 
         # wait for all tool results (may be interrupted)
@@ -320,7 +322,8 @@ class KimiSoul:
 
         await self._context.append_message(result.message)
         if result.usage is not None:
-            await self._context.update_token_count(result.usage.total)
+            _, total_tokens = self._safe_usage(result.usage)
+            await self._context.update_token_count(total_tokens)
 
         logger.debug(
             "Appending tool messages to context: {tool_messages}", tool_messages=tool_messages
@@ -375,6 +378,17 @@ class KimiSoul:
             if retry_state.next_action is not None
             else "unknown",
         )
+
+    @staticmethod
+    def _safe_usage(usage: TokenUsage) -> tuple[int, int]:
+        """Return (input_tokens, total_tokens) tolerating missing usage fields."""
+        input_tokens = (
+            (usage.input_other or 0)
+            + (usage.input_cache_read or 0)
+            + (usage.input_cache_creation or 0)
+        )
+        total_tokens = input_tokens + (usage.output or 0)
+        return input_tokens, total_tokens
 
 
 class BackToTheFuture(Exception):
