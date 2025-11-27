@@ -15,7 +15,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.multiagent.create import Params as CreateSubagentParams
-from kimi_cli.ui.shell import ShellApp
+from kimi_cli.ui.shell import Shell
 from kimi_cli.ui.shell.metacmd import init as init_meta_command
 
 
@@ -37,7 +37,7 @@ async def test_init_refreshes_runtime_agents_md(runtime, temp_work_dir):
     agents_md_path = temp_work_dir / "AGENTS.md"
     await agents_md_path.write_text(generated_agents_md)
 
-    app = ShellApp(soul)
+    app = Shell(soul)
     assert isinstance(app.soul, KimiSoul)
 
     await cast(Awaitable[None], init_meta_command(app, []))
@@ -74,7 +74,7 @@ async def test_init_updates_tool_runtime_and_subagents(runtime, temp_work_dir):
         runtime=runtime_with_stale_agents,
     )
     soul = KimiSoul(agent, context=context)
-    app = ShellApp(soul)
+    app = Shell(soul)
     assert isinstance(app.soul, KimiSoul)
     kimi_soul = app.soul
 

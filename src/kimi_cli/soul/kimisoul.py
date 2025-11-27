@@ -113,10 +113,6 @@ class KimiSoul:
         return StatusSnapshot(context_usage=self._context_usage)
 
     @property
-    def runtime(self) -> Runtime:
-        return self._runtime
-
-    @property
     def context(self) -> Context:
         return self._context
 
