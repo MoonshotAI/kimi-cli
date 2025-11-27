@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
+from kosong.message import ContentPart
 from pydantic import SecretStr
 
 import kaos
@@ -16,12 +18,14 @@ from kimi_cli.config import LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import LLMNotSet, LLMNotSupported
+from kimi_cli.soul import LLMNotSet, LLMNotSupported, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.path import shorten_home
+from kimi_cli.wire import Wire, WireUISide
+from kimi_cli.wire.message import WireMessage
 
 
 def enable_logging(debug: bool = False) -> None:
@@ -142,6 +146,52 @@ class KimiCLI:
                 yield
         finally:
             await kaos.chdir(original_cwd)
+
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        cancel_event: asyncio.Event,
+        merge_wire_messages: bool = False,
+    ) -> AsyncGenerator[WireMessage]:
+        """
+        Run the Kimi CLI instance without any UI and yield Wire messages directly.
+
+        Args:
+            user_input (str | list[ContentPart]): The user input to the agent.
+            cancel_event (asyncio.Event): An event to cancel the run.
+            merge_wire_messages (bool): Whether to merge Wire messages as much as possible.
+
+        Yields:
+            WireMessage: The Wire messages from the `KimiSoul`.
+
+        Raises:
+            LLMNotSet: When the LLM is not set.
+            LLMNotSupported: When the LLM does not have required capabilities.
+            ChatProviderError: When the LLM provider returns an error.
+            MaxStepsReached: When the maximum number of steps is reached.
+            RunCancelled: When the run is cancelled by the cancel event.
+        """
+        wire_future = asyncio.Future[WireUISide]()
+        stop_ui_loop = asyncio.Event()
+
+        async def _ui_loop_fn(wire: Wire) -> None:
+            wire_future.set_result(wire.ui_side(merge=merge_wire_messages))
+            await stop_ui_loop.wait()
+
+        soul_task = asyncio.create_task(run_soul(self.soul, user_input, _ui_loop_fn, cancel_event))
+
+        try:
+            wire_ui = await wire_future
+            while True:
+                msg = await wire_ui.receive()
+                yield msg
+        except asyncio.QueueShutDown:
+            # stop consuming Wire messages
+            stop_ui_loop.set()
+            await asyncio.sleep(0.0)
+
+        # wait for the soul task to finish, or raise
+        await soul_task
 
     async def run_shell(self, command: str | None = None) -> bool:
         """Run the Kimi CLI instance with shell UI."""
