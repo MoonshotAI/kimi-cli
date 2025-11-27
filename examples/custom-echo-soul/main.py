@@ -3,12 +3,12 @@ import asyncio
 from kosong.message import ContentPart, TextPart
 
 from kimi_cli.llm import ALL_MODEL_CAPABILITIES, ModelCapability
-from kimi_cli.soul import Soul, StatusSnapshot, wire_send
+from kimi_cli.soul import StatusSnapshot, wire_send
 from kimi_cli.ui.shell import Shell
 from kimi_cli.wire.message import StepBegin
 
 
-class EchoSoul(Soul):
+class EchoSoul:
     def __init__(self) -> None:
         pass
 
