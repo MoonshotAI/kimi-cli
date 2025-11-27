@@ -33,11 +33,7 @@ class WorkDirMeta(BaseModel):
     def sessions_dir(self) -> Path:
         """The directory to store sessions for this work directory."""
         path_md5 = md5(self.path.encode(encoding="utf-8")).hexdigest()
-        if (kaos_name := get_current_kaos().name) == local_kaos.name:
-            dir_basename = path_md5
-        else:
-            dir_basename = f"{kaos_name}_{path_md5}"
-
+        dir_basename = path_md5 if self.kaos == local_kaos.name else f"{self.kaos}_{path_md5}"
         session_dir = get_share_dir() / "sessions" / dir_basename
         session_dir.mkdir(parents=True, exist_ok=True)
         return session_dir
