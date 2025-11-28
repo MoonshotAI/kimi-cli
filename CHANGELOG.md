@@ -25,7 +25,8 @@ Only write entries that are worth mentioning to users.
 - Wire: Reimplement Wire server mode (which is enabled with `--wire` option)
 - Lib: Rename `ShellApp` to `Shell`, `PrintApp` to `Print`, `ACPServer` to `ACP` and `WireServer` to `WireOverStdio` for better consistency
 - Lib: Rename `KimiCLI.run_shell_mode` to `run_shell`, `run_print_mode` to `run_print`, `run_acp_server` to `run_acp`, and `run_wire_server` to `run_wire_stdio` for better consistency
-- Lib: Add `KimiCLI.run` method to run a turn given user input and yield Wire messages
+- Lib: Add `KimiCLI.run` method to run a turn with given user input and yield Wire messages
+- Print: Fix stream-json print mode not flushing output properly
 
 ## [0.58] - 2025-11-21
 
