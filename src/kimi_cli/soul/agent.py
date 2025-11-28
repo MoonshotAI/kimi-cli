@@ -35,7 +35,7 @@ class BuiltinSystemPromptArgs:
     """The absolute path of current working directory."""
     KIMI_WORK_DIR_LS: str
     """The directory listing of current working directory."""
-    KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
+    KIMI_AGENTS_MD: str
     """The content of AGENTS.md."""
 
 
