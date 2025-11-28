@@ -82,12 +82,12 @@ class JsonPrinter(Printer):
             content=self._content_buffer,
             tool_calls=tool_calls or None,
         )
-        print(message.model_dump_json(exclude_none=True))
+        print(message.model_dump_json(exclude_none=True), flush=True)
 
         for result in tool_results:
             # FIXME: this assumes the way how the soul convert `ToolResult` to `Message`
             message = tool_result_to_message(result)
-            print(message.model_dump_json(exclude_none=True))
+            print(message.model_dump_json(exclude_none=True), flush=True)
 
         self._content_buffer.clear()
         self._tool_call_buffer.clear()

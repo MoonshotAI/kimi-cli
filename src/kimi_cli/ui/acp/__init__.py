@@ -452,13 +452,13 @@ def _tool_result_to_acp_content(
     )
 
 
-class ACPServer:
+class ACP:
     """ACP server using the official acp library."""
 
     def __init__(self, soul: Soul):
         self.soul = soul
 
-    async def run(self) -> bool:
+    async def run(self):
         """Run the ACP server."""
         logger.info("Starting ACP server on stdio")
 
@@ -476,5 +476,3 @@ class ACPServer:
 
         # Keep running - connection handles everything
         await asyncio.Event().wait()
-
-        return True

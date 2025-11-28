@@ -28,7 +28,7 @@ from kimi_cli.utils.term import ensure_new_line
 from kimi_cli.wire.message import StatusUpdate
 
 
-class ShellApp:
+class Shell:
     def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
@@ -193,7 +193,6 @@ class ShellApp:
             if isinstance(self.soul, KimiSoul) and thinking is not None:
                 self.soul.set_thinking(thinking)
 
-            # Use lambda to pass cancel_event via closure
             await run_soul(
                 self.soul,
                 user_input,
@@ -306,7 +305,8 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
 
     rows: list[RenderableType] = [table]
 
-    rows.append(Text(""))  # Empty line
+    if info_items:
+        rows.append(Text(""))  # empty line
     for item in info_items:
         rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
 

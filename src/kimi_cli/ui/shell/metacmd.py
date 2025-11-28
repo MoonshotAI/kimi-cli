@@ -21,9 +21,9 @@ from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.logging import logger
 
 if TYPE_CHECKING:
-    from kimi_cli.ui.shell import ShellApp
+    from kimi_cli.ui.shell import Shell
 
-type MetaCmdFunc = Callable[["ShellApp", list[str]], None | Awaitable[None]]
+type MetaCmdFunc = Callable[[Shell, list[str]], None | Awaitable[None]]
 """
 A function that runs as a meta command.
 
@@ -136,9 +136,9 @@ def meta_command(
 
 
 @meta_command(aliases=["quit"])
-def exit(app: ShellApp, args: list[str]):
+def exit(app: Shell, args: list[str]):
     """Exit the application"""
-    # should be handled by `ShellApp`
+    # should be handled by `Shell`
     raise NotImplementedError
 
 
@@ -157,7 +157,7 @@ Meta commands are also available:
 
 
 @meta_command(aliases=["h", "?"])
-def help(app: ShellApp, args: list[str]):
+def help(app: Shell, args: list[str]):
     """Show help information"""
     console.print(
         Panel(
@@ -176,7 +176,7 @@ def help(app: ShellApp, args: list[str]):
 
 
 @meta_command
-def version(app: ShellApp, args: list[str]):
+def version(app: Shell, args: list[str]):
     """Show version information"""
     from kimi_cli.constant import VERSION
 
@@ -184,7 +184,7 @@ def version(app: ShellApp, args: list[str]):
 
 
 @meta_command(name="release-notes")
-def release_notes(app: ShellApp, args: list[str]):
+def release_notes(app: Shell, args: list[str]):
     """Show release notes"""
     text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
@@ -192,7 +192,7 @@ def release_notes(app: ShellApp, args: list[str]):
 
 
 @meta_command
-def feedback(app: ShellApp, args: list[str]):
+def feedback(app: Shell, args: list[str]):
     """Submit feedback to make Kimi CLI better"""
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
@@ -202,7 +202,7 @@ def feedback(app: ShellApp, args: list[str]):
 
 
 @meta_command(kimi_soul_only=True)
-async def init(app: ShellApp, args: list[str]):
+async def init(app: Shell, args: list[str]):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -233,7 +233,7 @@ async def init(app: ShellApp, args: list[str]):
 
 
 @meta_command(aliases=["reset"], kimi_soul_only=True)
-async def clear(app: ShellApp, args: list[str]):
+async def clear(app: Shell, args: list[str]):
     """Clear the context"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -245,7 +245,7 @@ async def clear(app: ShellApp, args: list[str]):
 
 
 @meta_command(kimi_soul_only=True)
-async def compact(app: ShellApp, args: list[str]):
+async def compact(app: Shell, args: list[str]):
     """Compact the context"""
     assert isinstance(app.soul, KimiSoul)
 
@@ -260,7 +260,7 @@ async def compact(app: ShellApp, args: list[str]):
 
 
 @meta_command(kimi_soul_only=True)
-async def yolo(app: ShellApp, args: list[str]):
+async def yolo(app: Shell, args: list[str]):
     """Enable YOLO mode (auto approve all actions)"""
     assert isinstance(app.soul, KimiSoul)
 

@@ -154,6 +154,10 @@ class KaosPath:
         """Return all paths matching the pattern under this directory."""
         return await kaos.glob(self, pattern, case_sensitive=case_sensitive)
 
+    async def read_bytes(self) -> bytes:
+        """Read the entire file contents as bytes."""
+        return await kaos.readbytes(self)
+
     async def read_text(
         self,
         *,
@@ -171,6 +175,10 @@ class KaosPath:
     ) -> AsyncGenerator[str]:
         """Iterate over the lines of the file."""
         return await kaos.readlines(self, encoding=encoding, errors=errors)
+
+    async def write_bytes(self, data: bytes) -> int:
+        """Write bytes data to the file."""
+        return await kaos.writebytes(self, data)
 
     async def write_text(
         self,

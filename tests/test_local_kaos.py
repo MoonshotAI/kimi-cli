@@ -91,3 +91,11 @@ async def test_mkdir_with_parents(local_kaos):
 
     await local.mkdir(nested_dir, parents=True)
     assert nested_dir.is_dir()
+
+
+@pytest.mark.asyncio
+async def test_read_write_bytes(local_kaos):
+    local, tmp_path = local_kaos
+    file_path = KaosPath.unsafe_from_local_path(tmp_path / "data.bin")
+    await local.writebytes(file_path, b"\x00\x01\xff")
+    assert await local.readbytes(file_path) == b"\x00\x01\xff"

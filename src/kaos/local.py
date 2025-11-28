@@ -60,6 +60,11 @@ class LocalKaos:
         async for entry in async_local_path.glob(pattern, case_sensitive=case_sensitive):
             yield KaosPath.unsafe_from_local_path(entry)
 
+    async def readbytes(self, path: StrOrKaosPath) -> bytes:
+        local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
+        async with aiofiles.open(local_path, mode="rb") as f:
+            return await f.read()
+
     async def readtext(
         self,
         path: str | KaosPath,
@@ -82,6 +87,11 @@ class LocalKaos:
         async with aiofiles.open(local_path, encoding=encoding, errors=errors) as f:
             async for line in f:
                 yield line
+
+    async def writebytes(self, path: StrOrKaosPath, data: bytes) -> int:
+        local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
+        async with aiofiles.open(local_path, mode="wb") as f:
+            return await f.write(data)
 
     async def writetext(
         self,

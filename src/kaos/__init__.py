@@ -50,6 +50,10 @@ class Kaos(Protocol):
         """Search for files/directories matching a pattern in the given path."""
         ...
 
+    async def readbytes(self, path: StrOrKaosPath) -> bytes:
+        """Read the entire file contents as bytes."""
+        ...
+
     async def readtext(
         self,
         path: StrOrKaosPath,
@@ -68,6 +72,10 @@ class Kaos(Protocol):
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> AsyncGenerator[str]:
         """Iterate over the lines of the file."""
+        ...
+
+    async def writebytes(self, path: StrOrKaosPath, data: bytes) -> int:
+        """Write bytes data to the file."""
         ...
 
     async def writetext(
@@ -140,6 +148,10 @@ async def glob(
     return get_current_kaos().glob(path, pattern, case_sensitive=case_sensitive)
 
 
+async def readbytes(path: StrOrKaosPath) -> bytes:
+    return await get_current_kaos().readbytes(path)
+
+
 async def readtext(
     path: StrOrKaosPath,
     *,
@@ -156,6 +168,10 @@ async def readlines(
     errors: Literal["strict", "ignore", "replace"] = "strict",
 ) -> AsyncGenerator[str]:
     return get_current_kaos().readlines(path, encoding=encoding, errors=errors)
+
+
+async def writebytes(path: StrOrKaosPath, data: bytes) -> int:
+    return await get_current_kaos().writebytes(path, data)
 
 
 async def writetext(
