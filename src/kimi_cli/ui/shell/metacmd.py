@@ -268,6 +268,157 @@ async def yolo(app: ShellApp, args: list[str]):
     console.print("[green]✓[/green] Life is short, use YOLO!")
 
 
+@meta_command
+async def usages(app: ShellApp, args: list[str]):
+    """Display usage and quota information in TUI"""
+    from rich.panel import Panel
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+    from rich.table import Table
+
+    from kimi_cli.config import load_config
+    from kimi_cli.utils.aiohttp import new_client_session
+
+    config = load_config()
+
+    # Get the current provider (to extract API key)
+    if not config.default_model or config.default_model not in config.models:
+        console.print("[red]No model configured. Please run /setup first.[/red]")
+        return
+
+    model = config.models[config.default_model]
+    if model.provider not in config.providers:
+        console.print("[red]Provider not found. Please run /setup first.[/red]")
+        return
+
+    provider = config.providers[model.provider]
+    api_key = provider.api_key.get_secret_value()
+
+    if not api_key:
+        console.print("[red]API key not configured. Please run /setup first.[/red]")
+        return
+
+    # Extract base URL and construct usages endpoint
+    base_url = provider.base_url
+    if not base_url:
+        console.print("[red]Base URL not configured. Please run /setup first.[/red]")
+        return
+
+    # Use coding API endpoint for usages
+    usages_url = "https://api.kimi.com/coding/v1/usages"
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        progress.add_task(description="Fetching usage data...", total=None)
+
+        try:
+            async with (
+                new_client_session() as session,
+                session.get(
+                    usages_url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                    },
+                    raise_for_status=True,
+                ) as response,
+            ):
+                data = await response.json()
+        except Exception as e:
+            console.print(f"[red]Failed to fetch usage data: {e}[/red]")
+            return
+
+    # Parse usage data
+    usage_info = data.get("usage", {})
+    limits_info = data.get("limits", [])
+
+    # Create single comprehensive table with balanced layout
+    # Category: 13 chars (for "Total Quota", "Rate Limit")
+    # Progress: 44 chars (bar_width=42 + percentage ~8)
+    # Details: 16 chars (for numbers like "2,486/7,168")
+    table = Table(
+        show_header=True,
+        header_style="bold cyan",
+        padding=(0, 1),
+        show_lines=False,
+    )
+    table.add_column("Category", style="cyan", no_wrap=True, width=13)
+    table.add_column("Progress", style="white", width=44)
+    table.add_column("Details", justify="right", style="white", width=16)
+
+    # Add Usage Summary section
+    limit = int(usage_info.get("limit", 0))
+    used = int(usage_info.get("used", 0))
+    percentage = (used / limit * 100) if limit > 0 else 0
+
+    # Color code the progress bar
+    bar_color = "green"
+    if percentage > 80:
+        bar_color = "red"
+    elif percentage > 60:
+        bar_color = "yellow"
+
+    # Create progress bar for usage with percentage
+    # Bar width: 42 chars for better visual balance
+    usage_progress = Progress(
+        TextColumn(""),
+        BarColumn(bar_width=42, complete_style=bar_color, finished_style=bar_color),
+        TaskProgressColumn(),
+        expand=True,
+    )
+    usage_progress.add_task("", total=limit, completed=used)
+
+    table.add_row("Total Quota", usage_progress, f"{used:,}/{limit:,}")
+
+    # Add Rate Limits section if available
+    if limits_info:
+        # Show "Rate Limit" label only for the first limit
+        show_label = True
+
+        for limit in limits_info:
+            detail = limit.get("detail", {})
+            limit_val = int(detail.get("limit", 0))
+            used_val = int(detail.get("used", 0))
+            pct = (used_val / limit_val * 100) if limit_val > 0 else 0
+
+            # Color code the progress bar
+            bar_color = "green"
+            if pct > 80:
+                bar_color = "red"
+            elif pct > 60:
+                bar_color = "yellow"
+
+            # Create progress bar for rate limit
+            # Bar width: 42 chars for better visual balance
+            rate_progress = Progress(
+                TextColumn(""),
+                BarColumn(bar_width=42, complete_style=bar_color, finished_style=bar_color),
+                TaskProgressColumn(),
+                expand=True,
+            )
+            rate_progress.add_task("", total=limit_val, completed=used_val)
+
+            # Add row with label only for the first rate limit
+            label = "Rate Limit" if show_label else ""
+            table.add_row(label, rate_progress, f"{used_val:,}/{limit_val:,}")
+            show_label = False
+
+    # Render with Panel - use custom width for balanced display
+    # Table width: 13 + 44 + 17 + borders(4) = ~78
+    # Panel width: 78 + 2 = 80 (matches terminal width)
+    console.print(
+        Panel(
+            table,
+            border_style="cyan",
+            padding=(0, 0),
+            width=80,
+            title="API Usage Info",
+            title_align="center",
+        )
+    )
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401
     setup,  # noqa: F401
