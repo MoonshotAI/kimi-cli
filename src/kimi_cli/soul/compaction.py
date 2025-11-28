@@ -5,7 +5,7 @@ from string import Template
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import kosong
-from kosong.message import ContentPart, Message, TextPart
+from kosong.message import ContentPart, Message, TextPart, ThinkPart
 from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
@@ -93,12 +93,15 @@ class SimpleCompaction(Compaction):
             system("Previous context has been compacted. Here is the compaction output:")
         ]
         compacted_msg = result.message
-        content.extend(
-            [TextPart(text=compacted_msg.content)]
-            if isinstance(compacted_msg.content, str)
-            else compacted_msg.content
-        )
-        compacted_messages: list[Message] = [Message(role="assistant", content=content)]
+
+        if isinstance(compacted_msg.content, str):
+            content.append(TextPart(text=compacted_msg.content))
+        else:
+            # drop thinking parts if any
+            content.extend(
+                part for part in compacted_msg.content if not isinstance(part, ThinkPart)
+            )
+        compacted_messages: list[Message] = [Message(role="user", content=content)]
         compacted_messages.extend(to_preserve)
         return compacted_messages
 

@@ -350,7 +350,7 @@ class KimiSoul:
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
         compacted_messages = await _compact_with_retry()
-        await self._context.revert_to(0)
+        await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
 

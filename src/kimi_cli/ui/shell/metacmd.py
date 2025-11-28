@@ -240,7 +240,7 @@ async def clear(app: Shell, args: list[str]):
     if app.soul._context.n_checkpoints == 0:
         raise Reload()
 
-    await app.soul._context.revert_to(0)
+    await app.soul._context.clear()
     raise Reload()
 
 
