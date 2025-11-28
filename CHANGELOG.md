@@ -28,6 +28,7 @@ Only write entries that are worth mentioning to users.
 - Lib: Add `KimiCLI.run` method to run a turn with given user input and yield Wire messages
 - Print: Fix stream-json print mode not flushing output properly
 - LLM: Improve compatibility with some OpenAI and Anthropic API providers
+- Core: Fix chat provider error after compaction when using Anthropic API
 
 ## [0.58] - 2025-11-21
 
