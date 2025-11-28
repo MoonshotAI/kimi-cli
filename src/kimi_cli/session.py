@@ -92,6 +92,8 @@ class Session:
             session_id=work_dir_meta.last_session_id,
         )
         session_id = work_dir_meta.last_session_id
+        _migrate_session_context_file(work_dir_meta, session_id)
+
         session_dir = work_dir_meta.sessions_dir / session_id
         context_file = session_dir / "context.jsonl"
 
@@ -100,4 +102,17 @@ class Session:
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
+        )
+
+
+def _migrate_session_context_file(work_dir_meta: WorkDirMeta, session_id: str) -> None:
+    old_context_file = work_dir_meta.sessions_dir / f"{session_id}.jsonl"
+    new_context_file = work_dir_meta.sessions_dir / session_id / "context.jsonl"
+    if old_context_file.exists() and not new_context_file.exists():
+        new_context_file.parent.mkdir(parents=True, exist_ok=True)
+        old_context_file.rename(new_context_file)
+        logger.info(
+            "Migrated session context file from {old} to {new}",
+            old=old_context_file,
+            new=new_context_file,
         )
