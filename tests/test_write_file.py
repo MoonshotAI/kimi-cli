@@ -116,6 +116,22 @@ async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_
 
 
 @pytest.mark.asyncio
+async def test_write_outside_work_directory_with_prefix(
+    write_file_tool: WriteFile, temp_work_dir: KaosPath
+):
+    """Paths sharing the same prefix as work dir should still be rejected."""
+    base = Path(str(temp_work_dir))
+    sneaky_dir = base.parent / f"{base.name}-sneaky"
+    sneaky_dir.mkdir(parents=True, exist_ok=True)
+    sneaky_file = sneaky_dir / "file.txt"
+
+    result = await write_file_tool(Params(path=str(sneaky_file), content="content"))
+
+    assert isinstance(result, ToolError)
+    assert "outside the working directory" in result.message
+
+
+@pytest.mark.asyncio
 async def test_write_to_nonexistent_directory(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing to a non-existent directory."""
     file_path = temp_work_dir / "nonexistent" / "file.txt"

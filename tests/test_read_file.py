@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import ToolError, ToolOk
@@ -116,6 +118,24 @@ async def test_read_with_relative_path(read_file_tool: ReadFile):
         "path to read a file."
     )
     assert result.brief == snapshot("Invalid path")
+
+
+@pytest.mark.asyncio
+async def test_read_outside_work_directory_with_prefix(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Ensure paths that share a prefix but are outside work dir are rejected."""
+    base = Path(str(temp_work_dir))
+    sneaky_dir = base.parent / f"{base.name}-sneaky"
+    sneaky_dir.mkdir(parents=True, exist_ok=True)
+    sneaky_file = sneaky_dir / "secret.txt"
+    sneaky_file.write_text("top secret", encoding="utf-8")
+
+    result = await read_file_tool(Params(path=str(sneaky_file)))
+
+    assert isinstance(result, ToolError)
+    assert "outside the working directory" in result.message
+    assert result.brief == "Path outside working directory"
 
 
 @pytest.mark.asyncio
