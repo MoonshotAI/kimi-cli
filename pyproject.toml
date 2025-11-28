@@ -22,7 +22,6 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
-    "aiopath>=0.7.7",
 ]
 
 [dependency-groups]

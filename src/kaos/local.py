@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
@@ -12,7 +13,6 @@ else:
 
 import aiofiles
 import aiofiles.os
-import aiopath
 
 from kaos import Kaos, StrOrKaosPath
 from kaos.path import KaosPath
@@ -56,8 +56,10 @@ class LocalKaos:
         self, path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
     ) -> AsyncGenerator[KaosPath]:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        async_local_path = aiopath.AsyncPath(local_path)
-        async for entry in async_local_path.glob(pattern, case_sensitive=case_sensitive):
+        entries = await asyncio.to_thread(
+            lambda: list(local_path.glob(pattern, case_sensitive=case_sensitive))
+        )
+        for entry in entries:
             yield KaosPath.unsafe_from_local_path(entry)
 
     async def readbytes(self, path: StrOrKaosPath) -> bytes:
@@ -110,8 +112,7 @@ class LocalKaos:
         self, path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False
     ) -> None:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        async_local_path = aiopath.AsyncPath(local_path)
-        await async_local_path.mkdir(parents=parents, exist_ok=exist_ok)
+        await asyncio.to_thread(local_path.mkdir, parents=parents, exist_ok=exist_ok)
 
 
 local_kaos = LocalKaos()
