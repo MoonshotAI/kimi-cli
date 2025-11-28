@@ -22,7 +22,7 @@ type ProviderType = Literal[
 ]
 
 type ModelCapability = Literal["image_in", "thinking"]
-ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability))
+ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 
 
 @dataclass(slots=True)
