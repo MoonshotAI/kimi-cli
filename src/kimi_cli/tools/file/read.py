@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 from kaos.path import KaosPath
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc, truncate_line
-from kimi_cli.utils.path import is_within_directory
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
@@ -67,16 +66,6 @@ class ReadFile(CallableTool2[Params]):
                         "You must provide an absolute path to read a file."
                     ),
                     brief="Invalid path",
-                )
-
-            resolved_path = p.canonical()
-            if not is_within_directory(resolved_path, self._work_dir):
-                return ToolError(
-                    message=(
-                        f"`{params.path}` is outside the working directory. "
-                        "You can only read files within the working directory."
-                    ),
-                    brief="Path outside working directory",
                 )
 
             if not await p.exists():
