@@ -16,8 +16,8 @@ def kaos_cwd(tmp_path: Path) -> Generator[KaosPath]:
     """Set LocalKaos as the current Kaos and switch cwd to a temp directory."""
     token = set_current_kaos(LocalKaos())
     old_cwd = Path.cwd()
-    os.chdir(tmp_path)
     try:
+        os.chdir(tmp_path)
         yield KaosPath.unsafe_from_local_path(tmp_path)
     finally:
         os.chdir(old_cwd)

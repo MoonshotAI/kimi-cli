@@ -12,93 +12,88 @@ from kaos.path import KaosPath
 
 
 @pytest.fixture
-def local_kaos(tmp_path: Path) -> Generator[tuple[LocalKaos, Path]]:
+def local_kaos(tmp_path: Path) -> Generator[LocalKaos]:
     """Set LocalKaos as the current Kaos and switch cwd to a temp directory."""
     local = LocalKaos()
     token = set_current_kaos(local)
     old_cwd = Path.cwd()
-    os.chdir(tmp_path)
     try:
-        yield local, tmp_path
+        os.chdir(tmp_path)
+        yield local
     finally:
         os.chdir(old_cwd)
         reset_current_kaos(token)
 
 
-def test_pathclass_gethome_and_getcwd(local_kaos: tuple[LocalKaos, Path]):
-    local, tmp_path = local_kaos
-
-    path_class = local.pathclass()
+def test_pathclass_gethome_and_getcwd(local_kaos: LocalKaos):
+    path_class = local_kaos.pathclass()
     if os.name == "nt":
         assert issubclass(path_class, PureWindowsPath)
     else:
         assert issubclass(path_class, PurePosixPath)
 
-    assert str(local.gethome()) == str(Path.home())
-    assert str(local.getcwd()) == str(tmp_path)
+    assert str(local_kaos.gethome()) == str(Path.home())
+    assert str(local_kaos.getcwd()) == str(Path.cwd())
 
 
 @pytest.mark.asyncio
-async def test_chdir_and_stat(local_kaos: tuple[LocalKaos, Path]):
-    local, tmp_path = local_kaos
-    new_dir = tmp_path / "nested"
-    new_dir.mkdir()
+async def test_chdir_and_stat(local_kaos: LocalKaos):
+    new_dir = local_kaos.getcwd() / "nested"
+    await local_kaos.mkdir(new_dir)
 
-    await local.chdir(KaosPath.unsafe_from_local_path(new_dir))
-    assert Path.cwd() == new_dir
+    await local_kaos.chdir(new_dir)
+    assert Path.cwd() == new_dir.unsafe_to_local_path()
 
     file_path = new_dir / "file.txt"
-    file_path.write_text("hello world")
+    await local_kaos.writetext(file_path, "hello world")
 
-    stat_result = await local.stat(KaosPath.unsafe_from_local_path(file_path))
+    stat_result = await local_kaos.stat(file_path)
     assert stat_result.st_size == len("hello world")
 
 
 @pytest.mark.asyncio
-async def test_iterdir_and_glob(local_kaos: tuple[LocalKaos, Path]):
-    local, tmp_path = local_kaos
-    (tmp_path / "alpha").mkdir()
-    (tmp_path / "bravo.txt").write_text("bravo")
-    (tmp_path / "charlie.TXT").write_text("charlie")
+async def test_iterdir_and_glob(local_kaos: LocalKaos):
+    tmp_path = local_kaos.getcwd()
+    await local_kaos.mkdir(tmp_path / "alpha")
+    await local_kaos.writetext(tmp_path / "bravo.txt", "bravo")
+    await local_kaos.writetext(tmp_path / "charlie.TXT", "charlie")
 
-    entries = [entry async for entry in local.iterdir(KaosPath.unsafe_from_local_path(tmp_path))]
+    entries = [entry async for entry in local_kaos.iterdir(tmp_path)]
     assert {entry.name for entry in entries} == {"alpha", "bravo.txt", "charlie.TXT"}
     assert all(isinstance(entry, KaosPath) for entry in entries)
 
-    matched = [
-        entry.name async for entry in local.glob(KaosPath.unsafe_from_local_path(tmp_path), "*.txt")
-    ]
+    matched = [entry.name async for entry in local_kaos.glob(tmp_path, "*.txt")]
     assert set(matched) == {"bravo.txt"}
 
 
 @pytest.mark.asyncio
-async def test_read_write_and_append_text(local_kaos: tuple[LocalKaos, Path]):
-    local, tmp_path = local_kaos
-    file_path = KaosPath.unsafe_from_local_path(tmp_path / "note.txt")
+async def test_read_write_and_append_text(local_kaos: LocalKaos):
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "note.txt"
 
-    written = await local.writetext(file_path, "line1")
+    written = await local_kaos.writetext(file_path, "line1")
     assert written == len("line1")
 
-    content = await local.readtext(file_path)
+    content = await local_kaos.readtext(file_path)
     assert content == "line1"
 
-    await local.writetext(file_path, "\nline2", mode="a")
-    lines = [line async for line in local.readlines(file_path)]
+    await local_kaos.writetext(file_path, "\nline2", mode="a")
+    lines = [line async for line in local_kaos.readlines(file_path)]
     assert "".join(lines) == "line1\nline2"
 
 
 @pytest.mark.asyncio
-async def test_mkdir_with_parents(local_kaos: tuple[LocalKaos, Path]):
-    local, tmp_path = local_kaos
+async def test_mkdir_with_parents(local_kaos: LocalKaos):
+    tmp_path = local_kaos.getcwd()
     nested_dir = tmp_path / "a" / "b" / "c"
 
-    await local.mkdir(KaosPath.unsafe_from_local_path(nested_dir), parents=True)
-    assert nested_dir.is_dir()
+    await local_kaos.mkdir(nested_dir, parents=True)
+    assert await nested_dir.is_dir()
 
 
 @pytest.mark.asyncio
-async def test_read_write_bytes(local_kaos: tuple[LocalKaos, Path]):
-    local, tmp_path = local_kaos
-    file_path = KaosPath.unsafe_from_local_path(tmp_path / "data.bin")
-    await local.writebytes(file_path, b"\x00\x01\xff")
-    assert await local.readbytes(file_path) == b"\x00\x01\xff"
+async def test_read_write_bytes(local_kaos: LocalKaos):
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "data.bin"
+    await local_kaos.writebytes(file_path, b"\x00\x01\xff")
+    assert await local_kaos.readbytes(file_path) == b"\x00\x01\xff"
