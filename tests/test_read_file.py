@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 from inline_snapshot import snapshot
+from kaos.path import KaosPath
 from kosong.tooling import ToolError, ToolOk
 
-from kaos.path import KaosPath
 from kimi_cli.tools.file.read import MAX_BYTES, MAX_LINE_LENGTH, MAX_LINES, Params, ReadFile
 
 

@@ -22,6 +22,7 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
+    "pykaos==0.2.0",
 ]
 
 [dependency-groups]
@@ -31,7 +32,7 @@ dev = [
     "pyright>=1.1.407",
     "pytest>=9.0.1",
     "pytest-asyncio>=1.3.0",
-    "ruff>=0.14.6",
+    "ruff>=0.14.7",
 ]
 
 [build-system]
@@ -39,7 +40,7 @@ requires = ["uv_build>=0.8.5,<0.9.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["kimi_cli", "kaos"]
+module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [project.scripts]

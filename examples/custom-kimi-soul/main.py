@@ -3,12 +3,12 @@ import os
 from pathlib import Path
 from typing import override
 
+from kaos.path import KaosPath
 from kosong.message import ContentPart
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue, Toolset
 from kosong.tooling.simple import SimpleToolset
 from pydantic import BaseModel, Field, SecretStr
 
-from kaos.path import KaosPath
 from kimi_cli.config import LLMModel, LLMProvider, get_default_config
 from kimi_cli.llm import LLM, create_llm
 from kimi_cli.session import Session
