@@ -7,11 +7,11 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
+import kaos
+from kaos.path import KaosPath
 from kosong.message import ContentPart
 from pydantic import SecretStr
 
-import kaos
-from kaos.path import KaosPath
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import LLMModel, LLMProvider, load_config
