@@ -5,12 +5,13 @@ import contextlib
 from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from kosong.message import ContentPart
 
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import Wire, WireUISide
+from kimi_cli.wire import Wire
 from kimi_cli.wire.message import WireMessage
 
 if TYPE_CHECKING:
@@ -91,7 +92,7 @@ class Soul(Protocol):
         ...
 
 
-type UILoopFn = Callable[[WireUISide], Coroutine[Any, Any, None]]
+type UILoopFn = Callable[[Wire], Coroutine[Any, Any, None]]
 """A long-running async function to visualize the agent behavior."""
 
 
@@ -104,9 +105,10 @@ async def run_soul(
     user_input: str | list[ContentPart],
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,
+    wire_file_backend: Path | None = None,
 ) -> None:
     """
-    Run the soul with the given user input, connecting it to the UI loop with a wire.
+    Run the soul with the given user input, connecting it to the UI loop with a `Wire`.
 
     `cancel_event` is a outside handle that can be used to cancel the run. When the
     event is set, the run will be gracefully stopped and a `RunCancelled` will be raised.
@@ -118,14 +120,11 @@ async def run_soul(
         MaxStepsReached: When the maximum number of steps is reached.
         RunCancelled: When the run is cancelled by the cancel event.
     """
-    from kimi_cli.soul.kimisoul import KimiSoul
-
-    file_backend = soul.runtime.session.dir / "wire.jsonl" if isinstance(soul, KimiSoul) else None
-    wire = Wire(file_backend=file_backend)
+    wire = Wire(file_backend=wire_file_backend)
     wire_token = _current_wire.set(wire)
 
     logger.debug("Starting UI loop with function: {ui_loop_fn}", ui_loop_fn=ui_loop_fn)
-    ui_task = asyncio.create_task(ui_loop_fn(wire.ui_side))
+    ui_task = asyncio.create_task(ui_loop_fn(wire))
 
     logger.debug("Starting soul run")
     soul_task = asyncio.create_task(soul.run(user_input))

@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from kaos.path import KaosPath
 from kosong.tooling import ToolError, ToolOk
 
-from kaos.path import KaosPath
 from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
 
 

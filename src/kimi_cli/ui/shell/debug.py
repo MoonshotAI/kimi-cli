@@ -23,7 +23,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
 
 if TYPE_CHECKING:
-    from kimi_cli.ui.shell import ShellApp
+    from kimi_cli.ui.shell import Shell
 
 
 def _format_content_part(part: ContentPart) -> Text | Panel | Group:
@@ -144,7 +144,7 @@ def _format_message(msg: Message, index: int) -> Panel:
 
 
 @meta_command(kimi_soul_only=True)
-def debug(app: ShellApp, args: list[str]):
+def debug(app: Shell, args: list[str]):
     """Debug the context"""
     assert isinstance(app.soul, KimiSoul)
 

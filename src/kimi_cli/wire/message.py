@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
-from enum import Enum
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from kosong.message import ContentPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, field_serializer, field_validator
 
 from kimi_cli.utils.typing import flatten_union
 
@@ -69,10 +67,15 @@ class StatusUpdate(BaseModel):
 
 
 class SubagentEvent(BaseModel):
+    """
+    An event from a subagent.
+    """
+
     task_tool_call_id: str
     """The ID of the task tool call associated with this subagent."""
     event: Event
     """The event from the subagent."""
+    # TODO: maybe restrict the event types? to exclude approval request, etc.
 
     @field_serializer("event", when_used="json")
     def _serialize_event(self, event: Event) -> dict[str, Any]:
@@ -100,32 +103,28 @@ class SubagentEvent(BaseModel):
         return cast(Event, event)
 
 
-type ControlFlowEvent = (
-    TurnBegin | StepBegin | StepInterrupted | CompactionBegin | CompactionEnd | StatusUpdate
-)
-"""Any control flow event."""
-type Event = ControlFlowEvent | ContentPart | ToolCall | ToolCallPart | ToolResult | SubagentEvent
-"""Any event, including control flow and content/tooling events."""
-
-
-class ApprovalResponse(Enum):
-    APPROVE = "approve"
-    APPROVE_FOR_SESSION = "approve_for_session"
-    REJECT = "reject"
-
-
 class ApprovalRequest(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    """
+    A request for user approval before proceeding with an action.
+    """
+
+    id: str
     tool_call_id: str
     sender: str
     action: str
     description: str
 
+    type Response = Literal["approve", "approve_for_session", "reject"]
+
+    # Note that the above fields are just a copy of `kimi_cli.soul.approval.Request`, but
+    # we cannot directly use that class here because we want to avoid dependency from Wire
+    # to Soul.
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future = asyncio.Future[ApprovalResponse]()
+        self._future = asyncio.Future[ApprovalRequest.Response]()
 
-    async def wait(self) -> ApprovalResponse:
+    async def wait(self) -> Response:
         """
         Wait for the request to be resolved or cancelled.
 
@@ -134,7 +133,7 @@ class ApprovalRequest(BaseModel):
         """
         return await self._future
 
-    def resolve(self, response: ApprovalResponse) -> None:
+    def resolve(self, response: ApprovalRequest.Response) -> None:
         """
         Resolve the approval request with the given response.
         This will cause the `wait()` method to return the response.
@@ -145,6 +144,34 @@ class ApprovalRequest(BaseModel):
     def resolved(self) -> bool:
         """Whether the request is resolved."""
         return self._future.done()
+
+
+class ApprovalRequestResolved(BaseModel):
+    """
+    Indicates that an approval request has been resolved.
+    """
+
+    request_id: str
+    """The ID of the resolved approval request."""
+    response: ApprovalRequest.Response
+    """The response to the approval request."""
+
+
+type Event = (
+    TurnBegin
+    | StepBegin
+    | StepInterrupted
+    | CompactionBegin
+    | CompactionEnd
+    | StatusUpdate
+    | ContentPart
+    | ToolCall
+    | ToolCallPart
+    | ToolResult
+    | SubagentEvent
+    | ApprovalRequestResolved
+)
+"""Any event, including control flow and content/tooling events."""
 
 
 type Request = ApprovalRequest

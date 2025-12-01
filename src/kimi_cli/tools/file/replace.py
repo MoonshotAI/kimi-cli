@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import override
 
+from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kaos.path import KaosPath
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions

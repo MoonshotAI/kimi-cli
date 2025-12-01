@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
-from kaos.path import KaosPath
 from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.config import Config
 from kimi_cli.llm import LLM

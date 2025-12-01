@@ -22,7 +22,7 @@ type ProviderType = Literal[
 ]
 
 type ModelCapability = Literal["image_in", "thinking"]
-ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability))
+ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 
 
 @dataclass(slots=True)
@@ -133,11 +133,18 @@ def create_llm(
             )
         case "_chaos":
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
+            from kosong.chat_provider.kimi import Kimi
 
             chat_provider = ChaosChatProvider(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
+                provider=Kimi(
+                    model=model.model,
+                    base_url=provider.base_url,
+                    api_key=provider.api_key.get_secret_value(),
+                    default_headers={
+                        "User-Agent": USER_AGENT,
+                        **(provider.custom_headers or {}),
+                    },
+                ),
                 chaos_config=ChaosConfig(
                     error_probability=0.8,
                     error_types=[429, 500, 503],
@@ -153,7 +160,7 @@ def create_llm(
 
 def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCapability]:
     capabilities = model.capabilities or set()
-    if provider.type != "kimi":
+    if provider.type not in {"kimi", "_chaos"}:
         return capabilities
 
     if model.model == "kimi-for-coding" or "thinking" in model.model:

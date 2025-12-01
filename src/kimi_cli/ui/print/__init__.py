@@ -12,13 +12,14 @@ from rich import print
 
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.print.visualize import visualize
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.signals import install_sigint_handler
 
 
-class PrintApp:
+class Print:
     """
     An app implementation that prints the agent behavior to the console.
 
@@ -75,6 +76,7 @@ class PrintApp:
                         command,
                         partial(visualize, self.output_format),
                         cancel_event,
+                        self.soul.wire_file_backend if isinstance(self.soul, KimiSoul) else None,
                     )
                 else:
                     logger.info("Empty command, skipping")

@@ -9,9 +9,13 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.60] - 2025-12-01
 
-- Core: Move context file location to `.kimi/sessions/{workdir_name}_{workdir_md5}/{session_id}/context.jsonl`
+- LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
+
+## [0.59] - 2025-11-28
+
+- Core: Move context file location to `.kimi/sessions/{workdir_md5}/{session_id}/context.jsonl`
 - Lib: Move `WireMessage` type alias to `kimi_cli.wire.message`
 - Lib: Add `kimi_cli.wire.message.Request` type alias request messages (which currently only includes `ApprovalRequest`)
 - Lib: Add `kimi_cli.wire.message.is_event`, `is_request` and `is_wire_message` utility functions to check the type of wire messages
@@ -21,6 +25,14 @@ Only write entries that are worth mentioning to users.
 - Core: Introduce `TurnBegin` Wire message to mark the beginning of each agent turn
 - UI: Print user input again with a panel in shell mode
 - Lib: Add `Session.dir` property to get the session directory path
+- UI: Improve "Approve for session" experience when there are multiple parallel subagents
+- Wire: Reimplement Wire server mode (which is enabled with `--wire` option)
+- Lib: Rename `ShellApp` to `Shell`, `PrintApp` to `Print`, `ACPServer` to `ACP` and `WireServer` to `WireOverStdio` for better consistency
+- Lib: Rename `KimiCLI.run_shell_mode` to `run_shell`, `run_print_mode` to `run_print`, `run_acp_server` to `run_acp`, and `run_wire_server` to `run_wire_stdio` for better consistency
+- Lib: Add `KimiCLI.run` method to run a turn with given user input and yield Wire messages
+- Print: Fix stream-json print mode not flushing output properly
+- LLM: Improve compatibility with some OpenAI and Anthropic API providers
+- Core: Fix chat provider error after compaction when using Anthropic API
 
 ## [0.58] - 2025-11-21
 

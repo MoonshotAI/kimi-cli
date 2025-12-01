@@ -21,7 +21,7 @@ from kimi_cli.ui.shell.metacmd import meta_command
 from kimi_cli.utils.aiohttp import new_client_session
 
 if TYPE_CHECKING:
-    from kimi_cli.ui.shell import ShellApp
+    from kimi_cli.ui.shell import Shell
 
 
 class _Platform(NamedTuple):
@@ -57,7 +57,7 @@ _PLATFORMS = [
 
 
 @meta_command
-async def setup(app: ShellApp, args: list[str]):
+async def setup(app: Shell, args: list[str]):
     """Setup Kimi CLI"""
     result = await _setup()
     if not result:
@@ -202,7 +202,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 
 
 @meta_command
-def reload(app: ShellApp, args: list[str]):
+def reload(app: Shell, args: list[str]):
     """Reload configuration"""
     from kimi_cli.cli import Reload
 

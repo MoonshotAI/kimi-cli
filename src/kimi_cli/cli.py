@@ -196,9 +196,8 @@ def kimi(
     """Kimi, your next CLI agent."""
     del version  # handled in the callback
 
-    from kaos import current_kaos
-    from kaos.local import LocalKaos
     from kaos.path import KaosPath
+
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
@@ -289,9 +288,9 @@ def kimi(
         )
         match ui:
             case "shell":
-                succeeded = await instance.run_shell_mode(command)
+                succeeded = await instance.run_shell(command)
             case "print":
-                succeeded = await instance.run_print_mode(
+                succeeded = await instance.run_print(
                     input_format or "text",
                     output_format or "text",
                     command,
@@ -299,11 +298,13 @@ def kimi(
             case "acp":
                 if command is not None:
                     logger.warning("ACP server ignores command argument")
-                succeeded = await instance.run_acp_server()
+                await instance.run_acp()
+                succeeded = True
             case "wire":
                 if command is not None:
                     logger.warning("Wire server ignores command argument")
-                succeeded = await instance.run_wire_server()
+                await instance.run_wire_stdio()
+                succeeded = True
 
         if succeeded:
             metadata = load_metadata()
@@ -327,7 +328,6 @@ def kimi(
 
         return succeeded
 
-    current_kaos.set(LocalKaos())
     while True:
         try:
             succeeded = asyncio.run(_run())
