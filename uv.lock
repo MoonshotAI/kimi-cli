@@ -889,7 +889,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agent-client-protocol", specifier = "==0.6.3" },
-    { name = "aiofiles" },
+    { name = "aiofiles", specifier = "==25.1.0" },
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
@@ -898,7 +898,7 @@ requires-dist = [
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", directory = "../pykaos" },
+    { name = "pykaos", specifier = "==0.2.0" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
@@ -1684,22 +1684,14 @@ wheels = [
 
 [[package]]
 name = "pykaos"
-version = "0.1.0"
-source = { directory = "../pykaos" }
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "aiofiles", specifier = "==25.1.0" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "inline-snapshot", extras = ["black"], specifier = ">=0.31.1" },
-    { name = "pyright", specifier = ">=1.1.407" },
-    { name = "pytest", specifier = ">=9.0.1" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
-    { name = "ruff", specifier = ">=0.14.6" },
+sdist = { url = "https://files.pythonhosted.org/packages/fd/70/d89e66b859698a3f3caab53efd2a70f167333d772a6205df55b9c15cf53a/pykaos-0.2.0.tar.gz", hash = "sha256:9d6e4f7f09b6a71236a86604795822dc8a016574b3b7c7a8a54637a571832c6a", size = 4000, upload-time = "2025-12-01T12:04:44.882Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/23/a95c37b23ca4b137159e6236fb2781e17e43cbc14b8beb35c68571bbed61/pykaos-0.2.0-py3-none-any.whl", hash = "sha256:5b36859dcbb4b9663e902cc1ae6cdcd1507e97e9a2d78b65ee91b7bb74408c34", size = 5922, upload-time = "2025-12-01T12:04:43.909Z" },
 ]
 
 [[package]]
