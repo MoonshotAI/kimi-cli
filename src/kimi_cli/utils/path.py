@@ -7,7 +7,6 @@ from pathlib import Path
 from stat import S_ISDIR
 
 import aiofiles.os
-
 from kaos.path import KaosPath
 
 _ROTATION_OPEN_FLAGS = os.O_CREAT | os.O_EXCL | os.O_WRONLY

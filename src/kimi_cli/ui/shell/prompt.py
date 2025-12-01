@@ -18,6 +18,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import override
 
+from kaos.path import KaosPath
 from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
@@ -40,7 +41,6 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from pydantic import BaseModel, ValidationError
 
-from kaos.path import KaosPath
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot

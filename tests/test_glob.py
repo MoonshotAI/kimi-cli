@@ -5,9 +5,9 @@ from __future__ import annotations
 import platform
 
 import pytest
+from kaos.path import KaosPath
 from kosong.tooling import ToolError, ToolOk
 
-from kaos.path import KaosPath
 from kimi_cli.tools.file.glob import MAX_MATCHES, Glob, Params
 
 
