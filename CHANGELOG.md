@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.60] - 2025-12-01
 
 - LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
 
