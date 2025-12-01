@@ -4,8 +4,9 @@ from collections.abc import Sequence
 from string import Template
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from kosong import generate
-from kosong.message import ContentPart, Message, TextPart
+import kosong
+from kosong.message import ContentPart, Message, TextPart, ThinkPart
+from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM
@@ -72,13 +73,13 @@ class SimpleCompaction(Compaction):
         # Create input message for compaction
         compact_message = Message(role="user", content=compact_prompt)
 
-        # Call generate to get the compacted context
+        # Call kosong.step to get the compacted context
         # TODO: set max completion tokens
         logger.debug("Compacting context...")
-        result = await generate(
+        result = await kosong.step(
             chat_provider=llm.chat_provider,
             system_prompt="You are a helpful assistant that compacts conversation context.",
-            tools=[],
+            toolset=EmptyToolset(),
             history=[compact_message],
         )
         if result.usage:
@@ -92,12 +93,15 @@ class SimpleCompaction(Compaction):
             system("Previous context has been compacted. Here is the compaction output:")
         ]
         compacted_msg = result.message
-        content.extend(
-            [TextPart(text=compacted_msg.content)]
-            if isinstance(compacted_msg.content, str)
-            else compacted_msg.content
-        )
-        compacted_messages: list[Message] = [Message(role="assistant", content=content)]
+
+        if isinstance(compacted_msg.content, str):
+            content.append(TextPart(text=compacted_msg.content))
+        else:
+            # drop thinking parts if any
+            content.extend(
+                part for part in compacted_msg.content if not isinstance(part, ThinkPart)
+            )
+        compacted_messages: list[Message] = [Message(role="user", content=content)]
         compacted_messages.extend(to_preserve)
         return compacted_messages
 

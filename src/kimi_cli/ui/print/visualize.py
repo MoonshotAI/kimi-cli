@@ -3,13 +3,13 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import rich
-from kosong.message import ContentPart, MergeableMixin, Message, ToolCall, ToolCallPart
+from kosong.message import ContentPart, Message, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
-from kimi_cli.wire import WireMessage, WireUISide
-from kimi_cli.wire.message import StepBegin, StepInterrupted
+from kimi_cli.wire import Wire
+from kimi_cli.wire.message import StepBegin, StepInterrupted, WireMessage
 
 
 class Printer(Protocol):
@@ -18,27 +18,11 @@ class Printer(Protocol):
 
 
 class TextPrinter(Printer):
-    def __init__(self) -> None:
-        self._merge_buffer: MergeableMixin | None = None
-
     def feed(self, msg: WireMessage) -> None:
-        match msg:
-            case MergeableMixin():
-                if self._merge_buffer is None:
-                    self._merge_buffer = msg
-                elif self._merge_buffer.merge_in_place(msg):
-                    pass
-                else:
-                    rich.print(self._merge_buffer)
-                    self._merge_buffer = msg
-            case _:
-                self.flush()
-                rich.print(msg)
+        rich.print(msg)
 
     def flush(self) -> None:
-        if self._merge_buffer is not None:
-            rich.print(self._merge_buffer)
-            self._merge_buffer = None
+        pass
 
 
 class JsonPrinter(Printer):
@@ -98,27 +82,28 @@ class JsonPrinter(Printer):
             content=self._content_buffer,
             tool_calls=tool_calls or None,
         )
-        print(message.model_dump_json(exclude_none=True))
+        print(message.model_dump_json(exclude_none=True), flush=True)
 
         for result in tool_results:
             # FIXME: this assumes the way how the soul convert `ToolResult` to `Message`
             message = tool_result_to_message(result)
-            print(message.model_dump_json(exclude_none=True))
+            print(message.model_dump_json(exclude_none=True), flush=True)
 
         self._content_buffer.clear()
         self._tool_call_buffer.clear()
 
 
-async def visualize(output_format: OutputFormat, wire: WireUISide) -> None:
+async def visualize(output_format: OutputFormat, wire: Wire) -> None:
     match output_format:
         case "text":
             handler = TextPrinter()
         case "stream-json":
             handler = JsonPrinter()
 
+    wire_ui = wire.ui_side(merge=True)
     while True:
         try:
-            msg = await wire.receive()
+            msg = await wire_ui.receive()
         except asyncio.QueueShutDown:
             handler.flush()
             break

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import kosong
@@ -13,7 +14,6 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
-    ChatProviderError,
     ThinkingEffort,
 )
 from kosong.message import ContentPart, Message
@@ -29,7 +29,7 @@ from kimi_cli.soul import (
     StatusSnapshot,
     wire_send,
 )
-from kimi_cli.soul.agent import Agent
+from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
@@ -37,11 +37,14 @@ from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    TurnBegin,
 )
 
 if TYPE_CHECKING:
@@ -53,7 +56,7 @@ if TYPE_CHECKING:
 RESERVED_TOKENS = 50_000
 
 
-class KimiSoul(Soul):
+class KimiSoul:
     """The soul of Kimi CLI."""
 
     def __init__(
@@ -107,6 +110,10 @@ class KimiSoul(Soul):
         return StatusSnapshot(context_usage=self._context_usage)
 
     @property
+    def runtime(self) -> Runtime:
+        return self._runtime
+
+    @property
     def context(self) -> Context:
         return self._context
 
@@ -115,6 +122,10 @@ class KimiSoul(Soul):
         if self._runtime.llm is not None:
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
+
+    @property
+    def wire_file_backend(self) -> Path:
+        return self._runtime.session.dir / "wire.jsonl"
 
     @property
     def thinking(self) -> bool:
@@ -146,6 +157,7 @@ class KimiSoul(Soul):
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
+        wire_send(TurnBegin(user_input=user_input))
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
@@ -158,16 +170,36 @@ class KimiSoul(Soul):
         async def _pipe_approval_to_wire():
             while True:
                 request = await self._approval.fetch_request()
-                wire_send(request)
+                # Here we decouple the wire approval request and the soul approval request.
+                wire_request = ApprovalRequest(
+                    id=request.id,
+                    action=request.action,
+                    description=request.description,
+                    sender=request.sender,
+                    tool_call_id=request.tool_call_id,
+                )
+                wire_send(wire_request)
+                # We wait for the request to be resolved over the wire, which means that,
+                # for each soul, we will have only one approval request waiting on the wire
+                # at a time. However, be aware that subagents (which have their own souls) may
+                # also send approval requests to the root wire.
+                resp = await wire_request.wait()
+                self._approval.resolve_request(request.id, resp)
+                wire_send(ApprovalRequestResolved(request_id=request.id, response=resp))
 
-        step_no = 1
+        step_no = 0
         while True:
+            step_no += 1
+            if step_no > self._loop_control.max_steps_per_run:
+                raise MaxStepsReached(self._loop_control.max_steps_per_run)
+
             wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
             # FIXME: It's possible that a subagent's approval task steals approval request
             # from the main agent. We must ensure that the Task tool will redirect them
             # to the main wire. See `_SubWire` for more details. Later we need to figure
             # out a better solution.
+            back_to_the_future: BackToTheFuture | None = None
             try:
                 # compact the context if needed
                 if (
@@ -184,11 +216,10 @@ class KimiSoul(Soul):
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
                 finished = await self._step()
             except BackToTheFuture as e:
-                await self._context.revert_to(e.checkpoint_id)
-                await self._checkpoint()
-                await self._context.append_message(e.messages)
-                continue
-            except (ChatProviderError, asyncio.CancelledError):
+                back_to_the_future = e
+                finished = False
+            except Exception:
+                # any other exception should interrupt the step
                 wire_send(StepInterrupted())
                 # break the agent loop
                 raise
@@ -198,9 +229,10 @@ class KimiSoul(Soul):
             if finished:
                 return
 
-            step_no += 1
-            if step_no > self._loop_control.max_steps_per_run:
-                raise MaxStepsReached(self._loop_control.max_steps_per_run)
+            if back_to_the_future is not None:
+                await self._context.revert_to(back_to_the_future.checkpoint_id)
+                await self._checkpoint()
+                await self._context.append_message(back_to_the_future.messages)
 
     async def _step(self) -> bool:
         """Run an single step and return whether the run should be stopped."""
@@ -231,7 +263,7 @@ class KimiSoul(Soul):
         if result.usage is not None:
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)
-            wire_send(StatusUpdate(status=self.status))
+            wire_send(StatusUpdate(context_usage=self.status.context_usage))
 
         # wait for all tool results (may be interrupted)
         results = await result.tool_results()
@@ -318,7 +350,7 @@ class KimiSoul(Soul):
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
         compacted_messages = await _compact_with_retry()
-        await self._context.revert_to(0)
+        await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
 

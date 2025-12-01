@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from kaos.path import KaosPath
+
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 
@@ -17,47 +18,59 @@ class Session:
     """The session ID."""
     work_dir: KaosPath
     """The absolute path of the work directory."""
-    history_file: Path
+    work_dir_meta: WorkDirMeta
+    """The metadata of the work directory."""
+    context_file: Path
     """The absolute path to the file storing the message history."""
 
+    @property
+    def dir(self) -> Path:
+        """The absolute path of the session directory."""
+        path = self.work_dir_meta.sessions_dir / self.id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     @staticmethod
-    async def create(work_dir: KaosPath, _history_file: Path | None = None) -> Session:
+    async def create(work_dir: KaosPath, _context_file: Path | None = None) -> Session:
         """Create a new session for a work directory."""
         work_dir = work_dir.canonical()
         logger.debug("Creating new session for work directory: {work_dir}", work_dir=work_dir)
 
         metadata = load_metadata()
-        work_dir_meta = next((wd for wd in metadata.work_dirs if wd.path == str(work_dir)), None)
+        work_dir_meta = metadata.get_work_dir_meta(work_dir)
         if work_dir_meta is None:
-            work_dir_meta = WorkDirMeta(path=str(work_dir))
-            metadata.work_dirs.append(work_dir_meta)
+            work_dir_meta = metadata.new_work_dir_meta(work_dir)
 
         session_id = str(uuid.uuid4())
-        if _history_file is None:
-            history_file = work_dir_meta.sessions_dir / f"{session_id}.jsonl"
+        session_dir = work_dir_meta.sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        if _context_file is None:
+            context_file = session_dir / "context.jsonl"
         else:
             logger.warning(
-                "Using provided history file: {history_file}", history_file=_history_file
+                "Using provided context file: {context_file}", context_file=_context_file
             )
-            _history_file.parent.mkdir(parents=True, exist_ok=True)
-            if _history_file.exists():
-                assert _history_file.is_file()
-            history_file = _history_file
+            _context_file.parent.mkdir(parents=True, exist_ok=True)
+            if _context_file.exists():
+                assert _context_file.is_file()
+            context_file = _context_file
 
-        if history_file.exists():
+        if context_file.exists():
             # truncate if exists
             logger.warning(
-                "History file already exists, truncating: {history_file}", history_file=history_file
+                "Context file already exists, truncating: {context_file}", context_file=context_file
             )
-            history_file.unlink()
-            history_file.touch()
+            context_file.unlink()
+            context_file.touch()
 
         save_metadata(metadata)
 
         return Session(
             id=session_id,
             work_dir=work_dir,
-            history_file=history_file,
+            work_dir_meta=work_dir_meta,
+            context_file=context_file,
         )
 
     @staticmethod
@@ -67,7 +80,7 @@ class Session:
         logger.debug("Continuing session for work directory: {work_dir}", work_dir=work_dir)
 
         metadata = load_metadata()
-        work_dir_meta = next((wd for wd in metadata.work_dirs if wd.path == str(work_dir)), None)
+        work_dir_meta = metadata.get_work_dir_meta(work_dir)
         if work_dir_meta is None:
             logger.debug("Work directory never been used")
             return None
@@ -80,10 +93,27 @@ class Session:
             session_id=work_dir_meta.last_session_id,
         )
         session_id = work_dir_meta.last_session_id
-        history_file = work_dir_meta.sessions_dir / f"{session_id}.jsonl"
+        _migrate_session_context_file(work_dir_meta, session_id)
+
+        session_dir = work_dir_meta.sessions_dir / session_id
+        context_file = session_dir / "context.jsonl"
 
         return Session(
             id=session_id,
             work_dir=work_dir,
-            history_file=history_file,
+            work_dir_meta=work_dir_meta,
+            context_file=context_file,
+        )
+
+
+def _migrate_session_context_file(work_dir_meta: WorkDirMeta, session_id: str) -> None:
+    old_context_file = work_dir_meta.sessions_dir / f"{session_id}.jsonl"
+    new_context_file = work_dir_meta.sessions_dir / session_id / "context.jsonl"
+    if old_context_file.exists() and not new_context_file.exists():
+        new_context_file.parent.mkdir(parents=True, exist_ok=True)
+        old_context_file.rename(new_context_file)
+        logger.info(
+            "Migrated session context file from {old} to {new}",
+            old=old_context_file,
+            new=new_context_file,
         )

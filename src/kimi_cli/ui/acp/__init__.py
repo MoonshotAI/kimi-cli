@@ -17,18 +17,20 @@ from kosong.message import (
 from kosong.tooling import ToolError, ToolResult, ToolReturnValue
 
 from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire import WireUISide
+from kimi_cli.wire import Wire
 from kimi_cli.wire.message import (
     ApprovalRequest,
-    ApprovalResponse,
+    ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TurnBegin,
 )
 
 
@@ -146,7 +148,13 @@ class ACPAgent:
 
         self.run_state = _RunState()
         try:
-            await run_soul(self.soul, prompt_text, self._stream_events, self.run_state.cancel_event)
+            await run_soul(
+                self.soul,
+                prompt_text,
+                self._stream_events,
+                self.run_state.cancel_event,
+                self.soul.wire_file_backend if isinstance(self.soul, KimiSoul) else None,
+            )
             return acp.PromptResponse(stopReason="end_turn")
         except LLMNotSet:
             logger.error("LLM not set")
@@ -178,10 +186,13 @@ class ACPAgent:
             logger.info("Cancelling running prompt")
             self.run_state.cancel_event.set()
 
-    async def _stream_events(self, wire: WireUISide):
+    async def _stream_events(self, wire: Wire):
+        wire_ui = wire.ui_side(merge=False)
         while True:
-            msg = await wire.receive()
+            msg = await wire_ui.receive()
             match msg:
+                case TurnBegin():
+                    pass
                 case StepBegin():
                     pass
                 case StepInterrupted():
@@ -206,6 +217,8 @@ class ACPAgent:
                 case ToolResult():
                     await self._send_tool_result(msg)
                 case SubagentEvent():
+                    pass
+                case ApprovalRequestResolved():
                     pass
                 case ApprovalRequest():
                     await self._handle_approval_request(msg)
@@ -334,13 +347,13 @@ class ACPAgent:
         assert self.run_state is not None
         if not self.session_id:
             logger.warning("No session ID, auto-rejecting approval request")
-            request.resolve(ApprovalResponse.REJECT)
+            request.resolve("reject")
             return
 
         state = self.run_state.tool_calls.get(request.tool_call_id, None)
         if state is None:
             logger.warning("Tool call not found: {id}", id=request.tool_call_id)
-            request.resolve(ApprovalResponse.REJECT)
+            request.resolve("reject")
             return
 
         # Create permission request with options
@@ -388,21 +401,21 @@ class ACPAgent:
                 # selected
                 if response.outcome.optionId == "approve":
                     logger.debug("Permission granted for: {action}", action=request.action)
-                    request.resolve(ApprovalResponse.APPROVE)
+                    request.resolve("approve")
                 elif response.outcome.optionId == "approve_for_session":
                     logger.debug("Permission granted for session: {action}", action=request.action)
-                    request.resolve(ApprovalResponse.APPROVE_FOR_SESSION)
+                    request.resolve("approve_for_session")
                 else:
                     logger.debug("Permission denied for: {action}", action=request.action)
-                    request.resolve(ApprovalResponse.REJECT)
+                    request.resolve("reject")
             else:
                 # cancelled
                 logger.debug("Permission request cancelled for: {action}", action=request.action)
-                request.resolve(ApprovalResponse.REJECT)
+                request.resolve("reject")
         except Exception:
             logger.exception("Error handling approval request:")
             # On error, reject the request
-            request.resolve(ApprovalResponse.REJECT)
+            request.resolve("reject")
 
 
 def _tool_result_to_acp_content(
@@ -439,13 +452,13 @@ def _tool_result_to_acp_content(
     )
 
 
-class ACPServer:
+class ACP:
     """ACP server using the official acp library."""
 
     def __init__(self, soul: Soul):
         self.soul = soul
 
-    async def run(self) -> bool:
+    async def run(self):
         """Run the ACP server."""
         logger.info("Starting ACP server on stdio")
 
@@ -463,5 +476,3 @@ class ACPServer:
 
         # Keep running - connection handles everything
         await asyncio.Event().wait()
-
-        return True

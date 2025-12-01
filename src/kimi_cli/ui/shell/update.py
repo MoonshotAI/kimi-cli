@@ -201,12 +201,12 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
 
 
 # @meta_command
-# async def update(app: "ShellApp", args: list[str]):
+# async def update(app: "Shell", args: list[str]):
 #     """Check for updates"""
 #     await do_update(print=True)
 
 
 # @meta_command(name="check-update")
-# async def check_update(app: "ShellApp", args: list[str]):
+# async def check_update(app: "Shell", args: list[str]):
 #     """Check for updates"""
 #     await do_update(print=True, check_only=True)

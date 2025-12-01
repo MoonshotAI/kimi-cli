@@ -13,8 +13,13 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
-from kimi_cli.wire import WireMessage, WireUISide
-from kimi_cli.wire.message import ApprovalRequest, SubagentEvent
+from kimi_cli.wire import Wire
+from kimi_cli.wire.message import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
+    SubagentEvent,
+    WireMessage,
+)
 
 # Maximum continuation attempts for task summary
 MAX_CONTINUE_ATTEMPTS = 1
@@ -63,16 +68,16 @@ class Task(CallableTool2[Params]):
         self._labor_market = runtime.labor_market
         self._session = runtime.session
 
-    async def _get_subagent_history_file(self) -> Path:
-        """Generate a unique history file path for subagent."""
-        main_history_file = self._session.history_file
-        subagent_base_name = f"{main_history_file.stem}_sub"
-        main_history_file.parent.mkdir(parents=True, exist_ok=True)  # just in case
-        sub_history_file = await next_available_rotation(
-            main_history_file.parent / f"{subagent_base_name}{main_history_file.suffix}"
+    async def _get_subagent_context_file(self) -> Path:
+        """Generate a unique context file path for subagent."""
+        main_context_file = self._session.context_file
+        subagent_base_name = f"{main_context_file.stem}_sub"
+        main_context_file.parent.mkdir(parents=True, exist_ok=True)  # just in case
+        sub_context_file = await next_available_rotation(
+            main_context_file.parent / f"{subagent_base_name}{main_context_file.suffix}"
         )
-        assert sub_history_file is not None
-        return sub_history_file
+        assert sub_context_file is not None
+        return sub_context_file
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -102,7 +107,8 @@ class Task(CallableTool2[Params]):
         current_tool_call_id = current_tool_call.id
 
         def _super_wire_send(msg: WireMessage) -> None:
-            if isinstance(msg, ApprovalRequest):
+            if isinstance(msg, ApprovalRequest | ApprovalRequestResolved):
+                # ApprovalRequest and ApprovalRequestResolved should be root level Wire messages
                 super_wire.soul_side.send(msg)
                 return
 
@@ -112,13 +118,14 @@ class Task(CallableTool2[Params]):
             )
             super_wire.soul_side.send(event)
 
-        async def _ui_loop_fn(wire: WireUISide) -> None:
+        async def _ui_loop_fn(wire: Wire) -> None:
+            wire_ui = wire.ui_side(merge=True)
             while True:
-                msg = await wire.receive()
+                msg = await wire_ui.receive()
                 _super_wire_send(msg)
 
-        subagent_history_file = await self._get_subagent_history_file()
-        context = Context(file_backend=subagent_history_file)
+        subagent_context_file = await self._get_subagent_context_file()
+        context = Context(file_backend=subagent_context_file)
         soul = KimiSoul(agent, context=context)
 
         try:
