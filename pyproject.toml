@@ -9,7 +9,7 @@ dependencies = [
     "aiofiles==25.1.0",
     "aiohttp==3.13.2",
     "typer==0.20.0",
-    "kosong==0.28.0",
+    "kosong==0.28.1",
     "loguru==0.7.3",
     "prompt-toolkit==3.0.52",
     "pillow==12.0.0",

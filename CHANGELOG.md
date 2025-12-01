@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
+
 ## [0.59] - 2025-11-28
 
 - Core: Move context file location to `.kimi/sessions/{workdir_md5}/{session_id}/context.jsonl`
