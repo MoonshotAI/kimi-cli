@@ -1,0 +1,10 @@
+{
+    "typeCheckingMode": "strict",
+    "include": [
+        "src/**/*.py",
+        "tests/**/*.py",
+    ],
+    "exclude": [
+        "**/__pycache__/**/*.py",
+    ]
+}
