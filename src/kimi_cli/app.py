@@ -29,6 +29,8 @@ from kimi_cli.wire.message import WireMessage
 
 
 def enable_logging(debug: bool = False) -> None:
+    logger.remove()  # Remove default stderr handler
+    logger.enable("kimi_cli")
     if debug:
         logger.enable("kosong")
     logger.add(
