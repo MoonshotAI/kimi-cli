@@ -197,6 +197,7 @@ def kimi(
     del version  # handled in the callback
 
     from kaos.path import KaosPath
+
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session

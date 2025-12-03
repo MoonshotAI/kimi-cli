@@ -9,13 +9,13 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from kaos import get_current_kaos, reset_current_kaos, set_current_kaos
+from kaos.local import LocalKaos
+from kaos.path import KaosPath
 from kosong.chat_provider.mock import MockChatProvider
 from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
-from kaos import get_current_kaos, reset_current_kaos, set_current_kaos
-from kaos.local import LocalKaos
-from kaos.path import KaosPath
 from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
 from kimi_cli.llm import LLM
 from kimi_cli.metadata import WorkDirMeta

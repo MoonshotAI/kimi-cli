@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from kaos.path import KaosPath
 from kosong.tooling import ToolError, ToolOk
 from pydantic import ValidationError
 
-from kaos.path import KaosPath
 from kimi_cli.tools.file.write import Params, WriteFile
 
 

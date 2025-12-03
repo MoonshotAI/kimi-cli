@@ -1,8 +1,8 @@
 import asyncio
 
+from kaos.path import KaosPath
 from rich import print
 
-from kaos.path import KaosPath
 from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.session import Session
 

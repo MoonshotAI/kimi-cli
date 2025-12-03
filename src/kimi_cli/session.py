@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from kaos.path import KaosPath
+
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 
