@@ -4,8 +4,6 @@ from typing import IO
 
 from loguru import logger
 
-logger.remove()
-
 
 class StreamToLogger(IO[str]):
     def __init__(self, level: str = "ERROR"):
