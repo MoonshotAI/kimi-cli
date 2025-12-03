@@ -9,6 +9,7 @@ from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
+from kimi_cli.utils.path import is_within_directory
 
 
 class Edit(BaseModel):
@@ -43,7 +44,7 @@ class StrReplaceFile(CallableTool2[Params]):
         resolved_path = path.canonical()
 
         # Ensure the path is within work directory
-        if not str(resolved_path).startswith(str(self._work_dir)):
+        if not is_within_directory(resolved_path, self._work_dir):
             return ToolError(
                 message=(
                     f"`{path}` is outside the working directory. "

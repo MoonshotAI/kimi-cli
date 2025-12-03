@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISDIR
 
 import aiofiles.os
@@ -82,3 +82,17 @@ def shorten_home(path: KaosPath) -> KaosPath:
         return KaosPath("~") / p
     except Exception:
         return path
+
+
+def is_within_directory(path: KaosPath, directory: KaosPath) -> bool:
+    """
+    Check whether *path* is contained within *directory* using pure path semantics.
+    Both arguments should already be canonicalized (e.g. via KaosPath.canonical()).
+    """
+    candidate = PurePath(str(path))
+    base = PurePath(str(directory))
+    try:
+        candidate.relative_to(base)
+        return True
+    except ValueError:
+        return False

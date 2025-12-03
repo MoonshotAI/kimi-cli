@@ -154,6 +154,25 @@ async def test_replace_outside_work_directory(
 
 
 @pytest.mark.asyncio
+async def test_replace_outside_work_directory_with_prefix(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Paths sharing the work dir prefix but outside should be blocked."""
+    base = Path(str(temp_work_dir))
+    sneaky_dir = base.parent / f"{base.name}-sneaky"
+    sneaky_dir.mkdir(parents=True, exist_ok=True)
+    sneaky_file = sneaky_dir / "test.txt"
+    sneaky_file.write_text("content", encoding="utf-8")
+
+    result = await str_replace_file_tool(
+        Params(path=str(sneaky_file), edit=Edit(old="content", new="new"))
+    )
+
+    assert isinstance(result, ToolError)
+    assert "outside the working directory" in result.message
+
+
+@pytest.mark.asyncio
 async def test_replace_nonexistent_file(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
