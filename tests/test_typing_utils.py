@@ -23,6 +23,6 @@ def test_flatten_union():
 
 
 def test_flatten_typing_union():
-    assert flatten_union(Union[A, B]) == (A, B)
-    assert flatten_union(Union[Foo, float]) == (A, B, int, str, float)
-    assert flatten_union(Optional[A]) == (A, type(None))
+    assert flatten_union(Union[A, B]) == (A, B)  # noqa: UP007
+    assert flatten_union(Union[Foo, float]) == (A, B, int, str, float)  # noqa: UP007
+    assert flatten_union(Optional[A]) == (A, type(None))  # noqa: UP045
