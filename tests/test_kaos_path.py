@@ -77,10 +77,10 @@ async def test_iterdir_and_glob_from_kaos_path(kaos_cwd: KaosPath):
     await (base_dir / "two.md").write_text("2")
     await (base_dir / "three.txt").write_text("3")
 
-    entries = [entry.name async for entry in await base_dir.iterdir()]
+    entries = [entry.name async for entry in base_dir.iterdir()]
     assert set(entries) == {"one.txt", "two.md", "three.txt"}
 
-    globbed = [entry.name async for entry in await base_dir.glob("*.txt")]
+    globbed = [entry.name async for entry in base_dir.glob("*.txt")]
     assert set(globbed) == {"one.txt", "three.txt"}
 
 

@@ -146,13 +146,13 @@ class KaosPath:
         except OSError:
             return False
 
-    async def iterdir(self) -> AsyncGenerator[KaosPath]:
+    def iterdir(self) -> AsyncGenerator[KaosPath]:
         """Return the direct children of the directory."""
-        return await kaos.iterdir(self)
+        return kaos.iterdir(self)
 
-    async def glob(self, pattern: str, *, case_sensitive: bool = True) -> AsyncGenerator[KaosPath]:
+    def glob(self, pattern: str, *, case_sensitive: bool = True) -> AsyncGenerator[KaosPath]:
         """Return all paths matching the pattern under this directory."""
-        return await kaos.glob(self, pattern, case_sensitive=case_sensitive)
+        return kaos.glob(self, pattern, case_sensitive=case_sensitive)
 
     async def read_bytes(self) -> bytes:
         """Read the entire file contents as bytes."""
@@ -167,14 +167,14 @@ class KaosPath:
         """Read the entire file contents as text."""
         return await kaos.readtext(self, encoding=encoding, errors=errors)
 
-    async def read_lines(
+    def read_lines(
         self,
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> AsyncGenerator[str]:
         """Iterate over the lines of the file."""
-        return await kaos.readlines(self, encoding=encoding, errors=errors)
+        return kaos.readlines(self, encoding=encoding, errors=errors)
 
     async def write_bytes(self, data: bytes) -> int:
         """Write bytes data to the file."""

@@ -138,11 +138,11 @@ async def stat(path: StrOrKaosPath, *, follow_symlinks: bool = True) -> os.stat_
     return await get_current_kaos().stat(path, follow_symlinks=follow_symlinks)
 
 
-async def iterdir(path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
+def iterdir(path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
     return get_current_kaos().iterdir(path)
 
 
-async def glob(
+def glob(
     path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
 ) -> AsyncGenerator[KaosPath]:
     return get_current_kaos().glob(path, pattern, case_sensitive=case_sensitive)
@@ -161,7 +161,7 @@ async def readtext(
     return await get_current_kaos().readtext(path, encoding=encoding, errors=errors)
 
 
-async def readlines(
+def readlines(
     path: StrOrKaosPath,
     *,
     encoding: str = "utf-8",
