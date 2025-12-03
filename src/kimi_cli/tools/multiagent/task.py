@@ -11,7 +11,6 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
-from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.path import next_available_rotation
 from kimi_cli.wire import Wire
 from kimi_cli.wire.message import (
@@ -147,7 +146,7 @@ class Task(CallableTool2[Params]):
         if len(context.history) == 0 or context.history[-1].role != "assistant":
             return ToolError(message=_error_msg, brief="Failed to run subagent")
 
-        final_response = message_extract_text(context.history[-1])
+        final_response = context.history[-1].extract_text(sep="\n")
 
         # Check if response is too brief, if so, run again with continuation prompt
         n_attempts_remaining = MAX_CONTINUE_ATTEMPTS
@@ -156,6 +155,6 @@ class Task(CallableTool2[Params]):
 
             if len(context.history) == 0 or context.history[-1].role != "assistant":
                 return ToolError(message=_error_msg, brief="Failed to run subagent")
-            final_response = message_extract_text(context.history[-1])
+            final_response = context.history[-1].extract_text(sep="\n")
 
         return ToolOk(output=final_response)

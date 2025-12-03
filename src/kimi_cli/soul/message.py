@@ -58,8 +58,6 @@ def check_message(
     message: Message, model_capabilities: set[ModelCapability]
 ) -> set[ModelCapability]:
     """Check the message content, return the missing model capabilities."""
-    if isinstance(message.content, str):
-        return set()
     capabilities_needed = set[ModelCapability]()
     for part in message.content:
         if isinstance(part, ImageURLPart):
@@ -67,22 +65,3 @@ def check_message(
         elif isinstance(part, ThinkPart):
             capabilities_needed.add("thinking")
     return capabilities_needed - model_capabilities
-
-
-def message_content_to_text(content: str | list[ContentPart]) -> str:
-    """Convert message content to plain text. `ThinkPart`s will be ignored."""
-    if isinstance(content, str):
-        return content
-    texts: list[str] = []
-    for part in content:
-        match part:
-            case TextPart(text=text):
-                texts.append(text)
-            case ThinkPart():
-                pass
-            case ImageURLPart(image_url=image_url):
-                placeholder = f"[Image,{image_url.id}]" if image_url.id else "[Image]"
-                texts.append(placeholder)
-            case _:
-                texts.append(f"[{part.__class__.__name__}]")
-    return "".join(texts)

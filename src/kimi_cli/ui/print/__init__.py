@@ -15,7 +15,6 @@ from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_so
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.print.visualize import visualize
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.message import message_extract_text
 from kimi_cli.utils.signals import install_sigint_handler
 
 
@@ -118,7 +117,7 @@ class Print:
                 data = json.loads(json_line)
                 message = Message.model_validate(data)
                 if message.role == "user":
-                    return message_extract_text(message)
+                    return message.extract_text(sep="\n")
                 logger.warning(
                     "Ignoring message with role `{role}`: {json_line}",
                     role=message.role,

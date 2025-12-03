@@ -893,7 +893,7 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.28.1" },
+    { name = "kosong", specifier = "==0.29.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
@@ -920,7 +920,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.28.1"
+version = "0.29.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -932,9 +932,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/ae/abbf84ea2d243500694584d7acb470a515cc3a8a426082b844fe709cae3f/kosong-0.28.1.tar.gz", hash = "sha256:8f5bbeaac57cb8a92de8dc614f1e1d32da193d2f5718c79e383e871a7c06ab35", size = 33636, upload-time = "2025-12-01T07:00:59.527Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/2e/3b6f94010fcca7b952f92668b020194250380d8a1ad9060c3d26ea6acfed/kosong-0.29.0.tar.gz", hash = "sha256:ee464a4ad924737e42cb03bda5085d61fabce7cddc8b9aaa77fa507dd4835f4d", size = 33431, upload-time = "2025-12-02T07:22:54.902Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/77/b7c292e07747e66f5f26bdb6913725c1166613537f1645b118cfc38de9cb/kosong-0.28.1-py3-none-any.whl", hash = "sha256:fe3042acadc4145aa8ac6b2568f9ec5c39c4c73d0bd8ca9c7856e2cddfdd0716", size = 50336, upload-time = "2025-12-01T07:00:58.243Z" },
+    { url = "https://files.pythonhosted.org/packages/31/cf/21e60cdc2e8504a1008d8de386d2b8901f3021625d2d8e9f697a18edbacc/kosong-0.29.0-py3-none-any.whl", hash = "sha256:ade29ddf4a7b00b00dfd98bee27b42a86054c3b615b1c21531ab4f569d281d5d", size = 50012, upload-time = "2025-12-02T07:22:53.779Z" },
 ]
 
 [[package]]
