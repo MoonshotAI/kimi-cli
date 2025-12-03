@@ -333,8 +333,9 @@ class ACPAgent:
             status="failed" if is_error else "completed",
         )
 
-        if state.tool_call.function.name == "SetTodoList" and not is_error:
-            update.content = _tool_result_to_acp_content(tool_ret)
+        contents = _tool_result_to_acp_content(tool_ret)
+        if contents:
+            update.content = contents
 
         await self.connection.sessionUpdate(
             acp.SessionNotification(sessionId=self.session_id, update=update)
@@ -436,20 +437,38 @@ def _tool_result_to_acp_content(
             return acp.schema.ContentToolCallContent(
                 type="content", content=acp.schema.TextContentBlock(type="text", text=part.text)
             )
-        else:
-            logger.warning("Unsupported content part in tool result: {part}", part=part)
-            return acp.schema.ContentToolCallContent(
-                type="content",
-                content=acp.schema.TextContentBlock(
-                    type="text", text=f"[{part.__class__.__name__}]"
-                ),
-            )
+        logger.warning("Unsupported content part in tool result: {part}", part=part)
+        return acp.schema.ContentToolCallContent(
+            type="content",
+            content=acp.schema.TextContentBlock(type="text", text=f"[{part.__class__.__name__}]"),
+        )
 
-    return (
-        [_to_acp_content(TextPart(text=tool_ret.output))]
-        if isinstance(tool_ret.output, str)
-        else [_to_acp_content(part) for part in tool_ret.output]
-    )
+    def _to_text_block(text: str) -> acp.schema.ContentToolCallContent:
+        return acp.schema.ContentToolCallContent(
+            type="content", content=acp.schema.TextContentBlock(type="text", text=text)
+        )
+
+    contents: list[
+        acp.schema.ContentToolCallContent
+        | acp.schema.FileEditToolCallContent
+        | acp.schema.TerminalToolCallContent
+    ] = []
+
+    output = tool_ret.output
+    if isinstance(output, str):
+        if output:
+            contents.append(_to_text_block(output))
+    elif isinstance(output, list):
+        contents.extend(_to_acp_content(part) for part in output)
+    elif isinstance(output, ContentPart):
+        contents.append(_to_acp_content(output))
+
+    if not contents:
+        message = getattr(tool_ret, "message", "")
+        if message:
+            contents.append(_to_text_block(message))
+
+    return contents
 
 
 class ACP:

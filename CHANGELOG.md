@@ -13,6 +13,10 @@ Only write entries that are worth mentioning to users.
 
 - LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
 
+### Fixed
+
+- ACP: Fix tool results (including Shell/Bash tool output) not being displayed in ACP clients like Zed
+
 ## [0.59] - 2025-11-28
 
 - Core: Move context file location to `.kimi/sessions/{workdir_md5}/{session_id}/context.jsonl`
