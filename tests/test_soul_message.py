@@ -106,7 +106,6 @@ def test_tool_error_result():
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
-    assert isinstance(message.content, list)
     assert len(message.content) == 2  # System message + error output
     assert message.content[0] == system("ERROR: Error occurred")
     assert message.content[1] == TextPart(text="Error details")
@@ -121,7 +120,6 @@ def test_tool_error_without_output():
 
     assert isinstance(message, Message)
     assert message.role == "tool"
-    assert isinstance(message.content, list)
     assert len(message.content) == 1  # Only system message
     assert message.content[0] == system("ERROR: Error occurred")
 
@@ -136,7 +134,6 @@ def test_tool_ok_with_text_only():
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
-    assert isinstance(message.content, list)
     # Should have system message from ToolOk + text output
     assert len(message.content) == 2
     assert message.content[0] == system("Done")
@@ -156,7 +153,6 @@ def test_tool_ok_with_non_text_parts():
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
-    assert isinstance(message.content, list)
 
     # Should have system message + text part + image part
     assert len(message.content) == 3
@@ -177,7 +173,6 @@ def test_tool_ok_with_only_non_text_parts():
     assert isinstance(message, Message)
     assert message.role == "tool"
     assert message.tool_call_id == "call_123"
-    assert isinstance(message.content, list)
     # Should have only the image part (no text parts)
     assert len(message.content) == 1
     assert message.content[0] == image_part
@@ -192,7 +187,6 @@ def test_tool_ok_with_only_text_parts():
 
     assert isinstance(message, Message)
     assert message.role == "tool"
-    assert isinstance(message.content, list)
     assert len(message.content) == 1
     assert message.content[0] == TextPart(text="Just text")
 

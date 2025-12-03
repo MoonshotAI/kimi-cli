@@ -110,12 +110,9 @@ def _format_message(msg: Message, index: int) -> Panel:
     # Format content
     content_items: list = []
 
-    if isinstance(msg.content, str):
-        content_items.append(Text(msg.content, style="white"))
-    else:
-        for part in msg.content:
-            formatted = _format_content_part(part)
-            content_items.append(formatted)
+    for part in msg.content:
+        formatted = _format_content_part(part)
+        content_items.append(formatted)
 
     # Add tool calls if present
     if msg.tool_calls:
