@@ -1,5 +1,5 @@
 from types import UnionType
-from typing import Any, TypeAliasType, get_args, get_origin
+from typing import Any, TypeAliasType, Union, get_args, get_origin
 
 
 def flatten_union(tp: Any) -> tuple[Any, ...]:
@@ -9,7 +9,8 @@ def flatten_union(tp: Any) -> tuple[Any, ...]:
     """
     if isinstance(tp, TypeAliasType):
         tp = tp.__value__
-    if get_origin(tp) is UnionType:
+    origin = get_origin(tp)
+    if origin in (UnionType, Union):
         args = get_args(tp)
         flattened_args: list[Any] = []
         for arg in args:
