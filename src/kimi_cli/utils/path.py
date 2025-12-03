@@ -56,7 +56,7 @@ async def next_available_rotation(path: Path) -> Path | None:
 
 async def list_directory(work_dir: KaosPath) -> str:
     entries: list[str] = []
-    async for entry in await work_dir.iterdir():
+    async for entry in work_dir.iterdir():
         st = await entry.stat()
         mode = "d" if S_ISDIR(st.st_mode) else "-"
         mode += "r" if st.st_mode & 0o400 else "-"
