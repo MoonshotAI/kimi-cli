@@ -88,7 +88,7 @@ class ReadFile(CallableTool2[Params]):
             max_lines_reached = False
             max_bytes_reached = False
             current_line_no = 0
-            async for line in await p.read_lines(errors="replace"):
+            async for line in p.read_lines(errors="replace"):
                 current_line_no += 1
                 if current_line_no < params.line_offset:
                     continue
