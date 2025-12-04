@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
@@ -272,7 +272,8 @@ def _load_tool(tool_path: str, injector: Injector) -> ToolType | None:
     if deps_attr is not None:
         if not isinstance(deps_attr, (list, tuple)):
             raise ToolLoadError(tool_path, "__dependencies__ must be a list or tuple of types")
-        for dep in deps_attr:
+        dependencies_list = cast(list[type[Any]] | tuple[type[Any], ...], deps_attr)
+        for dep in dependencies_list:
             args.append(injector.require(dep, tool_path=tool_path))
     elif "__init__" in cls.__dict__:
         # the tool class overrides the `__init__` of base class
@@ -280,7 +281,7 @@ def _load_tool(tool_path: str, injector: Injector) -> ToolType | None:
             if param.kind == inspect.Parameter.KEYWORD_ONLY:
                 # once we encounter a keyword-only parameter, we stop injecting dependencies
                 break
-            if param.annotation is inspect._empty:
+            if param.annotation is inspect.Signature.empty:
                 raise ToolLoadError(
                     tool_path, f"Missing type annotation for dependency param '{param.name}'"
                 )
