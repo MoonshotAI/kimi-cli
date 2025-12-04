@@ -19,6 +19,7 @@ from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
+from kimi_cli.soul.injector import Injector, ToolDependencyError, ToolLoadError, ToolLoadIssue
 from kimi_cli.soul.toolset import KimiToolset, ToolType
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.utils.logging import logger
@@ -195,9 +196,10 @@ async def load_agent(
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
-    bad_tools = _load_tools(toolset, tools, tool_deps)
-    if bad_tools:
-        raise ValueError(f"Invalid tools: {bad_tools}")
+    issues = _load_tools(toolset, tools, tool_deps)
+    if issues:
+        details = "\n".join(f"- {issue.path}: {issue.reason}" for issue in issues)
+        raise ValueError(f"Invalid tools:\n{details}")
 
     if mcp_configs:
         await _load_mcp_tools(toolset, mcp_configs, runtime)
@@ -228,45 +230,63 @@ def _load_tools(
     toolset: KimiToolset,
     tool_paths: list[str],
     dependencies: dict[type[Any], Any],
-) -> list[str]:
-    bad_tools: list[str] = []
+) -> list[ToolLoadIssue]:
+    injector = Injector(dependencies)
+    issues: list[ToolLoadIssue] = []
     for tool_path in tool_paths:
         try:
-            tool = _load_tool(tool_path, dependencies)
+            tool = _load_tool(tool_path, injector)
         except SkipThisTool:
             logger.info("Skipping tool: {tool_path}", tool_path=tool_path)
+            continue
+        except (ToolDependencyError, ToolLoadError) as e:
+            logger.error("{error}", error=e)
+            issues.append(ToolLoadIssue(tool_path, str(e)))
+            continue
+        except Exception as e:  # pragma: no cover - defensive
+            logger.exception("Unexpected error when loading tool: {tool_path}", tool_path=tool_path)
+            issues.append(ToolLoadIssue(tool_path, f"Unexpected error: {e}"))
             continue
         if tool:
             toolset.add(tool)
         else:
-            bad_tools.append(tool_path)
+            issues.append(ToolLoadIssue(tool_path, "Import failed or class missing"))
     logger.info("Loaded tools: {tools}", tools=[tool.name for tool in toolset.tools])
-    if bad_tools:
-        logger.error("Bad tools: {bad_tools}", bad_tools=bad_tools)
-    return bad_tools
+    if issues:
+        logger.error(
+            "Tool load issues: {issues}", issues=[f"{i.path}: {i.reason}" for i in issues]
+        )
+    return issues
 
 
-def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType | None:
+def _load_tool(tool_path: str, injector: Injector) -> ToolType | None:
     logger.debug("Loading tool: {tool_path}", tool_path=tool_path)
     module_name, class_name = tool_path.rsplit(":", 1)
     try:
         module = importlib.import_module(module_name)
-    except ImportError:
-        return None
+    except ImportError as e:
+        raise ToolLoadError(tool_path, f"Import failed: {e}") from e
     cls = getattr(module, class_name, None)
     if cls is None:
-        return None
-    args: list[type[Any]] = []
-    if "__init__" in cls.__dict__:
+        raise ToolLoadError(tool_path, "Tool class not found in module")
+    args: list[Any] = []
+    deps_attr = getattr(cls, "__dependencies__", None)
+    if deps_attr is not None:
+        if not isinstance(deps_attr, (list, tuple)):
+            raise ToolLoadError(tool_path, "__dependencies__ must be a list or tuple of types")
+        for dep in deps_attr:
+            args.append(injector.require(dep, tool_path=tool_path))
+    elif "__init__" in cls.__dict__:
         # the tool class overrides the `__init__` of base class
         for param in inspect.signature(cls).parameters.values():
             if param.kind == inspect.Parameter.KEYWORD_ONLY:
                 # once we encounter a keyword-only parameter, we stop injecting dependencies
                 break
-            # all positional parameters should be dependencies to be injected
-            if param.annotation not in dependencies:
-                raise ValueError(f"Tool dependency not found: {param.annotation}")
-            args.append(dependencies[param.annotation])
+            if param.annotation is inspect._empty:
+                raise ToolLoadError(
+                    tool_path, f"Missing type annotation for dependency param '{param.name}'"
+                )
+            args.append(injector.require(param.annotation, tool_path=tool_path))
     return cls(*args)
 
 
