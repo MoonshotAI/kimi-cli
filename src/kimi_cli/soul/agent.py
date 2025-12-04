@@ -253,9 +253,7 @@ def _load_tools(
             issues.append(ToolLoadIssue(tool_path, "Import failed or class missing"))
     logger.info("Loaded tools: {tools}", tools=[tool.name for tool in toolset.tools])
     if issues:
-        logger.error(
-            "Tool load issues: {issues}", issues=[f"{i.path}: {i.reason}" for i in issues]
-        )
+        logger.error("Tool load issues: {issues}", issues=[f"{i.path}: {i.reason}" for i in issues])
     return issues
 
 
