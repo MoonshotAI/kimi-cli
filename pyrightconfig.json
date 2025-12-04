@@ -8,13 +8,18 @@
     "src/kimi_cli/tools",
     "src/kimi_cli/ui/acp",
     "src/kimi_cli/ui/print",
-    "src/kimi_cli/ui/shell",
     "src/kimi_cli/ui/wire",
     "src/kimi_cli/utils/*.py",
     "src/kimi_cli/wire",
-    "src/kimi_cli/*.py"
-  ],
-  "ignore": [
-    "src/kimi_cli/ui/shell/metacmd.py"
+    "src/kimi_cli/*.py",
+    "src/kimi_cli/ui/shell/__init__.py",
+    "src/kimi_cli/ui/shell/console.py",
+    "src/kimi_cli/ui/shell/debug.py",
+    "src/kimi_cli/ui/shell/keyboard.py",
+    "src/kimi_cli/ui/shell/prompt.py",
+    "src/kimi_cli/ui/shell/replay.py",
+    "src/kimi_cli/ui/shell/setup.py",
+    "src/kimi_cli/ui/shell/update.py",
+    "src/kimi_cli/ui/shell/visualize.py",
   ]
 }

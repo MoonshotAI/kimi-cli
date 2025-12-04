@@ -12,7 +12,7 @@ from kosong.message import (
     ThinkPart,
     ToolCall,
 )
-from rich.console import Group
+from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
@@ -108,7 +108,7 @@ def _format_message(msg: Message, index: int) -> Panel:
         role_text += f" [dim]→ {msg.tool_call_id}[/dim]"
 
     # Format content
-    content_items: list[Text | Panel | Group] = []
+    content_items: list[RenderableType] = []
 
     for part in msg.content:
         formatted = _format_content_part(part)
