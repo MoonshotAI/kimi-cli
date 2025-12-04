@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Add `Kaos.exec` method for executing commands.
+
 ## [0.3.0] - 2025-12-03
 
 - Change `iterdir`, `glob` and `read_lines` to sync function returning `AsyncIterator`.

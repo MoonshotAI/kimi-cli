@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from asyncio.subprocess import Process as AsyncioProcess
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
@@ -14,7 +15,7 @@ else:
 import aiofiles
 import aiofiles.os
 
-from kaos import Kaos, StrOrKaosPath
+from kaos import Kaos, KaosProcess, StrOrKaosPath
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -114,6 +115,45 @@ class LocalKaos:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
         await asyncio.to_thread(local_path.mkdir, parents=parents, exist_ok=exist_ok)
 
+    async def exec(self, *args: str) -> KaosProcess:
+        if not args:
+            raise ValueError("At least one argument (the program to execute) is required.")
+
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        return LocalKaosProcess(process)
+
 
 local_kaos = LocalKaos()
 """The default local KAOS instance."""
+
+
+class LocalKaosProcess:
+    """Local KAOS process wrapper around asyncio.subprocess.Process."""
+
+    def __init__(self, process: AsyncioProcess) -> None:
+        if process.stdin is None or process.stdout is None or process.stderr is None:
+            raise ValueError("Process must be created with stdin/stdout/stderr pipes.")
+
+        self._process = process
+        self.stdin = process.stdin
+        self.stdout = process.stdout
+        self.stderr = process.stderr
+
+    @property
+    def pid(self) -> int:
+        return self._process.pid
+
+    @property
+    def returncode(self) -> int | None:
+        return self._process.returncode
+
+    async def wait(self) -> int:
+        return await self._process.wait()
+
+    async def kill(self) -> None:
+        self._process.kill()

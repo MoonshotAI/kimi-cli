@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import os
+from asyncio import StreamReader, StreamWriter
 from collections.abc import AsyncGenerator
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
@@ -94,6 +95,39 @@ class Kaos(Protocol):
         self, path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False
     ) -> None:
         """Create a directory at the given path."""
+        ...
+
+    async def exec(self, *args: str) -> KaosProcess:
+        """
+        Execute a command with arguments and return the running process.
+        """
+        ...
+
+
+@runtime_checkable
+class KaosProcess(Protocol):
+    """Process interface exposed by KAOS `exec` implementations."""
+
+    stdin: StreamWriter
+    stdout: StreamReader
+    stderr: StreamReader
+
+    @property
+    def pid(self) -> int:
+        """Get the process ID."""
+        ...
+
+    @property
+    def returncode(self) -> int | None:
+        """Get the process return code, or None if it is still running."""
+        ...
+
+    async def wait(self) -> int:
+        """Wait for the process to complete and return the exit code."""
+        ...
+
+    async def kill(self) -> None:
+        """Kill the process."""
         ...
 
 
@@ -189,3 +223,7 @@ async def writetext(
 
 async def mkdir(path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False) -> None:
     return await get_current_kaos().mkdir(path, parents=parents, exist_ok=exist_ok)
+
+
+async def exec(*args: str) -> KaosProcess:
+    return await get_current_kaos().exec(*args)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import sys
 from collections.abc import Generator
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -97,3 +99,45 @@ async def test_read_write_bytes(local_kaos: LocalKaos):
     file_path = tmp_path / "data.bin"
     await local_kaos.writebytes(file_path, b"\x00\x01\xff")
     assert await local_kaos.readbytes(file_path) == b"\x00\x01\xff"
+
+
+def _python_code_args(code: str) -> tuple[str, str, str]:
+    return sys.executable, "-c", code
+
+
+@pytest.mark.asyncio
+async def test_exec_runs_command_and_streams(local_kaos: LocalKaos):
+    code = "import sys\nsys.stdout.write('hello\\n')\nsys.stderr.write('stderr line\\n')\n"
+
+    process = await local_kaos.exec(*_python_code_args(code))
+
+    assert process.stdin is not None
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    stdout_data, stderr_data = await asyncio.gather(process.stdout.read(), process.stderr.read())
+    assert await process.wait() == 0
+    assert stdout_data.decode("utf-8").strip() == "hello"
+    assert stderr_data.decode("utf-8").strip() == "stderr line"
+
+
+@pytest.mark.asyncio
+async def test_exec_non_zero_exit(local_kaos: LocalKaos):
+    process = await local_kaos.exec(*_python_code_args("import sys; sys.exit(7)"))
+
+    exit_code = await process.wait()
+    assert exit_code == 7
+
+
+@pytest.mark.asyncio
+async def test_exec_wait_timeout(local_kaos: LocalKaos):
+    process = await local_kaos.exec(*_python_code_args("import time; time.sleep(1)"))
+    assert process.pid > 0
+
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(process.wait(), timeout=0.01)
+    finally:
+        if process.returncode is None:
+            await process.kill()
+        await process.wait()
