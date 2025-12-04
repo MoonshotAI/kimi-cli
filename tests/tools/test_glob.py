@@ -63,6 +63,19 @@ async def test_glob_recursive_pattern_prohibited(glob_tool: Glob, test_files: Ka
     assert "Unsafe pattern" in result.brief
 
 
+async def test_glob_recursive_pattern_allowed_with_gitignore(glob_tool: Glob, test_files: KaosPath):
+    """Allow recursive ** pattern when a .gitignore exists in work dir."""
+    await (test_files / ".gitignore").write_text("node_modules/\n")
+
+    result = await glob_tool(Params(pattern="**/*.py", directory=str(test_files)))
+
+    assert isinstance(result, ToolOk)
+    assert isinstance(result.output, str)
+    output = result.output.replace("\\", "/")
+    assert "setup.py" in output
+    assert "src/main/app.py" in output
+
+
 async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: KaosPath):
     """Test safe recursive glob pattern that doesn't start with **/."""
     result = await glob_tool(Params(pattern="src/**/*.py", directory=str(test_files)))
