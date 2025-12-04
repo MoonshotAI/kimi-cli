@@ -1,5 +1,6 @@
 import asyncio
 import platform
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import override
@@ -109,6 +110,7 @@ async def _run_shell_command(
 
 def _shell_args(command: str) -> tuple[str, ...]:
     if platform.system() == "Windows":
-        return ("cmd.exe", "/d", "/s", "/c", command)
+        quoted_cmd = subprocess.list2cmdline([command])
+        return ("cmd.exe", "/c", quoted_cmd)
 
     return ("/bin/sh", "-c", command)
