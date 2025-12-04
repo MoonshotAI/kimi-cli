@@ -9,6 +9,12 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [0.61] - 2025-12-04
+
+- Lib: Fix logging when used as a library
+- Tool: Harden file path check to protect against shared-prefix escape
+- LLM: Improve compatibility with some third-party OpenAI Responses and Anthropic API providers
+
 ## [0.60] - 2025-12-01
 
 - LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
