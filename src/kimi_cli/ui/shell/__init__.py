@@ -9,6 +9,7 @@ from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from kosong.message import ContentPart
+from loguru import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -22,7 +23,6 @@ from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
-from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.term import ensure_new_line
 from kimi_cli.wire.message import StatusUpdate
