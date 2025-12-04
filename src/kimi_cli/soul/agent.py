@@ -274,7 +274,8 @@ def _load_tool(tool_path: str, injector: Injector) -> ToolType | None:
             raise ToolLoadError(tool_path, "__dependencies__ must be a list or tuple of types")
         dependencies_list = cast(list[type[Any]] | tuple[type[Any], ...], deps_attr)
         for dep in dependencies_list:
-            args.append(injector.require(dep, tool_path=tool_path))
+            resolved_dep = _resolve_dependency(dep, module, tool_path)
+            args.append(injector.require(resolved_dep, tool_path=tool_path))
     elif "__init__" in cls.__dict__:
         # the tool class overrides the `__init__` of base class
         for param in inspect.signature(cls).parameters.values():
@@ -285,8 +286,23 @@ def _load_tool(tool_path: str, injector: Injector) -> ToolType | None:
                 raise ToolLoadError(
                     tool_path, f"Missing type annotation for dependency param '{param.name}'"
                 )
-            args.append(injector.require(param.annotation, tool_path=tool_path))
+            resolved_dep = _resolve_dependency(param.annotation, module, tool_path)
+            args.append(injector.require(resolved_dep, tool_path=tool_path))
     return cls(*args)
+
+
+def _resolve_dependency(
+    annotation: Any,
+    module: Any,
+    tool_path: str,  # module: types.ModuleType, but not imported
+) -> type[Any]:
+    """Resolve dependency annotations that may be forward references."""
+    if isinstance(annotation, str):
+        resolved = getattr(module, annotation, None)
+        if resolved is None:
+            raise ToolLoadError(tool_path, f"Cannot resolve dependency type '{annotation}'")
+        return cast(type[Any], resolved)
+    return cast(type[Any], annotation)
 
 
 async def _load_mcp_tools(
