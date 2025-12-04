@@ -70,6 +70,7 @@ async def list_directory(work_dir: KaosPath) -> str:
         try:
             st = await entry.stat()
         except OSError:
+            # Broken symlink, permission error, etc. – keep listing other entries.
             entries.append(f"?--------- {'?':>10} {entry.name} [stat failed]")
             continue
         mode = "d" if S_ISDIR(st.st_mode) else "-"
