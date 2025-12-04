@@ -458,10 +458,11 @@ def _tool_result_to_acp_content(
     if isinstance(output, str):
         if output:
             contents.append(_to_text_block(output))
-    elif isinstance(output, list):
+    else:
+        # NOTE: At the moment, ToolReturnValue.output is either a string or a
+        # list of ContentPart. We avoid an unnecessary isinstance() check here
+        # to keep pyright happy while still handling list outputs.
         contents.extend(_to_acp_content(part) for part in output)
-    elif isinstance(output, ContentPart):
-        contents.append(_to_acp_content(output))
 
     if not contents:
         message = getattr(tool_ret, "message", "")
