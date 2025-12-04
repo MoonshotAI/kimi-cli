@@ -1,6 +1,5 @@
 import asyncio
 import platform
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import override
