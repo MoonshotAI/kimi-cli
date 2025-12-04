@@ -109,6 +109,6 @@ async def _run_shell_command(
 
 def _shell_args(command: str) -> tuple[str, ...]:
     if platform.system() == "Windows":
-        return ("cmd.exe", "/s", "/c", command)
+        return (f"cmd.exe /c {command}",)
 
     return ("/bin/sh", "-c", command)
