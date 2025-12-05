@@ -89,7 +89,7 @@ After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
 
 Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
-For example, to use Kimi CLI with [Zed](https://zed.dev/), add the following configuration to your `~/.config/zed/settings.json`:
+For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
 ```json
 {
@@ -103,7 +103,7 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/), add the following con
 }
 ```
 
-Then you can create Kimi CLI threads in Zed's agent panel.
+Then you can create Kimi CLI threads in IDE's agent panel.
 
 ### Using MCP tools
 
