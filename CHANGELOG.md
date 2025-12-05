@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Add `Kaos.exec` method for executing commands.
+- Add `StepResult` as the return type for `Kaos.stat`.
 
 ## [0.3.0] - 2025-12-03
 

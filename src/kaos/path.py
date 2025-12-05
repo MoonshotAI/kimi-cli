@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ntpath
-import os
 import posixpath
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
@@ -118,7 +117,7 @@ class KaosPath:
         """Return the current working directory as a KaosPath."""
         return kaos.getcwd()
 
-    async def stat(self, follow_symlinks: bool = True) -> os.stat_result:
+    async def stat(self, follow_symlinks: bool = True) -> kaos.StatResult:
         """Return an os.stat_result for the path."""
         return await kaos.stat(self, follow_symlinks=follow_symlinks)
 

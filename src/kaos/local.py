@@ -15,7 +15,7 @@ else:
 import aiofiles
 import aiofiles.os
 
-from kaos import Kaos, KaosProcess, StrOrKaosPath
+from kaos import Kaos, KaosProcess, StatResult, StrOrKaosPath
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -44,9 +44,21 @@ class LocalKaos:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
         os.chdir(local_path)
 
-    async def stat(self, path: StrOrKaosPath, *, follow_symlinks: bool = True) -> os.stat_result:
+    async def stat(self, path: StrOrKaosPath, *, follow_symlinks: bool = True) -> StatResult:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        return await aiofiles.os.stat(local_path, follow_symlinks=follow_symlinks)
+        st = await aiofiles.os.stat(local_path, follow_symlinks=follow_symlinks)
+        return StatResult(
+            st_mode=st.st_mode,
+            st_ino=st.st_ino,
+            st_dev=st.st_dev,
+            st_nlink=st.st_nlink,
+            st_uid=st.st_uid,
+            st_gid=st.st_gid,
+            st_size=st.st_size,
+            st_atime=st.st_atime,
+            st_mtime=st.st_mtime,
+            st_ctime=st.st_ctime,
+        )
 
     async def iterdir(self, path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)

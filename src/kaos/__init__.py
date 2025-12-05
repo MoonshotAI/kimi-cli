@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import contextvars
-import os
 from asyncio import StreamReader, StreamWriter
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -37,7 +37,7 @@ class Kaos(Protocol):
         """Change the current working directory."""
         ...
 
-    async def stat(self, path: StrOrKaosPath, *, follow_symlinks: bool = True) -> os.stat_result:
+    async def stat(self, path: StrOrKaosPath, *, follow_symlinks: bool = True) -> StatResult:
         """Get the stat result for a path."""
         ...
 
@@ -104,6 +104,22 @@ class Kaos(Protocol):
         ...
 
 
+@dataclass
+class StatResult:
+    """KAOS stat result data class."""
+
+    st_mode: int
+    st_ino: int
+    st_dev: int
+    st_nlink: int
+    st_uid: int
+    st_gid: int
+    st_size: int
+    st_atime: float
+    st_mtime: float
+    st_ctime: float
+
+
 @runtime_checkable
 class KaosProcess(Protocol):
     """Process interface exposed by KAOS `exec` implementations."""
@@ -168,7 +184,7 @@ async def chdir(path: StrOrKaosPath) -> None:
     await get_current_kaos().chdir(path)
 
 
-async def stat(path: StrOrKaosPath, *, follow_symlinks: bool = True) -> os.stat_result:
+async def stat(path: StrOrKaosPath, *, follow_symlinks: bool = True) -> StatResult:
     return await get_current_kaos().stat(path, follow_symlinks=follow_symlinks)
 
 
