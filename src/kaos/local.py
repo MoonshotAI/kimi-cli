@@ -57,7 +57,7 @@ class LocalKaos:
             st_size=st.st_size,
             st_atime=st.st_atime,
             st_mtime=st.st_mtime,
-            st_ctime=st.st_ctime,
+            st_ctime=st.st_ctime if os.name != "nt" else st.st_birthtime,
         )
 
     async def iterdir(self, path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
