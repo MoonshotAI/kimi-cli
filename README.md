@@ -16,8 +16,8 @@ Kimi CLI is a new CLI agent that can help you with your software development tas
 ## Key features
 
 - Shell-like UI and shell command execution
+- IDE integration via [Agent Client Protocol]
 - Zsh integration
-- [Agent Client Protocol] support
 - MCP support
 - And more to come...
 
@@ -63,6 +63,26 @@ Kimi CLI is not only a coding agent, but also a shell. You can switch the mode b
 > [!NOTE]
 > Built-in shell commands like `cd` are not supported yet.
 
+### IDE integration via ACP
+
+Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
+
+For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
+
+```json
+{
+  "agent_servers": {
+    "Kimi CLI": {
+      "command": "kimi",
+      "args": ["--acp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Then you can create Kimi CLI threads in IDE's agent panel.
+
 ### Zsh integration
 
 You can use Kimi CLI together with Zsh, to empower your shell experience with AI agent capabilities.
@@ -84,26 +104,6 @@ plugins=(... kimi-cli)
 ```
 
 After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
-
-### ACP support
-
-Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
-
-For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
-
-```json
-{
-  "agent_servers": {
-    "Kimi CLI": {
-      "command": "kimi",
-      "args": ["--acp"],
-      "env": {}
-    }
-  }
-}
-```
-
-Then you can create Kimi CLI threads in IDE's agent panel.
 
 ### Using MCP tools
 
