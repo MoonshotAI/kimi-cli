@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
+
 ## [0.61] - 2025-12-04
 
 - Lib: Fix logging when used as a library
@@ -18,7 +22,6 @@ Only write entries that are worth mentioning to users.
 ## [0.60] - 2025-12-01
 
 - LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
-- ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
 
 ## [0.59] - 2025-11-28
 
