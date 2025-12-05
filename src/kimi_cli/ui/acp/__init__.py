@@ -464,10 +464,8 @@ def _tool_result_to_acp_content(
         # to keep pyright happy while still handling list outputs.
         contents.extend(_to_acp_content(part) for part in output)
 
-    if not contents:
-        message = getattr(tool_ret, "message", "")
-        if message:
-            contents.append(_to_text_block(message))
+    if not contents and tool_ret.message:
+        contents.append(_to_text_block(tool_ret.message))
 
     return contents
 
