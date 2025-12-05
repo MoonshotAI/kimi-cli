@@ -853,7 +853,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.60"
+version = "0.61"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -893,12 +893,12 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.29.0" },
+    { name = "kosong", specifier = "==0.31.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", specifier = "==0.2.0" },
+    { name = "pykaos", specifier = "==0.3.0" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
@@ -920,7 +920,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.29.0"
+version = "0.31.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -932,9 +932,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/2e/3b6f94010fcca7b952f92668b020194250380d8a1ad9060c3d26ea6acfed/kosong-0.29.0.tar.gz", hash = "sha256:ee464a4ad924737e42cb03bda5085d61fabce7cddc8b9aaa77fa507dd4835f4d", size = 33431, upload-time = "2025-12-02T07:22:54.902Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/8a/57d3fec38478a832b3d4d8db19def2a2c7994b7b8ae824398548eba18a99/kosong-0.31.0.tar.gz", hash = "sha256:fcfe4822cd1a0e623cb737b74ae85af8fcf71232e8283d32ee10c715b4add767", size = 33708, upload-time = "2025-12-03T15:14:51.867Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/cf/21e60cdc2e8504a1008d8de386d2b8901f3021625d2d8e9f697a18edbacc/kosong-0.29.0-py3-none-any.whl", hash = "sha256:ade29ddf4a7b00b00dfd98bee27b42a86054c3b615b1c21531ab4f569d281d5d", size = 50012, upload-time = "2025-12-02T07:22:53.779Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/68/251acddd35fbba22eb150277667c0e9671bb6defed4044d70f9367338560/kosong-0.31.0-py3-none-any.whl", hash = "sha256:3577cea413b35037c5e832aa2865aff62a02c91c3bbb449da32581bcee6e979d", size = 50276, upload-time = "2025-12-03T15:14:50.511Z" },
 ]
 
 [[package]]
@@ -1684,14 +1684,14 @@ wheels = [
 
 [[package]]
 name = "pykaos"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/70/d89e66b859698a3f3caab53efd2a70f167333d772a6205df55b9c15cf53a/pykaos-0.2.0.tar.gz", hash = "sha256:9d6e4f7f09b6a71236a86604795822dc8a016574b3b7c7a8a54637a571832c6a", size = 4000, upload-time = "2025-12-01T12:04:44.882Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/f5/fe745ec4a52fd48867b81373c1ad2b16c03497a15b3814f916aabdfb233f/pykaos-0.3.0.tar.gz", hash = "sha256:a91cd3dc9204a3683c0de8ef51dfb69a1ee4c9e9abe625804020075485ac6d6d", size = 4003, upload-time = "2025-12-03T12:08:37.795Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/23/a95c37b23ca4b137159e6236fb2781e17e43cbc14b8beb35c68571bbed61/pykaos-0.2.0-py3-none-any.whl", hash = "sha256:5b36859dcbb4b9663e902cc1ae6cdcd1507e97e9a2d78b65ee91b7bb74408c34", size = 5922, upload-time = "2025-12-01T12:04:43.909Z" },
+    { url = "https://files.pythonhosted.org/packages/13/2b/b74e177ef26600ca5f04011c8e512583e8b7894078d17f5afb6c7c119719/pykaos-0.3.0-py3-none-any.whl", hash = "sha256:e0db3175f3c41352cfaab17a32c67e476b10ba5536c48a7e6372c55d4ab9fa25", size = 5932, upload-time = "2025-12-03T12:08:36.685Z" },
 ]
 
 [[package]]

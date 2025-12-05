@@ -111,7 +111,7 @@ class Glob(CallableTool2[Params]):
 
             # Perform the glob search - users can use ** directly in pattern
             matches: list[KaosPath] = []
-            async for match in await dir_path.glob(params.pattern):
+            async for match in dir_path.glob(params.pattern):
                 matches.append(match)
 
             # Filter out directories if not requested
