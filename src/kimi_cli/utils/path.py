@@ -101,13 +101,30 @@ def shorten_home(path: KaosPath) -> KaosPath:
 
 def is_within_directory(path: KaosPath, directory: KaosPath) -> bool:
     """
-    Check whether *path* is contained within *directory* using pure path semantics.
+    Check whether *path* is contained within *directory*.
+    Does a pure path check first, then a best-effort realpath check to catch symlink traversal.
     Both arguments should already be canonicalized (e.g. via KaosPath.canonical()).
     """
+
+    def _within(candidate_path: PurePath, base_path: PurePath) -> bool:
+        try:
+            candidate_path.relative_to(base_path)
+            return True
+        except ValueError:
+            return False
+
     candidate = PurePath(str(path))
     base = PurePath(str(directory))
-    try:
-        candidate.relative_to(base)
-        return True
-    except ValueError:
+    if not _within(candidate, base):
         return False
+
+    # Guard against symlink-based escapes by comparing resolved paths when possible.
+    # Path.resolve(strict=False) resolves existing symlinks without raising on missing paths.
+    try:
+        real_candidate = PurePath(Path(str(path)).resolve(strict=False))
+        real_base = PurePath(Path(str(directory)).resolve(strict=False))
+    except Exception:
+        # If resolution fails (permission errors, etc.), deny access for strict sandboxing.
+        return False
+
+    return _within(real_candidate, real_base)
