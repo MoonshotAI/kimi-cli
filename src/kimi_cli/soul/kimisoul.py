@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -225,6 +226,11 @@ class KimiSoul:
                 raise
             finally:
                 approval_task.cancel()  # stop piping approval requests to the wire
+                with suppress(asyncio.CancelledError):
+                    try:
+                        await approval_task
+                    except Exception:
+                        logger.exception("Approval piping task failed")
 
             if finished:
                 return
