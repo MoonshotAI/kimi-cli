@@ -32,7 +32,9 @@ async def test_list_directory_unix(temp_work_dir: KaosPath) -> None:
 
     out = await list_directory(temp_work_dir)
     out_without_size = "\n".join(
-        line.split(maxsplit=2)[0] + " " + line.split(maxsplit=2)[2] for line in out.splitlines()
+        sorted(
+            line.split(maxsplit=2)[0] + " " + line.split(maxsplit=2)[2] for line in out.splitlines()
+        )
     )  # Remove size for snapshot stability
     assert out_without_size == snapshot(
         """\
