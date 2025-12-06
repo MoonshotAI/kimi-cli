@@ -5,7 +5,7 @@ description = "Kimi CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "agent-client-protocol==0.6.3",
+    "agent-client-protocol==0.7.0",
     "aiofiles==25.1.0",
     "aiohttp==3.13.2",
     "typer==0.20.0",
