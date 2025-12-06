@@ -21,6 +21,32 @@ class Kaos(Protocol):
     name: str
     """The name of the KAOS implementation."""
 
+    @runtime_checkable
+    class Process(Protocol):
+        """Process interface exposed by KAOS `exec` implementations."""
+
+        stdin: StreamWriter
+        stdout: StreamReader
+        stderr: StreamReader
+
+        @property
+        def pid(self) -> int:
+            """Get the process ID."""
+            ...
+
+        @property
+        def returncode(self) -> int | None:
+            """Get the process return code, or None if it is still running."""
+            ...
+
+        async def wait(self) -> int:
+            """Wait for the process to complete and return the exit code."""
+            ...
+
+        async def kill(self) -> None:
+            """Kill the process."""
+            ...
+
     def pathclass(self) -> type[PurePath]:
         """Get the path class used under `KaosPath`."""
         ...
@@ -97,7 +123,7 @@ class Kaos(Protocol):
         """Create a directory at the given path."""
         ...
 
-    async def exec(self, *args: str) -> KaosProcess:
+    async def exec(self, *args: str) -> Process:
         """
         Execute a command with arguments and return the running process.
         """
@@ -118,33 +144,6 @@ class StatResult:
     st_atime: float
     st_mtime: float
     st_ctime: float
-
-
-@runtime_checkable
-class KaosProcess(Protocol):
-    """Process interface exposed by KAOS `exec` implementations."""
-
-    stdin: StreamWriter
-    stdout: StreamReader
-    stderr: StreamReader
-
-    @property
-    def pid(self) -> int:
-        """Get the process ID."""
-        ...
-
-    @property
-    def returncode(self) -> int | None:
-        """Get the process return code, or None if it is still running."""
-        ...
-
-    async def wait(self) -> int:
-        """Wait for the process to complete and return the exit code."""
-        ...
-
-    async def kill(self) -> None:
-        """Kill the process."""
-        ...
 
 
 def get_current_kaos() -> Kaos:
@@ -241,5 +240,5 @@ async def mkdir(path: StrOrKaosPath, parents: bool = False, exist_ok: bool = Fal
     return await get_current_kaos().mkdir(path, parents=parents, exist_ok=exist_ok)
 
 
-async def exec(*args: str) -> KaosProcess:
+async def exec(*args: str) -> Kaos.Process:
     return await get_current_kaos().exec(*args)
