@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0] - 2025-12-06
 
 - Add `Kaos.exec` method for executing commands.
 - Add `StepResult` as the return type for `Kaos.stat`.

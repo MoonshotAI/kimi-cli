@@ -1,6 +1,6 @@
 [project]
 name = "pykaos"
-version = "0.3.0"
+version = "0.4.0"
 description = ""
 readme = "README.md"
 requires-python = ">=3.13"
@@ -12,7 +12,7 @@ dev = [
     "pyright>=1.1.407",
     "pytest>=9.0.1",
     "pytest-asyncio>=1.3.0",
-    "ruff>=0.14.6",
+    "ruff>=0.14.8",
 ]
 
 [build-system]
