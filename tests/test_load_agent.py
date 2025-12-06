@@ -72,7 +72,7 @@ def test_load_tools_invalid(runtime: Runtime):
     )
 
     assert len(bad_tools) == 1
-    assert "kimi_cli.tools.nonexistent:Tool" in bad_tools
+    assert bad_tools[0].path == "kimi_cli.tools.nonexistent:Tool"
 
 
 @pytest.mark.asyncio
