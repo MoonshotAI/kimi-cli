@@ -11,7 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
-- Fix startup crash when there is broken symbolic link in the working directory
+- ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
+- Tool: Use PowerShell instead of CMD on Windows for better usability
+- Core: Fix startup crash when there is broken symbolic link in the working directory
 
 ## [0.61] - 2025-12-04
 

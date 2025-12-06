@@ -13,7 +13,7 @@ from kimi_cli.tools.shell import Params, Shell
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
 
 pytestmark = pytest.mark.skipif(
-    platform.system() == "Windows", reason="Shell tool tests are disabled on Windows."
+    platform.system() == "Windows", reason="Sh tests run only on non-Windows."
 )
 
 

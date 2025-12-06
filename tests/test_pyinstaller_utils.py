@@ -94,8 +94,8 @@ def test_pyinstaller_datas():
             ),
             ("src/kimi_cli/tools/multiagent/create.md", "kimi_cli/tools/multiagent"),
             ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
-            ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
-            ("src/kimi_cli/tools/shell/cmd.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/sh.md", "kimi_cli/tools/shell"),
             (
                 "src/kimi_cli/tools/think/think.md",
                 "kimi_cli/tools/think",

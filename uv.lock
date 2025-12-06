@@ -898,7 +898,7 @@ requires-dist = [
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", specifier = "==0.3.0" },
+    { name = "pykaos", specifier = "==0.4.0" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
@@ -1684,14 +1684,14 @@ wheels = [
 
 [[package]]
 name = "pykaos"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e9/f5/fe745ec4a52fd48867b81373c1ad2b16c03497a15b3814f916aabdfb233f/pykaos-0.3.0.tar.gz", hash = "sha256:a91cd3dc9204a3683c0de8ef51dfb69a1ee4c9e9abe625804020075485ac6d6d", size = 4003, upload-time = "2025-12-03T12:08:37.795Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/f9/ced0c3f359f10e4ef97eb49b806bc9417721ae012e4d759ce81c32468b09/pykaos-0.4.0.tar.gz", hash = "sha256:83109ee1454dd931063f3a8c0bb78c8ca9639f7d083b94313755f2136c37e390", size = 4728, upload-time = "2025-12-06T07:18:04.825Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/13/2b/b74e177ef26600ca5f04011c8e512583e8b7894078d17f5afb6c7c119719/pykaos-0.3.0-py3-none-any.whl", hash = "sha256:e0db3175f3c41352cfaab17a32c67e476b10ba5536c48a7e6372c55d4ab9fa25", size = 5932, upload-time = "2025-12-03T12:08:36.685Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/79/fcc47c993606d211a4f02dc8202a39f9cb756668989689e8ee9dcd5acebe/pykaos-0.4.0-py3-none-any.whl", hash = "sha256:3da34893b08d509fad13fe33514e67260a1bba58a087c14f0da08cadcc7b9039", size = 6720, upload-time = "2025-12-06T07:18:03.728Z" },
 ]
 
 [[package]]
