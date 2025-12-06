@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 
 import pytest
 from inline_snapshot import snapshot
@@ -11,8 +12,9 @@ from kaos.path import KaosPath
 from kimi_cli.utils.path import list_directory
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific symlink tests.")
 @pytest.mark.asyncio
-async def test_list_directory(temp_work_dir: KaosPath) -> None:
+async def test_list_directory_unix(temp_work_dir: KaosPath) -> None:
     # Create a regular file and a directory (use KaosPath async ops for style consistency)
     await (temp_work_dir / "regular.txt").write_text("hello")
     await (temp_work_dir / "adir").mkdir()
@@ -39,3 +41,22 @@ drwxr-xr-x         64 emptydir
 ?---------          ? link_to_regular_missing [stat failed]\
 """
     )
+
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific symlink tests.")
+@pytest.mark.asyncio
+async def test_list_directory_windows(temp_work_dir: KaosPath) -> None:
+    # Create a regular file and a directory (use KaosPath async ops for style consistency)
+    await (temp_work_dir / "regular.txt").write_text("hello")
+    await (temp_work_dir / "adir").mkdir()
+    await (temp_work_dir / "adir" / "inside.txt").write_text("world")
+    await (temp_work_dir / "emptydir").mkdir()
+    await (temp_work_dir / "largefile.bin").write_bytes(b"x" * 10_000_000)
+
+    out = await list_directory(temp_work_dir)
+    assert out == snapshot("""\
+drwxrwxrwx          0 adir
+drwxrwxrwx          0 emptydir
+-rw-rw-rw-   10000000 largefile.bin
+-rw-rw-rw-          5 regular.txt\
+""")
