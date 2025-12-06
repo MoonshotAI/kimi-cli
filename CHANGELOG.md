@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Fix startup crash when there is broken symbolic link in the working directory
+
 ## [0.61] - 2025-12-04
 
 - Lib: Fix logging when used as a library
