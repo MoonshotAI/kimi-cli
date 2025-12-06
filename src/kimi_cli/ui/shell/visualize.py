@@ -36,6 +36,7 @@ from kimi_cli.wire.message import (
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
+MAX_TOOL_CALLS_TO_SHOW = 5
 
 
 async def visualize(
@@ -298,7 +299,9 @@ class _LiveView:
         self._compacting_spinner: Spinner | None = None
 
         self._current_content_block: _ContentBlock | None = None
+        self._last_flushed_content_block: _ContentBlock | None = None
         self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
+        self._tool_call_order: list[str] = []
         self._last_tool_call_block: _ToolCallBlock | None = None
         self._approval_request_queue = deque[ApprovalRequest]()
         """
@@ -348,6 +351,48 @@ class _LiveView:
     def refresh_soon(self) -> None:
         self._need_recompose = True
 
+    def _render_tool_call_tree(self) -> list[RenderableType]:
+        """Render tool calls as a tree structure for in-place live updates."""
+        if not self._tool_call_order:
+            return []
+
+        blocks: list[RenderableType] = []
+        # Filter out removed tool calls to ensure accurate count
+        existing_calls = [tid for tid in self._tool_call_order if tid in self._tool_call_blocks]
+        visible_calls = existing_calls[-MAX_TOOL_CALLS_TO_SHOW:]
+        hidden_count = len(existing_calls) - len(visible_calls)
+
+        if hidden_count > 0:
+            plural = "s" if hidden_count > 1 else ""
+            blocks.append(
+                Text.from_markup(f"[grey50]├─ +{hidden_count} more tool call{plural}[/grey50]")
+            )
+
+        for i, tool_call_id in enumerate(visible_calls):
+            block = self._tool_call_blocks[tool_call_id]
+            is_last = (i == len(visible_calls) - 1) and hidden_count == 0
+            blocks.append(self._render_single_tool_call(block, is_last))
+
+        return blocks
+
+    def _render_single_tool_call(self, block: _ToolCallBlock, is_last: bool) -> RenderableType:
+        """Render a single tool call with tree character and status indicator."""
+        tree_char = "└─" if is_last else "├─"
+        tool_name = block._tool_name  # pyright: ignore[reportPrivateUsage]
+        argument = block._argument  # pyright: ignore[reportPrivateUsage]
+
+        if block.finished:
+            color = "green" if isinstance(block._result, ToolOk) else "red"  # pyright: ignore[reportPrivateUsage]
+            text = f"[{color}]{tree_char} {tool_name}[/{color}]"
+            if argument:
+                text += f" [grey50]({escape(argument)})[/grey50]"
+            return Text.from_markup(text)
+        else:
+            text = f"{tree_char} {tool_name}"
+            if argument:
+                text += f" ({escape(argument)})"
+            return Spinner("dots", text=text, style="blue")
+
     def compose(self) -> RenderableType:
         """Compose the live view display content."""
         blocks: list[RenderableType] = []
@@ -356,10 +401,19 @@ class _LiveView:
         elif self._compacting_spinner is not None:
             blocks.append(self._compacting_spinner)
         else:
+            if self._last_flushed_content_block is not None:
+                blocks.append(self._last_flushed_content_block.compose())
+
+            # Show final text when tool calls active to avoid duplicate spinners
             if self._current_content_block is not None:
-                blocks.append(self._current_content_block.compose())
-            for tool_call in self._tool_call_blocks.values():
-                blocks.append(tool_call.compose())
+                blocks.append(
+                    self._current_content_block.compose_final()
+                    if self._tool_call_order
+                    else self._current_content_block.compose()
+                )
+
+            blocks.extend(self._render_tool_call_tree())
+
         if self._current_approval_request_panel:
             blocks.append(self._current_approval_request_panel.render())
         blocks.append(self._status_block.render())
@@ -448,18 +502,26 @@ class _LiveView:
 
     def cleanup(self, is_interrupt: bool) -> None:
         """Cleanup the live view on step end or interruption."""
+        # Print final text content, then clear live view without printing tool calls
+        content_blocks = [self._last_flushed_content_block, self._current_content_block]
         self.flush_content()
+
+        for content in content_blocks:
+            if content is not None:
+                console.print(content.compose_final())
 
         for block in self._tool_call_blocks.values():
             if not block.finished:
-                # this should not happen, but just in case
                 block.finish(
                     ToolError(message="", brief="Interrupted")
                     if is_interrupt
                     else ToolOk(output="")
                 )
+
+        self._tool_call_blocks.clear()
+        self._tool_call_order.clear()
         self._last_tool_call_block = None
-        self.flush_finished_tool_calls()
+        self._last_flushed_content_block = None
 
         while self._approval_request_queue:
             # should not happen, but just in case
@@ -468,25 +530,15 @@ class _LiveView:
         self._reject_all_following = False
 
     def flush_content(self) -> None:
-        """Flush the current content block."""
+        """Save content block for live view display instead of printing immediately."""
         if self._current_content_block is not None:
-            console.print(self._current_content_block.compose_final())
+            self._last_flushed_content_block = self._current_content_block
             self._current_content_block = None
             self.refresh_soon()
 
     def flush_finished_tool_calls(self) -> None:
-        """Flush all leading finished tool call blocks."""
-        tool_call_ids = list(self._tool_call_blocks.keys())
-        for tool_call_id in tool_call_ids:
-            block = self._tool_call_blocks[tool_call_id]
-            if not block.finished:
-                break
-
-            self._tool_call_blocks.pop(tool_call_id)
-            console.print(block.compose())
-            if self._last_tool_call_block == block:
-                self._last_tool_call_block = None
-            self.refresh_soon()
+        """Keep finished tool calls in live view for tree display instead of printing."""
+        self.refresh_soon()
 
     def repeat_user_input(self, user_input: str | list[ContentPart]) -> None:
         # TODO: the conversion may need to be moved to somewhere proper
@@ -529,6 +581,7 @@ class _LiveView:
     def append_tool_call(self, tool_call: ToolCall) -> None:
         self.flush_content()
         self._tool_call_blocks[tool_call.id] = _ToolCallBlock(tool_call)
+        self._tool_call_order.append(tool_call.id)
         self._last_tool_call_block = self._tool_call_blocks[tool_call.id]
         self.refresh_soon()
 
