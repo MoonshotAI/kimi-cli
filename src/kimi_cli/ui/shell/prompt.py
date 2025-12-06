@@ -16,7 +16,6 @@ from enum import Enum
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from types import TracebackType
 from typing import override
 
 from kaos.path import KaosPath
@@ -514,7 +513,7 @@ class CustomPromptSession:
         shortcut_hints: list[str] = []
 
         @_kb.add("enter", filter=has_completions)
-        def _accept_completion(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             """Accept the first completion when Enter is pressed and completions are shown."""
             buff = event.current_buffer
             if buff.complete_state and buff.complete_state.completions:
@@ -524,38 +523,33 @@ class CustomPromptSession:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
 
-        _ = _accept_completion
-
         @_kb.add("c-x", eager=True)
-        def _switch_mode(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             self._mode = self._mode.toggle()
             # Apply mode-specific settings
             self._apply_mode(event)
             # Redraw UI
             event.app.invalidate()
 
-        _ = _switch_mode
         shortcut_hints.append("ctrl-x: switch mode")
 
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
-        def _insert_newline(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
-        _ = _insert_newline
         shortcut_hints.append("ctrl-j: newline")
 
         if is_clipboard_available():
 
             @_kb.add("c-v", eager=True)
-            def _paste(event: KeyPressEvent) -> None:
+            def _(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
 
-            _ = _paste
             shortcut_hints.append("ctrl-v: paste")
             clipboard = PyperclipClipboard()
         else:
@@ -568,7 +562,7 @@ class CustomPromptSession:
         _toast_thinking(self._thinking)
 
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
-        def _switch_thinking(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
             if "thinking" not in self._model_capabilities:
                 console.print(
@@ -578,8 +572,6 @@ class CustomPromptSession:
             self._thinking = not self._thinking
             _toast_thinking(self._thinking)
             event.app.invalidate()
-
-        _ = _switch_thinking
 
         self._shortcut_hints = shortcut_hints
         self._session = PromptSession[str](
@@ -596,11 +588,9 @@ class CustomPromptSession:
         # Allow completion to be triggered when the text is changed,
         # such as when backspace is used to delete text.
         @self._session.default_buffer.on_text_changed.add_handler
-        def trigger_complete(buffer: Buffer) -> None:
+        def _(buffer: Buffer) -> None:
             if buffer.complete_while_typing():
                 buffer.start_completion()
-
-        _ = trigger_complete
 
         self._status_refresh_task: asyncio.Task[None] | None = None
 
@@ -654,12 +644,7 @@ class CustomPromptSession:
         self._status_refresh_task = asyncio.create_task(_refresh(_REFRESH_INTERVAL))
         return self
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
+    def __exit__(self, *_) -> None:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
