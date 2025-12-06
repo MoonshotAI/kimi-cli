@@ -12,7 +12,7 @@ from kaos.path import KaosPath
 from kimi_cli.utils.path import list_directory
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="Linux-specific symlink tests.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific symlink tests.")
 @pytest.mark.asyncio
 async def test_list_directory_unix(temp_work_dir: KaosPath) -> None:
     # Create a regular file and a directory (use KaosPath async ops for style consistency)
@@ -38,12 +38,12 @@ async def test_list_directory_unix(temp_work_dir: KaosPath) -> None:
     )  # Remove size for snapshot stability
     assert out_without_size == snapshot(
         """\
--rw-r--r-- regular.txt
-drwxr-xr-x adir
-drwxr-xr-x emptydir
 -rw-r--r-- largefile.bin
 -rw-r--r-- link_to_regular
-?--------- link_to_regular_missing [stat failed]\
+-rw-r--r-- regular.txt
+?--------- link_to_regular_missing [stat failed]
+drwxr-xr-x adir
+drwxr-xr-x emptydir\
 """
     )
 
