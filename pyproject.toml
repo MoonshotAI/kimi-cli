@@ -43,9 +43,6 @@ build-backend = "uv_build"
 module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
-[tool.uv.sources]
-pykaos = { git = "https://github.com/MoonshotAI/pykaos", rev = "deb320620243d3119e48791b44f01477572a936f" }
-
 [project.scripts]
 kimi = "kimi_cli.cli:cli"
 

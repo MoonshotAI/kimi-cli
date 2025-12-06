@@ -898,7 +898,7 @@ requires-dist = [
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", git = "https://github.com/MoonshotAI/pykaos?rev=deb320620243d3119e48791b44f01477572a936f" },
+    { name = "pykaos", specifier = "==0.3.0" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
@@ -1685,9 +1685,13 @@ wheels = [
 [[package]]
 name = "pykaos"
 version = "0.3.0"
-source = { git = "https://github.com/MoonshotAI/pykaos?rev=deb320620243d3119e48791b44f01477572a936f#deb320620243d3119e48791b44f01477572a936f" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/f5/fe745ec4a52fd48867b81373c1ad2b16c03497a15b3814f916aabdfb233f/pykaos-0.3.0.tar.gz", hash = "sha256:a91cd3dc9204a3683c0de8ef51dfb69a1ee4c9e9abe625804020075485ac6d6d", size = 4003, upload-time = "2025-12-03T12:08:37.795Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/2b/b74e177ef26600ca5f04011c8e512583e8b7894078d17f5afb6c7c119719/pykaos-0.3.0-py3-none-any.whl", hash = "sha256:e0db3175f3c41352cfaab17a32c67e476b10ba5536c48a7e6372c55d4ab9fa25", size = 5932, upload-time = "2025-12-03T12:08:36.685Z" },
 ]
 
 [[package]]

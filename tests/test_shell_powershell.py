@@ -12,14 +12,14 @@ from kosong.tooling import ToolError, ToolOk
 from kimi_cli.tools.shell import Params, Shell
 
 pytestmark = pytest.mark.skipif(
-    platform.system() != "Windows", reason="Shell cmd tests run only on Windows."
+    platform.system() != "Windows", reason="PowerShell tests run only on Windows."
 )
 
 
 @pytest.mark.asyncio
 async def test_simple_command(shell_tool: Shell):
     """Ensure a basic cmd command runs."""
-    result = await shell_tool(Params(command="echo Hello Windows"))
+    result = await shell_tool(Params(command='echo "Hello Windows"'))
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
@@ -41,22 +41,11 @@ async def test_command_with_error(shell_tool: Shell):
 @pytest.mark.asyncio
 async def test_command_chaining(shell_tool: Shell):
     """Chaining commands with && should work."""
-    result = await shell_tool(Params(command="echo First&& echo Second"))
+    result = await shell_tool(Params(command="echo First; if ($?) { echo Second }"))
 
     assert isinstance(result, ToolOk)
     assert isinstance(result.output, str)
     assert result.output.replace("\r\n", "\n") == snapshot("First\nSecond\n")
-
-
-# FIXME: make this test work
-# @pytest.mark.asyncio
-# async def test_environment_variables(shell_tool: Shell):
-#     """Environment variables should be usable within one cmd session."""
-#     result = await shell_tool(Params(command="set TEST_VAR=test_value&& echo %TEST_VAR%"))
-
-#     assert isinstance(result, ToolOk)
-#     assert isinstance(result.output, str)
-#     assert result.output.strip() == snapshot("test_value")
 
 
 @pytest.mark.asyncio
@@ -64,10 +53,12 @@ async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     """Basic file write/read using cmd redirection."""
     file_path = temp_work_dir / "test_file.txt"
 
-    create_result = await shell_tool(Params(command=f'echo Test content> "{file_path}"'))
-    assert create_result == snapshot(ToolOk(output="", message="Command executed successfully."))
+    create_result = await shell_tool(Params(command=f'echo "Test content" > "{file_path}"'))
+    assert create_result.output == snapshot("")
+    assert create_result.message == snapshot("Command executed successfully.")
+    assert create_result.brief == snapshot("")
 
     read_result = await shell_tool(Params(command=f'type "{file_path}"'))
-    assert read_result == snapshot(
-        ToolOk(output="Test content\r\n", message="Command executed successfully.")
-    )
+    assert read_result.output == snapshot("Test content\r\n")
+    assert read_result.message == snapshot("Command executed successfully.")
+    assert read_result.brief == snapshot("")

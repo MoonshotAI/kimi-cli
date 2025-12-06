@@ -27,7 +27,7 @@ class Params(BaseModel):
     )
 
 
-_DESC_FILE = "cmd.md" if platform.system() == "Windows" else "bash.md"
+_DESC_FILE = "powershell.md" if platform.system() == "Windows" else "sh.md"
 
 
 class Shell(CallableTool2[Params]):
@@ -109,6 +109,6 @@ async def _run_shell_command(
 
 def _shell_args(command: str) -> tuple[str, ...]:
     if platform.system() == "Windows":
-        return ("cmd.exe", "/c", command)
+        return ("powershell.exe", "-command", command)
 
     return ("/bin/sh", "-c", command)
