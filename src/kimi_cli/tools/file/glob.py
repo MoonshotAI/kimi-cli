@@ -45,11 +45,16 @@ class Glob(CallableTool2[Params]):
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
         if pattern.startswith("**"):
+            gitignore_path = self._work_dir / ".gitignore"
+            if await gitignore_path.is_file():
+                return None
+
             ls_result = await list_directory(self._work_dir)
             return ToolError(
                 output=ls_result,
                 message=(
-                    f"Pattern `{pattern}` starts with '**' which is not allowed. "
+                    f"Pattern `{pattern}` starts with '**' which is not allowed because "
+                    "the working directory does not contain a .gitignore to constrain the search. "
                     "This would recursively search all directories and may include large "
                     "directories like `node_modules`. Use more specific patterns instead. "
                     "For your convenience, a list of all files and directories in the "
