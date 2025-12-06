@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
+- Tool: Use PowerShell instead of CMD on Windows for better usability
 
 ## [0.61] - 2025-12-04
 
