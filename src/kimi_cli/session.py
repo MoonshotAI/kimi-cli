@@ -7,6 +7,7 @@ from pathlib import Path
 from kaos.path import KaosPath
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
+from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
 
 
@@ -64,6 +65,8 @@ class Session:
             context_file.unlink()
             context_file.touch()
 
+        # Update session-to-workdir mapping
+        metadata.session_to_workdir[session_id] = str(work_dir)
         save_metadata(metadata)
 
         return Session(
@@ -104,6 +107,89 @@ class Session:
             work_dir_meta=work_dir_meta,
             context_file=context_file,
         )
+
+    @staticmethod
+    def load_by_id(session_id: str) -> Session | None:
+        """Load a session by its ID, regardless of work directory.
+
+        Args:
+            session_id: The UUID of the session to load.
+
+        Returns:
+            Session instance if found, None otherwise.
+        """
+        logger.debug("Loading session by ID: {session_id}", session_id=session_id)
+
+        metadata = load_metadata()
+
+        # Try metadata lookup first (fast path)
+        work_dir_str = metadata.session_to_workdir.get(session_id)
+        if work_dir_str:
+            work_dir = KaosPath.unsafe_from_local_path(Path(work_dir_str))
+            work_dir_meta = next((wd for wd in metadata.work_dirs if wd.path == work_dir_str), None)
+            if work_dir_meta:
+                # Migrate session context file if needed (for backward compatibility)
+                _migrate_session_context_file(work_dir_meta, session_id)
+                # Create the session directory and context file path
+                session_dir = work_dir_meta.sessions_dir / session_id
+                context_file = session_dir / "context.jsonl"
+                if context_file.exists():
+                    logger.debug(
+                        "Found session in metadata: {session_id} -> {work_dir}",
+                        session_id=session_id,
+                        work_dir=work_dir,
+                    )
+                    return Session(
+                        id=session_id,
+                        work_dir=work_dir,
+                        work_dir_meta=work_dir_meta,
+                        context_file=context_file,
+                    )
+                else:
+                    logger.debug(
+                        "Session found in metadata but context file missing: {context_file}",
+                        context_file=context_file,
+                    )
+
+        # Fallback: scan filesystem for backward compatibility
+        # This handles cases where metadata might be missing (e.g., old sessions)
+        logger.debug("Session not found in metadata, scanning filesystem")
+        sessions_base_dir = get_share_dir() / "sessions"
+        if sessions_base_dir.exists():
+            for work_dir_hash_dir in sessions_base_dir.iterdir():
+                if not work_dir_hash_dir.is_dir():
+                    continue
+                session_dir = work_dir_hash_dir / session_id
+                context_file = session_dir / "context.jsonl"
+                if context_file.exists():
+                    # Found the session file, now find the work directory
+                    # We need to find which work_dir_meta has this sessions_dir
+                    for work_dir_meta in metadata.work_dirs:
+                        if work_dir_meta.sessions_dir == work_dir_hash_dir:
+                            # Migrate session context file if needed (for backward compatibility)
+                            _migrate_session_context_file(work_dir_meta, session_id)
+                            # Re-check context file path after migration
+                            context_file = work_dir_meta.sessions_dir / session_id / "context.jsonl"
+                            if not context_file.exists():
+                                continue
+                            work_dir = KaosPath.unsafe_from_local_path(Path(work_dir_meta.path))
+                            logger.debug(
+                                "Found session in filesystem: {session_id} -> {work_dir}",
+                                session_id=session_id,
+                                work_dir=work_dir,
+                            )
+                            # Update metadata for future lookups
+                            metadata.session_to_workdir[session_id] = str(work_dir)
+                            save_metadata(metadata)
+                            return Session(
+                                id=session_id,
+                                work_dir=work_dir,
+                                work_dir_meta=work_dir_meta,
+                                context_file=context_file,
+                            )
+
+        logger.debug("Session not found: {session_id}", session_id=session_id)
+        return None
 
 
 def _migrate_session_context_file(work_dir_meta: WorkDirMeta, session_id: str) -> None:
