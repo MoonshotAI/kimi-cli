@@ -4,10 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import override
 
-import kaos
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
+import kaos
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
 

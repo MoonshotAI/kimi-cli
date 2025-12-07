@@ -158,6 +158,10 @@ class Shell:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             console.print(f"[red]LLM provider error: {e}[/red]")
+            console.print(
+                "[yellow]Tip:[/yellow] If you repeatedly see connection errors, try setting "
+                "environment variable `KIMI_PREFER_IPV4=1` and rerun."
+            )
         except asyncio.CancelledError:
             logger.info("Interrupted by user")
             console.print("[red]Interrupted by user[/red]")
@@ -226,6 +230,10 @@ class Shell:
                 console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
+                console.print(
+                    "[yellow]Tip:[/yellow] If you repeatedly see connection errors, try setting "
+                    "environment variable `KIMI_PREFER_IPV4=1` and rerun."
+                )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             console.print(f"[yellow]Max steps reached: {e.n_steps}[/yellow]")

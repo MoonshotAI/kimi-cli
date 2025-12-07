@@ -161,7 +161,15 @@ class ACPAgent:
             raise acp.RequestError.internal_error({"error": "LLM not set"}) from None
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
-            raise acp.RequestError.internal_error({"error": f"LLM provider error: {e}"}) from e
+            raise acp.RequestError.internal_error(
+                {
+                    "error": f"LLM provider error: {e}",
+                    "tip": (
+                        "If you repeatedly see connection errors, try setting env "
+                        "KIMI_PREFER_IPV4=1"
+                    ),
+                }
+            ) from e
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n}", n=e.n_steps)
             return acp.PromptResponse(stopReason="max_turn_requests")

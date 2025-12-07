@@ -23,6 +23,8 @@ class LLMProvider(BaseModel):
     """API key"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
+    prefer_ipv4: bool | None = None
+    """Prefer IPv4 when connecting to the provider (helps on networks with broken IPv6)."""
 
     @field_serializer("api_key", when_used="json")
     def dump_secret(self, v: SecretStr):

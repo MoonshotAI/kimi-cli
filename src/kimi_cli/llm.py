@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
+import httpx
 from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
 
@@ -66,6 +67,10 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
                     if cap in get_args(ModelCapability)
                 )
                 applied["KIMI_MODEL_CAPABILITIES"] = capabilities
+            if prefer_ipv4 := os.getenv("KIMI_PREFER_IPV4"):
+                # any truthy value enables IPv4 preference
+                provider.prefer_ipv4 = prefer_ipv4.lower() in {"1", "true", "yes", "on"}
+                applied["KIMI_PREFER_IPV4"] = str(provider.prefer_ipv4)
         case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
@@ -87,6 +92,20 @@ def create_llm(
         case "kimi":
             from kosong.chat_provider.kimi import Kimi
 
+            client_kwargs: dict[str, Any] = {}
+            # Allow opting into IPv4-preferred connection strategy to avoid broken IPv6
+            # paths on some networks. This binds the client to IPv4 local address which
+            # forces IPv4 connection attempts.
+            if provider.prefer_ipv4:
+                client_kwargs["http_client"] = httpx.AsyncClient(
+                    transport=httpx.AsyncHTTPTransport(
+                        local_address="0.0.0.0",
+                        retries=2,
+                        http2=False,
+                        trust_env=True,
+                    )
+                )
+
             chat_provider = Kimi(
                 model=model.model,
                 base_url=provider.base_url,
@@ -95,6 +114,7 @@ def create_llm(
                     "User-Agent": USER_AGENT,
                     **(provider.custom_headers or {}),
                 },
+                **client_kwargs,
             )
             if session_id:
                 chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
@@ -135,6 +155,17 @@ def create_llm(
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
             from kosong.chat_provider.kimi import Kimi
 
+            client_kwargs: dict[str, Any] = {}
+            if provider.prefer_ipv4:
+                client_kwargs["http_client"] = httpx.AsyncClient(
+                    transport=httpx.AsyncHTTPTransport(
+                        local_address="0.0.0.0",
+                        retries=2,
+                        http2=False,
+                        trust_env=True,
+                    )
+                )
+
             chat_provider = ChaosChatProvider(
                 provider=Kimi(
                     model=model.model,
@@ -144,6 +175,7 @@ def create_llm(
                         "User-Agent": USER_AGENT,
                         **(provider.custom_headers or {}),
                     },
+                    **client_kwargs,
                 ),
                 chaos_config=ChaosConfig(
                     error_probability=0.8,
