@@ -6,8 +6,10 @@ import platform
 from pathlib import Path
 
 import pytest
+from kaos import get_current_kaos
 from kaos.path import KaosPath
 
+from kaos import get_current_kaos
 from kimi_cli.tools.file.glob import MAX_MATCHES, Glob, Params
 
 
@@ -74,6 +76,29 @@ async def test_glob_recursive_pattern_allowed_with_gitignore(glob_tool: Glob, te
     output = result.output.replace("\\", "/")
     assert "setup.py" in output
     assert "src/main/app.py" in output
+
+
+async def test_glob_respects_gitignore_on_traversal(
+    monkeypatch: pytest.MonkeyPatch, glob_tool: Glob, temp_work_dir: KaosPath
+):
+    """Ensure gitignored directories are not walked when using ** patterns."""
+    await (temp_work_dir / ".gitignore").write_text("node_modules/\n")
+    await (temp_work_dir / "node_modules" / "pkg").mkdir(parents=True)
+    await (temp_work_dir / "node_modules" / "pkg" / "index.py").write_text("ignored")
+    await (temp_work_dir / "app.py").write_text("app = 1")
+
+    # If the gitignore-aware path isn't used, LocalKaos.glob would be called.
+    kaos_backend = get_current_kaos()
+    async def failing_glob(*args, **kwargs):
+        raise AssertionError("KAOS glob should not be used for ** when .gitignore exists.")
+
+    monkeypatch.setattr(kaos_backend, "glob", failing_glob)
+
+    result = await glob_tool(Params(pattern="**/*.py", directory=str(temp_work_dir)))
+
+    assert isinstance(result, ToolOk)
+    assert "app.py" in result.output
+    assert "node_modules" not in result.output
 
 
 async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: KaosPath):
