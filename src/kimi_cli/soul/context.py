@@ -61,6 +61,10 @@ class Context:
     def n_checkpoints(self) -> int:
         return self._next_checkpoint_id
 
+    @property
+    def file_backend(self) -> Path:
+        return self._file_backend
+
     async def checkpoint(self, add_user_message: bool):
         checkpoint_id = self._next_checkpoint_id
         self._next_checkpoint_id += 1

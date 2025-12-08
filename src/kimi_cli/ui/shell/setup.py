@@ -189,7 +189,7 @@ async def _prompt_choice(*, header: str, choices: list[str]) -> str | None:
 
 
 async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
-    session = PromptSession()
+    session = PromptSession[str]()
     try:
         return str(
             await session.prompt_async(

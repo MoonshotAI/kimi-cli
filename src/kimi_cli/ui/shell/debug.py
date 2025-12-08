@@ -12,7 +12,7 @@ from kosong.message import (
     ThinkPart,
     ToolCall,
 )
-from rich.console import Group
+from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
@@ -108,7 +108,7 @@ def _format_message(msg: Message, index: int) -> Panel:
         role_text += f" [dim]→ {msg.tool_call_id}[/dim]"
 
     # Format content
-    content_items: list = []
+    content_items: list[RenderableType] = []
 
     for part in msg.content:
         formatted = _format_content_part(part)
@@ -145,7 +145,7 @@ def debug(app: Shell, args: list[str]):
     """Debug the context"""
     assert isinstance(app.soul, KimiSoul)
 
-    context = app.soul._context
+    context = app.soul.context
     history = context.history
 
     if not history:
@@ -165,7 +165,7 @@ def debug(app: Shell, args: list[str]):
                 Text(f"Total messages: {len(history)}", style="bold"),
                 Text(f"Token count: {context.token_count:,}", style="bold"),
                 Text(f"Checkpoints: {context.n_checkpoints}", style="bold"),
-                Text(f"Trajectory: {context._file_backend}", style="dim"),
+                Text(f"Trajectory: {context.file_backend}", style="dim"),
             ),
             title="[bold]Context Info[/bold]",
             border_style="cyan",

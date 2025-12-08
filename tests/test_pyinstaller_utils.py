@@ -62,6 +62,7 @@ def test_pyinstaller_datas():
             ("src/kimi_cli/agents/default/agent.yaml", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
+            ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
             (
                 f"src/kimi_cli/deps/bin/{'rg.exe' if platform.system() == 'Windows' else 'rg'}",
                 "kimi_cli/deps/bin",
@@ -94,8 +95,8 @@ def test_pyinstaller_datas():
             ),
             ("src/kimi_cli/tools/multiagent/create.md", "kimi_cli/tools/multiagent"),
             ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
-            ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
-            ("src/kimi_cli/tools/shell/cmd.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/sh.md", "kimi_cli/tools/shell"),
             (
                 "src/kimi_cli/tools/think/think.md",
                 "kimi_cli/tools/think",

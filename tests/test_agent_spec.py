@@ -54,6 +54,7 @@ def test_load_default_agent_spec():
     assert subagent_specs["coder"].exclude_tools == snapshot(
         [
             "kimi_cli.tools.multiagent:Task",
+            "kimi_cli.tools.multiagent:CreateSubagent",
             "kimi_cli.tools.dmail:SendDMail",
             "kimi_cli.tools.todo:SetTodoList",
         ]

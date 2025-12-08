@@ -22,7 +22,7 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
-    "pykaos==0.3.0",
+    "pykaos==0.4.0",
 ]
 
 [dependency-groups]
@@ -30,9 +30,9 @@ dev = [
     "pyinstaller==6.17.0",
     "inline-snapshot[black]>=0.31.1",
     "pyright>=1.1.407",
-    "pytest>=9.0.1",
+    "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "ruff>=0.14.7",
+    "ruff>=0.14.8",
 ]
 
 [build-system]

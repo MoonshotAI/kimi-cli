@@ -9,7 +9,7 @@ import os
 import re
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -26,6 +26,7 @@ from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
+    CompleteEvent,
     Completer,
     Completion,
     DummyCompleter,
@@ -63,7 +64,9 @@ class MetaCommandCompleter(Completer):
     """
 
     @override
-    def get_completions(self, document, complete_event):
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterable[Completion]:
         text = document.text_before_cursor
 
         # Only autocomplete when the input buffer has no other content.
@@ -308,7 +311,9 @@ class LocalFileMentionCompleter(Completer):
             return False
 
     @override
-    def get_completions(self, document, complete_event):
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterable[Completion]:
         fragment = self._extract_fragment(document.text_before_cursor)
         if fragment is None:
             return
@@ -324,7 +329,7 @@ class LocalFileMentionCompleter(Completer):
             # re-rank: prefer basename matches
             frag_lower = fragment.lower()
 
-            def _rank(c: Completion) -> tuple:
+            def _rank(c: Completion) -> tuple[int, ...]:
                 path = c.text
                 base = path.rstrip("/").split("/")[-1].lower()
                 if base.startswith(frag_lower):
@@ -508,7 +513,7 @@ class CustomPromptSession:
         shortcut_hints: list[str] = []
 
         @_kb.add("enter", filter=has_completions)
-        def _accept_completion(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             """Accept the first completion when Enter is pressed and completions are shown."""
             buff = event.current_buffer
             if buff.complete_state and buff.complete_state.completions:
@@ -519,7 +524,7 @@ class CustomPromptSession:
                 buff.apply_completion(completion)
 
         @_kb.add("c-x", eager=True)
-        def _switch_mode(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             self._mode = self._mode.toggle()
             # Apply mode-specific settings
             self._apply_mode(event)
@@ -530,7 +535,7 @@ class CustomPromptSession:
 
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
-        def _insert_newline(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
@@ -539,7 +544,7 @@ class CustomPromptSession:
         if is_clipboard_available():
 
             @_kb.add("c-v", eager=True)
-            def _paste(event: KeyPressEvent) -> None:
+            def _(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
@@ -557,7 +562,7 @@ class CustomPromptSession:
         _toast_thinking(self._thinking)
 
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
-        def _switch_thinking(event: KeyPressEvent) -> None:
+        def _(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
             if "thinking" not in self._model_capabilities:
                 console.print(
@@ -569,7 +574,7 @@ class CustomPromptSession:
             event.app.invalidate()
 
         self._shortcut_hints = shortcut_hints
-        self._session = PromptSession(
+        self._session = PromptSession[str](
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
@@ -583,11 +588,11 @@ class CustomPromptSession:
         # Allow completion to be triggered when the text is changed,
         # such as when backspace is used to delete text.
         @self._session.default_buffer.on_text_changed.add_handler
-        def trigger_complete(buffer: Buffer) -> None:
+        def _(buffer: Buffer) -> None:
             if buffer.complete_while_typing():
                 buffer.start_completion()
 
-        self._status_refresh_task: asyncio.Task | None = None
+        self._status_refresh_task: asyncio.Task[None] | None = None
 
     def _render_message(self) -> FormattedText:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
@@ -639,7 +644,7 @@ class CustomPromptSession:
         self._status_refresh_task = asyncio.create_task(_refresh(_REFRESH_INTERVAL))
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, *_) -> None:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None

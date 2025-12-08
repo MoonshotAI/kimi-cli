@@ -55,9 +55,24 @@ async def next_available_rotation(path: Path) -> Path | None:
 
 
 async def list_directory(work_dir: KaosPath) -> str:
+    """Return an ``ls``-like listing of *work_dir*.
+
+    This helper is used mainly to provide context to the LLM (for example
+    ``KIMI_WORK_DIR_LS``) and to show top-level directory contents in tools.
+    It should therefore be robust against per-entry filesystem issues such as
+    broken symlinks or permission errors: a single bad entry must not crash
+    the whole CLI.
+    """
+
     entries: list[str] = []
+    # Iterate entries; tolerate per-entry stat failures (broken symlinks, permissions, etc.).
     async for entry in work_dir.iterdir():
-        st = await entry.stat()
+        try:
+            st = await entry.stat()
+        except OSError:
+            # Broken symlink, permission error, etc. – keep listing other entries.
+            entries.append(f"?--------- {'?':>10} {entry.name} [stat failed]")
+            continue
         mode = "d" if S_ISDIR(st.st_mode) else "-"
         mode += "r" if st.st_mode & 0o400 else "-"
         mode += "w" if st.st_mode & 0o200 else "-"

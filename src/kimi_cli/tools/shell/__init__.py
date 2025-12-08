@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import override
 
+import kaos
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -26,7 +27,7 @@ class Params(BaseModel):
     )
 
 
-_DESC_FILE = "cmd.md" if platform.system() == "Windows" else "bash.md"
+_DESC_FILE = "powershell.md" if platform.system() == "Windows" else "sh.md"
 
 
 class Shell(CallableTool2[Params]):
@@ -58,7 +59,7 @@ class Shell(CallableTool2[Params]):
             builder.write(line_str)
 
         try:
-            exitcode = await _stream_subprocess(
+            exitcode = await _run_shell_command(
                 params.command, stdout_cb, stderr_cb, params.timeout
             )
 
@@ -76,7 +77,7 @@ class Shell(CallableTool2[Params]):
             )
 
 
-async def _stream_subprocess(
+async def _run_shell_command(
     command: str,
     stdout_cb: Callable[[bytes], None],
     stderr_cb: Callable[[bytes], None],
@@ -90,13 +91,7 @@ async def _stream_subprocess(
             else:
                 break
 
-    # FIXME: if the event loop is cancelled, an exception may be raised when the process finishes
-    process = await asyncio.create_subprocess_shell(
-        command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-
-    assert process.stdout is not None, "stdout is None"
-    assert process.stderr is not None, "stderr is None"
+    process = await kaos.exec(*_shell_args(command))
 
     try:
         await asyncio.wait_for(
@@ -108,5 +103,12 @@ async def _stream_subprocess(
         )
         return await process.wait()
     except TimeoutError:
-        process.kill()
+        await process.kill()
         raise
+
+
+def _shell_args(command: str) -> tuple[str, ...]:
+    if platform.system() == "Windows":
+        return ("powershell.exe", "-command", command)
+
+    return ("/bin/sh", "-c", command)
