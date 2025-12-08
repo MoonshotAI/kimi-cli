@@ -6,8 +6,8 @@ import platform
 from pathlib import Path
 
 import pytest
-from kaos import get_current_kaos
 from kaos.path import KaosPath
+from kosong.tooling import ToolReturnValue
 
 from kaos import get_current_kaos
 from kimi_cli.tools.file.glob import MAX_MATCHES, Glob, Params
@@ -71,7 +71,7 @@ async def test_glob_recursive_pattern_allowed_with_gitignore(glob_tool: Glob, te
 
     result = await glob_tool(Params(pattern="**/*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert isinstance(result, ToolReturnValue)
     assert isinstance(result.output, str)
     output = result.output.replace("\\", "/")
     assert "setup.py" in output
@@ -89,6 +89,7 @@ async def test_glob_respects_gitignore_on_traversal(
 
     # If the gitignore-aware path isn't used, LocalKaos.glob would be called.
     kaos_backend = get_current_kaos()
+
     async def failing_glob(*args, **kwargs):
         raise AssertionError("KAOS glob should not be used for ** when .gitignore exists.")
 
@@ -96,7 +97,7 @@ async def test_glob_respects_gitignore_on_traversal(
 
     result = await glob_tool(Params(pattern="**/*.py", directory=str(temp_work_dir)))
 
-    assert isinstance(result, ToolOk)
+    assert isinstance(result, ToolReturnValue)
     assert "app.py" in result.output
     assert "node_modules" not in result.output
 
