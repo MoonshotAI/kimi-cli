@@ -14,6 +14,8 @@ Only write entries that are worth mentioning to users.
 - ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
 - Tool: Use PowerShell instead of CMD on Windows for better usability
 - Core: Fix startup crash when there is broken symbolic link in the working directory
+- Core: Add builtin `okabe` agent file with `SendDMail` tool enabled
+- CLI: Add `--agent` option to specify builtin agents like `default` and `okabe`
 
 ## [0.61] - 2025-12-04
 
