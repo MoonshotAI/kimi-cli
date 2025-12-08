@@ -613,13 +613,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6f/d1/385110a9ae86d91cc14c5282c61fe9f4dc41c0b9f7d423c6ad77038c4448/google_auth-2.43.0-py2.py3-none-any.whl", hash = "sha256:af628ba6fa493f75c7e9dbe9373d148ca9f4399b5ea29976519e0a3848eddd16", size = 223114, upload-time = "2025-11-06T00:13:35.209Z" },
 ]
 
+[package.optional-dependencies]
+requests = [
+    { name = "requests" },
+]
+
 [[package]]
 name = "google-genai"
-version = "1.52.0"
+version = "1.53.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "google-auth" },
+    { name = "google-auth", extra = ["requests"] },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "requests" },
@@ -627,9 +632,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/09/4e/0ad8585d05312074bb69711b2d81cfed69ce0ae441913d57bf169bed20a7/google_genai-1.52.0.tar.gz", hash = "sha256:a74e8a4b3025f23aa98d6a0f84783119012ca6c336fd68f73c5d2b11465d7fc5", size = 258743, upload-time = "2025-11-21T02:18:55.742Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/b3/36fbfde2e21e6d3bc67780b61da33632f495ab1be08076cf0a16af74098f/google_genai-1.53.0.tar.gz", hash = "sha256:938a26d22f3fd32c6eeeb4276ef204ef82884e63af9842ce3eac05ceb39cbd8d", size = 260102, upload-time = "2025-12-03T17:21:23.233Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/66/03f663e7bca7abe9ccfebe6cb3fe7da9a118fd723a5abb278d6117e7990e/google_genai-1.52.0-py3-none-any.whl", hash = "sha256:c8352b9f065ae14b9322b949c7debab8562982f03bf71d44130cd2b798c20743", size = 261219, upload-time = "2025-11-21T02:18:54.515Z" },
+    { url = "https://files.pythonhosted.org/packages/40/f2/97fefdd1ad1f3428321bac819ae7a83ccc59f6439616054736b7819fa56c/google_genai-1.53.0-py3-none-any.whl", hash = "sha256:65a3f99e5c03c372d872cda7419f5940e723374bb12a2f3ffd5e3e56e8eb2094", size = 262015, upload-time = "2025-12-03T17:21:21.934Z" },
 ]
 
 [[package]]
@@ -853,7 +858,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.61"
+version = "0.62"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -893,7 +898,7 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", specifier = "==0.31.0" },
+    { name = "kosong", specifier = "==0.32.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
@@ -920,7 +925,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.31.0"
+version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -932,9 +937,9 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/8a/57d3fec38478a832b3d4d8db19def2a2c7994b7b8ae824398548eba18a99/kosong-0.31.0.tar.gz", hash = "sha256:fcfe4822cd1a0e623cb737b74ae85af8fcf71232e8283d32ee10c715b4add767", size = 33708, upload-time = "2025-12-03T15:14:51.867Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/f3/b56cff200ed582d0ebcbc358a47adfed3b885b99c6841da182243f378774/kosong-0.32.0.tar.gz", hash = "sha256:2ad924a1a09e2ca381a1f1eb1868371b650dd3286d66566d3cb8f1908fd093b0", size = 34172, upload-time = "2025-12-08T14:18:00.165Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/68/251acddd35fbba22eb150277667c0e9671bb6defed4044d70f9367338560/kosong-0.31.0-py3-none-any.whl", hash = "sha256:3577cea413b35037c5e832aa2865aff62a02c91c3bbb449da32581bcee6e979d", size = 50276, upload-time = "2025-12-03T15:14:50.511Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/c9/1ad1e50a8971d5f668c900404e9629001fdc166f8681fa53c6bb3bc922b6/kosong-0.32.0-py3-none-any.whl", hash = "sha256:0e8ca7e20c18b9a585af2d58153168730976f2849f4fcd66c86c4132f9990cd5", size = 51379, upload-time = "2025-12-08T14:17:59.329Z" },
 ]
 
 [[package]]
@@ -1235,7 +1240,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.8.1"
+version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1247,9 +1252,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/e4/42591e356f1d53c568418dc7e30dcda7be31dd5a4d570bca22acb0525862/openai-2.8.1.tar.gz", hash = "sha256:cb1b79eef6e809f6da326a7ef6038719e35aa944c42d081807bfa1be8060f15f", size = 602490, upload-time = "2025-11-17T22:39:59.549Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/48/516290f38745cc1e72856f50e8afed4a7f9ac396a5a18f39e892ab89dfc2/openai-2.9.0.tar.gz", hash = "sha256:b52ec65727fc8f1eed2fbc86c8eac0998900c7ef63aa2eb5c24b69717c56fa5f", size = 608202, upload-time = "2025-12-04T18:15:09.01Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/4f/dbc0c124c40cb390508a82770fb9f6e3ed162560181a85089191a851c59a/openai-2.8.1-py3-none-any.whl", hash = "sha256:c6c3b5a04994734386e8dad3c00a393f56d3b68a27cd2e8acae91a59e4122463", size = 1022688, upload-time = "2025-11-17T22:39:57.675Z" },
+    { url = "https://files.pythonhosted.org/packages/59/fd/ae2da789cd923dd033c99b8d544071a827c92046b150db01cfa5cea5b3fd/openai-2.9.0-py3-none-any.whl", hash = "sha256:0d168a490fbb45630ad508a6f3022013c155a68fd708069b6a1a01a5e8f0ffad", size = 1030836, upload-time = "2025-12-04T18:15:07.063Z" },
 ]
 
 [[package]]

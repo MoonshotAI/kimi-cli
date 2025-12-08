@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.62] - 2025-12-08
 
 - ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
 - ACP: Fix compatibility with the latest version of Zed IDE (0.215.3)
