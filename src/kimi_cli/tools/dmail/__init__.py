@@ -28,11 +28,10 @@ class SendDMail(CallableTool2[DMail]):
                 message=f"Failed to send D-Mail. Error: {str(e)}",
                 brief="Failed to send D-Mail",
             )
-        # always return an error because a successful SendDMail call will never return
         return ToolOk(
             output="",
             message=(
-                "If you see this message, the D-Mail was not sent successfully. "
+                "If you see this message, the D-Mail was NOT sent successfully. "
                 "This may be because some other tool that needs approval was rejected."
             ),
             brief="El Psy Kongroo",
