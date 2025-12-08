@@ -60,6 +60,13 @@ def kimi(
             help="Log debug information. Default: no.",
         ),
     ] = False,
+    agent: Annotated[
+        Literal["default", "okabe"] | None,
+        typer.Option(
+            "--agent",
+            help="Builtin agent specification to use. Default: builtin default agent.",
+        ),
+    ] = None,
     agent_file: Annotated[
         Path | None,
         typer.Option(
@@ -198,6 +205,7 @@ def kimi(
 
     from kaos.path import KaosPath
 
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
@@ -205,17 +213,31 @@ def kimi(
 
     enable_logging(debug)
 
-    special_flags = {
-        "--print": print_mode,
-        "--acp": acp_mode,
-        "--wire": wire_mode,
-    }
-    active_specials = [flag for flag, active in special_flags.items() if active]
-    if len(active_specials) > 1:
-        raise typer.BadParameter(
-            f"Cannot combine {', '.join(active_specials)}.",
-            param_hint=active_specials[0],
-        )
+    conflict_option_sets = [
+        {
+            "--print": print_mode,
+            "--acp": acp_mode,
+            "--wire": wire_mode,
+        },
+        {
+            "--agent": agent is not None,
+            "--agent-file": agent_file is not None,
+        },
+    ]
+    for option_set in conflict_option_sets:
+        active_options = [flag for flag, active in option_set.items() if active]
+        if len(active_options) > 1:
+            raise typer.BadParameter(
+                f"Cannot combine {', '.join(active_options)}.",
+                param_hint=active_options[0],
+            )
+
+    if agent is not None:
+        match agent:
+            case "default":
+                agent_file = DEFAULT_AGENT_FILE
+            case "okabe":
+                agent_file = OKABE_AGENT_FILE
 
     ui: UIMode = "shell"
     if print_mode:
