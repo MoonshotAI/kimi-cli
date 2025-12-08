@@ -1,4 +1,7 @@
-You are tasked with compacting a coding conversation context. This is critical for maintaining an effective working memory for the coding agent.
+
+---
+
+The above is a list of messages in an agent conversation. You are now given a task to compact this conversation context according to specific priorities and rules.
 
 **Compression Priorities (in order):**
 1. **Current Task State**: What is being worked on RIGHT NOW
@@ -18,10 +21,6 @@ You are tasked with compacting a coding conversation context. This is critical f
 - For code: Keep full version if < 20 lines, otherwise keep signature + key logic
 - For errors: Keep full error message + final solution
 - For discussions: Extract decisions and action items only
-
-**Input Context to Compress:**
-
-${CONTEXT}
 
 **Required Output Structure:**
 

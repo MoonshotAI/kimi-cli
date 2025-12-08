@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from string import Template
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 import kosong
-from kosong.message import ContentPart, Message, ThinkPart
+from kosong.message import ContentPart, Message, TextPart, ThinkPart
 from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
@@ -33,45 +32,20 @@ class Compaction(Protocol):
         ...
 
 
-class SimpleCompaction(Compaction):
-    MAX_PRESERVED_MESSAGES = 2
+if TYPE_CHECKING:
+
+    def type_check(simple: SimpleCompaction):
+        _: Compaction = simple
+
+
+class SimpleCompaction:
+    def __init__(self, max_preserved_messages: int = 2) -> None:
+        self.max_preserved_messages = max_preserved_messages
 
     async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
-        history = list(messages)
-        if not history:
-            return history
-
-        preserve_start_index = len(history)
-        n_preserved = 0
-        for index in range(len(history) - 1, -1, -1):
-            if history[index].role in {"user", "assistant"}:
-                n_preserved += 1
-                if n_preserved == self.MAX_PRESERVED_MESSAGES:
-                    preserve_start_index = index
-                    break
-
-        if n_preserved < self.MAX_PRESERVED_MESSAGES:
-            return history
-
-        to_compact = history[:preserve_start_index]
-        to_preserve = history[preserve_start_index:]
-
-        if not to_compact:
-            # Let's hope this won't exceed the context size limit
+        compact_message, to_preserve = self.prepare(messages)
+        if compact_message is None:
             return to_preserve
-
-        # Convert history to string for the compact prompt
-        history_text = "\n\n".join(
-            f"## Message {i + 1}\nRole: {msg.role}\nContent: {msg.content}"
-            for i, msg in enumerate(to_compact)
-        )
-
-        # Build the compact prompt using string template
-        compact_template = Template(prompts.COMPACT)
-        compact_prompt = compact_template.substitute(CONTEXT=history_text)
-
-        # Create input message for compaction
-        compact_message = Message(role="user", content=compact_prompt)
 
         # Call kosong.step to get the compacted context
         # TODO: set max completion tokens
@@ -100,8 +74,42 @@ class SimpleCompaction(Compaction):
         compacted_messages.extend(to_preserve)
         return compacted_messages
 
+    class PrepareResult(NamedTuple):
+        compact_message: Message | None
+        to_preserve: Sequence[Message]
 
-if TYPE_CHECKING:
+    def prepare(self, messages: Sequence[Message]) -> PrepareResult:
+        if not messages or self.max_preserved_messages <= 0:
+            return self.PrepareResult(compact_message=None, to_preserve=messages)
 
-    def type_check(simple: SimpleCompaction):
-        _: Compaction = simple
+        history = list(messages)
+        preserve_start_index = len(history)
+        n_preserved = 0
+        for index in range(len(history) - 1, -1, -1):
+            if history[index].role in {"user", "assistant"}:
+                n_preserved += 1
+                if n_preserved == self.max_preserved_messages:
+                    preserve_start_index = index
+                    break
+
+        if n_preserved < self.max_preserved_messages:
+            return self.PrepareResult(compact_message=None, to_preserve=messages)
+
+        to_compact = history[:preserve_start_index]
+        to_preserve = history[preserve_start_index:]
+
+        if not to_compact:
+            # Let's hope this won't exceed the context size limit
+            return self.PrepareResult(compact_message=None, to_preserve=to_preserve)
+
+        # Create input message for compaction
+        compact_message = Message(role="user", content=[])
+        for i, msg in enumerate(to_compact):
+            compact_message.content.append(
+                TextPart(text=f"## Message {i + 1}\nRole: {msg.role}\nContent:\n")
+            )
+            compact_message.content.extend(
+                part for part in msg.content if not isinstance(part, ThinkPart)
+            )
+        compact_message.content.append(TextPart(text="\n" + prompts.COMPACT))
+        return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)

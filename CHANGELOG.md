@@ -17,6 +17,7 @@ Only write entries that are worth mentioning to users.
 - Core: Fix startup crash when there is broken symbolic link in the working directory
 - Core: Add builtin `okabe` agent file with `SendDMail` tool enabled
 - CLI: Add `--agent` option to specify builtin agents like `default` and `okabe`
+- Core: Improve compaction logic to better preserve relevant information
 
 ## [0.61] - 2025-12-04
 
