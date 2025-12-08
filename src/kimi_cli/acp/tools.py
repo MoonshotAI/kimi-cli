@@ -2,10 +2,10 @@ import asyncio
 from contextlib import suppress
 
 import acp
-from kaos import get_current_kaos
 from kaos.local import local_kaos
 from kosong.tooling import CallableTool2, ToolReturnValue
 
+from kaos import get_current_kaos
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import KimiToolset
