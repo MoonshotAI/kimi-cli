@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
+- ACP: Fix compatibility with the latest version of Zed IDE (0.215.3)
 - Tool: Use PowerShell instead of CMD on Windows for better usability
 - Core: Fix startup crash when there is broken symbolic link in the working directory
 - Core: Add builtin `okabe` agent file with `SendDMail` tool enabled
