@@ -6,7 +6,6 @@ import platform
 from pathlib import Path
 
 import pytest
-from kaos import get_current_kaos
 from kaos.path import KaosPath
 from kosong.tooling import ToolError, ToolOk
 
@@ -95,6 +94,7 @@ async def test_glob_respects_gitignore_on_traversal(
 
     # If the gitignore-aware path isn't used, LocalKaos.glob would be called.
     kaos_backend = get_current_kaos()
+
     async def failing_glob(*args, **kwargs):
         raise AssertionError("KAOS glob should not be used for ** when .gitignore exists.")
 
