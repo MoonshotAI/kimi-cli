@@ -5,6 +5,7 @@ from typing import override
 
 from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from pathspec import PathSpec
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -41,6 +42,17 @@ class Glob(CallableTool2[Params]):
     def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
         super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
+
+    async def _load_gitignore_spec(self) -> PathSpec | None:
+        """Return a PathSpec built from the working directory's .gitignore if it exists."""
+        gitignore_path = self._work_dir / ".gitignore"
+        if not await gitignore_path.is_file():
+            return None
+        try:
+            contents = await gitignore_path.read_text()
+        except OSError:
+            return None
+        return PathSpec.from_lines("gitwildmatch", contents.splitlines())
 
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
@@ -114,10 +126,27 @@ class Glob(CallableTool2[Params]):
                     brief="Invalid directory",
                 )
 
+            gitignore_spec = await self._load_gitignore_spec()
+
             # Perform the glob search - users can use ** directly in pattern
             matches: list[KaosPath] = []
             async for match in dir_path.glob(params.pattern):
                 matches.append(match)
+
+            if gitignore_spec:
+                filtered_matches: list[KaosPath] = []
+                for match in matches:
+                    try:
+                        relative = match.relative_to(self._work_dir)
+                        relative_str = str(relative)
+                    except ValueError:
+                        relative_str = str(match)
+                    # Normalize to POSIX style for gitignore matching
+                    relative_str = relative_str.replace("\\", "/")
+                    if gitignore_spec.match_file(relative_str):
+                        continue
+                    filtered_matches.append(match)
+                matches = filtered_matches
 
             # Filter out directories if not requested
             if not params.include_dirs:
