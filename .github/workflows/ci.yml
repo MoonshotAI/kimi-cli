@@ -16,7 +16,7 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-          - runner: macos-13
+          - runner: macos-15-intel
             target: x86_64-apple-darwin
           - runner: macos-14
             target: aarch64-apple-darwin
@@ -42,6 +42,33 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen
+
+      - name: Configure local SSH server
+        if: matrix.runner == 'ubuntu-22.04'
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo mkdir -p /run/sshd
+          sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+          sudo sed -i 's/^#\?PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          sudo sed -i 's@^#\?AuthorizedKeysFile .*@AuthorizedKeysFile .ssh/authorized_keys@' /etc/ssh/sshd_config
+          sudo service ssh restart || sudo service ssh start
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keygen -q -t ed25519 -f "$HOME/.ssh/id_ci" -N ""
+          cat "$HOME/.ssh/id_ci.pub" >> "$HOME/.ssh/authorized_keys"
+          chmod 600 "$HOME/.ssh/authorized_keys"
+          ssh-keyscan -H 127.0.0.1 >> "$HOME/.ssh/known_hosts"
+          ssh-keyscan -H localhost >> "$HOME/.ssh/known_hosts"
+          echo "KAOS_SSH_HOST=127.0.0.1" >> "$GITHUB_ENV"
+          echo "KAOS_SSH_PORT=22" >> "$GITHUB_ENV"
+          echo "KAOS_SSH_USERNAME=$USER" >> "$GITHUB_ENV"
+          echo "KAOS_SSH_KEY_PATHS=$HOME/.ssh/id_ci" >> "$GITHUB_ENV"
+
+      - name: Verify SSH connectivity
+        if: matrix.runner == 'ubuntu-22.04'
+        run: ssh -i "$HOME/.ssh/id_ci" -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@127.0.0.1" true
 
       - name: Run checks
         run: |

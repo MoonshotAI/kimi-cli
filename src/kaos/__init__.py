@@ -1,17 +1,105 @@
 from __future__ import annotations
 
 import contextvars
-from asyncio import StreamReader, StreamWriter
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable
 from dataclasses import dataclass
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from asyncio import StreamReader, StreamWriter
+
+    from asyncssh.stream import SSHReader, SSHWriter
+
     from kaos.path import KaosPath
+
+    def type_check(
+        stream_reader: StreamReader,
+        stream_writer: StreamWriter,
+        ssh_reader: SSHReader[bytes],
+        ssh_writer: SSHWriter[bytes],
+    ):
+        _reader: AsyncReadable = stream_reader
+        _reader = ssh_reader
+        _writer: AsyncWritable = stream_writer
+        _writer = ssh_writer
 
 
 type StrOrKaosPath = str | KaosPath
+
+
+@runtime_checkable
+class AsyncReadable(Protocol):
+    """Protocol describing readable async byte streams."""
+
+    def __aiter__(self) -> AsyncIterator[bytes]:
+        """Yield chunks (typically lines) as they arrive."""
+        ...
+
+    def at_eof(self) -> bool:
+        """Return True when the stream has reached EOF and buffer is empty."""
+        ...
+
+    def feed_data(self, data: bytes) -> None:
+        """Inject data into the stream; mainly for testing or adapters."""
+        ...
+
+    def feed_eof(self) -> None:
+        """Signal end-of-file to the stream."""
+        ...
+
+    async def read(self, n: int = -1) -> bytes:
+        """Read up to n bytes; -1 reads until EOF."""
+        ...
+
+    async def readline(self) -> bytes:
+        """Read a single line ending with newline or EOF."""
+        ...
+
+    async def readexactly(self, n: int) -> bytes:
+        """Read exactly n bytes or raise IncompleteReadError."""
+        ...
+
+    async def readuntil(self, separator: bytes) -> bytes:
+        """Read until separator is encountered, including the separator."""
+        ...
+
+
+@runtime_checkable
+class AsyncWritable(Protocol):
+    """Protocol describing writable async byte streams."""
+
+    def can_write_eof(self) -> bool:
+        """Return True if write_eof() is supported."""
+        ...
+
+    def close(self) -> None:
+        """Schedule closing of the underlying transport."""
+        ...
+
+    async def drain(self) -> None:
+        """Block until the internal write buffer is flushed."""
+        ...
+
+    def is_closing(self) -> bool:
+        """Return True once the stream has been closed or is closing."""
+        ...
+
+    async def wait_closed(self) -> None:
+        """Wait until the closing handshake completes."""
+        ...
+
+    def write(self, data: bytes) -> None:
+        """Write raw bytes to the stream."""
+        ...
+
+    def writelines(self, data: Iterable[bytes], /) -> None:
+        """Write an iterable of byte chunks to the stream."""
+        ...
+
+    def write_eof(self) -> None:
+        """Send EOF to the underlying transport if supported."""
+        ...
 
 
 @runtime_checkable
@@ -25,9 +113,9 @@ class Kaos(Protocol):
     class Process(Protocol):
         """Process interface exposed by KAOS `exec` implementations."""
 
-        stdin: StreamWriter
-        stdout: StreamReader
-        stderr: StreamReader
+        stdin: AsyncWritable
+        stdout: AsyncReadable
+        stderr: AsyncReadable
 
         @property
         def pid(self) -> int:

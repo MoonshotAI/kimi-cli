@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- Move `KaosProcess` to `Kaos.Process`.
+- Add `AsyncReadable` and `AsyncWritable` protocols.
+- Add `SSHKaos` implementation.
+
 ## [0.4.0] - 2025-12-06
 
 - Add `Kaos.exec` method for executing commands.

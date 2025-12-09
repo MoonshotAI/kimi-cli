@@ -15,7 +15,7 @@ else:
 import aiofiles
 import aiofiles.os
 
-from kaos import Kaos, StatResult, StrOrKaosPath
+from kaos import AsyncReadable, AsyncWritable, Kaos, StatResult, StrOrKaosPath
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -39,9 +39,9 @@ class LocalKaos:
                 raise ValueError("Process must be created with stdin/stdout/stderr pipes.")
 
             self._process = process
-            self.stdin = process.stdin
-            self.stdout = process.stdout
-            self.stderr = process.stderr
+            self.stdin: AsyncWritable = process.stdin
+            self.stdout: AsyncReadable = process.stdout
+            self.stderr: AsyncReadable = process.stderr
 
         @property
         def pid(self) -> int:
