@@ -39,7 +39,7 @@ class FetchURL(CallableTool2[Params]):
 
     @staticmethod
     async def fetch_with_http_get(params: Params) -> ToolReturnValue:
-        builder = ToolResultBuilder()
+        builder = ToolResultBuilder(max_line_length=None)
         try:
             async with (
                 new_client_session() as session,
@@ -111,7 +111,7 @@ class FetchURL(CallableTool2[Params]):
         tool_call = get_current_tool_call_or_none()
         assert tool_call is not None, "Tool call is expected to be set"
 
-        builder = ToolResultBuilder()
+        builder = ToolResultBuilder(max_line_length=None)
         headers = {
             "User-Agent": USER_AGENT,
             "Authorization": f"Bearer {self._service_config.api_key.get_secret_value()}",
