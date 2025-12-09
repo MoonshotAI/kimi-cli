@@ -21,6 +21,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset, ToolType
 from kimi_cli.tools import SkipThisTool
+from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
 
@@ -63,6 +64,7 @@ class Runtime:
     denwa_renji: DenwaRenji
     approval: Approval
     labor_market: LaborMarket
+    environment: Environment
 
     @staticmethod
     async def create(
@@ -71,9 +73,10 @@ class Runtime:
         session: Session,
         yolo: bool,
     ) -> Runtime:
-        ls_output, agents_md = await asyncio.gather(
+        ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
+            Environment.detect(),
         )
 
         return Runtime(
@@ -89,6 +92,7 @@ class Runtime:
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
             labor_market=LaborMarket(),
+            environment=environment,
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -101,6 +105,7 @@ class Runtime:
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval,
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
+            environment=self.environment,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -113,6 +118,7 @@ class Runtime:
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
+            environment=self.environment,
         )
 
 
@@ -190,6 +196,7 @@ async def load_agent(
         DenwaRenji: runtime.denwa_renji,
         Approval: runtime.approval,
         LaborMarket: runtime.labor_market,
+        Environment: runtime.environment,
     }
     tools = agent_spec.tools
     if agent_spec.exclude_tools:
