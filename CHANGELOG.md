@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Tool: Fix FetchURL tool incorrect output when fetching via service fails
+
 ## [0.62] - 2025-12-08
 
 - ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
