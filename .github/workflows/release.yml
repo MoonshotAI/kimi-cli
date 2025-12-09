@@ -18,10 +18,8 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-          # - runner: ubuntu-22.04-arm
-          #   target: aarch64-unknown-linux-gnu
-          - runner: macos-13
-            target: x86_64-apple-darwin
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
           - runner: macos-14
             target: aarch64-apple-darwin
           - runner: windows-2022
