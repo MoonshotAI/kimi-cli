@@ -34,8 +34,9 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-@cli.command()
+@cli.callback(invoke_without_command=True)
 def kimi(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
@@ -201,6 +202,9 @@ def kimi(
     ] = None,
 ):
     """Kimi, your next CLI agent."""
+    if ctx.invoked_subcommand is not None:
+        return  # skip rest if a subcommand is invoked
+
     del version  # handled in the callback
 
     from kaos.path import KaosPath
@@ -358,6 +362,14 @@ def kimi(
             raise typer.Exit(code=1)
         except Reload:
             continue
+
+
+@cli.command()
+def acp():
+    """Run Kimi CLI ACP server."""
+    from kimi_cli.acp import acp_main
+
+    acp_main()
 
 
 if __name__ == "__main__":
