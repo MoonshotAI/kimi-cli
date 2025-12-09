@@ -122,13 +122,22 @@ def labor_market() -> LaborMarket:
 @pytest.fixture
 def environment() -> Environment:
     """Create an Environment instance."""
-    return Environment(
-        os_kind="macOS",
-        os_arch="aarch64",
-        os_version="15.6",
-        shell_name="bash",
-        shell_path=KaosPath("/bin/bash"),
-    )
+    if platform.system() == "Windows":
+        return Environment(
+            os_kind="Windows",
+            os_arch="x86_64",
+            os_version="1.0",
+            shell_name="Windows PowerShell",
+            shell_path=KaosPath("powershell.exe"),
+        )
+    else:
+        return Environment(
+            os_kind="Unix",
+            os_arch="aarch64",
+            os_version="1.0",
+            shell_name="bash",
+            shell_path=KaosPath("/bin/bash"),
+        )
 
 
 @pytest.fixture
