@@ -195,7 +195,7 @@ However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use t
             Tool(
                 name="Shell",
                 description="""\
-Execute a shell command. Use this tool to explore the filesystem, edit files, run scripts, get system information, etc.
+Execute a bash (`/bin/bash`) command. Use this tool to explore the filesystem, edit files, run scripts, get system information, etc.
 
 **Output:**
 The stdout and stderr will be combined and returned as a string. The output may be truncated if it is too long. If the command failed, the exit code will be provided in a system tag.

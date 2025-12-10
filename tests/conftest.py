@@ -37,6 +37,7 @@ from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
+from kimi_cli.utils.environment import Environment
 
 
 @pytest.fixture
@@ -119,6 +120,27 @@ def labor_market() -> LaborMarket:
 
 
 @pytest.fixture
+def environment() -> Environment:
+    """Create an Environment instance."""
+    if platform.system() == "Windows":
+        return Environment(
+            os_kind="Windows",
+            os_arch="x86_64",
+            os_version="1.0",
+            shell_name="Windows PowerShell",
+            shell_path=KaosPath("powershell.exe"),
+        )
+    else:
+        return Environment(
+            os_kind="Unix",
+            os_arch="aarch64",
+            os_version="1.0",
+            shell_name="bash",
+            shell_path=KaosPath("/bin/bash"),
+        )
+
+
+@pytest.fixture
 def runtime(
     config: Config,
     llm: LLM,
@@ -127,6 +149,7 @@ def runtime(
     session: Session,
     approval: Approval,
     labor_market: LaborMarket,
+    environment: Environment,
 ) -> Runtime:
     """Create a Runtime instance."""
     rt = Runtime(
@@ -137,6 +160,7 @@ def runtime(
         session=session,
         approval=approval,
         labor_market=labor_market,
+        environment=environment,
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",
@@ -203,10 +227,10 @@ def set_todo_list_tool() -> SetTodoList:
 
 
 @pytest.fixture
-def shell_tool(approval: Approval) -> Generator[Shell]:
+def shell_tool(approval: Approval, environment: Environment) -> Generator[Shell]:
     """Create a Shell tool instance."""
     with tool_call_context("Shell"):
-        yield Shell(approval)
+        yield Shell(approval, environment)
 
 
 @pytest.fixture

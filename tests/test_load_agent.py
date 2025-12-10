@@ -21,6 +21,7 @@ from kimi_cli.soul.agent import (
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.utils.environment import Environment
 
 
 def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSystemPromptArgs):
@@ -47,6 +48,7 @@ def test_load_tools_valid(runtime: Runtime):
             Session: runtime.session,
             DenwaRenji: runtime.denwa_renji,
             Approval: runtime.approval,
+            Environment: runtime.environment,
         },
     )
 

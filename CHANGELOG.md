@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - Tool: Fix FetchURL tool incorrect output when fetching via service fails
+- Tool: Use `bash` instead of `sh` for better compatibility
 
 ## [0.62] - 2025-12-08
 
