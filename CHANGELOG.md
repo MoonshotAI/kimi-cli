@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Tool: Use `bash` instead of `sh` for better compatibility
 - Tool: Fix Grep tool unicode decoding error on Windows
 - ACP: Support ACP session continuation (list/load sessions)
+- Lib: Add `Session.find` and `Session.list` static methods to find and list sessions
 
 ## [0.62] - 2025-12-08
 
