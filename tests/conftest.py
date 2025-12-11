@@ -104,6 +104,8 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
         work_dir=temp_work_dir,
         work_dir_meta=WorkDirMeta(path=str(temp_work_dir), kaos=get_current_kaos().name),
         context_file=temp_share_dir / "history.jsonl",
+        title="Test Session",
+        updated_at=0.0,
     )
 
 
