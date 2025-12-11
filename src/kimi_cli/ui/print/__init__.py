@@ -11,7 +11,14 @@ from kosong.message import Message
 from rich import print
 
 from kimi_cli.cli import InputFormat, OutputFormat
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.soul import (
+    LLMNotSet,
+    LLMNotSupported,
+    MaxStepsReached,
+    RunCancelled,
+    Soul,
+    run_soul,
+)
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.print.visualize import visualize
 from kimi_cli.utils.logging import logger
@@ -81,15 +88,18 @@ class Print:
                     logger.info("Empty command, skipping")
 
                 command = None
-        except LLMNotSet:
-            logger.error("LLM not set")
-            print("LLM not set")
+        except LLMNotSet as e:
+            logger.exception("LLM not set:")
+            print(str(e))
+        except LLMNotSupported as e:
+            logger.exception("LLM not supported:")
+            print(str(e))
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
-            print(f"LLM provider error: {e}")
+            print(str(e))
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            print(f"Max steps reached: {e.n_steps}")
+            print(str(e))
         except RunCancelled:
             logger.error("Interrupted by user")
             print("Interrupted by user")
