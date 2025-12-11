@@ -5,6 +5,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable
 
 import acp
+import pydantic
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
@@ -347,7 +348,7 @@ class ACPSession:
 
         try:
             todos = TodoParams.model_validate_json(state.args).todos
-        except ValueError as e:
+        except pydantic.ValidationError as e:
             logger.error("Failed to parse SetTodoList arguments: {error}", error=e)
             return
 
