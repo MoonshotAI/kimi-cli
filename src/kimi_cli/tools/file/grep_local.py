@@ -285,7 +285,7 @@ class Grep(CallableTool2[Params]):
                 rg = rg.count_matches()
 
             # Execute search
-            result = rg.run()
+            result = rg.run(universal_newlines=False)
 
             # Get results
             output = result.as_string
