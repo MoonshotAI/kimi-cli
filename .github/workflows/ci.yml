@@ -8,11 +8,13 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.target }}
+    name: ${{ matrix.target }} python-${{ matrix.python-version }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        runner: [ubuntu-22.04, macos-15-intel, macos-14, windows-2022]
+        python-version: ["3.12", "3.13", "3.14"]
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -29,10 +31,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.13
+      - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Set up uv
@@ -41,6 +44,8 @@ jobs:
           version: "0.8.5"
 
       - name: Install dependencies
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: uv sync --frozen
 
       - name: Configure local SSH server

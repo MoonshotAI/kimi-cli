@@ -139,6 +139,10 @@ class Kaos(Protocol):
         """Get the path class used under `KaosPath`."""
         ...
 
+    def normpath(self, path: StrOrKaosPath) -> KaosPath:
+        """Normalize path, eliminating double slashes, etc."""
+        ...
+
     def gethome(self) -> KaosPath:
         """Get the home directory path."""
         ...
@@ -257,6 +261,10 @@ def reset_current_kaos(token: contextvars.Token[Kaos]) -> None:
 
 def pathclass() -> type[PurePath]:
     return get_current_kaos().pathclass()
+
+
+def normpath(path: StrOrKaosPath) -> KaosPath:
+    return get_current_kaos().normpath(path)
 
 
 def gethome() -> KaosPath:

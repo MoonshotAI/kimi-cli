@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import posixpath
 import shlex
 import stat
 from collections.abc import AsyncGenerator
@@ -149,6 +150,9 @@ class SSHKaos:
 
     def pathclass(self) -> type[PurePath]:
         return PurePosixPath
+
+    def normpath(self, path: StrOrKaosPath) -> KaosPath:
+        return KaosPath(posixpath.normpath(str(path)))
 
     def gethome(self) -> KaosPath:
         return KaosPath(self._home_dir)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import ntpath
-import posixpath
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
 from stat import S_ISDIR, S_ISREG
@@ -87,20 +85,12 @@ class KaosPath:
         Unlike `pathlib.Path.resolve`, this method does not resolve symlinks.
         """
         abs_path = self if self.is_absolute() else kaos.getcwd().joinpath(str(self._path))
-
         # Normalize the path (handle . and ..) but preserve the format
-        path_parser = kaos.pathclass().parser
-        assert path_parser in (posixpath, ntpath), (
-            "Path class should be either PurePosixPath or PureWindowsPath"
-        )
-        normalized = path_parser.normpath(abs_path._path)
-        assert isinstance(normalized, str)
-
+        normalized = kaos.normpath(abs_path)
         # `normpath` might strip trailing slash, but we want to preserve it for directories
         # However, since we don't access the filesystem, we can't know if it's a directory
         # So we follow the pathlib behavior which doesn't preserve trailing slashes
-
-        return KaosPath(normalized)
+        return normalized
 
     def relative_to(self, other: KaosPath) -> KaosPath:
         """Return the relative path from `other` to this path."""

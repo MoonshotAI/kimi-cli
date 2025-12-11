@@ -5,6 +5,7 @@
 - Move `KaosProcess` to `Kaos.Process`.
 - Add `AsyncReadable` and `AsyncWritable` protocols.
 - Add `SSHKaos` implementation.
+- Lower the required Python version to 3.12
 
 ## [0.4.0] - 2025-12-06
 
