@@ -9,6 +9,7 @@
     "**/__pycache__/**/*.py"
   ],
   "strict": [
+    "src/kimi_cli/acp",
     "src/kimi_cli/prompts",
     "src/kimi_cli/soul",
     "src/kimi_cli/tools",

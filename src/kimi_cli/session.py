@@ -22,6 +22,10 @@ class Session:
     """The metadata of the work directory."""
     context_file: Path
     """The absolute path to the file storing the message history."""
+    title: str
+    """The title of the session."""
+    updated_at: float
+    """The timestamp of the last update to the session."""
 
     @property
     def dir(self) -> Path:
@@ -62,7 +66,7 @@ class Session:
                 "Context file already exists, truncating: {context_file}", context_file=context_file
             )
             context_file.unlink()
-            context_file.touch()
+        context_file.touch()
 
         save_metadata(metadata)
 
@@ -71,7 +75,91 @@ class Session:
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
+            title=session_id,  # TODO: readable session titles
+            updated_at=context_file.stat().st_mtime,
         )
+
+    @staticmethod
+    async def find(work_dir: KaosPath, session_id: str) -> Session | None:
+        """Find a session by work directory and session ID."""
+        work_dir = work_dir.canonical()
+        logger.debug(
+            "Finding session for work directory: {work_dir}, session ID: {session_id}",
+            work_dir=work_dir,
+            session_id=session_id,
+        )
+
+        metadata = load_metadata()
+        work_dir_meta = metadata.get_work_dir_meta(work_dir)
+        if work_dir_meta is None:
+            logger.debug("Work directory never been used")
+            return None
+
+        _migrate_session_context_file(work_dir_meta, session_id)
+
+        session_dir = work_dir_meta.sessions_dir / session_id
+        if not session_dir.is_dir():
+            logger.debug("Session directory not found: {session_dir}", session_dir=session_dir)
+            return None
+
+        context_file = session_dir / "context.jsonl"
+        if not context_file.exists():
+            logger.debug(
+                "Session context file not found: {context_file}", context_file=context_file
+            )
+            return None
+
+        return Session(
+            id=session_id,
+            work_dir=work_dir,
+            work_dir_meta=work_dir_meta,
+            context_file=context_file,
+            title=session_id,  # TODO: readable session titles
+            updated_at=context_file.stat().st_mtime,
+        )
+
+    @staticmethod
+    async def list(work_dir: KaosPath) -> list[Session]:
+        """List all sessions for a work directory."""
+        work_dir = work_dir.canonical()
+        logger.debug("Listing sessions for work directory: {work_dir}", work_dir=work_dir)
+
+        metadata = load_metadata()
+        work_dir_meta = metadata.get_work_dir_meta(work_dir)
+        if work_dir_meta is None:
+            logger.debug("Work directory never been used")
+            return []
+
+        session_ids = {
+            path.name if path.is_dir() else path.stem
+            for path in work_dir_meta.sessions_dir.iterdir()
+            if path.is_dir() or path.suffix == ".jsonl"
+        }
+
+        sessions: list[Session] = []
+        for session_id in sorted(session_ids):
+            _migrate_session_context_file(work_dir_meta, session_id)
+            session_dir = work_dir_meta.sessions_dir / session_id
+            if not session_dir.is_dir():
+                logger.debug("Session directory not found: {session_dir}", session_dir=session_dir)
+                continue
+            context_file = session_dir / "context.jsonl"
+            if not context_file.exists():
+                logger.debug(
+                    "Session context file not found: {context_file}", context_file=context_file
+                )
+                continue
+            sessions.append(
+                Session(
+                    id=session_id,
+                    work_dir=work_dir,
+                    work_dir_meta=work_dir_meta,
+                    context_file=context_file,
+                    title=session_id,  # TODO: readable session titles
+                    updated_at=context_file.stat().st_mtime,
+                )
+            )
+        return sessions
 
     @staticmethod
     async def continue_(work_dir: KaosPath) -> Session | None:
@@ -97,12 +185,19 @@ class Session:
 
         session_dir = work_dir_meta.sessions_dir / session_id
         context_file = session_dir / "context.jsonl"
+        if not context_file.exists():
+            logger.debug(
+                "Session context file not found: {context_file}", context_file=context_file
+            )
+            return None
 
         return Session(
             id=session_id,
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
+            title=session_id,  # TODO: readable session titles
+            updated_at=context_file.stat().st_mtime,
         )
 
 

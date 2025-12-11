@@ -14,6 +14,8 @@ Only write entries that are worth mentioning to users.
 - Tool: Fix FetchURL tool incorrect output when fetching via service fails
 - Tool: Use `bash` instead of `sh` for better compatibility
 - Tool: Fix Grep tool unicode decoding error on Windows
+- ACP: Support ACP session continuation (list/load sessions) with `kimi acp` subcommand
+- Lib: Add `Session.find` and `Session.list` static methods to find and list sessions
 
 ## [0.62] - 2025-12-08
 
