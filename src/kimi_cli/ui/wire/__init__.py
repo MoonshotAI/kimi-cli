@@ -186,9 +186,7 @@ class WireOverStdio:
         except ChatProviderError as e:
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(
-                    code=ErrorCodes.CHAT_PROVIDER_ERROR, message=f"LLM provider error: {e}"
-                ),
+                error=JSONRPCErrorObject(code=ErrorCodes.CHAT_PROVIDER_ERROR, message=str(e)),
             )
         except MaxStepsReached as e:
             return JSONRPCSuccessResponse(

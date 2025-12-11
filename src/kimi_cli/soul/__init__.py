@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 class LLMNotSet(Exception):
     """Raised when the LLM is not set."""
 
-    pass
+    def __init__(self) -> None:
+        super().__init__("LLM not set")
 
 
 class LLMNotSupported(Exception):
@@ -44,6 +45,7 @@ class MaxStepsReached(Exception):
     """The number of steps that have been taken."""
 
     def __init__(self, n_steps: int):
+        super().__init__(f"Max number of steps reached: {n_steps}")
         self.n_steps = n_steps
 
 

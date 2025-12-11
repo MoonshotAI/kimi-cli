@@ -16,7 +16,14 @@ from kosong.message import (
 )
 from kosong.tooling import ToolError, ToolResult, ToolReturnValue
 
-from kimi_cli.soul import LLMNotSet, MaxStepsReached, RunCancelled, Soul, run_soul
+from kimi_cli.soul import (
+    LLMNotSet,
+    LLMNotSupported,
+    MaxStepsReached,
+    RunCancelled,
+    Soul,
+    run_soul,
+)
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
@@ -187,21 +194,24 @@ class ACPAgent:
                 self.soul.wire_file_backend if isinstance(self.soul, KimiSoul) else None,
             )
             return acp.PromptResponse(stop_reason="end_turn")
-        except LLMNotSet:
-            logger.error("LLM not set")
-            raise acp.RequestError.internal_error({"error": "LLM not set"}) from None
+        except LLMNotSet as e:
+            logger.exception("LLM not set:")
+            raise acp.RequestError.internal_error({"error": str(e)}) from None
+        except LLMNotSupported as e:
+            logger.exception("LLM not supported:")
+            raise acp.RequestError.internal_error({"error": str(e)}) from None
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
-            raise acp.RequestError.internal_error({"error": f"LLM provider error: {e}"}) from e
+            raise acp.RequestError.internal_error({"error": str(e)}) from e
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n}", n=e.n_steps)
             return acp.PromptResponse(stop_reason="max_turn_requests")
         except RunCancelled:
             logger.info("Prompt cancelled by user")
             return acp.PromptResponse(stop_reason="cancelled")
-        except BaseException as e:
-            logger.exception("Unknown error:")
-            raise acp.RequestError.internal_error({"error": f"Unknown error: {e}"}) from e
+        except Exception as e:
+            logger.exception("Unexpected error:")
+            raise acp.RequestError.internal_error({"error": f"Unexpected error: {e}"}) from e
         finally:
             self.run_state = None
 

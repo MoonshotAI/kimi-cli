@@ -206,15 +206,11 @@ class Shell:
             )
             return True
         except LLMNotSet:
-            logger.error("LLM not set")
+            logger.exception("LLM not set:")
             console.print("[red]LLM not set, send /setup to configure[/red]")
         except LLMNotSupported as e:
             # actually unsupported input/mode should already be blocked by prompt session
-            logger.error(
-                "LLM model '{model_name}' does not support required capabilities: {capabilities}",
-                model_name=e.llm.model_name,
-                capabilities=", ".join(e.capabilities),
-            )
+            logger.exception("LLM not supported:")
             console.print(f"[red]{e}[/red]")
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
@@ -228,13 +224,13 @@ class Shell:
                 console.print(f"[red]LLM provider error: {e}[/red]")
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            console.print(f"[yellow]Max steps reached: {e.n_steps}[/yellow]")
+            console.print(f"[yellow]{e}[/yellow]")
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[red]Interrupted by user[/red]")
-        except BaseException as e:
-            logger.exception("Unknown error:")
-            console.print(f"[red]Unknown error: {e}[/red]")
+        except Exception as e:
+            logger.exception("Unexpected error:")
+            console.print(f"[red]Unexpected error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
             remove_sigint()
