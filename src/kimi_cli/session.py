@@ -67,7 +67,7 @@ class Session:
                 "Context file already exists, truncating: {context_file}", context_file=context_file
             )
             context_file.unlink()
-            context_file.touch()
+        context_file.touch()
 
         save_metadata(metadata)
 
@@ -77,7 +77,7 @@ class Session:
             work_dir_meta=work_dir_meta,
             context_file=context_file,
             title=session_id,  # TODO: readable session titles
-            updated_at=datetime.now().timestamp(),
+            updated_at=context_file.stat().st_mtime,
         )
 
     @staticmethod

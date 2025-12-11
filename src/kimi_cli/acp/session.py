@@ -121,7 +121,7 @@ class ACPSession:
                     case ApprovalRequest():
                         await self._handle_approval_request(msg)
         except LLMNotSet as e:
-            logger.error("LLM not set")
+            logger.exception("LLM not set:")
             raise acp.RequestError.internal_error({"error": str(e)}) from e
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
@@ -133,7 +133,7 @@ class ACPSession:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             return acp.PromptResponse(stop_reason="max_turn_requests")
         except RunCancelled:
-            logger.error("Prompt cancelled by user")
+            logger.info("Prompt cancelled by user")
             return acp.PromptResponse(stop_reason="cancelled")
         except Exception as e:
             logger.exception("Unexpected error during prompt:")
