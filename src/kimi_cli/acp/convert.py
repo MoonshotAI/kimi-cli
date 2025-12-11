@@ -19,7 +19,13 @@ def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPa
             case acp.schema.TextContentBlock():
                 content.append(TextPart(text=block.text))
             case acp.schema.ImageContentBlock():
-                content.append(ImageURLPart(image_url=ImageURLPart.ImageURL(url="")))  # TODO
+                content.append(
+                    ImageURLPart(
+                        image_url=ImageURLPart.ImageURL(
+                            url=f"data:{block.mime_type};base64,{block.data}"
+                        )
+                    )
+                )
             case _:
                 logger.warning("Unsupported prompt content block: {block}", block=block)
     return content
