@@ -11,11 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
-- Tool: Fix FetchURL tool incorrect output when fetching via service fails
-- Tool: Use `bash` instead of `sh` for better compatibility
-- Tool: Fix Grep tool unicode decoding error on Windows
+- Tool: Fix `FetchURL` tool incorrect output when fetching via service fails
+- Tool: Use `bash` instead of `sh` in `Shell` tool for better compatibility
+- Tool: Fix `Grep` tool unicode decoding error on Windows
 - ACP: Support ACP session continuation (list/load sessions) with `kimi acp` subcommand
 - Lib: Add `Session.find` and `Session.list` static methods to find and list sessions
+- ACP: Update agent plans on the client side when `SetTodoList` tool is called
 
 ## [0.62] - 2025-12-08
 
