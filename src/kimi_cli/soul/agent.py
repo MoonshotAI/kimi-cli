@@ -40,17 +40,42 @@ class BuiltinSystemPromptArgs:
     """The content of AGENTS.md."""
 
 
-async def load_agents_md(work_dir: KaosPath) -> str | None:
+async def _load_agents_md_from_dir(dir_path: KaosPath) -> str | None:
+    """Load AGENTS.md from a specific directory."""
     paths = [
-        work_dir / "AGENTS.md",
-        work_dir / "agents.md",
+        dir_path / "AGENTS.md",
+        dir_path / "agents.md",
     ]
     for path in paths:
         if await path.is_file():
             logger.info("Loaded agents.md: {path}", path=path)
             return (await path.read_text()).strip()
-    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
     return None
+
+
+async def load_agents_md(work_dir: KaosPath) -> str | None:
+    """Load AGENTS.md from work_dir and global ~/.kimi directory.
+
+    Both project-level and global AGENTS.md are loaded and merged.
+    Project-level content comes first, followed by global content.
+    """
+    global_kimi_dir = KaosPath(Path.home() / ".kimi")
+
+    project_content, global_content = await asyncio.gather(
+        _load_agents_md_from_dir(work_dir),
+        _load_agents_md_from_dir(global_kimi_dir),
+    )
+
+    if project_content and global_content:
+        logger.info("Merging project and global AGENTS.md")
+        return f"{project_content}\n\n{global_content}"
+    elif project_content:
+        return project_content
+    elif global_content:
+        return global_content
+    else:
+        logger.info("No AGENTS.md found in {work_dir} or ~/.kimi", work_dir=work_dir)
+        return None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
