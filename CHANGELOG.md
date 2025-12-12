@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.63] - 2025-12-12
 
 - Tool: Fix `FetchURL` tool incorrect output when fetching via service fails
 - Tool: Use `bash` instead of `sh` in `Shell` tool for better compatibility
