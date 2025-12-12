@@ -59,7 +59,7 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
     Both project-level and global AGENTS.md are loaded and merged.
     Project-level content comes first, followed by global content.
     """
-    global_kimi_dir = KaosPath(Path.home() / ".kimi")
+    global_kimi_dir = KaosPath(str(Path.home() / ".kimi"))
 
     project_content, global_content = await asyncio.gather(
         _load_agents_md_from_dir(work_dir),
