@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import override
 
 import kaos
+from kaos import AsyncReadable
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -87,7 +88,7 @@ class Shell(CallableTool2[Params]):
         stderr_cb: Callable[[bytes], None],
         timeout: int,
     ) -> int:
-        async def _read_stream(stream: asyncio.StreamReader, cb: Callable[[bytes], None]):
+        async def _read_stream(stream: AsyncReadable, cb: Callable[[bytes], None]):
             while True:
                 line = await stream.readline()
                 if line:
