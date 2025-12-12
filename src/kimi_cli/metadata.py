@@ -48,6 +48,9 @@ class Metadata(BaseModel):
     thinking: bool = False
     """Whether the last session was in thinking mode."""
 
+    session_to_workdir: dict[str, str] = Field(default_factory=dict)
+    """Mapping from session ID to work directory path for quick session lookup."""
+
     def get_work_dir_meta(self, path: KaosPath) -> WorkDirMeta | None:
         """Get the metadata for a work directory."""
         for wd in self.work_dirs:
