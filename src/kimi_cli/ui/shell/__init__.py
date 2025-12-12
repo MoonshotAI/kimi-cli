@@ -18,7 +18,7 @@ from rich.text import Text
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import get_meta_command
+from kimi_cli.ui.shell.metacmd import MetaCommand, get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
@@ -79,10 +79,13 @@ class Shell:
                     await self._run_shell_command(user_input.command)
                     continue
 
-                if user_input.command.startswith("/"):
-                    logger.debug("Running meta command: {command}", command=user_input.command)
-                    await self._run_meta_command(user_input.command[1:])
-                    continue
+                if user_input.command.startswith("/") and (parts := user_input.command[1:].split()):
+                    cmd_name = parts[0]
+                    cmd_args = parts[1:]
+                    if cmd := get_meta_command(cmd_name):
+                        logger.debug("Running meta command: {command}", command=user_input.command)
+                        await self._run_meta_command(cmd, cmd_args)
+                        continue
 
                 logger.info(
                     "Running agent command: {command} with thinking {thinking}",
@@ -130,26 +133,19 @@ class Shell:
         finally:
             remove_sigint()
 
-    async def _run_meta_command(self, command_str: str):
+    async def _run_meta_command(self, command: MetaCommand, args: list[str]) -> None:
         from kimi_cli.cli import Reload
 
-        parts = command_str.split(" ")
-        command_name = parts[0]
-        command_args = parts[1:]
-        command = get_meta_command(command_name)
-        if command is None:
-            console.print(f"Meta command /{command_name} not found")
-            return
         if command.kimi_soul_only and not isinstance(self.soul, KimiSoul):
-            console.print(f"Meta command /{command_name} not supported")
+            console.print(f"Meta command /{command.name} not supported")
             return
         logger.debug(
             "Running meta command: {command_name} with args: {command_args}",
-            command_name=command_name,
-            command_args=command_args,
+            command_name=command.name,
+            command_args=args,
         )
         try:
-            ret = command.func(self, command_args)
+            ret = command.func(self, args)
             if isinstance(ret, Awaitable):
                 await ret
         except LLMNotSet:
