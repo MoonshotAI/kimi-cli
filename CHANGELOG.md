@@ -17,6 +17,7 @@ Only write entries that are worth mentioning to users.
 - ACP: Support ACP session continuation (list/load sessions) with `kimi acp` subcommand
 - Lib: Add `Session.find` and `Session.list` static methods to find and list sessions
 - ACP: Update agent plans on the client side when `SetTodoList` tool is called
+- UI: Prevent normal messages starting with `/` from being treated as meta commands
 
 ## [0.62] - 2025-12-08
 
