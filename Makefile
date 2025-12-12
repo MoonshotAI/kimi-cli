@@ -7,7 +7,7 @@ help: ## Show available make targets.
 
 .PHONY: prepare
 prepare: download-deps ## Sync dependencies using locked versions.
-	uv sync --frozen
+	uv sync --frozen --all-extras
 
 .PHONY: format
 format: ## Auto-format Python sources with ruff.
