@@ -79,8 +79,7 @@ class Shell:
                     await self._run_shell_command(user_input.command)
                     continue
 
-                if user_input.command.startswith("/"):
-                    parts = user_input.command[1:].split()
+                if user_input.command.startswith("/") and (parts := user_input.command[1:].split()):
                     cmd_name = parts[0]
                     cmd_args = parts[1:]
                     if cmd := get_meta_command(cmd_name):
