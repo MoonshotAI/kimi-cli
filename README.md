@@ -1,3 +1,3 @@
 # PyKAOS
 
-PyKAOS is the Python implementation of the KAOS (Kimi Agent Operating System) API, designed to abstract the interaction between AI agents and the environment they operate in.
+PyKAOS is a lightweight Python library providing an abstraction layer for agents to interact with operating systems. File operations and command executions via KAOS can be easily switched between local environment and remote systems over SSH.
