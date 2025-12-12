@@ -469,7 +469,6 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 )
 
 
-
 def _sanitize_surrogates(text: str) -> str:
     """Sanitize UTF-16 surrogate characters that cannot be encoded to UTF-8.
 
@@ -707,7 +706,8 @@ class CustomPromptSession:
         with patch_stdout(raw=True):
             command = str(await self._session.prompt_async()).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
-            command = _sanitize_surrogates(command)  # sanitize UTF-16 surrogates from Windows clipboard
+            # Sanitize UTF-16 surrogates that may come from Windows clipboard
+            command = _sanitize_surrogates(command)
         self._append_history_entry(command)
 
         # Parse rich content parts

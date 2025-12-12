@@ -12,11 +12,11 @@ class TestSanitizeSurrogates:
         """Test that UTF-16 surrogate pairs are sanitized."""
         # \ud83d\udc3a is the UTF-16 surrogate pair for wolf emoji 🐺
         input_text = "Hello \ud83d\udc3a World"
-        
+
         # Original should fail to encode
         with pytest.raises(UnicodeEncodeError):
             input_text.encode("utf-8")
-        
+
         # Sanitized should encode successfully
         result = _sanitize_surrogates(input_text)
         result.encode("utf-8")  # Should not raise
@@ -48,11 +48,11 @@ class TestSanitizeSurrogates:
         """Test text with surrogates mixed with normal content."""
         # Simulating the exact issue from GitHub #420
         input_text = "CTL Implementation - Kimi Tasks\nAssigned To: \ud83d\udc3a Kimi"
-        
+
         # Should not raise
         result = _sanitize_surrogates(input_text)
         result.encode("utf-8")
-        
+
         # Should preserve the rest of the content
         assert "CTL Implementation" in result
         assert "Assigned To:" in result
