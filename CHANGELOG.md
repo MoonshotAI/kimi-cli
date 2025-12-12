@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.0] - 2025-12-12
 
 - Move `KaosProcess` to `Kaos.Process`.
 - Add `AsyncReadable` and `AsyncWritable` protocols.
