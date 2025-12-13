@@ -12,6 +12,7 @@ from kosong.message import (
 
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
+from kimi_cli.constant import NAME, VERSION
 from kimi_cli.soul import (
     Soul,
     run_soul,
@@ -58,6 +59,7 @@ class ACPServerSingleSession:
                 session_capabilities=acp.schema.SessionCapabilities(),
             ),
             auth_methods=[],
+            agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
     async def new_session(
