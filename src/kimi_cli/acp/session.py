@@ -5,6 +5,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable
 
 import acp
+import pydantic
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
@@ -14,6 +15,8 @@ from kimi_cli.acp.convert import acp_blocks_to_content_parts, tool_result_to_acp
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
+from kimi_cli.tools.todo import Params as TodoParams
+from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import (
     ApprovalRequest,
@@ -263,6 +266,9 @@ class ACPSession:
         await self._conn.session_update(session_id=self._id, update=update)
         logger.debug("Sent tool result: {id}", id=result.tool_call_id)
 
+        if not is_error and state.tool_call.function.name == SetTodoList.name:
+            await self._send_plan_update(state)
+
     async def _handle_approval_request(self, request: ApprovalRequest):
         """Handle approval request by sending permission request to client."""
         assert self._run_state is not None
@@ -336,3 +342,38 @@ class ACPSession:
             logger.exception("Error handling approval request:")
             # On error, reject the request
             request.resolve("reject")
+
+    async def _send_plan_update(self, state: _ToolCallState) -> None:
+        """Send todo list updates as ACP agent plan updates."""
+
+        try:
+            todos = TodoParams.model_validate_json(state.args).todos
+        except pydantic.ValidationError as e:
+            logger.error("Failed to parse SetTodoList arguments: {error}", error=e)
+            return
+
+        status_map: dict[str, acp.schema.PlanEntryStatus] = {
+            "pending": "pending",
+            "in progress": "in_progress",
+            "in_progress": "in_progress",
+            "done": "completed",
+            "completed": "completed",
+        }
+        entries: list[acp.schema.PlanEntry] = [
+            acp.schema.PlanEntry(
+                content=todo.title,
+                priority="medium",
+                status=status_map.get(todo.status.lower(), "pending"),
+            )
+            for todo in todos
+            if todo.title
+        ]
+
+        if not entries:
+            logger.warning("No valid todo items to send in plan update: {todos}", todos=todos)
+            return
+
+        await self._conn.session_update(
+            session_id=self._id,
+            update=acp.schema.AgentPlanUpdate(session_update="plan", entries=entries),
+        )

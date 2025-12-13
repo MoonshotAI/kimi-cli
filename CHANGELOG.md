@@ -9,13 +9,15 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.63] - 2025-12-12
 
-- Tool: Fix FetchURL tool incorrect output when fetching via service fails
-- Tool: Use `bash` instead of `sh` for better compatibility
-- Tool: Fix Grep tool unicode decoding error on Windows
+- Tool: Fix `FetchURL` tool incorrect output when fetching via service fails
+- Tool: Use `bash` instead of `sh` in `Shell` tool for better compatibility
+- Tool: Fix `Grep` tool unicode decoding error on Windows
 - ACP: Support ACP session continuation (list/load sessions) with `kimi acp` subcommand
 - Lib: Add `Session.find` and `Session.list` static methods to find and list sessions
+- ACP: Update agent plans on the client side when `SetTodoList` tool is called
+- UI: Prevent normal messages starting with `/` from being treated as meta commands
 
 ## [0.62] - 2025-12-08
 
