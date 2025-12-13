@@ -4,11 +4,12 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import typer
 
 from kimi_cli.constant import VERSION
+from kimi_cli.share import get_default_mcp_config_file
 
 
 class Reload(Exception):
@@ -270,6 +271,12 @@ def kimi(
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
 
+    # Use default MCP config file if no --mcp-config-file is provided
+    if not file_configs:
+        default_mcp_file = get_default_mcp_config_file()
+        if default_mcp_file.exists():
+            file_configs.append(default_mcp_file)
+
     try:
         mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in file_configs]
     except json.JSONDecodeError as e:
@@ -370,6 +377,123 @@ def acp():
     from kimi_cli.acp import acp_main
 
     acp_main()
+
+
+# MCP subcommand group
+mcp_cli = typer.Typer(
+    help="Manage MCP server configurations in ~/.kimi/mcp.json",
+)
+cli.add_typer(mcp_cli, name="mcp")
+
+MCPConfigType = dict[str, Any]
+
+
+def _load_mcp_config() -> MCPConfigType:
+    """Load MCP config from default file."""
+    mcp_file = get_default_mcp_config_file()
+    if not mcp_file.exists():
+        return {"mcpServers": {}}
+    try:
+        return json.loads(mcp_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"mcpServers": {}}
+
+
+def _save_mcp_config(config: MCPConfigType) -> None:
+    """Save MCP config to default file."""
+    mcp_file = get_default_mcp_config_file()
+    mcp_file.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+@mcp_cli.command("add")
+def mcp_add(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to add."),
+    ],
+    command: Annotated[
+        str,
+        typer.Option(
+            "--command",
+            "-c",
+            help="Command to run the MCP server.",
+        ),
+    ],
+    args: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--arg",
+            "-a",
+            help="Arguments for the command. Can be specified multiple times.",
+        ),
+    ] = None,
+    env: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--env",
+            "-e",
+            help="Environment variables in KEY=VALUE format. Can be specified multiple times.",
+        ),
+    ] = None,
+):
+    """Add an MCP server to ~/.kimi/mcp.json."""
+    config = _load_mcp_config()
+    server_config: dict[str, Any] = {"command": command, "args": args or []}
+
+    if env:
+        env_dict: dict[str, str] = {}
+        for item in env:
+            if "=" not in item:
+                typer.echo(f"Invalid env format: {item} (expected KEY=VALUE)", err=True)
+                raise typer.Exit(code=1)
+            key, value = item.split("=", 1)
+            if not key:
+                typer.echo(f"Invalid env format: {item} (empty key)", err=True)
+                raise typer.Exit(code=1)
+            env_dict[key] = value
+        server_config["env"] = env_dict
+
+    if "mcpServers" not in config:
+        config["mcpServers"] = {}
+    config["mcpServers"][name] = server_config
+    _save_mcp_config(config)
+    typer.echo(f"Added MCP server '{name}' to {get_default_mcp_config_file()}")
+
+
+@mcp_cli.command("remove")
+def mcp_remove(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to remove."),
+    ],
+):
+    """Remove an MCP server from ~/.kimi/mcp.json."""
+    config = _load_mcp_config()
+
+    if "mcpServers" not in config or name not in config["mcpServers"]:
+        typer.echo(f"MCP server '{name}' not found.", err=True)
+        raise typer.Exit(code=1)
+
+    del config["mcpServers"][name]
+    _save_mcp_config(config)
+    typer.echo(f"Removed MCP server '{name}' from {get_default_mcp_config_file()}")
+
+
+@mcp_cli.command("list")
+def mcp_list():
+    """List all MCP servers in ~/.kimi/mcp.json."""
+    config = _load_mcp_config()
+    servers: dict[str, Any] = config.get("mcpServers", {})
+
+    if not servers:
+        typer.echo("No MCP servers configured.")
+        return
+
+    for name, server in servers.items():
+        cmd = server.get("command", "")
+        cmd_args = " ".join(server.get("args", []))
+        line = f"{name}: {cmd} {cmd_args}".rstrip()
+        typer.echo(f"  {line}")
 
 
 if __name__ == "__main__":
