@@ -291,6 +291,7 @@ async def _load_mcp_tools(
 
     from kimi_cli.tools.mcp import MCPTool
 
+    session_id = runtime.session.id
     for mcp_config in mcp_configs:
         # Skip empty MCP configs (no servers defined)
         if not mcp_config.get("mcpServers"):
@@ -299,7 +300,27 @@ async def _load_mcp_tools(
 
         logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
         client = fastmcp.Client(mcp_config)
+        # Set mcp-session-id header before connecting
+        _set_mcp_session_id(client, session_id)
         async with client:
             for tool in await client.list_tools():
                 toolset.add(MCPTool(tool, client, runtime=runtime))
     return toolset
+
+
+def _set_mcp_session_id(client: Any, session_id: str) -> None:
+    """Set mcp-session-id header on the client's transport if supported."""
+    transport = client.transport
+    # Handle MCPConfigTransport wrapper - check _underlying_transports first
+    if hasattr(transport, "_underlying_transports"):
+        for t in transport._underlying_transports:
+            if hasattr(t, "headers"):
+                t.headers["mcp-session-id"] = session_id
+    # Also check direct transport attribute
+    elif hasattr(transport, "transport") and transport.transport is not None:
+        inner = transport.transport
+        if hasattr(inner, "headers"):
+            inner.headers["mcp-session-id"] = session_id
+    # Direct transport with headers
+    elif hasattr(transport, "headers"):
+        transport.headers["mcp-session-id"] = session_id
