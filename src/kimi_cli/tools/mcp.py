@@ -12,6 +12,8 @@ from kimi_cli.tools.utils import ToolRejectedError
 
 
 class MCPTool[T: ClientTransport](CallableTool):
+    """MCP tool wrapper."""
+
     def __init__(
         self,
         mcp_tool: mcp.Tool,
@@ -36,11 +38,10 @@ class MCPTool[T: ClientTransport](CallableTool):
         if not await self._runtime.approval.request(self.name, self._action_name, description):
             return ToolRejectedError()
 
-        async with self._client as client:
-            result = await client.call_tool(
-                self._mcp_tool.name, kwargs, timeout=60, raise_on_error=False
-            )
-            return convert_tool_result(result)
+        result = await self._client.call_tool(
+            self._mcp_tool.name, kwargs, timeout=60, raise_on_error=False
+        )
+        return convert_tool_result(result)
 
 
 def convert_tool_result(result: CallToolResult) -> ToolReturnValue:

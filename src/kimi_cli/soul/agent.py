@@ -5,6 +5,7 @@ import importlib
 import inspect
 import string
 from collections.abc import Mapping
+from contextlib import AsyncExitStack
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,58 @@ from kimi_cli.tools import SkipThisTool
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
+
+
+class MCPClientManager:
+    """Manages MCP client connections lifecycle."""
+
+    def __init__(self) -> None:
+        self._exit_stack: AsyncExitStack | None = None
+        self._clients: list[Any] = []
+
+    async def connect(
+        self, mcp_configs: list[dict[str, Any]], session_id: str | None = None
+    ) -> list[Any]:
+        """Connect to all MCP servers and return the connected clients.
+
+        Args:
+            mcp_configs: List of MCP server configurations.
+            session_id: Session ID to set as mcp-session-id header on HTTP transports.
+
+        Returns:
+            List of connected MCP clients.
+
+        Raises:
+            RuntimeError: If any MCP server fails to connect.
+        """
+        if not mcp_configs:
+            return []
+
+        import fastmcp
+
+        self._exit_stack = AsyncExitStack()
+        await self._exit_stack.__aenter__()
+
+        try:
+            for mcp_config in mcp_configs:
+                logger.info("Connecting to MCP server: {mcp_config}", mcp_config=mcp_config)
+                client = fastmcp.Client(mcp_config)
+                if session_id:
+                    _set_mcp_session_id(client, session_id)
+                await self._exit_stack.enter_async_context(client)
+                self._clients.append(client)
+        except Exception:
+            await self.close()
+            raise
+
+        return self._clients
+
+    async def close(self) -> None:
+        """Close all MCP client connections."""
+        if self._exit_stack is not None:
+            await self._exit_stack.aclose()
+            self._exit_stack = None
+            self._clients.clear()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -158,10 +211,15 @@ async def load_agent(
     agent_file: Path,
     runtime: Runtime,
     *,
-    mcp_configs: list[dict[str, Any]],
+    mcp_clients: list[Any] | None = None,
 ) -> Agent:
     """
     Load agent from specification file.
+
+    Args:
+        agent_file: Path to the agent specification file.
+        runtime: The agent runtime.
+        mcp_clients: List of already-connected MCP clients from MCPClientManager.
 
     Raises:
         FileNotFoundError: If the agent spec file does not exist.
@@ -182,7 +240,7 @@ async def load_agent(
         subagent = await load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
-            mcp_configs=mcp_configs,
+            mcp_clients=mcp_clients,
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
@@ -206,8 +264,8 @@ async def load_agent(
     if bad_tools:
         raise ValueError(f"Invalid tools: {bad_tools}")
 
-    if mcp_configs:
-        await _load_mcp_tools(toolset, mcp_configs, runtime)
+    if mcp_clients:
+        await _load_mcp_tools(toolset, mcp_clients, runtime)
 
     return Agent(
         name=agent_spec.name,
@@ -277,50 +335,86 @@ def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType |
     return cls(*args)
 
 
-async def _load_mcp_tools(
-    toolset: KimiToolset,
+async def connect_mcp_clients(
     mcp_configs: list[dict[str, Any]],
-    runtime: Runtime,
-):
+    session_id: str | None = None,
+) -> list[Any]:
+    """Connect to MCP servers and return connected clients.
+
+    Args:
+        mcp_configs: List of MCP server configurations.
+        session_id: Session ID to set as mcp-session-id header on HTTP transports.
+
+    Returns:
+        List of connected MCP clients. Caller is responsible for closing them
+        via close_mcp_clients().
     """
-    Raises:
-        ValueError: If the MCP config is not valid.
-        RuntimeError: If the MCP server cannot be connected.
-    """
+    if not mcp_configs:
+        return []
+
     import fastmcp
 
+    clients: list[Any] = []
+    try:
+        for mcp_config in mcp_configs:
+            # Skip empty MCP configs (no servers defined)
+            if not mcp_config.get("mcpServers"):
+                logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
+                continue
+
+            logger.info("Connecting to MCP server: {mcp_config}", mcp_config=mcp_config)
+            client = fastmcp.Client(mcp_config)
+            if session_id:
+                _set_mcp_session_id(client, session_id)
+            await client.__aenter__()
+            clients.append(client)
+    except Exception:
+        await close_mcp_clients(clients)
+        raise
+    return clients
+
+
+async def close_mcp_clients(clients: list[Any]) -> None:
+    """Close all MCP client connections."""
+    for client in clients:
+        try:
+            await client.close()
+        except Exception as e:
+            logger.warning("Failed to close MCP client: {error}", error=e)
+
+
+async def _load_mcp_tools(
+    toolset: KimiToolset,
+    mcp_clients: list[Any],
+    runtime: Runtime,
+) -> None:
+    """Load MCP tools from already-connected clients."""
     from kimi_cli.tools.mcp import MCPTool
 
-    session_id = runtime.session.id
-    for mcp_config in mcp_configs:
-        # Skip empty MCP configs (no servers defined)
-        if not mcp_config.get("mcpServers"):
-            logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
-            continue
-
-        logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
-        client = fastmcp.Client(mcp_config)
-        # Set mcp-session-id header before connecting
-        _set_mcp_session_id(client, session_id)
-        async with client:
-            for tool in await client.list_tools():
-                toolset.add(MCPTool(tool, client, runtime=runtime))
-    return toolset
+    for client in mcp_clients:
+        tools = await client.list_tools()
+        logger.info("Loading {count} MCP tools from connected client", count=len(tools))
+        for tool in tools:
+            toolset.add(MCPTool(tool, client, runtime=runtime))
 
 
 def _set_mcp_session_id(client: Any, session_id: str) -> None:
-    """Set mcp-session-id header on the client's transport if supported."""
-    transport = client.transport
-    # Handle MCPConfigTransport wrapper - check _underlying_transports first
-    if hasattr(transport, "_underlying_transports"):
-        for t in transport._underlying_transports:
-            if hasattr(t, "headers"):
-                t.headers["mcp-session-id"] = session_id
-    # Also check direct transport attribute
-    elif hasattr(transport, "transport") and transport.transport is not None:
-        inner = transport.transport
-        if hasattr(inner, "headers"):
-            inner.headers["mcp-session-id"] = session_id
-    # Direct transport with headers
-    elif hasattr(transport, "headers"):
-        transport.headers["mcp-session-id"] = session_id
+    """Set mcp-session-id header on the client's transport if supported.
+
+    Note: This accesses fastmcp internal transport structure and may break
+    on version updates. Stdio transports don't have headers and are skipped.
+    """
+    try:
+        transport = client.transport
+        if hasattr(transport, "_underlying_transports"):
+            for t in transport._underlying_transports:
+                if hasattr(t, "headers"):
+                    t.headers["mcp-session-id"] = session_id
+        elif hasattr(transport, "transport") and transport.transport is not None:
+            inner = transport.transport
+            if hasattr(inner, "headers"):
+                inner.headers["mcp-session-id"] = session_id
+        elif hasattr(transport, "headers"):
+            transport.headers["mcp-session-id"] = session_id
+    except AttributeError:
+        logger.debug("Could not set mcp-session-id: transport structure not recognized")

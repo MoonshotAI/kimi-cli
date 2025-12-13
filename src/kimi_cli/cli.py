@@ -344,25 +344,28 @@ def kimi(
             thinking=thinking_mode,
             agent_file=agent_file,
         )
-        match ui:
-            case "shell":
-                succeeded = await instance.run_shell(command)
-            case "print":
-                succeeded = await instance.run_print(
-                    input_format or "text",
-                    output_format or "text",
-                    command,
-                )
-            case "acp":
-                if command is not None:
-                    logger.warning("ACP server ignores command argument")
-                await instance.run_acp()
-                succeeded = True
-            case "wire":
-                if command is not None:
-                    logger.warning("Wire server ignores command argument")
-                await instance.run_wire_stdio()
-                succeeded = True
+        try:
+            match ui:
+                case "shell":
+                    succeeded = await instance.run_shell(command)
+                case "print":
+                    succeeded = await instance.run_print(
+                        input_format or "text",
+                        output_format or "text",
+                        command,
+                    )
+                case "acp":
+                    if command is not None:
+                        logger.warning("ACP server ignores command argument")
+                    await instance.run_acp()
+                    succeeded = True
+                case "wire":
+                    if command is not None:
+                        logger.warning("Wire server ignores command argument")
+                    await instance.run_wire_stdio()
+                    succeeded = True
+        finally:
+            await instance.close()
 
         if succeeded:
             metadata = load_metadata()
