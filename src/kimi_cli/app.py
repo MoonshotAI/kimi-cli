@@ -19,7 +19,7 @@ from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, run_soul
-from kimi_cli.soul.agent import Runtime, load_agent
+from kimi_cli.soul.agent import MCPClientManager, Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.logging import StreamToLogger, logger
@@ -103,9 +103,12 @@ class KimiCLI:
 
         runtime = await Runtime.create(config, llm, session, yolo)
 
+        mcp_manager = MCPClientManager()
+        mcp_clients = await mcp_manager.connect(mcp_configs or [], session_id=session.id)
+
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
-        agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+        agent = await load_agent(agent_file, runtime, mcp_clients=mcp_clients)
 
         context = Context(session.context_file)
         await context.restore()
@@ -115,17 +118,23 @@ class KimiCLI:
             soul.set_thinking(thinking)
         except (LLMNotSet, LLMNotSupported) as e:
             logger.warning("Failed to enable thinking mode: {error}", error=e)
-        return KimiCLI(soul, runtime, env_overrides)
+        return KimiCLI(soul, runtime, env_overrides, mcp_manager)
 
     def __init__(
         self,
         _soul: KimiSoul,
         _runtime: Runtime,
         _env_overrides: dict[str, str],
+        _mcp_manager: MCPClientManager,
     ) -> None:
         self._soul = _soul
         self._runtime = _runtime
         self._env_overrides = _env_overrides
+        self._mcp_manager = _mcp_manager
+
+    async def close(self) -> None:
+        """Close all resources including MCP connections."""
+        await self._mcp_manager.close()
 
     @property
     def soul(self) -> KimiSoul:
