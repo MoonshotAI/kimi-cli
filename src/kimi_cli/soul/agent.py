@@ -182,7 +182,7 @@ async def load_agent(
         subagent = await load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
-            mcp_configs=mcp_configs,
+            mcp_configs=[],  # subagents don't need MCP tools
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
@@ -206,8 +206,9 @@ async def load_agent(
     if bad_tools:
         raise ValueError(f"Invalid tools: {bad_tools}")
 
+    # Start MCP loading in background (non-blocking)
     if mcp_configs:
-        await _load_mcp_tools(toolset, mcp_configs, runtime)
+        asyncio.create_task(_load_mcp_tools(toolset, mcp_configs, runtime))
 
     return Agent(
         name=agent_spec.name,
@@ -281,26 +282,39 @@ async def _load_mcp_tools(
     toolset: KimiToolset,
     mcp_configs: list[dict[str, Any]],
     runtime: Runtime,
-):
-    """
-    Raises:
-        ValueError: If the MCP config is not valid.
-        RuntimeError: If the MCP server cannot be connected.
-    """
+) -> None:
+    """Load MCP tools from configs, loading servers in parallel."""
     import fastmcp
 
     from kimi_cli.tools.mcp import MCPTool
 
+    async def load_single_server(server_name: str, server_config: dict[str, Any]) -> None:
+        single_config = {"mcpServers": {server_name: server_config}}
+        try:
+            logger.info("Loading MCP server: {server_name}", server_name=server_name)
+            client = fastmcp.Client(single_config)
+            async with client:
+                tools = await client.list_tools()
+                for tool in tools:
+                    toolset.add(MCPTool(tool, client, runtime=runtime, server_name=server_name))
+                logger.info(
+                    "Loaded {count} tools from MCP server: {server_name}",
+                    count=len(tools),
+                    server_name=server_name,
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to load MCP server {server_name}: {error}",
+                server_name=server_name,
+                error=f"{type(e).__name__}: {e}",
+            )
+
+    # Load servers sequentially (safer, avoids race conditions)
     for mcp_config in mcp_configs:
-        # Skip empty MCP configs (no servers defined)
         mcp_servers = mcp_config.get("mcpServers", {})
         if not mcp_servers:
             logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
             continue
 
-        logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
-        client = fastmcp.Client(mcp_config)
-        async with client:
-            for tool in await client.list_tools():
-                toolset.add(MCPTool(tool, client, runtime=runtime))
-    return toolset
+        for server_name, server_config in mcp_servers.items():
+            await load_single_server(server_name, server_config)

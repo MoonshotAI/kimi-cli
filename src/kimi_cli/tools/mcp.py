@@ -18,6 +18,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         client: fastmcp.Client[T],
         *,
         runtime: Runtime,
+        server_name: str = "unknown",
         **kwargs: Any,
     ):
         super().__init__(
@@ -29,6 +30,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
+        self._server_name = server_name
         self._action_name = f"mcp:{mcp_tool.name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
