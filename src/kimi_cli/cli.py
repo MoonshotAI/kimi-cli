@@ -402,7 +402,27 @@ def _load_mcp_config() -> MCPConfigType:
 def _save_mcp_config(config: MCPConfigType) -> None:
     """Save MCP config to default file."""
     mcp_file = get_default_mcp_config_file()
+    mcp_file.parent.mkdir(parents=True, exist_ok=True)
     mcp_file.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _get_mcp_server(name: str) -> tuple[MCPConfigType, dict[str, Any]]:
+    """Get MCP server config by name.
+
+    Returns:
+        Tuple of (full config, server config).
+
+    Raises:
+        typer.Exit: If server not found.
+    """
+    config = _load_mcp_config()
+    servers: dict[str, Any] = config.get("mcpServers", {})
+
+    if name not in servers:
+        typer.echo(f"MCP server '{name}' not found.", err=True)
+        raise typer.Exit(code=1)
+
+    return config, servers[name]
 
 
 @mcp_cli.command("add")
@@ -412,13 +432,36 @@ def mcp_add(
         typer.Argument(help="Name of the MCP server to add."),
     ],
     command: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--command",
             "-c",
-            help="Command to run the MCP server.",
+            help="Command to run the MCP server (for stdio transport).",
         ),
-    ],
+    ] = None,
+    url: Annotated[
+        str | None,
+        typer.Option(
+            "--url",
+            "-u",
+            help="URL of the MCP server (for http/sse transport).",
+        ),
+    ] = None,
+    transport: Annotated[
+        str | None,
+        typer.Option(
+            "--transport",
+            "-t",
+            help="Transport type: sse, http, or stdio. Default: auto-detect.",
+        ),
+    ] = None,
+    auth: Annotated[
+        str | None,
+        typer.Option(
+            "--auth",
+            help="Authentication type (e.g., 'oauth').",
+        ),
+    ] = None,
     args: Annotated[
         list[str] | None,
         typer.Option(
@@ -437,8 +480,31 @@ def mcp_add(
     ] = None,
 ):
     """Add an MCP server to ~/.kimi/mcp.json."""
+    if not command and not url:
+        typer.echo("Either --command or --url must be provided.", err=True)
+        raise typer.Exit(code=1)
+
+    if command and url:
+        typer.echo("Cannot specify both --command and --url.", err=True)
+        raise typer.Exit(code=1)
+
     config = _load_mcp_config()
-    server_config: dict[str, Any] = {"command": command, "args": args or []}
+    server_config: dict[str, Any] = {}
+
+    if command:
+        # stdio transport
+        server_config["command"] = command
+        server_config["args"] = args or []
+    else:
+        # http/sse transport
+        assert url is not None
+        server_config["url"] = url
+        if transport:
+            server_config["transport"] = transport
+        if auth:
+            server_config["auth"] = auth
+        if args:
+            typer.echo("Warning: --arg is ignored for URL-based servers.", err=True)
 
     if env:
         env_dict: dict[str, str] = {}
@@ -455,9 +521,11 @@ def mcp_add(
 
     if "mcpServers" not in config:
         config["mcpServers"] = {}
+
+    action = "Updated" if name in config["mcpServers"] else "Added"
     config["mcpServers"][name] = server_config
     _save_mcp_config(config)
-    typer.echo(f"Added MCP server '{name}' to {get_default_mcp_config_file()}")
+    typer.echo(f"{action} MCP server '{name}' in {get_default_mcp_config_file()}")
 
 
 @mcp_cli.command("remove")
@@ -468,11 +536,7 @@ def mcp_remove(
     ],
 ):
     """Remove an MCP server from ~/.kimi/mcp.json."""
-    config = _load_mcp_config()
-
-    if "mcpServers" not in config or name not in config["mcpServers"]:
-        typer.echo(f"MCP server '{name}' not found.", err=True)
-        raise typer.Exit(code=1)
+    config, _ = _get_mcp_server(name)
 
     del config["mcpServers"][name]
     _save_mcp_config(config)
@@ -490,10 +554,147 @@ def mcp_list():
         return
 
     for name, server in servers.items():
-        cmd = server.get("command", "")
-        cmd_args = " ".join(server.get("args", []))
-        line = f"{name}: {cmd} {cmd_args}".rstrip()
+        if "command" in server:
+            cmd = server.get("command", "")
+            cmd_args = " ".join(server.get("args", []))
+            line = f"{name}: {cmd} {cmd_args}".rstrip()
+        elif "url" in server:
+            url = server.get("url", "")
+            auth = server.get("auth", "")
+            line = f"{name}: {url}"
+            if auth:
+                line += f" (auth: {auth})"
+        else:
+            line = f"{name}: (unknown config)"
         typer.echo(f"  {line}")
+
+
+@mcp_cli.command("auth")
+def mcp_auth(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to authenticate."),
+    ],
+):
+    """Authenticate with an OAuth-enabled MCP server."""
+    _, server = _get_mcp_server(name)
+
+    if "url" not in server:
+        typer.echo(f"MCP server '{name}' is not a remote server (no URL).", err=True)
+        raise typer.Exit(code=1)
+
+    if server.get("auth") != "oauth":
+        typer.echo(f"MCP server '{name}' does not use OAuth authentication.", err=True)
+        raise typer.Exit(code=1)
+
+    async def _auth() -> None:
+        import fastmcp
+        from mcp.shared.exceptions import McpError
+
+        typer.echo(f"Authenticating with '{name}'...")
+        typer.echo("A browser window will open for authorization.")
+
+        mcp_config = {"mcpServers": {name: server}}
+        client = fastmcp.Client(mcp_config)
+
+        try:
+            async with client:
+                tools = await client.list_tools()
+                typer.echo(f"Successfully authenticated with '{name}'.")
+                typer.echo(f"Available tools: {len(tools)}")
+        except McpError as e:
+            typer.echo(f"MCP error: {e}", err=True)
+            raise typer.Exit(code=1)
+        except TimeoutError:
+            typer.echo("Authentication timed out. Please try again.", err=True)
+            raise typer.Exit(code=1)
+        except Exception as e:
+            typer.echo(f"Authentication failed: {type(e).__name__}: {e}", err=True)
+            raise typer.Exit(code=1)
+
+    asyncio.run(_auth())
+
+
+@mcp_cli.command("reset-auth")
+def mcp_reset_auth(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to reset authentication."),
+    ],
+):
+    """Reset OAuth authentication for an MCP server (clear cached tokens)."""
+    _, server = _get_mcp_server(name)
+
+    if "url" not in server:
+        typer.echo(f"MCP server '{name}' is not a remote server (no URL).", err=True)
+        raise typer.Exit(code=1)
+
+    if server.get("auth") != "oauth":
+        typer.echo(f"MCP server '{name}' does not use OAuth authentication.", err=True)
+        raise typer.Exit(code=1)
+
+    url = server["url"]
+
+    # Clear OAuth tokens from fastmcp cache
+    try:
+        from fastmcp.client.auth.oauth import FileTokenStorage
+
+        storage = FileTokenStorage(server_url=url)
+        storage.clear()
+        typer.echo(f"OAuth tokens cleared for '{name}'.")
+    except ImportError:
+        typer.echo("OAuth support not available.", err=True)
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.echo(f"Failed to clear tokens: {type(e).__name__}: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@mcp_cli.command("test")
+def mcp_test(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to test."),
+    ],
+):
+    """Test connection to an MCP server and list available tools."""
+    _, server = _get_mcp_server(name)
+
+    async def _test() -> None:
+        import fastmcp
+        from mcp.shared.exceptions import McpError
+
+        typer.echo(f"Testing connection to '{name}'...")
+
+        mcp_config = {"mcpServers": {name: server}}
+        client = fastmcp.Client(mcp_config)
+
+        try:
+            async with client:
+                tools = await client.list_tools()
+                typer.echo(f"✓ Connected to '{name}'")
+                typer.echo(f"  Available tools: {len(tools)}")
+                if tools:
+                    typer.echo("  Tools:")
+                    for tool in tools:
+                        desc = tool.description or ""
+                        if len(desc) > 50:
+                            desc = desc[:47] + "..."
+                        typer.echo(f"    - {tool.name}: {desc}")
+        except McpError as e:
+            typer.echo(f"✗ MCP error: {e}", err=True)
+            raise typer.Exit(code=1)
+        except TimeoutError:
+            typer.echo("✗ Connection timed out.", err=True)
+            raise typer.Exit(code=1)
+        except ConnectionError as e:
+            typer.echo(f"✗ Connection error: {e}", err=True)
+            raise typer.Exit(code=1)
+        except Exception as e:
+            typer.echo(f"✗ Connection failed: {type(e).__name__}: {e}", err=True)
+            raise typer.Exit(code=1)
+
+    asyncio.run(_test())
 
 
 if __name__ == "__main__":
