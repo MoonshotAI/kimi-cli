@@ -322,46 +322,305 @@ class SimpleCompaction:
 |------|--------|------|
 | `max_preserved_messages` | 2 | 保留最近的 N 个 user/assistant 消息不压缩 |
 
+### 压缩后原始数据的处理
+
+**原始数据不会丢失！** 通过文件轮转（rotation）机制保留。
+
+#### 压缩触发时的完整流程
+
+```python
+# kimisoul.py:358-361
+compacted_messages = await _compact_with_retry()  # 1. LLM 生成压缩摘要
+await self._context.clear()                        # 2. 轮转旧文件（保留原始数据）
+await self._checkpoint()                           # 3. 创建新 checkpoint
+await self._context.append_message(compacted_messages)  # 4. 写入压缩后的消息
+```
+
+#### 文件轮转机制
+
+`clear()` 方法会把当前文件重命名为带编号的版本：
+
+```python
+# context.py - clear() 方法
+rotated_file_path = await next_available_rotation(self._file_backend)
+# context.jsonl → context_1.jsonl
+await aiofiles.os.replace(self._file_backend, rotated_file_path)
+```
+
+#### 具体示例
+
+假设进行了 10 轮对话后触发压缩：
+
+**压缩前：**
+```
+session_dir/
+  └── context.jsonl        # 10 轮对话的完整数据（很大）
+```
+
+**压缩后：**
+```
+session_dir/
+  ├── context.jsonl        # 新文件：压缩摘要 + 最近 2 轮对话
+  └── context_1.jsonl      # 轮转文件：原始 10 轮完整数据（被保留）
+```
+
+**多次压缩后：**
+```
+session_dir/
+  ├── context.jsonl        # 当前使用的上下文
+  ├── context_1.jsonl      # 第一次压缩前的原始数据
+  ├── context_2.jsonl      # 第二次压缩前的数据
+  └── context_3.jsonl      # 第三次压缩前的数据
+```
+
+#### 常见问题
+
+| 问题 | 答案 |
+|------|------|
+| 压缩前的信息丢弃了吗？ | **没有**，轮转保存到 `context_N.jsonl` |
+| 下次进来能看到原始信息吗？ | **UI 上看不到**，`restore()` 只读取 `context.jsonl` |
+| 原始信息能恢复吗？ | **可以**，手动把 `context_1.jsonl` 改名为 `context.jsonl` |
+| 轮转文件会自动清理吗？ | **不会**，需要手动删除 |
+
 ## Checkpoint 与回溯
 
-### Checkpoint 机制
+Checkpoint 机制的灵感来自《命运石之门》中的 D-Mail，允许 LLM 主动管理上下文，通过"发送消息给过去的自己"来压缩冗余信息。
 
-Checkpoint 是上下文的快照点，记录在 `context.jsonl` 中。
+### Checkpoint 是什么
 
-**创建时机：** 每次 LLM 步骤之前
+Checkpoint 是上下文的快照点，记录在 `context.jsonl` 中：
 
 ```jsonl
 {"role": "_checkpoint", "id": 0}
 {"role": "user", "content": [...]}
 {"role": "assistant", "content": [...]}
 {"role": "_checkpoint", "id": 1}
-{"role": "user", "content": [...]}
 ...
 ```
 
-### 回溯实现
+同时，会在上下文中插入一条用户消息，让 LLM 知道 checkpoint 的存在：
 
 ```python
-async def revert_to(self, checkpoint_id: int):
-    # 1. 轮转当前文件（保留旧数据）
-    rotated_file = await next_available_rotation(self._file_backend)
-    await aiofiles.os.replace(self._file_backend, rotated_file)
+# context.py - checkpoint() 方法
+if add_user_message:
+    await self.append_message(
+        Message(role="user", content=[system(f"CHECKPOINT {checkpoint_id}")])
+    )
+```
 
-    # 2. 从旧文件复制到目标 checkpoint
-    async for line in old_file:
-        if line_json["role"] == "_checkpoint" and line_json["id"] == checkpoint_id:
-            break
-        await new_file.write(line)
+### Checkpoint 创建时机
+
+```python
+# kimisoul.py - run() 方法
+async def run(self, user_input):
+    await self._checkpoint()  # ① 第一次运行创建 checkpoint 0
+    await self._context.append_message(user_message)
+    await self._agent_loop()
+
+# kimisoul.py - _agent_loop() 方法
+while True:
+    await self._checkpoint()  # ② 每个 step 开始前创建 checkpoint
+    self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
+    finished = await self._step()
+```
+
+**时间线示例：**
+
+```
+用户输入 "帮我写一个函数"
+    │
+    ▼
+checkpoint 0 ─────────────────────────────────────────────┐
+    │                                                     │
+    ▼                                                     │
+用户消息: "帮我写一个函数"                                 │
+    │                                                     │
+    ▼                                                     │  可以回溯到这里
+checkpoint 1 ─────────────────────────────────────────────┤
+    │                                                     │
+    ▼                                                     │
+LLM step 1: 读取文件 foo.py（返回 500 行代码）             │
+    │                                                     │
+    ▼                                                     │
+checkpoint 2 ─────────────────────────────────────────────┤
+    │                                                     │
+    ▼                                                     │
+LLM step 2: 发现大部分代码无关，决定发送 D-Mail 回溯 ──────┘
 ```
 
 ### D-Mail 工具
 
-允许 LLM 发送消息回到过去的 checkpoint：
+**文件路径：** `src/kimi_cli/tools/dmail/`
+
+D-Mail 是 LLM 可以调用的工具，用于主动管理上下文：
 
 ```python
+# denwarenji.py
 class DMail(BaseModel):
-    message: str
-    checkpoint_id: int
+    message: str = Field(description="The message to send.")
+    checkpoint_id: int = Field(description="The checkpoint to send the message back to.", ge=0)
+```
+
+### 回溯流程详解
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Step 1: LLM 调用 SendDMail 工具                                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   LLM: "我读了一个 500 行的文件，只有 10 行有用，让我发 D-Mail"       │
+│         ↓                                                           │
+│   SendDMail(message="文件中只有第 50-60 行有用...", checkpoint_id=1) │
+│         ↓                                                           │
+│   DenwaRenji.send_dmail(dmail)  # 暂存待发送的 D-Mail                │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Step 2: 主循环检测到 D-Mail                                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   # kimisoul.py - _step() 方法                                      │
+│   if dmail := self._denwa_renji.fetch_pending_dmail():              │
+│       raise BackToTheFuture(                                        │
+│           dmail.checkpoint_id,                                      │
+│           [Message(role="user", content=[                           │
+│               "You just got a D-Mail from your future self..."      │
+│               f"D-Mail content:\n\n{dmail.message}"                 │
+│           ])]                                                       │
+│       )                                                             │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Step 3: 执行回溯                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   # kimisoul.py - _agent_loop() 方法                                │
+│   except BackToTheFuture as e:                                      │
+│       back_to_the_future = e                                        │
+│                                                                     │
+│   if back_to_the_future is not None:                                │
+│       await self._context.revert_to(back_to_the_future.checkpoint_id)│
+│       await self._checkpoint()                                      │
+│       await self._context.append_message(back_to_the_future.messages)│
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 回溯的技术实现
+
+```python
+# context.py - revert_to() 方法
+async def revert_to(self, checkpoint_id: int):
+    # 1. 轮转当前文件（保留完整历史）
+    rotated_file_path = await next_available_rotation(self._file_backend)
+    await aiofiles.os.replace(self._file_backend, rotated_file_path)
+
+    # 2. 从旧文件复制到目标 checkpoint
+    self._history.clear()
+    self._token_count = 0
+    self._next_checkpoint_id = 0
+
+    async with aiofiles.open(rotated_file_path) as old_file, \
+               aiofiles.open(self._file_backend, "w") as new_file:
+        async for line in old_file:
+            line_json = json.loads(line)
+
+            # 遇到目标 checkpoint 就停止
+            if line_json["role"] == "_checkpoint" and line_json["id"] == checkpoint_id:
+                break
+
+            await new_file.write(line)
+            # 同时恢复内存状态
+            if line_json["role"] == "_usage":
+                self._token_count = line_json["token_count"]
+            elif line_json["role"] == "_checkpoint":
+                self._next_checkpoint_id = line_json["id"] + 1
+            else:
+                self._history.append(Message.model_validate(line_json))
+```
+
+### 重要：回溯只针对上下文，不回溯代码变更
+
+**这是设计的关键点：**
+
+| 回溯什么 | 是否回溯 |
+|----------|----------|
+| 对话上下文 | ✅ 回溯 |
+| 文件系统变更 | ❌ 不回溯 |
+| 外部状态 | ❌ 不回溯 |
+
+**官方说明（dmail.md）：**
+
+> "the D-Mail you send here will **not** revert the filesystem or any external state. That means, you are basically folding the recent messages in your context into a single message, which can significantly reduce the waste of context window."
+
+**源码中的 TODO：**
+
+```python
+# denwarenji.py
+class DMail(BaseModel):
+    message: str = ...
+    checkpoint_id: int = ...
+    # TODO: allow restoring filesystem state to the checkpoint
+```
+
+### 典型使用场景
+
+| 场景 | LLM 的做法 |
+|------|-----------|
+| 读了一个很大的文件，大部分内容无关 | 回溯到读文件之前，D-Mail 只包含有用的部分 |
+| 搜索网页结果很大 | 回溯并只保留有用结果；或告诉过去的自己换个查询 |
+| 写了代码但不工作，花了很多步骤修复 | 回溯到写代码之前，告诉过去的自己正确版本（代码已在磁盘上） |
+
+### 回溯示例
+
+**回溯前的上下文：**
+```
+checkpoint 0
+用户: "读取 main.py 并分析"
+checkpoint 1
+助手: [调用 read_file("main.py")]
+工具结果: [500 行代码...]
+checkpoint 2
+助手: "这个文件太大了，让我发 D-Mail"
+助手: [调用 SendDMail(message="main.py 只有第 50-60 行有用...", checkpoint_id=1)]
+```
+
+**回溯后的上下文：**
+```
+checkpoint 0
+用户: "读取 main.py 并分析"
+checkpoint 1  ← 回溯到这里
+用户: [系统消息] "You just got a D-Mail from your future self...
+       D-Mail content: main.py 只有第 50-60 行有用..."
+```
+
+**效果：** 500 行的文件内容被压缩成了几行摘要，节省了大量 token。
+
+### DenwaRenji 类
+
+**文件路径：** `src/kimi_cli/soul/denwarenji.py`
+
+命名来自《命运石之门》中的"电话微波炉（暂定）"，负责管理 D-Mail 的发送：
+
+```python
+class DenwaRenji:
+    def __init__(self):
+        self._pending_dmail: DMail | None = None  # 待发送的 D-Mail
+        self._n_checkpoints: int = 0              # 当前 checkpoint 数量
+
+    def send_dmail(self, dmail: DMail):
+        # 验证 checkpoint_id 有效
+        if dmail.checkpoint_id >= self._n_checkpoints:
+            raise DenwaRenjiError("There is no checkpoint with the given ID")
+        self._pending_dmail = dmail
+
+    def fetch_pending_dmail(self) -> DMail | None:
+        # 被 KimiSoul 主循环调用，获取并清空待发送的 D-Mail
+        pending_dmail = self._pending_dmail
+        self._pending_dmail = None
+        return pending_dmail
 ```
 
 ## 用户命令
