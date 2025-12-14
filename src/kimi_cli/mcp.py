@@ -197,3 +197,154 @@ def mcp_list():
         else:
             line = f"{name}: {server}"
         typer.echo(f"  {line}")
+
+
+def _get_mcp_server(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Get MCP server config by name.
+
+    Returns:
+        Tuple of (full config, server config).
+
+    Raises:
+        typer.Exit: If server not found.
+    """
+    config = _load_mcp_config()
+    servers: dict[str, Any] = config.get("mcpServers", {})
+
+    if name not in servers:
+        typer.echo(f"MCP server '{name}' not found.", err=True)
+        raise typer.Exit(code=1)
+
+    return config, servers[name]
+
+
+@cli.command("auth")
+def mcp_auth(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to authenticate."),
+    ],
+):
+    """Authenticate with an OAuth-enabled MCP server."""
+    import asyncio
+
+    _, server = _get_mcp_server(name)
+
+    if "url" not in server:
+        typer.echo(f"MCP server '{name}' is not a remote server (no URL).", err=True)
+        raise typer.Exit(code=1)
+
+    if server.get("auth") != "oauth":
+        typer.echo(f"MCP server '{name}' does not use OAuth authentication.", err=True)
+        raise typer.Exit(code=1)
+
+    async def _auth() -> None:
+        import fastmcp
+        from mcp.shared.exceptions import McpError
+
+        typer.echo(f"Authenticating with '{name}'...")
+        typer.echo("A browser window will open for authorization.")
+
+        mcp_config = {"mcpServers": {name: server}}
+        client = fastmcp.Client(mcp_config)
+
+        try:
+            async with client:
+                tools = await client.list_tools()
+                typer.echo(f"Successfully authenticated with '{name}'.")
+                typer.echo(f"Available tools: {len(tools)}")
+        except McpError as e:
+            typer.echo(f"MCP error: {e}", err=True)
+            raise typer.Exit(code=1) from None
+        except TimeoutError:
+            typer.echo("Authentication timed out. Please try again.", err=True)
+            raise typer.Exit(code=1) from None
+        except Exception as e:
+            typer.echo(f"Authentication failed: {type(e).__name__}: {e}", err=True)
+            raise typer.Exit(code=1) from None
+
+    asyncio.run(_auth())
+
+
+@cli.command("reset-auth")
+def mcp_reset_auth(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to reset authentication."),
+    ],
+):
+    """Reset OAuth authentication for an MCP server (clear cached tokens)."""
+    _, server = _get_mcp_server(name)
+
+    if "url" not in server:
+        typer.echo(f"MCP server '{name}' is not a remote server (no URL).", err=True)
+        raise typer.Exit(code=1)
+
+    if server.get("auth") != "oauth":
+        typer.echo(f"MCP server '{name}' does not use OAuth authentication.", err=True)
+        raise typer.Exit(code=1)
+
+    url = server["url"]
+
+    # Clear OAuth tokens from fastmcp cache
+    try:
+        from fastmcp.client.auth.oauth import FileTokenStorage
+
+        storage = FileTokenStorage(server_url=url)
+        storage.clear()
+        typer.echo(f"OAuth tokens cleared for '{name}'.")
+    except ImportError:
+        typer.echo("OAuth support not available.", err=True)
+        raise typer.Exit(code=1) from None
+    except Exception as e:
+        typer.echo(f"Failed to clear tokens: {type(e).__name__}: {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+
+@cli.command("test")
+def mcp_test(
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the MCP server to test."),
+    ],
+):
+    """Test connection to an MCP server and list available tools."""
+    import asyncio
+
+    _, server = _get_mcp_server(name)
+
+    async def _test() -> None:
+        import fastmcp
+        from mcp.shared.exceptions import McpError
+
+        typer.echo(f"Testing connection to '{name}'...")
+
+        mcp_config = {"mcpServers": {name: server}}
+        client = fastmcp.Client(mcp_config)
+
+        try:
+            async with client:
+                tools = await client.list_tools()
+                typer.echo(f"✓ Connected to '{name}'")
+                typer.echo(f"  Available tools: {len(tools)}")
+                if tools:
+                    typer.echo("  Tools:")
+                    for tool in tools:
+                        desc = tool.description or ""
+                        if len(desc) > 50:
+                            desc = desc[:47] + "..."
+                        typer.echo(f"    - {tool.name}: {desc}")
+        except McpError as e:
+            typer.echo(f"✗ MCP error: {e}", err=True)
+            raise typer.Exit(code=1) from None
+        except TimeoutError:
+            typer.echo("✗ Connection timed out.", err=True)
+            raise typer.Exit(code=1) from None
+        except ConnectionError as e:
+            typer.echo(f"✗ Connection error: {e}", err=True)
+            raise typer.Exit(code=1) from None
+        except Exception as e:
+            typer.echo(f"✗ Connection failed: {type(e).__name__}: {e}", err=True)
+            raise typer.Exit(code=1) from None
+
+    asyncio.run(_test())
