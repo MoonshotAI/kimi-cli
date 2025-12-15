@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- UI: Fix UTF-16 surrogate characters input on Windows
+
 ## [0.63] - 2025-12-12
 
 - Tool: Fix `FetchURL` tool incorrect output when fetching via service fails
