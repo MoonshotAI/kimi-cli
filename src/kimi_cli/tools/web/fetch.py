@@ -31,7 +31,7 @@ class FetchURL(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         if self._service_config:
             ret = await self._fetch_with_service(params)
-            if isinstance(ret, ToolOk):
+            if not ret.is_error:
                 return ret
             logger.warning("Failed to fetch URL via service: {error}", error=ret.message)
             # fallback to local fetch if service fetch fails
