@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- Fix unhandled exception thrown by `SSHKaos.stat` when the file does not exist.
+- Fix `SSHKaos.exec` without CWD.
+
 ## [0.5.0] - 2025-12-12
 
 - Move `KaosProcess` to `Kaos.Process`.

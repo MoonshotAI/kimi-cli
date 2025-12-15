@@ -114,6 +114,17 @@ async def test_chdir_updates_real_path(ssh_kaos: SSHKaos, remote_base: str):
     assert str(ssh_kaos.getcwd()) == remote_base
 
 
+async def test_exec_respects_cwd(ssh_kaos: SSHKaos, remote_base: str):
+    await ssh_kaos.chdir(remote_base)
+
+    proc = await ssh_kaos.exec("pwd")
+    out = (await proc.stdout.read()).decode().strip()
+    code = await proc.wait()
+
+    assert code == 0
+    assert out == remote_base
+
+
 async def test_mkdir_respects_exist_ok(ssh_kaos: SSHKaos, remote_base: str):
     nested_dir = os.path.join(remote_base, "deep", "level")
 

@@ -131,6 +131,7 @@ class SSHKaos:
         home_dir = await sftp.realpath(".")
         if cwd is not None:
             await sftp.chdir(cwd)
+            cwd = await sftp.realpath(".")
         else:
             cwd = home_dir
         return cls(connection=connection, sftp=sftp, home=home_dir, cwd=cwd)
@@ -170,7 +171,10 @@ class SSHKaos:
         *,
         follow_symlinks: bool = True,
     ) -> StatResult:
-        st = await self._sftp.stat(str(path), follow_symlinks=follow_symlinks)
+        try:
+            st = await self._sftp.stat(str(path), follow_symlinks=follow_symlinks)
+        except asyncssh.SFTPError as e:
+            raise OSError from e
 
         return StatResult(
             st_mode=_build_st_mode(st),
@@ -265,6 +269,14 @@ class SSHKaos:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
         command = " ".join(shlex.quote(arg) for arg in args)
+        # NOTE:
+        # - SFTP has its own concept of working directory; it does not affect SSH exec.
+        # - To make exec behave like other KAOS backends, we explicitly `cd` to our tracked
+        #   cwd before running the command.
+        #
+        # This is intentionally strict: if cwd doesn't exist, the command fails.
+        if self._cwd:
+            command = f"cd {shlex.quote(self._cwd)} && {command}"
         process = await self._connection.create_process(command, encoding=None)
         return self.Process(process)
 
