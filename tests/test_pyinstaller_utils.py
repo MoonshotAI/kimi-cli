@@ -62,6 +62,7 @@ def test_pyinstaller_datas():
             ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
+            ("src/kimi_cli/deps/bin/rg", "kimi_cli/deps/bin"),
             ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
             ("src/kimi_cli/prompts/init.md", "kimi_cli/prompts"),
             (
