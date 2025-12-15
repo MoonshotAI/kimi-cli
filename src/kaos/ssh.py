@@ -190,11 +190,12 @@ class SSHKaos:
         )
 
     async def iterdir(self, path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
+        kaos_path = KaosPath(path) if isinstance(path, str) else path
         for entry in await self._sftp.listdir(str(path)):
             # NOTE: sftp listdir gives . and ..
             if entry in {".", ".."}:
                 continue
-            yield KaosPath(entry)
+            yield kaos_path / entry
 
     async def glob(
         self,

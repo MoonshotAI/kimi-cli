@@ -4,6 +4,7 @@
 
 - Fix unhandled exception thrown by `SSHKaos.stat` when the file does not exist.
 - Fix `SSHKaos.exec` without CWD.
+- Fix `SSHKaos.iterdir` to return `KaosPath`.
 
 ## [0.5.0] - 2025-12-12
 
