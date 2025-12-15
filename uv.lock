@@ -873,7 +873,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.63"
+version = "0.64"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -913,12 +913,12 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", extras = ["contrib"], specifier = "==0.33.0" },
+    { name = "kosong", extras = ["contrib"], specifier = ">=0.33.0,<0.34.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", specifier = "==0.5.0" },
+    { name = "pykaos", specifier = ">=0.5.0,<0.6.0" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
@@ -1710,15 +1710,15 @@ wheels = [
 
 [[package]]
 name = "pykaos"
-version = "0.5.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "asyncssh" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/32/bb/a5bfc8190f4d05e67725746bd7496972f08982d0e0eae1b0a1dd231b2ac6/pykaos-0.5.0.tar.gz", hash = "sha256:675a89e4fa1baac90883f1117aab6c90d252be3aa581794defc6117f05d2b785", size = 7178, upload-time = "2025-12-12T05:28:46.626Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/4f/996f55e9b13acbf36692e952e134f6fc893fd0f437d4c2d1ffbee26725f3/pykaos-0.5.1.tar.gz", hash = "sha256:341a9553136f7a54f3d1a64d0f88c9d1054ea89ad5a75072bcd093ee390fbee8", size = 7400, upload-time = "2025-12-15T13:15:28.941Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/8a/941af4e229bbc6f196c25aa8483d7663554b30238c8f9090b21428fd38e7/pykaos-0.5.0-py3-none-any.whl", hash = "sha256:7f56fd44035062d2202a8ee36ca8980b7db69f141bab973d8f692a1bff73b6b6", size = 10061, upload-time = "2025-12-12T05:28:45.897Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/7a/b972d8e41013651bfb5ad21189bbdee778112f543a0f4bc1a6be21ff71f4/pykaos-0.5.1-py3-none-any.whl", hash = "sha256:7a422a0551f25326bd721f65c05b27ed2806c7d07685d73bda82f79e1fc584ae", size = 10312, upload-time = "2025-12-15T13:15:27.917Z" },
 ]
 
 [[package]]
