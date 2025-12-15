@@ -110,6 +110,14 @@ def kimi(
             help="Continue the previous session for the working directory. Default: no.",
         ),
     ] = False,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session",
+            "-S",
+            help="Session ID to resume for the working directory. Default: new session.",
+        ),
+    ] = None,
     command: Annotated[
         str | None,
         typer.Option(
@@ -219,6 +227,11 @@ def kimi(
 
     enable_logging(debug)
 
+    if session_id is not None:
+        session_id = session_id.strip()
+        if not session_id:
+            raise typer.BadParameter("Session ID cannot be empty", param_hint="--session")
+
     conflict_option_sets = [
         {
             "--print": print_mode,
@@ -228,6 +241,10 @@ def kimi(
         {
             "--agent": agent is not None,
             "--agent-file": agent_file is not None,
+        },
+        {
+            "--continue": continue_,
+            "--session": session_id is not None,
         },
     ]
     for option_set in conflict_option_sets:
@@ -289,7 +306,8 @@ def kimi(
             session = await Session.find(work_dir, session_id)
             if session is None:
                 raise typer.BadParameter(
-                    f"No session with id {session_id} found for the working directory"
+                    f"No session with id {session_id} found for the working directory",
+                    param_hint="--session",
                 )
             logger.info("Switching to session: {session_id}", session_id=session.id)
         elif continue_:
@@ -360,7 +378,6 @@ def kimi(
 
         return succeeded
 
-    session_id: str | None = None  # TODO: may add `--session <session-id>` option
     while True:
         try:
             succeeded = asyncio.run(_run(session_id))
