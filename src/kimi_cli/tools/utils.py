@@ -97,7 +97,7 @@ class ToolResultBuilder:
         return chars_written
 
     def ok(self, message: str = "", *, brief: str = "") -> ToolReturnValue:
-        """Create a ToolOk result with the current output."""
+        """Create a ToolReturnValue with is_error=False and the current output."""
         output = "".join(self._buffer)
 
         final_message = message
@@ -118,7 +118,7 @@ class ToolResultBuilder:
         )
 
     def error(self, message: str, *, brief: str) -> ToolReturnValue:
-        """Create a ToolError result with the current output."""
+        """Create a ToolReturnValue with is_error=True and the current output."""
         output = "".join(self._buffer)
 
         final_message = message
