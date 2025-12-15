@@ -10,6 +10,7 @@ from kaos.path import KaosPath
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.app import KimiCLI
+from kimi_cli.constant import NAME, VERSION
 from kimi_cli.session import Session
 from kimi_cli.utils.logging import logger
 
@@ -50,6 +51,7 @@ class ACPServer:
                 ),
             ),
             auth_methods=[],
+            agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
     async def new_session(
