@@ -181,7 +181,7 @@ class _ToolCallBlock:
                         f"Used [blue]{sub_call.function.name}[/blue]"
                         + (f" [grey50]({argument})[/grey50]" if argument else "")
                     ),
-                    bullet_style="green" if isinstance(sub_result, ToolOk) else "red",
+                    bullet_style="green" if not sub_result.is_error else "red",
                 )
             )
 
@@ -189,14 +189,15 @@ class _ToolCallBlock:
             lines.append(
                 Markdown(
                     self._result.brief,
-                    style="grey50" if isinstance(self._result, ToolOk) else "red",
+                    style="grey50" if not self._result.is_error else "red",
                 )
             )
 
         if self.finished:
+            assert self._result is not None
             return BulletColumns(
                 Group(*lines),
-                bullet_style="green" if isinstance(self._result, ToolOk) else "red",
+                bullet_style="green" if not self._result.is_error else "red",
             )
         else:
             return BulletColumns(
