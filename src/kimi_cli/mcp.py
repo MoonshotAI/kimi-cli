@@ -186,7 +186,7 @@ def mcp_list():
 
     for name, server in servers.items():
         if "command" in server:
-            cmd = server.get("command", "")
+            cmd = server["command"]
             cmd_args = " ".join(server.get("args", []))
             line = f"{name} (stdio): {cmd} {cmd_args}".rstrip()
         elif "url" in server:
