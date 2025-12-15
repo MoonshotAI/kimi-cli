@@ -1,0 +1,10 @@
+[project]
+name = "kimi-psql"
+version = "0.1.0"
+description = "AI-assisted PostgreSQL interactive terminal"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = ["kimi-cli", "kosong", "typer", "rich", "psycopg[binary]>=3.0"]
+
+[tool.uv.sources]
+kimi-cli = { path = "../../" }
