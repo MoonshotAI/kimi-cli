@@ -125,8 +125,8 @@ class KimiSoul:
         return 0.0
 
     @property
-    def wire_file_backend(self) -> Path:
-        return self._runtime.session.dir / "wire.jsonl"
+    def wire_file(self) -> Path:
+        return self._runtime.session.wire_file
 
     @property
     def thinking(self) -> bool:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from kosong.utils.typing import JsonType
 
 from kimi_cli.wire.message import WireMessage, WireMessageEnvelope
@@ -13,7 +15,7 @@ def serialize_wire_message(msg: WireMessage) -> dict[str, JsonType]:
     return envelope.model_dump(mode="json")
 
 
-def deserialize_wire_message(data: dict[str, JsonType]) -> WireMessage:
+def deserialize_wire_message(data: dict[str, JsonType] | Any) -> WireMessage:
     """
     Convert a jsonifiable dict into a `WireMessage`.
 
