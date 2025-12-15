@@ -55,7 +55,7 @@ class ToolResultBuilder:
         self._n_chars = 0
         self._n_lines = 0
         self._truncation_happened = False
-        self._extras_data: dict[str, JsonType] | None = None
+        self._extras: dict[str, JsonType] | None = None
 
     def write(self, text: str) -> int:
         """
@@ -114,7 +114,7 @@ class ToolResultBuilder:
             output=[output] if isinstance(output, ContentPart) else output,
             message=final_message,
             display=[DisplayBlock(type="brief", data=brief)] if brief else [],
-            extras=self._extras_data,
+            extras=self._extras,
         )
 
     def error(self, message: str, *, brief: str) -> ToolReturnValue:
@@ -134,14 +134,14 @@ class ToolResultBuilder:
             output=[output] if isinstance(output, ContentPart) else output,
             message=final_message,
             display=[DisplayBlock(type="brief", data=brief)] if brief else [],
-            extras=self._extras_data,
+            extras=self._extras,
         )
 
     def extras(self, **extras: JsonType) -> None:
         """Add extra data to the tool result."""
-        if self._extras_data is None:
-            self._extras_data = {}
-        self._extras_data.update(extras)
+        if self._extras is None:
+            self._extras = {}
+        self._extras.update(extras)
 
     @property
     def is_full(self) -> bool:
