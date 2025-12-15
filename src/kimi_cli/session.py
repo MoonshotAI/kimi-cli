@@ -73,11 +73,9 @@ class Session:
                         )
                         self.title = f"{title} ({self.id})"
                         return
-        except Exception as e:
-            logger.warning(
-                "Failed to derive session title from wire file {file}: {error}",
-                file=self.wire_file,
-                error=e,
+        except Exception:
+            logger.exception(
+                "Failed to derive session title from wire file {file}:", file=self.wire_file
             )
 
     @staticmethod
