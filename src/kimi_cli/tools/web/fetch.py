@@ -3,7 +3,7 @@ from typing import override
 
 import aiohttp
 import trafilatura
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.config import Config
