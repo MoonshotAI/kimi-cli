@@ -292,6 +292,11 @@ async def _load_mcp_tools(
     from kimi_cli.tools.mcp import MCPTool
 
     for mcp_config in mcp_configs:
+        # Skip empty MCP configs (no servers defined)
+        if not mcp_config.get("mcpServers"):
+            logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
+            continue
+
         logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
         client = fastmcp.Client(mcp_config)
         async with client:

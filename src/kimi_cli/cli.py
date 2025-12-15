@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 import typer
 
 from kimi_cli.constant import VERSION
+from kimi_cli.mcp import cli as mcp_cli
 
 
 class Reload(Exception):
@@ -221,6 +222,7 @@ def kimi(
 
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
+    from kimi_cli.mcp import get_global_mcp_config_file
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.utils.logging import logger
@@ -288,6 +290,12 @@ def kimi(
 
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
+
+    # Use default MCP config file if no MCP config is provided
+    if not file_configs:
+        default_mcp_file = get_global_mcp_config_file()
+        if default_mcp_file.exists():
+            file_configs.append(default_mcp_file)
 
     try:
         mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in file_configs]
@@ -396,6 +404,9 @@ def acp():
     from kimi_cli.acp import acp_main
 
     acp_main()
+
+
+cli.add_typer(mcp_cli, name="mcp")
 
 
 if __name__ == "__main__":
