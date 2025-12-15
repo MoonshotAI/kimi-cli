@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.1] - 2025-12-15
 
 - Fix unhandled exception thrown by `SSHKaos.stat` when the file does not exist.
 - Fix `SSHKaos.exec` without CWD.
