@@ -196,6 +196,28 @@ async def test_wire_message_serde():
     _test_serde(msg)
 
 
+def test_bad_wire_message_serde():
+    with pytest.raises(ValueError):
+        deserialize_wire_message(None)
+
+    with pytest.raises(ValueError):
+        deserialize_wire_message([])
+
+    with pytest.raises(ValueError):
+        deserialize_wire_message({})
+
+    with pytest.raises(ValueError):
+        deserialize_wire_message(
+            {
+                "timestamp": 123,
+                "message": {
+                    "type": "ContentPart",
+                    "payload": {"type": "text", "text": "Hello world"},
+                },
+            }
+        )
+
+
 @pytest.mark.asyncio
 async def test_type_inspection():
     msg = StepBegin(n=1)
