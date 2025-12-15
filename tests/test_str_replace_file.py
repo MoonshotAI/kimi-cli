@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from kaos.path import KaosPath
-from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
 
@@ -24,7 +23,7 @@ async def test_replace_single_occurrence(
         Params(path=str(file_path), edit=Edit(old="world", new="universe"))
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello universe! This is a test."
 
@@ -45,7 +44,7 @@ async def test_replace_all_occurrences(
         )
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "fruit banana fruit cherry fruit"
 
@@ -69,7 +68,7 @@ async def test_replace_multiple_edits(
         )
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hi world! See you world!"
 
@@ -90,7 +89,7 @@ async def test_replace_multiline_content(
         )
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Line 1\nModified line 2\nModified line 3\n"
 
@@ -108,7 +107,7 @@ async def test_replace_unicode_content(
         Params(path=str(file_path), edit=Edit(old="世界", new="地球"))
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello 地球! café"
 
@@ -124,7 +123,7 @@ async def test_replace_no_match(str_replace_file_tool: StrReplaceFile, temp_work
         Params(path=str(file_path), edit=Edit(old="notfound", new="replacement"))
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "No replacements were made" in result.message
     assert await file_path.read_text() == original_content  # Content unchanged
 
@@ -136,7 +135,7 @@ async def test_replace_with_relative_path(str_replace_file_tool: StrReplaceFile)
         Params(path="relative/path/file.txt", edit=Edit(old="old", new="new"))
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "not an absolute path" in result.message
 
 
@@ -149,7 +148,7 @@ async def test_replace_outside_work_directory(
         Params(path=str(outside_file), edit=Edit(old="old", new="new"))
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "outside the working directory" in result.message
 
 
@@ -168,7 +167,7 @@ async def test_replace_outside_work_directory_with_prefix(
         Params(path=str(sneaky_file), edit=Edit(old="content", new="new"))
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "outside the working directory" in result.message
 
 
@@ -183,7 +182,7 @@ async def test_replace_nonexistent_file(
         Params(path=str(file_path), edit=Edit(old="old", new="new"))
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "does not exist" in result.message
 
 
@@ -199,7 +198,7 @@ async def test_replace_directory_instead_of_file(
         Params(path=str(dir_path), edit=Edit(old="old", new="new"))
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "is not a file" in result.message
 
 
@@ -224,7 +223,7 @@ async def test_replace_mixed_multiple_edits(
         )
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "fruit apple tasty apple cherry"
 
@@ -242,6 +241,6 @@ async def test_replace_empty_strings(
         Params(path=str(file_path), edit=Edit(old="world", new=""))
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"

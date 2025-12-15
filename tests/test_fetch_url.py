@@ -83,7 +83,7 @@ async def test_fetch_url_basic_functionality(fetch_url_tool: FetchURL) -> None:
 
     result = await fetch_url_tool(Params(url=test_url))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot(
         """\
 ---
@@ -109,7 +109,7 @@ async def test_fetch_url_invalid_url(fetch_url_tool: FetchURL) -> None:
     )
 
     # Should fail with network error
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "Failed to fetch URL due to network error:" in result.message
 
 
@@ -121,7 +121,7 @@ async def test_fetch_url_404_url(fetch_url_tool: FetchURL) -> None:
     )
 
     # Should fail with HTTP error
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert result.message == snapshot(
         "Failed to fetch URL. Status: 404. This may indicate the page is not accessible or the server is down."
     )
@@ -133,7 +133,7 @@ async def test_fetch_url_malformed_url(fetch_url_tool: FetchURL) -> None:
     result = await fetch_url_tool(Params(url="not-a-valid-url"))
 
     # Should fail
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert result.message == snapshot(
         "Failed to fetch URL due to network error: not-a-valid-url. This may indicate the URL is invalid or the server is unreachable."
     )
@@ -145,7 +145,7 @@ async def test_fetch_url_empty_url(fetch_url_tool: FetchURL) -> None:
     result = await fetch_url_tool(Params(url=""))
 
     # Should fail
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert result.message == snapshot(
         "Failed to fetch URL due to network error: . This may indicate the URL is invalid or the server is unreachable."
     )
@@ -158,7 +158,7 @@ async def test_fetch_url_javascript_driven_site(fetch_url_tool: FetchURL) -> Non
 
     # This may fail due to JavaScript rendering requirements
     # If it fails, should indicate extraction issues
-    if isinstance(result, ToolError):
+    if result.is_error:
         assert "failed to extract meaningful content" in result.message.lower()
 
 
@@ -180,7 +180,7 @@ async def test_fetch_url_mocked_http_responses(
 This is a markdown document.
 """
     result = await mocked_fetch(plain_markdown, content_type="text/markdown; charset=utf-8")
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot(plain_markdown)
     assert result.message == "The returned content is the full content of the page."
 
@@ -201,7 +201,7 @@ This is a markdown document.
         complex_markdown,
         content_type="text/markdown; charset=utf-8",
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot(complex_markdown)
     assert result.message == "The returned content is the full content of the page."
 
@@ -265,7 +265,7 @@ async def test_fetch_url_with_service() -> None:
         finally:
             current_tool_call.reset(token)
 
-        assert isinstance(result, ToolOk)
+        assert not result.is_error
         assert result.output == expected_content
         assert result.message == snapshot(
             "The returned content is the main content extracted from the page."

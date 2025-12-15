@@ -3,7 +3,7 @@ from typing import override
 
 import aiohttp
 import trafilatura
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.config import Config
@@ -31,7 +31,7 @@ class FetchURL(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         if self._service_config:
             ret = await self._fetch_with_service(params)
-            if isinstance(ret, ToolOk):
+            if not ret.is_error:
                 return ret
             logger.warning("Failed to fetch URL via service: {error}", error=ret.message)
             # fallback to local fetch if service fetch fails
