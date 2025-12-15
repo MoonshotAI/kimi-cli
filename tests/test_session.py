@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import json
+import os
+import time
 from pathlib import Path
 
 import pytest
+from kaos.path import KaosPath
+from kosong.message import TextPart
+
+from kimi_cli.session import Session
+from kimi_cli.wire.message import TurnBegin
+from kimi_cli.wire.serde import serialize_wire_message
+
+pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
@@ -19,3 +30,61 @@ def isolated_share_dir(monkeypatch, tmp_path: Path) -> Path:
     monkeypatch.setattr("kimi_cli.share.get_share_dir", _get_share_dir)
     monkeypatch.setattr("kimi_cli.metadata.get_share_dir", _get_share_dir)
     return share_dir
+
+
+@pytest.fixture
+def work_dir(tmp_path: Path) -> KaosPath:
+    path = tmp_path / "work"
+    path.mkdir()
+    return KaosPath.unsafe_from_local_path(path)
+
+
+def _write_wire_turn(session_dir: Path, text: str):
+    wire_file = session_dir / "wire.jsonl"
+    wire_file.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": time.time(),
+        "message": serialize_wire_message(
+            TurnBegin(user_input=[TextPart(text=text)]),
+        ),
+    }
+    with wire_file.open("w", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+async def test_create_sets_fallback_title(isolated_share_dir: Path, work_dir: KaosPath):
+    session = await Session.create(work_dir)
+    assert session.title.startswith("Untitled (")
+    assert session.context_file.exists()
+
+
+async def test_find_uses_wire_title(isolated_share_dir: Path, work_dir: KaosPath):
+    session = await Session.create(work_dir)
+    _write_wire_turn(session.dir, "hello world from wire file")
+
+    found = await Session.find(work_dir, session.id)
+    assert found is not None
+    assert found.title.startswith("hello world from wire file")
+
+
+async def test_list_sorts_by_updated_and_titles(isolated_share_dir: Path, work_dir: KaosPath):
+    first = await Session.create(work_dir)
+    second = await Session.create(work_dir)
+
+    _write_wire_turn(first.dir, "old session title")
+    _write_wire_turn(second.dir, "new session title that is slightly longer")
+
+    # make sure ordering differs
+    now = time.time()
+    os.utime(first.context_file, (now - 10, now - 10))
+    os.utime(second.context_file, (now, now))
+    sessions = await Session.list(work_dir)
+
+    assert [s.id for s in sessions] == [second.id, first.id]
+    assert sessions[0].title.startswith("new session title")
+    assert sessions[1].title.startswith("old session title")
+
+
+async def test_continue_without_last_returns_none(isolated_share_dir: Path, work_dir: KaosPath):
+    result = await Session.continue_(work_dir)
+    assert result is None
