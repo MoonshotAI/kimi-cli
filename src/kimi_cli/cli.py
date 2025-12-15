@@ -289,7 +289,7 @@ def kimi(
             session = await Session.find(work_dir, session_id)
             if session is None:
                 raise typer.BadParameter(
-                    "No session with id {session_id} found for the working directory"
+                    f"No session with id {session_id} found for the working directory"
                 )
             logger.info("Switching to session: {session_id}", session_id=session.id)
         elif continue_:
