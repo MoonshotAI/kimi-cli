@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from kaos.path import KaosPath
-from kosong.tooling import ToolError, ToolOk
 from pydantic import ValidationError
 
 from kimi_cli.tools.file.write import Params, WriteFile
@@ -20,7 +19,7 @@ async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPat
 
     result = await write_file_tool(Params(path=str(file_path), content=content))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully overwritten" in result.message
     assert await file_path.exists()
     assert await file_path.read_text() == content
@@ -36,7 +35,7 @@ async def test_overwrite_existing_file(write_file_tool: WriteFile, temp_work_dir
     new_content = "New content"
     result = await write_file_tool(Params(path=str(file_path), content=new_content))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully overwritten" in result.message
     assert await file_path.read_text() == new_content
 
@@ -53,7 +52,7 @@ async def test_append_to_file(write_file_tool: WriteFile, temp_work_dir: KaosPat
         Params(path=str(file_path), content=append_content, mode="append")
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully appended to" in result.message
     expected_content = original_content + append_content
     assert await file_path.read_text() == expected_content
@@ -67,7 +66,7 @@ async def test_write_unicode_content(write_file_tool: WriteFile, temp_work_dir: 
 
     result = await write_file_tool(Params(path=str(file_path), content=content))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert await file_path.exists()
     assert await file_path.read_text(encoding="utf-8") == content
 
@@ -80,7 +79,7 @@ async def test_write_empty_content(write_file_tool: WriteFile, temp_work_dir: Ka
 
     result = await write_file_tool(Params(path=str(file_path), content=content))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert await file_path.exists()
     assert await file_path.read_text() == content
 
@@ -93,7 +92,7 @@ async def test_write_multiline_content(write_file_tool: WriteFile, temp_work_dir
 
     result = await write_file_tool(Params(path=str(file_path), content=content))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert await file_path.read_text() == content
 
 
@@ -102,7 +101,7 @@ async def test_write_with_relative_path(write_file_tool: WriteFile):
     """Test writing with a relative path (should fail)."""
     result = await write_file_tool(Params(path="relative/path/file.txt", content="content"))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "not an absolute path" in result.message
 
 
@@ -111,7 +110,7 @@ async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_
     """Test writing outside the working directory (should fail)."""
     result = await write_file_tool(Params(path=str(outside_file), content="content"))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "outside the working directory" in result.message
 
 
@@ -127,7 +126,7 @@ async def test_write_outside_work_directory_with_prefix(
 
     result = await write_file_tool(Params(path=str(sneaky_file), content="content"))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "outside the working directory" in result.message
 
 
@@ -138,7 +137,7 @@ async def test_write_to_nonexistent_directory(write_file_tool: WriteFile, temp_w
 
     result = await write_file_tool(Params(path=str(file_path), content="content"))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "parent directory does not exist" in result.message
 
 
@@ -159,7 +158,7 @@ async def test_append_to_nonexistent_file(write_file_tool: WriteFile, temp_work_
 
     result = await write_file_tool(Params(path=str(file_path), content=content, mode="append"))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert "successfully appended to" in result.message
     assert await file_path.exists()
     assert await file_path.read_text() == content
@@ -173,6 +172,6 @@ async def test_write_large_content(write_file_tool: WriteFile, temp_work_dir: Ka
 
     result = await write_file_tool(Params(path=str(file_path), content=content))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert await file_path.exists()
     assert await file_path.read_text() == content

@@ -15,7 +15,9 @@ from kimi_cli.mcp import cli as mcp_cli
 class Reload(Exception):
     """Reload configuration."""
 
-    pass
+    def __init__(self, session_id: str | None = None):
+        super().__init__("reload")
+        self.session_id = session_id
 
 
 cli = typer.Typer(
@@ -109,6 +111,14 @@ def kimi(
             help="Continue the previous session for the working directory. Default: no.",
         ),
     ] = False,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session",
+            "-S",
+            help="Session ID to resume for the working directory. Default: new session.",
+        ),
+    ] = None,
     command: Annotated[
         str | None,
         typer.Option(
@@ -219,6 +229,11 @@ def kimi(
 
     enable_logging(debug)
 
+    if session_id is not None:
+        session_id = session_id.strip()
+        if not session_id:
+            raise typer.BadParameter("Session ID cannot be empty", param_hint="--session")
+
     conflict_option_sets = [
         {
             "--print": print_mode,
@@ -228,6 +243,10 @@ def kimi(
         {
             "--agent": agent is not None,
             "--agent-file": agent_file is not None,
+        },
+        {
+            "--continue": continue_,
+            "--session": session_id is not None,
         },
     ]
     for option_set in conflict_option_sets:
@@ -288,12 +307,18 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
-    async def _run() -> bool:
-        work_dir = (
-            KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
-        )
+    work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
-        if continue_:
+    async def _run(session_id: str | None) -> bool:
+        if session_id is not None:
+            session = await Session.find(work_dir, session_id)
+            if session is None:
+                raise typer.BadParameter(
+                    f"No session with id {session_id} found for the working directory",
+                    param_hint="--session",
+                )
+            logger.info("Switching to session: {session_id}", session_id=session.id)
+        elif continue_:
             session = await Session.continue_(work_dir)
             if session is None:
                 raise typer.BadParameter(
@@ -304,7 +329,6 @@ def kimi(
         else:
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
-        logger.debug("Context file: {context_file}", context_file=session.context_file)
 
         if thinking is None:
             metadata = load_metadata()
@@ -364,11 +388,13 @@ def kimi(
 
     while True:
         try:
-            succeeded = asyncio.run(_run())
-            if succeeded:
-                break
-            raise typer.Exit(code=1)
-        except Reload:
+            succeeded = asyncio.run(_run(session_id))
+            session_id = None
+            if not succeeded:
+                raise typer.Exit(code=1)
+            break
+        except Reload as e:
+            session_id = e.session_id
             continue
 
 
