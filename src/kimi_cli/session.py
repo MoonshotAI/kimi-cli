@@ -34,6 +34,11 @@ class Session:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    @property
+    def wire_file(self) -> Path:
+        """The file backend for persisting Wire messages."""
+        return self.dir / "wire.jsonl"
+
     @staticmethod
     async def create(work_dir: KaosPath, _context_file: Path | None = None) -> Session:
         """Create a new session for a work directory."""

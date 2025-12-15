@@ -198,7 +198,7 @@ class Shell:
                     cancel_event=cancel_event,
                 ),
                 cancel_event,
-                self.soul.wire_file_backend if isinstance(self.soul, KimiSoul) else None,
+                self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,
             )
             return True
         except LLMNotSet:
