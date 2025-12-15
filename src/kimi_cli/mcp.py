@@ -21,8 +21,8 @@ def _load_mcp_config() -> dict[str, Any]:
         return {"mcpServers": {}}
     try:
         return json.loads(mcp_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {"mcpServers": {}}
+    except json.JSONDecodeError as e:
+        raise typer.BadParameter(f"Invalid JSON in MCP config file '{mcp_file}': {e}") from e
 
 
 def _save_mcp_config(config: dict[str, Any]) -> None:
