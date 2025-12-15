@@ -2,7 +2,6 @@ import re
 import string
 from pathlib import Path
 
-from kosong.message import ContentPart
 from kosong.tooling import DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
@@ -111,7 +110,7 @@ class ToolResultBuilder:
                 final_message = truncation_msg
         return ToolReturnValue(
             is_error=False,
-            output=[output] if isinstance(output, ContentPart) else output,
+            output=output,
             message=final_message,
             display=[DisplayBlock(type="brief", data=brief)] if brief else [],
             extras=self._extras,
@@ -131,7 +130,7 @@ class ToolResultBuilder:
 
         return ToolReturnValue(
             is_error=True,
-            output=[output] if isinstance(output, ContentPart) else output,
+            output=output,
             message=final_message,
             display=[DisplayBlock(type="brief", data=brief)] if brief else [],
             extras=self._extras,
