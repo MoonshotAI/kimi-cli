@@ -293,8 +293,7 @@ async def _load_mcp_tools(
 
     for mcp_config in mcp_configs:
         # Skip empty MCP configs (no servers defined)
-        mcp_servers = mcp_config.get("mcpServers", {})
-        if not mcp_servers:
+        if not mcp_config.get("mcpServers"):
             logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
             continue
 
