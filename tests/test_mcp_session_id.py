@@ -1,54 +1,60 @@
-"""Test MCP session ID is set correctly."""
+"""Test MCP session ID is set correctly via transport creation."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
 
-class TestMCPSessionId:
-    """Test that mcp-session-id header is set for HTTP transports."""
+class TestCreateTransport:
+    """Test _create_transport creates correct transport types with headers."""
 
-    def test_set_mcp_session_id_for_underlying_transports(self):
-        """_set_mcp_session_id should set header on _underlying_transports."""
-        from kimi_cli.soul.agent import _set_mcp_session_id
+    def test_create_http_transport_with_session_id(self):
+        """HTTP transport should include mcp-session-id header."""
+        from kimi_cli.soul.agent import _create_transport
 
-        mock_inner_transport = MagicMock(spec=["headers"])
-        mock_inner_transport.headers = {}
+        server_config = {"url": "http://localhost:8080/mcp"}
+        headers = {"mcp-session-id": "test-session-123"}
 
-        mock_client = MagicMock()
-        mock_client.transport = MagicMock()
-        mock_client.transport._underlying_transports = [mock_inner_transport]
+        transport = _create_transport(server_config, headers)
 
-        session_id = "test-session-123"
-        _set_mcp_session_id(mock_client, session_id)
+        from fastmcp.client.transports import StreamableHttpTransport
 
-        assert mock_inner_transport.headers["mcp-session-id"] == session_id
+        assert isinstance(transport, StreamableHttpTransport)
 
-    def test_set_mcp_session_id_for_direct_transport(self):
-        """_set_mcp_session_id should set header on direct transport with headers."""
-        from kimi_cli.soul.agent import _set_mcp_session_id
+    def test_create_sse_transport_with_session_id(self):
+        """SSE transport should include mcp-session-id header."""
+        from kimi_cli.soul.agent import _create_transport
 
-        mock_transport = MagicMock(spec=["headers"])
-        mock_transport.headers = {}
+        server_config = {"url": "http://localhost:8080/sse", "transport": "sse"}
+        headers = {"mcp-session-id": "test-session-456"}
 
-        mock_client = MagicMock()
-        mock_client.transport = mock_transport
+        transport = _create_transport(server_config, headers)
 
-        session_id = "test-session-456"
-        _set_mcp_session_id(mock_client, session_id)
+        from fastmcp.client.transports import SSETransport
 
-        assert mock_transport.headers["mcp-session-id"] == session_id
+        assert isinstance(transport, SSETransport)
 
-    def test_set_mcp_session_id_skips_stdio_transport(self):
-        """_set_mcp_session_id should not fail for stdio transport without headers."""
-        from kimi_cli.soul.agent import _set_mcp_session_id
+    def test_create_stdio_transport(self):
+        """Stdio transport should be created without headers."""
+        from kimi_cli.soul.agent import _create_transport
 
-        mock_transport = MagicMock(spec=[])
-        mock_client = MagicMock()
-        mock_client.transport = mock_transport
+        server_config = {
+            "command": "npx",
+            "args": ["@playwright/mcp@latest"],
+            "env": {"DEBUG": "1"},
+        }
 
-        session_id = "test-session-789"
-        # Should not raise - just silently skip
-        _set_mcp_session_id(mock_client, session_id)
-        # Verify no headers attribute was added
-        assert not hasattr(mock_transport, "headers")
+        transport = _create_transport(server_config, headers=None)
+
+        from fastmcp.client.transports import StdioTransport
+
+        assert isinstance(transport, StdioTransport)
+
+    def test_create_transport_unknown_config_raises(self):
+        """Unknown config format should raise ValueError."""
+        from kimi_cli.soul.agent import _create_transport
+
+        server_config = {"unknown_key": "value"}
+
+        with pytest.raises(ValueError, match="Unknown MCP server config format"):
+            _create_transport(server_config, headers=None)

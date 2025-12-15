@@ -5,12 +5,13 @@ import importlib
 import inspect
 import string
 from collections.abc import Mapping
-from contextlib import AsyncExitStack
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import fastmcp
+from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
@@ -25,58 +26,6 @@ from kimi_cli.tools import SkipThisTool
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
-
-
-class MCPClientManager:
-    """Manages MCP client connections lifecycle."""
-
-    def __init__(self) -> None:
-        self._exit_stack: AsyncExitStack | None = None
-        self._clients: list[Any] = []
-
-    async def connect(
-        self, mcp_configs: list[dict[str, Any]], session_id: str | None = None
-    ) -> list[Any]:
-        """Connect to all MCP servers and return the connected clients.
-
-        Args:
-            mcp_configs: List of MCP server configurations.
-            session_id: Session ID to set as mcp-session-id header on HTTP transports.
-
-        Returns:
-            List of connected MCP clients.
-
-        Raises:
-            RuntimeError: If any MCP server fails to connect.
-        """
-        if not mcp_configs:
-            return []
-
-        import fastmcp
-
-        self._exit_stack = AsyncExitStack()
-        await self._exit_stack.__aenter__()
-
-        try:
-            for mcp_config in mcp_configs:
-                logger.info("Connecting to MCP server: {mcp_config}", mcp_config=mcp_config)
-                client = fastmcp.Client(mcp_config)
-                if session_id:
-                    _set_mcp_session_id(client, session_id)
-                await self._exit_stack.enter_async_context(client)
-                self._clients.append(client)
-        except Exception:
-            await self.close()
-            raise
-
-        return self._clients
-
-    async def close(self) -> None:
-        """Close all MCP client connections."""
-        if self._exit_stack is not None:
-            await self._exit_stack.aclose()
-            self._exit_stack = None
-            self._clients.clear()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -352,26 +301,49 @@ async def connect_mcp_clients(
     if not mcp_configs:
         return []
 
-    import fastmcp
-
     clients: list[Any] = []
+    headers = {"mcp-session-id": session_id} if session_id else None
+
     try:
         for mcp_config in mcp_configs:
-            # Skip empty MCP configs (no servers defined)
-            if not mcp_config.get("mcpServers"):
+            mcp_servers = mcp_config.get("mcpServers", {})
+            if not mcp_servers:
                 logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
                 continue
 
-            logger.info("Connecting to MCP server: {mcp_config}", mcp_config=mcp_config)
-            client = fastmcp.Client(mcp_config)
-            if session_id:
-                _set_mcp_session_id(client, session_id)
-            await client.__aenter__()
-            clients.append(client)
+            for server_name, server_config in mcp_servers.items():
+                logger.info("Connecting to MCP server: {server_name}", server_name=server_name)
+                transport = _create_transport(server_config, headers)
+                client = fastmcp.Client(transport)
+                await client.__aenter__()
+                clients.append(client)
     except Exception:
         await close_mcp_clients(clients)
         raise
     return clients
+
+
+def _create_transport(
+    server_config: dict[str, Any],
+    headers: dict[str, str] | None,
+) -> StdioTransport | StreamableHttpTransport | SSETransport:
+    """Create appropriate transport based on server config."""
+    if "url" in server_config:
+        url = server_config["url"]
+        match server_config.get("transport", "http"):
+            case "sse":
+                return SSETransport(url=url, headers=headers)
+            case "http" | "streamable-http" | _:
+                return StreamableHttpTransport(url=url, headers=headers)
+
+    if "command" in server_config:
+        return StdioTransport(
+            command=server_config["command"],
+            args=server_config.get("args", []),
+            env=server_config.get("env"),
+        )
+
+    raise ValueError(f"Unknown MCP server config format: {server_config}")
 
 
 async def close_mcp_clients(clients: list[Any]) -> None:
@@ -396,25 +368,3 @@ async def _load_mcp_tools(
         logger.info("Loading {count} MCP tools from connected client", count=len(tools))
         for tool in tools:
             toolset.add(MCPTool(tool, client, runtime=runtime))
-
-
-def _set_mcp_session_id(client: Any, session_id: str) -> None:
-    """Set mcp-session-id header on the client's transport if supported.
-
-    Note: This accesses fastmcp internal transport structure and may break
-    on version updates. Stdio transports don't have headers and are skipped.
-    """
-    try:
-        transport = client.transport
-        if hasattr(transport, "_underlying_transports"):
-            for t in transport._underlying_transports:
-                if hasattr(t, "headers"):
-                    t.headers["mcp-session-id"] = session_id
-        elif hasattr(transport, "transport") and transport.transport is not None:
-            inner = transport.transport
-            if hasattr(inner, "headers"):
-                inner.headers["mcp-session-id"] = session_id
-        elif hasattr(transport, "headers"):
-            transport.headers["mcp-session-id"] = session_id
-    except AttributeError:
-        logger.debug("Could not set mcp-session-id: transport structure not recognized")
