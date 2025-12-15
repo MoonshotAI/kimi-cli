@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - UI: Fix UTF-16 surrogate characters input on Windows
 - Core: Add `/sessions` meta command to list existing sessions and switch to a selected one
+- CLI: Add `--session/-S` option to specify session ID to resume
 
 ## [0.63] - 2025-12-12
 
