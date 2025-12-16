@@ -133,6 +133,97 @@ Selected ruff rules:
 - SIM: flake8-simplify
 - I: isort
 
+## Development Workflow
+
+### Git Commit Message Style
+
+This project follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification. Commit messages should follow this format:
+
+```
+<type>(<scope>): <subject>
+```
+
+**Allowed types:**
+- `feat`: New features
+- `fix`: Bug fixes
+- `test`: Adding or updating tests
+- `refactor`: Code refactoring without behavior changes
+- `chore`: Maintenance tasks, dependency updates
+- `style`: Code style changes (formatting, semicolons, etc.)
+- `docs`: Documentation updates
+- `perf`: Performance improvements
+- `build`: Build system changes
+- `ci`: CI/CD configuration changes
+- `revert`: Reverting previous commits
+
+**Examples:**
+```
+feat(agent): add new tool for file operations
+fix(soul): resolve context memory leak issue
+test(tools): add unit tests for grep functionality
+docs: update installation instructions
+```
+
+### Quality Checks
+
+Before submitting changes, always run these quality checks:
+
+```bash
+# Format code (runs ruff check --fix and ruff format)
+make format
+
+# Run linting and type checking (ruff check, ruff format --check, pyright)
+make check
+
+# Run all tests
+make test
+
+# Run specific test file
+uv run pytest tests/test_bash.py -vv
+
+# Run with coverage
+uv run pytest tests --cov=src/kimi_cli
+```
+
+### Test Files Location
+
+Test files are located in the `tests/` directory at the project root and follow these conventions:
+
+- Named `test_*.py` (e.g., `test_bash.py`, `test_load_agent.py`)
+- Mirror the source structure when appropriate
+- Use pytest fixtures and async support for testing
+- Comprehensive coverage for all tools and core components
+
+Key test files include:
+- `test_load_agent.py`: Agent loading and configuration
+- `test_bash.py`: Shell command execution
+- `test_*_file.py`: File operation tools (e.g., `test_read_file.py`)
+- `test_task_subagents.py`: Subagent functionality
+- `test_web_search.py`: Web search and URL fetching
+
+### Running Scripts and Tools
+
+Always use `uv run` to execute scripts and tools to ensure correct dependency management:
+
+```bash
+# Running Python scripts
+uv run python script.py
+
+# Running development tools
+uv run pyright
+uv run ruff check
+uv run pytest
+
+# Building the project
+uv run pyinstaller kimi.spec
+
+# Installing dependencies
+uv sync                     # Install all dependencies
+uv sync --group dev         # Install with development dependencies
+```
+
+This ensures that all dependencies are properly managed and isolated within the project environment.
+
 ## Security Considerations
 
 - **File System Access**: Restricted to working directory by default
