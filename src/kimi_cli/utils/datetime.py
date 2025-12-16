@@ -17,3 +17,21 @@ def format_relative_time(timestamp: float) -> str:
     if diff < timedelta(days=7):
         return f"{diff.days}d ago"
     return dt.strftime("%m-%d")
+
+
+def format_duration(seconds: int) -> str:
+    """Format a duration in seconds using short units."""
+    delta = timedelta(seconds=seconds)
+    parts: list[str] = []
+    days = delta.days
+    if days:
+        parts.append(f"{days}d")
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if secs and not parts:
+        parts.append(f"{secs}s")
+    return " ".join(parts) or "0s"
