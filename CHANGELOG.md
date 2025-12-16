@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 - CLI: Automatically create new session when specified session ID is not found
 - CLI: Delete empty sessions on exit and ignore sessions whose context file is empty when listing
 - UI: Improve session replaying
+- Lib: Add `model_config: LLMModel | None` and `provider_config: LLMProvider | None` properties to `LLM` class
+- MetaCmd: Add `/usage` meta command to show API usage for Kimi for Coding users
 
 ## [0.64] - 2025-12-15
 

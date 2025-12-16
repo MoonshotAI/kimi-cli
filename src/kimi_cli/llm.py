@@ -30,6 +30,8 @@ class LLM:
     chat_provider: ChatProvider
     max_context_size: int
     capabilities: set[ModelCapability]
+    model_config: LLMModel | None = None
+    provider_config: LLMProvider | None = None
 
     @property
     def model_name(self) -> str:
@@ -155,6 +157,8 @@ def create_llm(
         chat_provider=chat_provider,
         max_context_size=model.max_context_size,
         capabilities=_derive_capabilities(provider, model),
+        model_config=model,
+        provider_config=provider,
     )
 
 
