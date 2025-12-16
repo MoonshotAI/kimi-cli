@@ -13,6 +13,8 @@ Only write entries that are worth mentioning to users.
 
 - Lib: Support creating named sessions via `Session.create(work_dir, session_id)`
 - CLI: Automatically create new session when specified session ID is not found
+- Lib: Add `model_config: LLMModel | None` and `provider_config: LLMProvider | None` properties to `LLM` class
+- MetaCmd: Add `/usage` meta command to show API usage for Kimi for Coding users
 
 ## [0.64] - 2025-12-15
 
