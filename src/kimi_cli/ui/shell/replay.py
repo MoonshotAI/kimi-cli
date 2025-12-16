@@ -29,11 +29,11 @@ from kimi_cli.wire.message import (
 )
 from kimi_cli.wire.serde import WireMessageRecord
 
-MAX_REPLAY_RUNS = 5
+MAX_REPLAY_TURNS = 5
 
 
 @dataclass(slots=True)
-class _ReplayRun:
+class _ReplayTurn:
     user_message: Message
     events: list[Event]
     n_steps: int = 0
@@ -45,24 +45,24 @@ async def replay_recent_history(
     wire_file: Path | None = None,
 ) -> None:
     """
-    Replay the most recent user-initiated runs from the provided message history or wire file.
+    Replay the most recent user-initiated turns from the provided message history or wire file.
     """
-    runs = await _build_replay_runs_from_wire(wire_file)
-    if not runs:
+    turns = await _build_replay_turns_from_wire(wire_file)
+    if not turns:
         start_idx = _find_replay_start(history)
         if start_idx is None:
             return
-        runs = _build_replay_runs_from_history(history[start_idx:])
-    if not runs:
+        turns = _build_replay_turns_from_history(history[start_idx:])
+    if not turns:
         return
 
-    for run in runs:
+    for turn in turns:
         wire = Wire()
-        console.print(f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(run.user_message)}")
+        console.print(f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(turn.user_message)}")
         ui_task = asyncio.create_task(
             visualize(wire.ui_side(merge=False), initial_status=StatusUpdate(context_usage=None))
         )
-        for event in run.events:
+        for event in turn.events:
             wire.soul_side.send(event)
             await asyncio.sleep(0)  # yield to UI loop
         wire.shutdown()
@@ -70,22 +70,7 @@ async def replay_recent_history(
             await ui_task
 
 
-def _is_user_message(message: Message) -> bool:
-    # FIXME: should consider non-text tool call results which are sent as user messages
-    if message.role != "user":
-        return False
-    return not message.extract_text().startswith("<system>CHECKPOINT")
-
-
-def _find_replay_start(history: Sequence[Message]) -> int | None:
-    indices = [idx for idx, message in enumerate(history) if _is_user_message(message)]
-    if not indices:
-        return None
-    # only replay last MAX_REPLAY_RUNS messages
-    return indices[max(0, len(indices) - MAX_REPLAY_RUNS)]
-
-
-async def _build_replay_runs_from_wire(wire_file: Path | None) -> list[_ReplayRun]:
+async def _build_replay_turns_from_wire(wire_file: Path | None) -> list[_ReplayTurn]:
     if wire_file is None or not wire_file.exists():
         return []
 
@@ -98,7 +83,7 @@ async def _build_replay_runs_from_wire(wire_file: Path | None) -> list[_ReplayRu
         )
         return []
 
-    runs: deque[_ReplayRun] = deque(maxlen=MAX_REPLAY_RUNS)
+    turns: deque[_ReplayTurn] = deque(maxlen=MAX_REPLAY_TURNS)
     try:
         async with aiofiles.open(wire_file, encoding="utf-8") as f:
             async for line in f:
@@ -112,46 +97,61 @@ async def _build_replay_runs_from_wire(wire_file: Path | None) -> list[_ReplayRu
                     continue
 
                 if isinstance(wire_msg, TurnBegin):
-                    runs.append(
-                        _ReplayRun(
+                    turns.append(
+                        _ReplayTurn(
                             user_message=Message(role="user", content=wire_msg.user_input),
                             events=[],
                         )
                     )
                     continue
 
-                if not is_event(wire_msg) or not runs:
+                if not is_event(wire_msg) or not turns:
                     continue
 
-                run = runs[-1]
+                current_turn = turns[-1]
                 wire_event = cast(Event, wire_msg)
                 if isinstance(wire_event, StepBegin):
-                    run.n_steps = wire_event.n
-                run.events.append(wire_event)
+                    current_turn.n_steps = wire_event.n
+                current_turn.events.append(wire_event)
     except Exception:
-        logger.exception("Failed to build replay runs from wire file {file}:", file=wire_file)
+        logger.exception("Failed to build replay turns from wire file {file}:", file=wire_file)
         return []
-    return list(runs)
+    return list(turns)
 
 
-def _build_replay_runs_from_history(history: Sequence[Message]) -> list[_ReplayRun]:
-    runs: list[_ReplayRun] = []
-    current_run: _ReplayRun | None = None
+def _is_user_message(message: Message) -> bool:
+    # FIXME: should consider non-text tool call results which are sent as user messages
+    if message.role != "user":
+        return False
+    return not message.extract_text().startswith("<system>CHECKPOINT")
+
+
+def _find_replay_start(history: Sequence[Message]) -> int | None:
+    indices = [idx for idx, message in enumerate(history) if _is_user_message(message)]
+    if not indices:
+        return None
+    # only replay last MAX_REPLAY_TURNS messages
+    return indices[max(0, len(indices) - MAX_REPLAY_TURNS)]
+
+
+def _build_replay_turns_from_history(history: Sequence[Message]) -> list[_ReplayTurn]:
+    turns: list[_ReplayTurn] = []
+    current_turn: _ReplayTurn | None = None
     for message in history:
         if _is_user_message(message):
-            # start a new run
-            if current_run is not None:
-                runs.append(current_run)
-            current_run = _ReplayRun(user_message=message, events=[])
+            # start a new turn
+            if current_turn is not None:
+                turns.append(current_turn)
+            current_turn = _ReplayTurn(user_message=message, events=[])
         elif message.role == "assistant":
-            if current_run is None:
+            if current_turn is None:
                 continue
-            current_run.n_steps += 1
-            current_run.events.append(StepBegin(n=current_run.n_steps))
-            current_run.events.extend(message.content)
-            current_run.events.extend(message.tool_calls or [])
+            current_turn.n_steps += 1
+            current_turn.events.append(StepBegin(n=current_turn.n_steps))
+            current_turn.events.extend(message.content)
+            current_turn.events.extend(message.tool_calls or [])
         elif message.role == "tool":
-            if current_run is None:
+            if current_turn is None:
                 continue
             assert message.tool_call_id is not None
             if any(
@@ -161,9 +161,9 @@ def _build_replay_runs_from_history(history: Sequence[Message]) -> list[_ReplayR
                 result = ToolError(message="", output="", brief="")
             else:
                 result = ToolOk(output=message.content)
-            current_run.events.append(
+            current_turn.events.append(
                 ToolResult(tool_call_id=message.tool_call_id, return_value=result)
             )
-    if current_run is not None:
-        runs.append(current_run)
-    return runs
+    if current_turn is not None:
+        turns.append(current_turn)
+    return turns
