@@ -89,6 +89,15 @@ async def _build_replay_runs_from_wire(wire_file: Path | None) -> list[_ReplayRu
     if wire_file is None or not wire_file.exists():
         return []
 
+    size = wire_file.stat().st_size
+    if size > 20 * 1024 * 1024:
+        logger.info(
+            "Wire file too large for replay, skipping: {file} ({size} bytes)",
+            file=wire_file,
+            size=size,
+        )
+        return []
+
     runs: deque[_ReplayRun] = deque(maxlen=MAX_REPLAY_RUNS)
     try:
         async with aiofiles.open(wire_file, encoding="utf-8") as f:
