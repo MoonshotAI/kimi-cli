@@ -88,3 +88,15 @@ async def test_list_sorts_by_updated_and_titles(isolated_share_dir: Path, work_d
 async def test_continue_without_last_returns_none(isolated_share_dir: Path, work_dir: KaosPath):
     result = await Session.continue_(work_dir)
     assert result is None
+
+
+async def test_create_named_session(isolated_share_dir: Path, work_dir: KaosPath):
+    session_id = "my-named-session"
+    session = await Session.create(work_dir, session_id)
+    assert session.id == session_id
+    assert session.dir.name == session_id
+
+    # Verify we can find it
+    found = await Session.find(work_dir, session_id)
+    assert found is not None
+    assert found.id == session_id

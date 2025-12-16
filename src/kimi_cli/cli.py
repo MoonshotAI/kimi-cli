@@ -313,10 +313,10 @@ def kimi(
         if session_id is not None:
             session = await Session.find(work_dir, session_id)
             if session is None:
-                raise typer.BadParameter(
-                    f"No session with id {session_id} found for the working directory",
-                    param_hint="--session",
+                logger.info(
+                    "Session {session_id} not found, creating new session", session_id=session_id
                 )
+                session = await Session.create(work_dir, session_id)
             logger.info("Switching to session: {session_id}", session_id=session.id)
         elif continue_:
             session = await Session.continue_(work_dir)

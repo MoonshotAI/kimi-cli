@@ -79,7 +79,11 @@ class Session:
             )
 
     @staticmethod
-    async def create(work_dir: KaosPath, _context_file: Path | None = None) -> Session:
+    async def create(
+        work_dir: KaosPath,
+        session_id: str | None = None,
+        _context_file: Path | None = None,
+    ) -> Session:
         """Create a new session for a work directory."""
         work_dir = work_dir.canonical()
         logger.debug("Creating new session for work directory: {work_dir}", work_dir=work_dir)
@@ -89,7 +93,8 @@ class Session:
         if work_dir_meta is None:
             work_dir_meta = metadata.new_work_dir_meta(work_dir)
 
-        session_id = str(uuid.uuid4())
+        if session_id is None:
+            session_id = str(uuid.uuid4())
         session_dir = work_dir_meta.sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
