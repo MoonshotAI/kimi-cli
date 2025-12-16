@@ -873,7 +873,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.64"
+version = "0.65"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -913,12 +913,12 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", extras = ["contrib"], specifier = ">=0.33.0,<0.34.0" },
+    { name = "kosong", extras = ["contrib"], specifier = "==0.33.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", specifier = ">=0.5.0,<0.6.0" },
+    { name = "pykaos", specifier = "==0.5.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
