@@ -93,7 +93,7 @@ async def _build_replay_turns_from_wire(wire_file: Path | None) -> list[_ReplayT
                 try:
                     record = WireMessageRecord.model_validate_json(line)
                     wire_msg = record.to_wire_message()
-                except Exception:
+                except ValueError:
                     continue
 
                 if isinstance(wire_msg, TurnBegin):
