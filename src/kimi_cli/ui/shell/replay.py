@@ -3,40 +3,56 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import getpass
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
 
+import aiofiles
 from kosong.message import Message, TextPart
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
 from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import ContentPart, StatusUpdate, StepBegin, ToolCall, ToolResult
+from kimi_cli.wire.message import (
+    Event,
+    StatusUpdate,
+    StepBegin,
+    ToolResult,
+    TurnBegin,
+    is_event,
+)
+from kimi_cli.wire.serde import WireMessageRecord
 
 MAX_REPLAY_RUNS = 5
-
-type _ReplayEvent = StepBegin | ToolCall | ContentPart | ToolResult
 
 
 @dataclass(slots=True)
 class _ReplayRun:
     user_message: Message
-    events: list[_ReplayEvent]
+    events: list[Event]
     n_steps: int = 0
 
 
-async def replay_recent_history(history: Sequence[Message]) -> None:
+async def replay_recent_history(
+    history: Sequence[Message],
+    *,
+    wire_file: Path | None = None,
+) -> None:
     """
-    Replay the most recent user-initiated runs from the provided message history.
+    Replay the most recent user-initiated runs from the provided message history or wire file.
     """
-    start_idx = _find_replay_start(history)
-    if start_idx is None:
-        return
-
-    runs = _build_replay_runs(history[start_idx:])
+    runs = await _build_replay_runs_from_wire(wire_file)
+    if not runs:
+        start_idx = _find_replay_start(history)
+        if start_idx is None:
+            return
+        runs = _build_replay_runs_from_history(history[start_idx:])
     if not runs:
         return
 
@@ -69,7 +85,47 @@ def _find_replay_start(history: Sequence[Message]) -> int | None:
     return indices[max(0, len(indices) - MAX_REPLAY_RUNS)]
 
 
-def _build_replay_runs(history: Sequence[Message]) -> list[_ReplayRun]:
+async def _build_replay_runs_from_wire(wire_file: Path | None) -> list[_ReplayRun]:
+    if wire_file is None or not wire_file.exists():
+        return []
+
+    runs: deque[_ReplayRun] = deque(maxlen=MAX_REPLAY_RUNS)
+    try:
+        async with aiofiles.open(wire_file, encoding="utf-8") as f:
+            async for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = WireMessageRecord.model_validate_json(line)
+                    wire_msg = record.to_wire_message()
+                except Exception:
+                    continue
+
+                if isinstance(wire_msg, TurnBegin):
+                    runs.append(
+                        _ReplayRun(
+                            user_message=Message(role="user", content=wire_msg.user_input),
+                            events=[],
+                        )
+                    )
+                    continue
+
+                if not is_event(wire_msg) or not runs:
+                    continue
+
+                run = runs[-1]
+                wire_event = cast(Event, wire_msg)
+                if isinstance(wire_event, StepBegin):
+                    run.n_steps = wire_event.n
+                run.events.append(wire_event)
+    except Exception:
+        logger.exception("Failed to build replay runs from wire file {file}:", file=wire_file)
+        return []
+    return list(runs)
+
+
+def _build_replay_runs_from_history(history: Sequence[Message]) -> list[_ReplayRun]:
     runs: list[_ReplayRun] = []
     current_run: _ReplayRun | None = None
     for message in history:
