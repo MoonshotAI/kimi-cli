@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import shorten
-from typing import Any, cast
 
 import aiofiles
 from kaos.path import KaosPath
@@ -16,7 +14,7 @@ from kosong.message import Message
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import TurnBegin
-from kimi_cli.wire.serde import deserialize_wire_message
+from kimi_cli.wire.serde import WireMessageRecord
 
 
 @dataclass(slots=True, kw_only=True)
@@ -77,11 +75,14 @@ class Session:
                 async for line in f:
                     if not line.strip():
                         continue
-                    data = json.loads(line)
-                    if not isinstance(data, dict):
+                    try:
+                        record = WireMessageRecord.model_validate_json(line)
+                        wire_msg = record.to_wire_message()
+                    except Exception:
+                        logger.exception(
+                            "Failed to parse line in wire file {file}:", file=self.wire_file
+                        )
                         continue
-                    message = cast(dict[str, Any], data).get("message")
-                    wire_msg = deserialize_wire_message(message)
                     if isinstance(wire_msg, TurnBegin):
                         title = shorten(
                             Message(role="user", content=wire_msg.user_input).extract_text(" "),

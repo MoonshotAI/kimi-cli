@@ -22,7 +22,7 @@ from kimi_cli.wire.message import (
     is_request,
     is_wire_message,
 )
-from kimi_cli.wire.serde import deserialize_wire_message, serialize_wire_message
+from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
 
 
 def _test_serde(msg: WireMessage):
@@ -194,6 +194,25 @@ async def test_wire_message_serde():
         }
     )
     _test_serde(msg)
+
+
+def test_wire_message_record_roundtrip():
+    envelope = WireMessageEnvelope.from_wire_message(TurnBegin(user_input=[TextPart(text="hi")]))
+    record = WireMessageRecord(timestamp=123.456, message=envelope)
+
+    assert record.model_dump(mode="json") == snapshot(
+        {
+            "timestamp": 123.456,
+            "message": {
+                "type": "TurnBegin",
+                "payload": {"user_input": [{"type": "text", "text": "hi"}]},
+            },
+        }
+    )
+
+    parsed = WireMessageRecord.model_validate_json(record.model_dump_json())
+    assert parsed.message == envelope
+    assert parsed.to_wire_message() == TurnBegin(user_input=[TextPart(text="hi")])
 
 
 def test_bad_wire_message_serde():

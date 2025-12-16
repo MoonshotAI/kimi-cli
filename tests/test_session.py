@@ -11,7 +11,7 @@ from kosong.message import Message, TextPart
 
 from kimi_cli.session import Session
 from kimi_cli.wire.message import TurnBegin
-from kimi_cli.wire.serde import serialize_wire_message
+from kimi_cli.wire.serde import WireMessageRecord
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,14 +42,12 @@ def work_dir(tmp_path: Path) -> KaosPath:
 def _write_wire_turn(session_dir: Path, text: str):
     wire_file = session_dir / "wire.jsonl"
     wire_file.parent.mkdir(parents=True, exist_ok=True)
-    record = {
-        "timestamp": time.time(),
-        "message": serialize_wire_message(
-            TurnBegin(user_input=[TextPart(text=text)]),
-        ),
-    }
+    record = WireMessageRecord.from_wire_message(
+        TurnBegin(user_input=[TextPart(text=text)]),
+        timestamp=time.time(),
+    )
     with wire_file.open("w", encoding="utf-8") as f:
-        f.write(json.dumps(record) + "\n")
+        f.write(json.dumps(record.model_dump(mode="json")) + "\n")
 
 
 def _write_context_message(context_file: Path, text: str):
