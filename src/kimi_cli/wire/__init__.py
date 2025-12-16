@@ -13,7 +13,7 @@ from kosong.message import ContentPart, MergeableMixin, ToolCallPart
 from kimi_cli.utils.broadcast import BroadcastQueue
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import WireMessage, is_wire_message
-from kimi_cli.wire.serde import serialize_wire_message
+from kimi_cli.wire.serde import WireMessageRecord
 
 WireMessageQueue = BroadcastQueue[WireMessage]
 
@@ -134,9 +134,6 @@ class _WireRecorder:
                 break
 
     async def _record(self, msg: WireMessage) -> None:
-        record = {
-            "timestamp": time.time(),
-            "message": serialize_wire_message(msg),
-        }
+        record = WireMessageRecord.from_wire_message(msg, timestamp=time.time())
         async with aiofiles.open(self._file_backend, mode="a", encoding="utf-8") as f:
-            await f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            await f.write(json.dumps(record.model_dump(mode="json"), ensure_ascii=False) + "\n")
