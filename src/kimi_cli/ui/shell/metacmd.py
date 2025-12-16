@@ -270,12 +270,14 @@ async def list_sessions(app: Shell, args: list[str]):
     assert isinstance(app.soul, KimiSoul)
 
     work_dir = app.soul._runtime.session.work_dir
-    current_session_id = app.soul._runtime.session.id
-    sessions = await Session.list(work_dir)
+    current_session = app.soul._runtime.session
+    current_session_id = current_session.id
+    sessions = [
+        session for session in await Session.list(work_dir) if session.id != current_session_id
+    ]
 
-    if not sessions:
-        console.print("[yellow]No sessions found.[/yellow]")
-        return
+    await current_session.refresh()
+    sessions.insert(0, current_session)
 
     choices: list[tuple[str, str]] = []
     for session in sessions:

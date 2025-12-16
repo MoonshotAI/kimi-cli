@@ -45,7 +45,10 @@ class Shell:
         _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
 
         if isinstance(self.soul, KimiSoul):
-            await replay_recent_history(self.soul.context.history)
+            await replay_recent_history(
+                self.soul.context.history,
+                wire_file=self.soul.wire_file,
+            )
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,

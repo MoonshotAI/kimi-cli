@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
+import asyncio
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import shorten
-from typing import Any, cast
 
 import aiofiles
 from kaos.path import KaosPath
@@ -14,7 +14,7 @@ from kosong.message import Message
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import TurnBegin
-from kimi_cli.wire.serde import deserialize_wire_message
+from kimi_cli.wire.serde import WireMessageRecord
 
 
 @dataclass(slots=True, kw_only=True)
@@ -49,6 +49,20 @@ class Session:
         """The file backend for persisting Wire messages."""
         return self.dir / "wire.jsonl"
 
+    def is_empty(self) -> bool:
+        """Whether the session has any context history."""
+        try:
+            return self.context_file.stat().st_size == 0
+        except FileNotFoundError:
+            return True
+
+    async def delete(self) -> None:
+        """Delete the session directory."""
+        session_dir = self.work_dir_meta.sessions_dir / self.id
+        if not session_dir.exists():
+            return
+        await asyncio.to_thread(shutil.rmtree, session_dir, True)
+
     async def refresh(self) -> None:
         self.title = f"Untitled ({self.id})"
         self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
@@ -61,11 +75,14 @@ class Session:
                 async for line in f:
                     if not line.strip():
                         continue
-                    data = json.loads(line)
-                    if not isinstance(data, dict):
+                    try:
+                        record = WireMessageRecord.model_validate_json(line)
+                        wire_msg = record.to_wire_message()
+                    except Exception:
+                        logger.exception(
+                            "Failed to parse line in wire file {file}:", file=self.wire_file
+                        )
                         continue
-                    message = cast(dict[str, Any], data).get("message")
-                    wire_msg = deserialize_wire_message(message)
                     if isinstance(wire_msg, TurnBegin):
                         title = shorten(
                             Message(role="user", content=wire_msg.user_input).extract_text(" "),
@@ -210,6 +227,11 @@ class Session:
                 title="",
                 updated_at=0.0,
             )
+            if session.is_empty():
+                logger.debug(
+                    "Session context file is empty: {context_file}", context_file=context_file
+                )
+                continue
             await session.refresh()
             sessions.append(session)
         sessions.sort(key=lambda session: session.updated_at, reverse=True)
