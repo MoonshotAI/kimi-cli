@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from kaos.path import KaosPath
-from kosong.message import TextPart
+from kosong.message import Message, TextPart
 
 from kimi_cli.session import Session
 from kimi_cli.wire.message import TurnBegin
@@ -52,6 +52,12 @@ def _write_wire_turn(session_dir: Path, text: str):
         f.write(json.dumps(record) + "\n")
 
 
+def _write_context_message(context_file: Path, text: str):
+    context_file.parent.mkdir(parents=True, exist_ok=True)
+    message = Message(role="user", content=[TextPart(text=text)])
+    context_file.write_text(message.model_dump_json(exclude_none=True) + "\n", encoding="utf-8")
+
+
 async def test_create_sets_fallback_title(isolated_share_dir: Path, work_dir: KaosPath):
     session = await Session.create(work_dir)
     assert session.title.startswith("Untitled (")
@@ -71,6 +77,8 @@ async def test_list_sorts_by_updated_and_titles(isolated_share_dir: Path, work_d
     first = await Session.create(work_dir)
     second = await Session.create(work_dir)
 
+    _write_context_message(first.context_file, "old context message")
+    _write_context_message(second.context_file, "new context message")
     _write_wire_turn(first.dir, "old session title")
     _write_wire_turn(second.dir, "new session title that is slightly longer")
 
@@ -88,6 +96,19 @@ async def test_list_sorts_by_updated_and_titles(isolated_share_dir: Path, work_d
 async def test_continue_without_last_returns_none(isolated_share_dir: Path, work_dir: KaosPath):
     result = await Session.continue_(work_dir)
     assert result is None
+
+
+async def test_list_ignores_empty_sessions(isolated_share_dir: Path, work_dir: KaosPath):
+    empty = await Session.create(work_dir)
+    populated = await Session.create(work_dir)
+
+    _write_context_message(populated.context_file, "persisted user message")
+    _write_wire_turn(populated.dir, "populated session")
+
+    sessions = await Session.list(work_dir)
+
+    assert [s.id for s in sessions] == [populated.id]
+    assert all(s.id != empty.id for s in sessions)
 
 
 async def test_create_named_session(isolated_share_dir: Path, work_dir: KaosPath):
