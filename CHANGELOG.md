@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.65] - 2025-12-16
 
 - Lib: Support creating named sessions via `Session.create(work_dir, session_id)`
 - CLI: Automatically create new session when specified session ID is not found
