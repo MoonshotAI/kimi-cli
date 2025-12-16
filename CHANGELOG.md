@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - Lib: Support creating named sessions via `Session.create(work_dir, session_id)`
 - CLI: Automatically create new session when specified session ID is not found
+- CLI: Delete empty sessions on exit and ignore sessions whose context file is empty when listing
 
 ## [0.64] - 2025-12-15
 

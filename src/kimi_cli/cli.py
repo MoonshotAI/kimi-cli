@@ -377,7 +377,16 @@ def kimi(
                 )
                 work_dir_meta = metadata.new_work_dir_meta(session.work_dir)
 
-            work_dir_meta.last_session_id = session.id
+            if session.is_empty():
+                logger.info(
+                    "Session {session_id} has empty context, removing it",
+                    session_id=session.id,
+                )
+                await session.delete()
+                if work_dir_meta.last_session_id == session.id:
+                    work_dir_meta.last_session_id = None
+            else:
+                work_dir_meta.last_session_id = session.id
 
             # Update thinking mode
             metadata.thinking = instance.soul.thinking

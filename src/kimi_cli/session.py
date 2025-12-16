@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +48,20 @@ class Session:
     def wire_file(self) -> Path:
         """The file backend for persisting Wire messages."""
         return self.dir / "wire.jsonl"
+
+    def is_empty(self) -> bool:
+        """Whether the session has any context history."""
+        try:
+            return self.context_file.stat().st_size == 0
+        except FileNotFoundError:
+            return True
+
+    async def delete(self) -> None:
+        """Delete the session directory."""
+        session_dir = self.work_dir_meta.sessions_dir / self.id
+        if not session_dir.exists():
+            return
+        await asyncio.to_thread(shutil.rmtree, session_dir, True)
 
     async def refresh(self) -> None:
         self.title = f"Untitled ({self.id})"
@@ -211,6 +227,11 @@ class Session:
                 title="",
                 updated_at=0.0,
             )
+            if session.is_empty():
+                logger.debug(
+                    "Session context file is empty: {context_file}", context_file=context_file
+                )
+                continue
             await session.refresh()
             sessions.append(session)
         sessions.sort(key=lambda session: session.updated_at, reverse=True)
