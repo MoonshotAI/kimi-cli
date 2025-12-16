@@ -1,3 +1,5 @@
+"""This file is pure vibe-coded. If any bugs are found, let's just rewrite it..."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -11,7 +13,8 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
-from kimi_cli.config import Config, LLMModel, LLMProvider
+from kimi_cli.config import LLMProvider
+from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.metacmd import meta_command
 from kimi_cli.utils.aiohttp import new_client_session
@@ -32,32 +35,19 @@ class UsageRow:
 @meta_command(kimi_soul_only=True)
 async def usage(app: Shell, args: list[str]):
     """Display API usage and quota information"""
-    runtime = getattr(app.soul, "runtime", None)
-    if runtime is None or runtime.llm is None:
+    assert isinstance(app.soul, KimiSoul)
+    if app.soul.runtime.llm is None:
         console.print("[red]LLM not set. Please run /setup first.[/red]")
         return
 
-    model_info = _current_model(runtime.config, runtime.llm.model_name)
-    if model_info is None:
-        console.print("[red]No model configured. Please run /setup first.[/red]")
-        return
-    model_id, model = model_info
-
-    provider = runtime.config.providers.get(model.provider)
+    provider = app.soul.runtime.llm.provider_config
     if provider is None:
-        console.print(f"[red]Provider '{model.provider}' not found. Please run /setup first.[/red]")
-        return
-
-    if provider.type != "kimi":
-        console.print(
-            "[yellow]Usage is only supported for Kimi providers "
-            f"(current: {provider.type}).[/yellow]"
-        )
+        console.print("[red]LLM provider configuration not found.[/red]")
         return
 
     usage_url = _usage_url(provider)
     if usage_url is None:
-        console.print("[yellow]Usage API is available on Kimi For Coding platform only.[/yellow]")
+        console.print("[yellow]Usage is available on Kimi for Coding platform only.[/yellow]")
         return
 
     with console.status("[cyan]Fetching usage...[/cyan]"):
@@ -83,24 +73,10 @@ async def usage(app: Shell, args: list[str]):
     console.print(_build_usage_panel(summary, limits))
 
 
-def _current_model(config: Config, model_name: str | None) -> tuple[str, LLMModel] | None:
-    if model_name:
-        for name, model in config.models.items():
-            if model.model == model_name:
-                return name, model
-
-    if config.default_model and config.default_model in config.models:
-        return config.default_model, config.models[config.default_model]
-
-    if len(config.models) == 1:
-        return next(iter(config.models.items()))
-
-    return None
-
-
 def _usage_url(provider: LLMProvider) -> str | None:
-    base_url = provider.base_url.rstrip("/")
-    if not base_url or "coding" not in base_url:
+    base_url = (provider.base_url or "").rstrip("/")
+    coding_base_url = "https://api.kimi.com/coding/v1"
+    if base_url != coding_base_url:
         return None
     return f"{base_url}/usages"
 
