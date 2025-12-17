@@ -266,10 +266,12 @@ class KimiSoul:
 
         result = await _kosong_step_with_retry()
         logger.debug("Got step result: {result}", result=result)
+        status_update = StatusUpdate(token_usage=result.usage, message_id=result.id)
         if result.usage is not None:
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)
-            wire_send(StatusUpdate(context_usage=self.status.context_usage))
+            status_update.context_usage = self.status.context_usage
+        wire_send(status_update)
 
         # wait for all tool results (may be interrupted)
         results = await result.tool_results()

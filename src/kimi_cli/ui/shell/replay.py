@@ -60,7 +60,7 @@ async def replay_recent_history(
         wire = Wire()
         console.print(f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(turn.user_message)}")
         ui_task = asyncio.create_task(
-            visualize(wire.ui_side(merge=False), initial_status=StatusUpdate(context_usage=None))
+            visualize(wire.ui_side(merge=False), initial_status=StatusUpdate())
         )
         for event in turn.events:
             wire.soul_side.send(event)
