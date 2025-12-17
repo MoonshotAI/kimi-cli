@@ -130,7 +130,6 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.read",
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.write",
-            "kimi_cli.tools.mcp",
             "kimi_cli.tools.multiagent",
             "kimi_cli.tools.multiagent.create",
             "kimi_cli.tools.multiagent.task",
