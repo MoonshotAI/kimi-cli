@@ -14,7 +14,7 @@ from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.config import Config
-from kimi_cli.exception import InvalidToolError, MCPConfigError
+from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
@@ -166,8 +166,11 @@ async def load_agent(
     Load agent from specification file.
 
     Raises:
-        FileNotFoundError: If the agent spec file does not exist.
-        AgentSpecError: If the agent spec is not valid.
+        FileNotFoundError: When the agent file is not found.
+        AgentSpecError(KimiCLIException, ValueError): When the agent specification is invalid.
+        InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
+        MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
+        MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be connected.
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
@@ -204,9 +207,7 @@ async def load_agent(
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
-    bad_tools = toolset.load_tools(tools, tool_deps)
-    if bad_tools:
-        raise InvalidToolError(f"Invalid tools: {bad_tools}")
+    toolset.load_tools(tools, tool_deps)
 
     if mcp_configs:
         validated_mcp_configs: list[MCPConfig] = []

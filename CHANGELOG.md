@@ -18,7 +18,7 @@ Only write entries that are worth mentioning to users.
 - Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
 - Lib: Make the detailed Kimi CLI exception classes extend `ValueError` or `RuntimeError`
 - Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
-- Lib: Fix exception raising for `KimiCLI.create`, `load_agent` and `KimiToolset.load_mcp_tools`
+- Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
 
 ## [0.65] - 2025-12-16
 

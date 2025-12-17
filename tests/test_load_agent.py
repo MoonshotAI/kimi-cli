@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from inline_snapshot import snapshot
 
 from kimi_cli.config import Config
+from kimi_cli.exception import InvalidToolError
 from kimi_cli.session import Session
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
 from kimi_cli.soul.approval import Approval
@@ -32,7 +34,7 @@ def test_load_tools_valid(runtime: Runtime):
     """Test loading valid tools."""
     tool_paths = ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
     toolset = KimiToolset()
-    bad_tools = toolset.load_tools(
+    toolset.load_tools(
         tool_paths,
         {
             Runtime: runtime,
@@ -44,29 +46,28 @@ def test_load_tools_valid(runtime: Runtime):
             Environment: runtime.environment,
         },
     )
-
-    assert len(bad_tools) == 0
-    assert toolset is not None
+    assert len(toolset.tools) == snapshot(2)
 
 
 def test_load_tools_invalid(runtime: Runtime):
     """Test loading with invalid tool paths."""
     tool_paths = ["kimi_cli.tools.nonexistent:Tool", "kimi_cli.tools.think:Think"]
     toolset = KimiToolset()
-    bad_tools = toolset.load_tools(
-        tool_paths,
-        {
-            Runtime: runtime,
-            Config: runtime.config,
-            BuiltinSystemPromptArgs: runtime.builtin_args,
-            Session: runtime.session,
-            DenwaRenji: runtime.denwa_renji,
-            Approval: runtime.approval,
-        },
-    )
-
-    assert len(bad_tools) == 1
-    assert "kimi_cli.tools.nonexistent:Tool" in bad_tools
+    try:
+        toolset.load_tools(
+            tool_paths,
+            {
+                Runtime: runtime,
+                Config: runtime.config,
+                BuiltinSystemPromptArgs: runtime.builtin_args,
+                Session: runtime.session,
+                DenwaRenji: runtime.denwa_renji,
+                Approval: runtime.approval,
+            },
+        )
+        raise AssertionError("should fail to load non-existing tool")
+    except InvalidToolError as e:
+        assert "kimi_cli.tools.nonexistent:Tool" in str(e)
 
 
 @pytest.mark.asyncio
