@@ -203,10 +203,10 @@ class MCPTool[T: ClientTransport](CallableTool):
             result = await client.call_tool(
                 self._mcp_tool.name, kwargs, timeout=60, raise_on_error=False
             )
-            return convert_tool_result(result)
+            return convert_mcp_tool_result(result)
 
 
-def convert_tool_result(result: CallToolResult) -> ToolReturnValue:
+def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
     import mcp
 
     content: list[ContentPart] = []
