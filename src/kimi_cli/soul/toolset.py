@@ -26,6 +26,12 @@ def get_current_tool_call_or_none() -> ToolCall | None:
 type ToolType = CallableTool | CallableTool2[Any]
 
 
+if TYPE_CHECKING:
+
+    def type_check(kimi_toolset: KimiToolset):
+        _: Toolset = kimi_toolset
+
+
 class KimiToolset:
     def __init__(self) -> None:
         self._inner = SimpleToolset()
@@ -95,9 +101,3 @@ class KimiToolset:
                     raise ValueError(f"Tool dependency not found: {param.annotation}")
                 args.append(dependencies[param.annotation])
         return tool_cls(*args)
-
-
-if TYPE_CHECKING:
-
-    def type_check(kimi_toolset: KimiToolset):
-        _: Toolset = kimi_toolset
