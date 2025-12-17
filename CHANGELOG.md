@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
+- Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
 
 ## [0.65] - 2025-12-16
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import inspect
 import string
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -19,8 +17,7 @@ from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
-from kimi_cli.soul.toolset import KimiToolset, ToolType
-from kimi_cli.tools import SkipThisTool
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
@@ -202,7 +199,7 @@ async def load_agent(
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
-    bad_tools = _load_tools(toolset, tools, tool_deps)
+    bad_tools = toolset.load_tools(tools, tool_deps)
     if bad_tools:
         raise ValueError(f"Invalid tools: {bad_tools}")
 
@@ -228,53 +225,6 @@ def _load_system_prompt(
         spec_args=args,
     )
     return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
-
-
-# TODO: maybe move to `KimiToolset`
-def _load_tools(
-    toolset: KimiToolset,
-    tool_paths: list[str],
-    dependencies: dict[type[Any], Any],
-) -> list[str]:
-    bad_tools: list[str] = []
-    for tool_path in tool_paths:
-        try:
-            tool = _load_tool(tool_path, dependencies)
-        except SkipThisTool:
-            logger.info("Skipping tool: {tool_path}", tool_path=tool_path)
-            continue
-        if tool:
-            toolset.add(tool)
-        else:
-            bad_tools.append(tool_path)
-    logger.info("Loaded tools: {tools}", tools=[tool.name for tool in toolset.tools])
-    if bad_tools:
-        logger.error("Bad tools: {bad_tools}", bad_tools=bad_tools)
-    return bad_tools
-
-
-def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType | None:
-    logger.debug("Loading tool: {tool_path}", tool_path=tool_path)
-    module_name, class_name = tool_path.rsplit(":", 1)
-    try:
-        module = importlib.import_module(module_name)
-    except ImportError:
-        return None
-    cls = getattr(module, class_name, None)
-    if cls is None:
-        return None
-    args: list[type[Any]] = []
-    if "__init__" in cls.__dict__:
-        # the tool class overrides the `__init__` of base class
-        for param in inspect.signature(cls).parameters.values():
-            if param.kind == inspect.Parameter.KEYWORD_ONLY:
-                # once we encounter a keyword-only parameter, we stop injecting dependencies
-                break
-            # all positional parameters should be dependencies to be injected
-            if param.annotation not in dependencies:
-                raise ValueError(f"Tool dependency not found: {param.annotation}")
-            args.append(dependencies[param.annotation])
-    return cls(*args)
 
 
 async def _load_mcp_tools(

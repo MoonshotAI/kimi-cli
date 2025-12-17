@@ -11,13 +11,7 @@ import pytest
 
 from kimi_cli.config import Config
 from kimi_cli.session import Session
-from kimi_cli.soul.agent import (
-    BuiltinSystemPromptArgs,
-    Runtime,
-    _load_system_prompt,
-    _load_tools,
-    load_agent,
-)
+from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -38,8 +32,7 @@ def test_load_tools_valid(runtime: Runtime):
     """Test loading valid tools."""
     tool_paths = ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
     toolset = KimiToolset()
-    bad_tools = _load_tools(
-        toolset,
+    bad_tools = toolset.load_tools(
         tool_paths,
         {
             Runtime: runtime,
@@ -60,8 +53,7 @@ def test_load_tools_invalid(runtime: Runtime):
     """Test loading with invalid tool paths."""
     tool_paths = ["kimi_cli.tools.nonexistent:Tool", "kimi_cli.tools.think:Think"]
     toolset = KimiToolset()
-    bad_tools = _load_tools(
-        toolset,
+    bad_tools = toolset.load_tools(
         tool_paths,
         {
             Runtime: runtime,
