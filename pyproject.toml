@@ -1,6 +1,6 @@
 [project]
 name = "pykaos"
-version = "0.5.1"
+version = "0.5.2"
 description = ""
 readme = "README.md"
 requires-python = ">=3.12"

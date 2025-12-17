@@ -122,6 +122,22 @@ async def test_exec_runs_command_and_streams(local_kaos: LocalKaos):
 
 
 @pytest.mark.asyncio
+async def test_exec_runs_command_wait_before_read(local_kaos: LocalKaos):
+    code = "import sys\nsys.stdout.write('hello\\n')\nsys.stderr.write('stderr line\\n')\n"
+
+    process = await local_kaos.exec(*_python_code_args(code))
+
+    assert process.stdin is not None
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    assert await process.wait() == 0
+    stdout_data, stderr_data = await asyncio.gather(process.stdout.read(), process.stderr.read())
+    assert stdout_data.decode("utf-8").strip() == "hello"
+    assert stderr_data.decode("utf-8").strip() == "stderr line"
+
+
+@pytest.mark.asyncio
 async def test_exec_non_zero_exit(local_kaos: LocalKaos):
     process = await local_kaos.exec(*_python_code_args("import sys; sys.exit(7)"))
 

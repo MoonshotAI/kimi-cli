@@ -84,10 +84,11 @@ class SSHKaos:
             return self._process.returncode
 
         async def wait(self) -> int:
-            completed = await self._process.wait()
-            if completed.returncode is not None:
-                return completed.returncode
-            return self._process.returncode or 0
+            # asyncssh.SSHClientProcess.wait() drains stdout/stderr via communicate()
+            # which clears the internal receive buffers. Use wait_closed() so
+            # stdout/stderr remain readable after wait, matching LocalKaos.
+            await self._process.wait_closed()
+            return 1 if self._process.returncode is None else self._process.returncode
 
         async def kill(self) -> None:
             self._process.kill()

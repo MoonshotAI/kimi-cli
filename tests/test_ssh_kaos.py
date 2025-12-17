@@ -125,6 +125,16 @@ async def test_exec_respects_cwd(ssh_kaos: SSHKaos, remote_base: str):
     assert out == remote_base
 
 
+async def test_exec_wait_before_read(ssh_kaos: SSHKaos):
+    proc = await ssh_kaos.exec("echo", "output")
+
+    exit_code = await proc.wait()
+    output = (await proc.stdout.read()).decode().strip()
+
+    assert exit_code == 0
+    assert output == "output"
+
+
 async def test_mkdir_respects_exist_ok(ssh_kaos: SSHKaos, remote_base: str):
     nested_dir = os.path.join(remote_base, "deep", "level")
 
