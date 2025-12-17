@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import override
 
 from kaos.path import KaosPath
@@ -55,7 +55,19 @@ class ReadFile(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         # TODO: checks:
         # - check if the path may contain secrets
-        # - check if the file format is readable
+
+        if not params.path:
+            return ToolError(
+                message="File path cannot be empty.",
+                brief="Empty file path",
+            )
+
+        if not file_is_readable(params.path):
+            return ToolError(
+                message=f"`{params.path}` seems not readable.",
+                brief="File not readable",
+            )
+
         try:
             p = KaosPath(params.path)
 
@@ -136,3 +148,121 @@ class ReadFile(CallableTool2[Params]):
                 message=f"Failed to read {params.path}. Error: {e}",
                 brief="Failed to read file",
             )
+
+
+_NON_TEXT_SUFFIXES = {
+    # Images
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".webp",
+    ".ico",
+    ".icns",
+    ".heic",
+    ".heif",
+    ".avif",
+    ".psd",
+    ".ai",
+    ".eps",
+    ".svg",
+    ".svgz",
+    # Documents / office formats
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".dot",
+    ".dotx",
+    ".rtf",
+    ".odt",
+    ".xls",
+    ".xlsx",
+    ".xlsm",
+    ".xlt",
+    ".xltx",
+    ".xltm",
+    ".ods",
+    ".ppt",
+    ".pptx",
+    ".pptm",
+    ".pps",
+    ".ppsx",
+    ".odp",
+    ".pages",
+    ".numbers",
+    ".key",
+    # Archives / compressed
+    ".zip",
+    ".rar",
+    ".7z",
+    ".tar",
+    ".gz",
+    ".tgz",
+    ".bz2",
+    ".xz",
+    ".zst",
+    ".lz",
+    ".lz4",
+    ".br",
+    ".cab",
+    ".ar",
+    ".deb",
+    ".rpm",
+    # Audio
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".aac",
+    ".m4a",
+    ".wma",
+    # Video
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".webm",
+    ".m4v",
+    ".flv",
+    ".3gp",
+    # Fonts
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
+    # Binaries / bundles
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".bin",
+    ".apk",
+    ".ipa",
+    ".jar",
+    ".class",
+    ".pyc",
+    ".pyo",
+    ".wasm",
+    # Disk images / databases
+    ".dmg",
+    ".iso",
+    ".img",
+    ".sqlite",
+    ".sqlite3",
+    ".db",
+    ".db3",
+}
+
+
+def file_is_readable(path: str) -> bool:
+    """Guess whether the file is readable."""
+    if not path:
+        return False
+    suffix = PurePath(path).suffix
+    return suffix.lower() not in _NON_TEXT_SUFFIXES

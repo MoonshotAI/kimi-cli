@@ -8,12 +8,45 @@ import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.tools.shell import Params, Shell
+from kimi_cli.tools.shell import (
+    Params,
+    Shell,
+    WellKnownCommand,
+    identify_well_known_command,
+)
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
 
 pytestmark = pytest.mark.skipif(
     platform.system() == "Windows", reason="Bash tests run only on non-Windows."
 )
+
+
+def test_identify_well_known_command_python_variants():
+    assert identify_well_known_command("python -m pip") == WellKnownCommand(
+        command="python",
+        isolated=False,
+    )
+    assert identify_well_known_command('python3 -c "import sys;"') == WellKnownCommand(
+        command="python",
+        isolated=False,
+    )
+    assert identify_well_known_command("python3.11 -V") == WellKnownCommand(
+        command="python",
+        isolated=False,
+    )
+    assert identify_well_known_command("python.exe -V") == WellKnownCommand(
+        command="python",
+        isolated=False,
+    )
+    assert identify_well_known_command("  python -V") == WellKnownCommand(
+        command="python",
+        isolated=False,
+    )
+
+
+def test_identify_well_known_command_non_python():
+    assert identify_well_known_command("") is None
+    assert identify_well_known_command("node -v") is None
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,14 @@ import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.tools.file.read import MAX_BYTES, MAX_LINE_LENGTH, MAX_LINES, Params, ReadFile
+from kimi_cli.tools.file.read import (
+    MAX_BYTES,
+    MAX_LINE_LENGTH,
+    MAX_LINES,
+    Params,
+    ReadFile,
+    file_is_readable,
+)
 
 
 @pytest.fixture
@@ -20,6 +27,16 @@ Line 4: For testing purposes
 Line 5: End of file"""
     await file_path.write_text(content)
     return file_path
+
+
+def test_file_is_readable_respects_suffixes():
+    assert not file_is_readable("")
+    assert not file_is_readable("image.PNG")
+    assert not file_is_readable("archive.tar.gz")
+    assert not file_is_readable("my file.pdf")
+    assert file_is_readable("notes.txt")
+    assert file_is_readable("Makefile")
+    assert file_is_readable(".env")
 
 
 @pytest.mark.asyncio
