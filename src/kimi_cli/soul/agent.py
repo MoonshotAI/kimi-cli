@@ -204,7 +204,7 @@ async def load_agent(
         raise ValueError(f"Invalid tools: {bad_tools}")
 
     if mcp_configs:
-        await _load_mcp_tools(toolset, mcp_configs, runtime)
+        await toolset.load_mcp_tools(mcp_configs, runtime)
 
     return Agent(
         name=agent_spec.name,
@@ -225,31 +225,3 @@ def _load_system_prompt(
         spec_args=args,
     )
     return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
-
-
-async def _load_mcp_tools(
-    toolset: KimiToolset,
-    mcp_configs: list[dict[str, Any]],
-    runtime: Runtime,
-):
-    """
-    Raises:
-        ValueError: If the MCP config is not valid.
-        RuntimeError: If the MCP server cannot be connected.
-    """
-    import fastmcp
-
-    from kimi_cli.tools.mcp import MCPTool
-
-    for mcp_config in mcp_configs:
-        # Skip empty MCP configs (no servers defined)
-        if not mcp_config.get("mcpServers"):
-            logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
-            continue
-
-        logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
-        client = fastmcp.Client(mcp_config)
-        async with client:
-            for tool in await client.list_tools():
-                toolset.add(MCPTool(tool, client, runtime=runtime))
-    return toolset
