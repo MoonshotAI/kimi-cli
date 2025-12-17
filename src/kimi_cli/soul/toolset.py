@@ -72,7 +72,8 @@ class KimiToolset:
             logger.error("Bad tools: {bad_tools}", bad_tools=bad_tools)
         return bad_tools
 
-    def _load_tool(self, tool_path: str, dependencies: dict[type[Any], Any]) -> None:
+    @staticmethod
+    def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType | None:
         logger.debug("Loading tool: {tool_path}", tool_path=tool_path)
         module_name, class_name = tool_path.rsplit(":", 1)
         try:
