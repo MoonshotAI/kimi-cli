@@ -83,7 +83,7 @@ class KimiToolset:
         tool_cls = getattr(module, class_name, None)
         if tool_cls is None:
             return None
-        args: list[type[Any]] = []
+        args: list[Any] = []
         if "__init__" in tool_cls.__dict__:
             # the tool class overrides the `__init__` of base class
             for param in inspect.signature(tool_cls).parameters.values():
