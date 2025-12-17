@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
+
 ## [0.65] - 2025-12-16
 
 - Lib: Support creating named sessions via `Session.create(work_dir, session_id)`
