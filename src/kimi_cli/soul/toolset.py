@@ -174,7 +174,7 @@ class KimiToolset:
                     for tool in await client.list_tools():
                         self.add(MCPTool(tool, client, runtime=runtime))
             except RuntimeError as e:
-                raise MCPRuntimeError from e
+                raise MCPRuntimeError(f"Failed to load MCP tools: {e}") from e
 
 
 class MCPTool[T: ClientTransport](CallableTool):

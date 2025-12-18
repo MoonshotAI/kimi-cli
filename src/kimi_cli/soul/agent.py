@@ -222,7 +222,7 @@ async def load_agent(
                         else MCPConfig.model_validate(mcp_config)
                     )
                 except pydantic.ValidationError as e:
-                    raise MCPConfigError from e
+                    raise MCPConfigError(f"Invalid MCP config: {e}") from e
         await toolset.load_mcp_tools(validated_mcp_configs, runtime)
 
     return Agent(
