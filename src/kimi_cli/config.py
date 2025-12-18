@@ -21,6 +21,8 @@ class LLMProvider(BaseModel):
     """API base URL"""
     api_key: SecretStr
     """API key"""
+    env: dict[str, str] | None = None
+    """Environment variables to set before creating the provider instance"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
 

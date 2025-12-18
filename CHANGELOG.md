@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 - Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
 - Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
 - Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
+- LLM: Add provider type `vertexai` to support Vertex AI
+- LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
 
 ## [0.65] - 2025-12-16
 
