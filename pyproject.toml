@@ -22,7 +22,7 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
-    "pykaos==0.5.1",
+    "pykaos==0.5.2",
 ]
 
 [dependency-groups]
