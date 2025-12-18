@@ -53,7 +53,6 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import random_string
 
 _prompt_symbol: str
-_prompt_symbol_shell: str
 _prompt_symbol_thinking: str
 
 
@@ -62,15 +61,13 @@ if sys.platform == "win32":
     # display-width mismatches with prompt-toolkit, leading to visual cursor
     # shifts. Use plain ASCII / single-width symbols for better compatibility.
     _prompt_symbol = ">"
-    _prompt_symbol_shell = "$"
     _prompt_symbol_thinking = "?"
 else:
     _prompt_symbol = "✨"
-    _prompt_symbol_shell = "$"
     _prompt_symbol_thinking = "💫"
 
 PROMPT_SYMBOL = _prompt_symbol
-PROMPT_SYMBOL_SHELL = _prompt_symbol_shell
+PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = _prompt_symbol_thinking
 
 
