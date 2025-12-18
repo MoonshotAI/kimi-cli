@@ -7,6 +7,7 @@ import getpass
 import json
 import os
 import re
+import sys
 import time
 from collections import deque
 from collections.abc import Callable, Iterable
@@ -51,9 +52,26 @@ from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import random_string
 
-PROMPT_SYMBOL = "✨"
-PROMPT_SYMBOL_SHELL = "$"
-PROMPT_SYMBOL_THINKING = "💫"
+_prompt_symbol: str
+_prompt_symbol_shell: str
+_prompt_symbol_thinking: str
+
+
+if sys.platform == "win32":
+    # On Windows terminals, emoji and some wide Unicode symbols can cause
+    # display-width mismatches with prompt-toolkit, leading to visual cursor
+    # shifts. Use plain ASCII / single-width symbols for better compatibility.
+    _prompt_symbol = ">"
+    _prompt_symbol_shell = "$"
+    _prompt_symbol_thinking = "?"
+else:
+    _prompt_symbol = "✨"
+    _prompt_symbol_shell = "$"
+    _prompt_symbol_thinking = "💫"
+
+PROMPT_SYMBOL = _prompt_symbol
+PROMPT_SYMBOL_SHELL = _prompt_symbol_shell
+PROMPT_SYMBOL_THINKING = _prompt_symbol_thinking
 
 
 class MetaCommandCompleter(Completer):
