@@ -23,6 +23,7 @@ dependencies = [
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
     "pykaos==0.5.2",
+    "tomlkit==0.13.3",
 ]
 
 [dependency-groups]

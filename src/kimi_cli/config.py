@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from typing import Self
 
+import tomlkit
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_serializer, model_validator
+from tomlkit.exceptions import TOMLKitError
 
 from kimi_cli.exception import ConfigError
 from kimi_cli.llm import ModelCapability, ProviderType
@@ -115,7 +117,7 @@ class Config(BaseModel):
 
 def get_config_file() -> Path:
     """Get the configuration file path."""
-    return get_share_dir() / "config.json"
+    return get_share_dir() / "config.toml"
 
 
 def get_default_config() -> Config:
@@ -142,22 +144,34 @@ def load_config(config_file: Path | None = None) -> Config:
     Raises:
         ConfigError: If the configuration file is invalid.
     """
-    config_file = config_file or get_config_file()
+    if config_file is None:
+        config_file = get_config_file()
+        is_default_config_file = True
+    else:
+        is_default_config_file = False
     logger.debug("Loading config from file: {file}", file=config_file)
+
+    # If the user hasn't provided an explicit config path, migrate legacy JSON config once.
+    if is_default_config_file and not config_file.exists():
+        _migrate_json_config_to_toml()
 
     if not config_file.exists():
         config = get_default_config()
         logger.debug("No config file found, creating default config: {config}", config=config)
-        with open(config_file, "w", encoding="utf-8") as f:
-            f.write(config.model_dump_json(indent=2, exclude_none=True))
+        save_config(config, config_file)
         return config
 
     try:
-        with open(config_file, encoding="utf-8") as f:
-            data = json.load(f)
-        return Config(**data)
+        config_text = config_file.read_text(encoding="utf-8")
+        if config_file.suffix.lower() == ".json":
+            data = json.loads(config_text)
+        else:
+            data = tomlkit.loads(config_text)
+        return Config.model_validate(data)
     except json.JSONDecodeError as e:
         raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
+    except TOMLKitError as e:
+        raise ConfigError(f"Invalid TOML in configuration file: {e}") from e
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration file: {e}") from e
 
@@ -172,5 +186,41 @@ def save_config(config: Config, config_file: Path | None = None):
     """
     config_file = config_file or get_config_file()
     logger.debug("Saving config to file: {file}", file=config_file)
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_data = config.model_dump(mode="json", exclude_none=True)
     with open(config_file, "w", encoding="utf-8") as f:
-        f.write(config.model_dump_json(indent=2, exclude_none=True))
+        if config_file.suffix.lower() == ".json":
+            f.write(json.dumps(config_data, ensure_ascii=False, indent=2))
+        else:
+            f.write(tomlkit.dumps(config_data))  # pyright: ignore[reportUnknownMemberType]
+
+
+def _migrate_json_config_to_toml() -> None:
+    old_json_config_file = get_share_dir() / "config.json"
+    new_toml_config_file = get_share_dir() / "config.toml"
+
+    if not old_json_config_file.exists():
+        return
+    if new_toml_config_file.exists():
+        return
+
+    logger.info(
+        "Migrating legacy config file from {old} to {new}",
+        old=old_json_config_file,
+        new=new_toml_config_file,
+    )
+
+    try:
+        with open(old_json_config_file, encoding="utf-8") as f:
+            data = json.load(f)
+        config = Config.model_validate(data)
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"Invalid JSON in legacy configuration file: {e}") from e
+    except ValidationError as e:
+        raise ConfigError(f"Invalid legacy configuration file: {e}") from e
+
+    # Write new TOML config, then keep a backup of the original JSON file.
+    save_config(config, new_toml_config_file)
+    backup_path = old_json_config_file.with_name("config.json.bak")
+    old_json_config_file.replace(backup_path)
+    logger.info("Legacy config backed up to {file}", file=backup_path)
