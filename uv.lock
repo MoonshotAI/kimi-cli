@@ -892,6 +892,7 @@ dependencies = [
     { name = "ripgrepy" },
     { name = "streamingjson" },
     { name = "tenacity" },
+    { name = "tomlkit" },
     { name = "trafilatura" },
     { name = "typer" },
 ]
@@ -913,17 +914,18 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", extras = ["contrib"], specifier = "==0.33.0" },
+    { name = "kosong", extras = ["contrib"], git = "https://github.com/MoonshotAI/kosong" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
     { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pykaos", specifier = "==0.5.1" },
+    { name = "pykaos", specifier = "==0.5.2" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "rich", specifier = "==14.2.0" },
     { name = "ripgrepy", specifier = "==2.2.0" },
     { name = "streamingjson", specifier = "==0.0.5" },
     { name = "tenacity", specifier = "==9.1.2" },
+    { name = "tomlkit", specifier = "==0.13.3" },
     { name = "trafilatura", specifier = "==2.0.0" },
     { name = "typer", specifier = "==0.20.0" },
 ]
@@ -941,7 +943,7 @@ dev = [
 [[package]]
 name = "kosong"
 version = "0.33.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/MoonshotAI/kosong#168036c5b53cf6fa4da6f9e6d374bcab06072469" }
 dependencies = [
     { name = "anthropic" },
     { name = "google-genai" },
@@ -951,10 +953,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/40/99/c671607579016c490d5bffa55efc41ced5557a4d054ff2b92845210edbc5/kosong-0.33.0.tar.gz", hash = "sha256:058690e1506b669af062d1245e54fc940fcaacfb86f21e62e5eb6637fcd38dc5", size = 34558, upload-time = "2025-12-12T08:22:24.855Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/8e/e3bb1de797e592184a32c4c467b71584928520aef5f5a24e0b4072cbe215/kosong-0.33.0-py3-none-any.whl", hash = "sha256:cbf8a162bdbc86340beb94352b816aec79b7281d0bd07d529130d0a6f59183f1", size = 51858, upload-time = "2025-12-12T08:22:23.941Z" },
 ]
 
 [package.optional-dependencies]
@@ -1710,15 +1708,15 @@ wheels = [
 
 [[package]]
 name = "pykaos"
-version = "0.5.1"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "asyncssh" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/29/4f/996f55e9b13acbf36692e952e134f6fc893fd0f437d4c2d1ffbee26725f3/pykaos-0.5.1.tar.gz", hash = "sha256:341a9553136f7a54f3d1a64d0f88c9d1054ea89ad5a75072bcd093ee390fbee8", size = 7400, upload-time = "2025-12-15T13:15:28.941Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/eb/465a5e0931e58ffd77fb3e0e8037ddc5f0fe2a50dbfe4df0a1fa963006ce/pykaos-0.5.2.tar.gz", hash = "sha256:40c22d15bc651657c623afdd2ee513f63911344aa9dcc4d411ab8759657ea52f", size = 7470, upload-time = "2025-12-17T15:54:39.825Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/7a/b972d8e41013651bfb5ad21189bbdee778112f543a0f4bc1a6be21ff71f4/pykaos-0.5.1-py3-none-any.whl", hash = "sha256:7a422a0551f25326bd721f65c05b27ed2806c7d07685d73bda82f79e1fc584ae", size = 10312, upload-time = "2025-12-15T13:15:27.917Z" },
+    { url = "https://files.pythonhosted.org/packages/16/30/1f21f53daa62964e6b090e3dbec6063b230a7f479eb988f8f3b90fcaecf8/pykaos-0.5.2-py3-none-any.whl", hash = "sha256:d640d9121e0772176800177e107db453dd9a156a1dbf1e66c01b469ab4ae1bcd", size = 10403, upload-time = "2025-12-17T15:54:37.777Z" },
 ]
 
 [[package]]
@@ -2211,6 +2209,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/df/a1/5723b07a70c1841a80afc9ac572fdf53488306848d844cd70519391b0d26/tld-0.13.1.tar.gz", hash = "sha256:75ec00936cbcf564f67361c41713363440b6c4ef0f0c1592b5b0fbe72c17a350", size = 462000, upload-time = "2025-05-21T22:18:29.341Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/70/b2f38360c3fc4bc9b5e8ef429e1fde63749144ac583c2dbdf7e21e27a9ad/tld-0.13.1-py2.py3-none-any.whl", hash = "sha256:a2d35109433ac83486ddf87e3c4539ab2c5c2478230e5d9c060a18af4b03aa7c", size = 274718, upload-time = "2025-05-21T22:18:25.811Z" },
+]
+
+[[package]]
+name = "tomlkit"
+version = "0.13.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/18/0bbf3884e9eaa38819ebe46a7bd25dcd56b67434402b66a58c4b8e552575/tomlkit-0.13.3.tar.gz", hash = "sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1", size = 185207, upload-time = "2025-06-05T07:13:44.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/75/8539d011f6be8e29f339c42e633aae3cb73bffa95dd0f9adec09b9c58e85/tomlkit-0.13.3-py3-none-any.whl", hash = "sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0", size = 38901, upload-time = "2025-06-05T07:13:43.546Z" },
 ]
 
 [[package]]
