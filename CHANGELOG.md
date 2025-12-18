@@ -22,6 +22,7 @@ Only write entries that are worth mentioning to users.
 - LLM: Add provider type `vertexai` to support Vertex AI
 - LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
 - Config: Migrate config file from JSON to TOML
+- MCP: Connect to MCP servers in the background to reduce startup time
 
 ## [0.65] - 2025-12-16
 

@@ -16,7 +16,7 @@ from enum import Enum
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from typing import override
+from typing import Literal, override
 
 from kaos.path import KaosPath
 from kosong.message import ContentPart, ImageURLPart, TextPart
@@ -426,7 +426,10 @@ class _ToastEntry:
     duration: float
 
 
-_toast_queue = deque[_ToastEntry]()
+_toast_queues: dict[Literal["left", "right"], deque[_ToastEntry]] = {
+    "left": deque(),
+    "right": deque(),
+}
 """The queue of toasts to show, including the one currently being shown (the first one)."""
 
 
@@ -435,24 +438,27 @@ def toast(
     duration: float = 5.0,
     topic: str | None = None,
     immediate: bool = False,
+    position: Literal["left", "right"] = "left",
 ) -> None:
+    queue = _toast_queues[position]
     duration = max(duration, _REFRESH_INTERVAL)
     entry = _ToastEntry(topic=topic, message=message, duration=duration)
     if topic is not None:
         # Remove existing toasts with the same topic
-        for existing in list(_toast_queue):
+        for existing in list(queue):
             if existing.topic == topic:
-                _toast_queue.remove(existing)
+                queue.remove(existing)
     if immediate:
-        _toast_queue.appendleft(entry)
+        queue.appendleft(entry)
     else:
-        _toast_queue.append(entry)
+        queue.append(entry)
 
 
-def _current_toast() -> _ToastEntry | None:
-    if not _toast_queue:
+def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry | None:
+    queue = _toast_queues[position]
+    if not queue:
         return None
-    return _toast_queue[0]
+    return queue[0]
 
 
 def _toast_thinking(thinking: bool) -> None:
@@ -773,39 +779,46 @@ class CustomPromptSession:
 
         mode = str(self._mode).lower()
         if self._mode == PromptMode.AGENT and self._thinking:
-            mode += " (thinking)"
+            mode += " (think)"
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
 
         status = self._status_provider()
-        status_text = self._format_status(status)
+        right_text = self._render_right_span(status)
 
-        current_toast = _current_toast()
-        if current_toast is not None:
-            fragments.extend([("", current_toast.message), ("", " " * 2)])
-            columns -= len(current_toast.message) + 2
-            current_toast.duration -= _REFRESH_INTERVAL
-            if current_toast.duration <= 0.0:
-                _toast_queue.popleft()
+        current_toast_left = _current_toast("left")
+        if current_toast_left is not None:
+            fragments.extend([("", current_toast_left.message), ("", " " * 2)])
+            columns -= len(current_toast_left.message) + 2
+            current_toast_left.duration -= _REFRESH_INTERVAL
+            if current_toast_left.duration <= 0.0:
+                _toast_queues["left"].popleft()
         else:
             shortcuts = [
                 *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
             for shortcut in shortcuts:
-                if columns - len(status_text) > len(shortcut) + 2:
+                if columns - len(right_text) > len(shortcut) + 2:
                     fragments.extend([("", shortcut), ("", " " * 2)])
                     columns -= len(shortcut) + 2
                 else:
                     break
 
-        padding = max(1, columns - len(status_text))
+        padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))
-        fragments.append(("", status_text))
+        fragments.append(("", right_text))
 
         return FormattedText(fragments)
 
     @staticmethod
-    def _format_status(status: StatusSnapshot) -> str:
-        bounded = max(0.0, min(status.context_usage, 1.0))
-        return f"context: {bounded:.1%}"
+    def _render_right_span(status: StatusSnapshot) -> str:
+        current_toast = _current_toast("right")
+        if current_toast is None:
+            bounded = max(0.0, min(status.context_usage, 1.0))
+            return f"context: {bounded:.1%}"
+
+        current_toast.duration -= _REFRESH_INTERVAL
+        if current_toast.duration <= 0.0:
+            _toast_queues["right"].popleft()
+        return current_toast.message

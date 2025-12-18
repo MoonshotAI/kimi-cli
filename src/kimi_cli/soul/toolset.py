@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import inspect
 import json
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart, ToolCall
 from kosong.tooling import (
@@ -64,6 +65,8 @@ if TYPE_CHECKING:
 class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
+        self._mcp_servers: dict[str, MCPServerInfo] = {}
+        self._mcp_loading_task: asyncio.Task[None] | None = None
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
@@ -151,7 +154,10 @@ class KimiToolset:
                 args.append(dependencies[param.annotation])
         return tool_cls(*args)
 
-    async def load_mcp_tools(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
+    # TODO(rc): remove `in_background` parameter and always load in background
+    async def load_mcp_tools(
+        self, mcp_configs: list[MCPConfig], runtime: Runtime, in_background: bool = True
+    ) -> None:
         """
         Load MCP tools from specified MCP configs.
 
@@ -160,21 +166,82 @@ class KimiToolset:
                 connected.
         """
         import fastmcp
+        from fastmcp.mcp_config import MCPConfig, MCPServerTypes
 
-        for mcp_config in mcp_configs:
-            # Skip empty MCP configs (no servers defined)
-            if not mcp_config.mcpServers:
-                logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
-                continue
+        from kimi_cli.ui.shell.prompt import toast
 
-            logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
-            client = fastmcp.Client(mcp_config)
-            try:
-                async with client:
-                    for tool in await client.list_tools():
-                        self.add(MCPTool(tool, client, runtime=runtime))
-            except RuntimeError as e:
-                raise MCPRuntimeError(f"Failed to load MCP tools: {e}") from e
+        def _toast_mcp(message: str) -> None:
+            if in_background:
+                toast(
+                    message,
+                    duration=10.0,
+                    topic="mcp",
+                    immediate=True,
+                    position="right",
+                )
+
+        async def _load():
+            _toast_mcp("connecting to mcp servers...")
+            failed_servers: dict[str, tuple[MCPServerTypes, RuntimeError]] = {}
+
+            for mcp_config in mcp_configs:
+                # Skip empty MCP configs (no servers defined)
+                if not mcp_config.mcpServers:
+                    logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
+                    continue
+
+                for server_name, server_config in mcp_config.mcpServers.items():
+                    logger.info(
+                        "Connecting MCP server, name: {server_name}, config: {server_config}",
+                        server_name=server_name,
+                        server_config=server_config,
+                    )
+                    client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                    try:
+                        async with client:
+                            tools: list[MCPTool[Any]] = []
+                            for tool in await client.list_tools():
+                                mcp_tool = MCPTool(tool, client, runtime=runtime)
+                                self.add(mcp_tool)
+                                tools.append(mcp_tool)
+                            self._mcp_servers[server_name] = MCPServerInfo(
+                                client=client, connected=True, tools=tools
+                            )
+                    except RuntimeError as e:
+                        logger.error(
+                            "Failed to connect MCP server: {server_name}, error: {error}",
+                            server_name=server_name,
+                            error=e,
+                        )
+                        failed_servers[server_name] = (server_config, e)
+                        self._mcp_servers[server_name] = MCPServerInfo(
+                            client=client, connected=False, tools=[]
+                        )
+
+            if failed_servers:
+                _toast_mcp("mcp connection failed")
+                raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
+            _toast_mcp("mcp servers connected")
+
+        if in_background:
+            self._mcp_loading_task = asyncio.create_task(_load())
+        else:
+            await _load()
+
+    async def cleanup(self) -> None:
+        """Cleanup any resources held by the toolset."""
+        if self._mcp_loading_task:
+            self._mcp_loading_task.cancel()
+            with contextlib.suppress(Exception):
+                await self._mcp_loading_task
+        for server_info in self._mcp_servers.values():
+            await server_info.client.close()
+
+
+class MCPServerInfo(NamedTuple):
+    client: fastmcp.Client[Any]
+    connected: bool
+    tools: list[MCPTool[Any]]
 
 
 class MCPTool[T: ClientTransport](CallableTool):
