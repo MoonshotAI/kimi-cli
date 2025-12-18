@@ -19,8 +19,14 @@ from kosong.chat_provider import (
 )
 from kosong.message import ContentPart, Message
 from kosong.tooling import ToolResult
-from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
+from kimi_cli.config import LLMModel, LLMProvider
 from kimi_cli.llm import ModelCapability
 from kimi_cli.soul import (
     LLMNotSet,
@@ -149,6 +155,10 @@ class KimiSoul:
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
+
+    def switch_model(self, provider: LLMProvider, model: LLMModel) -> None:
+        """Swap the underlying LLM (and optionally config) for this soul's runtime."""
+        self._runtime = self._runtime.switch_model(provider, model)
 
     async def run(self, user_input: str | list[ContentPart]):
         if self._runtime.llm is None:
@@ -331,7 +341,8 @@ class KimiSoul:
             await self._context.update_token_count(result.usage.total)
 
         logger.debug(
-            "Appending tool messages to context: {tool_messages}", tool_messages=tool_messages
+            "Appending tool messages to context: {tool_messages}",
+            tool_messages=tool_messages,
         )
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
@@ -379,9 +390,9 @@ class KimiSoul:
             "Retrying {name} for the {n} time. Waiting {sleep} seconds.",
             name=name,
             n=retry_state.attempt_number,
-            sleep=retry_state.next_action.sleep
-            if retry_state.next_action is not None
-            else "unknown",
+            sleep=(
+                retry_state.next_action.sleep if retry_state.next_action is not None else "unknown"
+            ),
         )
 
 

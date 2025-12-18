@@ -317,6 +317,7 @@ async def yolo(app: Shell, args: list[str]):
 
 from . import (  # noqa: E402
     debug,  # noqa: F401
+    model,  # noqa: F401
     setup,  # noqa: F401
     update,  # noqa: F401
     usage,  # noqa: F401

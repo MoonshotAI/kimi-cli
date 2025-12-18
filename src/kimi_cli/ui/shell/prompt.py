@@ -489,7 +489,7 @@ class CustomPromptSession:
         self,
         *,
         status_provider: Callable[[], StatusSnapshot],
-        model_capabilities: set[ModelCapability],
+        model_capabilities_provider: Callable[[], set[ModelCapability]],
         initial_thinking: bool,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
@@ -497,7 +497,7 @@ class CustomPromptSession:
         work_dir_id = md5(str(KaosPath.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
-        self._model_capabilities = model_capabilities
+        self._model_capabilities_provider = model_capabilities_provider
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = initial_thinking
@@ -579,7 +579,7 @@ class CustomPromptSession:
         @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
         def _(event: KeyPressEvent) -> None:
             """Toggle thinking mode when Tab is pressed and no completions are shown."""
-            if "thinking" not in self._model_capabilities:
+            if "thinking" not in self._current_model_capabilities():
                 console.print(
                     "[yellow]Thinking mode is not supported by the selected LLM model[/yellow]"
                 )
@@ -683,7 +683,7 @@ class CustomPromptSession:
         if image is None:
             return False
 
-        if "image_in" not in self._model_capabilities:
+        if "image_in" not in self._current_model_capabilities():
             console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
             return False
 
@@ -744,6 +744,10 @@ class CustomPromptSession:
             content=content,
             command=command,
         )
+
+    def _current_model_capabilities(self) -> set[ModelCapability]:
+        caps = self._model_capabilities_provider()
+        return caps or set()
 
     def _append_history_entry(self, text: str) -> None:
         entry = _HistoryEntry(content=text.strip())
