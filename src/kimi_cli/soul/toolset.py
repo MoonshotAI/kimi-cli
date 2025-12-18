@@ -28,6 +28,7 @@ from kosong.utils.typing import JsonType
 from loguru import logger
 from pydantic import BaseModel
 
+from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     import mcp
     from fastmcp.client.client import CallToolResult
     from fastmcp.client.transports import ClientTransport
+    from fastmcp.mcp_config import MCPConfig
 
     from kimi_cli.soul.agent import Runtime
 
@@ -99,13 +101,12 @@ class KimiToolset:
         finally:
             current_tool_call.reset(token)
 
-    def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> list[str]:
+    def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
         Load tools from paths like `kimi_cli.tools.shell:Shell`.
 
-        Returns:
-
-            Bad tool paths that were failed to load.
+        Raises:
+            InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
         """
 
         good_tools: list[str] = []
@@ -124,8 +125,7 @@ class KimiToolset:
                 bad_tools.append(tool_path)
         logger.info("Loaded tools: {good_tools}", good_tools=good_tools)
         if bad_tools:
-            logger.error("Bad tools: {bad_tools}", bad_tools=bad_tools)
-        return bad_tools
+            raise InvalidToolError(f"Invalid tools: {bad_tools}")
 
     @staticmethod
     def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType | None:
@@ -151,27 +151,30 @@ class KimiToolset:
                 args.append(dependencies[param.annotation])
         return tool_cls(*args)
 
-    async def load_mcp_tools(self, mcp_configs: list[dict[str, Any]], runtime: Runtime) -> None:
+    async def load_mcp_tools(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
         """
         Load MCP tools from specified MCP configs.
 
         Raises:
-            ValueError: If the MCP config is not valid.
-            RuntimeError: If the MCP server cannot be connected.
+            MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
+                connected.
         """
         import fastmcp
 
         for mcp_config in mcp_configs:
             # Skip empty MCP configs (no servers defined)
-            if not mcp_config.get("mcpServers"):
+            if not mcp_config.mcpServers:
                 logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
                 continue
 
             logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
             client = fastmcp.Client(mcp_config)
-            async with client:
-                for tool in await client.list_tools():
-                    self.add(MCPTool(tool, client, runtime=runtime))
+            try:
+                async with client:
+                    for tool in await client.list_tools():
+                        self.add(MCPTool(tool, client, runtime=runtime))
+            except RuntimeError as e:
+                raise MCPRuntimeError(f"Failed to load MCP tools: {e}") from e
 
 
 class MCPTool[T: ClientTransport](CallableTool):

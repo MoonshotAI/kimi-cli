@@ -15,6 +15,10 @@ Only write entries that are worth mentioning to users.
 - Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
 - Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
 - Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
+- Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
+- Lib: Make the detailed Kimi CLI exception classes extend `ValueError` or `RuntimeError`
+- Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
+- Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
 - LLM: Add provider type `vertexai` to support Vertex AI
 - LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
 - Config: Migrate config file from JSON to TOML
