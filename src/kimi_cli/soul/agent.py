@@ -13,9 +13,9 @@ from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
-from kimi_cli.config import Config
+from kimi_cli.config import Config, LLMModel, LLMProvider
 from kimi_cli.exception import MCPConfigError
-from kimi_cli.llm import LLM
+from kimi_cli.llm import LLM, augment_provider_with_env_vars, create_llm
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -120,6 +120,25 @@ class Runtime:
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
+            environment=self.environment,
+        )
+
+    def switch_model(
+        self,
+        provider: LLMProvider,
+        model: LLMModel,
+    ) -> Runtime:
+        """Return a new Runtime with the requested LLM model, preserving shared deps."""
+        augment_provider_with_env_vars(provider, model)
+        new_llm = create_llm(provider, model, session_id=self.session.id)
+        return Runtime(
+            config=self.config,
+            llm=new_llm,
+            session=self.session,
+            builtin_args=self.builtin_args,
+            denwa_renji=self.denwa_renji,
+            approval=self.approval,
+            labor_market=self.labor_market,
             environment=self.environment,
         )
 

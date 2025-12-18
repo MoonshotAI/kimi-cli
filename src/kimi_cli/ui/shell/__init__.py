@@ -52,7 +52,7 @@ class Shell:
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
-            model_capabilities=self.soul.model_capabilities or set(),
+            model_capabilities_provider=lambda: self.soul.model_capabilities or set(),
             initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
         ) as prompt_session:
             while True:

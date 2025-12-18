@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import aiohttp
 from prompt_toolkit import PromptSession
@@ -70,11 +70,12 @@ async def setup(app: Shell, args: list[str]):
         base_url=result.platform.base_url,
         api_key=result.api_key,
     )
-    config.models[result.model_id] = LLMModel(
-        provider=result.platform.id,
-        model=result.model_id,
-        max_context_size=result.max_context_size,
-    )
+    for model_id, model in result.models.items():
+        context_length = model["context_length"]
+        config.models[model_id] = LLMModel(
+            provider=result.platform.id, model=model_id, max_context_size=context_length
+        )
+
     config.default_model = result.model_id
 
     if result.platform.search_url:
@@ -103,7 +104,7 @@ class _SetupResult(NamedTuple):
     platform: _Platform
     api_key: SecretStr
     model_id: str
-    max_context_size: int
+    models: dict[str, dict[str, Any]]
 
 
 async def _setup() -> _SetupResult | None:
@@ -164,13 +165,11 @@ async def _setup() -> _SetupResult | None:
         console.print("[red]No model selected[/red]")
         return None
 
-    model = model_dict[model_id]
-
     return _SetupResult(
         platform=platform,
         api_key=SecretStr(api_key),
         model_id=model_id,
-        max_context_size=model["context_length"],
+        models={model_id: model_dict[model_id] for model_id in model_ids},
     )
 
 
