@@ -709,6 +709,8 @@ class CustomPromptSession:
         return True
 
     async def prompt(self) -> UserInput:
+        self._ensure_thinking_supported()
+
         with patch_stdout(raw=True):
             command = str(await self._session.prompt_async()).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
@@ -743,6 +745,21 @@ class CustomPromptSession:
             thinking=self._thinking,
             content=content,
             command=command,
+        )
+
+    def _ensure_thinking_supported(self) -> None:
+        if not self._thinking:
+            return
+
+        if "thinking" in self._current_model_capabilities():
+            return
+
+        self._thinking = False
+        toast(
+            "Thinking mode disabled for the current model",
+            duration=3.0,
+            topic="thinking",
+            immediate=True,
         )
 
     def _current_model_capabilities(self) -> set[ModelCapability]:
