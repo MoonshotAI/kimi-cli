@@ -208,6 +208,11 @@ class KimiToolset:
                                 client=client, connected=True, tools=tools
                             )
                     except RuntimeError as e:
+                        logger.error(
+                            "Failed to connect MCP server: {server_name}, error: {error}",
+                            server_name=server_name,
+                            error=e,
+                        )
                         failed_servers[server_name] = (server_config, e)
                         self._mcp_servers[server_name] = MCPServerInfo(
                             client=client, connected=False, tools=[]
