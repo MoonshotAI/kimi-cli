@@ -315,6 +315,55 @@ async def yolo(app: Shell, args: list[str]):
     console.print("[green]✓[/green] Life is short, use YOLO!")
 
 
+@meta_command(kimi_soul_only=True)
+async def mcp(app: Shell, args: list[str]):
+    """Show connected MCP servers and their tools"""
+    from kimi_cli.soul.toolset import KimiToolset
+
+    assert isinstance(app.soul, KimiSoul)
+
+    toolset = app.soul._agent.toolset
+    assert isinstance(toolset, KimiToolset)
+    servers = toolset._mcp_servers
+    is_loading = toolset._mcp_loading_task and not toolset._mcp_loading_task.done()
+
+    if not servers and not is_loading:
+        console.print("[yellow]No MCP servers configured.[/yellow]")
+        return
+
+    if not servers and is_loading:
+        console.print("[cyan]⏳ MCP servers are connecting...[/cyan]")
+        return
+
+    lines = []
+    if is_loading:
+        lines.append("[cyan]⏳ MCP servers are still connecting...[/cyan]")
+        lines.append("")
+
+    n_conn = sum(1 for s in servers.values() if s.connected)
+    n_tools = sum(len(s.tools) for s in servers.values())
+    lines.append(f"[dim]{n_conn}/{len(servers)} servers, {n_tools} tools[/dim]")
+    lines.append("")
+
+    for name, info in servers.items():
+        status = "[green]●[/green]" if info.connected else "[red]●[/red]"
+        lines.append(f"{status} [bold]{name}[/bold]")
+        for tool in info.tools:
+            lines.append(f"   [dim]• {tool.name}[/dim]")
+        if not info.connected:
+            lines.append("   [red]Connection failed[/red]")
+
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="MCP Servers",
+            border_style="wheat4",
+            expand=False,
+            padding=(1, 2),
+        )
+    )
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401
     setup,  # noqa: F401

@@ -191,6 +191,13 @@ class KimiToolset:
                     continue
 
                 for server_name, server_config in mcp_config.mcpServers.items():
+                    # Add mcp-session-id header for HTTP transports
+                    if hasattr(server_config, "url") and hasattr(server_config, "headers"):
+                        existing_headers = getattr(server_config, "headers", None)
+                        headers: dict[str, str] = dict(existing_headers) if existing_headers else {}
+                        headers.setdefault("mcp-session-id", runtime.session.id)
+                        server_config = server_config.model_copy(update={"headers": headers})
+
                     logger.info(
                         "Connecting MCP server, name: {server_name}, config: {server_config}",
                         server_name=server_name,
