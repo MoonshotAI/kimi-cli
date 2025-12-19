@@ -31,14 +31,18 @@ def _save_mcp_config(config: dict[str, Any]) -> None:
     mcp_file.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _get_mcp_server(name: str) -> dict[str, Any]:
-    """Get MCP server config by name, raise typer.Exit if not found."""
+def _get_mcp_server(name: str, *, require_remote: bool = False) -> dict[str, Any]:
+    """Get MCP server config by name."""
     config = _load_mcp_config()
     servers = config.get("mcpServers", {})
     if name not in servers:
         typer.echo(f"MCP server '{name}' not found.", err=True)
         raise typer.Exit(code=1)
-    return servers[name]
+    server = servers[name]
+    if require_remote and "url" not in server:
+        typer.echo(f"MCP server '{name}' is not a remote server.", err=True)
+        raise typer.Exit(code=1)
+    return server
 
 
 def _parse_key_value_pairs(
@@ -154,6 +158,8 @@ def mcp_add(
             )
             raise typer.Exit(code=1)
         server_config = {"url": server_args[0], "transport": transport}
+        if transport == "sse":
+            server_config["auth"] = "oauth"
         if header:
             server_config["headers"] = _parse_key_value_pairs(
                 header, "header", separator=":", strip_whitespace=True
@@ -218,22 +224,13 @@ def mcp_auth(
     """Authenticate with an OAuth-enabled MCP server."""
     import asyncio
 
-    config = _load_mcp_config()
-    if name not in config.get("mcpServers", {}):
-        typer.echo(f"MCP server '{name}' not found.", err=True)
-        raise typer.Exit(code=1)
-    server = config["mcpServers"][name]
-    if "url" not in server:
-        typer.echo(f"MCP server '{name}' is not a remote server.", err=True)
-        raise typer.Exit(code=1)
-
+    server = _get_mcp_server(name, require_remote=True)
     if server.get("auth") != "oauth":
-        server["auth"] = "oauth"
-        _save_mcp_config(config)
+        typer.echo(f"MCP server '{name}' does not use OAuth.", err=True)
+        raise typer.Exit(code=1)
 
     async def _auth() -> None:
         import fastmcp
-        from mcp.shared.exceptions import McpError
 
         typer.echo(f"Authenticating with '{name}'...")
         typer.echo("A browser window will open for authorization.")
@@ -244,12 +241,6 @@ def mcp_auth(
                 tools = await client.list_tools()
                 typer.echo(f"Successfully authenticated with '{name}'.")
                 typer.echo(f"Available tools: {len(tools)}")
-        except McpError as e:
-            typer.echo(f"MCP error: {e}", err=True)
-            raise typer.Exit(code=1) from None
-        except TimeoutError:
-            typer.echo("Authentication timed out. Please try again.", err=True)
-            raise typer.Exit(code=1) from None
         except Exception as e:
             typer.echo(f"Authentication failed: {type(e).__name__}: {e}", err=True)
             raise typer.Exit(code=1) from None
@@ -265,10 +256,7 @@ def mcp_reset_auth(
     ],
 ):
     """Reset OAuth authentication for an MCP server (clear cached tokens)."""
-    server = _get_mcp_server(name)
-    if "url" not in server:
-        typer.echo(f"MCP server '{name}' is not a remote server.", err=True)
-        raise typer.Exit(code=1)
+    server = _get_mcp_server(name, require_remote=True)
 
     try:
         from fastmcp.client.auth.oauth import FileTokenStorage
@@ -298,10 +286,8 @@ def mcp_test(
 
     async def _test() -> None:
         import fastmcp
-        from mcp.shared.exceptions import McpError
 
         typer.echo(f"Testing connection to '{name}'...")
-
         client = fastmcp.Client({"mcpServers": {name: server}})
 
         try:
@@ -316,15 +302,6 @@ def mcp_test(
                         if len(desc) > 50:
                             desc = desc[:47] + "..."
                         typer.echo(f"    - {tool.name}: {desc}")
-        except McpError as e:
-            typer.echo(f"✗ MCP error: {e}", err=True)
-            raise typer.Exit(code=1) from None
-        except TimeoutError:
-            typer.echo("✗ Connection timed out.", err=True)
-            raise typer.Exit(code=1) from None
-        except ConnectionError as e:
-            typer.echo(f"✗ Connection error: {e}", err=True)
-            raise typer.Exit(code=1) from None
         except Exception as e:
             typer.echo(f"✗ Connection failed: {type(e).__name__}: {e}", err=True)
             raise typer.Exit(code=1) from None
