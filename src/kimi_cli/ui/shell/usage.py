@@ -16,7 +16,7 @@ from rich.text import Text
 from kimi_cli.config import LLMProvider
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import meta_command
+from kimi_cli.ui.shell.slash import registry
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.datetime import format_duration
 
@@ -32,7 +32,7 @@ class UsageRow:
     reset_hint: str | None = None
 
 
-@meta_command(kimi_soul_only=True)
+@registry.command
 async def usage(app: Shell, args: list[str]):
     """Display API usage and quota information"""
     assert isinstance(app.soul, KimiSoul)

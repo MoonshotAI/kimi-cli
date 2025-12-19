@@ -23,6 +23,9 @@ Only write entries that are worth mentioning to users.
 - LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
 - Config: Migrate config file from JSON to TOML
 - MCP: Connect to MCP servers in the background to reduce startup time
+- Lib: Split slash commands (prev "meta commands") into two groups: Shell-level and KimiSoul-level
+- Lib: Add `available_slash_commands` property to `Soul` protocol
+- ACP: Advertise slash commands `/init`, `/compact` and `/yolo` to ACP clients
 
 ## [0.65] - 2025-12-16
 

@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+import webbrowser
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, cast
+
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
+from rich.panel import Panel
+
+from kimi_cli.cli import Reload
+from kimi_cli.session import Session
+from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.ui.shell.console import console
+from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
+from kimi_cli.utils.datetime import format_relative_time
+from kimi_cli.utils.slashcmd import SlashCommandRegistry
+
+if TYPE_CHECKING:
+    from kimi_cli.ui.shell import Shell
+
+type ShellSlashCmdFunc = Callable[[Shell, list[str]], None | Awaitable[None]]
+"""
+A function that runs as a Shell-level slash command.
+
+Raises:
+    Reload: When the configuration should be reloaded.
+"""
+
+
+registry = SlashCommandRegistry[ShellSlashCmdFunc]()
+
+
+def _ensure_kimi_soul(app: Shell) -> KimiSoul:
+    if not isinstance(app.soul, KimiSoul):
+        console.print("[red]KimiSoul required[/red]")
+    return cast(KimiSoul, app.soul)
+
+
+@registry.command(aliases=["quit"])
+def exit(app: Shell, args: list[str]):
+    """Exit the application"""
+    # should be handled by `Shell`
+    raise NotImplementedError
+
+
+_HELP_MESSAGE_FMT = """
+[grey50]▌ Help! I need somebody. Help! Not just anybody.[/grey50]
+[grey50]▌ Help! You know I need someone. Help![/grey50]
+[grey50]▌ ― The Beatles, [italic]Help![/italic][/grey50]
+
+Sure, Kimi CLI is ready to help!
+Just send me messages and I will help you get things done!
+
+Slash commands are also available:
+
+[grey50]{slash_commands_md}[/grey50]
+"""
+
+
+@registry.command(aliases=["h", "?"])
+def help(app: Shell, args: list[str]):
+    """Show help information"""
+    console.print(
+        Panel(
+            _HELP_MESSAGE_FMT.format(
+                slash_commands_md="\n".join(
+                    f" • {command.slash_name()}: {command.description}"
+                    for command in app.available_slash_commands.values()
+                )
+            ).strip(),
+            title="Kimi CLI Help",
+            border_style="wheat4",
+            expand=False,
+            padding=(1, 2),
+        )
+    )
+
+
+@registry.command
+def version(app: Shell, args: list[str]):
+    """Show version information"""
+    from kimi_cli.constant import VERSION
+
+    console.print(f"kimi, version {VERSION}")
+
+
+@registry.command(name="release-notes")
+def release_notes(app: Shell, args: list[str]):
+    """Show release notes"""
+    text = format_release_notes(CHANGELOG, include_lib_changes=False)
+    with console.pager(styles=True):
+        console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
+
+
+@registry.command
+def feedback(app: Shell, args: list[str]):
+    """Submit feedback to make Kimi CLI better"""
+
+    ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
+    if webbrowser.open(ISSUE_URL):
+        return
+    console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
+
+
+@registry.command(aliases=["reset"])
+async def clear(app: Shell, args: list[str]):
+    """Clear the context"""
+    soul = _ensure_kimi_soul(app)
+    await soul.context.clear()
+    raise Reload()
+
+
+@registry.command(name="sessions", aliases=["resume"])
+async def list_sessions(app: Shell, args: list[str]):
+    """List sessions and resume optionally"""
+    soul = _ensure_kimi_soul(app)
+
+    work_dir = soul.runtime.session.work_dir
+    current_session = soul.runtime.session
+    current_session_id = current_session.id
+    sessions = [
+        session for session in await Session.list(work_dir) if session.id != current_session_id
+    ]
+
+    await current_session.refresh()
+    sessions.insert(0, current_session)
+
+    choices: list[tuple[str, str]] = []
+    for session in sessions:
+        time_str = format_relative_time(session.updated_at)
+        marker = " (current)" if session.id == current_session_id else ""
+        label = f"{session.title}, {time_str}{marker}"
+        choices.append((session.id, label))
+
+    try:
+        selection = await ChoiceInput(
+            message="Select a session to switch to (↑↓ navigate, Enter select, Ctrl+C cancel):",
+            options=choices,
+            default=choices[0][0],
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if not selection:
+        return
+
+    if selection == current_session_id:
+        console.print("[yellow]You are already in this session.[/yellow]")
+        return
+
+    console.print(f"[green]Switching to session {selection}...[/green]")
+    raise Reload(session_id=selection)
+
+
+@registry.command
+async def mcp(app: Shell, args: list[str]):
+    """Show connected MCP servers and their tools"""
+    from kimi_cli.soul.toolset import KimiToolset
+
+    soul = _ensure_kimi_soul(app)
+    toolset = soul.agent.toolset
+    if not isinstance(toolset, KimiToolset):
+        console.print("[red]KimiToolset required[/red]")
+        return
+
+    servers = toolset.mcp_servers
+    is_loading = toolset._mcp_loading_task and not toolset._mcp_loading_task.done()
+
+    if not servers and not is_loading:
+        console.print("[yellow]No MCP servers configured.[/yellow]")
+        return
+
+    if not servers and is_loading:
+        console.print("[cyan]⏳ MCP servers are connecting...[/cyan]")
+        return
+
+    lines = []
+    if is_loading:
+        lines.append("[cyan]⏳ MCP servers are still connecting...[/cyan]")
+        lines.append("")
+
+    n_conn = sum(1 for s in servers.values() if s.connected)
+    n_tools = sum(len(s.tools) for s in servers.values())
+    lines.append(f"[dim]{n_conn}/{len(servers)} servers, {n_tools} tools[/dim]")
+    lines.append("")
+
+    for name, info in servers.items():
+        status = "[green]●[/green]" if info.connected else "[red]●[/red]"
+        lines.append(f"{status} [bold]{name}[/bold]")
+        for tool in info.tools:
+            lines.append(f"   [dim]• {tool.name}[/dim]")
+        if not info.connected:
+            lines.append("   [red]Connection failed[/red]")
+
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="MCP Servers",
+            border_style="wheat4",
+            expand=False,
+            padding=(1, 2),
+        )
+    )
+
+
+from . import (  # noqa: E402
+    debug,  # noqa: F401 # pyright: ignore[reportUnusedImport]
+    setup,  # noqa: F401 # pyright: ignore[reportUnusedImport]
+    update,  # noqa: F401 # pyright: ignore[reportUnusedImport]
+    usage,  # noqa: F401 # pyright: ignore[reportUnusedImport]
+)
