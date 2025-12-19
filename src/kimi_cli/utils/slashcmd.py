@@ -112,7 +112,11 @@ def parse_slash_command_call(user_input: str) -> SlashCommandCall | None:
     if not user_input or not user_input.startswith("/"):
         return None
 
-    name, *args = shlex.split(user_input)
+    try:
+        name, *args = shlex.split(user_input)
+    except ValueError:
+        # Malformed input (e.g., unmatched quotes); not a valid slash command
+        return None
     name_match = re.match(r"^\/([a-zA-Z0-9_\-]+)$", name)
 
     if not name_match:
