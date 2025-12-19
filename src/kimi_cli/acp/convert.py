@@ -6,7 +6,7 @@ from kosong.message import (
     ImageURLPart,
     TextPart,
 )
-from kosong.tooling import ToolReturnValue
+from kosong.tooling import DisplayBlock, ToolReturnValue
 
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.utils.logging import logger
@@ -60,6 +60,36 @@ def tool_result_to_acp_content(
             type="content", content=acp.schema.TextContentBlock(type="text", text=text)
         )
 
+    def _display_block_to_content(
+        block: DisplayBlock,
+    ) -> acp.schema.FileEditToolCallContent | None:
+        if block.type != "diff":
+            return None
+
+        data = block.data
+        if not isinstance(data, dict):
+            logger.warning("Unsupported diff display block data: {data}", data=data)
+            return None
+
+        path = data.get("path")
+        new_text = data.get("new_text") if "new_text" in data else data.get("newText")
+        old_text = data.get("old_text") if "old_text" in data else data.get("oldText")
+
+        if not isinstance(path, str) or not isinstance(new_text, str):
+            logger.warning("Invalid diff display block content: {data}", data=data)
+            return None
+
+        if old_text is not None and not isinstance(old_text, str):
+            logger.warning("Invalid diff display block old_text: {old_text}", old_text=old_text)
+            old_text = None
+
+        return acp.schema.FileEditToolCallContent(
+            type="diff",
+            path=path,
+            old_text=old_text,
+            new_text=new_text,
+        )
+
     contents: list[
         acp.schema.ContentToolCallContent
         | acp.schema.FileEditToolCallContent
@@ -75,6 +105,11 @@ def tool_result_to_acp_content(
         # list of ContentPart. We avoid an unnecessary isinstance() check here
         # to keep pyright happy while still handling list outputs.
         contents.extend(_to_acp_content(part) for part in output)
+
+    for block in tool_ret.display:
+        content = _display_block_to_content(block)
+        if content is not None:
+            contents.append(content)
 
     if not contents and tool_ret.message:
         contents.append(_to_text_block(tool_ret.message))

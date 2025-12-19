@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal, override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, DisplayBlock, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -97,19 +97,37 @@ class WriteFile(CallableTool2[Params]):
             ):
                 return ToolRejectedError()
 
+            file_existed = await p.exists()
+            old_text = None
+            if file_existed:
+                old_text = await p.read_text(errors="replace")
+
             # Write content to file
             match params.mode:
                 case "overwrite":
                     await p.write_text(params.content)
+                    new_text = params.content
                 case "append":
                     await p.append_text(params.content)
+                    new_text = (old_text or "") + params.content
 
             # Get file info for success message
             file_size = (await p.stat()).st_size
             action = "overwritten" if params.mode == "overwrite" else "appended to"
-            return ToolOk(
+            return ToolReturnValue(
+                is_error=False,
                 output="",
                 message=(f"File successfully {action}. Current size: {file_size} bytes."),
+                display=[
+                    DisplayBlock(
+                        type="diff",
+                        data={
+                            "path": params.path,
+                            "old_text": old_text if file_existed else None,
+                            "new_text": new_text,
+                        },
+                    )
+                ],
             )
 
         except Exception as e:

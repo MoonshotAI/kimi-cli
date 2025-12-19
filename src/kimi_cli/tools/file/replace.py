@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, DisplayBlock, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -127,12 +127,23 @@ class StrReplaceFile(CallableTool2[Params]):
                 else:
                     total_replacements += 1 if edit.old in original_content else 0
 
-            return ToolOk(
+            return ToolReturnValue(
+                is_error=False,
                 output="",
                 message=(
                     f"File successfully edited. "
                     f"Applied {len(edits)} edit(s) with {total_replacements} total replacement(s)."
                 ),
+                display=[
+                    DisplayBlock(
+                        type="diff",
+                        data={
+                            "path": params.path,
+                            "old_text": original_content,
+                            "new_text": content,
+                        },
+                    )
+                ],
             )
 
         except Exception as e:

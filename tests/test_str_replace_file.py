@@ -25,6 +25,12 @@ async def test_replace_single_occurrence(
 
     assert not result.is_error
     assert "successfully edited" in result.message
+    diff_block = next(block for block in result.display if block.type == "diff")
+    assert diff_block.data == {
+        "path": str(file_path),
+        "old_text": original_content,
+        "new_text": "Hello universe! This is a test.",
+    }
     assert await file_path.read_text() == "Hello universe! This is a test."
 
 

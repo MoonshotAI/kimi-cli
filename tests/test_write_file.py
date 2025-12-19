@@ -21,6 +21,12 @@ async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPat
 
     assert not result.is_error
     assert "successfully overwritten" in result.message
+    diff_block = next(block for block in result.display if block.type == "diff")
+    assert diff_block.data == {
+        "path": str(file_path),
+        "old_text": None,
+        "new_text": content,
+    }
     assert await file_path.exists()
     assert await file_path.read_text() == content
 
