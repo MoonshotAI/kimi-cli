@@ -9,14 +9,14 @@ import os
 import re
 import time
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from typing import Literal, override
+from typing import Any, Literal, override
 
 from kaos.path import KaosPath
 from kosong.message import ContentPart, ImageURLPart, TextPart
@@ -46,9 +46,9 @@ from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
@@ -56,12 +56,17 @@ PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
 
 
-class MetaCommandCompleter(Completer):
-    """A completer that:
-    - Shows one line per meta command in the form: "/name (alias1, alias2)"
+class SlashCommandCompleter(Completer):
+    """
+    A completer that:
+    - Shows one line per slash command in the form: "/name (alias1, alias2)"
     - Matches by primary name or any alias while inserting the canonical "/name"
     - Only activates when the current token starts with '/'
     """
+
+    def __init__(self, available_commands: Sequence[SlashCommand[Any]]) -> None:
+        super().__init__()
+        self._available_commands = available_commands
 
     @override
     def get_completions(
@@ -86,7 +91,7 @@ class MetaCommandCompleter(Completer):
         typed = token[1:]
         typed_lower = typed.lower()
 
-        for cmd in sorted(get_meta_commands(), key=lambda c: c.name):
+        for cmd in sorted(self._available_commands, key=lambda c: c.name):
             names = [cmd.name] + list(cmd.aliases)
             if typed == "" or any(n.lower().startswith(typed_lower) for n in names):
                 yield Completion(
@@ -491,6 +496,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         model_capabilities: set[ModelCapability],
         initial_thinking: bool,
+        available_slash_commands: Sequence[SlashCommand[Any]],
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -516,7 +522,7 @@ class CustomPromptSession:
         # Build completers
         self._agent_mode_completer = merge_completers(
             [
-                MetaCommandCompleter(),
+                SlashCommandCompleter(available_slash_commands),
                 # TODO(kaos): we need an async KaosFileMentionCompleter
                 LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],

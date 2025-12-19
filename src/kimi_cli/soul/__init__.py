@@ -16,6 +16,7 @@ from kimi_cli.wire.message import WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
+    from kimi_cli.utils.slashcmd import SlashCommand
 
 
 class LLMNotSet(Exception):
@@ -77,12 +78,18 @@ class Soul(Protocol):
         """The current status of the soul. The returned value is immutable."""
         ...
 
+    @property
+    def available_slash_commands(self) -> list[SlashCommand[Any]]:
+        """List of available slash commands supported by the soul."""
+        ...
+
     async def run(self, user_input: str | list[ContentPart]):
         """
         Run the agent with the given user input until the max steps or no more tool calls.
 
         Args:
             user_input (str | list[ContentPart]): The user input to the agent.
+                Can be a slash command call or natural language input.
 
         Raises:
             LLMNotSet: When the LLM is not set.

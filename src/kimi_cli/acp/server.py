@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.app import KimiCLI
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.session import Session
+from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.utils.logging import logger
 
 
@@ -66,6 +68,20 @@ class ACPServer:
             thinking=True,
         )
         self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
+
+        available_commands = [
+            acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
+            for cmd in soul_slash_registry.list_commands()
+        ]
+        asyncio.create_task(
+            self.conn.session_update(
+                session_id=session.id,
+                update=acp.schema.AvailableCommandsUpdate(
+                    session_update="available_commands_update",
+                    available_commands=available_commands,
+                ),
+            )
+        )
         return acp.NewSessionResponse(session_id=session.id)
 
     async def load_session(
