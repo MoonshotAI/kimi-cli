@@ -26,6 +26,7 @@ Only write entries that are worth mentioning to users.
 - Lib: Split slash commands (prev "meta commands") into two groups: Shell-level and KimiSoul-level
 - Lib: Add `available_slash_commands` property to `Soul` protocol
 - ACP: Advertise slash commands `/init`, `/compact` and `/yolo` to ACP clients
+- SlashCmd: Add `/mcp` slash command to display MCP server and tool status
 
 ## [0.65] - 2025-12-16
 

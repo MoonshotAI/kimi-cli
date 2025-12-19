@@ -152,6 +152,56 @@ async def list_sessions(app: Shell, args: list[str]):
     raise Reload(session_id=selection)
 
 
+@registry.command
+async def mcp(app: Shell, args: list[str]):
+    """Show MCP servers and tools"""
+    from kimi_cli.soul.toolset import KimiToolset
+
+    soul = _ensure_kimi_soul(app)
+    toolset = soul.agent.toolset
+    if not isinstance(toolset, KimiToolset):
+        console.print("[red]KimiToolset required[/red]")
+        return
+
+    servers = toolset.mcp_servers
+
+    if not servers:
+        console.print("[yellow]No MCP servers configured.[/yellow]")
+        return
+
+    lines: list[str] = []
+
+    n_conn = sum(1 for s in servers.values() if s.status == "connected")
+    n_tools = sum(len(s.tools) for s in servers.values())
+    lines.append(f"{n_conn}/{len(servers)} servers connected, {n_tools} tools loaded")
+    lines.append("")
+
+    status_dots = {
+        "connected": "[green]•[/green]",
+        "connecting": "[cyan]•[/cyan]",
+        "pending": "[yellow]•[/yellow]",
+        "failed": "[red]•[/red]",
+    }
+    for name, info in servers.items():
+        dot = status_dots.get(info.status, "[red]•[/red]")
+        server_line = f" {dot} {name}"
+        if info.status != "connected":
+            server_line += f" ({info.status})"
+        lines.append(server_line)
+        for tool in info.tools:
+            lines.append(f"   [dim]• {tool.name}[/dim]")
+
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="MCP Servers",
+            border_style="wheat4",
+            expand=False,
+            padding=(1, 2),
+        )
+    )
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401 # pyright: ignore[reportUnusedImport]
     setup,  # noqa: F401 # pyright: ignore[reportUnusedImport]

@@ -6,7 +6,8 @@ import importlib
 import inspect
 import json
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, NamedTuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart, ToolCall
 from kosong.tooling import (
@@ -103,6 +104,11 @@ class KimiToolset:
         finally:
             current_tool_call.reset(token)
 
+    @property
+    def mcp_servers(self) -> dict[str, MCPServerInfo]:
+        """Get MCP servers info."""
+        return self._mcp_servers
+
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
         Load tools from paths like `kimi_cli.tools.shell:Shell`.
@@ -165,7 +171,7 @@ class KimiToolset:
                 connected.
         """
         import fastmcp
-        from fastmcp.mcp_config import MCPConfig, MCPServerTypes
+        from fastmcp.mcp_config import MCPConfig
 
         from kimi_cli.ui.shell.prompt import toast
 
@@ -179,9 +185,32 @@ class KimiToolset:
                     position="right",
                 )
 
-        async def _load():
+        async def _connect():
             _toast_mcp("connecting to mcp servers...")
-            failed_servers: dict[str, tuple[MCPServerTypes, RuntimeError]] = {}
+            failed_servers: dict[str, RuntimeError] = {}
+
+            for server_name, server_info in self._mcp_servers.items():
+                if server_info.status != "pending":
+                    continue
+
+                server_info.status = "connecting"
+                try:
+                    async with server_info.client as client:
+                        tools: list[MCPTool[Any]] = []
+                        for tool in await client.list_tools():
+                            mcp_tool = MCPTool(tool, client, runtime=runtime)
+                            self.add(mcp_tool)
+                            tools.append(mcp_tool)
+                        server_info.tools = tools
+                        server_info.status = "connected"
+                except RuntimeError as e:
+                    logger.error(
+                        "Failed to connect MCP server: {server_name}, error: {error}",
+                        server_name=server_name,
+                        error=e,
+                    )
+                    failed_servers[server_name] = e
+                    server_info.status = "failed"
 
             for mcp_config in mcp_configs:
                 # Skip empty MCP configs (no servers defined)
@@ -189,43 +218,26 @@ class KimiToolset:
                     logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
                     continue
 
-                for server_name, server_config in mcp_config.mcpServers.items():
-                    logger.info(
-                        "Connecting MCP server, name: {server_name}, config: {server_config}",
-                        server_name=server_name,
-                        server_config=server_config,
-                    )
-                    client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
-                    try:
-                        async with client:
-                            tools: list[MCPTool[Any]] = []
-                            for tool in await client.list_tools():
-                                mcp_tool = MCPTool(tool, client, runtime=runtime)
-                                self.add(mcp_tool)
-                                tools.append(mcp_tool)
-                            self._mcp_servers[server_name] = MCPServerInfo(
-                                client=client, connected=True, tools=tools
-                            )
-                    except RuntimeError as e:
-                        logger.error(
-                            "Failed to connect MCP server: {server_name}, error: {error}",
-                            server_name=server_name,
-                            error=e,
-                        )
-                        failed_servers[server_name] = (server_config, e)
-                        self._mcp_servers[server_name] = MCPServerInfo(
-                            client=client, connected=False, tools=[]
-                        )
-
             if failed_servers:
                 _toast_mcp("mcp connection failed")
                 raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
             _toast_mcp("mcp servers connected")
 
+        for mcp_config in mcp_configs:
+            if not mcp_config.mcpServers:
+                logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
+                continue
+
+            for server_name, server_config in mcp_config.mcpServers.items():
+                client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                self._mcp_servers[server_name] = MCPServerInfo(
+                    status="pending", client=client, tools=[]
+                )
+
         if in_background:
-            self._mcp_loading_task = asyncio.create_task(_load())
+            self._mcp_loading_task = asyncio.create_task(_connect())
         else:
-            await _load()
+            await _connect()
 
     async def cleanup(self) -> None:
         """Cleanup any resources held by the toolset."""
@@ -237,9 +249,10 @@ class KimiToolset:
             await server_info.client.close()
 
 
-class MCPServerInfo(NamedTuple):
+@dataclass(slots=True)
+class MCPServerInfo:
+    status: Literal["pending", "connecting", "connected", "failed"]
     client: fastmcp.Client[Any]
-    connected: bool
     tools: list[MCPTool[Any]]
 
 
