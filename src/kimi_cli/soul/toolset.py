@@ -171,7 +171,7 @@ class KimiToolset:
                 connected.
         """
         import fastmcp
-        from fastmcp.mcp_config import MCPConfig
+        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
         from kimi_cli.ui.shell.prompt import toast
 
@@ -187,7 +187,7 @@ class KimiToolset:
 
         async def _connect():
             _toast_mcp("connecting to mcp servers...")
-            failed_servers: dict[str, RuntimeError] = {}
+            failed_servers: dict[str, Exception] = {}
 
             for server_name, server_info in self._mcp_servers.items():
                 if server_info.status != "pending":
@@ -203,7 +203,7 @@ class KimiToolset:
                             tools.append(mcp_tool)
                         server_info.tools = tools
                         server_info.status = "connected"
-                except RuntimeError as e:
+                except Exception as e:
                     logger.error(
                         "Failed to connect MCP server: {server_name}, error: {error}",
                         server_name=server_name,
@@ -229,6 +229,13 @@ class KimiToolset:
                 continue
 
             for server_name, server_config in mcp_config.mcpServers.items():
+                # Add mcp-session-id header for HTTP transports
+                if isinstance(server_config, RemoteMCPServer) and not any(
+                    key.lower() == "mcp-session-id" for key in server_config.headers
+                ):
+                    server_config = server_config.model_copy(deep=True)
+                    server_config.headers["Mcp-Session-Id"] = runtime.session.id
+
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
