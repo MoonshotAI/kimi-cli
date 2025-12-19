@@ -154,7 +154,7 @@ async def list_sessions(app: Shell, args: list[str]):
 
 @registry.command
 async def mcp(app: Shell, args: list[str]):
-    """Show connected MCP servers and their tools"""
+    """Show MCP servers and tools"""
     from kimi_cli.soul.toolset import KimiToolset
 
     soul = _ensure_kimi_soul(app)
@@ -164,33 +164,32 @@ async def mcp(app: Shell, args: list[str]):
         return
 
     servers = toolset.mcp_servers
-    is_loading = toolset._mcp_loading_task and not toolset._mcp_loading_task.done()
 
-    if not servers and not is_loading:
+    if not servers:
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
-    if not servers and is_loading:
-        console.print("[cyan]⏳ MCP servers are connecting...[/cyan]")
-        return
+    lines: list[str] = []
 
-    lines = []
-    if is_loading:
-        lines.append("[cyan]⏳ MCP servers are still connecting...[/cyan]")
-        lines.append("")
-
-    n_conn = sum(1 for s in servers.values() if s.connected)
+    n_conn = sum(1 for s in servers.values() if s.status == "connected")
     n_tools = sum(len(s.tools) for s in servers.values())
-    lines.append(f"[dim]{n_conn}/{len(servers)} servers, {n_tools} tools[/dim]")
+    lines.append(f"{n_conn}/{len(servers)} servers connected, {n_tools} tools loaded")
     lines.append("")
 
+    status_dots = {
+        "connected": "[green]•[/green]",
+        "connecting": "[cyan]•[/cyan]",
+        "pending": "[yellow]•[/yellow]",
+        "failed": "[red]•[/red]",
+    }
     for name, info in servers.items():
-        status = "[green]●[/green]" if info.connected else "[red]●[/red]"
-        lines.append(f"{status} [bold]{name}[/bold]")
+        dot = status_dots.get(info.status, "[red]•[/red]")
+        server_line = f" {dot} {name}"
+        if info.status != "connected":
+            server_line += f" ({info.status})"
+        lines.append(server_line)
         for tool in info.tools:
             lines.append(f"   [dim]• {tool.name}[/dim]")
-        if not info.connected:
-            lines.append("   [red]Connection failed[/red]")
 
     console.print(
         Panel(
