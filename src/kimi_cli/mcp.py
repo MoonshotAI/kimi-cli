@@ -31,6 +31,16 @@ def _save_mcp_config(config: dict[str, Any]) -> None:
     mcp_file.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _get_mcp_server(name: str) -> dict[str, Any]:
+    """Get MCP server config by name, raise typer.Exit if not found."""
+    config = _load_mcp_config()
+    servers = config.get("mcpServers", {})
+    if name not in servers:
+        typer.echo(f"MCP server '{name}' not found.", err=True)
+        raise typer.Exit(code=1)
+    return servers[name]
+
+
 def _parse_key_value_pairs(
     items: list[str], option_name: str, *, separator: str = "=", strip_whitespace: bool = False
 ) -> dict[str, str]:
@@ -53,7 +63,7 @@ def _parse_key_value_pairs(
     return parsed
 
 
-Transport = Literal["stdio", "http"]
+Transport = Literal["stdio", "http", "sse"]
 
 
 @cli.command(
@@ -63,6 +73,9 @@ Transport = Literal["stdio", "http"]
       \n
       # Add streamable HTTP server:\n
       kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n
+      \n
+      # Add SSE server:\n
+      kimi mcp add --transport sse linear https://mcp.linear.app/sse\n
       \n
       # Add stdio server:\n
       kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
@@ -77,7 +90,7 @@ def mcp_add(
         list[str] | None,
         typer.Argument(
             metavar="TARGET_OR_COMMAND...",
-            help=("For http transport: server URL. For stdio: command to run (prefix with `--`)."),
+            help="For http/sse: server URL. For stdio: command to run (prefix with `--`).",
         ),
     ] = None,
     transport: Annotated[
@@ -109,7 +122,7 @@ def mcp_add(
     config = _load_mcp_config()
     server_args = server_args or []
 
-    if transport not in {"stdio", "http"}:
+    if transport not in {"stdio", "http", "sse"}:
         typer.echo(f"Unsupported transport: {transport}.", err=True)
         raise typer.Exit(code=1)
 
@@ -121,7 +134,7 @@ def mcp_add(
             )
             raise typer.Exit(code=1)
         if header:
-            typer.echo("--header is only valid for http transport.", err=True)
+            typer.echo("--header is only valid for http/sse transport.", err=True)
             raise typer.Exit(code=1)
         command, *command_args = server_args
         server_config: dict[str, Any] = {"command": command, "args": command_args}
@@ -132,15 +145,15 @@ def mcp_add(
             typer.echo("--env is only supported for stdio transport.", err=True)
             raise typer.Exit(code=1)
         if not server_args:
-            typer.echo("URL is required for http transport.", err=True)
+            typer.echo(f"URL is required for {transport} transport.", err=True)
             raise typer.Exit(code=1)
         if len(server_args) > 1:
             typer.echo(
-                "Multiple targets provided. Supply a single URL for http transport.",
+                f"Multiple targets provided. Supply a single URL for {transport} transport.",
                 err=True,
             )
             raise typer.Exit(code=1)
-        server_config = {"url": server_args[0], "transport": "http"}
+        server_config = {"url": server_args[0], "transport": transport}
         if header:
             server_config["headers"] = _parse_key_value_pairs(
                 header, "header", separator=":", strip_whitespace=True
@@ -161,12 +174,8 @@ def mcp_remove(
     ],
 ):
     """Remove an MCP server."""
+    _get_mcp_server(name)
     config = _load_mcp_config()
-
-    if "mcpServers" not in config or name not in config["mcpServers"]:
-        typer.echo(f"MCP server '{name}' not found.", err=True)
-        raise typer.Exit(code=1)
-
     del config["mcpServers"][name]
     _save_mcp_config(config)
     typer.echo(f"Removed MCP server '{name}' from {get_global_mcp_config_file()}.")
@@ -199,25 +208,6 @@ def mcp_list():
         typer.echo(f"  {line}")
 
 
-def _get_mcp_server(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Get MCP server config by name.
-
-    Returns:
-        Tuple of (full config, server config).
-
-    Raises:
-        typer.Exit: If server not found.
-    """
-    config = _load_mcp_config()
-    servers: dict[str, Any] = config.get("mcpServers", {})
-
-    if name not in servers:
-        typer.echo(f"MCP server '{name}' not found.", err=True)
-        raise typer.Exit(code=1)
-
-    return config, servers[name]
-
-
 @cli.command("auth")
 def mcp_auth(
     name: Annotated[
@@ -228,15 +218,18 @@ def mcp_auth(
     """Authenticate with an OAuth-enabled MCP server."""
     import asyncio
 
-    _, server = _get_mcp_server(name)
-
+    config = _load_mcp_config()
+    if name not in config.get("mcpServers", {}):
+        typer.echo(f"MCP server '{name}' not found.", err=True)
+        raise typer.Exit(code=1)
+    server = config["mcpServers"][name]
     if "url" not in server:
-        typer.echo(f"MCP server '{name}' is not a remote server (no URL).", err=True)
+        typer.echo(f"MCP server '{name}' is not a remote server.", err=True)
         raise typer.Exit(code=1)
 
     if server.get("auth") != "oauth":
-        typer.echo(f"MCP server '{name}' does not use OAuth authentication.", err=True)
-        raise typer.Exit(code=1)
+        server["auth"] = "oauth"
+        _save_mcp_config(config)
 
     async def _auth() -> None:
         import fastmcp
@@ -245,9 +238,7 @@ def mcp_auth(
         typer.echo(f"Authenticating with '{name}'...")
         typer.echo("A browser window will open for authorization.")
 
-        mcp_config = {"mcpServers": {name: server}}
-        client = fastmcp.Client(mcp_config)
-
+        client = fastmcp.Client({"mcpServers": {name: server}})
         try:
             async with client:
                 tools = await client.list_tools()
@@ -274,23 +265,15 @@ def mcp_reset_auth(
     ],
 ):
     """Reset OAuth authentication for an MCP server (clear cached tokens)."""
-    _, server = _get_mcp_server(name)
-
+    server = _get_mcp_server(name)
     if "url" not in server:
-        typer.echo(f"MCP server '{name}' is not a remote server (no URL).", err=True)
+        typer.echo(f"MCP server '{name}' is not a remote server.", err=True)
         raise typer.Exit(code=1)
 
-    if server.get("auth") != "oauth":
-        typer.echo(f"MCP server '{name}' does not use OAuth authentication.", err=True)
-        raise typer.Exit(code=1)
-
-    url = server["url"]
-
-    # Clear OAuth tokens from fastmcp cache
     try:
         from fastmcp.client.auth.oauth import FileTokenStorage
 
-        storage = FileTokenStorage(server_url=url)
+        storage = FileTokenStorage(server_url=server["url"])
         storage.clear()
         typer.echo(f"OAuth tokens cleared for '{name}'.")
     except ImportError:
@@ -311,7 +294,7 @@ def mcp_test(
     """Test connection to an MCP server and list available tools."""
     import asyncio
 
-    _, server = _get_mcp_server(name)
+    server = _get_mcp_server(name)
 
     async def _test() -> None:
         import fastmcp
@@ -319,8 +302,7 @@ def mcp_test(
 
         typer.echo(f"Testing connection to '{name}'...")
 
-        mcp_config = {"mcpServers": {name: server}}
-        client = fastmcp.Client(mcp_config)
+        client = fastmcp.Client({"mcpServers": {name: server}})
 
         try:
             async with client:
