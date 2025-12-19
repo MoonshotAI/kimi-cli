@@ -27,7 +27,6 @@ from kosong.tooling.error import (
 )
 from kosong.utils.typing import JsonType
 from loguru import logger
-from pydantic import BaseModel
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
@@ -53,7 +52,7 @@ def get_current_tool_call_or_none() -> ToolCall | None:
     return current_tool_call.get()
 
 
-type ToolType = CallableTool | CallableTool2[BaseModel]
+type ToolType = CallableTool | CallableTool2[Any]
 
 
 if TYPE_CHECKING:

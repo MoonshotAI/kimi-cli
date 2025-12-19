@@ -18,12 +18,13 @@ from rich.text import Text
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import MetaCommand, get_meta_command
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
+from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.signals import install_sigint_handler
+from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.term import ensure_new_line
 from kimi_cli.wire.message import StatusUpdate
 
@@ -33,6 +34,16 @@ class Shell:
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        self._available_slash_commands: dict[str, SlashCommand[Any]] = {
+            **{cmd.name: cmd for cmd in soul.available_slash_commands},
+            **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
+        }
+        """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
+
+    @property
+    def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
+        """Get all available slash commands, including shell-level and soul-level commands."""
+        return self._available_slash_commands
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -54,6 +65,7 @@ class Shell:
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
             initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
+            available_slash_commands=list(self._available_slash_commands.values()),
         ) as prompt_session:
             while True:
                 try:
@@ -74,7 +86,7 @@ class Shell:
                 logger.debug("Got user input: {user_input}", user_input=user_input)
 
                 if user_input.command in ["exit", "quit", "/exit", "/quit"]:
-                    logger.debug("Exiting by meta command")
+                    logger.debug("Exiting by slash command")
                     console.print("Bye!")
                     break
 
@@ -82,19 +94,10 @@ class Shell:
                     await self._run_shell_command(user_input.command)
                     continue
 
-                if user_input.command.startswith("/") and (parts := user_input.command[1:].split()):
-                    cmd_name = parts[0]
-                    cmd_args = parts[1:]
-                    if cmd := get_meta_command(cmd_name):
-                        logger.debug("Running meta command: {command}", command=user_input.command)
-                        await self._run_meta_command(cmd, cmd_args)
-                        continue
+                if slash_cmd_call := parse_slash_command_call(user_input.command):
+                    await self._run_slash_command(slash_cmd_call)
+                    continue
 
-                logger.info(
-                    "Running agent command: {command} with thinking {thinking}",
-                    command=user_input.content,
-                    thinking="on" if user_input.thinking else "off",
-                )
                 await self._run_soul_command(user_input.content, user_input.thinking)
 
         return True
@@ -136,34 +139,37 @@ class Shell:
         finally:
             remove_sigint()
 
-    async def _run_meta_command(self, command: MetaCommand, args: list[str]) -> None:
+    async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
         from kimi_cli.cli import Reload
 
-        if command.kimi_soul_only and not isinstance(self.soul, KimiSoul):
-            console.print(f"Meta command /{command.name} not supported")
+        if command_call.name not in self._available_slash_commands:
+            logger.info("Unknown slash command /{command}", command=command_call.name)
+            console.print(
+                f'[red]Unknown slash command "/{command_call.name}", '
+                'type "/" for all available commands[/red]'
+            )
             return
+
+        command = shell_slash_registry.find_command(command_call.name)
+        if command is None:
+            # the input is a soul-level slash command call
+            await self._run_soul_command(command_call.raw_input)
+            return
+
         logger.debug(
-            "Running meta command: {command_name} with args: {command_args}",
-            command_name=command.name,
-            command_args=args,
+            "Running shell-level slash command: /{command} with args: {args}",
+            command=command_call.name,
+            args=command_call.args,
         )
+
         try:
-            ret = command.func(self, args)
+            ret = command.func(self, command_call.args)
             if isinstance(ret, Awaitable):
                 await ret
-        except LLMNotSet:
-            logger.error("LLM not set")
-            console.print("[red]LLM not set, send /setup to configure[/red]")
-        except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            console.print(f"[red]LLM provider error: {e}[/red]")
-        except asyncio.CancelledError:
-            logger.info("Interrupted by user")
-            console.print("[red]Interrupted by user[/red]")
         except Reload:
             # just propagate
             raise
-        except BaseException as e:
+        except Exception as e:
             logger.exception("Unknown error:")
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
@@ -179,6 +185,12 @@ class Shell:
         Returns:
             bool: Whether the run is successful.
         """
+        logger.info(
+            "Running soul with user input: {user_input}, thinking {thinking}",
+            user_input=user_input,
+            thinking=thinking,
+        )
+
         cancel_event = asyncio.Event()
 
         def _handler():
@@ -206,7 +218,7 @@ class Shell:
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
-            console.print("[red]LLM not set, send /setup to configure[/red]")
+            console.print('[red]LLM not set, send "/setup" to configure[/red]')
         except LLMNotSupported as e:
             # actually unsupported input/mode should already be blocked by prompt session
             logger.exception("LLM not supported:")

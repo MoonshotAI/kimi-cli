@@ -12,7 +12,7 @@ AI-assisted PostgreSQL interactive terminal.
 
 ```sh
 cd examples/kimi-psql
-uv sync
+uv sync --reinstall
 
 # Connection URL with password
 uv run main.py --conninfo 'postgresql://user:pass@host/db'
