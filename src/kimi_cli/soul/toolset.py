@@ -185,32 +185,42 @@ class KimiToolset:
                     position="right",
                 )
 
+        async def _connect_server(
+            server_name: str, server_info: MCPServerInfo
+        ) -> tuple[str, Exception | None]:
+            if server_info.status != "pending":
+                return server_name, None
+
+            server_info.status = "connecting"
+            try:
+                async with server_info.client as client:
+                    for tool in await client.list_tools():
+                        server_info.tools.append(MCPTool(tool, client, runtime=runtime))
+
+                for tool in server_info.tools:
+                    self.add(tool)
+
+                server_info.status = "connected"
+                logger.info("Connected MCP server: {server_name}", server_name=server_name)
+                return server_name, None
+            except Exception as e:
+                logger.error(
+                    "Failed to connect MCP server: {server_name}, error: {error}",
+                    server_name=server_name,
+                    error=e,
+                )
+                server_info.status = "failed"
+                return server_name, e
+
         async def _connect():
             _toast_mcp("connecting to mcp servers...")
-            failed_servers: dict[str, Exception] = {}
-
-            for server_name, server_info in self._mcp_servers.items():
-                if server_info.status != "pending":
-                    continue
-
-                server_info.status = "connecting"
-                try:
-                    async with server_info.client as client:
-                        tools: list[MCPTool[Any]] = []
-                        for tool in await client.list_tools():
-                            mcp_tool = MCPTool(tool, client, runtime=runtime)
-                            self.add(mcp_tool)
-                            tools.append(mcp_tool)
-                        server_info.tools = tools
-                        server_info.status = "connected"
-                except Exception as e:
-                    logger.error(
-                        "Failed to connect MCP server: {server_name}, error: {error}",
-                        server_name=server_name,
-                        error=e,
-                    )
-                    failed_servers[server_name] = e
-                    server_info.status = "failed"
+            tasks = [
+                asyncio.create_task(_connect_server(server_name, server_info))
+                for server_name, server_info in self._mcp_servers.items()
+                if server_info.status == "pending"
+            ]
+            results = await asyncio.gather(*tasks) if tasks else []
+            failed_servers = {name: error for name, error in results if error is not None}
 
             for mcp_config in mcp_configs:
                 # Skip empty MCP configs (no servers defined)
