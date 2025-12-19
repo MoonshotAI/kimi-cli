@@ -7,7 +7,12 @@ from typing import Any
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
+from kimi_cli.utils.slashcmd import (
+    SlashCommand,
+    SlashCommandCall,
+    SlashCommandRegistry,
+    parse_slash_command_call,
+)
 
 
 def check_slash_commands(registry: SlashCommandRegistry[Any], snapshot: Any):
@@ -30,6 +35,60 @@ def check_slash_commands(registry: SlashCommandRegistry[Any], snapshot: Any):
         sort_keys=True,
     )
     assert pretty_commands == snapshot
+
+
+def test_parse_slash_command_call():
+    """Test parsing slash command calls, focusing on edge cases."""
+
+    # Regular cases should work
+    result = parse_slash_command_call("/help")
+    assert result == snapshot(SlashCommandCall(name="help", args=[], raw_input="/help"))
+
+    result = parse_slash_command_call("/search query")
+    assert result == snapshot(
+        SlashCommandCall(name="search", args=["query"], raw_input="/search query")
+    )
+
+    # Edge cases: double slash
+    assert parse_slash_command_call("//comment") is None
+    assert parse_slash_command_call("//") is None
+
+    # Edge cases: /* and # comments
+    assert parse_slash_command_call("/* comment */") is None
+    assert parse_slash_command_call("# comment") is None
+    assert parse_slash_command_call("#!/bin/bash") is None
+
+    # Edge cases: Chinese characters in args (should work)
+    result = parse_slash_command_call("/echo 你好世界")
+    assert result == snapshot(
+        SlashCommandCall(name="echo", args=["你好世界"], raw_input="/echo 你好世界")
+    )
+
+    result = parse_slash_command_call("/search 中文查询 english query")
+    assert result == snapshot(
+        SlashCommandCall(
+            name="search",
+            args=["中文查询", "english", "query"],
+            raw_input="/search 中文查询 english query",
+        )
+    )
+
+    # Chinese characters in command name should fail (regex only allows a-zA-Z0-9_-)
+    assert parse_slash_command_call("/测试命令 参数") is None
+    assert parse_slash_command_call("/命令") is None
+
+    # Invalid cases should return None
+    assert parse_slash_command_call("") is None
+    assert parse_slash_command_call("help") is None
+    assert parse_slash_command_call("/") is None
+    assert parse_slash_command_call("/.invalid") is None
+
+    # Malformed input with quotes
+    result = parse_slash_command_call('/cmd "unmatched quote')
+    assert result is None
+
+    result = parse_slash_command_call("/cmd '")
+    assert result is None
 
 
 @pytest.fixture
