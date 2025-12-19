@@ -1,4 +1,4 @@
-"""Tests for meta command functionality using inline-snapshot."""
+"""Tests for slash command functionality using inline-snapshot."""
 
 from __future__ import annotations
 
@@ -7,82 +7,81 @@ from typing import Any
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.ui.shell.metacmd import _meta_command_aliases, _meta_commands, meta_command
+from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 
-def check_meta_commands(snapshot: Any):
-    """Usage: check_meta_commands(snapshot()), then `uv run pytest` will update the snapshot."""
-
+def check_slash_commands(registry: SlashCommandRegistry[Any], snapshot: Any):
+    """Check slash commands match snapshot."""
     import json
 
-    pretty_meta_commands = json.dumps(
+    # Use the public list_commands() API and build the alias mapping
+    alias_to_cmd: dict[str, SlashCommand[Any]] = {}
+    for cmd in registry.list_commands():
+        alias_to_cmd[cmd.name] = cmd
+        for alias in cmd.aliases:
+            alias_to_cmd[alias] = cmd
+
+    pretty_commands = json.dumps(
         {
             alias: f"{cmd.slash_name()}: {cmd.description}"
-            for (alias, cmd) in _meta_command_aliases.items()
+            for (alias, cmd) in sorted(alias_to_cmd.items())
         },
         indent=2,
         sort_keys=True,
     )
-    assert pretty_meta_commands == snapshot
+    assert pretty_commands == snapshot
 
 
-@pytest.fixture(autouse=True)
-def clear_meta_commands():
-    """Clear meta commands before and after each test."""
-    original = _meta_commands.copy()
-    original_aliases = _meta_command_aliases.copy()
-    _meta_commands.clear()
-    _meta_command_aliases.clear()
-    yield
-    _meta_commands.clear()
-    _meta_commands.update(original)
-    _meta_command_aliases.clear()
-    _meta_command_aliases.update(original_aliases)
+@pytest.fixture
+def test_registry() -> SlashCommandRegistry[Any]:
+    """Create a clean test registry for each test."""
+    return SlashCommandRegistry()
 
 
-def test_meta_command_registration():
-    """Test all meta command registration scenarios."""
+def test_slash_command_registration(test_registry: SlashCommandRegistry[Any]) -> None:
+    """Test all slash command registration scenarios."""
 
     # Basic registration
-    @meta_command
-    def basic(app, args):
+    @test_registry.command  # noqa: F811
+    def basic(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """Basic command."""
         pass
 
     # Custom name, original name should be ignored
-    @meta_command(name="run")
-    def start(app, args):
+    @test_registry.command(name="run")  # noqa: F811
+    def start(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """Run something."""
         pass
 
     # Aliases only, original name should be kept
-    @meta_command(aliases=["h", "?"])
-    def help(app, args):
+    @test_registry.command(aliases=["h", "?"])  # noqa: F811
+    def help(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """Show help."""
         pass
 
     # Custom name with aliases
-    @meta_command(name="search", aliases=["s", "find"])
-    def query(app, args):
+    @test_registry.command(name="search", aliases=["s", "find"])  # noqa: F811
+    def query(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """Search items."""
         pass
 
     # Edge cases: no doc, whitespace doc, duplicate aliases
-    @meta_command
-    def no_doc(app, args):
+    @test_registry.command  # noqa: F811
+    def no_doc(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         pass
 
-    @meta_command
-    def whitespace_doc(app, args):
+    @test_registry.command  # noqa: F811
+    def whitespace_doc(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """\n\t"""
         pass
 
-    @meta_command(aliases=["dup", "dup"])
-    def dedup_test(app, args):
+    @test_registry.command(aliases=["dup", "dup"])  # noqa: F811
+    def dedup_test(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """Test deduplication."""
         pass
 
-    check_meta_commands(
+    check_slash_commands(
+        test_registry,
         snapshot("""\
 {
   "?": "/help (h, ?): Show help.",
@@ -98,35 +97,37 @@ def test_meta_command_registration():
   "search": "/search (s, find): Search items.",
   "whitespace_doc": "/whitespace_doc: "
 }\
-""")
+"""),
     )
 
 
-def test_meta_command_overwriting():
+def test_slash_command_overwriting(test_registry: SlashCommandRegistry[Any]) -> None:
     """Test command overwriting behavior."""
 
-    @meta_command
-    def test_cmd(app, args):
+    @test_registry.command  # noqa: F811
+    def test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """First version."""
         pass
 
-    check_meta_commands(
+    check_slash_commands(
+        test_registry,
         snapshot("""\
 {
   "test_cmd": "/test_cmd: First version."
 }\
-""")
+"""),
     )
 
-    @meta_command(name="test_cmd")
-    def _test_cmd(app, args):  # Same name, different function
+    @test_registry.command(name="test_cmd")  # noqa: F811
+    def _test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
         """Second version."""
         pass
 
-    check_meta_commands(
+    check_slash_commands(
+        test_registry,
         snapshot("""\
 {
   "test_cmd": "/test_cmd: Second version."
 }\
-""")
+"""),
     )
