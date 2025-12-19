@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.66] - 2025-12-19
 
 - Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
 - Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
