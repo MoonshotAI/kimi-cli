@@ -60,9 +60,13 @@ Operate on the user's computer carefully:
 - When working on images, videos, PDFs, docs, spreadsheets, presentations, or other multimedia files, you may need to use proper shell commands or Python tools to process them. Detect if there are already such tools in the environment. If you have to install them, you MUST ensure that any third-party packages are installed in a virtual environment.
 - Avoid installing or deleting anything to/from outside of the current working directory. If you have to do so, ask the user for confirmation.
 
-When using Python:
+When using Python to process these multimedia files, follow these guidelines:
 
-- PREFER using only built-in modules.
+- PREFER using only built-in modules. When the script to run only involves built-in modules, you can run it directly with `python` or `python3`. For example:
+  ```
+  python3 <script>  # run scripts with the system Python interpreter
+  python3 -c "<code>"  # run code snippets with the system Python interpreter
+  ```
 - If third-party packages are required, PREFER using `uv` (a Python project management tool). For example:
   ```
   uv venv  # create a new virtual environment at `./.venv`
