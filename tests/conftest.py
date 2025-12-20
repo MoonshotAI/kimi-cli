@@ -65,16 +65,16 @@ def llm() -> LLM:
 @pytest.fixture
 def temp_work_dir() -> Generator[KaosPath]:
     """Create a temporary working directory for tests."""
-    token = set_current_kaos(LocalKaos())
-    original_cwd = Path.cwd()
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            p = Path(tmpdir).resolve()
-            os.chdir(p)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_cwd = Path.cwd()
+        p = Path(tmpdir).resolve()
+        os.chdir(p)
+        token = set_current_kaos(LocalKaos())
+        try:
             yield KaosPath.unsafe_from_local_path(p)
-    finally:
-        os.chdir(original_cwd)
-        reset_current_kaos(token)
+        finally:
+            reset_current_kaos(token)
+            os.chdir(original_cwd)
 
 
 @pytest.fixture
