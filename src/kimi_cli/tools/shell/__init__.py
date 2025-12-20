@@ -48,6 +48,9 @@ class Shell(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder()
 
+        if not params.command:
+            return builder.error("Command cannot be empty.", brief="Empty command")
+
         if not await self._approval.request(
             self.name,
             "run shell command",
