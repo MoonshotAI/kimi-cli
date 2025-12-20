@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc, truncate_line
+from kimi_cli.utils.path import is_within_directory
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
@@ -14,7 +15,12 @@ MAX_BYTES = 100 << 10  # 100KB
 
 
 class Params(BaseModel):
-    path: str = Field(description="The absolute path to the file to read")
+    path: str = Field(
+        description=(
+            "The path to the file to read. Absolute paths are required when reading files "
+            "outside the working directory."
+        )
+    )
     line_offset: int = Field(
         description=(
             "The line number to start reading from. "
@@ -51,6 +57,23 @@ class ReadFile(CallableTool2[Params]):
         super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
+    async def _validate_path(self, path: KaosPath) -> ToolError | None:
+        """Validate that the path is safe to read."""
+        # Check for path traversal attempts
+        resolved_path = path.canonical()
+
+        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+            # Outside files can only be read with absolute paths
+            return ToolError(
+                message=(
+                    f"`{path}` is not an absolute path. "
+                    "You must provide an absolute path to read a file "
+                    "outside the working directory."
+                ),
+                brief="Invalid path",
+            )
+        return None
+
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
         # TODO: checks:
@@ -62,28 +85,11 @@ class ReadFile(CallableTool2[Params]):
                 brief="Empty file path",
             )
 
-        if not file_seems_readable(params.path):
-            return ToolError(
-                message=(
-                    f"`{params.path}` seems not readable. "
-                    "You may need to read it with proper shell commands or Python tools/scripts. "
-                    "If you read/operate it with Python, you MUST ensure that any "
-                    "third-party packages are installed in a virtual environment (venv)."
-                ),
-                brief="File not readable",
-            )
-
         try:
             p = KaosPath(params.path)
 
-            if not p.is_absolute():
-                return ToolError(
-                    message=(
-                        f"`{params.path}` is not an absolute path. "
-                        "You must provide an absolute path to read a file."
-                    ),
-                    brief="Invalid path",
-                )
+            if err := await self._validate_path(p):
+                return err
 
             if not await p.exists():
                 return ToolError(
@@ -94,6 +100,18 @@ class ReadFile(CallableTool2[Params]):
                 return ToolError(
                     message=f"`{params.path}` is not a file.",
                     brief="Invalid path",
+                )
+
+            if not file_seems_readable(p):
+                return ToolError(
+                    message=(
+                        f"`{params.path}` seems not readable. "
+                        "You may need to read it with proper shell commands, Python tools "
+                        "or MCP tools if available. "
+                        "If you read/operate it with Python, you MUST ensure that any "
+                        "third-party packages are installed in a virtual environment (venv)."
+                    ),
+                    brief="File not readable",
                 )
 
             assert params.line_offset >= 1
@@ -265,9 +283,7 @@ _NON_TEXT_SUFFIXES = {
 }
 
 
-def file_seems_readable(path: str) -> bool:
+def file_seems_readable(path: KaosPath) -> bool:
     """Guess whether the file is readable."""
-    if not path:
-        return False
-    suffix = PurePath(path).suffix
+    suffix = PurePath(str(path)).suffix
     return suffix.lower() not in _NON_TEXT_SUFFIXES
