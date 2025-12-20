@@ -62,9 +62,14 @@ class ReadFile(CallableTool2[Params]):
                 brief="Empty file path",
             )
 
-        if not file_is_readable(params.path):
+        if not file_seems_readable(params.path):
             return ToolError(
-                message=f"`{params.path}` seems not readable.",
+                message=(
+                    f"`{params.path}` seems not readable. "
+                    "You may need to read it with proper shell commands or Python tools/scripts. "
+                    "If you read/operate it with Python, you MUST ensure that any "
+                    "third-party packages are installed in a virtual environment (venv)."
+                ),
                 brief="File not readable",
             )
 
@@ -260,7 +265,7 @@ _NON_TEXT_SUFFIXES = {
 }
 
 
-def file_is_readable(path: str) -> bool:
+def file_seems_readable(path: str) -> bool:
     """Guess whether the file is readable."""
     if not path:
         return False

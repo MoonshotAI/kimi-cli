@@ -1,8 +1,7 @@
 import asyncio
-import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, NamedTuple, override
+from typing import override
 
 import kaos
 from kaos import AsyncReadable
@@ -75,14 +74,6 @@ class Shell(CallableTool2[Params]):
             if exitcode == 0:
                 return builder.ok("Command executed successfully.")
             else:
-                msg = f"Command failed with exit code: {exitcode}."
-                well_known = identify_well_known_command(params.command)
-                if well_known and well_known.command == "python" and not well_known.isolated:
-                    msg += (
-                        " If you are trying to install third-party Python packages, "
-                        "you probably want to create a venv first. "
-                        "If already in venv, ignore this message."
-                    )
                 return builder.error(
                     f"Command failed with exit code: {exitcode}.",
                     brief=f"Failed with exit code: {exitcode}",
@@ -127,19 +118,3 @@ class Shell(CallableTool2[Params]):
         if self._is_powershell:
             return (str(self._shell_path), "-command", command)
         return (str(self._shell_path), "-c", command)
-
-
-class WellKnownCommand(NamedTuple):
-    command: Literal["python"]
-    isolated: bool
-
-
-def identify_well_known_command(command: str) -> WellKnownCommand | None:
-    if not command:
-        return None
-
-    first, _ = command.strip().split(maxsplit=1)
-    if re.match(r"python(3(\.\d+)?)?(\.exe)?", first):
-        return WellKnownCommand(command="python", isolated=False)
-
-    return None

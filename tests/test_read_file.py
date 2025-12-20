@@ -12,7 +12,7 @@ from kimi_cli.tools.file.read import (
     MAX_LINES,
     Params,
     ReadFile,
-    file_is_readable,
+    file_seems_readable,
 )
 
 
@@ -30,13 +30,13 @@ Line 5: End of file"""
 
 
 def test_file_is_readable_respects_suffixes():
-    assert not file_is_readable("")
-    assert not file_is_readable("image.PNG")
-    assert not file_is_readable("archive.tar.gz")
-    assert not file_is_readable("my file.pdf")
-    assert file_is_readable("notes.txt")
-    assert file_is_readable("Makefile")
-    assert file_is_readable(".env")
+    assert not file_seems_readable("")
+    assert not file_seems_readable("image.PNG")
+    assert not file_seems_readable("archive.tar.gz")
+    assert not file_seems_readable("my file.pdf")
+    assert file_seems_readable("notes.txt")
+    assert file_seems_readable("Makefile")
+    assert file_seems_readable(".env")
 
 
 @pytest.mark.asyncio
