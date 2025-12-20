@@ -42,7 +42,7 @@ def ensure_tty_sane() -> None:
         return
 
     desired = termios.ISIG | termios.IEXTEN | termios.ICANON | termios.ECHO
-    if attrs[3] & desired == desired:
+    if (attrs[3] & desired) == desired:
         return
 
     attrs[3] |= desired
