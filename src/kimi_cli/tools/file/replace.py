@@ -91,14 +91,6 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                FileActions.EDIT,
-                f"Edit file `{params.path}`",
-            ):
-                return ToolRejectedError()
-
             # Read the file content
             content = await p.read_text(errors="replace")
 
@@ -115,6 +107,26 @@ class StrReplaceFile(CallableTool2[Params]):
                     message="No replacements were made. The old string was not found in the file.",
                     brief="No replacements made",
                 )
+
+            diff_blocks = [
+                DisplayBlock(
+                    type="diff",
+                    data={
+                        "path": params.path,
+                        "old_text": original_content,
+                        "new_text": content,
+                    },
+                )
+            ]
+
+            # Request approval
+            if not await self._approval.request(
+                self.name,
+                FileActions.EDIT,
+                f"Edit file `{params.path}`",
+                display=diff_blocks,
+            ):
+                return ToolRejectedError()
 
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
@@ -134,16 +146,7 @@ class StrReplaceFile(CallableTool2[Params]):
                     f"File successfully edited. "
                     f"Applied {len(edits)} edit(s) with {total_replacements} total replacement(s)."
                 ),
-                display=[
-                    DisplayBlock(
-                        type="diff",
-                        data={
-                            "path": params.path,
-                            "old_text": original_content,
-                            "new_text": content,
-                        },
-                    )
-                ],
+                display=diff_blocks,
             )
 
         except Exception as e:

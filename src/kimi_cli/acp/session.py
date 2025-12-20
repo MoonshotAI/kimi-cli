@@ -11,7 +11,11 @@ from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolResult
 
-from kimi_cli.acp.convert import acp_blocks_to_content_parts, tool_result_to_acp_content
+from kimi_cli.acp.convert import (
+    acp_blocks_to_content_parts,
+    display_block_to_acp_content,
+    tool_result_to_acp_content,
+)
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
@@ -284,6 +288,27 @@ class ACPSession:
             return
 
         try:
+            content: list[
+                acp.schema.ContentToolCallContent
+                | acp.schema.FileEditToolCallContent
+                | acp.schema.TerminalToolCallContent
+            ] = []
+            if request.display:
+                for block in request.display:
+                    diff_content = display_block_to_acp_content(block)
+                    if diff_content is not None:
+                        content.append(diff_content)
+            if not content:
+                content.append(
+                    acp.schema.ContentToolCallContent(
+                        type="content",
+                        content=acp.schema.TextContentBlock(
+                            type="text",
+                            text=f"Requesting approval to perform: {request.description}",
+                        ),
+                    )
+                )
+
             # Send permission request and wait for response
             logger.debug("Requesting permission for action: {action}", action=request.action)
             response = await self._conn.request_permission(
@@ -308,15 +333,7 @@ class ACPSession:
                 acp.schema.ToolCallUpdate(
                     tool_call_id=state.acp_tool_call_id,
                     title=state.get_title(),
-                    content=[
-                        acp.schema.ContentToolCallContent(
-                            type="content",
-                            content=acp.schema.TextContentBlock(
-                                type="text",
-                                text=f"Requesting approval to perform: {request.description}",
-                            ),
-                        ),
-                    ],
+                    content=content,
                 ),
             )
             logger.debug("Received permission response: {response}", response=response)

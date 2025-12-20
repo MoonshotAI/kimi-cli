@@ -89,27 +89,40 @@ class WriteFile(CallableTool2[Params]):
                     brief="Invalid write mode",
                 )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                FileActions.EDIT,
-                f"Write file `{params.path}`",
-            ):
-                return ToolRejectedError()
-
             file_existed = await p.exists()
             old_text = None
             if file_existed:
                 old_text = await p.read_text(errors="replace")
 
+            new_text = (
+                params.content if params.mode == "overwrite" else (old_text or "") + params.content
+            )
+            diff_blocks = [
+                DisplayBlock(
+                    type="diff",
+                    data={
+                        "path": params.path,
+                        "old_text": old_text if file_existed else None,
+                        "new_text": new_text,
+                    },
+                )
+            ]
+
+            # Request approval
+            if not await self._approval.request(
+                self.name,
+                FileActions.EDIT,
+                f"Write file `{params.path}`",
+                display=diff_blocks,
+            ):
+                return ToolRejectedError()
+
             # Write content to file
             match params.mode:
                 case "overwrite":
                     await p.write_text(params.content)
-                    new_text = params.content
                 case "append":
                     await p.append_text(params.content)
-                    new_text = (old_text or "") + params.content
 
             # Get file info for success message
             file_size = (await p.stat()).st_size
@@ -118,16 +131,7 @@ class WriteFile(CallableTool2[Params]):
                 is_error=False,
                 output="",
                 message=(f"File successfully {action}. Current size: {file_size} bytes."),
-                display=[
-                    DisplayBlock(
-                        type="diff",
-                        data={
-                            "path": params.path,
-                            "old_text": old_text if file_existed else None,
-                            "new_text": new_text,
-                        },
-                    )
-                ],
+                display=diff_blocks,
             )
 
         except Exception as e:
