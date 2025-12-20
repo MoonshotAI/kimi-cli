@@ -316,6 +316,7 @@ class MCPTool[T: ClientTransport](CallableTool):
                 )
                 return convert_mcp_tool_result(result)
         except Exception as e:
+            # fastmcp raises `RuntimeError` on timeout and we cannot tell it from other errors
             exc_msg = str(e).lower()
             if "timeout" in exc_msg or "timed out" in exc_msg:
                 return ToolError(
@@ -325,7 +326,7 @@ class MCPTool[T: ClientTransport](CallableTool):
                     ),
                     brief="Timeout",
                 )
-            raise e
+            raise
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
