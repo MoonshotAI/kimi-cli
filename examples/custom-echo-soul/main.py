@@ -1,10 +1,12 @@
 import asyncio
+from typing import Any
 
 from kosong.message import ContentPart, TextPart
 
 from kimi_cli.llm import ALL_MODEL_CAPABILITIES, ModelCapability
 from kimi_cli.soul import StatusSnapshot, wire_send
 from kimi_cli.ui.shell import Shell
+from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.wire.message import StepBegin
 
 
@@ -27,6 +29,10 @@ class EchoSoul:
     @property
     def status(self) -> StatusSnapshot:
         return StatusSnapshot(context_usage=0.0)
+
+    @property
+    def available_slash_commands(self) -> list[SlashCommand[Any]]:
+        return []
 
     async def run(self, user_input: str | list[ContentPart]) -> None:
         wire_send(StepBegin(n=1))

@@ -17,7 +17,9 @@ type ProviderType = Literal[
     "openai_legacy",
     "openai_responses",
     "anthropic",
-    "google_genai",
+    "google_genai",  # for backward-compatibility, equals to `gemini`
+    "gemini",
+    "vertexai",
     "_chaos",
 ]
 
@@ -30,6 +32,8 @@ class LLM:
     chat_provider: ChatProvider
     max_context_size: int
     capabilities: set[ModelCapability]
+    model_config: LLMModel | None = None
+    provider_config: LLMProvider | None = None
 
     @property
     def model_name(self) -> str:
@@ -123,13 +127,23 @@ def create_llm(
                 api_key=provider.api_key.get_secret_value(),
                 default_max_tokens=50000,
             )
-        case "google_genai":
+        case "google_genai" | "gemini":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
 
             chat_provider = GoogleGenAI(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
+            )
+        case "vertexai":
+            from kosong.contrib.chat_provider.google_genai import GoogleGenAI
+
+            os.environ.update(provider.env or {})
+            chat_provider = GoogleGenAI(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                vertexai=True,
             )
         case "_chaos":
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
@@ -155,6 +169,8 @@ def create_llm(
         chat_provider=chat_provider,
         max_context_size=model.max_context_size,
         capabilities=_derive_capabilities(provider, model),
+        model_config=model,
+        provider_config=provider,
     )
 
 

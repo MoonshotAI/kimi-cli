@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 from inline_snapshot import snapshot
-from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.file.grep_local import Grep, Params
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
@@ -65,7 +64,7 @@ async def test_grep_files_with_matches(grep_tool: Grep, temp_test_files):
     result = await grep_tool(
         Params(pattern="Hello", path=temp_dir, output_mode="files_with_matches")
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should find all test files that contain "hello" (case insensitive)
@@ -90,7 +89,7 @@ async def test_grep_content_mode(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should show matching lines with line numbers
@@ -113,7 +112,7 @@ async def test_grep_case_insensitive(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should find files with "hello" (lowercase)
@@ -136,7 +135,7 @@ async def test_grep_with_context(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should show context lines
@@ -159,7 +158,7 @@ async def test_grep_count_matches(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should show count for each file
@@ -183,7 +182,7 @@ async def test_grep_with_glob_pattern(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should only find Python files
@@ -209,7 +208,7 @@ async def test_grep_with_type_filter(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should only find Python files
@@ -235,7 +234,7 @@ async def test_grep_head_limit(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
 
     # Should limit results to 2 files
@@ -266,7 +265,7 @@ async def test_grep_output_truncation(grep_tool: Grep):
             )
         )
 
-        assert isinstance(result, ToolOk)
+        assert not result.is_error
         assert isinstance(result.output, str)
         assert result.message == snapshot("Output is truncated to fit in the message.")
         assert len(result.output) < DEFAULT_MAX_CHARS + 100
@@ -296,7 +295,7 @@ async def test_grep_multiline_mode(grep_tool: Grep):
                 multiline=True,
             )
         )
-        assert isinstance(result, ToolOk)
+        assert not result.is_error
         assert isinstance(result.output, str)
 
         # Should find the multiline pattern
@@ -314,7 +313,7 @@ async def test_grep_no_matches(grep_tool: Grep):
         result = await grep_tool(
             Params(pattern="nonexistent_pattern", path=temp_dir, output_mode="files_with_matches")
         )
-        assert isinstance(result, ToolOk)
+        assert not result.is_error
         assert result.output == ""
         assert "No matches found" in result.message
 
@@ -324,7 +323,7 @@ async def test_grep_invalid_pattern(grep_tool: Grep):
     """Test with invalid regex pattern."""
     result = await grep_tool(Params(pattern="[invalid", path=".", output_mode="files_with_matches"))
     # Should handle the error gracefully
-    assert isinstance(result, (ToolOk, ToolError))  # Either way should not crash
+    assert isinstance(result.output, str)  # Should have output either way
 
 
 @pytest.mark.asyncio
@@ -344,7 +343,7 @@ async def test_grep_single_file(grep_tool: Grep):
                 }
             )
         )
-        assert isinstance(result, ToolOk)
+        assert not result.is_error
         assert isinstance(result.output, str)
 
         assert "hello" in result.output
@@ -370,7 +369,7 @@ async def test_grep_before_after_context(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "TestClass" in result.output
     assert "}" in result.output
@@ -389,7 +388,7 @@ async def test_grep_before_after_context(grep_tool: Grep, temp_test_files):
             }
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "TestClass" in result.output
     assert "constructor()" in result.output

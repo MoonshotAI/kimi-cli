@@ -167,7 +167,7 @@ class WireOverStdio:
                 msg.params.user_input,
                 self._stream_wire_messages,
                 self._cancel_event,
-                self._soul.wire_file_backend if isinstance(self._soul, KimiSoul) else None,
+                self._soul.wire_file if isinstance(self._soul, KimiSoul) else None,
             )
             return JSONRPCSuccessResponse(
                 id=msg.id,

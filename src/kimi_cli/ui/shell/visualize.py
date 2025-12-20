@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
-from kosong.message import ContentPart, ImageURLPart, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnValue
 from rich.console import Group, RenderableType
 from rich.live import Live
@@ -181,7 +181,7 @@ class _ToolCallBlock:
                         f"Used [blue]{sub_call.function.name}[/blue]"
                         + (f" [grey50]({argument})[/grey50]" if argument else "")
                     ),
-                    bullet_style="green" if isinstance(sub_result, ToolOk) else "red",
+                    bullet_style="green" if not sub_result.is_error else "red",
                 )
             )
 
@@ -189,14 +189,15 @@ class _ToolCallBlock:
             lines.append(
                 Markdown(
                     self._result.brief,
-                    style="grey50" if isinstance(self._result, ToolOk) else "red",
+                    style="grey50" if not self._result.is_error else "red",
                 )
             )
 
         if self.finished:
+            assert self._result is not None
             return BulletColumns(
                 Group(*lines),
-                bullet_style="green" if isinstance(self._result, ToolOk) else "red",
+                bullet_style="green" if not self._result.is_error else "red",
             )
         else:
             return BulletColumns(
@@ -382,7 +383,7 @@ class _LiveView:
 
         match msg:
             case TurnBegin():
-                self.repeat_user_input(msg.user_input)
+                pass
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
@@ -487,26 +488,6 @@ class _LiveView:
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
-
-    def repeat_user_input(self, user_input: str | list[ContentPart]) -> None:
-        # TODO: the conversion may need to be moved to somewhere proper
-        if isinstance(user_input, str):
-            text = user_input
-        else:
-            parts: list[str] = []
-            for part in user_input:
-                match part:
-                    case TextPart(text=text):
-                        parts.append(text)
-                    case ThinkPart():
-                        pass
-                    case ImageURLPart(image_url=image_url):
-                        placeholder = f"[Image,{image_url.id}]" if image_url.id else "[Image]"
-                        parts.append(placeholder)
-                    case _:
-                        parts.append(f"[{part.__class__.__name__}]")
-            text = "".join(parts)
-        console.print(Panel(Text(text)))
 
     def append_content(self, part: ContentPart) -> None:
         match part:

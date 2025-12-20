@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 from inline_snapshot import snapshot
-from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.multiagent.create import CreateSubagent, Params
 
@@ -16,7 +15,7 @@ async def test_create_subagent(create_subagent_tool: CreateSubagent):
             system_prompt="You are a test agent.",
         )
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("Available subagents: mocker, test_agent")
     assert result.message == snapshot("Subagent 'test_agent' created successfully.")
     assert "test_agent" in create_subagent_tool._runtime.labor_market.subagents
@@ -41,7 +40,7 @@ async def test_create_existing_subagent(create_subagent_tool: CreateSubagent):
             system_prompt="You are an existing agent.",
         )
     )
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert result.message == snapshot("Subagent with name 'existing_agent' already exists.")
     assert result.brief == snapshot("Subagent already exists")
     assert "existing_agent" in create_subagent_tool._runtime.labor_market.subagents

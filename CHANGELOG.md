@@ -9,6 +9,46 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
+
+## [0.66] - 2025-12-19
+
+- Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
+- Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
+- Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
+- Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
+- Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
+- Lib: Make the detailed Kimi CLI exception classes extend `ValueError` or `RuntimeError`
+- Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
+- Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
+- LLM: Add provider type `vertexai` to support Vertex AI
+- LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
+- Config: Migrate config file from JSON to TOML
+- MCP: Connect to MCP servers in background and parallel to reduce startup time
+- MCP: Add `mcp-session-id` HTTP header when connecting to MCP servers
+- Lib: Split slash commands (prev "meta commands") into two groups: Shell-level and KimiSoul-level
+- Lib: Add `available_slash_commands` property to `Soul` protocol
+- ACP: Advertise slash commands `/init`, `/compact` and `/yolo` to ACP clients
+- SlashCmd: Add `/mcp` slash command to display MCP server and tool status
+
+## [0.65] - 2025-12-16
+
+- Lib: Support creating named sessions via `Session.create(work_dir, session_id)`
+- CLI: Automatically create new session when specified session ID is not found
+- CLI: Delete empty sessions on exit and ignore sessions whose context file is empty when listing
+- UI: Improve session replaying
+- Lib: Add `model_config: LLMModel | None` and `provider_config: LLMProvider | None` properties to `LLM` class
+- MetaCmd: Add `/usage` meta command to show API usage for Kimi for Coding users
+
+## [0.64] - 2025-12-15
+
+- UI: Fix UTF-16 surrogate characters input on Windows
+- Core: Add `/sessions` meta command to list existing sessions and switch to a selected one
+- CLI: Add `--session/-S` option to specify session ID to resume
+- MCP: Add `kimi mcp` subcommand group to manage global MCP config file `~/.kimi/mcp.json`
+
 ## [0.63] - 2025-12-12
 
 - Tool: Fix `FetchURL` tool incorrect output when fetching via service fails

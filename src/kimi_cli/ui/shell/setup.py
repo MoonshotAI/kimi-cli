@@ -17,7 +17,7 @@ from kimi_cli.config import (
     save_config,
 )
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import meta_command
+from kimi_cli.ui.shell.slash import registry
 from kimi_cli.utils.aiohttp import new_client_session
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class _Platform(NamedTuple):
 _PLATFORMS = [
     _Platform(
         id="kimi-for-coding",
-        name="Kimi For Coding",
+        name="Kimi for Coding",
         base_url="https://api.kimi.com/coding/v1",
         search_url="https://api.kimi.com/coding/v1/search",
         fetch_url="https://api.kimi.com/coding/v1/fetch",
@@ -56,7 +56,7 @@ _PLATFORMS = [
 ]
 
 
-@meta_command
+@registry.command
 async def setup(app: Shell, args: list[str]):
     """Setup Kimi CLI"""
     result = await _setup()
@@ -201,7 +201,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
         return None
 
 
-@meta_command
+@registry.command
 def reload(app: Shell, args: list[str]):
     """Reload configuration"""
     from kimi_cli.cli import Reload

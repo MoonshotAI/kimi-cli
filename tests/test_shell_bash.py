@@ -7,7 +7,6 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
-from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.shell import Params, Shell
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
@@ -21,7 +20,7 @@ pytestmark = pytest.mark.skipif(
 async def test_simple_command(shell_tool: Shell):
     """Test executing a simple command."""
     result = await shell_tool(Params(command="echo 'Hello World'"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("Hello World\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -30,7 +29,7 @@ async def test_simple_command(shell_tool: Shell):
 async def test_command_with_error(shell_tool: Shell):
     """Test executing a command that returns an error."""
     result = await shell_tool(Params(command="ls /nonexistent/directory"))
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert isinstance(result.output, str)
     assert "No such file or directory" in result.output
     assert "Command failed with exit code:" in result.message
@@ -41,7 +40,7 @@ async def test_command_with_error(shell_tool: Shell):
 async def test_command_chaining(shell_tool: Shell):
     """Test command chaining with &&."""
     result = await shell_tool(Params(command="echo 'First' && echo 'Second'"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("""\
 First
 Second
@@ -53,7 +52,7 @@ Second
 async def test_command_sequential(shell_tool: Shell):
     """Test sequential command execution with ;."""
     result = await shell_tool(Params(command="echo 'One'; echo 'Two'"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("""\
 One
 Two
@@ -65,7 +64,7 @@ Two
 async def test_command_conditional(shell_tool: Shell):
     """Test conditional command execution with ||."""
     result = await shell_tool(Params(command="false || echo 'Success'"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("Success\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -74,7 +73,7 @@ async def test_command_conditional(shell_tool: Shell):
 async def test_command_pipe(shell_tool: Shell):
     """Test command piping."""
     result = await shell_tool(Params(command="echo 'Hello World' | wc -w"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert result.output.strip() == snapshot("2")
 
@@ -83,7 +82,7 @@ async def test_command_pipe(shell_tool: Shell):
 async def test_multiple_pipes(shell_tool: Shell):
     """Test multiple pipes in one command."""
     result = await shell_tool(Params(command="echo -e '1\\n2\\n3' | grep '2' | wc -l"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert result.output.strip() == snapshot("1")
 
@@ -92,7 +91,7 @@ async def test_multiple_pipes(shell_tool: Shell):
 async def test_command_with_timeout(shell_tool: Shell):
     """Test command execution with timeout."""
     result = await shell_tool(Params(command="sleep 0.1", timeout=1))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -101,7 +100,7 @@ async def test_command_with_timeout(shell_tool: Shell):
 async def test_command_timeout_expires(shell_tool: Shell):
     """Test command that times out."""
     result = await shell_tool(Params(command="sleep 2", timeout=1))
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert result.message == snapshot("Command killed by timeout (1s)")
     assert result.brief == snapshot("Killed by timeout (1s)")
 
@@ -110,7 +109,7 @@ async def test_command_timeout_expires(shell_tool: Shell):
 async def test_environment_variables(shell_tool: Shell):
     """Test setting and using environment variables."""
     result = await shell_tool(Params(command="export TEST_VAR='test_value' && echo $TEST_VAR"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("test_value\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -122,13 +121,13 @@ async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     result = await shell_tool(
         Params(command=f"echo 'Test content' > {temp_work_dir}/test_file.txt")
     )
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("")
     assert result.message == snapshot("Command executed successfully.")
 
     # Read the file
     result = await shell_tool(Params(command=f"cat {temp_work_dir}/test_file.txt"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("Test content\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -137,7 +136,7 @@ async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
 async def test_text_processing(shell_tool: Shell):
     """Test text processing commands."""
     result = await shell_tool(Params(command="echo 'apple banana cherry' | sed 's/banana/orange/'"))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("apple orange cherry\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -146,7 +145,7 @@ async def test_text_processing(shell_tool: Shell):
 async def test_command_substitution(shell_tool: Shell):
     """Test command substitution with a portable command."""
     result = await shell_tool(Params(command='echo "Result: $(echo hello)"'))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("Result: hello\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -155,7 +154,7 @@ async def test_command_substitution(shell_tool: Shell):
 async def test_arithmetic_substitution(shell_tool: Shell):
     """Test arithmetic substitution - more portable than date command."""
     result = await shell_tool(Params(command='echo "Answer: $((2 + 2))"'))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == snapshot("Answer: 4\n")
     assert result.message == snapshot("Command executed successfully.")
 
@@ -165,7 +164,7 @@ async def test_very_long_output(shell_tool: Shell):
     """Test command that produces very long output."""
     result = await shell_tool(Params(command="seq 1 100 | head -50"))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "1" in result.output
     assert "50" in result.output
@@ -179,7 +178,7 @@ async def test_output_truncation_on_success(shell_tool: Shell):
     oversize_length = DEFAULT_MAX_CHARS + 1000
     result = await shell_tool(Params(command=f"python3 -c \"print('X' * {oversize_length})\""))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     # Check if output was truncated (it should be)
     if len(result.output) > DEFAULT_MAX_CHARS:
@@ -196,7 +195,7 @@ async def test_output_truncation_on_failure(shell_tool: Shell):
         Params(command="python3 -c \"import sys; print('ERROR_' * 8000); sys.exit(1)\"")
     )
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert isinstance(result.output, str)
     # Check if output was truncated
     if len(result.output) > DEFAULT_MAX_CHARS:

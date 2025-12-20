@@ -9,12 +9,15 @@ from typing import Annotated, Literal
 import typer
 
 from kimi_cli.constant import VERSION
+from kimi_cli.mcp import cli as mcp_cli
 
 
 class Reload(Exception):
     """Reload configuration."""
 
-    pass
+    def __init__(self, session_id: str | None = None):
+        super().__init__("reload")
+        self.session_id = session_id
 
 
 cli = typer.Typer(
@@ -108,6 +111,14 @@ def kimi(
             help="Continue the previous session for the working directory. Default: no.",
         ),
     ] = False,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session",
+            "-S",
+            help="Session ID to resume for the working directory. Default: new session.",
+        ),
+    ] = None,
     command: Annotated[
         str | None,
         typer.Option(
@@ -211,11 +222,17 @@ def kimi(
 
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
+    from kimi_cli.mcp import get_global_mcp_config_file
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.utils.logging import logger
 
     enable_logging(debug)
+
+    if session_id is not None:
+        session_id = session_id.strip()
+        if not session_id:
+            raise typer.BadParameter("Session ID cannot be empty", param_hint="--session")
 
     conflict_option_sets = [
         {
@@ -226,6 +243,10 @@ def kimi(
         {
             "--agent": agent is not None,
             "--agent-file": agent_file is not None,
+        },
+        {
+            "--continue": continue_,
+            "--session": session_id is not None,
         },
     ]
     for option_set in conflict_option_sets:
@@ -270,6 +291,12 @@ def kimi(
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
 
+    # Use default MCP config file if no MCP config is provided
+    if not file_configs:
+        default_mcp_file = get_global_mcp_config_file()
+        if default_mcp_file.exists():
+            file_configs.append(default_mcp_file)
+
     try:
         mcp_configs = [json.loads(conf.read_text(encoding="utf-8")) for conf in file_configs]
     except json.JSONDecodeError as e:
@@ -280,12 +307,18 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
-    async def _run() -> bool:
-        work_dir = (
-            KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
-        )
+    work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
-        if continue_:
+    async def _run(session_id: str | None) -> bool:
+        if session_id is not None:
+            session = await Session.find(work_dir, session_id)
+            if session is None:
+                logger.info(
+                    "Session {session_id} not found, creating new session", session_id=session_id
+                )
+                session = await Session.create(work_dir, session_id)
+            logger.info("Switching to session: {session_id}", session_id=session.id)
+        elif continue_:
             session = await Session.continue_(work_dir)
             if session is None:
                 raise typer.BadParameter(
@@ -296,7 +329,6 @@ def kimi(
         else:
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
-        logger.debug("Context file: {context_file}", context_file=session.context_file)
 
         if thinking is None:
             metadata = load_metadata()
@@ -345,7 +377,16 @@ def kimi(
                 )
                 work_dir_meta = metadata.new_work_dir_meta(session.work_dir)
 
-            work_dir_meta.last_session_id = session.id
+            if session.is_empty():
+                logger.info(
+                    "Session {session_id} has empty context, removing it",
+                    session_id=session.id,
+                )
+                await session.delete()
+                if work_dir_meta.last_session_id == session.id:
+                    work_dir_meta.last_session_id = None
+            else:
+                work_dir_meta.last_session_id = session.id
 
             # Update thinking mode
             metadata.thinking = instance.soul.thinking
@@ -356,11 +397,13 @@ def kimi(
 
     while True:
         try:
-            succeeded = asyncio.run(_run())
-            if succeeded:
-                break
-            raise typer.Exit(code=1)
-        except Reload:
+            succeeded = asyncio.run(_run(session_id))
+            session_id = None
+            if not succeeded:
+                raise typer.Exit(code=1)
+            break
+        except Reload as e:
+            session_id = e.session_id
             continue
 
 
@@ -370,6 +413,9 @@ def acp():
     from kimi_cli.acp import acp_main
 
     acp_main()
+
+
+cli.add_typer(mcp_cli, name="mcp")
 
 
 if __name__ == "__main__":

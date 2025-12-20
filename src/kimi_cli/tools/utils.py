@@ -2,7 +2,8 @@ import re
 import string
 from pathlib import Path
 
-from kosong.tooling import ToolError, ToolOk
+from kosong.tooling import DisplayBlock, ToolError, ToolReturnValue
+from kosong.utils.typing import JsonType
 
 
 def load_desc(path: Path, substitutions: dict[str, str] | None = None) -> str:
@@ -53,6 +54,7 @@ class ToolResultBuilder:
         self._n_chars = 0
         self._n_lines = 0
         self._truncation_happened = False
+        self._extras: dict[str, JsonType] | None = None
 
     def write(self, text: str) -> int:
         """
@@ -93,8 +95,8 @@ class ToolResultBuilder:
 
         return chars_written
 
-    def ok(self, message: str = "", *, brief: str = "") -> ToolOk:
-        """Create a ToolOk result with the current output."""
+    def ok(self, message: str = "", *, brief: str = "") -> ToolReturnValue:
+        """Create a ToolReturnValue with is_error=False and the current output."""
         output = "".join(self._buffer)
 
         final_message = message
@@ -106,11 +108,16 @@ class ToolResultBuilder:
                 final_message += f" {truncation_msg}"
             else:
                 final_message = truncation_msg
+        return ToolReturnValue(
+            is_error=False,
+            output=output,
+            message=final_message,
+            display=[DisplayBlock(type="brief", data=brief)] if brief else [],
+            extras=self._extras,
+        )
 
-        return ToolOk(output=output, message=final_message, brief=brief)
-
-    def error(self, message: str, *, brief: str) -> ToolError:
-        """Create a ToolError result with the current output."""
+    def error(self, message: str, *, brief: str) -> ToolReturnValue:
+        """Create a ToolReturnValue with is_error=True and the current output."""
         output = "".join(self._buffer)
 
         final_message = message
@@ -121,7 +128,19 @@ class ToolResultBuilder:
             else:
                 final_message = truncation_msg
 
-        return ToolError(output=output, message=final_message, brief=brief)
+        return ToolReturnValue(
+            is_error=True,
+            output=output,
+            message=final_message,
+            display=[DisplayBlock(type="brief", data=brief)] if brief else [],
+            extras=self._extras,
+        )
+
+    def extras(self, **extras: JsonType) -> None:
+        """Add extra data to the tool result."""
+        if self._extras is None:
+            self._extras = {}
+        self._extras.update(extras)
 
     @property
     def is_full(self) -> bool:

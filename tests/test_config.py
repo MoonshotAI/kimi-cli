@@ -23,17 +23,12 @@ def test_default_config():
 
 def test_default_config_dump():
     config = get_default_config()
-    assert config.model_dump_json(indent=2, exclude_none=True) == snapshot(
-        """\
-{
-  "default_model": "",
-  "models": {},
-  "providers": {},
-  "loop_control": {
-    "max_steps_per_run": 100,
-    "max_retries_per_step": 3
-  },
-  "services": {}
-}\
-"""
+    assert config.model_dump() == snapshot(
+        {
+            "default_model": "",
+            "models": {},
+            "providers": {},
+            "loop_control": {"max_steps_per_run": 100, "max_retries_per_step": 3},
+            "services": {"moonshot_search": None, "moonshot_fetch": None},
+        }
     )

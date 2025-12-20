@@ -9,14 +9,14 @@ import os
 import re
 import time
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from hashlib import md5
 from io import BytesIO
 from pathlib import Path
-from typing import override
+from typing import Any, Literal, override
 
 from kaos.path import KaosPath
 from kosong.message import ContentPart, ImageURLPart, TextPart
@@ -46,9 +46,9 @@ from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import get_meta_commands
 from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
 
 PROMPT_SYMBOL = "✨"
@@ -56,12 +56,17 @@ PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
 
 
-class MetaCommandCompleter(Completer):
-    """A completer that:
-    - Shows one line per meta command in the form: "/name (alias1, alias2)"
+class SlashCommandCompleter(Completer):
+    """
+    A completer that:
+    - Shows one line per slash command in the form: "/name (alias1, alias2)"
     - Matches by primary name or any alias while inserting the canonical "/name"
     - Only activates when the current token starts with '/'
     """
+
+    def __init__(self, available_commands: Sequence[SlashCommand[Any]]) -> None:
+        super().__init__()
+        self._available_commands = available_commands
 
     @override
     def get_completions(
@@ -86,7 +91,7 @@ class MetaCommandCompleter(Completer):
         typed = token[1:]
         typed_lower = typed.lower()
 
-        for cmd in sorted(get_meta_commands(), key=lambda c: c.name):
+        for cmd in sorted(self._available_commands, key=lambda c: c.name):
             names = [cmd.name] + list(cmd.aliases)
             if typed == "" or any(n.lower().startswith(typed_lower) for n in names):
                 yield Completion(
@@ -426,7 +431,10 @@ class _ToastEntry:
     duration: float
 
 
-_toast_queue = deque[_ToastEntry]()
+_toast_queues: dict[Literal["left", "right"], deque[_ToastEntry]] = {
+    "left": deque(),
+    "right": deque(),
+}
 """The queue of toasts to show, including the one currently being shown (the first one)."""
 
 
@@ -435,24 +443,27 @@ def toast(
     duration: float = 5.0,
     topic: str | None = None,
     immediate: bool = False,
+    position: Literal["left", "right"] = "left",
 ) -> None:
+    queue = _toast_queues[position]
     duration = max(duration, _REFRESH_INTERVAL)
     entry = _ToastEntry(topic=topic, message=message, duration=duration)
     if topic is not None:
         # Remove existing toasts with the same topic
-        for existing in list(_toast_queue):
+        for existing in list(queue):
             if existing.topic == topic:
-                _toast_queue.remove(existing)
+                queue.remove(existing)
     if immediate:
-        _toast_queue.appendleft(entry)
+        queue.appendleft(entry)
     else:
-        _toast_queue.append(entry)
+        queue.append(entry)
 
 
-def _current_toast() -> _ToastEntry | None:
-    if not _toast_queue:
+def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry | None:
+    queue = _toast_queues[position]
+    if not queue:
         return None
-    return _toast_queue[0]
+    return queue[0]
 
 
 def _toast_thinking(thinking: bool) -> None:
@@ -469,6 +480,15 @@ _ATTACHMENT_PLACEHOLDER_RE = re.compile(
 )
 
 
+def _sanitize_surrogates(text: str) -> str:
+    """Sanitize UTF-16 surrogate characters that cannot be encoded to UTF-8.
+
+    This is particularly common on Windows when copying text from applications
+    that use UTF-16 internally and don't properly convert surrogate pairs.
+    """
+    return text.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+
+
 class CustomPromptSession:
     def __init__(
         self,
@@ -476,6 +496,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         model_capabilities: set[ModelCapability],
         initial_thinking: bool,
+        available_slash_commands: Sequence[SlashCommand[Any]],
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -501,7 +522,7 @@ class CustomPromptSession:
         # Build completers
         self._agent_mode_completer = merge_completers(
             [
-                MetaCommandCompleter(),
+                SlashCommandCompleter(available_slash_commands),
                 # TODO(kaos): we need an async KaosFileMentionCompleter
                 LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
@@ -697,6 +718,8 @@ class CustomPromptSession:
         with patch_stdout(raw=True):
             command = str(await self._session.prompt_async()).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
+            # Sanitize UTF-16 surrogates that may come from Windows clipboard
+            command = _sanitize_surrogates(command)
         self._append_history_entry(command)
 
         # Parse rich content parts
@@ -762,39 +785,46 @@ class CustomPromptSession:
 
         mode = str(self._mode).lower()
         if self._mode == PromptMode.AGENT and self._thinking:
-            mode += " (thinking)"
+            mode += " (think)"
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
 
         status = self._status_provider()
-        status_text = self._format_status(status)
+        right_text = self._render_right_span(status)
 
-        current_toast = _current_toast()
-        if current_toast is not None:
-            fragments.extend([("", current_toast.message), ("", " " * 2)])
-            columns -= len(current_toast.message) + 2
-            current_toast.duration -= _REFRESH_INTERVAL
-            if current_toast.duration <= 0.0:
-                _toast_queue.popleft()
+        current_toast_left = _current_toast("left")
+        if current_toast_left is not None:
+            fragments.extend([("", current_toast_left.message), ("", " " * 2)])
+            columns -= len(current_toast_left.message) + 2
+            current_toast_left.duration -= _REFRESH_INTERVAL
+            if current_toast_left.duration <= 0.0:
+                _toast_queues["left"].popleft()
         else:
             shortcuts = [
                 *self._shortcut_hints,
                 "ctrl-d: exit",
             ]
             for shortcut in shortcuts:
-                if columns - len(status_text) > len(shortcut) + 2:
+                if columns - len(right_text) > len(shortcut) + 2:
                     fragments.extend([("", shortcut), ("", " " * 2)])
                     columns -= len(shortcut) + 2
                 else:
                     break
 
-        padding = max(1, columns - len(status_text))
+        padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))
-        fragments.append(("", status_text))
+        fragments.append(("", right_text))
 
         return FormattedText(fragments)
 
     @staticmethod
-    def _format_status(status: StatusSnapshot) -> str:
-        bounded = max(0.0, min(status.context_usage, 1.0))
-        return f"context: {bounded:.1%}"
+    def _render_right_span(status: StatusSnapshot) -> str:
+        current_toast = _current_toast("right")
+        if current_toast is None:
+            bounded = max(0.0, min(status.context_usage, 1.0))
+            return f"context: {bounded:.1%}"
+
+        current_toast.duration -= _REFRESH_INTERVAL
+        if current_toast.duration <= 0.0:
+            _toast_queues["right"].popleft()
+        return current_toast.message

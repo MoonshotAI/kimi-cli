@@ -12,6 +12,7 @@ from kosong.message import (
 
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
+from kimi_cli.constant import NAME, VERSION
 from kimi_cli.soul import (
     Soul,
     run_soul,
@@ -58,6 +59,7 @@ class ACPServerSingleSession:
                 session_capabilities=acp.schema.SessionCapabilities(),
             ),
             auth_methods=[],
+            agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
     async def new_session(
@@ -96,6 +98,19 @@ class ACPServerSingleSession:
                 await soul_task
 
         self._session = ACPSession(str(uuid.uuid4()), prompt_fn, self._conn)
+        available_commands = [
+            acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
+            for cmd in self.soul.available_slash_commands
+        ]
+        asyncio.create_task(
+            self._conn.session_update(
+                session_id=self._session.id,
+                update=acp.schema.AvailableCommandsUpdate(
+                    session_update="available_commands_update",
+                    available_commands=available_commands,
+                ),
+            )
+        )
         return acp.NewSessionResponse(session_id=self._session.id)
 
     async def load_session(

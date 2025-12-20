@@ -7,7 +7,6 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
-from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.shell import Params, Shell
 
@@ -21,7 +20,7 @@ async def test_simple_command(shell_tool: Shell):
     """Ensure a basic cmd command runs."""
     result = await shell_tool(Params(command='echo "Hello Windows"'))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert result.output.strip() == snapshot("Hello Windows")
     assert "Command executed successfully" in result.message
@@ -32,7 +31,7 @@ async def test_command_with_error(shell_tool: Shell):
     """Failing commands should return a ToolError with exit code info."""
     result = await shell_tool(Params(command='python -c "import sys; sys.exit(1)"'))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert result.output == snapshot("")
     assert "Command failed with exit code: 1" in result.message
     assert "Failed with exit code: 1" in result.brief
@@ -43,7 +42,7 @@ async def test_command_chaining(shell_tool: Shell):
     """Chaining commands with && should work."""
     result = await shell_tool(Params(command="echo First; if ($?) { echo Second }"))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert result.output.replace("\r\n", "\n") == snapshot("First\nSecond\n")
 

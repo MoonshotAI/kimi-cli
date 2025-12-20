@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+import asyncio
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import shorten
 
+import aiofiles
 from kaos.path import KaosPath
+from kosong.message import Message
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.message import TurnBegin
+from kimi_cli.wire.serde import WireMessageRecord
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class Session:
     """A session of a work directory."""
 
+    # static metadata
     id: str
     """The session ID."""
     work_dir: KaosPath
@@ -22,6 +30,8 @@ class Session:
     """The metadata of the work directory."""
     context_file: Path
     """The absolute path to the file storing the message history."""
+
+    # refreshable metadata
     title: str
     """The title of the session."""
     updated_at: float
@@ -34,8 +44,63 @@ class Session:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    @property
+    def wire_file(self) -> Path:
+        """The file backend for persisting Wire messages."""
+        return self.dir / "wire.jsonl"
+
+    def is_empty(self) -> bool:
+        """Whether the session has any context history."""
+        try:
+            return self.context_file.stat().st_size == 0
+        except FileNotFoundError:
+            return True
+
+    async def delete(self) -> None:
+        """Delete the session directory."""
+        session_dir = self.work_dir_meta.sessions_dir / self.id
+        if not session_dir.exists():
+            return
+        await asyncio.to_thread(shutil.rmtree, session_dir, True)
+
+    async def refresh(self) -> None:
+        self.title = f"Untitled ({self.id})"
+        self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
+
+        if not self.wire_file.exists():
+            return
+
+        try:
+            async with aiofiles.open(self.wire_file, encoding="utf-8") as f:
+                async for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        record = WireMessageRecord.model_validate_json(line)
+                        wire_msg = record.to_wire_message()
+                    except Exception:
+                        logger.exception(
+                            "Failed to parse line in wire file {file}:", file=self.wire_file
+                        )
+                        continue
+                    if isinstance(wire_msg, TurnBegin):
+                        title = shorten(
+                            Message(role="user", content=wire_msg.user_input).extract_text(" "),
+                            width=50,
+                        )
+                        self.title = f"{title} ({self.id})"
+                        return
+        except Exception:
+            logger.exception(
+                "Failed to derive session title from wire file {file}:", file=self.wire_file
+            )
+
     @staticmethod
-    async def create(work_dir: KaosPath, _context_file: Path | None = None) -> Session:
+    async def create(
+        work_dir: KaosPath,
+        session_id: str | None = None,
+        _context_file: Path | None = None,
+    ) -> Session:
         """Create a new session for a work directory."""
         work_dir = work_dir.canonical()
         logger.debug("Creating new session for work directory: {work_dir}", work_dir=work_dir)
@@ -45,7 +110,8 @@ class Session:
         if work_dir_meta is None:
             work_dir_meta = metadata.new_work_dir_meta(work_dir)
 
-        session_id = str(uuid.uuid4())
+        if session_id is None:
+            session_id = str(uuid.uuid4())
         session_dir = work_dir_meta.sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,14 +136,16 @@ class Session:
 
         save_metadata(metadata)
 
-        return Session(
+        session = Session(
             id=session_id,
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
-            title=session_id,  # TODO: readable session titles
-            updated_at=context_file.stat().st_mtime,
+            title="",
+            updated_at=0.0,
         )
+        await session.refresh()
+        return session
 
     @staticmethod
     async def find(work_dir: KaosPath, session_id: str) -> Session | None:
@@ -109,14 +177,16 @@ class Session:
             )
             return None
 
-        return Session(
+        session = Session(
             id=session_id,
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
-            title=session_id,  # TODO: readable session titles
-            updated_at=context_file.stat().st_mtime,
+            title="",
+            updated_at=0.0,
         )
+        await session.refresh()
+        return session
 
     @staticmethod
     async def list(work_dir: KaosPath) -> list[Session]:
@@ -137,7 +207,7 @@ class Session:
         }
 
         sessions: list[Session] = []
-        for session_id in sorted(session_ids):
+        for session_id in session_ids:
             _migrate_session_context_file(work_dir_meta, session_id)
             session_dir = work_dir_meta.sessions_dir / session_id
             if not session_dir.is_dir():
@@ -149,16 +219,22 @@ class Session:
                     "Session context file not found: {context_file}", context_file=context_file
                 )
                 continue
-            sessions.append(
-                Session(
-                    id=session_id,
-                    work_dir=work_dir,
-                    work_dir_meta=work_dir_meta,
-                    context_file=context_file,
-                    title=session_id,  # TODO: readable session titles
-                    updated_at=context_file.stat().st_mtime,
-                )
+            session = Session(
+                id=session_id,
+                work_dir=work_dir,
+                work_dir_meta=work_dir_meta,
+                context_file=context_file,
+                title="",
+                updated_at=0.0,
             )
+            if session.is_empty():
+                logger.debug(
+                    "Session context file is empty: {context_file}", context_file=context_file
+                )
+                continue
+            await session.refresh()
+            sessions.append(session)
+        sessions.sort(key=lambda session: session.updated_at, reverse=True)
         return sessions
 
     @staticmethod
@@ -180,25 +256,7 @@ class Session:
             "Found last session for work directory: {session_id}",
             session_id=work_dir_meta.last_session_id,
         )
-        session_id = work_dir_meta.last_session_id
-        _migrate_session_context_file(work_dir_meta, session_id)
-
-        session_dir = work_dir_meta.sessions_dir / session_id
-        context_file = session_dir / "context.jsonl"
-        if not context_file.exists():
-            logger.debug(
-                "Session context file not found: {context_file}", context_file=context_file
-            )
-            return None
-
-        return Session(
-            id=session_id,
-            work_dir=work_dir,
-            work_dir_meta=work_dir_meta,
-            context_file=context_file,
-            title=session_id,  # TODO: readable session titles
-            updated_at=context_file.stat().st_mtime,
-        )
+        return await Session.find(work_dir, work_dir_meta.last_session_id)
 
 
 def _migrate_session_context_file(work_dir_meta: WorkDirMeta, session_id: str) -> None:

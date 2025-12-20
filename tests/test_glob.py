@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 from kaos.path import KaosPath
-from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.tools.file.glob import MAX_MATCHES, Glob, Params
 
@@ -40,7 +39,7 @@ async def test_glob_simple_pattern(glob_tool: Glob, test_files: KaosPath):
     """Test simple glob pattern matching."""
     result = await glob_tool(Params(pattern="*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "setup.py" in result.output
     assert "Found 1 matches" in result.message
@@ -51,7 +50,7 @@ async def test_glob_multiple_matches(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern with multiple matches."""
     result = await glob_tool(Params(pattern="*.md", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "README.md" in result.output
     assert "Found 1 matches" in result.message
@@ -62,7 +61,7 @@ async def test_glob_recursive_pattern_prohibited(glob_tool: Glob, test_files: Ka
     """Test that recursive glob pattern starting with **/ is prohibited."""
     result = await glob_tool(Params(pattern="**/*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "starts with '**' which is not allowed" in result.message
     assert "Unsafe pattern" in result.brief
 
@@ -72,7 +71,7 @@ async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: KaosPath
     """Test safe recursive glob pattern that doesn't start with **/."""
     result = await glob_tool(Params(pattern="src/**/*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     output = result.output.replace("\\", "/")  # Normalize for Windows paths
     assert "src/main.py" in output
@@ -90,7 +89,7 @@ async def test_glob_specific_directory(glob_tool: Glob, test_files: KaosPath):
     src_dir = str(test_files / "src")
     result = await glob_tool(Params(pattern="*.py", directory=src_dir))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "main.py" in result.output
     assert "utils.py" in result.output
@@ -103,7 +102,7 @@ async def test_glob_recursive_in_subdirectory(glob_tool: Glob, test_files: KaosP
     src_dir = str(test_files / "src")
     result = await glob_tool(Params(pattern="main/**/*.py", directory=src_dir))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     output = result.output.replace("\\", "/")  # Normalize for Windows paths
     assert "main/app.py" in output
@@ -116,7 +115,7 @@ async def test_glob_test_files(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern for test files."""
     result = await glob_tool(Params(pattern="src/**/*test*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     output = result.output.replace("\\", "/")  # Normalize for Windows paths
     assert "src/test/test_app.py" in output
@@ -129,7 +128,7 @@ async def test_glob_no_matches(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern with no matches."""
     result = await glob_tool(Params(pattern="*.xyz", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == ""
     assert "No matches found" in result.message
 
@@ -145,7 +144,7 @@ async def test_glob_exclude_directories(glob_tool: Glob, temp_work_dir: KaosPath
         Params(pattern="test_*", directory=str(temp_work_dir), include_dirs=False)
     )
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "test_file.txt" in result.output
     assert "test_dir" not in result.output
@@ -157,7 +156,7 @@ async def test_glob_with_relative_path(glob_tool: Glob):
     """Test glob with relative path (should fail)."""
     result = await glob_tool(Params(pattern="*.py", directory="relative/path"))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "not an absolute path" in result.message
 
 
@@ -167,7 +166,7 @@ async def test_glob_outside_work_directory(glob_tool: Glob):
     dir = "/tmp/outside" if platform.system() != "Windows" else "C:/tmp/outside"
     result = await glob_tool(Params(pattern="*.py", directory=dir))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "outside the working directory" in result.message
 
 
@@ -180,7 +179,7 @@ async def test_glob_outside_work_directory_with_prefix(glob_tool: Glob, temp_wor
 
     result = await glob_tool(Params(pattern="*.py", directory=str(sneaky_dir)))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "outside the working directory" in result.message
 
 
@@ -190,7 +189,7 @@ async def test_glob_nonexistent_directory(glob_tool: Glob, temp_work_dir: KaosPa
     nonexistent_dir = str(temp_work_dir / "nonexistent")
     result = await glob_tool(Params(pattern="*.py", directory=nonexistent_dir))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "does not exist" in result.message
 
 
@@ -202,7 +201,7 @@ async def test_glob_not_a_directory(glob_tool: Glob, temp_work_dir: KaosPath):
 
     result = await glob_tool(Params(pattern="*.py", directory=str(test_file)))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "is not a directory" in result.message
 
 
@@ -211,7 +210,7 @@ async def test_glob_single_character_wildcard(glob_tool: Glob, test_files: KaosP
     """Test single character wildcard."""
     result = await glob_tool(Params(pattern="?.md", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == ""
     # Should match single character .md files
 
@@ -224,7 +223,7 @@ async def test_glob_max_matches_limit(glob_tool: Glob, temp_work_dir: KaosPath):
         await (temp_work_dir / f"file_{i}.txt").write_text(f"content {i}")
     result = await glob_tool(Params(pattern="*.txt", directory=str(temp_work_dir)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     # Should only return MAX_MATCHES results
     output_lines = [line for line in result.output.split("\n") if line.strip()]
@@ -244,7 +243,7 @@ async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_d
 
     result = await glob_tool(Params(pattern="**/*.txt", directory=str(temp_work_dir)))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "starts with '**' which is not allowed" in result.message
     assert "Use more specific patterns instead" in result.message
     # Should include directory listing
@@ -263,7 +262,7 @@ async def test_glob_exactly_max_matches(glob_tool: Glob, temp_work_dir: KaosPath
         await (temp_work_dir / f"test_{i}.py").write_text(f"code {i}")
     result = await glob_tool(Params(pattern="*.py", directory=str(temp_work_dir)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     output_lines = [line for line in result.output.split("\n") if line.strip()]
     assert len(output_lines) == MAX_MATCHES
@@ -280,7 +279,7 @@ async def test_glob_character_class(glob_tool: Glob, temp_work_dir: KaosPath):
     await (temp_work_dir / "file3.txt").write_text("content3")
     result = await glob_tool(Params(pattern="file[1-2].py", directory=str(temp_work_dir)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     assert "file1.py" in result.output
     assert "file2.py" in result.output
@@ -292,7 +291,7 @@ async def test_glob_complex_pattern(glob_tool: Glob, test_files: KaosPath):
     """Test complex glob pattern combinations."""
     result = await glob_tool(Params(pattern="docs/**/main/*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert result.output == ""
     # Should not match anything since there are no Python files in docs/main
 
@@ -303,13 +302,13 @@ async def test_glob_wildcard_with_double_star_patterns(glob_tool: Glob, test_fil
     # Test pattern with ** in the middle
     result = await glob_tool(Params(pattern="**/main/*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "starts with '**' which is not allowed" in result.message
 
     # Test pattern with ** not at the beginning
     result = await glob_tool(Params(pattern="src/**/test_*.py", directory=str(test_files)))
 
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
     assert isinstance(result.output, str)
     output = result.output.replace("\\", "/")  # Normalize for Windows paths
     assert "src/test/test_app.py" in output
@@ -321,13 +320,13 @@ async def test_glob_pattern_edge_cases(glob_tool: Glob, test_files: KaosPath):
     """Test edge cases for pattern validation."""
     # Test pattern that has ** but not at the start
     result = await glob_tool(Params(pattern="src/**", directory=str(test_files)))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
 
     # Test pattern that starts with * but not **
     result = await glob_tool(Params(pattern="*.py", directory=str(test_files)))
-    assert isinstance(result, ToolOk)
+    assert not result.is_error
 
     # Test pattern that starts with **/
     result = await glob_tool(Params(pattern="**/*.txt", directory=str(test_files)))
-    assert isinstance(result, ToolError)
+    assert result.is_error
     assert "starts with '**' which is not allowed" in result.message
