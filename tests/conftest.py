@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import tempfile
 from collections.abc import Generator
@@ -65,10 +66,14 @@ def llm() -> LLM:
 def temp_work_dir() -> Generator[KaosPath]:
     """Create a temporary working directory for tests."""
     token = set_current_kaos(LocalKaos())
+    original_cwd = Path.cwd()
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            yield KaosPath.unsafe_from_local_path(Path(tmpdir))
+            p = Path(tmpdir).resolve()
+            os.chdir(p)
+            yield KaosPath.unsafe_from_local_path(p)
     finally:
+        os.chdir(original_cwd)
         reset_current_kaos(token)
 
 
