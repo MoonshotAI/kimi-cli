@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
@@ -145,10 +147,11 @@ async def test_read_with_relative_path_outside_work_dir(
     read_file_tool: ReadFile, temp_work_dir: KaosPath
 ):
     """Test reading a file outside the work directory with a relative path (should fail)."""
-    result = await read_file_tool(Params(path="../outside_file.txt"))
+    path = Path("..") / "outside_file.txt"
+    result = await read_file_tool(Params(path=str(path)))
     assert result.is_error
     assert result.message == snapshot(
-        "`../outside_file.txt` is not an absolute path. "
+        f"`{path}` is not an absolute path. "
         "You must provide an absolute path to read a file outside the working directory."
     )
     assert result.output == snapshot("")
