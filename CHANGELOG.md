@@ -11,7 +11,27 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+- ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
+
+## [0.66] - 2025-12-19
+
 - Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
+- Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
+- Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
+- Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
+- Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
+- Lib: Make the detailed Kimi CLI exception classes extend `ValueError` or `RuntimeError`
+- Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
+- Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
+- LLM: Add provider type `vertexai` to support Vertex AI
+- LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
+- Config: Migrate config file from JSON to TOML
+- MCP: Connect to MCP servers in background and parallel to reduce startup time
+- MCP: Add `mcp-session-id` HTTP header when connecting to MCP servers
+- Lib: Split slash commands (prev "meta commands") into two groups: Shell-level and KimiSoul-level
+- Lib: Add `available_slash_commands` property to `Soul` protocol
+- ACP: Advertise slash commands `/init`, `/compact` and `/yolo` to ACP clients
+- SlashCmd: Add `/mcp` slash command to display MCP server and tool status
 
 ## [0.65] - 2025-12-16
 

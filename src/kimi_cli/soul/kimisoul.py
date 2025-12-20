@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from contextlib import suppress
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import kosong
 import tenacity
@@ -17,7 +17,7 @@ from kosong.chat_provider import (
     APITimeoutError,
     ThinkingEffort,
 )
-from kosong.message import ContentPart, Message
+from kosong.message import ContentPart, Message, TextPart
 from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
@@ -34,9 +34,11 @@ from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
+from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalRequestResolved,
@@ -111,6 +113,10 @@ class KimiSoul:
         return StatusSnapshot(context_usage=self._context_usage)
 
     @property
+    def agent(self) -> Agent:
+        return self._agent
+
+    @property
     def runtime(self) -> Runtime:
         return self._runtime
 
@@ -150,15 +156,34 @@ class KimiSoul:
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
+    @property
+    def available_slash_commands(self) -> list[SlashCommand[Any]]:
+        from kimi_cli.soul.slash import registry
+
+        return registry.list_commands()
+
     async def run(self, user_input: str | list[ContentPart]):
+        wire_send(TurnBegin(user_input=user_input))
+        user_message = Message(role="user", content=user_input)
+
+        if command_call := parse_slash_command_call(user_message.extract_text(" ").strip()):
+            command = soul_slash_registry.find_command(command_call.name)
+            if command is None:
+                # this should not happen actually, the shell should have filtered it out
+                wire_send(TextPart(text=f'Unknown slash command "/{command_call.name}".'))
+                return
+
+            ret = command.func(self, command_call.args)
+            if isinstance(ret, Awaitable):
+                await ret
+            return
+
         if self._runtime.llm is None:
             raise LLMNotSet()
 
-        user_message = Message(role="user", content=user_input)
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
-        wire_send(TurnBegin(user_input=user_input))
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
@@ -208,9 +233,7 @@ class KimiSoul:
                     >= self._runtime.llm.max_context_size
                 ):
                     logger.info("Context too long, compacting...")
-                    wire_send(CompactionBegin())
                     await self.compact_context()
-                    wire_send(CompactionEnd())
 
                 logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
@@ -357,10 +380,12 @@ class KimiSoul:
                 raise LLMNotSet()
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
+        wire_send(CompactionBegin())
         compacted_messages = await _compact_with_retry()
         await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
+        wire_send(CompactionEnd())
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:

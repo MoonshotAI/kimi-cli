@@ -20,7 +20,7 @@ from rich.text import Text
 
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.metacmd import meta_command
+from kimi_cli.ui.shell.slash import registry
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
@@ -140,7 +140,7 @@ def _format_message(msg: Message, index: int) -> Panel:
     )
 
 
-@meta_command(kimi_soul_only=True)
+@registry.command
 def debug(app: Shell, args: list[str]):
     """Debug the context"""
     assert isinstance(app.soul, KimiSoul)

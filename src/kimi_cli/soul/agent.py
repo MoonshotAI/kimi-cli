@@ -1,29 +1,31 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import inspect
 import string
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import pydantic
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.config import Config
+from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
-from kimi_cli.soul.toolset import KimiToolset, ToolType
-from kimi_cli.tools import SkipThisTool
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
+
+if TYPE_CHECKING:
+    from fastmcp.mcp_config import MCPConfig
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -158,14 +160,17 @@ async def load_agent(
     agent_file: Path,
     runtime: Runtime,
     *,
-    mcp_configs: list[dict[str, Any]],
+    mcp_configs: list[MCPConfig | dict[str, Any]],
 ) -> Agent:
     """
     Load agent from specification file.
 
     Raises:
-        FileNotFoundError: If the agent spec file does not exist.
-        AgentSpecError: If the agent spec is not valid.
+        FileNotFoundError: When the agent file is not found.
+        AgentSpecError(KimiCLIException, ValueError): When the agent specification is invalid.
+        InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
+        MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
+        MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be connected.
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
@@ -202,12 +207,23 @@ async def load_agent(
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
-    bad_tools = _load_tools(toolset, tools, tool_deps)
-    if bad_tools:
-        raise ValueError(f"Invalid tools: {bad_tools}")
+    toolset.load_tools(tools, tool_deps)
 
     if mcp_configs:
-        await _load_mcp_tools(toolset, mcp_configs, runtime)
+        validated_mcp_configs: list[MCPConfig] = []
+        if mcp_configs:
+            from fastmcp.mcp_config import MCPConfig
+
+            for mcp_config in mcp_configs:
+                try:
+                    validated_mcp_configs.append(
+                        mcp_config
+                        if isinstance(mcp_config, MCPConfig)
+                        else MCPConfig.model_validate(mcp_config)
+                    )
+                except pydantic.ValidationError as e:
+                    raise MCPConfigError(f"Invalid MCP config: {e}") from e
+        await toolset.load_mcp_tools(validated_mcp_configs, runtime)
 
     return Agent(
         name=agent_spec.name,
@@ -228,78 +244,3 @@ def _load_system_prompt(
         spec_args=args,
     )
     return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
-
-
-# TODO: maybe move to `KimiToolset`
-def _load_tools(
-    toolset: KimiToolset,
-    tool_paths: list[str],
-    dependencies: dict[type[Any], Any],
-) -> list[str]:
-    bad_tools: list[str] = []
-    for tool_path in tool_paths:
-        try:
-            tool = _load_tool(tool_path, dependencies)
-        except SkipThisTool:
-            logger.info("Skipping tool: {tool_path}", tool_path=tool_path)
-            continue
-        if tool:
-            toolset.add(tool)
-        else:
-            bad_tools.append(tool_path)
-    logger.info("Loaded tools: {tools}", tools=[tool.name for tool in toolset.tools])
-    if bad_tools:
-        logger.error("Bad tools: {bad_tools}", bad_tools=bad_tools)
-    return bad_tools
-
-
-def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType | None:
-    logger.debug("Loading tool: {tool_path}", tool_path=tool_path)
-    module_name, class_name = tool_path.rsplit(":", 1)
-    try:
-        module = importlib.import_module(module_name)
-    except ImportError:
-        return None
-    cls = getattr(module, class_name, None)
-    if cls is None:
-        return None
-    args: list[type[Any]] = []
-    if "__init__" in cls.__dict__:
-        # the tool class overrides the `__init__` of base class
-        for param in inspect.signature(cls).parameters.values():
-            if param.kind == inspect.Parameter.KEYWORD_ONLY:
-                # once we encounter a keyword-only parameter, we stop injecting dependencies
-                break
-            # all positional parameters should be dependencies to be injected
-            if param.annotation not in dependencies:
-                raise ValueError(f"Tool dependency not found: {param.annotation}")
-            args.append(dependencies[param.annotation])
-    return cls(*args)
-
-
-async def _load_mcp_tools(
-    toolset: KimiToolset,
-    mcp_configs: list[dict[str, Any]],
-    runtime: Runtime,
-):
-    """
-    Raises:
-        ValueError: If the MCP config is not valid.
-        RuntimeError: If the MCP server cannot be connected.
-    """
-    import fastmcp
-
-    from kimi_cli.tools.mcp import MCPTool
-
-    for mcp_config in mcp_configs:
-        # Skip empty MCP configs (no servers defined)
-        if not mcp_config.get("mcpServers"):
-            logger.debug("Skipping empty MCP config: {mcp_config}", mcp_config=mcp_config)
-            continue
-
-        logger.info("Loading MCP tools from: {mcp_config}", mcp_config=mcp_config)
-        client = fastmcp.Client(mcp_config)
-        async with client:
-            for tool in await client.list_tools():
-                toolset.add(MCPTool(tool, client, runtime=runtime))
-    return toolset

@@ -91,7 +91,7 @@ uv run pyinstaller kimi.spec
 
 ### Configuration
 
-Configuration file: `~/.kimi/config.json`
+Configuration file: `~/.kimi/config.toml`
 
 Default configuration includes:
 
