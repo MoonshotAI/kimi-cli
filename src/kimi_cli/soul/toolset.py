@@ -7,6 +7,7 @@ import inspect
 import json
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart, ToolCall
@@ -195,7 +196,9 @@ class KimiToolset:
             try:
                 async with server_info.client as client:
                     for tool in await client.list_tools():
-                        server_info.tools.append(MCPTool(tool, client, runtime=runtime))
+                        server_info.tools.append(
+                            MCPTool(server_name, tool, client, runtime=runtime)
+                        )
 
                 for tool in server_info.tools:
                     self.add(tool)
@@ -276,6 +279,7 @@ class MCPServerInfo:
 class MCPTool[T: ClientTransport](CallableTool):
     def __init__(
         self,
+        server_name: str,
         mcp_tool: mcp.Tool,
         client: fastmcp.Client[T],
         *,
@@ -284,13 +288,17 @@ class MCPTool[T: ClientTransport](CallableTool):
     ):
         super().__init__(
             name=mcp_tool.name,
-            description=mcp_tool.description or "",
+            description=(
+                f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
+                f"{mcp_tool.description or 'No description provided.'}"
+            ),
             parameters=mcp_tool.inputSchema,
             **kwargs,
         )
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
+        self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
         self._action_name = f"mcp:{mcp_tool.name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
@@ -298,11 +306,27 @@ class MCPTool[T: ClientTransport](CallableTool):
         if not await self._runtime.approval.request(self.name, self._action_name, description):
             return ToolRejectedError()
 
-        async with self._client as client:
-            result = await client.call_tool(
-                self._mcp_tool.name, kwargs, timeout=60, raise_on_error=False
-            )
-            return convert_mcp_tool_result(result)
+        try:
+            async with self._client as client:
+                result = await client.call_tool(
+                    self._mcp_tool.name,
+                    kwargs,
+                    timeout=self._timeout,
+                    raise_on_error=False,
+                )
+                return convert_mcp_tool_result(result)
+        except Exception as e:
+            # fastmcp raises `RuntimeError` on timeout and we cannot tell it from other errors
+            exc_msg = str(e).lower()
+            if "timeout" in exc_msg or "timed out" in exc_msg:
+                return ToolError(
+                    message=(
+                        f"Timeout while calling MCP tool `{self._mcp_tool.name}`. "
+                        "You may explain to the user that the timeout config is set too low."
+                    ),
+                    brief="Timeout",
+                )
+            raise
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
