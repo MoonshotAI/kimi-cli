@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -22,6 +23,31 @@ def ensure_new_line() -> None:
 
     if needs_break:
         _write_newline()
+
+
+def ensure_tty_sane() -> None:
+    """Restore basic tty settings so Ctrl-C works after raw-mode operations."""
+    if sys.platform == "win32" or not sys.stdin.isatty():
+        return
+
+    try:
+        import termios
+    except Exception:
+        return
+
+    try:
+        fd = sys.stdin.fileno()
+        attrs = termios.tcgetattr(fd)
+    except Exception:
+        return
+
+    desired = termios.ISIG | termios.IEXTEN | termios.ICANON | termios.ECHO
+    if (attrs[3] & desired) == desired:
+        return
+
+    attrs[3] |= desired
+    with contextlib.suppress(OSError):
+        termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
 
 
 def _cursor_column_unix() -> int | None:

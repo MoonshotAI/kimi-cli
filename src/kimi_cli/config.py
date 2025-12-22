@@ -94,6 +94,21 @@ class Services(BaseModel):
     """Moonshot Fetch configuration."""
 
 
+class MCPClientConfig(BaseModel):
+    """MCP client configuration."""
+
+    tool_call_timeout_ms: int = 60000
+    """Timeout for tool calls in milliseconds."""
+
+
+class MCPConfig(BaseModel):
+    """MCP configuration."""
+
+    client: MCPClientConfig = Field(
+        default_factory=MCPClientConfig, description="MCP client configuration"
+    )
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -104,6 +119,7 @@ class Config(BaseModel):
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
+    mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
