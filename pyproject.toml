@@ -9,7 +9,7 @@ dependencies = [
     "aiofiles==25.1.0",
     "aiohttp==3.13.2",
     "typer==0.20.0",
-    "kosong[contrib]==0.34.0",
+    "kosong[contrib]==0.34.1",
     "loguru==0.7.3",
     "prompt-toolkit==3.0.52",
     "pillow==12.0.0",
@@ -45,7 +45,7 @@ module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 # [tool.uv.sources]
-# kosong = { git = "https://github.com/MoonshotAI/kosong" }
+# kosong = { git = "https://github.com/MoonshotAI/kosong", rev = "f586267b12764a7e4189894650ec9ecc13f0aedd" }
 
 [project.scripts]
 kimi = "kimi_cli.cli:cli"
