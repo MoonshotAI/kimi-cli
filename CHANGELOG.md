@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
+
 ## [0.67] - 2025-12-22
 
 - ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
