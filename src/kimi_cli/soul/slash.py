@@ -66,3 +66,66 @@ async def yolo(soul: KimiSoul, args: list[str]):
     """Enable YOLO mode (auto approve all actions)"""
     soul.runtime.approval.set_yolo(True)
     wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
+
+
+@registry.command
+async def skills(soul: KimiSoul, args: list[str]):
+    """List or manage available skills
+
+    Usage:
+      /skills           List all available skills
+      /skills info <n>  Show detailed info about a skill
+    """
+    from kimi_cli.skills import ActivateSkill, SkillsLoader, format_skill_info, format_skills_list
+    from kimi_cli.soul.toolset import KimiToolset
+
+    # Get skills from the toolset if available
+    toolset = soul.agent.toolset
+    skills_loader: SkillsLoader | None = None
+
+    # Find ActivateSkill tool by type to get the skills loader
+    if isinstance(toolset, KimiToolset):
+        activate_skill = toolset.find(ActivateSkill)
+        if activate_skill is not None:
+            skills_loader = activate_skill.skills_loader
+
+    if skills_loader is None:
+        wire_send(TextPart(text="Skills system is not enabled."))
+        return
+
+    if not args:
+        # List all skills
+        skills_list = skills_loader.list_skills()
+        output = format_skills_list(skills_list)
+        wire_send(TextPart(text=output))
+        return
+
+    subcommand = args[0]
+
+    if subcommand == "info" and len(args) > 1:
+        skill_name = args[1]
+        skill = skills_loader.load_full_skill(skill_name)
+        if skill is None:
+            wire_send(TextPart(text=f"Skill '{skill_name}' not found."))
+            return
+        output = format_skill_info(skill)
+        wire_send(TextPart(text=output))
+        return
+
+    if subcommand == "refresh":
+        skills_list = skills_loader.refresh()
+        wire_send(TextPart(text=f"Refreshed skills. Found {len(skills_list)} skill(s)."))
+        return
+
+    # Unknown subcommand, show help
+    wire_send(
+        TextPart(
+            text="""Usage: /skills [subcommand]
+
+Subcommands:
+  (none)          List all available skills
+  info <name>     Show detailed info about a skill
+  refresh         Re-scan directories and refresh skills cache
+"""
+        )
+    )

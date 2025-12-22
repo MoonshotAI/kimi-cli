@@ -78,6 +78,7 @@ class KimiToolset:
     @overload
     def find[T: ToolType](self, tool_name_or_type: type[T]) -> T | None: ...
     def find(self, tool_name_or_type: str | type[ToolType]) -> ToolType | None:
+        """Find a tool by name or type."""
         if isinstance(tool_name_or_type, str):
             return self._tool_dict.get(tool_name_or_type)
         else:

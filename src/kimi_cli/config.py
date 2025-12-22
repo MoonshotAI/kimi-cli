@@ -109,6 +109,15 @@ class MCPConfig(BaseModel):
     )
 
 
+class SkillsConfig(BaseModel):
+    """Skills system configuration."""
+
+    directories: list[str] = Field(
+        default_factory=list, description="Additional directories to scan for skills"
+    )
+    disabled: list[str] = Field(default_factory=list, description="List of skill names to disable")
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -120,6 +129,7 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    skills: SkillsConfig = Field(default_factory=SkillsConfig, description="Skills configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -143,6 +153,7 @@ def get_default_config() -> Config:
         models={},
         providers={},
         services=Services(),
+        skills=SkillsConfig(),
     )
 
 

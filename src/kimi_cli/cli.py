@@ -229,6 +229,21 @@ def kimi(
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
+    skills_dir: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--skills-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help=(
+                "Additional directory to load skills from. "
+                "Add this option multiple times to specify multiple directories. "
+                "Default: ~/.kimi/skills/ and ./.kimi/skills/"
+            ),
+        ),
+    ] = None,
 ):
     """Kimi, your next CLI agent."""
     if ctx.invoked_subcommand is not None:
@@ -372,6 +387,9 @@ def kimi(
         else:
             thinking_mode = thinking
 
+        # Prepare skills directories
+        skills_dirs = list(skills_dir) if skills_dir else None
+
         instance = await KimiCLI.create(
             session,
             yolo=yolo or (ui == "print"),  # print mode implies yolo
@@ -380,6 +398,7 @@ def kimi(
             model_name=model_name,
             thinking=thinking_mode,
             agent_file=agent_file,
+            skills_dirs=skills_dirs,
         )
         match ui:
             case "shell":

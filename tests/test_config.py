@@ -34,6 +34,10 @@ def test_default_config_dump():
             "loop_control": {"max_steps_per_run": 100, "max_retries_per_step": 3},
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
+            "skills": {
+                "directories": [],
+                "disabled": [],
+            },
         }
     )
 

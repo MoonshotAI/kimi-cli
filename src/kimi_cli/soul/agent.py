@@ -27,6 +27,8 @@ from kimi_cli.utils.path import list_directory
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
 
+    from kimi_cli.skills import SkillsLoader
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BuiltinSystemPromptArgs:
@@ -161,9 +163,16 @@ async def load_agent(
     runtime: Runtime,
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    skills_loader: SkillsLoader | None = None,
 ) -> Agent:
     """
     Load agent from specification file.
+
+    Args:
+        agent_file: Path to the agent specification file.
+        runtime: The runtime context for the agent.
+        mcp_configs: MCP configs to load MCP tools from.
+        skills_loader: Optional skills loader for loading user-defined skills.
 
     Raises:
         FileNotFoundError: When the agent file is not found.
@@ -181,6 +190,16 @@ async def load_agent(
         runtime.builtin_args,
     )
 
+    # Append skills context to system prompt if skills are available
+    if skills_loader is not None:
+        from kimi_cli.skills import generate_skills_system_prompt
+
+        skills = skills_loader.list_skills()
+        if skills:
+            skills_prompt = generate_skills_system_prompt(skills)
+            system_prompt = f"{system_prompt}\n\n{skills_prompt}"
+            logger.info("Appended {count} skills to system prompt", count=len(skills))
+
     # load subagents before loading tools because Task tool depends on LaborMarket on initialization
     for subagent_name, subagent_spec in agent_spec.subagents.items():
         logger.debug("Loading subagent: {subagent_name}", subagent_name=subagent_name)
@@ -188,6 +207,7 @@ async def load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
             mcp_configs=mcp_configs,
+            skills_loader=skills_loader,  # Pass skills to subagents too
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
@@ -208,6 +228,15 @@ async def load_agent(
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
     toolset.load_tools(tools, tool_deps)
+
+    # Load skills tools if skills are enabled
+    if skills_loader is not None:
+        from kimi_cli.skills import ActivateSkill, ListSkills, SkillInfo
+
+        toolset.add(ActivateSkill(skills_loader))
+        toolset.add(ListSkills(skills_loader))
+        toolset.add(SkillInfo(skills_loader))
+        logger.info("Loaded skills tools: ActivateSkill, ListSkills, SkillInfo")
 
     if mcp_configs:
         validated_mcp_configs: list[MCPConfig] = []

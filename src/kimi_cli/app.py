@@ -56,6 +56,7 @@ class KimiCLI:
         model_name: str | None = None,
         thinking: bool = False,
         agent_file: Path | None = None,
+        skills_dirs: list[Path] | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -70,6 +71,8 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool, optional): Whether to enable thinking mode. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
+            skills_dirs (list[Path] | None, optional): Additional directories to load skills from.
+                Defaults to None.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -114,9 +117,28 @@ class KimiCLI:
 
         runtime = await Runtime.create(config, llm, session, yolo)
 
+        # Initialize skills loader
+        from kimi_cli.skills import SkillsLoader
+
+        # Combine CLI dirs with config dirs
+        all_skills_dirs: list[Path] = []
+        if skills_dirs:
+            all_skills_dirs.extend(skills_dirs)
+        if config.skills.directories:
+            all_skills_dirs.extend(Path(d) for d in config.skills.directories)
+
+        skills_loader = SkillsLoader(
+            additional_dirs=all_skills_dirs if all_skills_dirs else None,
+            disabled_skills=config.skills.disabled if config.skills.disabled else None,
+        )
+        skills_loader.discover_skills()
+        logger.info("Skills system initialized")
+
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
-        agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+        agent = await load_agent(
+            agent_file, runtime, mcp_configs=mcp_configs or [], skills_loader=skills_loader
+        )
 
         context = Context(session.context_file)
         await context.restore()
