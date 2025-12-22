@@ -25,7 +25,7 @@ from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_updat
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
-from kimi_cli.utils.term import ensure_new_line
+from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
 from kimi_cli.wire.message import StatusUpdate
 
 
@@ -67,38 +67,42 @@ class Shell:
             initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
             available_slash_commands=list(self._available_slash_commands.values()),
         ) as prompt_session:
-            while True:
-                try:
-                    ensure_new_line()
-                    user_input = await prompt_session.prompt()
-                except KeyboardInterrupt:
-                    logger.debug("Exiting by KeyboardInterrupt")
-                    console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
-                    continue
-                except EOFError:
-                    logger.debug("Exiting by EOF")
-                    console.print("Bye!")
-                    break
+            try:
+                while True:
+                    ensure_tty_sane()
+                    try:
+                        ensure_new_line()
+                        user_input = await prompt_session.prompt()
+                    except KeyboardInterrupt:
+                        logger.debug("Exiting by KeyboardInterrupt")
+                        console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
+                        continue
+                    except EOFError:
+                        logger.debug("Exiting by EOF")
+                        console.print("Bye!")
+                        break
 
-                if not user_input:
-                    logger.debug("Got empty input, skipping")
-                    continue
-                logger.debug("Got user input: {user_input}", user_input=user_input)
+                    if not user_input:
+                        logger.debug("Got empty input, skipping")
+                        continue
+                    logger.debug("Got user input: {user_input}", user_input=user_input)
 
-                if user_input.command in ["exit", "quit", "/exit", "/quit"]:
-                    logger.debug("Exiting by slash command")
-                    console.print("Bye!")
-                    break
+                    if user_input.command in ["exit", "quit", "/exit", "/quit"]:
+                        logger.debug("Exiting by slash command")
+                        console.print("Bye!")
+                        break
 
-                if user_input.mode == PromptMode.SHELL:
-                    await self._run_shell_command(user_input.command)
-                    continue
+                    if user_input.mode == PromptMode.SHELL:
+                        await self._run_shell_command(user_input.command)
+                        continue
 
-                if slash_cmd_call := parse_slash_command_call(user_input.command):
-                    await self._run_slash_command(slash_cmd_call)
-                    continue
+                    if slash_cmd_call := parse_slash_command_call(user_input.command):
+                        await self._run_slash_command(slash_cmd_call)
+                        continue
 
-                await self._run_soul_command(user_input.content, user_input.thinking)
+                    await self._run_soul_command(user_input.content, user_input.thinking)
+            finally:
+                ensure_tty_sane()
 
         return True
 
