@@ -207,7 +207,7 @@ def kimi(
     thinking: Annotated[
         bool | None,
         typer.Option(
-            "--thinking",
+            "--thinking/--no-thinking",
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
