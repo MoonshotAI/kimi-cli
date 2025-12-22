@@ -97,7 +97,7 @@ def kimi(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="Config TOML/JSON file to load. Default: none.",
+            help="Config TOML/JSON file to load. Default: ~/.kimi/config.toml.",
         ),
     ] = None,
     model_name: Annotated[
