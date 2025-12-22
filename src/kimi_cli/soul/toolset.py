@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
-from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart, ToolCall
+from kosong.message import ContentPart, ToolCall
 from kosong.tooling import (
     CallableTool,
     CallableTool2,
@@ -27,6 +27,7 @@ from kosong.tooling.error import (
     ToolParseError,
     ToolRuntimeError,
 )
+from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
 from loguru import logger
 
@@ -330,67 +331,14 @@ class MCPTool[T: ClientTransport](CallableTool):
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
-    import mcp
+    """Convert MCP tool result to kosong tool return value.
 
+    Raises:
+        ValueError: If any content part has unsupported type or mime type.
+    """
     content: list[ContentPart] = []
     for part in result.content:
-        match part:
-            case mcp.types.TextContent(text=text):
-                content.append(TextPart(text=text))
-            case mcp.types.ImageContent(data=data, mimeType=mimeType):
-                content.append(
-                    ImageURLPart(
-                        image_url=ImageURLPart.ImageURL(url=f"data:{mimeType};base64,{data}")
-                    )
-                )
-            case mcp.types.AudioContent(data=data, mimeType=mimeType):
-                content.append(
-                    AudioURLPart(
-                        audio_url=AudioURLPart.AudioURL(url=f"data:{mimeType};base64,{data}")
-                    )
-                )
-            case mcp.types.EmbeddedResource(
-                resource=mcp.types.BlobResourceContents(uri=_uri, mimeType=mimeType, blob=blob)
-            ):
-                mimeType = mimeType or "application/octet-stream"
-                if mimeType.startswith("image/"):
-                    content.append(
-                        ImageURLPart(
-                            type="image_url",
-                            image_url=ImageURLPart.ImageURL(
-                                url=f"data:{mimeType};base64,{blob}",
-                            ),
-                        )
-                    )
-                elif mimeType.startswith("audio/"):
-                    content.append(
-                        AudioURLPart(
-                            type="audio_url",
-                            audio_url=AudioURLPart.AudioURL(url=f"data:{mimeType};base64,{blob}"),
-                        )
-                    )
-                else:
-                    raise ValueError(f"Unsupported mime type: {mimeType}")
-            case mcp.types.ResourceLink(uri=uri, mimeType=mimeType, description=_description):
-                mimeType = mimeType or "application/octet-stream"
-                if mimeType.startswith("image/"):
-                    content.append(
-                        ImageURLPart(
-                            type="image_url",
-                            image_url=ImageURLPart.ImageURL(url=str(uri)),
-                        )
-                    )
-                elif mimeType.startswith("audio/"):
-                    content.append(
-                        AudioURLPart(
-                            type="audio_url",
-                            audio_url=AudioURLPart.AudioURL(url=str(uri)),
-                        )
-                    )
-                else:
-                    raise ValueError(f"Unsupported mime type: {mimeType}")
-            case _:
-                raise ValueError(f"Unsupported MCP tool result part: {part}")
+        content.append(convert_mcp_content(part))
     if result.is_error:
         return ToolError(
             output=content,
