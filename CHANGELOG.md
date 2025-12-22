@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.67] - 2025-12-22
 
 - ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
 - MCP: Add `mcp.client` config section to configure MCP tool call timeout and other future options
