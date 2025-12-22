@@ -9,16 +9,6 @@
     "**/__pycache__/**/*.py"
   ],
   "strict": [
-    "src/kimi_cli/acp",
-    "src/kimi_cli/prompts",
-    "src/kimi_cli/soul",
-    "src/kimi_cli/tools",
-    "src/kimi_cli/ui/acp",
-    "src/kimi_cli/ui/print",
-    "src/kimi_cli/ui/shell", // except for metacmd.py
-    "src/kimi_cli/ui/wire",
-    "src/kimi_cli/utils/*.py",
-    "src/kimi_cli/wire",
-    "src/kimi_cli/*.py",
+    "src/kimi_cli",
   ]
 }

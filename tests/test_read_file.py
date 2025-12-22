@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.tools.file.read import MAX_BYTES, MAX_LINE_LENGTH, MAX_LINES, Params, ReadFile
+from kimi_cli.tools.file.read import (
+    MAX_BYTES,
+    MAX_LINE_LENGTH,
+    MAX_LINES,
+    Params,
+    ReadFile,
+    file_seems_readable,
+)
 
 
 @pytest.fixture
@@ -20,6 +29,15 @@ Line 4: For testing purposes
 Line 5: End of file"""
     await file_path.write_text(content)
     return file_path
+
+
+def test_file_is_readable_respects_suffixes():
+    assert not file_seems_readable(KaosPath("image.PNG"))
+    assert not file_seems_readable(KaosPath("archive.tar.gz"))
+    assert not file_seems_readable(KaosPath("my file.pdf"))
+    assert file_seems_readable(KaosPath("notes.txt"))
+    assert file_seems_readable(KaosPath("Makefile"))
+    assert file_seems_readable(KaosPath(".env"))
 
 
 @pytest.mark.asyncio
@@ -106,15 +124,37 @@ async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_wor
 
 
 @pytest.mark.asyncio
-async def test_read_with_relative_path(read_file_tool: ReadFile):
-    """Test reading with a relative path (should fail)."""
-    result = await read_file_tool(Params(path="relative/path/file.txt"))
+async def test_read_with_relative_path(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath, sample_file: KaosPath
+):
+    """Test reading with a relative path."""
+    result = await read_file_tool(Params(path=str(sample_file.relative_to(temp_work_dir))))
+    assert not result.is_error
+    assert result.message == snapshot(
+        "5 lines read from file starting from line 1. End of file reached."
+    )
+    assert result.output == snapshot("""\
+     1	Line 1: Hello World
+     2	Line 2: This is a test file
+     3	Line 3: With multiple lines
+     4	Line 4: For testing purposes
+     5	Line 5: End of file\
+""")
+
+
+@pytest.mark.asyncio
+async def test_read_with_relative_path_outside_work_dir(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Test reading a file outside the work directory with a relative path (should fail)."""
+    path = Path("..") / "outside_file.txt"
+    result = await read_file_tool(Params(path=str(path)))
     assert result.is_error
     assert result.message == snapshot(
-        "`relative/path/file.txt` is not an absolute path. You must provide an absolute "
-        "path to read a file."
+        f"`{path}` is not an absolute path. "
+        "You must provide an absolute path to read a file outside the working directory."
     )
-    assert result.brief == snapshot("Invalid path")
+    assert result.output == snapshot("")
 
 
 @pytest.mark.asyncio
