@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import pytest
 from inline_snapshot import snapshot
 
 from kimi_cli.config import (
     Config,
     Services,
     get_default_config,
+    load_config_from_string,
 )
+from kimi_cli.exception import ConfigError
 
 
 def test_default_config():
@@ -33,3 +36,18 @@ def test_default_config_dump():
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
         }
     )
+
+
+def test_load_config_text_toml():
+    config = load_config_from_string('default_model = ""\n')
+    assert config == get_default_config()
+
+
+def test_load_config_text_json():
+    config = load_config_from_string('{"default_model": ""}')
+    assert config == get_default_config()
+
+
+def test_load_config_text_invalid():
+    with pytest.raises(ConfigError, match="Invalid configuration text"):
+        load_config_from_string("not valid {")

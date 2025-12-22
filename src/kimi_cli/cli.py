@@ -82,6 +82,24 @@ def kimi(
             help="Custom agent specification file. Default: builtin default agent.",
         ),
     ] = None,
+    config_string: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            help="Config TOML/JSON string to load. Default: none.",
+        ),
+    ] = None,
+    config_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--config-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Config TOML/JSON file to load. Default: ~/.kimi/config.toml.",
+        ),
+    ] = None,
     model_name: Annotated[
         str | None,
         typer.Option(
@@ -222,6 +240,8 @@ def kimi(
 
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
+    from kimi_cli.config import Config, load_config_from_string
+    from kimi_cli.exception import ConfigError
     from kimi_cli.mcp import get_global_mcp_config_file
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
@@ -247,6 +267,10 @@ def kimi(
         {
             "--continue": continue_,
             "--session": session_id is not None,
+        },
+        {
+            "--config": config_string is not None,
+            "--config-file": config_file is not None,
         },
     ]
     for option_set in conflict_option_sets:
@@ -287,6 +311,18 @@ def kimi(
             "Output format is only supported for print UI",
             param_hint="--output-format",
         )
+
+    config: Config | Path | None = None
+    if config_string is not None:
+        config_string = config_string.strip()
+        if not config_string:
+            raise typer.BadParameter("Config cannot be empty", param_hint="--config")
+        try:
+            config = load_config_from_string(config_string)
+        except ConfigError as e:
+            raise typer.BadParameter(str(e), param_hint="--config") from e
+    elif config_file is not None:
+        config = config_file
 
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
@@ -340,6 +376,7 @@ def kimi(
             session,
             yolo=yolo or (ui == "print"),  # print mode implies yolo
             mcp_configs=mcp_configs,
+            config=config,
             model_name=model_name,
             thinking=thinking_mode,
             agent_file=agent_file,

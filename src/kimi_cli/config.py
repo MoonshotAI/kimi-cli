@@ -192,6 +192,43 @@ def load_config(config_file: Path | None = None) -> Config:
         raise ConfigError(f"Invalid configuration file: {e}") from e
 
 
+def load_config_from_string(config_string: str) -> Config:
+    """
+    Load configuration from a TOML or JSON string.
+
+    Args:
+        config_string (str): TOML or JSON configuration text.
+
+    Returns:
+        Validated Config object.
+
+    Raises:
+        ConfigError: If the configuration text is invalid.
+    """
+    if not config_string.strip():
+        raise ConfigError("Configuration text cannot be empty")
+
+    json_error: json.JSONDecodeError | None = None
+    try:
+        data = json.loads(config_string)
+    except json.JSONDecodeError as exc:
+        json_error = exc
+        data = None
+
+    if data is None:
+        try:
+            data = tomlkit.loads(config_string)
+        except TOMLKitError as toml_error:
+            raise ConfigError(
+                f"Invalid configuration text: {json_error}; {toml_error}"
+            ) from toml_error
+
+    try:
+        return Config.model_validate(data)
+    except ValidationError as e:
+        raise ConfigError(f"Invalid configuration text: {e}") from e
+
+
 def save_config(config: Config, config_file: Path | None = None):
     """
     Save configuration to config file.
