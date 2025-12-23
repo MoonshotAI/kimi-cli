@@ -6,17 +6,15 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import acp
-from kosong.message import (
-    ContentPart,
-)
+from kosong.message import ContentPart
 
+from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.constant import NAME, VERSION
-from kimi_cli.soul import (
-    Soul,
-    run_soul,
-)
+from kimi_cli.soul import Soul, run_soul
+from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
@@ -68,6 +66,13 @@ class ACPServerSingleSession:
         """Handle new session request."""
         logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
         assert self._conn is not None, "ACP client not connected"
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        if (
+            mcp_config
+            and isinstance(self.soul, KimiSoul)
+            and isinstance(self.soul.agent.toolset, KimiToolset)
+        ):
+            await self.soul.agent.toolset.load_mcp_tools([mcp_config], self.soul.runtime)
 
         async def prompt_fn(
             user_input: list[ContentPart], cancel_event: asyncio.Event

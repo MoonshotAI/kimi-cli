@@ -51,7 +51,7 @@ class KimiCLI:
         session: Session,
         *,
         yolo: bool = False,
-        mcp_configs: list[MCPConfig | dict[str, Any]] | None = None,
+        mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
         config: Config | Path | None = None,
         model_name: str | None = None,
         thinking: bool = False,
