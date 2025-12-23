@@ -380,9 +380,7 @@ class ACPSession:
         ]
 
         if not entries:
-            logger.warning(
-                "No valid todo items to send in plan update: {todos}", todos=block.items
-            )
+            logger.warning("No valid todo items to send in plan update: {todos}", todos=block.items)
             return
 
         await self._conn.session_update(
