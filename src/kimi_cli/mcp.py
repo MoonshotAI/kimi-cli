@@ -16,13 +16,24 @@ def get_global_mcp_config_file() -> Path:
 
 def _load_mcp_config() -> dict[str, Any]:
     """Load MCP config from global mcp config file."""
+    from pydantic import ValidationError
+
     mcp_file = get_global_mcp_config_file()
     if not mcp_file.exists():
         return {"mcpServers": {}}
     try:
-        return json.loads(mcp_file.read_text(encoding="utf-8"))
+        config = json.loads(mcp_file.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON in MCP config file '{mcp_file}': {e}") from e
+
+    try:
+        from fastmcp.mcp_config import MCPConfig
+
+        MCPConfig.model_validate(config)
+    except ValidationError as e:
+        raise typer.BadParameter(f"Invalid MCP config in '{mcp_file}': {e}") from e
+
+    return config
 
 
 def _save_mcp_config(config: dict[str, Any]) -> None:
@@ -67,7 +78,7 @@ def _parse_key_value_pairs(
     return parsed
 
 
-Transport = Literal["stdio", "http", "sse"]
+Transport = Literal["stdio", "http"]
 
 
 @cli.command(
@@ -78,8 +89,8 @@ Transport = Literal["stdio", "http", "sse"]
       # Add streamable HTTP server:\n
       kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n
       \n
-      # Add SSE server:\n
-      kimi mcp add --transport sse linear https://mcp.linear.app/sse\n
+      # Add HTTP server with OAuth:\n
+      kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/sse\n
       \n
       # Add stdio server:\n
       kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
@@ -94,7 +105,7 @@ def mcp_add(
         list[str] | None,
         typer.Argument(
             metavar="TARGET_OR_COMMAND...",
-            help="For http/sse: server URL. For stdio: command to run (prefix with `--`).",
+            help="For http: server URL. For stdio: command to run (prefix with `--`).",
         ),
     ] = None,
     transport: Annotated[
@@ -121,12 +132,20 @@ def mcp_add(
             help="HTTP headers in KEY:VALUE format. Can be specified multiple times.",
         ),
     ] = None,
+    auth: Annotated[
+        str | None,
+        typer.Option(
+            "--auth",
+            "-a",
+            help="Authentication type (e.g., 'oauth').",
+        ),
+    ] = None,
 ):
     """Add an MCP server."""
     config = _load_mcp_config()
     server_args = server_args or []
 
-    if transport not in {"stdio", "http", "sse"}:
+    if transport not in {"stdio", "http"}:
         typer.echo(f"Unsupported transport: {transport}.", err=True)
         raise typer.Exit(code=1)
 
@@ -138,7 +157,10 @@ def mcp_add(
             )
             raise typer.Exit(code=1)
         if header:
-            typer.echo("--header is only valid for http/sse transport.", err=True)
+            typer.echo("--header is only valid for http transport.", err=True)
+            raise typer.Exit(code=1)
+        if auth:
+            typer.echo("--auth is only valid for http transport.", err=True)
             raise typer.Exit(code=1)
         command, *command_args = server_args
         server_config: dict[str, Any] = {"command": command, "args": command_args}
@@ -149,21 +171,21 @@ def mcp_add(
             typer.echo("--env is only supported for stdio transport.", err=True)
             raise typer.Exit(code=1)
         if not server_args:
-            typer.echo(f"URL is required for {transport} transport.", err=True)
+            typer.echo("URL is required for http transport.", err=True)
             raise typer.Exit(code=1)
         if len(server_args) > 1:
             typer.echo(
-                f"Multiple targets provided. Supply a single URL for {transport} transport.",
+                "Multiple targets provided. Supply a single URL for http transport.",
                 err=True,
             )
             raise typer.Exit(code=1)
-        server_config = {"url": server_args[0], "transport": transport}
-        if transport == "sse":
-            server_config["auth"] = "oauth"
+        server_config = {"url": server_args[0], "transport": "http"}
         if header:
             server_config["headers"] = _parse_key_value_pairs(
                 header, "header", separator=":", strip_whitespace=True
             )
+        if auth:
+            server_config["auth"] = auth
 
     if "mcpServers" not in config:
         config["mcpServers"] = {}
@@ -226,7 +248,7 @@ def mcp_auth(
 
     server = _get_mcp_server(name, require_remote=True)
     if server.get("auth") != "oauth":
-        typer.echo(f"MCP server '{name}' does not use OAuth.", err=True)
+        typer.echo(f"MCP server '{name}' does not use OAuth. Add with --auth oauth.", err=True)
         raise typer.Exit(code=1)
 
     async def _auth() -> None:
