@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.file.diff_utils import build_diff_blocks
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
-from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
+from kimi_cli.wire.display import DisplayBlock
 
 
 class Params(BaseModel):
@@ -98,13 +99,13 @@ class WriteFile(CallableTool2[Params]):
             new_text = (
                 params.content if params.mode == "overwrite" else (old_text or "") + params.content
             )
-            diff_blocks: list[DisplayBlock] = [
-                DiffDisplayBlock(
-                    path=params.path,
-                    old_text=old_text if file_existed else None,
-                    new_text=new_text,
+            diff_blocks: list[DisplayBlock] = list(
+                build_diff_blocks(
+                    params.path,
+                    old_text or "",
+                    new_text,
                 )
-            ]
+            )
 
             # Request approval
             if not await self._approval.request(
