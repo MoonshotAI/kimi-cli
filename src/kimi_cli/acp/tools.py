@@ -46,6 +46,9 @@ class Terminal(CallableTool2[ShellParams]):
         # directly to the user.
         builder.display(HideOutputDisplayBlock())
 
+        if not params.command:
+            return builder.error("Command cannot be empty.", brief="Empty command")
+
         timeout_seconds = float(params.timeout)
         timeout_label = f"{timeout_seconds:g}s"
         terminal: acp.TerminalHandle | None = None
@@ -106,8 +109,8 @@ class Terminal(CallableTool2[ShellParams]):
 
             if timed_out:
                 return builder.error(
-                    f"Command killed by timeout ({timeout_label}).{truncated_note}",
-                    brief=f"Timed out ({timeout_label})",
+                    f"Command killed by timeout ({timeout_label}){truncated_note}",
+                    brief=f"Killed by timeout ({timeout_label})",
                 )
             if exit_signal:
                 return builder.error(
@@ -117,7 +120,7 @@ class Terminal(CallableTool2[ShellParams]):
             if exit_code not in (None, 0):
                 return builder.error(
                     f"Command failed with exit code: {exit_code}.{truncated_note}",
-                    brief=f"Exit code: {exit_code}",
+                    brief=f"Failed with exit code: {exit_code}",
                 )
             return builder.ok(f"Command executed successfully.{truncated_note}")
         finally:
