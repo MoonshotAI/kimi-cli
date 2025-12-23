@@ -6,17 +6,13 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import acp
-from kosong.message import (
-    ContentPart,
-)
+from kosong.message import ContentPart
 
+from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.constant import NAME, VERSION
-from kimi_cli.soul import (
-    Soul,
-    run_soul,
-)
+from kimi_cli.soul import Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
@@ -106,6 +102,15 @@ class ACPServerSingleSession:
             self.soul.runtime.session.id if isinstance(self.soul, KimiSoul) else str(uuid.uuid4())
         )
         self._session = ACPSession(session_id, prompt_fn, self._conn)
+
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        if (
+            mcp_config
+            and isinstance(self.soul, KimiSoul)
+            and isinstance(self.soul.agent.toolset, KimiToolset)
+        ):
+            # Load MCP tools if supported
+            await self.soul.agent.toolset.load_mcp_tools([mcp_config], self.soul.runtime)
 
         if (
             self._client_capabilities.terminal

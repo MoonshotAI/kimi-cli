@@ -8,6 +8,7 @@ from typing import Any
 import acp
 from kaos.path import KaosPath
 
+from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.app import KimiCLI
@@ -67,9 +68,10 @@ class ACPServer:
         assert self.client_capabilities is not None, "ACP connection not initialized"
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
         cli_instance = await KimiCLI.create(
             session,
-            # TODO: support MCP servers
+            mcp_configs=[mcp_config],
             thinking=True,
         )
         self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
@@ -115,9 +117,10 @@ class ACPServer:
                 "Session not found: {id} for working directory: {cwd}", id=session_id, cwd=cwd
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
         cli_instance = await KimiCLI.create(
             session,
-            # TODO: support MCP servers
+            mcp_configs=[mcp_config],
             thinking=True,
         )
         self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
