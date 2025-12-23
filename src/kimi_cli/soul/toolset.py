@@ -175,6 +175,17 @@ class KimiToolset:
 
         from kimi_cli.ui.shell.prompt import toast
 
+        async def _check_oauth_tokens(server_url: str) -> bool:
+            """Check if OAuth tokens exist for the server."""
+            try:
+                from fastmcp.client.auth.oauth import FileTokenStorage
+
+                storage = FileTokenStorage(server_url=server_url)
+                tokens = await storage.get_tokens()
+                return tokens is not None
+            except Exception:
+                return False
+
         def _toast_mcp(message: str) -> None:
             if in_background:
                 toast(
@@ -239,6 +250,20 @@ class KimiToolset:
                 continue
 
             for server_name, server_config in mcp_config.mcpServers.items():
+                # Check OAuth authentication for remote servers
+                if (
+                    isinstance(server_config, RemoteMCPServer)
+                    and server_config.auth == "oauth"
+                    and not await _check_oauth_tokens(server_config.url)
+                ):
+                    _toast_mcp(f"'{server_name}' requires auth: kimi mcp auth {server_name}")
+                    logger.warning(
+                        "Skipping OAuth MCP server '{server_name}': not authenticated. "
+                        "Run 'kimi mcp auth {server_name}' first.",
+                        server_name=server_name,
+                    )
+                    continue
+
                 # Add mcp-session-id header for HTTP transports
                 if isinstance(server_config, RemoteMCPServer) and not any(
                     key.lower() == "mcp-session-id" for key in server_config.headers

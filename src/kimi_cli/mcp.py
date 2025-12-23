@@ -209,6 +209,23 @@ def mcp_remove(
     typer.echo(f"Removed MCP server '{name}' from {get_global_mcp_config_file()}.")
 
 
+def _has_oauth_tokens(server_url: str) -> bool:
+    """Check if OAuth tokens exist for the server."""
+    import asyncio
+
+    async def _check() -> bool:
+        try:
+            from fastmcp.client.auth.oauth import FileTokenStorage
+
+            storage = FileTokenStorage(server_url=server_url)
+            tokens = await storage.get_tokens()
+            return tokens is not None
+        except Exception:
+            return False
+
+    return asyncio.run(_check())
+
+
 @cli.command("list")
 def mcp_list():
     """List all MCP servers."""
@@ -231,6 +248,8 @@ def mcp_list():
             if transport == "streamable-http":
                 transport = "http"
             line = f"{name} ({transport}): {server['url']}"
+            if server.get("auth") == "oauth" and not _has_oauth_tokens(server["url"]):
+                line += " [unauthorized - run: kimi mcp auth " + name + "]"
         else:
             line = f"{name}: {server}"
         typer.echo(f"  {line}")
