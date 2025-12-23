@@ -164,8 +164,9 @@ async def mcp(app: Shell, args: list[str]):
         return
 
     servers = toolset.mcp_servers
+    unauthorized = toolset.mcp_unauthorized
 
-    if not servers:
+    if not servers and not unauthorized:
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
@@ -190,6 +191,9 @@ async def mcp(app: Shell, args: list[str]):
         lines.append(server_line)
         for tool in info.tools:
             lines.append(f"   [dim]• {tool.name}[/dim]")
+
+    for name in unauthorized:
+        lines.append(f" [red]•[/red] {name} (unauthorized - run: kimi mcp auth {name})")
 
     console.print(
         Panel(

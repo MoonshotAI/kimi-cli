@@ -66,6 +66,7 @@ class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
         self._mcp_servers: dict[str, MCPServerInfo] = {}
+        self._mcp_unauthorized: list[str] = []
         self._mcp_loading_task: asyncio.Task[None] | None = None
 
     def add(self, tool: ToolType) -> None:
@@ -108,6 +109,11 @@ class KimiToolset:
     def mcp_servers(self) -> dict[str, MCPServerInfo]:
         """Get MCP servers info."""
         return self._mcp_servers
+
+    @property
+    def mcp_unauthorized(self) -> list[str]:
+        """Get list of unauthorized OAuth MCP server names."""
+        return self._mcp_unauthorized
 
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
@@ -262,6 +268,7 @@ class KimiToolset:
                         "Run 'kimi mcp auth {server_name}' first.",
                         server_name=server_name,
                     )
+                    self._mcp_unauthorized.append(server_name)
                     continue
 
                 # Add mcp-session-id header for HTTP transports
