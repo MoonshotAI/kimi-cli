@@ -8,7 +8,7 @@ import json
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from kosong.message import ContentPart, ToolCall
 from kosong.tooling import (
@@ -72,6 +72,19 @@ class KimiToolset:
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
+
+    @overload
+    def find(self, tool_name_or_type: str) -> ToolType | None: ...
+    @overload
+    def find[T: ToolType](self, tool_name_or_type: type[T]) -> T | None: ...
+    def find(self, tool_name_or_type: str | type[ToolType]) -> ToolType | None:
+        if isinstance(tool_name_or_type, str):
+            return self._tool_dict.get(tool_name_or_type)
+        else:
+            for tool in self._tool_dict.values():
+                if isinstance(tool, tool_name_or_type):
+                    return tool
+        return None
 
     @property
     def tools(self) -> list[Tool]:

@@ -14,11 +14,13 @@ from kimi_cli.app import KimiCLI
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.session import Session
 from kimi_cli.soul.slash import registry as soul_slash_registry
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
 
 
 class ACPServer:
     def __init__(self) -> None:
+        self.client_capabilities: acp.schema.ClientCapabilities | None = None
         self.conn: acp.Client | None = None
         self.sessions: dict[str, ACPSession] = {}
 
@@ -40,6 +42,7 @@ class ACPServer:
             capabilities=client_capabilities,
             info=client_info,
         )
+        self.client_capabilities = client_capabilities
         return acp.InitializeResponse(
             protocol_version=protocol_version,
             agent_capabilities=acp.schema.AgentCapabilities(
@@ -61,6 +64,8 @@ class ACPServer:
     ) -> acp.NewSessionResponse:
         logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
         assert self.conn is not None, "ACP client not connected"
+        assert self.client_capabilities is not None, "ACP connection not initialized"
+
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
         cli_instance = await KimiCLI.create(
             session,
@@ -68,6 +73,17 @@ class ACPServer:
             thinking=True,
         )
         self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
+
+        if self.client_capabilities.terminal and isinstance(
+            cli_instance.soul.agent.toolset, KimiToolset
+        ):
+            # Replace the Shell tool with the ACP Terminal tool if supported
+            from kimi_cli.acp.tools import Terminal
+            from kimi_cli.tools.shell import Shell
+
+            toolset = cli_instance.soul.agent.toolset
+            if shell_tool := toolset.find(Shell):
+                toolset.add(Terminal(shell_tool, self.conn, session.id))
 
         available_commands = [
             acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
