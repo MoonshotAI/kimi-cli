@@ -10,6 +10,7 @@ from kosong.message import ContentPart
 
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
+from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.soul import Soul, run_soul
@@ -112,18 +113,13 @@ class ACPServerSingleSession:
             # Load MCP tools if supported
             await self.soul.agent.toolset.load_mcp_tools([mcp_config], self.soul.runtime)
 
-        if (
-            self._client_capabilities.terminal
-            and isinstance(self.soul, KimiSoul)
-            and isinstance(self.soul.agent.toolset, KimiToolset)
-        ):
-            # Replace the Shell tool with the ACP Terminal tool if supported
-            from kimi_cli.acp.tools import Terminal
-            from kimi_cli.tools.shell import Shell
-
-            toolset = self.soul.agent.toolset
-            if shell_tool := toolset.find(Shell):
-                toolset.add(Terminal(shell_tool, self._conn, session_id))
+        if isinstance(self.soul, KimiSoul) and isinstance(self.soul.agent.toolset, KimiToolset):
+            replace_tools(
+                self._client_capabilities,
+                self._conn,
+                self._session.id,
+                self.soul.agent.toolset,
+            )
 
         available_commands = [
             acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)

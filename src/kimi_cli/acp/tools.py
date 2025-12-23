@@ -4,9 +4,24 @@ from contextlib import suppress
 import acp
 from kosong.tooling import CallableTool2, DisplayBlock, ToolReturnValue
 
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.utils import ToolResultBuilder
+
+
+def replace_tools(
+    client_capabilities: acp.schema.ClientCapabilities,
+    acp_conn: acp.Client,
+    acp_session_id: str,
+    toolset: KimiToolset,
+) -> None:
+    if client_capabilities.terminal:
+        # Replace the Shell tool with the ACP Terminal tool if supported
+        from kimi_cli.tools.shell import Shell
+
+        if shell_tool := toolset.find(Shell):
+            toolset.add(Terminal(shell_tool, acp_conn, acp_session_id))
 
 
 class HideOutputDisplayBlock(DisplayBlock):

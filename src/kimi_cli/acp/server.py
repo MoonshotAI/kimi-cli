@@ -10,6 +10,7 @@ from kaos.path import KaosPath
 
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
+from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.app import KimiCLI
 from kimi_cli.constant import NAME, VERSION
@@ -76,16 +77,13 @@ class ACPServer:
         )
         self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
 
-        if self.client_capabilities.terminal and isinstance(
-            cli_instance.soul.agent.toolset, KimiToolset
-        ):
-            # Replace the Shell tool with the ACP Terminal tool if supported
-            from kimi_cli.acp.tools import Terminal
-            from kimi_cli.tools.shell import Shell
-
-            toolset = cli_instance.soul.agent.toolset
-            if shell_tool := toolset.find(Shell):
-                toolset.add(Terminal(shell_tool, self.conn, session.id))
+        if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
+            replace_tools(
+                self.client_capabilities,
+                self.conn,
+                session.id,
+                cli_instance.soul.agent.toolset,
+            )
 
         available_commands = [
             acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
@@ -107,9 +105,12 @@ class ACPServer:
     ) -> None:
         logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
         assert self.conn is not None, "ACP client not connected"
+        assert self.client_capabilities is not None, "ACP connection not initialized"
+
         if session_id in self.sessions:
             logger.warning("Session already loaded: {id}", id=session_id)
             return
+
         work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
         session = await Session.find(work_dir, session_id)
         if session is None:
@@ -124,6 +125,14 @@ class ACPServer:
             thinking=True,
         )
         self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
+
+        if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
+            replace_tools(
+                self.client_capabilities,
+                self.conn,
+                session.id,
+                cli_instance.soul.agent.toolset,
+            )
 
         # TODO: replay session history?
 
