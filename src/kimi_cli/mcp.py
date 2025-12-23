@@ -90,7 +90,7 @@ Transport = Literal["stdio", "http"]
       kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n
       \n
       # Add HTTP server with OAuth:\n
-      kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/sse\n
+      kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n
       \n
       # Add stdio server:\n
       kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
