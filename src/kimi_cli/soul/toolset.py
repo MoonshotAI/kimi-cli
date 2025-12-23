@@ -271,9 +271,11 @@ class KimiToolset:
                     self._mcp_unauthorized.append(server_name)
                     continue
 
-                # Add mcp-session-id header for HTTP transports
-                if isinstance(server_config, RemoteMCPServer) and not any(
-                    key.lower() == "mcp-session-id" for key in server_config.headers
+                # Add mcp-session-id header for HTTP transports (skip OAuth servers)
+                if (
+                    isinstance(server_config, RemoteMCPServer)
+                    and server_config.auth != "oauth"
+                    and not any(key.lower() == "mcp-session-id" for key in server_config.headers)
                 ):
                     server_config = server_config.model_copy(deep=True)
                     server_config.headers["Mcp-Session-Id"] = runtime.session.id
