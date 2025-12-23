@@ -6,10 +6,11 @@ from kosong.message import (
     ImageURLPart,
     TextPart,
 )
-from kosong.tooling import DisplayBlock, ToolReturnValue
+from kosong.tooling import ToolReturnValue
 
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
 
 
 def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPart]:
@@ -34,32 +35,15 @@ def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPa
 def display_block_to_acp_content(
     block: DisplayBlock,
 ) -> acp.schema.FileEditToolCallContent | None:
-    if block.type != "diff":
-        return None
+    if isinstance(block, DiffDisplayBlock):
+        return acp.schema.FileEditToolCallContent(
+            type="diff",
+            path=block.path,
+            old_text=block.old_text,
+            new_text=block.new_text,
+        )
 
-    data = block.data
-    if not isinstance(data, dict):
-        logger.warning("Unsupported diff display block data: {data}", data=data)
-        return None
-
-    path = data.get("path")
-    new_text = data.get("new_text") if "new_text" in data else data.get("newText")
-    old_text = data.get("old_text") if "old_text" in data else data.get("oldText")
-
-    if not isinstance(path, str) or not isinstance(new_text, str):
-        logger.warning("Invalid diff display block content: {data}", data=data)
-        return None
-
-    if old_text is not None and not isinstance(old_text, str):
-        logger.warning("Invalid diff display block old_text: {old_text}", old_text=old_text)
-        old_text = None
-
-    return acp.schema.FileEditToolCallContent(
-        type="diff",
-        path=path,
-        old_text=old_text,
-        new_text=new_text,
-    )
+    return None
 
 
 def tool_result_to_acp_content(

@@ -1,7 +1,8 @@
 import acp
-from kosong.tooling import DisplayBlock, ToolReturnValue
+from kosong.tooling import ToolReturnValue
 
 from kimi_cli.acp.convert import tool_result_to_acp_content
+from kimi_cli.wire.display import DiffDisplayBlock
 
 
 def test_tool_result_to_acp_content_handles_diff_display():
@@ -9,12 +10,7 @@ def test_tool_result_to_acp_content_handles_diff_display():
         is_error=False,
         output="",
         message="",
-        display=[
-            DisplayBlock(
-                type="diff",
-                data={"path": "foo.txt", "old_text": "before", "new_text": "after"},
-            )
-        ],
+        display=[DiffDisplayBlock(path="foo.txt", old_text="before", new_text="after")],
     )
 
     contents = tool_result_to_acp_content(tool_ret)

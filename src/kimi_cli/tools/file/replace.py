@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, DisplayBlock, ToolError, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -10,6 +10,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
+from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
 
 
 class Edit(BaseModel):
@@ -108,14 +109,11 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="No replacements made",
                 )
 
-            diff_blocks = [
-                DisplayBlock(
-                    type="diff",
-                    data={
-                        "path": params.path,
-                        "old_text": original_content,
-                        "new_text": content,
-                    },
+            diff_blocks: list[DisplayBlock] = [
+                DiffDisplayBlock(
+                    path=params.path,
+                    old_text=original_content,
+                    new_text=content,
                 )
             ]
 

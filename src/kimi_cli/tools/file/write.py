@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal, override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, DisplayBlock, ToolError, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -10,6 +10,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
+from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
 
 
 class Params(BaseModel):
@@ -97,14 +98,11 @@ class WriteFile(CallableTool2[Params]):
             new_text = (
                 params.content if params.mode == "overwrite" else (old_text or "") + params.content
             )
-            diff_blocks = [
-                DisplayBlock(
-                    type="diff",
-                    data={
-                        "path": params.path,
-                        "old_text": old_text if file_existed else None,
-                        "new_text": new_text,
-                    },
+            diff_blocks: list[DisplayBlock] = [
+                DiffDisplayBlock(
+                    path=params.path,
+                    old_text=old_text if file_existed else None,
+                    new_text=new_text,
                 )
             ]
 

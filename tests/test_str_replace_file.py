@@ -8,6 +8,7 @@ import pytest
 from kaos.path import KaosPath
 
 from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
+from kimi_cli.wire.display import DiffDisplayBlock
 
 
 @pytest.mark.asyncio
@@ -26,11 +27,10 @@ async def test_replace_single_occurrence(
     assert not result.is_error
     assert "successfully edited" in result.message
     diff_block = next(block for block in result.display if block.type == "diff")
-    assert diff_block.data == {
-        "path": str(file_path),
-        "old_text": original_content,
-        "new_text": "Hello universe! This is a test.",
-    }
+    assert isinstance(diff_block, DiffDisplayBlock)
+    assert diff_block.path == str(file_path)
+    assert diff_block.old_text == original_content
+    assert diff_block.new_text == "Hello universe! This is a test."
     assert await file_path.read_text() == "Hello universe! This is a test."
 
 

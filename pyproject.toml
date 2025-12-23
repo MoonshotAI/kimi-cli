@@ -45,7 +45,10 @@ module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 # [tool.uv.sources]
-# kosong = { git = "https://github.com/MoonshotAI/kosong", rev = "f586267b12764a7e4189894650ec9ecc13f0aedd" }
+# kosong = { path = "../kosong" }
+
+[tool.uv.sources]
+kosong = { git = "https://github.com/MoonshotAI/kosong" }
 
 [project.scripts]
 kimi = "kimi_cli.cli:cli"

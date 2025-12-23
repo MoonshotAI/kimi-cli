@@ -5,11 +5,12 @@ from typing import Any, Literal, cast
 
 from kosong.chat_provider import TokenUsage
 from kosong.message import ContentPart, ToolCall, ToolCallPart
-from kosong.tooling import DisplayBlock, ToolResult
+from kosong.tooling import ToolResult
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from kimi_cli.utils.typing import flatten_union
+from kimi_cli.wire.display import DisplayBlock
 
 
 class TurnBegin(BaseModel):
@@ -118,7 +119,8 @@ class ApprovalRequest(BaseModel):
     sender: str
     action: str
     description: str
-    display: list[DisplayBlock] | None = None
+    display: list[DisplayBlock] = Field(default_factory=list[DisplayBlock])
+    """Defaults to an empty list for backwards-compatible wire.jsonl loading."""
 
     type Response = Literal["approve", "approve_for_session", "reject"]
 
