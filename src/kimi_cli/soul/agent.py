@@ -208,7 +208,7 @@ async def load_agent(
         subagent = await load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
-            mcp_configs=mcp_configs,
+            mcp_configs=[],  # Subagents don't need MCP tools, only main agent loads them
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
