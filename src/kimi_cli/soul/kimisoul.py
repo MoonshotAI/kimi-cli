@@ -203,6 +203,7 @@ class KimiSoul:
                     description=request.description,
                     sender=request.sender,
                     tool_call_id=request.tool_call_id,
+                    display=request.display,
                 )
                 wire_send(wire_request)
                 # We wait for the request to be resolved over the wire, which means that,

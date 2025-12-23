@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal, override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -10,6 +10,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
+from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
 
 
 class Params(BaseModel):
@@ -89,11 +90,28 @@ class WriteFile(CallableTool2[Params]):
                     brief="Invalid write mode",
                 )
 
+            file_existed = await p.exists()
+            old_text = None
+            if file_existed:
+                old_text = await p.read_text(errors="replace")
+
+            new_text = (
+                params.content if params.mode == "overwrite" else (old_text or "") + params.content
+            )
+            diff_blocks: list[DisplayBlock] = [
+                DiffDisplayBlock(
+                    path=params.path,
+                    old_text=old_text if file_existed else None,
+                    new_text=new_text,
+                )
+            ]
+
             # Request approval
             if not await self._approval.request(
                 self.name,
                 FileActions.EDIT,
                 f"Write file `{params.path}`",
+                display=diff_blocks,
             ):
                 return ToolRejectedError()
 
@@ -107,9 +125,11 @@ class WriteFile(CallableTool2[Params]):
             # Get file info for success message
             file_size = (await p.stat()).st_size
             action = "overwritten" if params.mode == "overwrite" else "appended to"
-            return ToolOk(
+            return ToolReturnValue(
+                is_error=False,
                 output="",
                 message=(f"File successfully {action}. Current size: {file_size} bytes."),
+                display=diff_blocks,
             )
 
         except Exception as e:

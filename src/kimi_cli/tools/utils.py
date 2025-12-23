@@ -2,7 +2,7 @@ import re
 import string
 from pathlib import Path
 
-from kosong.tooling import DisplayBlock, ToolError, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
 
@@ -112,7 +112,7 @@ class ToolResultBuilder:
             is_error=False,
             output=output,
             message=final_message,
-            display=[DisplayBlock(type="brief", data=brief)] if brief else [],
+            display=[BriefDisplayBlock(text=brief)] if brief else [],
             extras=self._extras,
         )
 
@@ -132,7 +132,7 @@ class ToolResultBuilder:
             is_error=True,
             output=output,
             message=final_message,
-            display=[DisplayBlock(type="brief", data=brief)] if brief else [],
+            display=[BriefDisplayBlock(text=brief)] if brief else [],
             extras=self._extras,
         )
 

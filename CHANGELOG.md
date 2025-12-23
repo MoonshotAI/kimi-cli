@@ -12,6 +12,10 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
+- Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
+- ACP: Show file diff previews in tool results and approval prompts
+- Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
+- Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
 
 ## [0.67] - 2025-12-22
 

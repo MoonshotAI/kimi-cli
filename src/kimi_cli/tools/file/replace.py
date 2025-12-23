@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
@@ -10,6 +10,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
+from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
 
 
 class Edit(BaseModel):
@@ -91,14 +92,6 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                FileActions.EDIT,
-                f"Edit file `{params.path}`",
-            ):
-                return ToolRejectedError()
-
             # Read the file content
             content = await p.read_text(errors="replace")
 
@@ -116,6 +109,23 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="No replacements made",
                 )
 
+            diff_blocks: list[DisplayBlock] = [
+                DiffDisplayBlock(
+                    path=params.path,
+                    old_text=original_content,
+                    new_text=content,
+                )
+            ]
+
+            # Request approval
+            if not await self._approval.request(
+                self.name,
+                FileActions.EDIT,
+                f"Edit file `{params.path}`",
+                display=diff_blocks,
+            ):
+                return ToolRejectedError()
+
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
 
@@ -127,12 +137,14 @@ class StrReplaceFile(CallableTool2[Params]):
                 else:
                     total_replacements += 1 if edit.old in original_content else 0
 
-            return ToolOk(
+            return ToolReturnValue(
+                is_error=False,
                 output="",
                 message=(
                     f"File successfully edited. "
                     f"Applied {len(edits)} edit(s) with {total_replacements} total replacement(s)."
                 ),
+                display=diff_blocks,
             )
 
         except Exception as e:

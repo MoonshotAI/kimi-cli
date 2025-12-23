@@ -914,7 +914,7 @@ requires-dist = [
     { name = "aiohttp", specifier = "==3.13.2" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
-    { name = "kosong", extras = ["contrib"], specifier = "==0.34.1" },
+    { name = "kosong", extras = ["contrib"], git = "https://github.com/MoonshotAI/kosong" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "pillow", specifier = "==12.0.0" },
     { name = "prompt-toolkit", specifier = "==3.0.52" },
@@ -943,7 +943,7 @@ dev = [
 [[package]]
 name = "kosong"
 version = "0.34.1"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/MoonshotAI/kosong#7cf5f4cfb8fd1034292955eebd8b3a6f5a67264f" }
 dependencies = [
     { name = "anthropic" },
     { name = "google-genai" },
@@ -954,10 +954,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/5c/5bd0630569bd3ff41a06b74e3a6caa6518e1fff1a69ac286239800828502/kosong-0.34.1.tar.gz", hash = "sha256:20672d1c6a35a989ff00c714b830657bd5553cf2491830fd840f98b385d855b1", size = 36845, upload-time = "2025-12-22T09:11:43.795Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/b8/c056fc1a4bf10b3c3ed4c0c244d7a740f0b0484bf97618e88c869bc39ab8/kosong-0.34.1-py3-none-any.whl", hash = "sha256:67496348acfeca33917569cdf35a253b509091edf5a6608bac60ba979b0e12b9", size = 54117, upload-time = "2025-12-22T09:11:42.547Z" },
 ]
 
 [package.optional-dependencies]

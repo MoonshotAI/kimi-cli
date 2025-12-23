@@ -7,6 +7,7 @@ from typing import Literal
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.display import DisplayBlock
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -16,6 +17,7 @@ class Request:
     sender: str
     action: str
     description: str
+    display: list[DisplayBlock]
 
 
 type Response = Literal["approve", "approve_for_session", "reject"]
@@ -32,7 +34,13 @@ class Approval:
     def set_yolo(self, yolo: bool) -> None:
         self._yolo = yolo
 
-    async def request(self, sender: str, action: str, description: str) -> bool:
+    async def request(
+        self,
+        sender: str,
+        action: str,
+        description: str,
+        display: list[DisplayBlock] | None = None,
+    ) -> bool:
         """
         Request approval for the given action. Intended to be called by tools.
 
@@ -71,6 +79,7 @@ class Approval:
             sender=sender,
             action=action,
             description=description,
+            display=display or [],
         )
         approved_future = asyncio.Future[bool]()
         self._request_queue.put_nowait(request)

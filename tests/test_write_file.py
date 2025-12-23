@@ -9,6 +9,7 @@ from kaos.path import KaosPath
 from pydantic import ValidationError
 
 from kimi_cli.tools.file.write import Params, WriteFile
+from kimi_cli.wire.display import DiffDisplayBlock
 
 
 @pytest.mark.asyncio
@@ -21,6 +22,11 @@ async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPat
 
     assert not result.is_error
     assert "successfully overwritten" in result.message
+    diff_block = next(block for block in result.display if block.type == "diff")
+    assert isinstance(diff_block, DiffDisplayBlock)
+    assert diff_block.path == str(file_path)
+    assert diff_block.old_text is None
+    assert diff_block.new_text == content
     assert await file_path.exists()
     assert await file_path.read_text() == content
 
