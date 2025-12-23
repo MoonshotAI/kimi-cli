@@ -119,6 +119,7 @@ class ACPServerSingleSession:
                 self._conn,
                 self._session.id,
                 self.soul.agent.toolset,
+                self.soul.runtime,
             )
 
         available_commands = [

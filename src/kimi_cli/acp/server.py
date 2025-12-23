@@ -83,6 +83,7 @@ class ACPServer:
                 self.conn,
                 session.id,
                 cli_instance.soul.agent.toolset,
+                cli_instance.soul.runtime,
             )
 
         available_commands = [
@@ -132,6 +133,7 @@ class ACPServer:
                 self.conn,
                 session.id,
                 cli_instance.soul.agent.toolset,
+                cli_instance.soul.runtime,
             )
 
         # TODO: replay session history?

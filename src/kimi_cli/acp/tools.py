@@ -2,12 +2,16 @@ import asyncio
 from contextlib import suppress
 
 import acp
+from kaos import get_current_kaos
+from kaos.local import local_kaos
 from kosong.tooling import CallableTool2, DisplayBlock, ToolReturnValue
 
+from kimi_cli.soul.agent import Runtime
+from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
-from kimi_cli.tools.utils import ToolResultBuilder
+from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder
 
 
 def replace_tools(
@@ -15,13 +19,25 @@ def replace_tools(
     acp_conn: acp.Client,
     acp_session_id: str,
     toolset: KimiToolset,
+    runtime: Runtime,
 ) -> None:
+    if get_current_kaos().name != local_kaos.name:
+        # Only replace tools when running in local mode
+        return
+
     if client_capabilities.terminal:
         # Replace the Shell tool with the ACP Terminal tool if supported
         from kimi_cli.tools.shell import Shell
 
         if shell_tool := toolset.find(Shell):
-            toolset.add(Terminal(shell_tool, acp_conn, acp_session_id))
+            toolset.add(
+                Terminal(
+                    shell_tool,
+                    acp_conn,
+                    acp_session_id,
+                    runtime.approval,
+                )
+            )
 
 
 class HideOutputDisplayBlock(DisplayBlock):
@@ -31,12 +47,19 @@ class HideOutputDisplayBlock(DisplayBlock):
 
 
 class Terminal(CallableTool2[ShellParams]):
-    def __init__(self, shell_tool: Shell, acp_conn: acp.Client, acp_session_id: str) -> None:
+    def __init__(
+        self,
+        shell_tool: Shell,
+        acp_conn: acp.Client,
+        acp_session_id: str,
+        approval: Approval,
+    ) -> None:
         # Use the `name`, `description`, and `params` from the existing Shell tool,
         # so that when this is added to the toolset, it replaces the original Shell tool.
         super().__init__(shell_tool.name, shell_tool.description, shell_tool.params)
         self._acp_conn = acp_conn
         self._acp_session_id = acp_session_id
+        self._approval = approval
 
     async def __call__(self, params: ShellParams) -> ToolReturnValue:
         from kimi_cli.acp.session import get_current_acp_tool_call_id_or_none
@@ -48,6 +71,13 @@ class Terminal(CallableTool2[ShellParams]):
 
         if not params.command:
             return builder.error("Command cannot be empty.", brief="Empty command")
+
+        if not await self._approval.request(
+            self.name,
+            "run shell command",
+            f"Run command `{params.command}`",
+        ):
+            return ToolRejectedError()
 
         timeout_seconds = float(params.timeout)
         timeout_label = f"{timeout_seconds:g}s"
