@@ -8,7 +8,7 @@ from typing import NamedTuple
 
 import streamingjson  # pyright: ignore[reportMissingTypeStubs]
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, ToolError, ToolOk, ToolResult, ToolReturnValue
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
@@ -22,6 +22,7 @@ from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
+from kimi_cli.wire.display import TodoDisplayBlock
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalRequestResolved,
@@ -185,13 +186,16 @@ class _ToolCallBlock:
                 )
             )
 
-        if self._result is not None and self._result.brief:
-            lines.append(
-                Markdown(
-                    self._result.brief,
-                    style="grey50" if not self._result.is_error else "red",
-                )
-            )
+        if self._result is not None:
+            for block in self._result.display:
+                if isinstance(block, BriefDisplayBlock):
+                    style = "grey50" if not self._result.is_error else "red"
+                    if block.text:
+                        lines.append(Markdown(block.text, style=style))
+                elif isinstance(block, TodoDisplayBlock):
+                    markdown = self._render_todo_markdown(block)
+                    if markdown:
+                        lines.append(Markdown(markdown, style="grey50"))
 
         if self.finished:
             assert self._result is not None
@@ -209,6 +213,21 @@ class _ToolCallBlock:
         return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
             f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
         )
+
+    def _render_todo_markdown(self, block: TodoDisplayBlock) -> str:
+        lines: list[str] = []
+        for todo in block.items:
+            normalized = todo.status.replace("_", " ").lower()
+            match normalized:
+                case "pending":
+                    lines.append(f"- {todo.title}")
+                case "in progress":
+                    lines.append(f"- {todo.title} ←")
+                case "done":
+                    lines.append(f"- ~~{todo.title}~~")
+                case _:
+                    lines.append(f"- {todo.title}")
+        return "\n".join(lines)
 
 
 class _ApprovalRequestPanel:

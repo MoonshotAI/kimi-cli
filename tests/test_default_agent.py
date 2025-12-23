@@ -236,7 +236,7 @@ However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use t
                                     },
                                     "status": {
                                         "description": "The status of the todo",
-                                        "enum": ["Pending", "In Progress", "Done"],
+                                        "enum": ["pending", "in_progress", "done"],
                                         "type": "string",
                                     },
                                 },
