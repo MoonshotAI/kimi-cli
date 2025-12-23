@@ -1,15 +1,16 @@
 from pathlib import Path
 from typing import Literal, override
 
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.tools.utils import load_desc
+from kimi_cli.wire.display import TodoDisplayBlock, TodoDisplayItem
 
 
 class Todo(BaseModel):
     title: str = Field(description="The title of the todo", min_length=1)
-    status: Literal["Pending", "In Progress", "Done"] = Field(description="The status of the todo")
+    status: Literal["pending", "in_progress", "done"] = Field(description="The status of the todo")
 
 
 class Params(BaseModel):
@@ -23,13 +24,10 @@ class SetTodoList(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
-        rendered = ""
-        for todo in params.todos:
-            match todo.status:
-                case "Done":
-                    rendered += f"- ~~{todo.title}~~ [{todo.status}]\n"
-                case "In Progress":
-                    rendered += f"- **{todo.title}** [{todo.status}]\n"
-                case _:
-                    rendered += f"- {todo.title} [{todo.status}]\n"
-        return ToolOk(output="", message="Todo list updated", brief=rendered)
+        items = [TodoDisplayItem(title=todo.title, status=todo.status) for todo in params.todos]
+        return ToolReturnValue(
+            is_error=False,
+            output="",
+            message="Todo list updated",
+            display=[TodoDisplayBlock(items=items)],
+        )
