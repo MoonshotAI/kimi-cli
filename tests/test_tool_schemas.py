@@ -158,7 +158,7 @@ def test_read_file_params_schema(read_file_tool: ReadFile):
         {
             "properties": {
                 "path": {
-                    "description": "The absolute path to the file to read",
+                    "description": "The path to the file to read. Absolute paths are required when reading files outside the working directory.",
                     "type": "string",
                 },
                 "line_offset": {

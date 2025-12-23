@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import override
 
 from kaos.path import KaosPath
@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc, truncate_line
+from kimi_cli.utils.path import is_within_directory
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
@@ -14,7 +15,12 @@ MAX_BYTES = 100 << 10  # 100KB
 
 
 class Params(BaseModel):
-    path: str = Field(description="The absolute path to the file to read")
+    path: str = Field(
+        description=(
+            "The path to the file to read. Absolute paths are required when reading files "
+            "outside the working directory."
+        )
+    )
     line_offset: int = Field(
         description=(
             "The line number to start reading from. "
@@ -51,22 +57,39 @@ class ReadFile(CallableTool2[Params]):
         super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
+    async def _validate_path(self, path: KaosPath) -> ToolError | None:
+        """Validate that the path is safe to read."""
+        # Check for path traversal attempts
+        resolved_path = path.canonical()
+
+        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+            # Outside files can only be read with absolute paths
+            return ToolError(
+                message=(
+                    f"`{path}` is not an absolute path. "
+                    "You must provide an absolute path to read a file "
+                    "outside the working directory."
+                ),
+                brief="Invalid path",
+            )
+        return None
+
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
         # TODO: checks:
         # - check if the path may contain secrets
-        # - check if the file format is readable
+
+        if not params.path:
+            return ToolError(
+                message="File path cannot be empty.",
+                brief="Empty file path",
+            )
+
         try:
             p = KaosPath(params.path)
 
-            if not p.is_absolute():
-                return ToolError(
-                    message=(
-                        f"`{params.path}` is not an absolute path. "
-                        "You must provide an absolute path to read a file."
-                    ),
-                    brief="Invalid path",
-                )
+            if err := await self._validate_path(p):
+                return err
 
             if not await p.exists():
                 return ToolError(
@@ -77,6 +100,18 @@ class ReadFile(CallableTool2[Params]):
                 return ToolError(
                     message=f"`{params.path}` is not a file.",
                     brief="Invalid path",
+                )
+
+            if not file_seems_readable(p):
+                return ToolError(
+                    message=(
+                        f"`{params.path}` seems not readable. "
+                        "You may need to read it with proper shell commands, Python tools "
+                        "or MCP tools if available. "
+                        "If you read/operate it with Python, you MUST ensure that any "
+                        "third-party packages are installed in a virtual environment (venv)."
+                    ),
+                    brief="File not readable",
                 )
 
             assert params.line_offset >= 1
@@ -136,3 +171,119 @@ class ReadFile(CallableTool2[Params]):
                 message=f"Failed to read {params.path}. Error: {e}",
                 brief="Failed to read file",
             )
+
+
+_NON_TEXT_SUFFIXES = {
+    # Images
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".webp",
+    ".ico",
+    ".icns",
+    ".heic",
+    ".heif",
+    ".avif",
+    ".psd",
+    ".ai",
+    ".eps",
+    ".svg",
+    ".svgz",
+    # Documents / office formats
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".dot",
+    ".dotx",
+    ".rtf",
+    ".odt",
+    ".xls",
+    ".xlsx",
+    ".xlsm",
+    ".xlt",
+    ".xltx",
+    ".xltm",
+    ".ods",
+    ".ppt",
+    ".pptx",
+    ".pptm",
+    ".pps",
+    ".ppsx",
+    ".odp",
+    ".pages",
+    ".numbers",
+    ".key",
+    # Archives / compressed
+    ".zip",
+    ".rar",
+    ".7z",
+    ".tar",
+    ".gz",
+    ".tgz",
+    ".bz2",
+    ".xz",
+    ".zst",
+    ".lz",
+    ".lz4",
+    ".br",
+    ".cab",
+    ".ar",
+    ".deb",
+    ".rpm",
+    # Audio
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".aac",
+    ".m4a",
+    ".wma",
+    # Video
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".webm",
+    ".m4v",
+    ".flv",
+    ".3gp",
+    # Fonts
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
+    # Binaries / bundles
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".bin",
+    ".apk",
+    ".ipa",
+    ".jar",
+    ".class",
+    ".pyc",
+    ".pyo",
+    ".wasm",
+    # Disk images / databases
+    ".dmg",
+    ".iso",
+    ".img",
+    ".sqlite",
+    ".sqlite3",
+    ".db",
+    ".db3",
+}
+
+
+def file_seems_readable(path: KaosPath) -> bool:
+    """Guess whether the file is readable."""
+    suffix = PurePath(str(path)).suffix
+    return suffix.lower() not in _NON_TEXT_SUFFIXES

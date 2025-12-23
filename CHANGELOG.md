@@ -11,7 +11,14 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+- CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
+
+## [0.67] - 2025-12-22
+
 - ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
+- MCP: Add `mcp.client` config section to configure MCP tool call timeout and other future options
+- Core: Improve default system prompt and `ReadFile` tool
+- UI: Fix Ctrl-C not working in some rare cases
 
 ## [0.66] - 2025-12-19
 
