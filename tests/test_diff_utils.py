@@ -301,3 +301,66 @@ Line 16\
             ),
         ]
     )
+
+
+def test_build_diff_blocks_old_empty() -> None:
+    old_text = ""
+    new_text = """
+Line 1
+Line 2
+""".strip()
+
+    blocks = diff_utils.build_diff_blocks("/tmp/old-empty.txt", old_text, new_text)
+
+    assert blocks == snapshot(
+        [
+            DiffDisplayBlock(
+                path="/tmp/old-empty.txt",
+                old_text="",
+                new_text="""\
+Line 1
+Line 2\
+""",
+            )
+        ]
+    )
+
+
+def test_build_diff_blocks_new_empty() -> None:
+    old_text = """
+Line 1
+Line 2
+""".strip()
+    new_text = ""
+
+    blocks = diff_utils.build_diff_blocks("/tmp/new-empty.txt", old_text, new_text)
+
+    assert blocks == snapshot(
+        [
+            DiffDisplayBlock(
+                path="/tmp/new-empty.txt",
+                old_text="""\
+Line 1
+Line 2\
+""",
+                new_text="",
+            )
+        ]
+    )
+
+
+def test_build_diff_blocks_both_empty() -> None:
+    blocks = diff_utils.build_diff_blocks("/tmp/both-empty.txt", "", "")
+
+    assert blocks == snapshot([])
+
+
+def test_build_diff_blocks_equal_text() -> None:
+    text = """
+Line 1
+Line 2
+""".strip()
+
+    blocks = diff_utils.build_diff_blocks("/tmp/equal.txt", text, text)
+
+    assert blocks == snapshot([])

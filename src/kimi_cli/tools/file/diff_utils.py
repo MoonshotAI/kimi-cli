@@ -4,17 +4,20 @@ from difflib import SequenceMatcher
 
 from kimi_cli.wire.display import DiffDisplayBlock
 
+N_CONTEXT_LINES = 3
+
 
 def build_diff_blocks(
     path: str,
     old_text: str,
     new_text: str,
 ) -> list[DiffDisplayBlock]:
+    """Build diff display blocks grouped with small context windows."""
     old_lines = old_text.splitlines()
     new_lines = new_text.splitlines()
     matcher = SequenceMatcher(None, old_lines, new_lines, autojunk=False)
     blocks: list[DiffDisplayBlock] = []
-    for group in matcher.get_grouped_opcodes(n=3):
+    for group in matcher.get_grouped_opcodes(n=N_CONTEXT_LINES):
         if not group:
             continue
         i1 = group[0][1]
@@ -28,7 +31,4 @@ def build_diff_blocks(
                 new_text="\n".join(new_lines[j1:j2]),
             )
         )
-
-    if blocks:
-        return blocks
-    return [DiffDisplayBlock(path=path, old_text=old_text, new_text=new_text)]
+    return blocks
