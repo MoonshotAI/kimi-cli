@@ -200,6 +200,24 @@ async def test_wire_message_serde():
     _test_serde(msg)
 
 
+def test_approval_request_deserialize_without_display():
+    msg = deserialize_wire_message(
+        {
+            "type": "ApprovalRequest",
+            "payload": {
+                "id": "request_123",
+                "tool_call_id": "call_999",
+                "sender": "bash",
+                "action": "Execute dangerous command",
+                "description": "This command will delete files",
+            },
+        }
+    )
+
+    assert isinstance(msg, ApprovalRequest)
+    assert msg.display == []
+
+
 def test_wire_message_record_roundtrip():
     envelope = WireMessageEnvelope.from_wire_message(TurnBegin(user_input=[TextPart(text="hi")]))
     record = WireMessageRecord(timestamp=123.456, message=envelope)
