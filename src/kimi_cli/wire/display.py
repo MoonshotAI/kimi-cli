@@ -18,7 +18,7 @@ class DiffDisplayBlock(DisplayBlock):
 
     type: str = "diff"
     path: str
-    old_text: str | None = None
+    old_text: str
     new_text: str
 
 

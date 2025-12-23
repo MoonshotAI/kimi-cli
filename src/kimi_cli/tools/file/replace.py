@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.file.diff_utils import build_diff_blocks
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
-from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
+from kimi_cli.wire.display import DisplayBlock
 
 
 class Edit(BaseModel):
@@ -109,13 +110,9 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="No replacements made",
                 )
 
-            diff_blocks: list[DisplayBlock] = [
-                DiffDisplayBlock(
-                    path=params.path,
-                    old_text=original_content,
-                    new_text=content,
-                )
-            ]
+            diff_blocks: list[DisplayBlock] = list(
+                build_diff_blocks(params.path, original_content, content)
+            )
 
             # Request approval
             if not await self._approval.request(
