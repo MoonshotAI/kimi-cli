@@ -135,7 +135,7 @@ kimi mcp list
 # Remove an MCP server:
 kimi mcp remove chrome-devtools
 
-# Authrorize an MCP server:
+# Authorize an MCP server:
 kimi mcp auth linear
 ```
 
