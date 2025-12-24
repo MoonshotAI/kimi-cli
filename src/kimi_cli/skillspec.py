@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
+from loguru import logger
 
 
 @dataclass(frozen=True)
@@ -48,8 +49,11 @@ def discover_skills(skill_folder: Path) -> list[SkillInfo]:
             skill_info = _parse_skill_md(skill_md, skill_dir)
             if skill_info:
                 skills.append(skill_info)
-        except Exception:
-            # Skip invalid skills
+        except Exception as e:
+            # Skip invalid skills, but log for debugging
+            logger.debug(
+                "Skipping invalid skill at {}: {}", skill_md, e, exc_info=True
+            )
             continue
 
     return sorted(skills, key=lambda s: s.name)
@@ -66,18 +70,22 @@ def _parse_skill_md(skill_md_path: Path, skill_dir: Path) -> SkillInfo | None:
     Returns:
         SkillInfo object if valid, None otherwise.
     """
-    content = skill_md_path.read_text(encoding="utf-8")
+    try:
+        content = skill_md_path.read_text(encoding="utf-8")
+    except (PermissionError, OSError, UnicodeDecodeError):
+        # Treat unreadable or undecodable SKILL.md files as invalid skills.
+        return None
 
     # Extract YAML frontmatter
     if not content.startswith("---"):
         return None
 
-    # Find the end of frontmatter
-    end_idx = content.find("---", 3)
+    # Find the end of frontmatter (start search at position 4 to skip past "---\n")
+    end_idx = content.find("---", 4)
     if end_idx == -1:
         return None
 
-    frontmatter = content[3:end_idx].strip()
+    frontmatter = content[4:end_idx].strip()
 
     try:
         raw_data: Any = yaml.safe_load(frontmatter)
@@ -91,10 +99,11 @@ def _parse_skill_md(skill_md_path: Path, skill_dir: Path) -> SkillInfo | None:
     name = data.get("name")
     description = data.get("description")
 
-    if not name or not description:
+    if not isinstance(name, str) or not isinstance(description, str):
         return None
 
-    if not isinstance(name, str) or not isinstance(description, str):
+    # Reject empty or whitespace-only names/descriptions
+    if not name.strip() or not description.strip():
         return None
 
     return SkillInfo(

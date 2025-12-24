@@ -174,3 +174,162 @@ def test_skill_info_is_immutable():
 
         with pytest.raises(AttributeError):
             skill_info.name = "new-name"  # type: ignore[misc]
+
+
+def test_discover_skills_with_malformed_yaml():
+    """Test discovering a skill with malformed YAML syntax."""
+    with TemporaryDirectory() as tmpdir:
+        skill_dir = Path(tmpdir) / "malformed-yaml-skill"
+        skill_dir.mkdir()
+        # Use YAML with unclosed string or invalid syntax that causes YAMLError
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: "unclosed string
+description: Missing closing quote
+---
+""",
+            encoding="utf-8",
+        )
+
+        skills = discover_skills(Path(tmpdir))
+        assert skills == []
+
+
+def test_discover_skills_with_non_string_types():
+    """Test discovering skills with non-string name/description types."""
+    with TemporaryDirectory() as tmpdir:
+        # Skill with numeric name
+        skill_dir1 = Path(tmpdir) / "numeric-name-skill"
+        skill_dir1.mkdir()
+        (skill_dir1 / "SKILL.md").write_text(
+            """---
+name: 123
+description: Valid description
+---
+""",
+            encoding="utf-8",
+        )
+
+        # Skill with boolean name
+        skill_dir2 = Path(tmpdir) / "boolean-name-skill"
+        skill_dir2.mkdir()
+        (skill_dir2 / "SKILL.md").write_text(
+            """---
+name: true
+description: Valid description
+---
+""",
+            encoding="utf-8",
+        )
+
+        # Skill with list name
+        skill_dir3 = Path(tmpdir) / "list-name-skill"
+        skill_dir3.mkdir()
+        (skill_dir3 / "SKILL.md").write_text(
+            """---
+name: [item1, item2]
+description: Valid description
+---
+""",
+            encoding="utf-8",
+        )
+
+        # Skill with numeric description
+        skill_dir4 = Path(tmpdir) / "numeric-desc-skill"
+        skill_dir4.mkdir()
+        (skill_dir4 / "SKILL.md").write_text(
+            """---
+name: valid-name
+description: 456
+---
+""",
+            encoding="utf-8",
+        )
+
+        skills = discover_skills(Path(tmpdir))
+        assert skills == []
+
+
+def test_discover_skills_with_whitespace_only():
+    """Test discovering skills with whitespace-only name/description."""
+    with TemporaryDirectory() as tmpdir:
+        # Skill with whitespace-only name
+        skill_dir1 = Path(tmpdir) / "whitespace-name-skill"
+        skill_dir1.mkdir()
+        (skill_dir1 / "SKILL.md").write_text(
+            """---
+name: "   "
+description: Valid description
+---
+""",
+            encoding="utf-8",
+        )
+
+        # Skill with whitespace-only description
+        skill_dir2 = Path(tmpdir) / "whitespace-desc-skill"
+        skill_dir2.mkdir()
+        (skill_dir2 / "SKILL.md").write_text(
+            """---
+name: valid-name
+description: "  \t  "
+---
+""",
+            encoding="utf-8",
+        )
+
+        # Skill with both whitespace-only
+        skill_dir3 = Path(tmpdir) / "whitespace-both-skill"
+        skill_dir3.mkdir()
+        (skill_dir3 / "SKILL.md").write_text(
+            """---
+name: " "
+description: "\n\t"
+---
+""",
+            encoding="utf-8",
+        )
+
+        skills = discover_skills(Path(tmpdir))
+        assert skills == []
+
+
+def test_format_skills_preserves_markdown():
+    """Test that markdown special characters are preserved in formatted output."""
+    with TemporaryDirectory() as tmpdir:
+        skill_dir = Path(tmpdir) / "test-skill"
+        skill_dir.mkdir()
+        skill_md = skill_dir / "SKILL.md"
+
+        skills = [
+            SkillInfo(
+                name="skill*with*markdown",
+                description="Description with `code` and **bold**",
+                path=skill_dir,
+                skill_md_path=skill_md,
+            )
+        ]
+
+        formatted = format_skills_for_prompt(skills)
+        # Verify markdown characters are preserved (not escaped) since this is for LLM consumption
+        assert "skill*with*markdown" in formatted
+        assert "Description with `code`" in formatted
+        assert "**bold**" in formatted
+
+
+def test_discover_skills_frontmatter_parsing_edge_case():
+    """Test frontmatter parsing with edge case of file starting with 4 dashes."""
+    with TemporaryDirectory() as tmpdir:
+        # File starting with "----" (4 dashes) - the old bug would find closing
+        # delimiter at position 3, resulting in empty frontmatter. With the fix,
+        # it should search from position 4 and not find a valid closing delimiter.
+        skill_dir = Path(tmpdir) / "four-dashes-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            """----
+""",
+            encoding="utf-8",
+        )
+
+        skills = discover_skills(Path(tmpdir))
+        # Should not find valid frontmatter (no closing "---" after position 4)
+        assert skills == []
