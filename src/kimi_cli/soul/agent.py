@@ -17,6 +17,8 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
+from kimi_cli.share import get_share_dir
+from kimi_cli.skillspec import discover_skills, format_skills_for_prompt
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -40,6 +42,8 @@ class BuiltinSystemPromptArgs:
     """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
+    KIMI_SKILLS: str
+    """Formatted information about available skills."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -74,12 +78,25 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
+        skill_folder: Path | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
             Environment.detect(),
         )
+
+        # Determine skill folder location
+        if skill_folder is None:
+            skill_folder = get_share_dir() / "skill"
+            logger.info("Using default skill folder: {skill_folder}", skill_folder=skill_folder)
+        else:
+            logger.info("Using specified skill folder: {skill_folder}", skill_folder=skill_folder)
+
+        # Discover and format skills
+        skills = discover_skills(skill_folder)
+        skills_formatted = format_skills_for_prompt(skills)
+        logger.info("Discovered {count} skill(s)", count=len(skills))
 
         return Runtime(
             config=config,
@@ -90,6 +107,7 @@ class Runtime:
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
+                KIMI_SKILLS=skills_formatted,
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
