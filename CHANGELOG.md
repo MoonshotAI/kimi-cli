@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+
+## [0.68] - 2025-12-24
+
 - CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
 - Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
 - Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
