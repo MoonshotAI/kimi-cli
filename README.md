@@ -121,7 +121,7 @@ You can manage MCP servers with `kimi mcp` sub-command group. For example:
 
 ```sh
 # Add streamable HTTP server:
-kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
+kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY: ctx7sk-your-key"
 
 # Add streamable HTTP server with OAuth authorization:
 kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp
