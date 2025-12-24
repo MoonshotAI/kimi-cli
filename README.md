@@ -50,7 +50,7 @@ uv tool upgrade kimi-cli --no-cache
 
 Run `kimi` command in the directory you want to work on, then send `/setup` to setup Kimi CLI:
 
-![](./docs/media/setup.png)
+![](./docs/media/setup.jpg)
 
 After setup, Kimi CLI will be ready to use. You can send `/help` to get more information.
 
