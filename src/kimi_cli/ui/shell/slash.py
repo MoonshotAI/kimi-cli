@@ -164,9 +164,8 @@ async def mcp(app: Shell, args: list[str]):
         return
 
     servers = toolset.mcp_servers
-    unauthorized = toolset.mcp_unauthorized
 
-    if not servers and not unauthorized:
+    if not servers:
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
@@ -182,18 +181,18 @@ async def mcp(app: Shell, args: list[str]):
         "connecting": "[cyan]•[/cyan]",
         "pending": "[yellow]•[/yellow]",
         "failed": "[red]•[/red]",
+        "unauthorized": "[red]•[/red]",
     }
     for name, info in servers.items():
         dot = status_dots.get(info.status, "[red]•[/red]")
         server_line = f" {dot} {name}"
-        if info.status != "connected":
+        if info.status == "unauthorized":
+            server_line += f" (unauthorized - run: kimi mcp auth {name})"
+        elif info.status != "connected":
             server_line += f" ({info.status})"
         lines.append(server_line)
         for tool in info.tools:
             lines.append(f"   [dim]• {tool.name}[/dim]")
-
-    for name in unauthorized:
-        lines.append(f" [red]•[/red] {name} (unauthorized - run: kimi mcp auth {name})")
 
     console.print(
         Panel(

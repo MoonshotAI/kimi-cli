@@ -68,7 +68,6 @@ class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
         self._mcp_servers: dict[str, MCPServerInfo] = {}
-        self._mcp_unauthorized: list[str] = []
         self._mcp_loading_task: asyncio.Task[None] | None = None
 
     def add(self, tool: ToolType) -> None:
@@ -124,11 +123,6 @@ class KimiToolset:
     def mcp_servers(self) -> dict[str, MCPServerInfo]:
         """Get MCP servers info."""
         return self._mcp_servers
-
-    @property
-    def mcp_unauthorized(self) -> list[str]:
-        """Get list of unauthorized OAuth MCP server names."""
-        return self._mcp_unauthorized
 
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
@@ -217,6 +211,8 @@ class KimiToolset:
                     position="right",
                 )
 
+        oauth_servers: dict[str, str] = {}
+
         async def _connect_server(
             server_name: str, server_info: MCPServerInfo
         ) -> tuple[str, Exception | None]:
@@ -248,6 +244,20 @@ class KimiToolset:
 
         async def _connect():
             _toast_mcp("connecting to mcp servers...")
+            unauthorized_servers: dict[str, str] = {}
+            for server_name, server_info in self._mcp_servers.items():
+                server_url = oauth_servers.get(server_name)
+                if not server_url:
+                    continue
+                if not await _check_oauth_tokens(server_url):
+                    logger.warning(
+                        "Skipping OAuth MCP server '{server_name}': not authenticated. "
+                        "Run 'kimi mcp auth {server_name}' first.",
+                        server_name=server_name,
+                    )
+                    server_info.status = "unauthorized"
+                    unauthorized_servers[server_name] = server_url
+
             tasks = [
                 asyncio.create_task(_connect_server(server_name, server_info))
                 for server_name, server_info in self._mcp_servers.items()
@@ -265,7 +275,10 @@ class KimiToolset:
             if failed_servers:
                 _toast_mcp("mcp connection failed")
                 raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
-            _toast_mcp("mcp servers connected")
+            if unauthorized_servers:
+                _toast_mcp("mcp authotization needed")
+            else:
+                _toast_mcp("mcp servers connected")
 
         for mcp_config in mcp_configs:
             if not mcp_config.mcpServers:
@@ -273,20 +286,8 @@ class KimiToolset:
                 continue
 
             for server_name, server_config in mcp_config.mcpServers.items():
-                # Check OAuth authentication for remote servers
-                if (
-                    isinstance(server_config, RemoteMCPServer)
-                    and server_config.auth == "oauth"
-                    and not await _check_oauth_tokens(server_config.url)
-                ):
-                    _toast_mcp(f"'{server_name}' requires auth: kimi mcp auth {server_name}")
-                    logger.warning(
-                        "Skipping OAuth MCP server '{server_name}': not authenticated. "
-                        "Run 'kimi mcp auth {server_name}' first.",
-                        server_name=server_name,
-                    )
-                    self._mcp_unauthorized.append(server_name)
-                    continue
+                if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
+                    oauth_servers[server_name] = server_config.url
 
                 # Add mcp-session-id header for HTTP transports (skip OAuth servers)
                 if (
@@ -319,7 +320,7 @@ class KimiToolset:
 
 @dataclass(slots=True)
 class MCPServerInfo:
-    status: Literal["pending", "connecting", "connected", "failed"]
+    status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
     client: fastmcp.Client[Any]
     tools: list[MCPTool[Any]]
 

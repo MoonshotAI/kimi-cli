@@ -16,6 +16,7 @@ def get_global_mcp_config_file() -> Path:
 
 def _load_mcp_config() -> dict[str, Any]:
     """Load MCP config from global mcp config file."""
+    from fastmcp.mcp_config import MCPConfig
     from pydantic import ValidationError
 
     mcp_file = get_global_mcp_config_file()
@@ -27,8 +28,6 @@ def _load_mcp_config() -> dict[str, Any]:
         raise typer.BadParameter(f"Invalid JSON in MCP config file '{mcp_file}': {e}") from e
 
     try:
-        from fastmcp.mcp_config import MCPConfig
-
         MCPConfig.model_validate(config)
     except ValidationError as e:
         raise typer.BadParameter(f"Invalid MCP config in '{mcp_file}': {e}") from e
@@ -89,7 +88,7 @@ Transport = Literal["stdio", "http"]
       # Add streamable HTTP server:\n
       kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n
       \n
-      # Add HTTP server with OAuth:\n
+      # Add streamable HTTP server with OAuth:\n
       kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n
       \n
       # Add stdio server:\n
