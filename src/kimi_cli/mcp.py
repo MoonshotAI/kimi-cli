@@ -88,7 +88,7 @@ Transport = Literal["stdio", "http"]
       # Add streamable HTTP server:\n
       kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n
       \n
-      # Add streamable HTTP server with OAuth:\n
+      # Add streamable HTTP server with OAuth authorization:\n
       kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n
       \n
       # Add stdio server:\n
@@ -136,7 +136,7 @@ def mcp_add(
         typer.Option(
             "--auth",
             "-a",
-            help="Authentication type (e.g., 'oauth').",
+            help="Authorization type (e.g., 'oauth').",
         ),
     ] = None,
 ):
@@ -248,7 +248,7 @@ def mcp_list():
                 transport = "http"
             line = f"{name} ({transport}): {server['url']}"
             if server.get("auth") == "oauth" and not _has_oauth_tokens(server["url"]):
-                line += " [unauthorized - run: kimi mcp auth " + name + "]"
+                line += " [authorization required - run: kimi mcp auth " + name + "]"
         else:
             line = f"{name}: {server}"
         typer.echo(f"  {line}")
@@ -258,10 +258,10 @@ def mcp_list():
 def mcp_auth(
     name: Annotated[
         str,
-        typer.Argument(help="Name of the MCP server to authenticate."),
+        typer.Argument(help="Name of the MCP server to authorize."),
     ],
 ):
-    """Authenticate with an OAuth-enabled MCP server."""
+    """Authorize with an OAuth-enabled MCP server."""
     import asyncio
 
     server = _get_mcp_server(name, require_remote=True)
@@ -272,17 +272,17 @@ def mcp_auth(
     async def _auth() -> None:
         import fastmcp
 
-        typer.echo(f"Authenticating with '{name}'...")
+        typer.echo(f"Authorizing with '{name}'...")
         typer.echo("A browser window will open for authorization.")
 
         client = fastmcp.Client({"mcpServers": {name: server}})
         try:
             async with client:
                 tools = await client.list_tools()
-                typer.echo(f"Successfully authenticated with '{name}'.")
+                typer.echo(f"Successfully authorized with '{name}'.")
                 typer.echo(f"Available tools: {len(tools)}")
         except Exception as e:
-            typer.echo(f"Authentication failed: {type(e).__name__}: {e}", err=True)
+            typer.echo(f"Authorization failed: {type(e).__name__}: {e}", err=True)
             raise typer.Exit(code=1) from None
 
     asyncio.run(_auth())
@@ -292,10 +292,10 @@ def mcp_auth(
 def mcp_reset_auth(
     name: Annotated[
         str,
-        typer.Argument(help="Name of the MCP server to reset authentication."),
+        typer.Argument(help="Name of the MCP server to reset authorization."),
     ],
 ):
-    """Reset OAuth authentication for an MCP server (clear cached tokens)."""
+    """Reset OAuth authorization for an MCP server (clear cached tokens)."""
     server = _get_mcp_server(name, require_remote=True)
 
     try:

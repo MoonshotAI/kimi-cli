@@ -251,7 +251,7 @@ class KimiToolset:
                     continue
                 if not await _check_oauth_tokens(server_url):
                     logger.warning(
-                        "Skipping OAuth MCP server '{server_name}': not authenticated. "
+                        "Skipping OAuth MCP server '{server_name}': not authorized. "
                         "Run 'kimi mcp auth {server_name}' first.",
                         server_name=server_name,
                     )
@@ -276,7 +276,7 @@ class KimiToolset:
                 _toast_mcp("mcp connection failed")
                 raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
             if unauthorized_servers:
-                _toast_mcp("mcp authotization needed")
+                _toast_mcp("mcp authorization needed")
             else:
                 _toast_mcp("mcp servers connected")
 
