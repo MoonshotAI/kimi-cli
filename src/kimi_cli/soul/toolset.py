@@ -190,6 +190,17 @@ class KimiToolset:
 
         from kimi_cli.ui.shell.prompt import toast
 
+        async def _check_oauth_tokens(server_url: str) -> bool:
+            """Check if OAuth tokens exist for the server."""
+            try:
+                from fastmcp.client.auth.oauth import FileTokenStorage
+
+                storage = FileTokenStorage(server_url=server_url)
+                tokens = await storage.get_tokens()
+                return tokens is not None
+            except Exception:
+                return False
+
         def _toast_mcp(message: str) -> None:
             if in_background:
                 toast(
@@ -199,6 +210,8 @@ class KimiToolset:
                     immediate=True,
                     position="right",
                 )
+
+        oauth_servers: dict[str, str] = {}
 
         async def _connect_server(
             server_name: str, server_info: MCPServerInfo
@@ -231,6 +244,20 @@ class KimiToolset:
 
         async def _connect():
             _toast_mcp("connecting to mcp servers...")
+            unauthorized_servers: dict[str, str] = {}
+            for server_name, server_info in self._mcp_servers.items():
+                server_url = oauth_servers.get(server_name)
+                if not server_url:
+                    continue
+                if not await _check_oauth_tokens(server_url):
+                    logger.warning(
+                        "Skipping OAuth MCP server '{server_name}': not authorized. "
+                        "Run 'kimi mcp auth {server_name}' first.",
+                        server_name=server_name,
+                    )
+                    server_info.status = "unauthorized"
+                    unauthorized_servers[server_name] = server_url
+
             tasks = [
                 asyncio.create_task(_connect_server(server_name, server_info))
                 for server_name, server_info in self._mcp_servers.items()
@@ -248,7 +275,10 @@ class KimiToolset:
             if failed_servers:
                 _toast_mcp("mcp connection failed")
                 raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
-            _toast_mcp("mcp servers connected")
+            if unauthorized_servers:
+                _toast_mcp("mcp authorization needed")
+            else:
+                _toast_mcp("mcp servers connected")
 
         for mcp_config in mcp_configs:
             if not mcp_config.mcpServers:
@@ -256,9 +286,14 @@ class KimiToolset:
                 continue
 
             for server_name, server_config in mcp_config.mcpServers.items():
-                # Add mcp-session-id header for HTTP transports
-                if isinstance(server_config, RemoteMCPServer) and not any(
-                    key.lower() == "mcp-session-id" for key in server_config.headers
+                if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
+                    oauth_servers[server_name] = server_config.url
+
+                # Add mcp-session-id header for HTTP transports (skip OAuth servers)
+                if (
+                    isinstance(server_config, RemoteMCPServer)
+                    and server_config.auth != "oauth"
+                    and not any(key.lower() == "mcp-session-id" for key in server_config.headers)
                 ):
                     server_config = server_config.model_copy(deep=True)
                     server_config.headers["Mcp-Session-Id"] = runtime.session.id
@@ -285,7 +320,7 @@ class KimiToolset:
 
 @dataclass(slots=True)
 class MCPServerInfo:
-    status: Literal["pending", "connecting", "connected", "failed"]
+    status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
     client: fastmcp.Client[Any]
     tools: list[MCPTool[Any]]
 

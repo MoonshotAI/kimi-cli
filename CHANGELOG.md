@@ -20,6 +20,7 @@ Only write entries that are worth mentioning to users.
 - ACP: Run shell commands in ACP client terminal if supported
 - Lib: Add `KimiToolset.find` method to find tools by class or name
 - Lib: Add `ToolResultBuilder.display` method to append display blocks to tool results
+- MCP: Add `kimi mcp auth` and related subcommands to manage MCP authorization
 
 ## [0.67] - 2025-12-22
 
