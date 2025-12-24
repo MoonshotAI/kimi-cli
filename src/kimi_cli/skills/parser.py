@@ -106,10 +106,10 @@ def read_skill_metadata(skill_dir: Path) -> SkillMetadata:
 
     # Validate name format
     name = metadata["name"]
-    if not _is_valid_name(name):
+    if not is_valid_skill_name(name):
         raise SkillValidationError(
             f"Invalid skill name '{name}': must be lowercase letters, "
-            "numbers, and hyphens only, max 64 characters"
+            "numbers, and hyphens, 1-64 characters, not starting/ending with hyphen"
         )
 
     # Validate description length
@@ -136,7 +136,7 @@ def read_skill_metadata(skill_dir: Path) -> SkillMetadata:
     )
 
 
-def _is_valid_name(name: str) -> bool:
+def is_valid_skill_name(name: str) -> bool:
     """Validate skill name format.
 
     Valid names:

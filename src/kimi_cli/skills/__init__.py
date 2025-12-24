@@ -11,7 +11,6 @@ from kimi_cli.skills.context import (
     format_activated_skill,
     format_skill_info,
     format_skills_list,
-    generate_skill_activation_message,
     generate_skills_system_prompt,
 )
 from kimi_cli.skills.loader import SkillsLoader
@@ -34,7 +33,6 @@ __all__ = [
     "format_activated_skill",
     "format_skill_info",
     "format_skills_list",
-    "generate_skill_activation_message",
     # Validator
     "validate_skill",
     "validate_skill_security",

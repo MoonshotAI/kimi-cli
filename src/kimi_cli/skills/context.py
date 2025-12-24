@@ -75,28 +75,6 @@ def format_activated_skill(skill: Skill) -> str:
     return "\n".join(lines)
 
 
-def generate_skill_activation_message(skill_name: str, user_request: str | None = None) -> str:
-    """Generate a message for when a skill is activated.
-
-    Args:
-        skill_name: Name of the activated skill
-        user_request: The original user request (optional)
-
-    Returns:
-        Formatted message text
-    """
-    lines = [
-        f"Skill **{skill_name}** has been activated.",
-        "",
-        "The skill instructions have been loaded. Please follow them to complete the task.",
-    ]
-
-    if user_request:
-        lines.insert(1, f"**Your request**: {user_request}")
-
-    return "\n".join(lines)
-
-
 def format_skills_list(skills: list[SkillMetadata]) -> str:
     """Format a list of skills for display.
 

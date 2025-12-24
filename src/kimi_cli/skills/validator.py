@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from .parser import SkillParseError, find_skill_md, parse_frontmatter
+from .parser import SkillParseError, find_skill_md, is_valid_skill_name, parse_frontmatter
 
 
 def validate_skill(skill_dir: Path) -> list[str]:
@@ -42,7 +41,7 @@ def validate_skill(skill_dir: Path) -> list[str]:
     # Validate required fields
     if "name" not in metadata:
         errors.append("Missing required field: name")
-    elif not _validate_name(metadata["name"]):
+    elif not is_valid_skill_name(metadata["name"]):
         errors.append(
             f"Invalid name '{metadata['name']}': must be lowercase letters, "
             "numbers, and hyphens, 1-64 characters, not starting/ending with hyphen"
@@ -72,19 +71,6 @@ def validate_skill(skill_dir: Path) -> list[str]:
         errors.append("SKILL.md body is empty - add instructions for the agent")
 
     return errors
-
-
-def _validate_name(name: str) -> bool:
-    """Validate skill name format.
-
-    Valid names:
-    - 1-64 characters
-    - Lowercase letters, numbers, and hyphens only
-    - Cannot start or end with hyphen
-    """
-    if len(name) < 1 or len(name) > 64:
-        return False
-    return bool(re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", name))
 
 
 # Security validation constants

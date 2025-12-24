@@ -20,8 +20,8 @@ from kimi_cli.skills import (
     validate_skill_security,
 )
 from kimi_cli.skills.parser import (
-    _is_valid_name,
     find_skill_md,
+    is_valid_skill_name,
     parse_frontmatter,
     read_skill_metadata,
 )
@@ -140,27 +140,27 @@ Body
 
 class TestIsValidName:
     def test_valid_names(self):
-        assert _is_valid_name("my-skill") is True
-        assert _is_valid_name("skill1") is True
-        assert _is_valid_name("a") is True
-        assert _is_valid_name("my-cool-skill-123") is True
-        assert _is_valid_name("abc123") is True
+        assert is_valid_skill_name("my-skill") is True
+        assert is_valid_skill_name("skill1") is True
+        assert is_valid_skill_name("a") is True
+        assert is_valid_skill_name("my-cool-skill-123") is True
+        assert is_valid_skill_name("abc123") is True
 
     def test_invalid_names(self):
         # Uppercase not allowed
-        assert _is_valid_name("My-Skill") is False
+        assert is_valid_skill_name("My-Skill") is False
         # Underscores not allowed
-        assert _is_valid_name("my_skill") is False
+        assert is_valid_skill_name("my_skill") is False
         # Cannot start with hyphen
-        assert _is_valid_name("-skill") is False
+        assert is_valid_skill_name("-skill") is False
         # Cannot end with hyphen
-        assert _is_valid_name("skill-") is False
+        assert is_valid_skill_name("skill-") is False
         # Too long (over 64 chars)
-        assert _is_valid_name("a" * 65) is False
+        assert is_valid_skill_name("a" * 65) is False
         # Empty not allowed
-        assert _is_valid_name("") is False
+        assert is_valid_skill_name("") is False
         # Spaces not allowed
-        assert _is_valid_name("my skill") is False
+        assert is_valid_skill_name("my skill") is False
 
 
 class TestFindSkillMd:
