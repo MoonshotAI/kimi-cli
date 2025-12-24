@@ -38,6 +38,7 @@ _current_turn_id = ContextVar[str | None]("current_turn_id", default=None)
 
 
 def get_current_acp_tool_call_id_or_none() -> str | None:
+    """See `_ToolCallState.acp_tool_call_id`."""
     from kimi_cli.soul.toolset import get_current_tool_call_or_none
 
     turn_id = _current_turn_id.get()

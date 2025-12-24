@@ -25,19 +25,16 @@ def replace_tools(
         # Only replace tools when running in local mode
         return
 
-    if client_capabilities.terminal:
+    if client_capabilities.terminal and (shell_tool := toolset.find(Shell)):
         # Replace the Shell tool with the ACP Terminal tool if supported
-        from kimi_cli.tools.shell import Shell
-
-        if shell_tool := toolset.find(Shell):
-            toolset.add(
-                Terminal(
-                    shell_tool,
-                    acp_conn,
-                    acp_session_id,
-                    runtime.approval,
-                )
+        toolset.add(
+            Terminal(
+                shell_tool,
+                acp_conn,
+                acp_session_id,
+                runtime.approval,
             )
+        )
 
 
 class HideOutputDisplayBlock(DisplayBlock):
