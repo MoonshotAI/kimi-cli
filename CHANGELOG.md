@@ -9,6 +9,25 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
+- Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
+- Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
+- Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
+- ACP: Show file diff previews in tool results and approval prompts
+- ACP: Connect to MCP servers managed by ACP clients
+- ACP: Run shell commands in ACP client terminal if supported
+- Lib: Add `KimiToolset.find` method to find tools by class or name
+- Lib: Add `ToolResultBuilder.display` method to append display blocks to tool results
+
+## [0.67] - 2025-12-22
+
+- ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
+- MCP: Add `mcp.client` config section to configure MCP tool call timeout and other future options
+- Core: Improve default system prompt and `ReadFile` tool
+- UI: Fix Ctrl-C not working in some rare cases
+
 ## [0.66] - 2025-12-19
 
 - Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message

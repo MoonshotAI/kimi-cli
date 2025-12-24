@@ -3,7 +3,7 @@ import inspect
 import pytest
 from inline_snapshot import snapshot
 from kosong.message import ImageURLPart, TextPart, ToolCall, ToolCallPart
-from kosong.tooling import DisplayBlock, ToolResult, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, ToolResult, ToolReturnValue
 from pydantic import BaseModel
 
 from kimi_cli.wire.message import (
@@ -127,7 +127,7 @@ async def test_wire_message_serde():
             is_error=False,
             output="",
             message="Command completed",
-            display=[DisplayBlock(type="brief", data="Command completed")],
+            display=[BriefDisplayBlock(text="Command completed")],
         ),
     )
     assert serialize_wire_message(msg) == snapshot(
@@ -139,7 +139,7 @@ async def test_wire_message_serde():
                     "is_error": False,
                     "output": "",
                     "message": "Command completed",
-                    "display": [{"type": "brief", "data": "Command completed"}],
+                    "display": [{"type": "brief", "text": "Command completed"}],
                     "extras": None,
                 },
             },
@@ -193,10 +193,29 @@ async def test_wire_message_serde():
                 "sender": "bash",
                 "action": "Execute dangerous command",
                 "description": "This command will delete files",
+                "display": [],
             },
         }
     )
     _test_serde(msg)
+
+
+def test_approval_request_deserialize_without_display():
+    msg = deserialize_wire_message(
+        {
+            "type": "ApprovalRequest",
+            "payload": {
+                "id": "request_123",
+                "tool_call_id": "call_999",
+                "sender": "bash",
+                "action": "Execute dangerous command",
+                "description": "This command will delete files",
+            },
+        }
+    )
+
+    assert isinstance(msg, ApprovalRequest)
+    assert msg.display == []
 
 
 def test_wire_message_record_roundtrip():

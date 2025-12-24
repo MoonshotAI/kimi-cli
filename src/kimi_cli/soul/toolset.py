@@ -7,9 +7,10 @@ import inspect
 import json
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any, Literal, overload
 
-from kosong.message import AudioURLPart, ContentPart, ImageURLPart, TextPart, ToolCall
+from kosong.message import ContentPart, ToolCall
 from kosong.tooling import (
     CallableTool,
     CallableTool2,
@@ -26,6 +27,7 @@ from kosong.tooling.error import (
     ToolParseError,
     ToolRuntimeError,
 )
+from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
 from loguru import logger
 
@@ -71,6 +73,19 @@ class KimiToolset:
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
+
+    @overload
+    def find(self, tool_name_or_type: str) -> ToolType | None: ...
+    @overload
+    def find[T: ToolType](self, tool_name_or_type: type[T]) -> T | None: ...
+    def find(self, tool_name_or_type: str | type[ToolType]) -> ToolType | None:
+        if isinstance(tool_name_or_type, str):
+            return self._tool_dict.get(tool_name_or_type)
+        else:
+            for tool in self._tool_dict.values():
+                if isinstance(tool, tool_name_or_type):
+                    return tool
+        return None
 
     @property
     def tools(self) -> list[Tool]:
@@ -212,7 +227,9 @@ class KimiToolset:
             try:
                 async with server_info.client as client:
                     for tool in await client.list_tools():
-                        server_info.tools.append(MCPTool(tool, client, runtime=runtime))
+                        server_info.tools.append(
+                            MCPTool(server_name, tool, client, runtime=runtime)
+                        )
 
                 for tool in server_info.tools:
                     self.add(tool)
@@ -310,6 +327,7 @@ class MCPServerInfo:
 class MCPTool[T: ClientTransport](CallableTool):
     def __init__(
         self,
+        server_name: str,
         mcp_tool: mcp.Tool,
         client: fastmcp.Client[T],
         *,
@@ -318,13 +336,17 @@ class MCPTool[T: ClientTransport](CallableTool):
     ):
         super().__init__(
             name=mcp_tool.name,
-            description=mcp_tool.description or "",
+            description=(
+                f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
+                f"{mcp_tool.description or 'No description provided.'}"
+            ),
             parameters=mcp_tool.inputSchema,
             **kwargs,
         )
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
+        self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
         self._action_name = f"mcp:{mcp_tool.name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
@@ -332,75 +354,38 @@ class MCPTool[T: ClientTransport](CallableTool):
         if not await self._runtime.approval.request(self.name, self._action_name, description):
             return ToolRejectedError()
 
-        async with self._client as client:
-            result = await client.call_tool(
-                self._mcp_tool.name, kwargs, timeout=60, raise_on_error=False
-            )
-            return convert_mcp_tool_result(result)
+        try:
+            async with self._client as client:
+                result = await client.call_tool(
+                    self._mcp_tool.name,
+                    kwargs,
+                    timeout=self._timeout,
+                    raise_on_error=False,
+                )
+                return convert_mcp_tool_result(result)
+        except Exception as e:
+            # fastmcp raises `RuntimeError` on timeout and we cannot tell it from other errors
+            exc_msg = str(e).lower()
+            if "timeout" in exc_msg or "timed out" in exc_msg:
+                return ToolError(
+                    message=(
+                        f"Timeout while calling MCP tool `{self._mcp_tool.name}`. "
+                        "You may explain to the user that the timeout config is set too low."
+                    ),
+                    brief="Timeout",
+                )
+            raise
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
-    import mcp
+    """Convert MCP tool result to kosong tool return value.
 
+    Raises:
+        ValueError: If any content part has unsupported type or mime type.
+    """
     content: list[ContentPart] = []
     for part in result.content:
-        match part:
-            case mcp.types.TextContent(text=text):
-                content.append(TextPart(text=text))
-            case mcp.types.ImageContent(data=data, mimeType=mimeType):
-                content.append(
-                    ImageURLPart(
-                        image_url=ImageURLPart.ImageURL(url=f"data:{mimeType};base64,{data}")
-                    )
-                )
-            case mcp.types.AudioContent(data=data, mimeType=mimeType):
-                content.append(
-                    AudioURLPart(
-                        audio_url=AudioURLPart.AudioURL(url=f"data:{mimeType};base64,{data}")
-                    )
-                )
-            case mcp.types.EmbeddedResource(
-                resource=mcp.types.BlobResourceContents(uri=_uri, mimeType=mimeType, blob=blob)
-            ):
-                mimeType = mimeType or "application/octet-stream"
-                if mimeType.startswith("image/"):
-                    content.append(
-                        ImageURLPart(
-                            type="image_url",
-                            image_url=ImageURLPart.ImageURL(
-                                url=f"data:{mimeType};base64,{blob}",
-                            ),
-                        )
-                    )
-                elif mimeType.startswith("audio/"):
-                    content.append(
-                        AudioURLPart(
-                            type="audio_url",
-                            audio_url=AudioURLPart.AudioURL(url=f"data:{mimeType};base64,{blob}"),
-                        )
-                    )
-                else:
-                    raise ValueError(f"Unsupported mime type: {mimeType}")
-            case mcp.types.ResourceLink(uri=uri, mimeType=mimeType, description=_description):
-                mimeType = mimeType or "application/octet-stream"
-                if mimeType.startswith("image/"):
-                    content.append(
-                        ImageURLPart(
-                            type="image_url",
-                            image_url=ImageURLPart.ImageURL(url=str(uri)),
-                        )
-                    )
-                elif mimeType.startswith("audio/"):
-                    content.append(
-                        AudioURLPart(
-                            type="audio_url",
-                            audio_url=AudioURLPart.AudioURL(url=str(uri)),
-                        )
-                    )
-                else:
-                    raise ValueError(f"Unsupported mime type: {mimeType}")
-            case _:
-                raise ValueError(f"Unsupported MCP tool result part: {part}")
+        content.append(convert_mcp_content(part))
     if result.is_error:
         return ToolError(
             output=content,

@@ -6,17 +6,16 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import acp
-from kosong.message import (
-    ContentPart,
-)
+from kosong.message import ContentPart
 
+from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
+from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.constant import NAME, VERSION
-from kimi_cli.soul import (
-    Soul,
-    run_soul,
-)
+from kimi_cli.soul import Soul, run_soul
+from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
@@ -25,6 +24,7 @@ from kimi_cli.wire.message import WireMessage
 class ACPServerSingleSession:
     def __init__(self, soul: Soul):
         self.soul = soul
+        self._client_capabilities: acp.schema.ClientCapabilities | None = None
         self._conn: acp.Client | None = None
         self._session: ACPSession | None = None
 
@@ -48,6 +48,7 @@ class ACPServerSingleSession:
             capabilities=client_capabilities,
             info=client_info,
         )
+        self._client_capabilities = client_capabilities
         return acp.InitializeResponse(
             protocol_version=protocol_version,
             agent_capabilities=acp.schema.AgentCapabilities(
@@ -68,6 +69,7 @@ class ACPServerSingleSession:
         """Handle new session request."""
         logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
         assert self._conn is not None, "ACP client not connected"
+        assert self._client_capabilities is not None, "ACP connection not initialized"
 
         async def prompt_fn(
             user_input: list[ContentPart], cancel_event: asyncio.Event
@@ -97,7 +99,42 @@ class ACPServerSingleSession:
                 # wait for the soul task to finish, or raise
                 await soul_task
 
-        self._session = ACPSession(str(uuid.uuid4()), prompt_fn, self._conn)
+        session_id = (
+            self.soul.runtime.session.id if isinstance(self.soul, KimiSoul) else str(uuid.uuid4())
+        )
+        self._session = ACPSession(session_id, prompt_fn, self._conn)
+
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        if (
+            mcp_config
+            and isinstance(self.soul, KimiSoul)
+            and isinstance(self.soul.agent.toolset, KimiToolset)
+        ):
+            # Load MCP tools if supported
+            await self.soul.agent.toolset.load_mcp_tools([mcp_config], self.soul.runtime)
+
+        if isinstance(self.soul, KimiSoul) and isinstance(self.soul.agent.toolset, KimiToolset):
+            replace_tools(
+                self._client_capabilities,
+                self._conn,
+                self._session.id,
+                self.soul.agent.toolset,
+                self.soul.runtime,
+            )
+
+        available_commands = [
+            acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
+            for cmd in self.soul.available_slash_commands
+        ]
+        asyncio.create_task(
+            self._conn.session_update(
+                session_id=self._session.id,
+                update=acp.schema.AvailableCommandsUpdate(
+                    session_update="available_commands_update",
+                    available_commands=available_commands,
+                ),
+            )
+        )
         return acp.NewSessionResponse(session_id=self._session.id)
 
     async def load_session(

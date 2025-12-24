@@ -160,7 +160,7 @@ async def load_agent(
     agent_file: Path,
     runtime: Runtime,
     *,
-    mcp_configs: list[MCPConfig | dict[str, Any]],
+    mcp_configs: list[MCPConfig] | list[dict[str, Any]],
 ) -> Agent:
     """
     Load agent from specification file.
