@@ -53,6 +53,8 @@ def tool_result_to_acp_content(
     | acp.schema.FileEditToolCallContent
     | acp.schema.TerminalToolCallContent
 ]:
+    from kimi_cli.acp.tools import HideOutputDisplayBlock
+
     def _to_acp_content(
         part: ContentPart,
     ) -> (
@@ -81,6 +83,16 @@ def tool_result_to_acp_content(
         | acp.schema.TerminalToolCallContent
     ] = []
 
+    for block in tool_ret.display:
+        if isinstance(block, HideOutputDisplayBlock):
+            # return early to indicate no output should be shown
+            return []
+
+        content = display_block_to_acp_content(block)
+        if content is not None:
+            contents.append(content)
+    # TODO: better concatenation of `display` blocks and `output`?
+
     output = tool_ret.output
     if isinstance(output, str):
         if output:
@@ -91,12 +103,8 @@ def tool_result_to_acp_content(
         # to keep pyright happy while still handling list outputs.
         contents.extend(_to_acp_content(part) for part in output)
 
-    for block in tool_ret.display:
-        content = display_block_to_acp_content(block)
-        if content is not None:
-            contents.append(content)
-
     if not contents and tool_ret.message:
+        # Fallback to the `message` for LLM if there's no other content
         contents.append(_to_text_block(tool_ret.message))
 
     return contents

@@ -17,6 +17,9 @@ Only write entries that are worth mentioning to users.
 - Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
 - ACP: Show file diff previews in tool results and approval prompts
 - ACP: Connect to MCP servers managed by ACP clients
+- ACP: Run shell commands in ACP client terminal if supported
+- Lib: Add `KimiToolset.find` method to find tools by class or name
+- Lib: Add `ToolResultBuilder.display` method to append display blocks to tool results
 
 ## [0.67] - 2025-12-22
 

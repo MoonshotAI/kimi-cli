@@ -2,7 +2,7 @@ import re
 import string
 from pathlib import Path
 
-from kosong.tooling import BriefDisplayBlock, ToolError, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
 
@@ -54,7 +54,23 @@ class ToolResultBuilder:
         self._n_chars = 0
         self._n_lines = 0
         self._truncation_happened = False
+        self._display: list[DisplayBlock] = []
         self._extras: dict[str, JsonType] | None = None
+
+    @property
+    def is_full(self) -> bool:
+        """Check if output buffer is full due to character limit."""
+        return self._n_chars >= self.max_chars
+
+    @property
+    def n_chars(self) -> int:
+        """Get current character count."""
+        return self._n_chars
+
+    @property
+    def n_lines(self) -> int:
+        """Get current line count."""
+        return self._n_lines
 
     def write(self, text: str) -> int:
         """
@@ -95,6 +111,16 @@ class ToolResultBuilder:
 
         return chars_written
 
+    def display(self, *blocks: DisplayBlock) -> None:
+        """Add display blocks to the tool result."""
+        self._display.extend(blocks)
+
+    def extras(self, **extras: JsonType) -> None:
+        """Add extra data to the tool result."""
+        if self._extras is None:
+            self._extras = {}
+        self._extras.update(extras)
+
     def ok(self, message: str = "", *, brief: str = "") -> ToolReturnValue:
         """Create a ToolReturnValue with is_error=False and the current output."""
         output = "".join(self._buffer)
@@ -112,7 +138,7 @@ class ToolResultBuilder:
             is_error=False,
             output=output,
             message=final_message,
-            display=[BriefDisplayBlock(text=brief)] if brief else [],
+            display=([BriefDisplayBlock(text=brief)] if brief else []) + self._display,
             extras=self._extras,
         )
 
@@ -132,30 +158,9 @@ class ToolResultBuilder:
             is_error=True,
             output=output,
             message=final_message,
-            display=[BriefDisplayBlock(text=brief)] if brief else [],
+            display=([BriefDisplayBlock(text=brief)] if brief else []) + self._display,
             extras=self._extras,
         )
-
-    def extras(self, **extras: JsonType) -> None:
-        """Add extra data to the tool result."""
-        if self._extras is None:
-            self._extras = {}
-        self._extras.update(extras)
-
-    @property
-    def is_full(self) -> bool:
-        """Check if output buffer is full due to character limit."""
-        return self._n_chars >= self.max_chars
-
-    @property
-    def n_chars(self) -> int:
-        """Get current character count."""
-        return self._n_chars
-
-    @property
-    def n_lines(self) -> int:
-        """Get current line count."""
-        return self._n_lines
 
 
 class ToolRejectedError(ToolError):
