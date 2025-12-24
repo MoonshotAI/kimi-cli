@@ -51,9 +51,7 @@ def discover_skills(skill_folder: Path) -> list[SkillInfo]:
                 skills.append(skill_info)
         except Exception as e:
             # Skip invalid skills, but log for debugging
-            logger.debug(
-                "Skipping invalid skill at {}: {}", skill_md, e, exc_info=True
-            )
+            logger.debug("Skipping invalid skill at {}: {}", skill_md, e, exc_info=True)
             continue
 
     return sorted(skills, key=lambda s: s.name)
