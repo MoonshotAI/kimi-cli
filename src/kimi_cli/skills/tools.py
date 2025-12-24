@@ -74,7 +74,10 @@ class ActivateSkill(CallableTool2[ActivateSkillParams]):
 
 
 class ListSkillsParams(BaseModel):
-    """Parameters for the ListSkills tool."""
+    """Parameters for the ListSkills tool.
+
+    Empty because this tool takes no parameters. Required by CallableTool2 framework.
+    """
 
     pass
 

@@ -81,6 +81,18 @@ MAX_TOTAL_SKILL_SIZE = 1024 * 1024  # 1MB
 # Suspicious file extensions that warrant warnings
 SUSPICIOUS_EXTENSIONS = {".exe", ".dll", ".so", ".dylib", ".bin", ".bat", ".cmd", ".ps1"}
 
+# Common benign hidden files that shouldn't trigger warnings
+BENIGN_HIDDEN_FILES = {
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
+    ".prettierrc",
+    ".eslintrc",
+    ".npmrc",
+    ".env.example",
+    ".python-version",
+}
+
 
 def validate_skill_security(skill_dir: Path) -> list[str]:
     """Perform security validation on a skill.
@@ -115,7 +127,7 @@ def validate_skill_security(skill_dir: Path) -> list[str]:
         if f.is_file():
             if f.suffix.lower() in SUSPICIOUS_EXTENSIONS:
                 warnings.append(f"Suspicious file type: {f.name}")
-            if f.name.startswith("."):
+            if f.name.startswith(".") and f.name not in BENIGN_HIDDEN_FILES:
                 warnings.append(f"Hidden file found: {f.name}")
 
     # Check for path traversal attempts in skill content

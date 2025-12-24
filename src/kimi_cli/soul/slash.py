@@ -73,8 +73,9 @@ async def skills(soul: KimiSoul, args: list[str]):
     """List or manage available skills
 
     Usage:
-      /skills           List all available skills
-      /skills info <n>  Show detailed info about a skill
+      /skills             List all available skills
+      /skills info <name> Show detailed info about a skill
+      /skills refresh     Re-scan directories and refresh cache
     """
     from kimi_cli.skills import ActivateSkill, SkillsLoader, format_skill_info, format_skills_list
     from kimi_cli.soul.toolset import KimiToolset
