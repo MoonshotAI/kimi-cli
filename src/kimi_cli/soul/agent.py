@@ -93,7 +93,12 @@ class Runtime:
         skills = discover_skills(skills_dir)
         logger.info("Discovered {count} skill(s)", count=len(skills))
         skills_formatted = "\n".join(
-            f"- **{skill.name}** (`{skill.skill_md_file}`): {skill.description}" for skill in skills
+            (
+                f"- {skill.name}\n"
+                f"  - Path: {skill.skill_md_file}\n"
+                f"  - Description: {skill.description}"
+            )
+            for skill in skills
         )
 
         return Runtime(
