@@ -17,7 +17,7 @@ else:
 import aiofiles
 import aiofiles.os
 
-from kaos import AsyncReadable, AsyncWritable, Kaos, StatResult, StrOrKaosPath
+from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -158,7 +158,7 @@ class LocalKaos:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
         await asyncio.to_thread(local_path.mkdir, parents=parents, exist_ok=exist_ok)
 
-    async def exec(self, *args: str) -> Kaos.Process:
+    async def exec(self, *args: str) -> KaosProcess:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
 

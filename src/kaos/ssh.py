@@ -18,7 +18,7 @@ from asyncssh.constants import (
     FILEXFER_TYPE_SYMLINK,
 )
 
-from kaos import AsyncReadable, AsyncWritable, Kaos, StatResult, StrOrKaosPath
+from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -267,7 +267,7 @@ class SSHKaos:
                 raise FileExistsError(f"{path} already exists")
             await self._sftp.mkdir(str(path))
 
-    async def exec(self, *args: str) -> Kaos.Process:
+    async def exec(self, *args: str) -> KaosProcess:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
         command = " ".join(shlex.quote(arg) for arg in args)
