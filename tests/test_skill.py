@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 from inline_snapshot import snapshot
 
-from kimi_cli.skill import Skill, discover_skills, format_skills_for_prompt
+from kimi_cli.skill import Skill, discover_skills
 
 
 def _write_skill(skill_dir: Path, content: str) -> None:
@@ -120,21 +120,3 @@ description: OK
         assert skills == snapshot(
             [Skill(name="valid", description="OK", dir=Path("/path/to/valid"))]
         )
-
-
-def test_format_skills_for_prompt_empty():
-    assert format_skills_for_prompt([]) == snapshot("No skills available in the skills directory.")
-
-
-def test_format_skills_for_prompt_renders_each_skill():
-    formatted = format_skills_for_prompt(
-        [
-            Skill(name="skill-1", description="Demo", dir=Path("/path/to/skill-1")),
-            Skill(name="skill-2", description="Demo 22", dir=Path("/path/to/skill-2")),
-        ]
-    )
-
-    assert formatted == snapshot("""\
-- **skill-1** (`/path/to/skill-1/SKILL.md`): Demo
-- **skill-2** (`/path/to/skill-2/SKILL.md`): Demo 22\
-""")

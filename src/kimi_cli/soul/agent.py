@@ -17,12 +17,7 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
-from kimi_cli.skill import (
-    discover_skills,
-    format_skills_for_prompt,
-    get_claude_skills_dir,
-    get_skills_dir,
-)
+from kimi_cli.skill import discover_skills, get_claude_skills_dir, get_skills_dir
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -101,7 +96,9 @@ class Runtime:
                 skills_dir = claude_skills_dir
         skills = discover_skills(skills_dir)
         logger.info("Discovered {count} skill(s)", count=len(skills))
-        skills_formatted = format_skills_for_prompt(skills)
+        skills_formatted = "\n".join(
+            f"- **{skill.name}** (`{skill.skill_md_file}`): {skill.description}" for skill in skills
+        )
 
         return Runtime(
             config=config,
@@ -112,7 +109,7 @@ class Runtime:
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
-                KIMI_SKILLS=skills_formatted,
+                KIMI_SKILLS=skills_formatted or "No skills found.",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),

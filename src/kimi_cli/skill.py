@@ -101,20 +101,3 @@ def parse_skill_md(skill_md_file: Path) -> Skill:
             "dir": skill_md_file.parent.absolute(),
         }
     )
-
-
-def format_skills_for_prompt(skills: list[Skill]) -> str:
-    """
-    Format skills information for inclusion in system prompt.
-
-    Args:
-        skills: List of Skill objects.
-
-    Returns:
-        Formatted string describing all skills.
-    """
-    if not skills:
-        return "No skills available in the skills directory."
-    return "\n".join(
-        f"- **{skill.name}** (`{skill.skill_md_file}`): {skill.description}" for skill in skills
-    )
