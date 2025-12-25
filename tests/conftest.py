@@ -92,7 +92,7 @@ def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
         KIMI_WORK_DIR=temp_work_dir,
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
-        KIMI_SKILLS="No skills available in the skill folder.",
+        KIMI_SKILLS="No skills found.",
     )
 
 

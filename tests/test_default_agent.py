@@ -182,7 +182,7 @@ To use a skill, read its `SKILL.md` file to get step-by-step instructions and ex
 
 ### Available Skills
 
-No skills available in the skill folder.\
+No skills found.\
 """
     )
     assert agent.toolset.tools == snapshot(
@@ -820,7 +820,7 @@ To use a skill, read its `SKILL.md` file to get step-by-step instructions and ex
 
 ### Available Skills
 
-No skills available in the skill folder.\
+No skills found.\
 """,
                 [
                     "Shell",
