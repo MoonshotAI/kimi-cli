@@ -11,12 +11,19 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+
+## [0.68] - 2025-12-24
+
 - CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
 - Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
 - Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
 - Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
 - ACP: Show file diff previews in tool results and approval prompts
 - ACP: Connect to MCP servers managed by ACP clients
+- ACP: Run shell commands in ACP client terminal if supported
+- Lib: Add `KimiToolset.find` method to find tools by class or name
+- Lib: Add `ToolResultBuilder.display` method to append display blocks to tool results
+- MCP: Add `kimi mcp auth` and related subcommands to manage MCP authorization
 
 ## [0.67] - 2025-12-22
 

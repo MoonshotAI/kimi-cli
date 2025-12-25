@@ -50,15 +50,17 @@ uv tool upgrade kimi-cli --no-cache
 
 Run `kimi` command in the directory you want to work on, then send `/setup` to setup Kimi CLI:
 
-![](./docs/images/setup.png)
+![](./docs/media/setup.jpg)
 
 After setup, Kimi CLI will be ready to use. You can send `/help` to get more information.
 
 ## Features
 
-### Shell mode
+### Shell command mode
 
-Kimi CLI is not only a coding agent, but also a shell. You can switch the mode by pressing `Ctrl-X`. In shell mode, you can directly run shell commands without leaving Kimi CLI.
+Kimi CLI is not only a coding agent, but also a shell. You can switch the shell command mode by pressing `Ctrl-X`. In this mode, you can directly run shell commands without leaving Kimi CLI.
+
+![](./docs/media/shell-mode.gif)
 
 > [!NOTE]
 > Built-in shell commands like `cd` are not supported yet.
@@ -67,6 +69,8 @@ Kimi CLI is not only a coding agent, but also a shell. You can switch the mode b
 
 Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
+To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi --acp` (or `kimi --acp --thinking` with thinking mode enabled).
+
 For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
 ```json
@@ -74,7 +78,7 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https:/
   "agent_servers": {
     "Kimi CLI": {
       "command": "kimi",
-      "args": ["--acp"],
+      "args": ["--acp", "--thinking"],
       "env": {}
     }
   }
@@ -82,6 +86,8 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https:/
 ```
 
 Then you can create Kimi CLI threads in IDE's agent panel.
+
+![](./docs/media/acp-integration.gif)
 
 ### Zsh integration
 
@@ -107,7 +113,37 @@ After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
 
 ### Using MCP tools
 
-Kimi CLI supports the well-established MCP config convention. For example:
+Kimi CLI supports MCP (Model Context Protocol) tools.
+
+**`kimi mcp` sub-command group**
+
+You can manage MCP servers with `kimi mcp` sub-command group. For example:
+
+```sh
+# Add streamable HTTP server:
+kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY: ctx7sk-your-key"
+
+# Add streamable HTTP server with OAuth authorization:
+kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp
+
+# Add stdio server:
+kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
+
+# List added MCP servers:
+kimi mcp list
+
+# Remove an MCP server:
+kimi mcp remove chrome-devtools
+
+# Authorize an MCP server:
+kimi mcp auth linear
+```
+
+**Ad-hoc MCP configuration**
+
+Kimi CLI also supports ad-hoc MCP server configuration via CLI option.
+
+Given an MCP config file in the well-known MCP config format like the following:
 
 ```json
 {
