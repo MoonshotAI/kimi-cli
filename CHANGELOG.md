@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+- Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
 
 ## [0.68] - 2025-12-24
 
