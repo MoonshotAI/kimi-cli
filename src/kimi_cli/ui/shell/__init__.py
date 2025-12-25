@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shlex
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
@@ -51,7 +52,18 @@ class Shell:
             logger.info("Running agent with command: {command}", command=command)
             return await self._run_soul_command(command)
 
-        self._start_background_task(self._auto_update())
+        # Start auto-update background task if not disabled
+        no_auto_update = os.getenv("KIMI_CLI_NO_AUTO_UPDATE", "").lower() in {
+            "1",
+            "true",
+            "t",
+            "yes",
+            "y",
+        }
+        if not no_auto_update:
+            self._start_background_task(self._auto_update())
+        else:
+            logger.info("Auto-update disabled by KIMI_CLI_NO_AUTO_UPDATE environment variable")
 
         _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
 
