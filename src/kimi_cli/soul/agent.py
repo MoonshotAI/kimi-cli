@@ -17,8 +17,7 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
-from kimi_cli.share import get_share_dir
-from kimi_cli.skillspec import discover_skills, format_skills_for_prompt
+from kimi_cli.skill import discover_skills, format_skills_for_prompt, get_skills_dir
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -78,7 +77,7 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
-        skill_folder: Path | None = None,
+        skills_dir: Path | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
@@ -86,17 +85,11 @@ class Runtime:
             Environment.detect(),
         )
 
-        # Determine skill folder location
-        if skill_folder is None:
-            skill_folder = get_share_dir() / "skill"
-            logger.info("Using default skill folder: {skill_folder}", skill_folder=skill_folder)
-        else:
-            logger.info("Using specified skill folder: {skill_folder}", skill_folder=skill_folder)
-
         # Discover and format skills
-        skills = discover_skills(skill_folder)
-        skills_formatted = format_skills_for_prompt(skills)
+        skills_dir = skills_dir or get_skills_dir()
+        skills = discover_skills(skills_dir)
         logger.info("Discovered {count} skill(s)", count=len(skills))
+        skills_formatted = format_skills_for_prompt(skills)
 
         return Runtime(
             config=config,

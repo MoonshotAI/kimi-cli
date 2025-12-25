@@ -178,7 +178,7 @@ Each skill directory contains:
 - `references/` (optional): Additional documentation to load on demand
 - `assets/` (optional): Templates, images, or data files
 
-To use a skill, read its `SKILL.md` file using the Read tool. The file contains step-by-step instructions and examples.
+To use a skill, read its `SKILL.md` file to get step-by-step instructions and examples.
 
 ### Available Skills
 
@@ -816,7 +816,7 @@ Each skill directory contains:
 - `references/` (optional): Additional documentation to load on demand
 - `assets/` (optional): Templates, images, or data files
 
-To use a skill, read its `SKILL.md` file using the Read tool. The file contains step-by-step instructions and examples.
+To use a skill, read its `SKILL.md` file to get step-by-step instructions and examples.
 
 ### Available Skills
 

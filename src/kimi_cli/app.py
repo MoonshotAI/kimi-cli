@@ -56,7 +56,7 @@ class KimiCLI:
         model_name: str | None = None,
         thinking: bool = False,
         agent_file: Path | None = None,
-        skill_folder: Path | None = None,
+        skills_dir: Path | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -71,8 +71,7 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool, optional): Whether to enable thinking mode. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
-            skill_folder (Path | None, optional): Path to the skill folder. Defaults to None,
-                which will use ~/.kimi/skill.
+            skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -115,7 +114,7 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             llm = create_llm(provider, model, session_id=session.id)
 
-        runtime = await Runtime.create(config, llm, session, yolo, skill_folder)
+        runtime = await Runtime.create(config, llm, session, yolo, skills_dir)
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE

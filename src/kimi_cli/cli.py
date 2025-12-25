@@ -229,15 +229,15 @@ def kimi(
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
-    skill_folder: Annotated[
+    skills_dir: Annotated[
         Path | None,
         typer.Option(
-            "--skill-folder",
+            "--skills-dir",
             exists=True,
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Path to the skill folder. Default: ~/.kimi/skill",
+            help="Path to the skills directory. Default: ~/.kimi/skills",
         ),
     ] = None,
 ):
@@ -391,7 +391,7 @@ def kimi(
             model_name=model_name,
             thinking=thinking_mode,
             agent_file=agent_file,
-            skill_folder=skill_folder,
+            skills_dir=skills_dir,
         )
         match ui:
             case "shell":
