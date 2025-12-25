@@ -88,11 +88,7 @@ class Runtime:
         # Discover and format skills
         if skills_dir is None:
             skills_dir = get_skills_dir()
-            if (
-                not skills_dir.is_dir()
-                and (claude_skills_dir := get_claude_skills_dir())
-                and claude_skills_dir.is_dir()
-            ):
+            if not skills_dir.is_dir() and (claude_skills_dir := get_claude_skills_dir()).is_dir():
                 skills_dir = claude_skills_dir
         skills = discover_skills(skills_dir)
         logger.info("Discovered {count} skill(s)", count=len(skills))
