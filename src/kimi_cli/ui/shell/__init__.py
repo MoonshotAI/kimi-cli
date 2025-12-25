@@ -23,6 +23,7 @@ from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
@@ -51,7 +52,11 @@ class Shell:
             logger.info("Running agent with command: {command}", command=command)
             return await self._run_soul_command(command)
 
-        self._start_background_task(self._auto_update())
+        # Start auto-update background task if not disabled
+        if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
+            logger.info("Auto-update disabled by KIMI_CLI_NO_AUTO_UPDATE environment variable")
+        else:
+            self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
 

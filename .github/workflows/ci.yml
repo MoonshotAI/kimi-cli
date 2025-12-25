@@ -79,3 +79,28 @@ jobs:
           path: ${{ matrix.binary_path }}
           if-no-files-found: error
           retention-days: 7
+
+  nix-test:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            binary_path: dist/kimi
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            binary_path: dist/kimi
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            binary_path: dist/kimi
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Run nix package
+        run: nix run .#kimi-cli -- --version && nix run . -- --help
