@@ -149,7 +149,40 @@ Test agents content
 
 If the above `AGENTS.md` is empty or insufficient, you may check `README`/`README.md` files or `AGENTS.md` files in subdirectories for more information about specific parts of the project.
 
-If you modified any files/styles/structures/configurations/workflows/... mentioned in `AGENTS.md` files, you MUST update the corresponding `AGENTS.md` files to keep them up-to-date.\
+If you modified any files/styles/structures/configurations/workflows/... mentioned in `AGENTS.md` files, you MUST update the corresponding `AGENTS.md` files to keep them up-to-date.
+
+## Agent Skills
+
+Agent Skills are reusable, composable capabilities that enhance your abilities. Each skill is a self-contained directory with a `SKILL.md` file that contains instructions, examples, and reference material.
+
+### What are Skills?
+
+Skills are modular extensions that provide:
+- **Specialized knowledge**: Domain-specific expertise (e.g., PDF processing, data analysis)
+- **Workflow patterns**: Best practices for common tasks
+- **Tool integrations**: Pre-configured tool chains for specific operations
+- **Reference material**: Documentation, templates, and examples
+
+### How to Use Skills
+
+1. **Discovery**: Review the list of available skills below to identify relevant capabilities
+2. **Activation**: When a task matches a skill's description, read the skill's `SKILL.md` file for detailed instructions
+3. **Execution**: Follow the skill's guidelines, use provided scripts, and reference additional documentation as needed
+4. **Progressive loading**: Only load skill details when needed to conserve context
+
+### Exploring Skills
+
+Each skill directory contains:
+- `SKILL.md` (required): Main instructions with YAML frontmatter (name, description, etc.)
+- `scripts/` (optional): Executable code for the skill
+- `references/` (optional): Additional documentation to load on demand
+- `assets/` (optional): Templates, images, or data files
+
+To use a skill, read its `SKILL.md` file to get step-by-step instructions and examples.
+
+### Available Skills
+
+No skills found.\
 """
     )
     assert agent.toolset.tools == snapshot(
@@ -754,7 +787,40 @@ Test agents content
 
 If the above `AGENTS.md` is empty or insufficient, you may check `README`/`README.md` files or `AGENTS.md` files in subdirectories for more information about specific parts of the project.
 
-If you modified any files/styles/structures/configurations/workflows/... mentioned in `AGENTS.md` files, you MUST update the corresponding `AGENTS.md` files to keep them up-to-date.\
+If you modified any files/styles/structures/configurations/workflows/... mentioned in `AGENTS.md` files, you MUST update the corresponding `AGENTS.md` files to keep them up-to-date.
+
+## Agent Skills
+
+Agent Skills are reusable, composable capabilities that enhance your abilities. Each skill is a self-contained directory with a `SKILL.md` file that contains instructions, examples, and reference material.
+
+### What are Skills?
+
+Skills are modular extensions that provide:
+- **Specialized knowledge**: Domain-specific expertise (e.g., PDF processing, data analysis)
+- **Workflow patterns**: Best practices for common tasks
+- **Tool integrations**: Pre-configured tool chains for specific operations
+- **Reference material**: Documentation, templates, and examples
+
+### How to Use Skills
+
+1. **Discovery**: Review the list of available skills below to identify relevant capabilities
+2. **Activation**: When a task matches a skill's description, read the skill's `SKILL.md` file for detailed instructions
+3. **Execution**: Follow the skill's guidelines, use provided scripts, and reference additional documentation as needed
+4. **Progressive loading**: Only load skill details when needed to conserve context
+
+### Exploring Skills
+
+Each skill directory contains:
+- `SKILL.md` (required): Main instructions with YAML frontmatter (name, description, etc.)
+- `scripts/` (optional): Executable code for the skill
+- `references/` (optional): Additional documentation to load on demand
+- `assets/` (optional): Templates, images, or data files
+
+To use a skill, read its `SKILL.md` file to get step-by-step instructions and examples.
+
+### Available Skills
+
+No skills found.\
 """,
                 [
                     "Shell",

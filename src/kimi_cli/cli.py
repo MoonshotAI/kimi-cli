@@ -229,6 +229,17 @@ def kimi(
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
+    skills_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--skills-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Path to the skills directory. Default: ~/.kimi/skills",
+        ),
+    ] = None,
 ):
     """Kimi, your next CLI agent."""
     if ctx.invoked_subcommand is not None:
@@ -380,6 +391,7 @@ def kimi(
             model_name=model_name,
             thinking=thinking_mode,
             agent_file=agent_file,
+            skills_dir=skills_dir,
         )
         match ui:
             case "shell":

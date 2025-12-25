@@ -17,6 +17,7 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
+from kimi_cli.skill import discover_skills, get_claude_skills_dir, get_skills_dir
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -40,6 +41,8 @@ class BuiltinSystemPromptArgs:
     """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
+    KIMI_SKILLS: str
+    """Formatted information about available skills."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -74,11 +77,23 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
+        skills_dir: Path | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
             Environment.detect(),
+        )
+
+        # Discover and format skills
+        if skills_dir is None:
+            skills_dir = get_skills_dir()
+            if not skills_dir.is_dir() and (claude_skills_dir := get_claude_skills_dir()).is_dir():
+                skills_dir = claude_skills_dir
+        skills = discover_skills(skills_dir)
+        logger.info("Discovered {count} skill(s)", count=len(skills))
+        skills_formatted = "\n".join(
+            f"- **{skill.name}** (`{skill.skill_md_file}`): {skill.description}" for skill in skills
         )
 
         return Runtime(
@@ -90,6 +105,7 @@ class Runtime:
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
+                KIMI_SKILLS=skills_formatted or "No skills found.",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
