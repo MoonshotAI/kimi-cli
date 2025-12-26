@@ -2,15 +2,7 @@
 
 ## [Unreleased]
 
-## [0.35.3] - 2025-12-26
-
-- Nothing changed.
-
-## [0.35.2] - 2025-12-26
-
-- Nothing changed.
-
-## [0.35.1] - 2025-12-26
+## [0.35.1-4] - 2025-12-26
 
 - Nothing changed.
 

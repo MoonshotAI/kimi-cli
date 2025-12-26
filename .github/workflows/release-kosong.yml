@@ -94,22 +94,21 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#kosong-}"
-          DOCS_DIR="packages/kosong/docs"
           PAGES_REPO="https://x-access-token:${KOSONG_PAGES_TOKEN}@github.com/MoonshotAI/kosong.git"
+          PAGES_DIR="${RUNNER_TEMP}/kosong-gh-pages"
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          rm -rf gh-pages
-          git clone --depth 1 --branch gh-pages "$PAGES_REPO" gh-pages
-          git -C gh-pages checkout -B gh-pages origin/gh-pages
-          rsync -a --delete "${DOCS_DIR}/" gh-pages/
+          rm -rf "$PAGES_DIR"
+          git clone --depth 1 --branch gh-pages "$PAGES_REPO" "$PAGES_DIR"
+          rsync -a --delete "packages/kosong/docs/" "$PAGES_DIR/"
 
-          git -C gh-pages add -A
-          if git -C gh-pages diff --cached --quiet; then
+          git -C "$PAGES_DIR" add -A
+          if git -C "$PAGES_DIR" diff --cached --quiet; then
             echo "No documentation changes to publish."
             exit 0
           fi
 
-          git -C gh-pages commit -m "docs: update for ${VERSION}"
-          git -C gh-pages push origin gh-pages
+          git -C "$PAGES_DIR" commit -m "docs: update for ${VERSION}"
+          git -C "$PAGES_DIR" push origin gh-pages
