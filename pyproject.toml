@@ -53,6 +53,7 @@ pykaos = { workspace = true }
 
 [project.scripts]
 kimi = "kimi_cli.cli:cli"
+kimi-cli = "kimi_cli.cli:cli"
 
 [tool.ruff]
 line-length = 100
