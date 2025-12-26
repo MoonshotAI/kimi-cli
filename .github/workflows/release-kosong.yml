@@ -102,7 +102,7 @@ jobs:
 
           rm -rf "$PAGES_DIR"
           git clone --depth 1 --branch gh-pages "$PAGES_REPO" "$PAGES_DIR"
-          rsync -a --delete "packages/kosong/docs/" "$PAGES_DIR/"
+          rsync -a --delete --exclude '.git' "packages/kosong/docs/" "$PAGES_DIR/"
 
           git -C "$PAGES_DIR" add -A
           if git -C "$PAGES_DIR" diff --cached --quiet; then
