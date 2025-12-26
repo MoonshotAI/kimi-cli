@@ -13,6 +13,8 @@ Only write entries that are worth mentioning to users.
 
 - Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
 - Python: Lower the minimum required Python version to 3.12
+- Nix: Add flake packaging; install with `nix profile install .#kimi-cli` or run `nix run .#kimi-cli`
+- CLI: Add `kimi-cli` script alias for invoking the CLI; can be run via `uvx kimi-cli`
 
 ## [0.68] - 2025-12-24
 
