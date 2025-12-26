@@ -102,6 +102,7 @@ jobs:
 
           rm -rf gh-pages
           git clone --depth 1 --branch gh-pages "$PAGES_REPO" gh-pages
+          git -C gh-pages checkout -B gh-pages origin/gh-pages
           rsync -a --delete "${DOCS_DIR}/" gh-pages/
 
           cd gh-pages

@@ -1043,7 +1043,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.35.1"
+version = "0.35.2"
 source = { editable = "packages/kosong" }
 dependencies = [
     { name = "anthropic" },
