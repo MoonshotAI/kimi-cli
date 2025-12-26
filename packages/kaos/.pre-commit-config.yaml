@@ -1,0 +1,15 @@
+orphan: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: make-format-pykaos
+        name: make format-pykaos
+        entry: make -C ../.. format-pykaos
+        language: system
+        pass_filenames: false
+      - id: make-check-pykaos
+        name: make check-pykaos
+        entry: make -C ../.. check-pykaos
+        language: system
+        pass_filenames: false
