@@ -1,0 +1,96 @@
+name: CI (pykaos)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci-pykaos.yml"
+      - "packages/kaos/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci-pykaos.yml"
+      - "packages/kaos/**"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  test:
+    name: ${{ matrix.target }} python-${{ matrix.python-version }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, macos-15-intel, macos-14, windows-2022]
+        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GNU Make (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: choco install make -y
+
+      - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Install dependencies
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: uv sync --frozen --project packages/kaos
+
+      - name: Configure local SSH server
+        if: matrix.runner == 'ubuntu-22.04'
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo mkdir -p /run/sshd
+          sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+          sudo sed -i 's/^#\?PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          sudo sed -i 's@^#\?AuthorizedKeysFile .*@AuthorizedKeysFile .ssh/authorized_keys@' /etc/ssh/sshd_config
+          sudo service ssh restart || sudo service ssh start
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keygen -q -t ed25519 -f "$HOME/.ssh/id_ci" -N ""
+          cat "$HOME/.ssh/id_ci.pub" >> "$HOME/.ssh/authorized_keys"
+          chmod 600 "$HOME/.ssh/authorized_keys"
+          ssh-keyscan -H 127.0.0.1 >> "$HOME/.ssh/known_hosts"
+          ssh-keyscan -H localhost >> "$HOME/.ssh/known_hosts"
+          echo "KAOS_SSH_HOST=127.0.0.1" >> "$GITHUB_ENV"
+          echo "KAOS_SSH_PORT=22" >> "$GITHUB_ENV"
+          echo "KAOS_SSH_USERNAME=$USER" >> "$GITHUB_ENV"
+          echo "KAOS_SSH_KEY_PATHS=$HOME/.ssh/id_ci" >> "$GITHUB_ENV"
+
+      - name: Verify SSH connectivity
+        if: matrix.runner == 'ubuntu-22.04'
+        run: ssh -i "$HOME/.ssh/id_ci" -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@127.0.0.1" true
+
+      - name: Run tests
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make test-pykaos

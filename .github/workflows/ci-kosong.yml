@@ -1,0 +1,84 @@
+name: CI (kosong)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci-kosong.yml"
+      - "packages/kosong/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci-kosong.yml"
+      - "packages/kosong/**"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Install dependencies
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: uv sync --frozen --all-extras --project packages/kosong
+
+      - name: Run tests
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make test-kosong
+
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      FOOTER_VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras --project packages/kosong
+
+      - name: Generate API documentation
+        run: |
+          uv run --project packages/kosong pdoc kosong \
+            --docformat google \
+            --footer-text "kosong ${FOOTER_VERSION}" \
+            -o packages/kosong/docs
+
+      - name: Upload docs preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-preview
+          path: packages/kosong/docs

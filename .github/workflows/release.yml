@@ -3,15 +3,41 @@ name: Release
 on:
   push:
     tags:
-      - "*"
-  workflow_dispatch:
+      - "[0-9]*"
 
 permissions:
   contents: write
 
 jobs:
+  validate:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          allow-prereleases: true
+
+      - name: Check version tag
+        run: |
+          python scripts/check_version_tag.py \
+            --pyproject pyproject.toml \
+            --expected-version "${GITHUB_REF_NAME}"
+
+      - name: Check dependency versions
+        run: |
+          python scripts/check_kimi_dependency_versions.py \
+            --root-pyproject pyproject.toml \
+            --kosong-pyproject packages/kosong/pyproject.toml \
+            --pykaos-pyproject packages/kaos/pyproject.toml
+
   build:
     name: Build binaries (${{ matrix.target }})
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -44,8 +70,8 @@ jobs:
         with:
           version: "0.8.5"
 
-      - name: Prepare building environment
-        run: make prepare
+      - name: Install dependencies (no sources)
+        run: uv sync --frozen --all-extras --no-sources
 
       - name: Build standalone binary
         run: make build
@@ -137,6 +163,7 @@ jobs:
 
   publish-python:
     name: Publish Python package
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -154,7 +181,7 @@ jobs:
           version: "0.8.5"
 
       - name: Build distributions
-        run: uv build
+        run: uv build --package kimi-cli --no-sources --out-dir dist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

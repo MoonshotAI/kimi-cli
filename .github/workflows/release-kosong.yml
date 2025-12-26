@@ -1,0 +1,115 @@
+name: Release (kosong)
+
+on:
+  push:
+    tags:
+      - "kosong-*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          allow-prereleases: true
+
+      - name: Check version tag
+        run: |
+          python scripts/check_version_tag.py \
+            --pyproject packages/kosong/pyproject.toml \
+            --expected-version "${GITHUB_REF_NAME#kosong-}"
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Build distributions
+        run: uv build --package kosong --no-sources --out-dir dist/kosong
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist/kosong
+
+  docs:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras --project packages/kosong
+
+      - name: Generate API documentation
+        run: |
+          VERSION="${GITHUB_REF_NAME#kosong-}"
+          uv run --project packages/kosong pdoc kosong \
+            --docformat google \
+            --footer-text "kosong ${VERSION}" \
+            -o packages/kosong/docs
+
+      - name: Disable Jekyll processing
+        run: touch packages/kosong/docs/.nojekyll
+
+      - name: Publish docs to gh-pages
+        env:
+          KOSONG_PAGES_TOKEN: ${{ secrets.KOSONG_PAGES_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#kosong-}"
+          DOCS_DIR="packages/kosong/docs"
+          PAGES_REPO="https://x-access-token:${KOSONG_PAGES_TOKEN}@github.com/MoonshotAI/kosong.git"
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          rm -rf gh-pages
+          git clone --depth 1 --branch gh-pages "$PAGES_REPO" gh-pages
+          rsync -a --delete "${DOCS_DIR}/" gh-pages/
+
+          cd gh-pages
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No documentation changes to publish."
+            exit 0
+          fi
+
+          git commit -m "docs: update for ${VERSION}"
+          git push origin gh-pages

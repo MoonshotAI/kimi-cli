@@ -121,14 +121,14 @@ class GoogleGenAI:
             if self._stream:
                 stream_response = await self._client.aio.models.generate_content_stream(  # type: ignore[reportUnknownMemberType]
                     model=self._model,
-                    contents=contents,
+                    contents=contents,  # type: ignore[reportArgumentType]
                     config=config,
                 )
                 return GoogleGenAIStreamedMessage(stream_response)
             else:
                 response = await self._client.aio.models.generate_content(  # type: ignore[reportUnknownMemberType]
                     model=self._model,
-                    contents=contents,
+                    contents=contents,  # type: ignore[reportArgumentType]
                     config=config,
                 )
                 return GoogleGenAIStreamedMessage(response)
