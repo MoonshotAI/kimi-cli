@@ -6,12 +6,12 @@ help: ## Show available make targets.
 	@awk 'BEGIN { FS = ":.*## " } /^[A-Za-z0-9_.-]+:.*## / { printf "  %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 .PHONY: prepare
-prepare: download-deps ## Sync dependencies using locked versions.
-	uv sync --frozen --all-extras
+prepare: download-deps ## Sync dependencies for all workspace packages.
+	uv sync --frozen --all-extras --all-packages
 
 .PHONY: prepare-build
 prepare-build: download-deps ## Sync dependencies for releases without workspace sources.
-	uv sync --frozen --all-extras --no-sources
+	uv sync --frozen --all-extras --all-packages --no-sources
 
 .PHONY: format format-kimi-cli format-kosong format-pykaos
 format: format-kimi-cli format-kosong format-pykaos ## Auto-format all workspace packages with ruff.
