@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import override
 
 import aiohttp
-import ripgrepy  # pyright: ignore[reportMissingTypeStubs]
+import ripgrepy  # type: ignore[reportMissingTypeStubs]
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -127,6 +127,7 @@ def _find_existing_rg(bin_name: str) -> Path | None:
     if share_bin.is_file():
         return share_bin
 
+    assert kimi_cli.__file__ is not None
     local_dep = Path(kimi_cli.__file__).parent / "deps" / "bin" / bin_name
     if local_dep.is_file():
         return local_dep

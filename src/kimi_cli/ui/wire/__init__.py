@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
-import acp  # pyright: ignore[reportMissingTypeStubs]
+import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
 from kosong.chat_provider import ChatProviderError
 

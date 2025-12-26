@@ -102,40 +102,40 @@ def test_slash_command_registration(test_registry: SlashCommandRegistry[Any]) ->
 
     # Basic registration
     @test_registry.command  # noqa: F811
-    def basic(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def basic(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Basic command."""
         pass
 
     # Custom name, original name should be ignored
     @test_registry.command(name="run")  # noqa: F811
-    def start(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def start(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Run something."""
         pass
 
     # Aliases only, original name should be kept
     @test_registry.command(aliases=["h", "?"])  # noqa: F811
-    def help(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def help(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Show help."""
         pass
 
     # Custom name with aliases
     @test_registry.command(name="search", aliases=["s", "find"])  # noqa: F811
-    def query(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def query(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Search items."""
         pass
 
     # Edge cases: no doc, whitespace doc, duplicate aliases
     @test_registry.command  # noqa: F811
-    def no_doc(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def no_doc(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         pass
 
     @test_registry.command  # noqa: F811
-    def whitespace_doc(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def whitespace_doc(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """\n\t"""
         pass
 
     @test_registry.command(aliases=["dup", "dup"])  # noqa: F811
-    def dedup_test(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def dedup_test(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Test deduplication."""
         pass
 
@@ -164,7 +164,7 @@ def test_slash_command_overwriting(test_registry: SlashCommandRegistry[Any]) -> 
     """Test command overwriting behavior."""
 
     @test_registry.command  # noqa: F811
-    def test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """First version."""
         pass
 
@@ -178,7 +178,7 @@ def test_slash_command_overwriting(test_registry: SlashCommandRegistry[Any]) -> 
     )
 
     @test_registry.command(name="test_cmd")  # noqa: F811
-    def _test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # pyright: ignore[reportUnusedFunction]
+    def _test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Second version."""
         pass
 

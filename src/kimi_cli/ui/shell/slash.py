@@ -206,8 +206,8 @@ async def mcp(app: Shell, args: list[str]):
 
 
 from . import (  # noqa: E402
-    debug,  # noqa: F401 # pyright: ignore[reportUnusedImport]
-    setup,  # noqa: F401 # pyright: ignore[reportUnusedImport]
-    update,  # noqa: F401 # pyright: ignore[reportUnusedImport]
-    usage,  # noqa: F401 # pyright: ignore[reportUnusedImport]
+    debug,  # noqa: F401 # type: ignore[reportUnusedImport]
+    setup,  # noqa: F401 # type: ignore[reportUnusedImport]
+    update,  # noqa: F401 # type: ignore[reportUnusedImport]
+    usage,  # noqa: F401 # type: ignore[reportUnusedImport]
 )
