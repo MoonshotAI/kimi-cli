@@ -40,7 +40,6 @@ def test_file_is_readable_respects_suffixes():
     assert file_seems_readable(KaosPath(".env"))
 
 
-@pytest.mark.asyncio
 async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading an entire file."""
     result = await read_file_tool(Params(path=str(sample_file)))
@@ -59,7 +58,6 @@ async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath)
     )
 
 
-@pytest.mark.asyncio
 async def test_read_with_line_offset(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading from a specific line offset."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=3))
@@ -76,7 +74,6 @@ async def test_read_with_line_offset(read_file_tool: ReadFile, sample_file: Kaos
     )
 
 
-@pytest.mark.asyncio
 async def test_read_with_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading a specific number of lines."""
     result = await read_file_tool(Params(path=str(sample_file), n_lines=2))
@@ -90,7 +87,6 @@ async def test_read_with_n_lines(read_file_tool: ReadFile, sample_file: KaosPath
     assert result.message == snapshot("2 lines read from file starting from line 1.")
 
 
-@pytest.mark.asyncio
 async def test_read_with_line_offset_and_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading with both line offset and n_lines."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=2, n_lines=2))
@@ -104,7 +100,6 @@ async def test_read_with_line_offset_and_n_lines(read_file_tool: ReadFile, sampl
     assert result.message == snapshot("2 lines read from file starting from line 2.")
 
 
-@pytest.mark.asyncio
 async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test reading a non-existent file."""
     nonexistent_file = temp_work_dir / "nonexistent.txt"
@@ -114,7 +109,6 @@ async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: Ka
     assert result.brief == snapshot("File not found")
 
 
-@pytest.mark.asyncio
 async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test attempting to read a directory."""
     result = await read_file_tool(Params(path=str(temp_work_dir)))
@@ -123,7 +117,6 @@ async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_wor
     assert result.brief == snapshot("Invalid path")
 
 
-@pytest.mark.asyncio
 async def test_read_with_relative_path(
     read_file_tool: ReadFile, temp_work_dir: KaosPath, sample_file: KaosPath
 ):
@@ -142,7 +135,6 @@ async def test_read_with_relative_path(
 """)
 
 
-@pytest.mark.asyncio
 async def test_read_with_relative_path_outside_work_dir(
     read_file_tool: ReadFile, temp_work_dir: KaosPath
 ):
@@ -157,7 +149,6 @@ async def test_read_with_relative_path_outside_work_dir(
     assert result.output == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test reading an empty file."""
     empty_file = temp_work_dir / "empty.txt"
@@ -169,7 +160,6 @@ async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert result.message == snapshot("No lines read from file. End of file reached.")
 
 
-@pytest.mark.asyncio
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading with line offset beyond file length."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=10))
@@ -178,7 +168,6 @@ async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sam
     assert result.message == snapshot("No lines read from file. End of file reached.")
 
 
-@pytest.mark.asyncio
 async def test_read_unicode_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test reading a file with unicode characters."""
     unicode_file = temp_work_dir / "unicode.txt"
@@ -198,7 +187,6 @@ async def test_read_unicode_file(read_file_tool: ReadFile, temp_work_dir: KaosPa
     )
 
 
-@pytest.mark.asyncio
 async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test edge cases for line offset reading."""
     # Test reading from line 1 (should be same as default)
@@ -232,7 +220,6 @@ async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     assert result.message == snapshot("1 lines read from file starting from line 2.")
 
 
-@pytest.mark.asyncio
 async def test_line_truncation_and_messaging(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test line truncation functionality and messaging."""
 
@@ -282,7 +269,6 @@ async def test_line_truncation_and_messaging(read_file_tool: ReadFile, temp_work
     )
 
 
-@pytest.mark.asyncio
 async def test_parameter_validation_line_offset(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test that line_offset parameter validation works correctly."""
     # Test line_offset < 1 should be rejected by Pydantic validation
@@ -293,7 +279,6 @@ async def test_parameter_validation_line_offset(read_file_tool: ReadFile, sample
         Params(path=str(sample_file), line_offset=-1)
 
 
-@pytest.mark.asyncio
 async def test_parameter_validation_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test that n_lines parameter validation works correctly."""
     # Test n_lines < 1 should be rejected by Pydantic validation
@@ -304,7 +289,6 @@ async def test_parameter_validation_n_lines(read_file_tool: ReadFile, sample_fil
         Params(path=str(sample_file), n_lines=-1)
 
 
-@pytest.mark.asyncio
 async def test_max_lines_boundary(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test that reading respects the MAX_LINES boundary."""
     # Create a file with more than MAX_LINES lines
@@ -324,7 +308,6 @@ async def test_max_lines_boundary(read_file_tool: ReadFile, temp_work_dir: KaosP
     assert len(output_lines) == MAX_LINES
 
 
-@pytest.mark.asyncio
 async def test_max_bytes_boundary(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test that reading respects the MAX_BYTES boundary."""
     # Create a file that exceeds MAX_BYTES

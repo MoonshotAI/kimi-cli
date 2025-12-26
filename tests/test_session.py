@@ -13,8 +13,6 @@ from kimi_cli.session import Session
 from kimi_cli.wire.message import TurnBegin
 from kimi_cli.wire.serde import WireMessageRecord
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture
 def isolated_share_dir(monkeypatch, tmp_path: Path) -> Path:

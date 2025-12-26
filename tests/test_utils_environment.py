@@ -4,7 +4,6 @@ import pytest
 from kaos.path import KaosPath
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_environment_detection(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -26,7 +25,6 @@ async def test_environment_detection(monkeypatch):
     assert str(env.shell_path) == "/usr/bin/bash"
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(platform.system() != "Windows", reason="Skipping test on non-Windows")
 async def test_environment_detection_windows(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Windows")

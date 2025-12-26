@@ -31,7 +31,6 @@ def _test_serde(msg: WireMessage):
     assert deserialized == msg
 
 
-@pytest.mark.asyncio
 async def test_wire_message_serde():
     """Test serialization of all WireMessage types."""
 
@@ -259,7 +258,6 @@ def test_bad_wire_message_serde():
         )
 
 
-@pytest.mark.asyncio
 async def test_type_inspection():
     msg = StepBegin(n=1)
     assert is_wire_message(msg)

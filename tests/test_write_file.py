@@ -12,7 +12,6 @@ from kimi_cli.tools.file.write import Params, WriteFile
 from kimi_cli.wire.display import DiffDisplayBlock
 
 
-@pytest.mark.asyncio
 async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing a new file."""
     file_path = temp_work_dir / "new_file.txt"
@@ -31,7 +30,6 @@ async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPat
     assert await file_path.read_text() == content
 
 
-@pytest.mark.asyncio
 async def test_overwrite_existing_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test overwriting an existing file."""
     file_path = temp_work_dir / "existing.txt"
@@ -46,7 +44,6 @@ async def test_overwrite_existing_file(write_file_tool: WriteFile, temp_work_dir
     assert await file_path.read_text() == new_content
 
 
-@pytest.mark.asyncio
 async def test_append_to_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test appending to an existing file."""
     file_path = temp_work_dir / "append_test.txt"
@@ -64,7 +61,6 @@ async def test_append_to_file(write_file_tool: WriteFile, temp_work_dir: KaosPat
     assert await file_path.read_text() == expected_content
 
 
-@pytest.mark.asyncio
 async def test_write_unicode_content(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing unicode content."""
     file_path = temp_work_dir / "unicode.txt"
@@ -77,7 +73,6 @@ async def test_write_unicode_content(write_file_tool: WriteFile, temp_work_dir: 
     assert await file_path.read_text(encoding="utf-8") == content
 
 
-@pytest.mark.asyncio
 async def test_write_empty_content(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing empty content."""
     file_path = temp_work_dir / "empty.txt"
@@ -90,7 +85,6 @@ async def test_write_empty_content(write_file_tool: WriteFile, temp_work_dir: Ka
     assert await file_path.read_text() == content
 
 
-@pytest.mark.asyncio
 async def test_write_multiline_content(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing multiline content."""
     file_path = temp_work_dir / "multiline.txt"
@@ -102,7 +96,6 @@ async def test_write_multiline_content(write_file_tool: WriteFile, temp_work_dir
     assert await file_path.read_text() == content
 
 
-@pytest.mark.asyncio
 async def test_write_with_relative_path(write_file_tool: WriteFile):
     """Test writing with a relative path (should fail)."""
     result = await write_file_tool(Params(path="relative/path/file.txt", content="content"))
@@ -111,7 +104,6 @@ async def test_write_with_relative_path(write_file_tool: WriteFile):
     assert "not an absolute path" in result.message
 
 
-@pytest.mark.asyncio
 async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_file: Path):
     """Test writing outside the working directory (should fail)."""
     result = await write_file_tool(Params(path=str(outside_file), content="content"))
@@ -120,7 +112,6 @@ async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_
     assert "outside the working directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_write_outside_work_directory_with_prefix(
     write_file_tool: WriteFile, temp_work_dir: KaosPath
 ):
@@ -136,7 +127,6 @@ async def test_write_outside_work_directory_with_prefix(
     assert "outside the working directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_write_to_nonexistent_directory(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing to a non-existent directory."""
     file_path = temp_work_dir / "nonexistent" / "file.txt"
@@ -147,7 +137,6 @@ async def test_write_to_nonexistent_directory(write_file_tool: WriteFile, temp_w
     assert "parent directory does not exist" in result.message
 
 
-@pytest.mark.asyncio
 async def test_write_with_invalid_mode(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing with an invalid mode."""
     file_path = temp_work_dir / "test.txt"
@@ -156,7 +145,6 @@ async def test_write_with_invalid_mode(write_file_tool: WriteFile, temp_work_dir
         await write_file_tool(Params(path=str(file_path), content="content", mode="invalid"))  # pyright: ignore[reportArgumentType]
 
 
-@pytest.mark.asyncio
 async def test_append_to_nonexistent_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test appending to a non-existent file (should create it)."""
     file_path = temp_work_dir / "new_append.txt"
@@ -170,7 +158,6 @@ async def test_append_to_nonexistent_file(write_file_tool: WriteFile, temp_work_
     assert await file_path.read_text() == content
 
 
-@pytest.mark.asyncio
 async def test_write_large_content(write_file_tool: WriteFile, temp_work_dir: KaosPath):
     """Test writing large content."""
     file_path = temp_work_dir / "large.txt"

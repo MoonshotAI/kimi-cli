@@ -3,7 +3,6 @@
 import json
 from typing import Any
 
-import pytest
 import respx
 from common import COMMON_CASES, Case, run_test_cases
 from httpx import Response
@@ -50,7 +49,6 @@ TEST_CASES: dict[str, Case] = {
 }
 
 
-@pytest.mark.asyncio
 async def test_openai_responses_message_conversion():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
@@ -368,7 +366,6 @@ async def test_openai_responses_message_conversion():
         )
 
 
-@pytest.mark.asyncio
 async def test_openai_responses_generation_kwargs():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
@@ -382,7 +379,6 @@ async def test_openai_responses_generation_kwargs():
         assert (body["temperature"], body["max_output_tokens"]) == snapshot((0.7, 2048))
 
 
-@pytest.mark.asyncio
 async def test_openai_responses_with_thinking():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))

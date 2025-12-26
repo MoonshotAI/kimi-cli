@@ -75,7 +75,6 @@ async def mock_http_server() -> AsyncIterator[MockServerFactory]:
             await runner.cleanup()
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_basic_functionality(fetch_url_tool: FetchURL) -> None:
     """Test basic WebFetch functionality."""
     # Test with a reliable website that has content
@@ -101,7 +100,6 @@ The default parameter value for `optimizer` should probably be `adamw` instead o
     )
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_invalid_url(fetch_url_tool: FetchURL) -> None:
     """Test fetching from an invalid URL."""
     result = await fetch_url_tool(
@@ -113,7 +111,6 @@ async def test_fetch_url_invalid_url(fetch_url_tool: FetchURL) -> None:
     assert "Failed to fetch URL due to network error:" in result.message
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_404_url(fetch_url_tool: FetchURL) -> None:
     """Test fetching from a URL that returns 404."""
     result = await fetch_url_tool(
@@ -127,7 +124,6 @@ async def test_fetch_url_404_url(fetch_url_tool: FetchURL) -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_malformed_url(fetch_url_tool: FetchURL) -> None:
     """Test fetching from a malformed URL."""
     result = await fetch_url_tool(Params(url="not-a-valid-url"))
@@ -139,7 +135,6 @@ async def test_fetch_url_malformed_url(fetch_url_tool: FetchURL) -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_empty_url(fetch_url_tool: FetchURL) -> None:
     """Test fetching with empty URL."""
     result = await fetch_url_tool(Params(url=""))
@@ -151,7 +146,6 @@ async def test_fetch_url_empty_url(fetch_url_tool: FetchURL) -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_javascript_driven_site(fetch_url_tool: FetchURL) -> None:
     """Test fetching from a JavaScript-driven site that may not work with trafilatura."""
     result = await fetch_url_tool(Params(url="https://www.moonshot.ai/"))
@@ -162,7 +156,6 @@ async def test_fetch_url_javascript_driven_site(fetch_url_tool: FetchURL) -> Non
         assert "failed to extract meaningful content" in result.message.lower()
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_mocked_http_responses(
     fetch_url_tool: FetchURL,
     mock_http_server: MockServerFactory,
@@ -206,7 +199,6 @@ This is a markdown document.
     assert result.message == "The returned content is the full content of the page."
 
 
-@pytest.mark.asyncio
 async def test_fetch_url_with_service() -> None:
     """Test fetching using the moonshot_fetch service."""
     from kimi_cli.config import Config, MoonshotFetchConfig, Services

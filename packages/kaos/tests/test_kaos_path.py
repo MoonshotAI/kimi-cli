@@ -49,7 +49,6 @@ def test_canonical_and_relative_to(kaos_cwd: KaosPath):
     assert str(relative) == str(KaosPath("inner") / "note.txt")
 
 
-@pytest.mark.asyncio
 async def test_exists_and_file_ops(kaos_cwd: KaosPath):
     file_path = KaosPath("log.txt")
     assert not await file_path.exists()
@@ -68,7 +67,6 @@ async def test_exists_and_file_ops(kaos_cwd: KaosPath):
     assert await dir_path.is_dir()
 
 
-@pytest.mark.asyncio
 async def test_iterdir_and_glob_from_kaos_path(kaos_cwd: KaosPath):
     base_dir = KaosPath("data")
     await base_dir.mkdir()
@@ -84,7 +82,6 @@ async def test_iterdir_and_glob_from_kaos_path(kaos_cwd: KaosPath):
     assert set(globbed) == {"one.txt", "three.txt"}
 
 
-@pytest.mark.asyncio
 async def test_read_write_bytes(kaos_cwd: KaosPath):
     file_path = KaosPath("data.bin")
     await file_path.write_bytes(b"\x00\x01\xff")

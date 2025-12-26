@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 import respx
 from common import COMMON_CASES, Case, make_chat_completion_response, run_test_cases
 from httpx import Response
@@ -14,7 +13,6 @@ from kosong.message import Message, TextPart, ThinkPart
 TEST_CASES: dict[str, Case] = {**COMMON_CASES}
 
 
-@pytest.mark.asyncio
 async def test_openai_legacy_message_conversion():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/chat/completions").mock(
@@ -244,7 +242,6 @@ async def test_openai_legacy_message_conversion():
         )
 
 
-@pytest.mark.asyncio
 async def test_openai_legacy_reasoning_content():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/chat/completions").mock(
@@ -281,7 +278,6 @@ async def test_openai_legacy_reasoning_content():
         )
 
 
-@pytest.mark.asyncio
 async def test_openai_legacy_generation_kwargs():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/chat/completions").mock(
@@ -297,7 +293,6 @@ async def test_openai_legacy_generation_kwargs():
         assert (body["temperature"], body["max_tokens"]) == snapshot((0.7, 2048))
 
 
-@pytest.mark.asyncio
 async def test_openai_legacy_with_thinking():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/chat/completions").mock(

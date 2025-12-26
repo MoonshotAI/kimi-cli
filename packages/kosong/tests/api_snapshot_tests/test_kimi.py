@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 import respx
 from common import COMMON_CASES, Case, make_chat_completion_response, run_test_cases
 from httpx import Response
@@ -40,7 +39,6 @@ TEST_CASES: dict[str, Case] = {
 }
 
 
-@pytest.mark.asyncio
 async def test_kimi_message_conversion():
     with respx.mock(base_url="https://api.moonshot.ai") as mock:
         mock.post("/v1/chat/completions").mock(
@@ -291,7 +289,6 @@ async def test_kimi_message_conversion():
         )
 
 
-@pytest.mark.asyncio
 async def test_kimi_generation_kwargs():
     with respx.mock(base_url="https://api.moonshot.ai") as mock:
         mock.post("/v1/chat/completions").mock(
@@ -307,7 +304,6 @@ async def test_kimi_generation_kwargs():
         assert (body["temperature"], body["max_tokens"]) == snapshot((0.7, 2048))
 
 
-@pytest.mark.asyncio
 async def test_kimi_with_thinking():
     with respx.mock(base_url="https://api.moonshot.ai") as mock:
         mock.post("/v1/chat/completions").mock(

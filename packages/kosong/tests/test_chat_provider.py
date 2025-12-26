@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from kosong.chat_provider import APIStatusError, StreamedMessagePart
 from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
 from kosong.chat_provider.kimi import Kimi
@@ -25,7 +23,6 @@ def test_mock_chat_provider():
     assert output_parts == input_parts
 
 
-@pytest.mark.asyncio
 async def test_chaos_chat_provider():
     base = Kimi(model="dummy", api_key="sk-1234567890")
     chat_provider = ChaosChatProvider(
