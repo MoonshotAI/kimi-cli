@@ -54,6 +54,10 @@ PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
 
+# Prompt stashing constants
+_MAX_STASH_SIZE = 10
+_MAX_STASH_ENTRY_BYTES = 10 * 1024  # 10KB limit per entry
+
 
 class SlashCommandCompleter(Completer):
     """
@@ -530,6 +534,8 @@ class CustomPromptSession:
         self._thinking = thinking
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
+        self._stash: deque[str] = deque(maxlen=_MAX_STASH_SIZE)
+        """Stack for stashing prompts temporarily."""
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -599,6 +605,38 @@ class CustomPromptSession:
             buff.text = "/help"
             buff.validate_and_handle()
 
+        @_kb.add("c-s", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Stash the current input buffer."""
+            text = event.current_buffer.text.strip()
+            if not text:
+                toast("Nothing to stash")
+            elif len(text.encode("utf-8")) > _MAX_STASH_ENTRY_BYTES:
+                toast("Input too large to stash (max 10KB)")
+            else:
+                self._stash.append(text)
+                event.current_buffer.reset()
+                toast(f"Stashed ({len(self._stash)}/{_MAX_STASH_SIZE})")
+            event.app.invalidate()
+
+        shortcut_hints.append("ctrl-s: stash")
+
+        @_kb.add("c-r", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Restore the most recently stashed input."""
+            if self._stash:
+                stashed = self._stash.pop()
+                event.current_buffer.text = stashed
+                event.current_buffer.cursor_position = len(stashed)
+                remaining = len(self._stash)
+                toast(f"Restored ({remaining} remaining)" if remaining else "Restored (stash empty)")
+            else:
+                toast("No stashed prompts")
+            event.app.invalidate()
+
+        shortcut_hints.append("ctrl-r: restore")
+
+        self._shortcut_hints = shortcut_hints
         self._session = PromptSession[str](
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
@@ -671,6 +709,7 @@ class CustomPromptSession:
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
         self._attachment_parts.clear()
+        self._stash.clear()
 
     def _try_paste_image(self, event: KeyPressEvent) -> bool:
         """Try to paste an image from the clipboard. Return True if successful."""
