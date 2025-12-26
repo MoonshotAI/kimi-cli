@@ -51,6 +51,7 @@ RG_URL := https://github.com/BurntSushi/ripgrep/releases/download/$(RG_VERSION)/
 
 .PHONY: download-ripgrep
 download-ripgrep:
+	@echo "==> Ensuring ripgrep is installed"
 	@if [ -f "$(BIN_DIR)/rg$(RG_BIN_SUFFIX)" ]; then \
 		echo "rg already installed at $(BIN_DIR)/rg$(RG_BIN_SUFFIX)"; \
 	else \
