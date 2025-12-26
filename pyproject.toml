@@ -44,11 +44,12 @@ build-backend = "uv_build"
 module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
-# [tool.uv.sources]
-# kosong = { path = "../kosong" }
+[tool.uv.workspace]
+members = ["packages/kosong", "packages/kaos"]
 
-# [tool.uv.sources]
-# kosong = { git = "https://github.com/MoonshotAI/kosong" }
+[tool.uv.sources]
+kosong = { workspace = true }
+pykaos = { workspace = true }
 
 [project.scripts]
 kimi = "kimi_cli.cli:cli"
