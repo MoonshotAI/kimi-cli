@@ -105,12 +105,11 @@ jobs:
           git -C gh-pages checkout -B gh-pages origin/gh-pages
           rsync -a --delete "${DOCS_DIR}/" gh-pages/
 
-          cd gh-pages
-          git add -A
-          if git diff --cached --quiet; then
+          git -C gh-pages add -A
+          if git -C gh-pages diff --cached --quiet; then
             echo "No documentation changes to publish."
             exit 0
           fi
 
-          git commit -m "docs: update for ${VERSION}"
-          git push origin gh-pages
+          git -C gh-pages commit -m "docs: update for ${VERSION}"
+          git -C gh-pages push origin gh-pages
