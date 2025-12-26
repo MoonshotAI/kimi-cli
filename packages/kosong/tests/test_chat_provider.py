@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from kosong.chat_provider import APIStatusError, StreamedMessagePart
 from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
 from kosong.chat_provider.kimi import Kimi

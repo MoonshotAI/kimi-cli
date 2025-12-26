@@ -3,7 +3,6 @@
 import json
 from typing import Any
 
-import pytest
 import respx
 from common import COMMON_CASES, Case, run_test_cases
 from httpx import Response

@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 import respx
 from common import COMMON_CASES, Case, make_chat_completion_response, run_test_cases
 from httpx import Response

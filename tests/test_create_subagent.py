@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from inline_snapshot import snapshot
 
 from kimi_cli.tools.multiagent.create import CreateSubagent, Params

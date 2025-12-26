@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import pytest
-
 from kimi_cli.utils.path import next_available_rotation
 
 
