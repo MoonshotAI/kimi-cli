@@ -11,7 +11,6 @@ from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
 from kimi_cli.wire.display import DiffDisplayBlock
 
 
-@pytest.mark.asyncio
 async def test_replace_single_occurrence(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -34,7 +33,6 @@ async def test_replace_single_occurrence(
     assert await file_path.read_text() == "Hello universe! This is a test."
 
 
-@pytest.mark.asyncio
 async def test_replace_all_occurrences(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -55,7 +53,6 @@ async def test_replace_all_occurrences(
     assert await file_path.read_text() == "fruit banana fruit cherry fruit"
 
 
-@pytest.mark.asyncio
 async def test_replace_multiple_edits(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -79,7 +76,6 @@ async def test_replace_multiple_edits(
     assert await file_path.read_text() == "Hi world! See you world!"
 
 
-@pytest.mark.asyncio
 async def test_replace_multiline_content(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -100,7 +96,6 @@ async def test_replace_multiline_content(
     assert await file_path.read_text() == "Line 1\nModified line 2\nModified line 3\n"
 
 
-@pytest.mark.asyncio
 async def test_replace_unicode_content(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -118,7 +113,6 @@ async def test_replace_unicode_content(
     assert await file_path.read_text() == "Hello 地球! café"
 
 
-@pytest.mark.asyncio
 async def test_replace_no_match(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
     """Test replacing when the old string is not found."""
     file_path = temp_work_dir / "test.txt"
@@ -134,7 +128,6 @@ async def test_replace_no_match(str_replace_file_tool: StrReplaceFile, temp_work
     assert await file_path.read_text() == original_content  # Content unchanged
 
 
-@pytest.mark.asyncio
 async def test_replace_with_relative_path(str_replace_file_tool: StrReplaceFile):
     """Test replacing with a relative path (should fail)."""
     result = await str_replace_file_tool(
@@ -145,7 +138,6 @@ async def test_replace_with_relative_path(str_replace_file_tool: StrReplaceFile)
     assert "not an absolute path" in result.message
 
 
-@pytest.mark.asyncio
 async def test_replace_outside_work_directory(
     str_replace_file_tool: StrReplaceFile, outside_file: Path
 ):
@@ -158,7 +150,6 @@ async def test_replace_outside_work_directory(
     assert "outside the working directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_replace_outside_work_directory_with_prefix(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -177,7 +168,6 @@ async def test_replace_outside_work_directory_with_prefix(
     assert "outside the working directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_replace_nonexistent_file(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -192,7 +182,6 @@ async def test_replace_nonexistent_file(
     assert "does not exist" in result.message
 
 
-@pytest.mark.asyncio
 async def test_replace_directory_instead_of_file(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -208,7 +197,6 @@ async def test_replace_directory_instead_of_file(
     assert "is not a file" in result.message
 
 
-@pytest.mark.asyncio
 async def test_replace_mixed_multiple_edits(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
@@ -234,7 +222,6 @@ async def test_replace_mixed_multiple_edits(
     assert await file_path.read_text() == "fruit apple tasty apple cherry"
 
 
-@pytest.mark.asyncio
 async def test_replace_empty_strings(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):

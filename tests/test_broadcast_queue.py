@@ -5,7 +5,6 @@ import pytest
 from src.kimi_cli.utils.broadcast import BroadcastQueue
 
 
-@pytest.mark.asyncio
 async def test_basic_publish_subscribe():
     """Test basic publish/subscribe functionality."""
     broadcast = BroadcastQueue()
@@ -18,7 +17,6 @@ async def test_basic_publish_subscribe():
     assert await queue2.get() == "test_message"
 
 
-@pytest.mark.asyncio
 async def test_publish_nowait():
     """Test publish_nowait publishes immediately without blocking."""
     broadcast = BroadcastQueue()
@@ -29,7 +27,6 @@ async def test_publish_nowait():
     assert await queue.get() == "fast_message"
 
 
-@pytest.mark.asyncio
 async def test_unsubscribe():
     """Test that unsubscribed queues don't receive messages."""
     broadcast = BroadcastQueue()
@@ -43,7 +40,6 @@ async def test_unsubscribe():
     assert queue2.qsize() == 0
 
 
-@pytest.mark.asyncio
 async def test_multiple_subscribers_receive_same_message():
     """Test all subscribers receive the same message."""
     broadcast = BroadcastQueue()
@@ -56,7 +52,6 @@ async def test_multiple_subscribers_receive_same_message():
     assert all(result == test_msg for result in results)
 
 
-@pytest.mark.asyncio
 async def test_shutdown():
     """Test shutdown closes all queues."""
     broadcast = BroadcastQueue()
@@ -72,7 +67,6 @@ async def test_shutdown():
     assert len(broadcast._queues) == 0
 
 
-@pytest.mark.asyncio
 async def test_publish_to_empty_queue():
     """Test publishing when no subscribers doesn't throw error."""
     broadcast = BroadcastQueue()

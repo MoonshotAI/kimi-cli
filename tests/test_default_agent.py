@@ -12,7 +12,6 @@ from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.agent import Runtime
 
 
-@pytest.mark.asyncio
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])

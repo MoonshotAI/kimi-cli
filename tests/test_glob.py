@@ -34,7 +34,6 @@ async def test_files(temp_work_dir: KaosPath):
     return temp_work_dir
 
 
-@pytest.mark.asyncio
 async def test_glob_simple_pattern(glob_tool: Glob, test_files: KaosPath):
     """Test simple glob pattern matching."""
     result = await glob_tool(Params(pattern="*.py", directory=str(test_files)))
@@ -45,7 +44,6 @@ async def test_glob_simple_pattern(glob_tool: Glob, test_files: KaosPath):
     assert "Found 1 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_multiple_matches(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern with multiple matches."""
     result = await glob_tool(Params(pattern="*.md", directory=str(test_files)))
@@ -56,7 +54,6 @@ async def test_glob_multiple_matches(glob_tool: Glob, test_files: KaosPath):
     assert "Found 1 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_recursive_pattern_prohibited(glob_tool: Glob, test_files: KaosPath):
     """Test that recursive glob pattern starting with **/ is prohibited."""
     result = await glob_tool(Params(pattern="**/*.py", directory=str(test_files)))
@@ -66,7 +63,6 @@ async def test_glob_recursive_pattern_prohibited(glob_tool: Glob, test_files: Ka
     assert "Unsafe pattern" in result.brief
 
 
-@pytest.mark.asyncio
 async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: KaosPath):
     """Test safe recursive glob pattern that doesn't start with **/."""
     result = await glob_tool(Params(pattern="src/**/*.py", directory=str(test_files)))
@@ -83,7 +79,6 @@ async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: KaosPath
     assert "Found 6 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_specific_directory(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern in specific directory."""
     src_dir = str(test_files / "src")
@@ -96,7 +91,6 @@ async def test_glob_specific_directory(glob_tool: Glob, test_files: KaosPath):
     assert "Found 2 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_recursive_in_subdirectory(glob_tool: Glob, test_files: KaosPath):
     """Test recursive glob in subdirectory."""
     src_dir = str(test_files / "src")
@@ -110,7 +104,6 @@ async def test_glob_recursive_in_subdirectory(glob_tool: Glob, test_files: KaosP
     assert "Found 2 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_test_files(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern for test files."""
     result = await glob_tool(Params(pattern="src/**/*test*.py", directory=str(test_files)))
@@ -123,7 +116,6 @@ async def test_glob_test_files(glob_tool: Glob, test_files: KaosPath):
     assert "Found 2 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_no_matches(glob_tool: Glob, test_files: KaosPath):
     """Test glob pattern with no matches."""
     result = await glob_tool(Params(pattern="*.xyz", directory=str(test_files)))
@@ -133,7 +125,6 @@ async def test_glob_no_matches(glob_tool: Glob, test_files: KaosPath):
     assert "No matches found" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_exclude_directories(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test glob with include_dirs=False."""
     # Create both files and directories
@@ -151,7 +142,6 @@ async def test_glob_exclude_directories(glob_tool: Glob, temp_work_dir: KaosPath
     assert "Found 1 matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_with_relative_path(glob_tool: Glob):
     """Test glob with relative path (should fail)."""
     result = await glob_tool(Params(pattern="*.py", directory="relative/path"))
@@ -160,7 +150,6 @@ async def test_glob_with_relative_path(glob_tool: Glob):
     assert "not an absolute path" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_outside_work_directory(glob_tool: Glob):
     """Test glob outside working directory (should fail)."""
     dir = "/tmp/outside" if platform.system() != "Windows" else "C:/tmp/outside"
@@ -170,7 +159,6 @@ async def test_glob_outside_work_directory(glob_tool: Glob):
     assert "outside the working directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_outside_work_directory_with_prefix(glob_tool: Glob, temp_work_dir: KaosPath):
     """Paths sharing the work dir prefix but outside should be blocked."""
     base = Path(str(temp_work_dir))
@@ -183,7 +171,6 @@ async def test_glob_outside_work_directory_with_prefix(glob_tool: Glob, temp_wor
     assert "outside the working directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_nonexistent_directory(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test glob in nonexistent directory."""
     nonexistent_dir = str(temp_work_dir / "nonexistent")
@@ -193,7 +180,6 @@ async def test_glob_nonexistent_directory(glob_tool: Glob, temp_work_dir: KaosPa
     assert "does not exist" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_not_a_directory(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test glob on a file instead of directory."""
     test_file = temp_work_dir / "test.txt"
@@ -205,7 +191,6 @@ async def test_glob_not_a_directory(glob_tool: Glob, temp_work_dir: KaosPath):
     assert "is not a directory" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_single_character_wildcard(glob_tool: Glob, test_files: KaosPath):
     """Test single character wildcard."""
     result = await glob_tool(Params(pattern="?.md", directory=str(test_files)))
@@ -215,7 +200,6 @@ async def test_glob_single_character_wildcard(glob_tool: Glob, test_files: KaosP
     # Should match single character .md files
 
 
-@pytest.mark.asyncio
 async def test_glob_max_matches_limit(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test that glob respects the MAX_MATCHES limit."""
     # Create more than MAX_MATCHES files
@@ -232,7 +216,6 @@ async def test_glob_max_matches_limit(glob_tool: Glob, temp_work_dir: KaosPath):
     assert f"Only the first {MAX_MATCHES} matches are returned" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test enhanced ** pattern validation with directory listing."""
     # Create some top-level files and directories for listing
@@ -254,7 +237,6 @@ async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_d
     assert "docs" in result.output
 
 
-@pytest.mark.asyncio
 async def test_glob_exactly_max_matches(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test behavior when exactly MAX_MATCHES files are found."""
     # Create exactly MAX_MATCHES files
@@ -271,7 +253,6 @@ async def test_glob_exactly_max_matches(glob_tool: Glob, temp_work_dir: KaosPath
     assert f"Found {MAX_MATCHES} matches" in result.message
 
 
-@pytest.mark.asyncio
 async def test_glob_character_class(glob_tool: Glob, temp_work_dir: KaosPath):
     """Test character class pattern."""
     await (temp_work_dir / "file1.py").write_text("content1")
@@ -286,7 +267,6 @@ async def test_glob_character_class(glob_tool: Glob, temp_work_dir: KaosPath):
     assert "file3.txt" not in result.output
 
 
-@pytest.mark.asyncio
 async def test_glob_complex_pattern(glob_tool: Glob, test_files: KaosPath):
     """Test complex glob pattern combinations."""
     result = await glob_tool(Params(pattern="docs/**/main/*.py", directory=str(test_files)))
@@ -296,7 +276,6 @@ async def test_glob_complex_pattern(glob_tool: Glob, test_files: KaosPath):
     # Should not match anything since there are no Python files in docs/main
 
 
-@pytest.mark.asyncio
 async def test_glob_wildcard_with_double_star_patterns(glob_tool: Glob, test_files: KaosPath):
     """Test various patterns with ** that are allowed."""
     # Test pattern with ** in the middle
@@ -315,7 +294,6 @@ async def test_glob_wildcard_with_double_star_patterns(glob_tool: Glob, test_fil
     assert "src/test/test_config.py" in output
 
 
-@pytest.mark.asyncio
 async def test_glob_pattern_edge_cases(glob_tool: Glob, test_files: KaosPath):
     """Test edge cases for pattern validation."""
     # Test pattern that has ** but not at the start

@@ -67,7 +67,6 @@ TEST_CASES: dict[str, Case] = {
 }
 
 
-@pytest.mark.asyncio
 async def test_anthropic_message_conversion():
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
@@ -472,7 +471,6 @@ async def test_anthropic_message_conversion():
         )
 
 
-@pytest.mark.asyncio
 async def test_anthropic_generation_kwargs():
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
@@ -491,7 +489,6 @@ async def test_anthropic_generation_kwargs():
         )
 
 
-@pytest.mark.asyncio
 async def test_anthropic_with_thinking():
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))

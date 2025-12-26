@@ -65,7 +65,6 @@ async def run_sh(
     return exit_code, stdout_data.decode("utf-8"), stderr_data.decode("utf-8")
 
 
-@pytest.mark.asyncio
 async def test_simple_command():
     """Test executing a simple command."""
     exit_code, stdout, stderr = await run_sh("echo 'Hello World'")
@@ -74,7 +73,6 @@ async def test_simple_command():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_with_error():
     """Test executing a command that returns an error."""
     exit_code, stdout, stderr = await run_sh("ls /nonexistent/directory")
@@ -83,7 +81,6 @@ async def test_command_with_error():
     assert "No such file or directory" in stderr
 
 
-@pytest.mark.asyncio
 async def test_command_chaining():
     """Test command chaining with &&."""
     exit_code, stdout, stderr = await run_sh("echo 'First' && echo 'Second'")
@@ -95,7 +92,6 @@ Second
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_sequential():
     """Test sequential command execution with ;."""
     exit_code, stdout, stderr = await run_sh("echo 'One'; echo 'Two'")
@@ -107,7 +103,6 @@ Two
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_conditional():
     """Test conditional command execution with ||."""
     exit_code, stdout, stderr = await run_sh("false || echo 'Success'")
@@ -116,7 +111,6 @@ async def test_command_conditional():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_pipe():
     """Test command piping."""
     exit_code, stdout, stderr = await run_sh("echo 'Hello World' | wc -w")
@@ -125,7 +119,6 @@ async def test_command_pipe():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_multiple_pipes():
     """Test multiple pipes in one command."""
     exit_code, stdout, stderr = await run_sh("printf '1\\n2\\n3\\n' | grep '2' | wc -l")
@@ -134,7 +127,6 @@ async def test_multiple_pipes():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_with_timeout():
     """Test command execution with an upper bound on runtime."""
     exit_code, stdout, stderr = await run_sh("sleep 0.1", timeout=1)
@@ -143,14 +135,12 @@ async def test_command_with_timeout():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_timeout_expires():
     """Test command that times out."""
     with pytest.raises(TimeoutError):
         await run_sh("sleep 2", timeout=0.1)
 
 
-@pytest.mark.asyncio
 async def test_environment_variables():
     """Test setting and using environment variables."""
     exit_code, stdout, stderr = await run_sh(
@@ -161,7 +151,6 @@ async def test_environment_variables():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_file_operations():
     """Test basic file operations."""
     exit_code, stdout, stderr = await run_sh("echo 'Test content' > test_file.txt")
@@ -177,7 +166,6 @@ async def test_file_operations():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_text_processing():
     """Test text processing commands."""
     exit_code, stdout, stderr = await run_sh("echo 'apple banana cherry' | sed 's/banana/orange/'")
@@ -186,7 +174,6 @@ async def test_text_processing():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_substitution():
     """Test command substitution with a portable command."""
     exit_code, stdout, stderr = await run_sh('echo "Result: $(echo hello)"')
@@ -195,7 +182,6 @@ async def test_command_substitution():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_arithmetic_substitution():
     """Test arithmetic substitution - more portable than date command."""
     exit_code, stdout, stderr = await run_sh('echo "Answer: $((2 + 2))"')
@@ -204,7 +190,6 @@ async def test_arithmetic_substitution():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_very_long_output():
     """Test command that produces very long output."""
     exit_code, stdout, stderr = await run_sh("seq 1 100 | head -50")
@@ -216,7 +201,6 @@ async def test_very_long_output():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_reads_stdin():
     """Test passing data to stdin."""
     exit_code, stdout, stderr = await run_sh(
@@ -228,7 +212,6 @@ async def test_command_reads_stdin():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_reads_multiple_lines_from_stdin():
     """Test reading multiple lines through stdin."""
     exit_code, stdout, stderr = await run_sh(

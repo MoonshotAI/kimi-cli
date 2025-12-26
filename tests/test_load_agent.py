@@ -70,7 +70,6 @@ def test_load_tools_invalid(runtime: Runtime):
         assert "kimi_cli.tools.nonexistent:Tool" in str(e)
 
 
-@pytest.mark.asyncio
 async def test_load_agent_invalid_tools(agent_file_invalid_tools: Path, runtime: Runtime):
     """Test loading agent with invalid tools raises ValueError."""
     with pytest.raises(ValueError, match="Invalid tools"):

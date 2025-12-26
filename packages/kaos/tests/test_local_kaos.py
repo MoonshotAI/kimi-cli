@@ -38,7 +38,6 @@ def test_pathclass_gethome_and_getcwd(local_kaos: LocalKaos):
     assert str(local_kaos.getcwd()) == str(Path.cwd())
 
 
-@pytest.mark.asyncio
 async def test_chdir_and_stat(local_kaos: LocalKaos):
     new_dir = local_kaos.getcwd() / "nested"
     await local_kaos.mkdir(new_dir)
@@ -53,7 +52,6 @@ async def test_chdir_and_stat(local_kaos: LocalKaos):
     assert stat_result.st_size == len("hello world")
 
 
-@pytest.mark.asyncio
 async def test_iterdir_and_glob(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     await local_kaos.mkdir(tmp_path / "alpha")
@@ -68,7 +66,6 @@ async def test_iterdir_and_glob(local_kaos: LocalKaos):
     assert set(matched) == {"bravo.txt"}
 
 
-@pytest.mark.asyncio
 async def test_read_write_and_append_text(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     file_path = tmp_path / "note.txt"
@@ -84,7 +81,6 @@ async def test_read_write_and_append_text(local_kaos: LocalKaos):
     assert "".join(lines) == "line1\nline2"
 
 
-@pytest.mark.asyncio
 async def test_mkdir_with_parents(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     nested_dir = tmp_path / "a" / "b" / "c"
@@ -93,7 +89,6 @@ async def test_mkdir_with_parents(local_kaos: LocalKaos):
     assert await nested_dir.is_dir()
 
 
-@pytest.mark.asyncio
 async def test_read_write_bytes(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     file_path = tmp_path / "data.bin"
@@ -105,7 +100,6 @@ def _python_code_args(code: str) -> tuple[str, str, str]:
     return sys.executable, "-c", code
 
 
-@pytest.mark.asyncio
 async def test_exec_runs_command_and_streams(local_kaos: LocalKaos):
     code = "import sys\nsys.stdout.write('hello\\n')\nsys.stderr.write('stderr line\\n')\n"
 
@@ -121,7 +115,6 @@ async def test_exec_runs_command_and_streams(local_kaos: LocalKaos):
     assert stderr_data.decode("utf-8").strip() == "stderr line"
 
 
-@pytest.mark.asyncio
 async def test_exec_runs_command_wait_before_read(local_kaos: LocalKaos):
     code = "import sys\nsys.stdout.write('hello\\n')\nsys.stderr.write('stderr line\\n')\n"
 
@@ -137,7 +130,6 @@ async def test_exec_runs_command_wait_before_read(local_kaos: LocalKaos):
     assert stderr_data.decode("utf-8").strip() == "stderr line"
 
 
-@pytest.mark.asyncio
 async def test_exec_non_zero_exit(local_kaos: LocalKaos):
     process = await local_kaos.exec(*_python_code_args("import sys; sys.exit(7)"))
 
@@ -145,7 +137,6 @@ async def test_exec_non_zero_exit(local_kaos: LocalKaos):
     assert exit_code == 7
 
 
-@pytest.mark.asyncio
 async def test_exec_wait_timeout(local_kaos: LocalKaos):
     process = await local_kaos.exec(*_python_code_args("import time; time.sleep(1)"))
     assert process.pid > 0

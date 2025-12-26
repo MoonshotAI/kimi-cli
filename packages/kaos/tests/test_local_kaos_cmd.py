@@ -47,7 +47,6 @@ async def run_cmd(command: str) -> tuple[int, str, str]:
     return exit_code, stdout_data.decode("utf-8"), stderr_data.decode("utf-8")
 
 
-@pytest.mark.asyncio
 async def test_simple_command():
     """Ensure a basic cmd.exe command runs."""
     exit_code, stdout, stderr = await run_cmd("echo Hello Windows")
@@ -57,7 +56,6 @@ async def test_simple_command():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_with_error():
     """Failing commands should return a non-zero exit code."""
     exit_code, stdout, stderr = await run_cmd("exit /b 1")
@@ -67,7 +65,6 @@ async def test_command_with_error():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_command_chaining():
     """Chaining commands with && should work."""
     exit_code, stdout, stderr = await run_cmd("echo First&& echo Second")
@@ -77,7 +74,6 @@ async def test_command_chaining():
     assert stderr == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_file_operations():
     """Basic file write/read using cmd redirection."""
     file_path = Path("test_file.txt")

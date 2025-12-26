@@ -17,10 +17,10 @@ from kaos import reset_current_kaos, set_current_kaos
 from kaos.path import KaosPath
 from kaos.ssh import SSHKaos
 
-pytestmark = [
-    pytest.mark.asyncio,
-    pytest.mark.skipif(platform.system() == "Windows", reason="SSH tests run only on non-Windows."),
-]
+pytestmark = pytest.mark.skipif(
+    platform.system() == "Windows",
+    reason="SSH tests run only on non-Windows.",
+)
 
 
 @pytest.fixture(scope="module")

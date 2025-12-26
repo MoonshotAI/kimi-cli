@@ -60,7 +60,6 @@ TEST_CASES: dict[str, Case] = {
 }
 
 
-@pytest.mark.asyncio
 async def test_google_genai_message_conversion():
     with respx.mock(base_url="https://generativelanguage.googleapis.com") as mock:
         mock.route(method="POST", path__regex=r"/v1beta/models/.+:generateContent").mock(
@@ -287,7 +286,6 @@ async def test_google_genai_message_conversion():
         )
 
 
-@pytest.mark.asyncio
 async def test_google_genai_vertexai_message_conversion():
     with respx.mock(base_url="https://aiplatform.googleapis.com") as mock:
         mock.route(
@@ -511,7 +509,6 @@ async def test_google_genai_vertexai_message_conversion():
         )
 
 
-@pytest.mark.asyncio
 async def test_google_genai_generation_kwargs():
     with respx.mock(base_url="https://generativelanguage.googleapis.com") as mock:
         mock.route(method="POST", path__regex=r"/v1beta/models/.+:generateContent").mock(
@@ -528,7 +525,6 @@ async def test_google_genai_generation_kwargs():
         assert (config.get("temperature"), config.get("maxOutputTokens")) == snapshot((0.7, 2048))
 
 
-@pytest.mark.asyncio
 async def test_google_genai_with_thinking():
     with respx.mock(base_url="https://generativelanguage.googleapis.com") as mock:
         mock.route(method="POST", path__regex=r"/v1beta/models/.+:generateContent").mock(

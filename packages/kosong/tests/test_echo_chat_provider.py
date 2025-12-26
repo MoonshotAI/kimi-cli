@@ -14,7 +14,6 @@ from kosong.message import (
 )
 
 
-@pytest.mark.asyncio
 async def test_echo_chat_provider_streams_parts():
     dsl = "\n".join(
         [
@@ -65,7 +64,6 @@ async def test_echo_chat_provider_streams_parts():
     ]
 
 
-@pytest.mark.asyncio
 async def test_echo_chat_provider_with_generate_merge_tool_call():
     dsl = """
     text: Hello
@@ -97,7 +95,6 @@ async def test_echo_chat_provider_with_generate_merge_tool_call():
     assert result.usage is None
 
 
-@pytest.mark.asyncio
 async def test_echo_chat_provider_rejects_non_string_arguments():
     dsl = """
     tool_call: {"id": "call-1", "name": "search", "arguments": {"q": "python"}}
@@ -109,7 +106,6 @@ async def test_echo_chat_provider_rejects_non_string_arguments():
         await provider.generate(system_prompt="", tools=[], history=history)
 
 
-@pytest.mark.asyncio
 async def test_echo_chat_provider_requires_user_message():
     provider = EchoChatProvider()
     history = [Message(role="tool", content="tool output")]
@@ -118,7 +114,6 @@ async def test_echo_chat_provider_requires_user_message():
         await provider.generate(system_prompt="", tools=[], history=history)
 
 
-@pytest.mark.asyncio
 async def test_echo_chat_provider_requires_dsl_content():
     provider = EchoChatProvider()
     history = [Message(role="user", content="")]
