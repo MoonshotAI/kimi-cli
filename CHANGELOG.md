@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## [Unreleased]
 
 - Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
+- Python: Lower the minimum required Python version to 3.12
 
 ## [0.68] - 2025-12-24
 

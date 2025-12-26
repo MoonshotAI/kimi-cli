@@ -3,7 +3,7 @@ name = "kimi-cli"
 version = "0.68"
 description = "Kimi CLI is your next CLI agent."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "agent-client-protocol==0.7.0",
     "aiofiles==25.1.0",
