@@ -5,8 +5,15 @@ help: ## Show available make targets.
 	@echo "Available make targets:"
 	@awk 'BEGIN { FS = ":.*## " } /^[A-Za-z0-9_.-]+:.*## / { printf "  %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
+.PHONY: install-prek
+install-prek: ## Install prek and repo git hooks.
+	@echo "==> Installing prek"
+	@uv tool install prek
+	@echo "==> Installing git hooks with prek"
+	@uv tool run prek install
+
 .PHONY: prepare
-prepare: download-deps ## Sync dependencies for all workspace packages.
+prepare: download-deps install-prek ## Sync dependencies for all workspace packages and install prek hooks.
 	@echo "==> Syncing dependencies for all workspace packages"
 	@uv sync --frozen --all-extras --all-packages
 
