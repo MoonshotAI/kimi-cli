@@ -50,8 +50,15 @@ test-kosong: ## Run kosong tests (including doctests).
 test-pykaos: ## Run pykaos tests.
 	uv run --project packages/kaos --directory packages/kaos pytest tests -vv
 
-.PHONY: build
-build: ## Build the standalone executable with PyInstaller.
+.PHONY: build build-kimi-cli build-kosong build-pykaos build-bin
+build: build-kimi-cli build-kosong build-pykaos ## Build Python packages for release.
+build-kimi-cli: ## Build the kimi-cli sdist and wheel.
+	uv build --package kimi-cli --no-sources --out-dir dist
+build-kosong: ## Build the kosong sdist and wheel.
+	uv build --package kosong --no-sources --out-dir dist/kosong
+build-pykaos: ## Build the pykaos sdist and wheel.
+	uv build --package pykaos --no-sources --out-dir dist/pykaos
+build-bin: ## Build the standalone executable with PyInstaller.
 	uv run pyinstaller kimi.spec
 
 .PHONY: ai-test

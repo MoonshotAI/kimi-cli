@@ -192,6 +192,8 @@ make test  # run tests
 make test-kimi-cli  # run Kimi CLI tests only
 make test-kosong  # run kosong tests only
 make test-pykaos  # run pykaos tests only
+make build  # build python packages
+make build-bin  # build standalone binary
 make help  # show all make targets
 ```
 

@@ -1,4 +1,4 @@
-name: Release
+name: Release (kimi-cli)
 
 on:
   push:
@@ -74,7 +74,7 @@ jobs:
         run: make prepare-build
 
       - name: Build standalone binary
-        run: make build
+        run: make build-bin
 
       - name: Package artifact
         shell: python
@@ -181,7 +181,7 @@ jobs:
           version: "0.8.5"
 
       - name: Build distributions
-        run: uv build --package kimi-cli --no-sources --out-dir dist
+        run: make build-kimi-cli
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

@@ -56,7 +56,7 @@ jobs:
         run: make test
 
       - name: Build standalone binary
-        run: make build
+        run: make build-bin
 
       - name: Smoke test binary --help
         shell: python
