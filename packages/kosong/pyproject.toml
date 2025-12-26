@@ -1,6 +1,6 @@
 [project]
 name = "kosong"
-version = "0.35.0"
+version = "0.35.1"
 description = "The LLM abstraction layer for modern AI agent applications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,7 +13,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.1",
     "typing-extensions>=4.15.0",
-    "mcp>=1,<2"
+    "mcp>=1,<2",
 ]
 
 [project.optional-dependencies]
