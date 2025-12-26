@@ -1,0 +1,57 @@
+[project]
+name = "kosong"
+version = "0.35.0"
+description = "The LLM abstraction layer for modern AI agent applications."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.75.0",
+    "google-genai>=1.56.0",
+    "jsonschema>=4.25.1",
+    "loguru>=0.7.3",
+    "openai>=2.14.0,<2.15.0",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "typing-extensions>=4.15.0",
+    "mcp>=1,<2"
+]
+
+[project.optional-dependencies]
+contrib = [
+    "anthropic>=0.75.0",
+    "google-genai>=1.55.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.407",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "respx>=0.22.0",
+    "ruff>=0.14.10",
+    "inline-snapshot[black]>=0.31.1",
+    "pdoc>=16.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.5,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["kosong"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # Pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+]
