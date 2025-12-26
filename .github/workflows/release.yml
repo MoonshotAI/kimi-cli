@@ -70,8 +70,8 @@ jobs:
         with:
           version: "0.8.5"
 
-      - name: Install dependencies (no sources)
-        run: uv sync --frozen --all-extras --no-sources
+      - name: Prepare building environment
+        run: make prepare-build
 
       - name: Build standalone binary
         run: make build

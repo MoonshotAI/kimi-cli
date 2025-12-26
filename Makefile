@@ -9,6 +9,10 @@ help: ## Show available make targets.
 prepare: download-deps ## Sync dependencies using locked versions.
 	uv sync --frozen --all-extras
 
+.PHONY: prepare-build
+prepare-build: download-deps ## Sync dependencies for releases without workspace sources.
+	uv sync --frozen --all-extras --no-sources
+
 .PHONY: format format-kimi-cli format-kosong format-pykaos
 format: format-kimi-cli format-kosong format-pykaos ## Auto-format Python sources with ruff.
 format-kimi-cli:
