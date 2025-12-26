@@ -11,8 +11,14 @@ from inline_snapshot import snapshot
 
 pytest.importorskip("google.genai", reason="Optional contrib dependency not installed")
 
-from kosong.contrib.chat_provider.google_genai import GoogleGenAI
+from google.genai import _api_client
+
 from kosong.message import Message, TextPart, ToolCall
+
+# Force google-genai to use httpx so respx can mock requests.
+_api_client.has_aiohttp = False
+
+from kosong.contrib.chat_provider.google_genai import GoogleGenAI  # noqa: E402
 
 
 def make_response() -> dict[str, Any]:
