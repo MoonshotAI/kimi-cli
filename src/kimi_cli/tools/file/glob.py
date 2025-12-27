@@ -1,14 +1,15 @@
 """Glob tool implementation."""
 
-import fnmatch
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import override
 
+from kaos import glob_pruned
 from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pathspec import PathSpec
 from pydantic import BaseModel, Field
 
+from kaos import glob_pruned
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.path import is_within_directory, list_directory
@@ -66,62 +67,6 @@ class Glob(CallableTool2[Params]):
         if is_dir and not relative_str.endswith("/"):
             relative_str += "/"
         return gitignore_spec.match_file(relative_str)
-
-    async def _gitignore_aware_glob(
-        self, base_dir: KaosPath, pattern: str, gitignore_spec: PathSpec
-    ) -> list[KaosPath]:
-        """Glob that prunes gitignored directories instead of filtering after traversal."""
-        normalized_pattern = pattern.replace("\\", "/")
-        parts = list(PurePosixPath(normalized_pattern).parts)
-        if parts and parts[0] == "/":
-            parts = parts[1:]
-
-        matches: list[KaosPath] = []
-
-        async def recurse(current: KaosPath, idx: int) -> None:
-            if idx == len(parts):
-                matches.append(current)
-                return
-
-            part = parts[idx]
-            if part == "**":
-                await recurse(current, idx + 1)
-
-                if not await current.is_dir():
-                    return
-
-                async for child in current.iterdir():
-                    try:
-                        is_dir = await child.is_dir()
-                    except OSError:
-                        continue
-
-                    if self._is_gitignored(child, gitignore_spec, is_dir):
-                        continue
-
-                    if is_dir:
-                        await recurse(child, idx)
-                    elif idx == len(parts) - 1:
-                        matches.append(child)
-                return
-
-            if not await current.is_dir():
-                return
-
-            async for child in current.iterdir():
-                try:
-                    is_dir = await child.is_dir()
-                except OSError:
-                    continue
-
-                if self._is_gitignored(child, gitignore_spec, is_dir):
-                    continue
-
-                if fnmatch.fnmatchcase(child.name, part):
-                    await recurse(child, idx + 1)
-
-        await recurse(base_dir, 0)
-        return matches
 
     async def _filter_gitignored(
         self, paths: list[KaosPath], gitignore_spec: PathSpec
@@ -217,8 +162,12 @@ class Glob(CallableTool2[Params]):
             # Perform the glob search - users can use ** directly in pattern
             normalized_pattern = params.pattern.replace("\\", "/")
             if gitignore_spec and normalized_pattern.startswith("**"):
-                matches = await self._gitignore_aware_glob(
-                    dir_path, normalized_pattern, gitignore_spec
+                matches = await glob_pruned(
+                    dir_path,
+                    normalized_pattern,
+                    should_ignore=lambda path, is_dir: self._is_gitignored(
+                        path, gitignore_spec, is_dir
+                    ),
                 )
             else:
                 matches = [match async for match in dir_path.glob(params.pattern)]
