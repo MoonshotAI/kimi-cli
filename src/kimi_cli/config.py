@@ -245,7 +245,7 @@ def save_config(config: Config, config_file: Path | None = None):
         if config_file.suffix.lower() == ".json":
             f.write(json.dumps(config_data, ensure_ascii=False, indent=2))
         else:
-            f.write(tomlkit.dumps(config_data))  # pyright: ignore[reportUnknownMemberType]
+            f.write(tomlkit.dumps(config_data))  # type: ignore[reportUnknownMemberType]
 
 
 def _migrate_json_config_to_toml() -> None:

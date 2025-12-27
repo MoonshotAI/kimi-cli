@@ -462,7 +462,7 @@ class OpenAIResponsesStreamedMessage:
         self._usage = response.usage
         for item in response.output:
             if item.type == "message":
-                for content in item.content:
+                for content in item.content or []:
                     if content.type == "output_text":
                         yield TextPart(text=content.text)
             elif item.type == "function_call":

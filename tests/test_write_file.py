@@ -142,7 +142,7 @@ async def test_write_with_invalid_mode(write_file_tool: WriteFile, temp_work_dir
     file_path = temp_work_dir / "test.txt"
 
     with pytest.raises(ValidationError):
-        await write_file_tool(Params(path=str(file_path), content="content", mode="invalid"))  # pyright: ignore[reportArgumentType]
+        await write_file_tool(Params(path=str(file_path), content="content", mode="invalid"))  # type: ignore[reportArgumentType]
 
 
 async def test_append_to_nonexistent_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):

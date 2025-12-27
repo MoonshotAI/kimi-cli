@@ -40,20 +40,23 @@ format-pykaos: ## Auto-format pykaos sources with ruff.
 .PHONY: check check-kimi-cli check-kosong check-pykaos
 check: check-kimi-cli check-kosong check-pykaos ## Run linting and type checks for all packages.
 check-kimi-cli: ## Run linting and type checks for Kimi CLI.
-	@echo "==> Checking Kimi CLI (ruff + pyright)"
+	@echo "==> Checking Kimi CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
 	@uv run ruff format --check
 	@uv run pyright
+	@uv run ty check || true
 check-kosong: ## Run linting and type checks for kosong.
-	@echo "==> Checking kosong (ruff + pyright)"
+	@echo "==> Checking kosong (ruff + pyright + ty; ty is non-blocking)"
 	@uv run --project packages/kosong --directory packages/kosong ruff check
 	@uv run --project packages/kosong --directory packages/kosong ruff format --check
 	@uv run --project packages/kosong --directory packages/kosong pyright
+	@uv run --project packages/kosong --directory packages/kosong ty check || true
 check-pykaos: ## Run linting and type checks for pykaos.
-	@echo "==> Checking pykaos (ruff + pyright)"
+	@echo "==> Checking pykaos (ruff + pyright + ty; ty is non-blocking)"
 	@uv run --project packages/kaos --directory packages/kaos ruff check
 	@uv run --project packages/kaos --directory packages/kaos ruff format --check
 	@uv run --project packages/kaos --directory packages/kaos pyright
+	@uv run --project packages/kaos --directory packages/kaos ty check || true
 
 
 .PHONY: test test-kimi-cli test-kosong test-pykaos

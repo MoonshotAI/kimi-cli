@@ -13,7 +13,7 @@ Kimi CLI is an interactive command-line interface agent specializing in software
 - **LLM Integration**: kosong (custom LLM framework)
 - **Async Runtime**: asyncio
 - **Testing**: pytest with asyncio support
-- **Code Quality**: ruff (linting/formatting), pyright (type checking)
+- **Code Quality**: ruff (linting/formatting), pyright (type checking), ty (type checking, non-blocking)
 - **Distribution**: PyInstaller for standalone executables
 
 ## Architecture
@@ -77,9 +77,9 @@ uv sync --group dev
 make format
 # or: uv run ruff check --fix && uv run ruff format
 
-# Run linting and type checking
+# Run linting and type checking (ty is non-blocking in make check)
 make check
-# or: uv run ruff check && uv run ruff format --check && uv run pyright
+# or: uv run ruff check && uv run ruff format --check && uv run pyright && uv run ty check
 
 # Run tests
 make test
@@ -119,7 +119,7 @@ Test files follow the pattern `test_*.py` and are organized by component:
 
 - **Line Length**: 100 characters maximum
 - **Formatter**: ruff with specific rule selection
-- **Type Hints**: Enforced by pyright
+- **Type Hints**: Enforced by pyright (ty is also run but non-blocking)
 - **Import Organization**: isort rules applied
 - **Error Handling**: Specific exception types with proper chaining
 - **Logging**: Structured logging with loguru
@@ -172,7 +172,7 @@ Before submitting changes, always run these quality checks:
 # Format code (runs ruff check --fix and ruff format)
 make format
 
-# Run linting and type checking (ruff check, ruff format --check, pyright)
+# Run linting and type checking (ruff check, ruff format --check, pyright, ty)
 make check
 
 # Run all tests
@@ -212,6 +212,7 @@ uv run python script.py
 # Running development tools
 uv run pyright
 uv run ruff check
+uv run ty check
 uv run pytest
 
 # Building the project

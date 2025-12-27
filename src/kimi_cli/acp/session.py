@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextvars import ContextVar
 
 import acp
-import streamingjson  # pyright: ignore[reportMissingTypeStubs]
+import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolResult
