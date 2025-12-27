@@ -675,7 +675,10 @@ class CustomPromptSession:
         """Try to paste an image from the clipboard. Return True if successful."""
         # Try get image from clipboard
         image = ImageGrab.grabclipboard()
-        if isinstance(image, list):
+        if image is None:
+            return False
+
+        if not isinstance(image, Image.Image):
             for item in image:
                 try:
                     with Image.open(item) as img:
@@ -684,10 +687,7 @@ class CustomPromptSession:
                 except Exception:
                     continue
             else:
-                image = None
-
-        if image is None:
-            return False
+                return False
 
         if "image_in" not in self._model_capabilities:
             console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")

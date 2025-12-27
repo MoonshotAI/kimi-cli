@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -189,7 +190,7 @@ class Session:
         return session
 
     @staticmethod
-    async def list(work_dir: KaosPath) -> list[Session]:
+    async def list(work_dir: KaosPath) -> builtins.list[Session]:
         """List all sessions for a work directory."""
         work_dir = work_dir.canonical()
         logger.debug("Listing sessions for work directory: {work_dir}", work_dir=work_dir)
