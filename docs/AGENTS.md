@@ -30,7 +30,7 @@ This repository uses VitePress for the documentation site. The current docs are 
 - Do not change H1 titles or nav/sidebar labels.
 - English H2+ headings use sentence case (only the first word capitalized unless it is a proper noun). Treat "Wire" as a proper noun; do not treat "agent", "shell mode", or "print mode" as proper nouns.
 - Chinese H2+ headings keep English words in sentence case; preserve proper nouns listed in the term table below.
-- Use `API key` (lowercase k), but keep `JSON`, `JSONL`, `OAuth`, `macOS`, and `uv` as-is.
+- Use `API key` in English and `API 密钥` in Chinese; keep `JSON`, `JSONL`, `OAuth`, `macOS`, and `uv` as-is.
 
 Term mapping (Chinese <-> English, and proper noun handling):
 
@@ -48,7 +48,7 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | 会话 | session | no | no |
 | 上下文 | context | no | no |
 | 子 Agent | subagent | yes (Agent) | no |
-| API key | API key | no | no |
+| API 密钥 | API key | no | no |
 | JSON | JSON | no | no |
 | JSONL | JSONL | no | no |
 | OAuth | OAuth | no | no |

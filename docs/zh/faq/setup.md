@@ -6,7 +6,7 @@
 `src/kimi_cli/ui/shell/setup.py`, `src/kimi_cli/config.py`, `src/kimi_cli/llm.py`
 :::
 
-## API key 无效
+## API 密钥无效
 
 ::: info 参考代码
 `src/kimi_cli/ui/shell/setup.py`, `src/kimi_cli/config.py`, `src/kimi_cli/utils/envvar.py`
