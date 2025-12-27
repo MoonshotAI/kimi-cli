@@ -1,10 +1,7 @@
-#!/usr/bin/env pwsh
-Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Install-Uv {
-  $installCmd = 'powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
-  Invoke-Expression $installCmd
+  Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" | Invoke-Expression
 }
 
 if (Get-Command uv -ErrorAction SilentlyContinue) {
