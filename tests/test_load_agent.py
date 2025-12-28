@@ -73,7 +73,7 @@ def test_load_tools_invalid(runtime: Runtime):
 async def test_load_agent_invalid_tools(agent_file_invalid_tools: Path, runtime: Runtime):
     """Test loading agent with invalid tools raises ValueError."""
     with pytest.raises(ValueError, match="Invalid tools"):
-        await load_agent(agent_file_invalid_tools, runtime, mcp_configs=[])
+        await load_agent(agent_file_invalid_tools, runtime)
 
 
 @pytest.fixture

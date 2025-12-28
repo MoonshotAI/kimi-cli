@@ -6,15 +6,12 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
-import pydantic
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.config import Config
-from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.skill import discover_skills, get_claude_skills_dir, get_skills_dir
@@ -24,9 +21,6 @@ from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
-
-if TYPE_CHECKING:
-    from fastmcp.mcp_config import MCPConfig
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -177,12 +171,7 @@ class LaborMarket:
         self.dynamic_subagents[name] = agent
 
 
-async def load_agent(
-    agent_file: Path,
-    runtime: Runtime,
-    *,
-    mcp_configs: list[MCPConfig] | list[dict[str, Any]],
-) -> Agent:
+async def load_agent(agent_file: Path, runtime: Runtime) -> Agent:
     """
     Load agent from specification file.
 
@@ -190,8 +179,6 @@ async def load_agent(
         FileNotFoundError: When the agent file is not found.
         AgentSpecError(KimiCLIException, ValueError): When the agent specification is invalid.
         InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
-        MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
-        MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be connected.
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
@@ -205,11 +192,7 @@ async def load_agent(
     # load subagents before loading tools because Task tool depends on LaborMarket on initialization
     for subagent_name, subagent_spec in agent_spec.subagents.items():
         logger.debug("Loading subagent: {subagent_name}", subagent_name=subagent_name)
-        subagent = await load_agent(
-            subagent_spec.path,
-            runtime.copy_for_fixed_subagent(),
-            mcp_configs=[],  # Subagents don't need MCP tools, only main agent loads them
-        )
+        subagent = await load_agent(subagent_spec.path, runtime.copy_for_fixed_subagent())
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
     toolset = KimiToolset()
@@ -229,22 +212,6 @@ async def load_agent(
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
     toolset.load_tools(tools, tool_deps)
-
-    if mcp_configs:
-        validated_mcp_configs: list[MCPConfig] = []
-        if mcp_configs:
-            from fastmcp.mcp_config import MCPConfig
-
-            for mcp_config in mcp_configs:
-                try:
-                    validated_mcp_configs.append(
-                        mcp_config
-                        if isinstance(mcp_config, MCPConfig)
-                        else MCPConfig.model_validate(mcp_config)
-                    )
-                except pydantic.ValidationError as e:
-                    raise MCPConfigError(f"Invalid MCP config: {e}") from e
-        await toolset.load_mcp_tools(validated_mcp_configs, runtime)
 
     return Agent(
         name=agent_spec.name,

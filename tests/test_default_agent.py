@@ -14,7 +14,7 @@ from kimi_cli.soul.agent import Runtime
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
-    agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
+    agent = await load_agent(DEFAULT_AGENT_FILE, runtime)
     assert agent.system_prompt.replace(
         f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
     ) == snapshot(

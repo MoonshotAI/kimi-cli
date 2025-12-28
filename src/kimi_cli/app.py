@@ -118,7 +118,29 @@ class KimiCLI:
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
-        agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+        agent = await load_agent(agent_file, runtime)
+
+        # Load MCP tools only for main agent (not subagents)
+        if mcp_configs:
+            from typing import cast
+
+            import pydantic
+            from fastmcp.mcp_config import MCPConfig
+
+            from kimi_cli.exception import MCPConfigError
+            from kimi_cli.soul.toolset import KimiToolset
+
+            validated: list[MCPConfig] = []
+            for mcp_config in mcp_configs:
+                try:
+                    validated.append(
+                        mcp_config
+                        if isinstance(mcp_config, MCPConfig)
+                        else MCPConfig.model_validate(mcp_config)
+                    )
+                except pydantic.ValidationError as e:
+                    raise MCPConfigError(f"Invalid MCP config: {e}") from e
+            await cast(KimiToolset, agent.toolset).load_mcp_tools(validated, runtime)
 
         context = Context(session.context_file)
         await context.restore()
