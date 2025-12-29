@@ -107,12 +107,10 @@ class KimiCLI:
         assert model is not None
         env_overrides = augment_provider_with_env_vars(provider, model)
 
-        if not provider.base_url or not model.model:
-            llm = None
-        else:
+        llm = create_llm(provider, model, session_id=session.id)
+        if llm is not None:
             logger.info("Using LLM provider: {provider}", provider=provider)
             logger.info("Using LLM model: {model}", model=model)
-            llm = create_llm(provider, model, session_id=session.id)
 
         runtime = await Runtime.create(config, llm, session, yolo, skills_dir)
 

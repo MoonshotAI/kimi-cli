@@ -135,7 +135,7 @@ class SSHKaos:
             cwd = await sftp.realpath(".")
         else:
             cwd = home_dir
-        return cls(connection=connection, sftp=sftp, home=home_dir, cwd=cwd)
+        return cls(connection=connection, sftp=sftp, home=home_dir, cwd=cwd, host=host)
 
     def __init__(
         self,
@@ -144,11 +144,17 @@ class SSHKaos:
         sftp: asyncssh.SFTPClient,
         home: str,
         cwd: str,
+        host: str,
     ) -> None:
         self._connection = connection
         self._sftp = sftp
         self._home_dir = home
         self._cwd = cwd
+        self._host = host
+
+    @property
+    def host(self) -> str:
+        return self._host
 
     def pathclass(self) -> type[PurePath]:
         return PurePosixPath
