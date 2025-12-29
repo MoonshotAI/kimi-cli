@@ -9,7 +9,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## [0.69] - 2025-12-29
 
 - Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
 - Python: Lower the minimum required Python version to 3.12
