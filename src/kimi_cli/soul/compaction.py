@@ -15,13 +15,16 @@ from kimi_cli.utils.logging import logger
 
 @runtime_checkable
 class Compaction(Protocol):
-    async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
+    async def compact(
+        self, messages: Sequence[Message], llm: LLM, instruction: str | None = None
+    ) -> Sequence[Message]:
         """
         Compact a sequence of messages into a new sequence of messages.
 
         Args:
             messages (Sequence[Message]): The messages to compact.
             llm (LLM): The LLM to use for compaction.
+            instruction (str | None): Optional custom summarization instruction.
 
         Returns:
             Sequence[Message]: The compacted messages.
@@ -42,8 +45,10 @@ class SimpleCompaction:
     def __init__(self, max_preserved_messages: int = 2) -> None:
         self.max_preserved_messages = max_preserved_messages
 
-    async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
-        compact_message, to_preserve = self.prepare(messages)
+    async def compact(
+        self, messages: Sequence[Message], llm: LLM, instruction: str | None = None
+    ) -> Sequence[Message]:
+        compact_message, to_preserve = self.prepare(messages, instruction=instruction)
         if compact_message is None:
             return to_preserve
 
@@ -78,7 +83,7 @@ class SimpleCompaction:
         compact_message: Message | None
         to_preserve: Sequence[Message]
 
-    def prepare(self, messages: Sequence[Message]) -> PrepareResult:
+    def prepare(self, messages: Sequence[Message], instruction: str | None = None) -> PrepareResult:
         if not messages or self.max_preserved_messages <= 0:
             return self.PrepareResult(compact_message=None, to_preserve=messages)
 
@@ -111,5 +116,8 @@ class SimpleCompaction:
             compact_message.content.extend(
                 part for part in msg.content if not isinstance(part, ThinkPart)
             )
-        compact_message.content.append(TextPart(text="\n" + prompts.COMPACT))
+        prompt_tail = prompts.COMPACT
+        if instruction:
+            prompt_tail = f"{prompts.COMPACT}\n\nUser instruction: {instruction}"
+        compact_message.content.append(TextPart(text="\n" + prompt_tail))
         return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)

@@ -51,14 +51,16 @@ async def init(soul: KimiSoul, args: list[str]):
 
 @registry.command
 async def compact(soul: KimiSoul, args: list[str]):
-    """Compact the context"""
+    """Compact context; optional hint via `/compact <summary hint>` (e.g. summarize code only)"""
     if soul.context.n_checkpoints == 0:
         wire_send(TextPart(text="The context is empty."))
         return
 
+    instruction = " ".join(args).strip() if args else ""
     logger.info("Running `/compact`")
-    await soul.compact_context()
-    wire_send(TextPart(text="The context has been compacted."))
+    await soul.compact_context(instruction if instruction else None)
+    suffix = f' with instruction: "{instruction}"' if instruction else ""
+    wire_send(TextPart(text=f"The context has been compacted{suffix}."))
 
 
 @registry.command
