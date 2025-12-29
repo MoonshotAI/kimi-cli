@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from inline_snapshot import snapshot
+from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
 from pydantic import SecretStr
 
@@ -74,3 +75,12 @@ def test_create_llm_kimi_model_parameters(monkeypatch):
             "max_tokens": 1234,
         }
     )
+
+
+def test_create_llm_echo_provider():
+    provider = LLMProvider(type="_echo", base_url="", api_key=SecretStr(""))
+    model = LLMModel(provider="_echo", model="echo", max_context_size=1234)
+
+    llm = create_llm(provider, model)
+    assert isinstance(llm.chat_provider, EchoChatProvider)
+    assert llm.max_context_size == 1234

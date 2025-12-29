@@ -20,6 +20,7 @@ type ProviderType = Literal[
     "google_genai",  # for backward-compatibility, equals to `gemini`
     "gemini",
     "vertexai",
+    "_echo",
     "_chaos",
 ]
 
@@ -156,6 +157,10 @@ def create_llm(
                 api_key=provider.api_key.get_secret_value(),
                 vertexai=True,
             )
+        case "_echo":
+            from kosong.chat_provider.echo import EchoChatProvider
+
+            chat_provider = EchoChatProvider()
         case "_chaos":
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
             from kosong.chat_provider.kimi import Kimi

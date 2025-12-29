@@ -107,7 +107,8 @@ class KimiCLI:
         assert model is not None
         env_overrides = augment_provider_with_env_vars(provider, model)
 
-        if not provider.base_url or not model.model:
+        provider_requires_base_url = provider.type not in {"_echo"}
+        if (provider_requires_base_url and not provider.base_url) or not model.model:
             llm = None
         else:
             logger.info("Using LLM provider: {provider}", provider=provider)
