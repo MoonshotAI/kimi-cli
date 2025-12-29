@@ -89,7 +89,9 @@ Then you can create Kimi CLI threads in IDE's agent panel.
 
 ![](./docs/media/acp-integration.gif)
 
-Alternatively, you can use Kimi CLI with [AionUi](https://github.com/iOfficeAI/AionUi), an ACP-compatible graphical interface that automatically detects and integrates with Kimi CLI. AionUi provides multi-session management, workspace management, file preview capabilities, and a visual MCP configuration interface.
+#### Looking for a graphical interface?
+
+You can use Kimi CLI with [AionUi](https://github.com/iOfficeAI/AionUi), an ACP-compatible graphical interface that automatically detects and integrates with Kimi CLI. AionUi provides multi-session management, workspace management, file preview capabilities, and a visual MCP configuration interface.
 
 ### Zsh integration
 
