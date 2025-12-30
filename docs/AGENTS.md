@@ -23,7 +23,7 @@ This repository uses VitePress for the documentation site. The current docs are 
 
 - Filenames are kebab-case and mirror across locales (same slug in `docs/en/` and `docs/zh/`).
 - Use consistent section labels that match the sidebar titles.
-- Use backticks for flags, commands, file paths, and code identifiers.
+- Use backticks for flags, commands, file paths, code identifiers, type names, field names, and field values.
 
 ## Wording conventions
 
@@ -68,6 +68,7 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | Assistant 消息 | assistant message | yes (Assistant) | no |
 | Tool 消息 | tool message | yes (Tool) | no |
 | 轮次 | turn | no | no |
+| 供应商 | provider | no | no |
 
 JetBrains IDE terminology (Chinese UI translations):
 
