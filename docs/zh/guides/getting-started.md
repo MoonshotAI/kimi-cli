@@ -18,27 +18,37 @@ Kimi CLI 目前处于技术预览阶段，功能和 API 可能会发生变化。
 
 [Agent Client Protocol]: https://agentclientprotocol.com/
 
-## 安装与升级
+## 安装
 
-Kimi CLI 是一个 Python 程序，需要 Python 3.12 或更高版本。我们推荐使用 [uv](https://docs.astral.sh/uv/) 进行安装和管理，它是一个快速的 Python 包管理工具。
-
-如果你还没有安装 uv，请参考 [uv 安装文档](https://docs.astral.sh/uv/getting-started/installation/) 完成安装。
-
-安装 Kimi CLI：
+运行安装脚本即可完成安装。脚本会先安装 [uv](https://docs.astral.sh/uv/)（Python 包管理工具），再通过 uv 安装 Kimi CLI：
 
 ```sh
-uv tool install --python 3.13 kimi-cli
+# Linux / macOS
+curl -LsSf https://cdn.kimi.com/binaries/kimi-cli/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+Invoke-RestMethod https://cdn.kimi.com/binaries/kimi-cli/install.ps1 | Invoke-Expression
 ```
 
 验证安装是否成功：
 
 ```sh
-kimi --help
+kimi --version
 ```
 
 ::: tip 提示
-由于 macOS 的安全检查机制，首次运行 `kimi` 命令可能需要 10 秒或更长时间，这是正常现象。
+由于 macOS 的安全检查机制，首次运行 `kimi` 命令可能需要较长时间。可以在「系统设置 → 隐私与安全性 → 开发者工具」中添加你的终端应用来加速后续启动。
 :::
+
+如果你已经安装了 uv，也可以直接运行：
+
+```sh
+uv tool install --python 3.13 kimi-cli
+```
+
+## 升级与卸载
 
 升级到最新版本：
 
@@ -74,6 +84,10 @@ kimi
 ```
 帮我看一下这个项目的目录结构
 ```
+
+::: tip 提示
+如果项目中没有 `AGENTS.md` 文件，可以运行 `/init` 命令让 Kimi CLI 分析项目并生成该文件，帮助 AI 更好地理解项目结构和规范。
+:::
 
 输入 `/help` 可以查看所有可用的 [斜杠命令](../reference/slash-commands.md) 和使用提示。
 
