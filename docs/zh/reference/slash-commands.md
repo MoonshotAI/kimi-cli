@@ -33,7 +33,7 @@
 2. 输入 API 密钥
 3. 选择可用模型
 
-配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见[平台与模型](../configuration/providers.md)。
+配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
 
 ### `/reload`
 

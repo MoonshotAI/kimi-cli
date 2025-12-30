@@ -31,7 +31,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 | `--config STRING` | 加载 TOML/JSON 配置字符串 |
 | `--config-file PATH` | 加载配置文件（默认 `~/.kimi/config.toml`） |
 
-`--config` 和 `--config-file` 互斥。配置字符串和文件均支持 TOML 和 JSON 格式。详见[配置文件](../configuration/config-files.md)。
+`--config` 和 `--config-file` 互斥。配置字符串和文件均支持 TOML 和 JSON 格式。详见 [配置文件](../configuration/config-files.md)。
 
 ## 模型选择
 
@@ -73,7 +73,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 | `--acp` | 以 ACP 服务器模式运行 |
 | `--wire` | 以 Wire 服务器模式运行（实验性） |
 
-三个选项互斥，只能选择一个。默认使用 Shell 模式。详见 [Print 模式](../customization/print-mode.md)和 [Wire 模式](../customization/wire-mode.md)。
+三个选项互斥，只能选择一个。默认使用 Shell 模式。详见 [Print 模式](../customization/print-mode.md) 和 [Wire 模式](../customization/wire-mode.md)。
 
 ## Print 模式选项
 

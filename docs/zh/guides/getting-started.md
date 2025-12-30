@@ -22,7 +22,7 @@ Kimi CLI 目前处于技术预览阶段，功能和 API 可能会发生变化。
 
 Kimi CLI 是一个 Python 程序，需要 Python 3.12 或更高版本。我们推荐使用 [uv](https://docs.astral.sh/uv/) 进行安装和管理，它是一个快速的 Python 包管理工具。
 
-如果你还没有安装 uv，请参考 [uv 安装文档](https://docs.astral.sh/uv/getting-started/installation/)完成安装。
+如果你还没有安装 uv，请参考 [uv 安装文档](https://docs.astral.sh/uv/getting-started/installation/) 完成安装。
 
 安装 Kimi CLI：
 
@@ -67,7 +67,7 @@ kimi
 2. 输入你的 API 密钥
 3. 选择要使用的模型
 
-配置完成后，Kimi CLI 会自动保存设置并重新加载。详见[平台与模型](../configuration/providers.md)。
+配置完成后，Kimi CLI 会自动保存设置并重新加载。详见 [平台与模型](../configuration/providers.md)。
 
 现在你可以直接用自然语言和 Kimi CLI 对话了。试着描述你想完成的任务，比如：
 
@@ -75,5 +75,5 @@ kimi
 帮我看一下这个项目的目录结构
 ```
 
-输入 `/help` 可以查看所有可用的[斜杠命令](../reference/slash-commands.md)和使用提示。
+输入 `/help` 可以查看所有可用的 [斜杠命令](../reference/slash-commands.md) 和使用提示。
 

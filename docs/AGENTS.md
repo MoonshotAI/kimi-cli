@@ -79,6 +79,16 @@ JetBrains IDE terminology (Chinese UI translations):
 | Registry | 注册表 |
 | Configure ACP agents | (未翻译) |
 
+## Typography
+
+- **Spacing around mixed content**: Add a space between Chinese characters and English words, numbers, inline code, or links. Exception: no space before full-width punctuation.
+  - ✓ 在 Python 中使用 \`class\` 关键字
+  - ✗ 在Python中使用\`class\`关键字
+  - ✓ 详见 \[配置文件\](./config.md)。
+  - ✗ 详见\[配置文件\](./config.md)。
+- **Full-width punctuation**: Use full-width punctuation in Chinese text: `，。；：？！（）` not `, . ; : ? ! ( )`.
+- **Code block language**: Always specify language for fenced code blocks (e.g., ` ```sh `, ` ```toml `, ` ```json `). Exception: natural language examples (user prompts) may omit the language.
+
 ## Writing style
 
 - **Natural narrative**: Organize content like writing an article, guiding readers smoothly through the material.

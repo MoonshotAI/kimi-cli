@@ -68,7 +68,7 @@ tool_call_timeout_ms = 60000
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `type` | `string` | 是 | 供应商类型，详见[平台与模型](./providers.md) |
+| `type` | `string` | 是 | 供应商类型，详见 [平台与模型](./providers.md) |
 | `base_url` | `string` | 是 | API 基础 URL |
 | `api_key` | `string` | 是 | API 密钥 |
 | `env` | `table` | 否 | 创建供应商实例前设置的环境变量 |
@@ -93,7 +93,7 @@ custom_headers = { "X-Custom-Header" = "value" }
 | `provider` | `string` | 是 | 使用的供应商名称，必须在 `providers` 中定义 |
 | `model` | `string` | 是 | 模型标识符（API 中使用的模型名称） |
 | `max_context_size` | `integer` | 是 | 最大上下文长度（token 数） |
-| `capabilities` | `array` | 否 | 模型能力列表，详见[平台与模型](./providers.md#模型能力) |
+| `capabilities` | `array` | 否 | 模型能力列表，详见 [平台与模型](./providers.md#模型能力) |
 
 示例：
 
