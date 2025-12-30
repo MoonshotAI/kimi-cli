@@ -192,6 +192,7 @@ export default defineConfig({
   },
 
   themeConfig: {
+    outline: [2, 3],
     socialLinks: [
       { icon: 'github', link: 'https://github.com/MoonshotAI/kimi-cli' },
     ],

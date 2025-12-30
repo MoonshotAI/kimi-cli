@@ -12,9 +12,9 @@ Kimi CLI 内置了一些工具（文件读写、Shell 命令、网页抓取等�
 - 控制浏览器或其他应用
 - 与第三方服务集成（GitHub、Linear、Notion 等）
 
-## `kimi mcp` 子命令
+## MCP 服务器管理
 
-使用 `kimi mcp` 命令组管理 MCP 服务器。
+使用 `kimi mcp` 命令管理 MCP 服务器。
 
 **添加服务器**
 
@@ -44,14 +44,7 @@ kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
 kimi mcp list
 ```
 
-输出示例：
-
-```
-MCP config file: /Users/you/.kimi/mcp.json
-  context7 (http): https://mcp.context7.com/mcp
-  linear (http): https://mcp.linear.app/mcp [authorization required - run: kimi mcp auth linear]
-  chrome-devtools (stdio): npx chrome-devtools-mcp@latest
-```
+在 Kimi CLI 运行时，也可以输入 `/mcp` 查看已连接的服务器和加载的工具。
 
 **移除服务器**
 
@@ -90,7 +83,10 @@ MCP 服务器配置存储在 `~/.kimi/mcp.json`，格式与其他 MCP 客户端�
     },
     "chrome-devtools": {
       "command": "npx",
-      "args": ["chrome-devtools-mcp@latest"]
+      "args": ["chrome-devtools-mcp@latest"],
+      "env": {
+        "SOME_VAR": "value"
+      }
     }
   }
 }
@@ -110,21 +106,13 @@ kimi --mcp-config-file /path/to/mcp.json
 kimi --mcp-config '{"mcpServers": {"test": {"url": "https://..."}}}'
 ```
 
-**查看运行中的服务器**
-
-在 Kimi CLI 运行时，输入 `/mcp` 可以查看已连接的 MCP 服务器和加载的工具：
-
-```
-/mcp
-```
-
 ## 安全性
 
-MCP 工具会代表 AI 执行操作，需要注意安全风险。
+MCP 工具可能会访问和操作外部系统，需要注意安全风险。
 
 **审批机制**
 
-Kimi CLI 对敏感操作（如文件修改、命令执行）会请求用户确认。MCP 工具也遵循同样的审批机制，高风险操作会弹出确认提示。
+Kimi CLI 对敏感操作（如文件修改、命令执行）会请求用户确认。MCP 工具也遵循同样的审批机制，所有 MCP 工具调用都会弹出确认提示。
 
 **提示词注入风险**
 

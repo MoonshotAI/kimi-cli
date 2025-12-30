@@ -31,7 +31,10 @@ This repository uses VitePress for the documentation site. The current docs are 
 - English H2+ headings use sentence case (only the first word capitalized unless it is a proper noun). Treat "Wire" as a proper noun; do not treat "agent", "shell mode", or "print mode" as proper nouns.
 - Chinese H2+ headings keep English words in sentence case; preserve proper nouns listed in the term table below.
 - Use `API key` in English and `API 密钥` in Chinese; keep `JSON`, `JSONL`, `OAuth`, `macOS`, and `uv` as-is.
-- Use straight double quotes with spaces: `"被引内容"` (not curly quotes). Add a space before and after the quoted text when adjacent to CJK characters.
+- Use straight double quotes with spaces for quoted content: `"被引内容"` (not curly quotes). Add a space before and after the quoted text when adjacent to CJK characters. Use corner brackets `「」` for special terms (e.g., `「工具」`, `「会话」`).
+- Prefer "终端" over "命令行" in Chinese when both are applicable (e.g., "运行在终端中", "终端界面", "终端操作").
+- Use "工具调用" / "tool call", not "工具使用" / "tool use".
+- Use inline code for tool names (e.g., `Task`, `ReadFile`, `Shell`).
 
 Term mapping (Chinese <-> English, and proper noun handling):
 
@@ -46,6 +49,7 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | ACP | ACP | yes | yes |
 | Kimi CLI | Kimi CLI | yes | yes |
 | Agent Skills | Agent Skills | yes | yes |
+| Skill | skill | yes | no |
 | 系统提示词 | system prompt | no | no |
 | 会话 | session | no | no |
 | 上下文 | context | no | no |
@@ -56,6 +60,14 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | OAuth | OAuth | no | no |
 | macOS | macOS | no | no |
 | uv | uv | no | no |
+| 审批请求 | approval request | no | no |
+| 斜杠命令 | slash command | no | no |
+| 工具调用 | tool call | no | no |
+| Frontmatter | frontmatter | yes | no |
+| User 消息 | user message | yes (User) | no |
+| Assistant 消息 | assistant message | yes (Assistant) | no |
+| Tool 消息 | tool message | yes (Tool) | no |
+| 轮次 | turn | no | no |
 
 JetBrains IDE terminology (Chinese UI translations):
 
