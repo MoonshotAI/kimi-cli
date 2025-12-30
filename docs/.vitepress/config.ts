@@ -13,12 +13,12 @@ export default defineConfig({
       description: 'Kimi CLI 用户文档',
       themeConfig: {
         nav: [
-          { text: '指南', link: '/zh/guides/getting-started' },
-          { text: '定制化', link: '/zh/customization/mcp' },
-          { text: '配置', link: '/zh/configuration/config-files' },
-          { text: '参考手册', link: '/zh/reference/kimi-command' },
-          { text: '常见问题', link: '/zh/faq/setup' },
-          { text: '发布说明', link: '/zh/release-notes/changelog' },
+          { text: '指南', link: '/zh/guides/getting-started', activeMatch: '/zh/guides/' },
+          { text: '定制化', link: '/zh/customization/mcp', activeMatch: '/zh/customization/' },
+          { text: '配置', link: '/zh/configuration/config-files', activeMatch: '/zh/configuration/' },
+          { text: '参考手册', link: '/zh/reference/kimi-command', activeMatch: '/zh/reference/' },
+          { text: '常见问题', link: '/zh/faq/setup', activeMatch: '/zh/faq/' },
+          { text: '发布说明', link: '/zh/release-notes/changelog', activeMatch: '/zh/release-notes/' },
         ],
         sidebar: {
           '/zh/guides/': [
@@ -105,12 +105,12 @@ export default defineConfig({
       description: 'Kimi CLI User Documentation',
       themeConfig: {
         nav: [
-          { text: 'Guides', link: '/en/guides/getting-started' },
-          { text: 'Customization', link: '/en/customization/mcp' },
-          { text: 'Configuration', link: '/en/configuration/config-files' },
-          { text: 'Reference', link: '/en/reference/kimi-command' },
-          { text: 'FAQ', link: '/en/faq/setup' },
-          { text: 'Release Notes', link: '/en/release-notes/changelog' },
+          { text: 'Guides', link: '/en/guides/getting-started', activeMatch: '/en/guides/' },
+          { text: 'Customization', link: '/en/customization/mcp', activeMatch: '/en/customization/' },
+          { text: 'Configuration', link: '/en/configuration/config-files', activeMatch: '/en/configuration/' },
+          { text: 'Reference', link: '/en/reference/kimi-command', activeMatch: '/en/reference/' },
+          { text: 'FAQ', link: '/en/faq/setup', activeMatch: '/en/faq/' },
+          { text: 'Release Notes', link: '/en/release-notes/changelog', activeMatch: '/en/release-notes/' },
         ],
         sidebar: {
           '/en/guides/': [
