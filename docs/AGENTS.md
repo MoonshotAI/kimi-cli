@@ -31,12 +31,14 @@ This repository uses VitePress for the documentation site. The current docs are 
 - English H2+ headings use sentence case (only the first word capitalized unless it is a proper noun). Treat "Wire" as a proper noun; do not treat "agent", "shell mode", or "print mode" as proper nouns.
 - Chinese H2+ headings keep English words in sentence case; preserve proper nouns listed in the term table below.
 - Use `API key` in English and `API 密钥` in Chinese; keep `JSON`, `JSONL`, `OAuth`, `macOS`, and `uv` as-is.
+- Use straight double quotes with spaces: `"被引内容"` (not curly quotes). Add a space before and after the quoted text when adjacent to CJK characters.
 
 Term mapping (Chinese <-> English, and proper noun handling):
 
 | Chinese | English | Proper noun (zh) | Proper noun (en) |
 | --- | --- | --- | --- |
 | Agent | agent | yes | no |
+| Shell | shell | yes | no |
 | Shell 模式 | shell mode | yes | no |
 | Print 模式 | print mode | yes | no |
 | Wire 模式 | Wire mode | yes | yes (Wire) |
@@ -54,6 +56,71 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | OAuth | OAuth | no | no |
 | macOS | macOS | no | no |
 | uv | uv | no | no |
+
+JetBrains IDE terminology (Chinese UI translations):
+
+| English | Chinese |
+| --- | --- |
+| AI Chat | AI 聊天 |
+| Registry | 注册表 |
+| Configure ACP agents | (未翻译) |
+
+## Writing style
+
+- **Natural narrative**: Organize content like writing an article, guiding readers smoothly through the material.
+- **Avoid fragmentation**: Don't turn every point into a subheading; use paragraph transitions instead.
+- **Global perspective**: "Getting Started" introduces core concepts only; detailed usage belongs in later pages.
+- **Progressive depth**: Guides → Customization → Configuration → Reference, information deepens gradually.
+- **No "next steps"**: VitePress already provides prev/next navigation; don't add manual `::: tip 接下来` blocks at page end.
+
+### Example: good vs bad
+
+Outline prompt:
+
+```
+* Install and upgrade
+  * System requirements: Python 3.13+, recommend uv
+  * Install, upgrade, uninstall steps
+```
+
+**Bad** (mechanical conversion to headings):
+
+```markdown
+## Install and upgrade
+
+### System requirements
+
+- Python 3.13+
+- Recommend uv
+
+### Install
+
+...
+
+### Upgrade
+
+...
+```
+
+**Good** (natural narrative):
+
+```markdown
+## Install and upgrade
+
+Kimi CLI requires Python 3.13+. We recommend using uv for installation and management.
+
+If you haven't installed uv yet, please refer to the uv installation docs first. Install Kimi CLI:
+
+(code block)
+
+Verify the installation:
+
+(code block)
+
+Upgrade to the latest version:
+
+(code block)
+```
 
 ## Build and preview
 
