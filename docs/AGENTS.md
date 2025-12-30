@@ -23,7 +23,7 @@ This repository uses VitePress for the documentation site. The current docs are 
 
 - Filenames are kebab-case and mirror across locales (same slug in `docs/en/` and `docs/zh/`).
 - Use consistent section labels that match the sidebar titles.
-- Use backticks for flags, commands, subcommands, command arguments, file paths, code identifiers, type names, field names, and field values.
+- Use backticks for flags, commands, subcommands, command arguments, file paths, code identifiers, type names, field names, field values, and keyboard shortcuts.
 
 ## Wording conventions
 
@@ -45,6 +45,7 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | Shell 模式 | shell mode | yes | no |
 | Print 模式 | print mode | yes | no |
 | Wire 模式 | Wire mode | yes | yes (Wire) |
+| Thinking 模式 | thinking mode | yes | no |
 | MCP | MCP | yes | yes |
 | ACP | ACP | yes | yes |
 | Kimi CLI | Kimi CLI | yes | yes |

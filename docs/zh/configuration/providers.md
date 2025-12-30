@@ -121,11 +121,11 @@ capabilities = ["thinking", "image_in"]
 
 ### `thinking`
 
-启用 thinking 模式后，模型会在回答前进行更深入的推理，适合复杂问题。在 Shell 模式下，可以通过 Tab 键切换 thinking 模式，或在启动时通过 `--thinking` / `--no-thinking` 参数控制。
+启用 Thinking 模式后，模型会在回答前进行更深入的推理，适合复杂问题。在 Shell 模式下，可以通过 `Tab` 键切换 Thinking 模式，或在启动时通过 `--thinking` / `--no-thinking` 参数控制。
 
 ### `image_in`
 
-启用图片输入能力后，可以在对话中粘贴图片（Ctrl-V）。
+启用图片输入能力后，可以在对话中粘贴图片（`Ctrl-V`）。
 
 ## 搜索和抓取服务
 

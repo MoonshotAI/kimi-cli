@@ -29,9 +29,9 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 
 ### `Tab`：切换 thinking 模式
 
-在 Agent 模式下，当输入框为空或没有显示补全菜单时，按 `Tab` 可切换 thinking 模式。
+在 Agent 模式下，当输入框为空或没有显示补全菜单时，按 `Tab` 可切换 Thinking 模式。
 
-- 启用 thinking 时，提示符变为 `💫`
+- 启用 Thinking 模式时，提示符变为 `💫`
 - 切换时会显示提示信息
 
 ::: tip 提示

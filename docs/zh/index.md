@@ -2,7 +2,7 @@
 layout: home
 hero:
   name: Kimi CLI
-  text: 智能命令行助手
+  text: 你的终端智能助手
   tagline: 技术预览版
   actions:
     - theme: brand

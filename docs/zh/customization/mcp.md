@@ -14,7 +14,7 @@ Kimi CLI 内置了一些工具（文件读写、Shell 命令、网页抓取等�
 
 ## MCP 服务器管理
 
-使用 `kimi mcp` 命令管理 MCP 服务器。
+使用 [`kimi mcp`](../reference/kimi-mcp.md) 命令管理 MCP 服务器。
 
 **添加服务器**
 
