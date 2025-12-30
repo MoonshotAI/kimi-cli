@@ -23,7 +23,7 @@ This repository uses VitePress for the documentation site. The current docs are 
 
 - Filenames are kebab-case and mirror across locales (same slug in `docs/en/` and `docs/zh/`).
 - Use consistent section labels that match the sidebar titles.
-- Use backticks for flags, commands, file paths, code identifiers, type names, field names, and field values.
+- Use backticks for flags, commands, subcommands, command arguments, file paths, code identifiers, type names, field names, and field values.
 
 ## Wording conventions
 
