@@ -53,8 +53,6 @@ def tool_result_to_acp_content(
     | acp.schema.FileEditToolCallContent
     | acp.schema.TerminalToolCallContent
 ]:
-    from kimi_cli.acp.tools import HideOutputDisplayBlock
-
     def _to_acp_content(
         part: ContentPart,
     ) -> (
@@ -84,10 +82,6 @@ def tool_result_to_acp_content(
     ] = []
 
     for block in tool_ret.display:
-        if isinstance(block, HideOutputDisplayBlock):
-            # return early to indicate no output should be shown
-            return []
-
         content = display_block_to_acp_content(block)
         if content is not None:
             contents.append(content)

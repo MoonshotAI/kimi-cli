@@ -10,6 +10,11 @@ from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, St
 from kaos.local import local_kaos
 from kaos.path import KaosPath
 
+from kimi_cli.acp.session import (
+    get_current_acp_tool_call_id_or_none,
+    register_terminal_tool_call_id,
+)
+
 _DEFAULT_TERMINAL_OUTPUT_LIMIT = 50_000
 _DEFAULT_POLL_INTERVAL = 0.2
 _TRUNCATION_NOTICE = "[acp output truncated]\n"
@@ -278,6 +283,23 @@ class ACPKaos:
             output_byte_limit=self._output_byte_limit,
         )
         assert isinstance(terminal, acp.TerminalHandle)
+        acp_tool_call_id = get_current_acp_tool_call_id_or_none()
+        if acp_tool_call_id:
+            register_terminal_tool_call_id(acp_tool_call_id)
+            await self._client.session_update(
+                session_id=self._session_id,
+                update=acp.schema.ToolCallProgress(
+                    session_update="tool_call_update",
+                    tool_call_id=acp_tool_call_id,
+                    status="in_progress",
+                    content=[
+                        acp.schema.TerminalToolCallContent(
+                            type="terminal",
+                            terminal_id=terminal.id,
+                        )
+                    ],
+                ),
+            )
         return ACPProcess(terminal, poll_interval=self._poll_interval)
 
     def _abs_path(self, path: StrOrKaosPath) -> str:

@@ -61,13 +61,12 @@
   - Unsupported types are logged and ignored.
 - Tool result display blocks:
   - `DiffDisplayBlock` -> `FileEditToolCallContent`.
-  - `HideOutputDisplayBlock` suppresses tool output in ACP (used by terminal tool).
 
 ## Tool integration and permission flow
-- If the client advertises `terminal` capability and we are in local mode, the
-  `Shell` tool is replaced by an ACP-backed `Terminal` tool.
-  - Uses ACP `terminal/create`, waits for exit, streams `TerminalToolCallContent`,
+- ACP sessions use `ACPKaos` to route KAOS operations through ACP clients.
+  - `Shell` uses ACP `terminal/create`, streams `TerminalToolCallContent`, waits for exit,
     then releases the terminal handle.
+  - Terminal tool results suppress output at the ACP layer because terminal output is streamed.
 - Approval requests in the core tool system are bridged to ACP
   `session/request_permission` with allow-once/allow-always/reject options.
 
@@ -78,12 +77,11 @@
 - Single-session server does not implement `session/load` or `session/list`.
 
 ## Filesystem (ACP client-backed)
-- When the client advertises `fs.readTextFile` / `fs.writeTextFile`, the agent replaces
-  local `ReadFile` / `WriteFile` with ACP-backed implementations.
-- `ReadFile` uses `fs/read_text_file` with `line`/`limit` and preserves the numbered
-  output format and truncation rules from the local tool.
-- `WriteFile` uses `fs/write_text_file`, builds diff blocks from ACP reads, and sends
-  approval requests with file diffs before writing.
+- When the client advertises `fs.readTextFile` / `fs.writeTextFile`, `ACPKaos` routes
+  reads and writes through ACP `fs/*` methods.
+- `ReadFile` uses `KaosPath.read_lines`, which `ACPKaos` implements via ACP reads.
+- `WriteFile` uses `KaosPath.read_text/write_text/append_text` and still generates diffs
+  and approvals in the tool layer.
 
 ## Zed-specific notes (as of current integration)
 - Zed does not currently call `authenticate`.
