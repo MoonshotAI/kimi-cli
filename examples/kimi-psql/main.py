@@ -280,7 +280,7 @@ async def create_psql_soul(llm: LLM, conninfo: str) -> KimiSoul:
 
     # Load agent from configuration
     agent_file = Path(__file__).parent / "agent.yaml"
-    agent = await load_agent(agent_file, runtime, mcp_configs=[])
+    agent = await load_agent(agent_file, runtime)
 
     # Add custom ExecuteSql tool to the loaded agent
     cast(KimiToolset, agent.toolset).add(ExecuteSql(conninfo))
