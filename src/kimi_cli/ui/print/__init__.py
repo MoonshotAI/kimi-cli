@@ -34,6 +34,7 @@ class Print:
         input_format (InputFormat): The input format to use.
         output_format (OutputFormat): The output format to use.
         context_file (Path): The file to store the context.
+        final_only (bool): Whether to only print the final assistant message.
     """
 
     def __init__(
@@ -42,11 +43,14 @@ class Print:
         input_format: InputFormat,
         output_format: OutputFormat,
         context_file: Path,
+        *,
+        final_only: bool = False,
     ):
         self.soul = soul
         self.input_format: InputFormat = input_format
         self.output_format: OutputFormat = output_format
         self.context_file = context_file
+        self.final_only = final_only
 
     async def run(self, command: str | None = None) -> bool:
         cancel_event = asyncio.Event()
@@ -75,12 +79,12 @@ class Print:
 
                 if command:
                     logger.info("Running agent with command: {command}", command=command)
-                    if self.output_format == "text":
+                    if self.output_format == "text" and not self.final_only:
                         print(command)
                     await run_soul(
                         self.soul,
                         command,
-                        partial(visualize, self.output_format),
+                        partial(visualize, self.output_format, self.final_only),
                         cancel_event,
                         self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,
                     )

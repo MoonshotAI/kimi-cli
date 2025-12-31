@@ -268,6 +268,8 @@ class KimiCLI:
         input_format: InputFormat,
         output_format: OutputFormat,
         command: str | None = None,
+        *,
+        final_only: bool = False,
     ) -> bool:
         """Run the Kimi CLI instance with print UI."""
         from kimi_cli.ui.print import Print
@@ -278,6 +280,7 @@ class KimiCLI:
                 input_format,
                 output_format,
                 self._runtime.session.context_file,
+                final_only=final_only,
             )
             return await print_.run(command)
 
