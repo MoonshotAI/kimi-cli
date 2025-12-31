@@ -2,6 +2,10 @@
 
 This page documents the changes in each Kimi CLI release.
 
+## [Unreleased]
+
+- CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI
+
 ## 0.69 (2025-12-29)
 
 - Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`

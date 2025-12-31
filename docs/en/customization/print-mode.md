@@ -32,6 +32,20 @@ cat src/api.py | kimi --print -c "Generate API documentation for this Python mod
 ```
 -->
 
+## Final message only
+
+Use the `--final-message-only` option to only output the final assistant message, skipping intermediate tool call processes:
+
+```sh
+kimi --print -c "Give me a Git commit message based on the current changes" --final-message-only
+```
+
+`--quiet` is a shortcut for `--print --output-format text --final-message-only`, suitable for scenarios where only the final result is needed:
+
+```sh
+kimi --quiet -c "Give me a Git commit message based on the current changes"
+```
+
 ## JSON format
 
 Print mode supports JSON format for input and output, convenient for programmatic processing. Both input and output use the [Message](#message-format) format.

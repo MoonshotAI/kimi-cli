@@ -70,10 +70,11 @@ kimi [OPTIONS] COMMAND [ARGS]
 | 选项 | 说明 |
 |------|------|
 | `--print` | 以 Print 模式运行（非交互式），隐式启用 `--yolo` |
+| `--quiet` | `--print --output-format text --final-message-only` 的快捷方式 |
 | `--acp` | 以 ACP 服务器模式运行 |
 | `--wire` | 以 Wire 服务器模式运行（实验性） |
 
-三个选项互斥，只能选择一个。默认使用 Shell 模式。详见 [Print 模式](../customization/print-mode.md) 和 [Wire 模式](../customization/wire-mode.md)。
+四个选项互斥，只能选择一个。默认使用 Shell 模式。详见 [Print 模式](../customization/print-mode.md) 和 [Wire 模式](../customization/wire-mode.md)。
 
 ## Print 模式选项
 
@@ -83,6 +84,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 |------|------|
 | `--input-format FORMAT` | 输入格式：`text`（默认）或 `stream-json` |
 | `--output-format FORMAT` | 输出格式：`text`（默认）或 `stream-json` |
+| `--final-message-only` | 仅输出最终的 assistant 消息 |
 
 `stream-json` 格式使用 JSONL（每行一个 JSON 对象），用于程序化集成。
 

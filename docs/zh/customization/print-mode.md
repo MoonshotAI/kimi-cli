@@ -32,6 +32,20 @@ cat src/api.py | kimi --print -c "为这个 Python 模块生成 API 文档"
 ```
 -->
 
+## 仅输出最终消息
+
+使用 `--final-message-only` 选项可以只输出最终的 assistant 消息，跳过中间的工具调用过程：
+
+```sh
+kimi --print -c "根据当前变更给我一个 Git commit message" --final-message-only
+```
+
+`--quiet` 是 `--print --output-format text --final-message-only` 的快捷方式，适合只需要最终结果的场景：
+
+```sh
+kimi --quiet -c "根据当前变更给我一个 Git commit message"
+```
+
 ## JSON 格式
 
 Print 模式支持 JSON 格式的输入和输出，方便程序化处理。输入和输出都使用 [Message](#message-格式) 格式。

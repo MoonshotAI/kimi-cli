@@ -70,10 +70,11 @@ When using `--command`, Kimi CLI exits after processing the query (unless `--pri
 | Option | Description |
 |--------|-------------|
 | `--print` | Run in print mode (non-interactive), implicitly enables `--yolo` |
+| `--quiet` | Shortcut for `--print --output-format text --final-message-only` |
 | `--acp` | Run in ACP server mode |
 | `--wire` | Run in Wire server mode (experimental) |
 
-The three options are mutually exclusive, only one can be selected. Default is shell mode. See [Print Mode](../customization/print-mode.md) and [Wire Mode](../customization/wire-mode.md) for details.
+The four options are mutually exclusive, only one can be selected. Default is shell mode. See [Print Mode](../customization/print-mode.md) and [Wire Mode](../customization/wire-mode.md) for details.
 
 ## Print mode options
 
@@ -83,6 +84,7 @@ The following options are only effective in `--print` mode:
 |--------|-------------|
 | `--input-format FORMAT` | Input format: `text` (default) or `stream-json` |
 | `--output-format FORMAT` | Output format: `text` (default) or `stream-json` |
+| `--final-message-only` | Only output the final assistant message |
 
 `stream-json` format uses JSONL (one JSON object per line) for programmatic integration.
 

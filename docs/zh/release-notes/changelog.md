@@ -2,6 +2,10 @@
 
 本页面记录 Kimi CLI 各版本的变更内容。
 
+## [Unreleased]
+
+- CLI：添加 `--final-message-only`（及 `--quiet` 别名），在 Print 模式下仅输出最终的 assistant 消息
+
 ## 0.69 (2025-12-29)
 
 - Core：支持在 `~/.kimi/skills` 或 `~/.claude/skills` 中发现 Skills
