@@ -6,6 +6,7 @@ This page documents the changes in each Kimi CLI release.
 
 - CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI
 - LLM: Add `video_in` model capability and support video inputs
+- ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
 
 ## 0.69 (2025-12-29)
 
