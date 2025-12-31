@@ -1,6 +1,14 @@
 import { defineConfig } from 'vitepress'
 
+const rawBase = process.env.VITEPRESS_BASE
+const base = rawBase
+  ? rawBase.startsWith('/')
+    ? rawBase.endsWith('/') ? rawBase : `${rawBase}/`
+    : `/${rawBase}/`
+  : '/'
+
 export default defineConfig({
+  base,
   title: 'Kimi CLI Docs',
   description: 'Kimi CLI Documentation',
 
