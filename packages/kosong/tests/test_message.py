@@ -1,6 +1,14 @@
 from inline_snapshot import snapshot
 
-from kosong.message import AudioURLPart, ImageURLPart, Message, TextPart, ThinkPart, ToolCall
+from kosong.message import (
+    AudioURLPart,
+    ImageURLPart,
+    Message,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    VideoURLPart,
+)
 
 
 def test_plain_text_message():
@@ -87,6 +95,7 @@ def test_message_with_complex_content():
             ThinkPart(think="I think I need to think about this."),
             ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.png")),
             AudioURLPart(audio_url=AudioURLPart.AudioURL(url="https://example.com/audio.mp3")),
+            VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4")),
         ],
         tool_calls=[
             ToolCall(id="123", function=ToolCall.FunctionBody(name="function", arguments="{}")),
@@ -110,6 +119,10 @@ def test_message_with_complex_content():
                 {
                     "type": "audio_url",
                     "audio_url": {"url": "https://example.com/audio.mp3", "id": None},
+                },
+                {
+                    "type": "video_url",
+                    "video_url": {"url": "https://example.com/video.mp4", "id": None},
                 },
             ],
             "tool_calls": [

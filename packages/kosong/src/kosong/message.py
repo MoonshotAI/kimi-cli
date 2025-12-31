@@ -142,6 +142,26 @@ class AudioURLPart(ContentPart):
     audio_url: AudioURL
 
 
+class VideoURLPart(ContentPart):
+    """
+    >>> VideoURLPart(
+    ...     video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4")
+    ... ).model_dump()
+    {'type': 'video_url', 'video_url': {'url': 'https://example.com/video.mp4', 'id': None}}
+    """
+
+    class VideoURL(BaseModel):
+        """Video URL payload."""
+
+        url: str
+        """The URL of the video, can be data URI scheme like `data:video/mp4;base64,...`."""
+        id: str | None = None
+        """The ID of the video, to allow LLMs to distinguish different videos."""
+
+    type: str = "video_url"
+    video_url: VideoURL
+
+
 class ToolCall(BaseModel, MergeableMixin):
     """
     A tool call requested by the assistant.

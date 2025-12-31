@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Add `VideoURLPart` content part
+
 ## [0.35.1-4] - 2025-12-26
 
 - Nothing changed.

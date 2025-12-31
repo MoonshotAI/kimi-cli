@@ -39,6 +39,13 @@ def convert_mcp_content(part: mcp.types.ContentBlock) -> kosong.message.ContentP
                         url=f"data:{mimeType};base64,{blob}"
                     ),
                 )
+            elif mimeType.startswith("video/"):
+                return kosong.message.VideoURLPart(
+                    type="video_url",
+                    video_url=kosong.message.VideoURLPart.VideoURL(
+                        url=f"data:{mimeType};base64,{blob}"
+                    ),
+                )
 
             else:
                 raise ValueError(f"Unsupported mime type: {mimeType}")
@@ -53,6 +60,11 @@ def convert_mcp_content(part: mcp.types.ContentBlock) -> kosong.message.ContentP
                 return kosong.message.AudioURLPart(
                     type="audio_url",
                     audio_url=kosong.message.AudioURLPart.AudioURL(url=str(uri)),
+                )
+            elif mimeType.startswith("video/"):
+                return kosong.message.VideoURLPart(
+                    type="video_url",
+                    video_url=kosong.message.VideoURLPart.VideoURL(url=str(uri)),
                 )
             else:
                 raise ValueError(f"Unsupported mime type: {mimeType}")
