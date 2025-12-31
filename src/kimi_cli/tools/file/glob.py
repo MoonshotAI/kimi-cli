@@ -3,10 +3,13 @@
 from pathlib import Path
 from typing import override
 
+from kaos import glob_pruned
 from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from pathspec import PathSpec
 from pydantic import BaseModel, Field
 
+from kaos import glob_pruned
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.path import is_within_directory, list_directory
@@ -42,14 +45,59 @@ class Glob(CallableTool2[Params]):
         super().__init__()
         self._work_dir = builtin_args.KIMI_WORK_DIR
 
+    async def _load_gitignore_spec(self) -> PathSpec | None:
+        """Return a PathSpec built from the working directory's .gitignore if it exists."""
+        gitignore_path = self._work_dir / ".gitignore"
+        if not await gitignore_path.is_file():
+            return None
+        try:
+            contents = await gitignore_path.read_text()
+        except OSError:
+            return None
+        return PathSpec.from_lines("gitwildmatch", contents.splitlines())
+
+    def _is_gitignored(self, path: KaosPath, gitignore_spec: PathSpec, is_dir: bool) -> bool:
+        """Return True if the path matches the gitignore spec."""
+        try:
+            relative = path.relative_to(self._work_dir)
+            relative_str = str(relative)
+        except ValueError:
+            relative_str = str(path)
+        relative_str = relative_str.replace("\\", "/")
+        if is_dir and not relative_str.endswith("/"):
+            relative_str += "/"
+        return gitignore_spec.match_file(relative_str)
+
+    async def _filter_gitignored(
+        self, paths: list[KaosPath], gitignore_spec: PathSpec
+    ) -> list[KaosPath]:
+        """Filter out gitignored paths after a regular glob traversal."""
+        filtered: list[KaosPath] = []
+        for path in paths:
+            try:
+                is_dir = await path.is_dir()
+            except OSError:
+                continue
+
+            if self._is_gitignored(path, gitignore_spec, is_dir):
+                continue
+
+            filtered.append(path)
+        return filtered
+
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
         if pattern.startswith("**"):
+            gitignore_path = self._work_dir / ".gitignore"
+            if await gitignore_path.is_file():
+                return None
+
             ls_result = await list_directory(self._work_dir)
             return ToolError(
                 output=ls_result,
                 message=(
-                    f"Pattern `{pattern}` starts with '**' which is not allowed. "
+                    f"Pattern `{pattern}` starts with '**' which is not allowed because "
+                    "the working directory does not contain a .gitignore to constrain the search. "
                     "This would recursively search all directories and may include large "
                     "directories like `node_modules`. Use more specific patterns instead. "
                     "For your convenience, a list of all files and directories in the "
@@ -109,10 +157,22 @@ class Glob(CallableTool2[Params]):
                     brief="Invalid directory",
                 )
 
+            gitignore_spec = await self._load_gitignore_spec()
+
             # Perform the glob search - users can use ** directly in pattern
-            matches: list[KaosPath] = []
-            async for match in dir_path.glob(params.pattern):
-                matches.append(match)
+            normalized_pattern = params.pattern.replace("\\", "/")
+            if gitignore_spec and normalized_pattern.startswith("**"):
+                matches = await glob_pruned(
+                    dir_path,
+                    normalized_pattern,
+                    should_ignore=lambda path, is_dir: self._is_gitignored(
+                        path, gitignore_spec, is_dir
+                    ),
+                )
+            else:
+                matches = [match async for match in dir_path.glob(params.pattern)]
+                if gitignore_spec:
+                    matches = await self._filter_gitignored(matches, gitignore_spec)
 
             # Filter out directories if not requested
             if not params.include_dirs:
