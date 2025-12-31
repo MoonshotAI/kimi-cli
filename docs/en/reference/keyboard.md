@@ -1,31 +1,102 @@
 # Keyboard Shortcuts
 
-## Ctrl-X: toggle mode
+Kimi CLI shell mode supports the following keyboard shortcuts.
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/ui/shell/__init__.py`
+## Shortcuts list
+
+| Shortcut | Function |
+|----------|----------|
+| `Ctrl-X` | Toggle agent/shell mode |
+| `Tab` | Toggle thinking mode |
+| `Ctrl-J` | Insert newline |
+| `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
+| `Ctrl-V` | Paste (supports images) |
+| `Ctrl-D` | Exit Kimi CLI |
+| `Ctrl-C` | Interrupt current operation |
+
+## Mode switching
+
+### `Ctrl-X`: Toggle agent/shell mode
+
+Press `Ctrl-X` in the input box to switch between two modes:
+
+- **Agent mode**: Input is sent to AI agent for processing
+- **Shell mode**: Input is executed as local shell command
+
+The prompt changes based on current mode:
+- Agent mode: `✨` or `💫` (thinking mode)
+- Shell mode: `$`
+
+### `Tab`: Toggle thinking mode
+
+In agent mode, when the input box is empty or no completion menu is displayed, press `Tab` to toggle thinking mode.
+
+- When thinking mode is enabled, the prompt changes to `💫`
+- A notification is displayed when switching
+
+::: tip
+Thinking mode requires model support.
 :::
 
-## Tab: toggle thinking
+## Multi-line input
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/llm.py`
+### `Ctrl-J` / `Alt-Enter`: Insert newline
+
+By default, pressing `Enter` submits the input. To enter multi-line content, use:
+
+- `Ctrl-J`: Insert newline at any position
+- `Alt-Enter`: Insert newline at any position
+
+Useful for entering multi-line code snippets or formatted text.
+
+## Clipboard operations
+
+### `Ctrl-V`: Paste
+
+Paste clipboard content into the input box. Supports:
+
+- **Text**: Pasted directly
+- **Images**: Converted to base64 embedding (requires model image input support)
+
+When pasting images, a placeholder `[image:xxx.png,WxH]` is displayed. The actual image data is sent along with the message to the model.
+
+::: tip
+Image pasting requires the model to support `image_in` capability.
 :::
 
-## Ctrl-J / Alt-Enter: new line
+## Exit and interrupt
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/ui/shell/prompt.py`
-:::
+### `Ctrl-D`: Exit
 
-## Ctrl-V: paste
+Press `Ctrl-D` when the input box is empty to exit Kimi CLI.
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/utils/clipboard.py`
-:::
+### `Ctrl-C`: Interrupt
 
-## Ctrl-D: exit
+- In input box: Clear current input
+- During agent execution: Interrupt current operation
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/ui/shell/__init__.py`
-:::
+## Completion operations
+
+In agent mode, a completion menu is automatically displayed while typing:
+
+| Trigger | Completion content |
+|---------|-------------------|
+| `/` | Slash commands |
+| `@` | File paths in working directory |
+
+Completion operations:
+- Arrow keys to select
+- `Enter` to confirm selection
+- `Esc` to close menu
+- Continue typing to filter options
+
+## Status bar
+
+The bottom status bar displays:
+
+- Current time
+- Current mode (agent/agent (think)/shell)
+- Shortcut hints
+- Context usage
+
+The status bar automatically refreshes to update information.

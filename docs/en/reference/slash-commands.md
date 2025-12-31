@@ -1,34 +1,109 @@
 # Slash Commands
 
+Slash commands are built-in commands for Kimi CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
+
 ## Help and info
 
-- `/help`, `/version`, `/release-notes`, `/feedback`
+### `/help`
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/slash.py`, `src/kimi_cli/soul/slash.py`, `src/kimi_cli/utils/changelog.py`
+Display help information, listing all available slash commands.
+
+Aliases: `/h`, `/?`
+
+### `/version`
+
+Display Kimi CLI version number.
+
+### `/release-notes`
+
+Display release notes for recent versions.
+
+### `/feedback`
+
+Open the GitHub Issues page to submit feedback.
+
+## Configuration and debugging
+
+### `/setup`
+
+Start the configuration wizard to set up API platform and model.
+
+Configuration flow:
+1. Select an API platform (Kimi for Coding, Moonshot AI Open Platform, etc.)
+2. Enter your API key
+3. Select an available model
+
+After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
+
+### `/reload`
+
+Reload the configuration file without exiting Kimi CLI.
+
+### `/debug`
+
+Display debug information for the current context, including:
+- Number of messages and tokens
+- Number of checkpoints
+- Complete message history
+
+Debug information is displayed in a pager, press `q` to exit.
+
+### `/usage`
+
+Display API usage and quota information.
+
+::: tip
+This command only works with the Kimi for Coding platform.
 :::
 
-## Config and debug
+### `/mcp`
 
-- `/setup`, `/reload`, `/debug`, `/usage`
+Display currently connected MCP servers and loaded tools. See [Model Context Protocol](../customization/mcp.md) for details.
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/slash.py`, `src/kimi_cli/ui/shell/debug.py`, `src/kimi_cli/ui/shell/setup.py`, `src/kimi_cli/ui/shell/usage.py`
-:::
+Output includes:
+- Server connection status (green indicates connected)
+- List of tools provided by each server
 
 ## Session management
 
-- `/clear` (alias `/reset`)
-- `/sessions` (alias `/resume`)
+### `/sessions`
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/slash.py`, `src/kimi_cli/session.py`, `src/kimi_cli/soul/context.py`
-:::
+List all sessions in the current working directory, allowing switching to other sessions.
+
+Alias: `/resume`
+
+Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
+
+### `/clear`
+
+Clear the current session's context and start a new conversation.
+
+Alias: `/reset`
+
+### `/compact`
+
+Manually compact the context to reduce token usage.
+
+When the context is too long, Kimi CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
 
 ## Others
 
-- `/mcp`, `/init`, `/compact`, `/yolo`
+### `/init`
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/slash.py`, `src/kimi_cli/soul/slash.py`, `src/kimi_cli/mcp.py`, `src/kimi_cli/soul/compaction.py`, `src/kimi_cli/soul/approval.py`
+Analyze the current project and generate an `AGENTS.md` file.
+
+This command starts a temporary sub-session to analyze the codebase structure and generate a project description document, helping the Agent better understand the project.
+
+### `/yolo`
+
+Enable YOLO mode, automatically approving all subsequent operations.
+
+::: warning Note
+Once enabled, it cannot be disabled in the current session. To restore manual approval, restart Kimi CLI.
 :::
+
+## Command completion
+
+After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands, press Enter to select.
+
+Commands support alias matching, for example typing `/h` will match `/help`.

@@ -2,64 +2,91 @@
 
 ## What is Kimi CLI
 
-- Use cases
-- Technical preview status
+Kimi CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
-::: info Reference Code
-`src/kimi_cli/app.py`, `src/kimi_cli/cli.py`, `src/kimi_cli/soul/`, `src/kimi_cli/ui/`, `src/kimi_cli/tools/`, `README.md`, `src/kimi_cli/tools/file/`, `src/kimi_cli/tools/shell/`, `src/kimi_cli/tools/web/`, `src/kimi_cli/soul/toolset.py`, `CHANGELOG.md`, `src/kimi_cli/constant.py`, `src/kimi_cli/utils/changelog.py`
+Kimi CLI is suited for:
+
+- **Writing and modifying code**: Implementing new features, fixing bugs, refactoring code
+- **Understanding projects**: Exploring unfamiliar codebases, answering architecture and implementation questions
+- **Automating tasks**: Batch processing files, running builds and tests, executing scripts
+
+Kimi CLI provides a shell-like interactive experience in the terminal. You can describe your needs in natural language or switch to shell mode at any time to execute commands directly. Beyond terminal usage, Kimi CLI also supports integration with [IDEs](./ides.md) and other local agent clients via the [Agent Client Protocol].
+
+::: warning Note
+Kimi CLI is currently in technical preview. Features and APIs may change. If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
 :::
 
-## Install and upgrade
+[Agent Client Protocol]: https://agentclientprotocol.com/
 
-System requirements
+## Installation
 
-- Python 3.13+
-- uv recommended
+Run the installation script to complete the installation. The script will first install [uv](https://docs.astral.sh/uv/) (a Python package manager), then install Kimi CLI via uv:
 
-::: info Reference Code
-`pyproject.toml`, `README.md`, `Makefile`
+```sh
+# Linux / macOS
+curl -LsSf https://cdn.kimi.com/binaries/kimi-cli/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+Invoke-RestMethod https://cdn.kimi.com/binaries/kimi-cli/install.ps1 | Invoke-Expression
+```
+
+Verify the installation:
+
+```sh
+kimi --version
+```
+
+::: tip
+Due to macOS security checks, the first run of the `kimi` command may take longer. You can add your terminal application in "System Settings → Privacy & Security → Developer Tools" to speed up subsequent launches.
 :::
 
-Installation
+If you already have uv installed, you can also run:
 
-::: info Reference Code
-`README.md`, `pyproject.toml`, `scripts/`
-:::
+```sh
+uv tool install --python 3.13 kimi-cli
+```
 
-Upgrade
+## Upgrade and uninstall
 
-::: info Reference Code
-`README.md`, `src/kimi_cli/ui/shell/update.py`, `src/kimi_cli/ui/shell/__init__.py`
-:::
+Upgrade to the latest version:
 
-Uninstall
+```sh
+uv tool upgrade kimi-cli --no-cache
+```
 
-::: info Reference Code
-`README.md`
-:::
+Uninstall Kimi CLI:
+
+```sh
+uv tool uninstall kimi-cli
+```
 
 ## First run
 
-Launch Kimi CLI
+Run the `kimi` command in the project directory where you want to work to start Kimi CLI:
 
-- Run `kimi` in your project directory
+```sh
+cd your-project
+kimi
+```
 
-::: info Reference Code
-`src/kimi_cli/cli.py`, `src/kimi_cli/app.py`, `pyproject.toml`, `README.md`
+On first launch, you need to configure the API platform and model. Enter the `/setup` command to start the configuration wizard:
+
+1. Select an API platform (e.g., Kimi for Coding, Moonshot AI Open Platform)
+2. Enter your API key
+3. Select the model to use
+
+After configuration, Kimi CLI will automatically save the settings and reload. See [Providers](../configuration/providers.md) for details.
+
+Now you can chat with Kimi CLI directly using natural language. Try describing a task you want to complete, for example:
+
+```
+Show me the directory structure of this project
+```
+
+::: tip
+If the project doesn't have an `AGENTS.md` file, you can run the `/init` command to have Kimi CLI analyze the project and generate this file, helping the AI better understand the project structure and conventions.
 :::
 
-Configure platform and model
-
-- Use `/setup` to configure
-
-::: info Reference Code
-`src/kimi_cli/ui/shell/setup.py`, `src/kimi_cli/config.py`, `src/kimi_cli/llm.py`, `src/kimi_cli/app.py`, `src/kimi_cli/ui/shell/slash.py`
-:::
-
-Discover more usage
-
-- Use `/help` to view
-
-::: info Reference Code
-`src/kimi_cli/ui/shell/slash.py`, `src/kimi_cli/soul/slash.py`, `src/kimi_cli/utils/slashcmd.py`
-:::
+Enter `/help` to view all available [slash commands](../reference/slash-commands.md) and usage tips.

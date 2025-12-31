@@ -1,36 +1,99 @@
 # Data Locations
 
-## Config and metadata
+Kimi CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
-- `~/.kimi/config.toml`
-- `~/.kimi/kimi.json`
-- `~/.kimi/mcp.json`
+## Directory structure
 
-::: info Reference Code
-`src/kimi_cli/share.py`, `src/kimi_cli/metadata.py`, `src/kimi_cli/config.py`, `src/kimi_cli/mcp.py`
-:::
+```
+~/.kimi/
+├── config.toml           # Main configuration file
+├── kimi.json             # Metadata
+├── mcp.json              # MCP server configuration
+├── sessions/             # Session data
+│   └── <work-dir-hash>/
+│       └── <session-id>/
+│           ├── context.jsonl
+│           └── wire.jsonl
+├── user-history/         # Input history
+│   └── <work-dir-hash>.jsonl
+└── logs/                 # Logs
+    └── kimi.log
+```
+
+## Configuration and metadata
+
+### `config.toml`
+
+Main configuration file, stores providers, models, services, and runtime parameters. See [Config Files](./config-files.md) for details.
+
+You can specify a configuration file at a different location with the `--config-file` flag.
+
+### `kimi.json`
+
+Metadata file, stores Kimi CLI's runtime state, including:
+
+- `work_dirs`: List of working directories and their last used session IDs
+- `thinking`: Whether thinking mode was enabled in the last session
+
+This file is automatically managed by Kimi CLI and typically doesn't need manual editing.
+
+### `mcp.json`
+
+MCP server configuration file, stores MCP servers added via the `kimi mcp add` command. See [MCP](../customization/mcp.md) for details.
+
+Example structure:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "transport": "http",
+      "headers": {
+        "CONTEXT7_API_KEY": "ctx7sk-xxx"
+      }
+    }
+  }
+}
+```
 
 ## Session data
 
-- `~/.kimi/sessions/.../context.jsonl`
-- `~/.kimi/sessions/.../wire.jsonl`
+Session data is grouped by working directory and stored under `~/.kimi/sessions/`. Each working directory corresponds to a subdirectory named with the path's MD5 hash, and each session corresponds to a subdirectory named with the session ID.
 
-::: info Reference Code
-`src/kimi_cli/session.py`, `src/kimi_cli/wire/serde.py`, `src/kimi_cli/soul/context.py`, `src/kimi_cli/wire/message.py`
-:::
+### `context.jsonl`
+
+Context history file, stores the session's message history in JSONL format. Each line is a message (user input, model response, tool calls, etc.).
+
+Kimi CLI uses this file to restore session context when using `--continue` or `--session`.
+
+### `wire.jsonl`
+
+Wire message log file, stores Wire events during the session in JSONL format. Used for session replay and extracting session titles.
 
 ## Input history
 
-- `~/.kimi/user-history/...`
+User input history is stored in the `~/.kimi/user-history/` directory. Each working directory corresponds to a `.jsonl` file named with the path's MD5 hash.
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/prompt.py`, `src/kimi_cli/share.py`
-:::
+Input history is used for history browsing (up/down arrow keys) and search (Ctrl-R) in shell mode.
 
 ## Logs
 
-- `~/.kimi/logs/kimi.log`
+Runtime logs are stored in `~/.kimi/logs/kimi.log`. Default log level is INFO, use the `--debug` flag to enable TRACE level.
 
-::: info Reference Code
-`src/kimi_cli/utils/logging.py`, `src/kimi_cli/app.py`, `src/kimi_cli/share.py`
-:::
+Log files are used for troubleshooting. When reporting bugs, please include relevant log content.
+
+## Cleaning data
+
+Deleting the `~/.kimi/` directory completely clears all Kimi CLI data, including configuration, sessions, and history.
+
+To clean only specific data:
+
+| Need | Action |
+| --- | --- |
+| Reset configuration | Delete `~/.kimi/config.toml` |
+| Clear all sessions | Delete `~/.kimi/sessions/` directory |
+| Clear sessions for specific working directory | Use `/sessions` in shell mode to view and delete |
+| Clear input history | Delete `~/.kimi/user-history/` directory |
+| Clear logs | Delete `~/.kimi/logs/` directory |
+| Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |

@@ -1,57 +1,92 @@
 # Interaction and Input
 
-## Agent vs shell mode
+Kimi CLI provides rich interaction features to help you collaborate efficiently with AI.
 
-- Ctrl-X to toggle mode
-- Shell mode runs local commands
+## Agent and shell mode
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/__init__.py`, `src/kimi_cli/ui/shell/prompt.py`, `src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/soul/kimisoul.py`, `src/kimi_cli/tools/shell/__init__.py`, `src/kimi_cli/utils/environment.py`, `src/kimi_cli/tools/shell/powershell.md`
+Kimi CLI has two input modes:
+
+- **Agent mode**: The default mode, where input is sent to the AI for processing
+- **Shell mode**: Execute shell commands directly without leaving Kimi CLI
+
+Press `Ctrl-X` to switch between the two modes. The current mode is displayed in the bottom status bar.
+
+In shell mode, you can execute commands just like in a regular terminal:
+
+```sh
+$ ls -la
+$ git status
+$ npm run build
+```
+
+::: warning Note
+In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
 :::
 
 ## Thinking mode
 
-- Tab or `--thinking` to toggle
-- Requires model support
+Thinking mode allows the AI to think more deeply before responding, suitable for handling complex problems.
 
-::: info Reference Code
-`src/kimi_cli/llm.py`, `src/kimi_cli/soul/kimisoul.py`, `src/kimi_cli/ui/shell/prompt.py`, `src/kimi_cli/config.py`, `src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/cli.py`
+In agent mode, press `Tab` to toggle thinking mode on or off. The status bar at the bottom will show a notification after switching. You can also enable it at startup with the `--thinking` flag:
+
+```sh
+kimi --thinking
+```
+
+::: tip
+Thinking mode requires support from the current model.
 :::
 
 ## Multi-line input
 
-- Ctrl-J or Alt-Enter
+Sometimes you need to enter multiple lines, such as pasting a code snippet or error log. Press `Ctrl-J` or `Alt-Enter` to insert a newline instead of sending the message immediately.
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/prompt.py`, `src/kimi_cli/ui/shell/keyboard.py`
-:::
+After finishing your input, press `Enter` to send the complete message.
 
 ## Clipboard and image paste
 
-- Ctrl-V to paste
-- Requires model support for `image_in`
+Press `Ctrl-V` to paste text or images from the clipboard.
 
-::: info Reference Code
-`src/kimi_cli/utils/clipboard.py`, `src/kimi_cli/ui/shell/prompt.py`, `src/kimi_cli/ui/shell/keyboard.py`, `src/kimi_cli/llm.py`, `src/kimi_cli/config.py`
+If the clipboard contains an image, Kimi CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
+
+::: tip
+Image input requires the current model to support vision capabilities.
 :::
 
 ## Slash commands
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/slash.py`, `src/kimi_cli/soul/slash.py`, `src/kimi_cli/utils/slashcmd.py`
-:::
+Slash commands are special instructions starting with `/`, used to execute Kimi CLI's built-in features, such as `/help`, `/setup`, `/sessions`, etc. After typing `/`, a list of available commands will automatically appear. For the complete list of slash commands, see the [slash commands reference](../reference/slash-commands.md).
 
 ## @ path completion
 
-::: info Reference Code
-`src/kimi_cli/ui/shell/prompt.py`, `src/kimi_cli/utils/path.py`, `src/kimi_cli/tools/file/glob.py`
-:::
+When you type `@` in a message, Kimi CLI will auto-complete file and directory paths in the working directory. This allows you to conveniently reference files in your project:
+
+```
+Check if there are any issues with @src/components/Button.tsx
+```
+
+After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
 
 ## Approvals
 
-- Once / This session / Reject
-- `--yolo` or `/yolo`
+When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi CLI will request your confirmation.
 
-::: info Reference Code
-`src/kimi_cli/soul/approval.py`, `src/kimi_cli/ui/shell/visualize.py`, `src/kimi_cli/tools/file/write.py`, `src/kimi_cli/tools/shell/__init__.py`, `src/kimi_cli/cli.py`, `src/kimi_cli/ui/shell/slash.py`
+The confirmation prompt will show operation details, and you can choose:
+
+- **Allow**: Execute this operation
+- **Allow for this session**: Automatically approve similar operations in the current session
+- **Reject**: Do not execute this operation
+
+If you trust the AI's operations, or you're running Kimi CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all requests:
+
+```sh
+# Enable at startup
+kimi --yolo
+
+# Or toggle during runtime
+/yolo
+```
+
+::: warning Note
+YOLO mode skips all confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
 :::
