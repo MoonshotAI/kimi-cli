@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from inline_snapshot import snapshot
-from kosong.message import ImageURLPart, Message, TextPart
+from kosong.message import ImageURLPart, Message, TextPart, VideoURLPart
 from kosong.tooling import ToolError, ToolOk, ToolResult
 
 from kimi_cli.llm import ModelCapability
@@ -211,6 +211,28 @@ def test_check_message_with_image_no_image_capability():
     missing_capabilities = check_message(message, model_capabilities)
 
     assert missing_capabilities == {"image_in"}
+
+
+def test_check_message_with_video_and_video_capability():
+    """Test check_message with VideoURLPart when model has video_in capability."""
+    video_part = VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4"))
+    message = Message(role="user", content=[video_part])
+    model_capabilities: set[ModelCapability] = {"video_in"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == set()
+
+
+def test_check_message_with_video_no_video_capability():
+    """Test check_message with VideoURLPart when model lacks video_in capability."""
+    video_part = VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4"))
+    message = Message(role="user", content=[video_part])
+    model_capabilities: set[ModelCapability] = {"image_in"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == {"video_in"}
 
 
 def test_check_message_with_think_and_think_capability():
