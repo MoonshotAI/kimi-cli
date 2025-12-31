@@ -61,12 +61,14 @@
   - Unsupported types are logged and ignored.
 - Tool result display blocks:
   - `DiffDisplayBlock` -> `FileEditToolCallContent`.
+  - `HideOutputDisplayBlock` suppresses tool output in ACP (used by terminal tool).
 
 ## Tool integration and permission flow
-- ACP sessions use `ACPKaos` to route KAOS operations through ACP clients.
-  - `Shell` uses ACP `terminal/create`, streams `TerminalToolCallContent`, waits for exit,
+- ACP sessions use `ACPKaos` to route filesystem reads/writes through ACP clients.
+- If the client advertises `terminal` capability, the `Shell` tool is replaced by an
+  ACP-backed `Terminal` tool.
+  - Uses ACP `terminal/create`, waits for exit, streams `TerminalToolCallContent`,
     then releases the terminal handle.
-  - Terminal tool results suppress output at the ACP layer because terminal output is streamed.
 - Approval requests in the core tool system are bridged to ACP
   `session/request_permission` with allow-once/allow-always/reject options.
 

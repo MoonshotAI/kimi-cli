@@ -11,11 +11,13 @@ from kaos.path import KaosPath
 from kimi_cli.acp.kaos import ACPKaos
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
+from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.app import KimiCLI
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.session import Session
 from kimi_cli.soul.slash import registry as soul_slash_registry
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
 
 
@@ -79,6 +81,15 @@ class ACPServer:
             session.id, cli_instance.run, self.conn, kaos=acp_kaos
         )
 
+        if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
+            replace_tools(
+                self.client_capabilities,
+                self.conn,
+                session.id,
+                cli_instance.soul.agent.toolset,
+                cli_instance.soul.runtime,
+            )
+
         available_commands = [
             acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
             for cmd in soul_slash_registry.list_commands()
@@ -122,6 +133,15 @@ class ACPServer:
         self.sessions[session.id] = ACPSession(
             session.id, cli_instance.run, self.conn, kaos=acp_kaos
         )
+
+        if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
+            replace_tools(
+                self.client_capabilities,
+                self.conn,
+                session.id,
+                cli_instance.soul.agent.toolset,
+                cli_instance.soul.runtime,
+            )
 
         # TODO: replay session history?
 

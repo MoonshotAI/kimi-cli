@@ -10,11 +10,6 @@ from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, St
 from kaos.local import local_kaos
 from kaos.path import KaosPath
 
-from kimi_cli.acp.session import (
-    get_current_acp_tool_call_id_or_none,
-    register_terminal_tool_call_id,
-)
-
 _DEFAULT_TERMINAL_OUTPUT_LIMIT = 50_000
 _DEFAULT_POLL_INTERVAL = 0.2
 _TRUNCATION_NOTICE = "[acp output truncated]\n"
@@ -268,39 +263,7 @@ class ACPKaos:
         await self._fallback.mkdir(path, parents=parents, exist_ok=exist_ok)
 
     async def exec(self, *args: str) -> KaosProcess:
-        if not self._supports_terminal:
-            return await self._fallback.exec(*args)
-        if not args:
-            raise ValueError("At least one argument (the program to execute) is required.")
-        command = args[0]
-        cmd_args = list(args[1:]) or None
-        cwd = str(self._fallback.getcwd().canonical())
-        terminal = await self._client.create_terminal(
-            command=command,
-            args=cmd_args,
-            cwd=cwd,
-            session_id=self._session_id,
-            output_byte_limit=self._output_byte_limit,
-        )
-        assert isinstance(terminal, acp.TerminalHandle)
-        acp_tool_call_id = get_current_acp_tool_call_id_or_none()
-        if acp_tool_call_id:
-            register_terminal_tool_call_id(acp_tool_call_id)
-            await self._client.session_update(
-                session_id=self._session_id,
-                update=acp.schema.ToolCallProgress(
-                    session_update="tool_call_update",
-                    tool_call_id=acp_tool_call_id,
-                    status="in_progress",
-                    content=[
-                        acp.schema.TerminalToolCallContent(
-                            type="terminal",
-                            terminal_id=terminal.id,
-                        )
-                    ],
-                ),
-            )
-        return ACPProcess(terminal, poll_interval=self._poll_interval)
+        return await self._fallback.exec(*args)
 
     def _abs_path(self, path: StrOrKaosPath) -> str:
         kaos_path = path if isinstance(path, KaosPath) else KaosPath(path)
