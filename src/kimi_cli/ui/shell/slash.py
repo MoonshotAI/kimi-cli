@@ -8,6 +8,7 @@ from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from rich.panel import Panel
 
 from kimi_cli.cli import Reload
+from kimi_cli.config import save_config
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
@@ -82,6 +83,84 @@ def version(app: Shell, args: list[str]):
     from kimi_cli.constant import VERSION
 
     console.print(f"kimi, version {VERSION}")
+
+
+@registry.command
+async def model(app: Shell, args: list[str]):
+    """List or switch LLM models"""
+    soul = _ensure_kimi_soul(app)
+    config = soul.runtime.config
+
+    if not config.models:
+        console.print('[yellow]No models configured, send "/setup" to configure.[/yellow]')
+        return
+
+    current_model = soul.runtime.llm.model_config if soul.runtime.llm else None
+    current_model_name: str | None = None
+    for name, model in config.models.items():
+        if model is current_model:
+            current_model_name = name
+            break
+
+    if not args:
+        choices: list[tuple[str, str]] = []
+        for name in sorted(config.models):
+            model = config.models[name]
+            marker = " (current)" if name == current_model_name else ""
+            label = f"{name} ({model.provider}){marker}"
+            choices.append((name, label))
+
+        try:
+            selection = await ChoiceInput(
+                message=("Select a model to switch to (↑↓ navigate, Enter select, Ctrl+C cancel):"),
+                options=choices,
+                default=current_model_name or choices[0][0],
+            ).prompt_async()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if not selection:
+            return
+
+        args = [selection]
+
+    if len(args) != 1:
+        console.print("[red]Usage: /model <name>[/red]")
+        return
+
+    model_name = args[0]
+    if model_name not in config.models:
+        console.print(f"[red]Unknown model: {model_name}[/red]")
+        return
+
+    if current_model_name == model_name:
+        console.print(f"[yellow]Already using model {model_name}.[/yellow]")
+        return
+
+    model = config.models[model_name]
+    provider = config.providers.get(model.provider)
+    if provider is None:
+        console.print(f"[red]Provider not found for model: {model.provider}[/red]")
+        return
+
+    if not config.is_from_default_location:
+        console.print(
+            "[yellow]Model switching requires the default config file; "
+            "restart without --config/--config-file.[/yellow]"
+        )
+        return
+
+    previous_model = config.default_model
+    config.default_model = model_name
+    try:
+        save_config(config)
+    except OSError as exc:
+        config.default_model = previous_model
+        console.print(f"[red]Failed to save default config: {exc}[/red]")
+        return
+
+    console.print(f"[green]Switched to model {model_name}. Reloading...[/green]")
+    raise Reload()
 
 
 @registry.command(name="release-notes")

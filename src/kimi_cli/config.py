@@ -112,6 +112,11 @@ class MCPConfig(BaseModel):
 class Config(BaseModel):
     """Main configuration structure."""
 
+    is_from_default_location: bool = Field(
+        default=False,
+        description="Whether the config was loaded from the default location",
+        exclude=True,
+    )
     default_model: str = Field(default="", description="Default model to use")
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
@@ -160,11 +165,12 @@ def load_config(config_file: Path | None = None) -> Config:
     Raises:
         ConfigError: If the configuration file is invalid.
     """
+    default_config_file = get_config_file()
     if config_file is None:
-        config_file = get_config_file()
-        is_default_config_file = True
-    else:
-        is_default_config_file = False
+        config_file = default_config_file
+    is_default_config_file = config_file.expanduser().resolve(
+        strict=False
+    ) == default_config_file.expanduser().resolve(strict=False)
     logger.debug("Loading config from file: {file}", file=config_file)
 
     # If the user hasn't provided an explicit config path, migrate legacy JSON config once.
@@ -175,6 +181,7 @@ def load_config(config_file: Path | None = None) -> Config:
         config = get_default_config()
         logger.debug("No config file found, creating default config: {config}", config=config)
         save_config(config, config_file)
+        config.is_from_default_location = is_default_config_file
         return config
 
     try:
@@ -183,13 +190,15 @@ def load_config(config_file: Path | None = None) -> Config:
             data = json.loads(config_text)
         else:
             data = tomlkit.loads(config_text)
-        return Config.model_validate(data)
+        config = Config.model_validate(data)
     except json.JSONDecodeError as e:
         raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
     except TOMLKitError as e:
         raise ConfigError(f"Invalid TOML in configuration file: {e}") from e
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration file: {e}") from e
+    config.is_from_default_location = is_default_config_file
+    return config
 
 
 def load_config_from_string(config_string: str) -> Config:
@@ -224,9 +233,11 @@ def load_config_from_string(config_string: str) -> Config:
             ) from toml_error
 
     try:
-        return Config.model_validate(data)
+        config = Config.model_validate(data)
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration text: {e}") from e
+    config.is_from_default_location = False
+    return config
 
 
 def save_config(config: Config, config_file: Path | None = None):

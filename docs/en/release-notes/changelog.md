@@ -5,6 +5,7 @@ This page documents the changes in each Kimi CLI release.
 ## [Unreleased]
 
 - ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
+- Shell: Add `/model` slash command to switch default models and reload when using the default config
 
 ## 0.70 (2025-12-31)
 
