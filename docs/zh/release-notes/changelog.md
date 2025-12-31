@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## 0.70 (2025-12-31)
+
 - CLI：添加 `--final-message-only`（及 `--quiet` 别名），在 Print 模式下仅输出最终的 assistant 消息
 - LLM：添加 `video_in` 模型能力，支持视频输入
 
