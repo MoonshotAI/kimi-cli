@@ -9,6 +9,10 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
+## [Unreleased]
+
+- CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI
+
 ## [0.69] - 2025-12-29
 
 - Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
