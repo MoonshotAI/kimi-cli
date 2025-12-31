@@ -4,11 +4,12 @@
 
 ## [Unreleased]
 
+- ACP：通过 ACP 客户端路由文件读写和 Shell 命令，实现同步编辑/输出
+
 ## 0.70 (2025-12-31)
 
 - CLI：添加 `--final-message-only`（及 `--quiet` 别名），在 Print 模式下仅输出最终的 assistant 消息
 - LLM：添加 `video_in` 模型能力，支持视频输入
-- ACP：通过 ACP 客户端路由文件读写和 Shell 命令，实现同步编辑/输出
 
 ## 0.69 (2025-12-29)
 
