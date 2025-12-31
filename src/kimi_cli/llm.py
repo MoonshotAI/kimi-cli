@@ -24,7 +24,7 @@ type ProviderType = Literal[
     "_chaos",
 ]
 
-type ModelCapability = Literal["image_in", "thinking"]
+type ModelCapability = Literal["image_in", "video_in", "thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from kosong.message import ContentPart, ImageURLPart, Message, TextPart, ThinkPart
+from kosong.message import ContentPart, ImageURLPart, Message, TextPart, ThinkPart, VideoURLPart
 from kosong.tooling import ToolError, ToolResult
 from kosong.tooling.error import ToolRuntimeError
 
@@ -62,6 +62,8 @@ def check_message(
     for part in message.content:
         if isinstance(part, ImageURLPart):
             capabilities_needed.add("image_in")
+        elif isinstance(part, VideoURLPart):
+            capabilities_needed.add("video_in")
         elif isinstance(part, ThinkPart):
             capabilities_needed.add("thinking")
     return capabilities_needed - model_capabilities

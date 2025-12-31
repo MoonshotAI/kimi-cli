@@ -11,6 +11,7 @@ from kosong.message import (
     ThinkPart,
     ToolCall,
     ToolCallPart,
+    VideoURLPart,
 )
 
 
@@ -24,6 +25,7 @@ async def test_echo_chat_provider_streams_parts():
             "think: thinking...",
             'image_url: {"url": "https://example.com/image.png", "id": "img-1"}',
             "audio_url: https://example.com/audio.mp3",
+            "video_url: https://example.com/video.mp4",
             (
                 'tool_call: {"id": "call-1", "name": "search", '
                 '"arguments": "{\\"q\\":\\"python\\"", "extras": {"source": "test"}}'
@@ -55,6 +57,7 @@ async def test_echo_chat_provider_streams_parts():
             image_url=ImageURLPart.ImageURL(url="https://example.com/image.png", id="img-1")
         ),
         AudioURLPart(audio_url=AudioURLPart.AudioURL(url="https://example.com/audio.mp3", id=None)),
+        VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4", id=None)),
         ToolCall(
             id="call-1",
             function=ToolCall.FunctionBody(name="search", arguments='{"q":"python"'),
