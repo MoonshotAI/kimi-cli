@@ -17,7 +17,7 @@ export default defineConfig({
           { text: '定制化', link: '/zh/customization/mcp', activeMatch: '/zh/customization/' },
           { text: '配置', link: '/zh/configuration/config-files', activeMatch: '/zh/configuration/' },
           { text: '参考手册', link: '/zh/reference/kimi-command', activeMatch: '/zh/reference/' },
-          { text: '常见问题', link: '/zh/faq/setup', activeMatch: '/zh/faq/' },
+          { text: '常见问题', link: '/zh/faq' },
           { text: '发布说明', link: '/zh/release-notes/changelog', activeMatch: '/zh/release-notes/' },
         ],
         sidebar: {
@@ -70,19 +70,6 @@ export default defineConfig({
               ],
             },
           ],
-          '/zh/faq/': [
-            {
-              text: '常见问题',
-              items: [
-                { text: '安装与鉴权', link: '/zh/faq/setup' },
-                { text: '交互问题', link: '/zh/faq/interaction' },
-                { text: 'ACP 问题', link: '/zh/faq/acp' },
-                { text: 'MCP 问题', link: '/zh/faq/mcp' },
-                { text: 'Print/Wire 模式问题', link: '/zh/faq/print-wire' },
-                { text: '更新与升级', link: '/zh/faq/updates' },
-              ],
-            },
-          ],
           '/zh/release-notes/': [
             {
               text: '发布说明',
@@ -107,7 +94,7 @@ export default defineConfig({
           { text: 'Customization', link: '/en/customization/mcp', activeMatch: '/en/customization/' },
           { text: 'Configuration', link: '/en/configuration/config-files', activeMatch: '/en/configuration/' },
           { text: 'Reference', link: '/en/reference/kimi-command', activeMatch: '/en/reference/' },
-          { text: 'FAQ', link: '/en/faq/setup', activeMatch: '/en/faq/' },
+          { text: 'FAQ', link: '/en/faq' },
           { text: 'Release Notes', link: '/en/release-notes/changelog', activeMatch: '/en/release-notes/' },
         ],
         sidebar: {
@@ -157,19 +144,6 @@ export default defineConfig({
                 { text: 'kimi mcp Subcommands', link: '/en/reference/kimi-mcp' },
                 { text: 'Slash Commands', link: '/en/reference/slash-commands' },
                 { text: 'Keyboard Shortcuts', link: '/en/reference/keyboard' },
-              ],
-            },
-          ],
-          '/en/faq/': [
-            {
-              text: 'FAQ',
-              items: [
-                { text: 'Setup and Auth', link: '/en/faq/setup' },
-                { text: 'Interaction Issues', link: '/en/faq/interaction' },
-                { text: 'ACP Issues', link: '/en/faq/acp' },
-                { text: 'MCP Issues', link: '/en/faq/mcp' },
-                { text: 'Print/Wire Mode Issues', link: '/en/faq/print-wire' },
-                { text: 'Updates', link: '/en/faq/updates' },
               ],
             },
           ],

@@ -182,7 +182,7 @@ Only write entries that are worth mentioning to users.
 - UI: Fix completion after backspacing
 - UI: Fix code block rendering issues on light background colors
 
-## [0.51] - 2025-11-8
+## [0.51] - 2025-11-08
 
 - Lib: Rename `Soul.model` to `Soul.model_name`
 - Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `kimi_cli.llm`
