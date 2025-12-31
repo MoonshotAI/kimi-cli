@@ -20,7 +20,12 @@ def replace_tools(
     acp_session_id: str,
     toolset: KimiToolset,
     runtime: Runtime,
+    *,
+    use_acp_kaos: bool = False,
 ) -> None:
+    # TODO(acp): remove Terminal replacement once ACPKaos is the only ACP integration.
+    if use_acp_kaos:
+        return
     if get_current_kaos().name != local_kaos.name:
         # Only replace tools when running in local mode
         return

@@ -7,6 +7,7 @@ from contextvars import ContextVar
 
 import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kaos import Kaos, reset_current_kaos, set_current_kaos
 from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolResult
@@ -100,10 +101,12 @@ class ACPSession:
         id: str,
         prompt_fn: Callable[[list[ContentPart], asyncio.Event], AsyncGenerator[WireMessage]],
         acp_conn: acp.Client,
+        kaos: Kaos | None = None,
     ) -> None:
         self._id = id
         self._prompt_fn = prompt_fn
         self._conn = acp_conn
+        self._kaos = kaos
         self._turn_state: _TurnState | None = None
 
     @property
@@ -115,6 +118,7 @@ class ACPSession:
         user_input = acp_blocks_to_content_parts(prompt)
         self._turn_state = _TurnState()
         token = _current_turn_id.set(self._turn_state.id)
+        kaos_token = set_current_kaos(self._kaos) if self._kaos is not None else None
         try:
             async for msg in self._prompt_fn(user_input, self._turn_state.cancel_event):
                 match msg:
@@ -169,6 +173,8 @@ class ACPSession:
             raise acp.RequestError.internal_error({"error": str(e)}) from e
         finally:
             self._turn_state = None
+            if kaos_token is not None:
+                reset_current_kaos(kaos_token)
             _current_turn_id.reset(token)
         return acp.PromptResponse(stop_reason="end_turn")
 
