@@ -8,6 +8,7 @@ from typing import Any
 import acp
 from kaos.path import KaosPath
 
+from kimi_cli.acp.kaos import ACPKaos
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
@@ -75,7 +76,10 @@ class ACPServer:
             mcp_configs=[mcp_config],
             thinking=True,
         )
-        self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
+        acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
+        self.sessions[session.id] = ACPSession(
+            session.id, cli_instance.run, self.conn, kaos=acp_kaos
+        )
 
         if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
             replace_tools(
@@ -125,7 +129,10 @@ class ACPServer:
             mcp_configs=[mcp_config],
             thinking=True,
         )
-        self.sessions[session.id] = ACPSession(session.id, cli_instance.run, self.conn)
+        acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
+        self.sessions[session.id] = ACPSession(
+            session.id, cli_instance.run, self.conn, kaos=acp_kaos
+        )
 
         if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
             replace_tools(

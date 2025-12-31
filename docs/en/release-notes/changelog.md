@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## [Unreleased]
 
+- ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
+
 ## 0.70 (2025-12-31)
 
 - CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI

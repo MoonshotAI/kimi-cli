@@ -8,6 +8,7 @@ from typing import Any
 import acp
 from kosong.message import ContentPart
 
+from kimi_cli.acp.kaos import ACPKaos
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
@@ -102,7 +103,8 @@ class ACPServerSingleSession:
         session_id = (
             self.soul.runtime.session.id if isinstance(self.soul, KimiSoul) else str(uuid.uuid4())
         )
-        self._session = ACPSession(session_id, prompt_fn, self._conn)
+        acp_kaos = ACPKaos(self._conn, session_id, self._client_capabilities)
+        self._session = ACPSession(session_id, prompt_fn, self._conn, kaos=acp_kaos)
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
         if (

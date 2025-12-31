@@ -21,12 +21,13 @@ def replace_tools(
     toolset: KimiToolset,
     runtime: Runtime,
 ) -> None:
-    if get_current_kaos().name != local_kaos.name:
-        # Only replace tools when running in local mode
+    current_kaos = get_current_kaos().name
+    if current_kaos not in (local_kaos.name, "acp"):
+        # Only replace tools when running locally or under ACPKaos.
         return
 
     if client_capabilities.terminal and (shell_tool := toolset.find(Shell)):
-        # Replace the Shell tool with the ACP Terminal tool if supported
+        # Replace the Shell tool with the ACP Terminal tool if supported.
         toolset.add(
             Terminal(
                 shell_tool,

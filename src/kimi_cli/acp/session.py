@@ -7,6 +7,7 @@ from contextvars import ContextVar
 
 import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kaos import Kaos, reset_current_kaos, set_current_kaos
 from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolResult
@@ -35,6 +36,7 @@ from kimi_cli.wire.message import (
 )
 
 _current_turn_id = ContextVar[str | None]("current_turn_id", default=None)
+_terminal_tool_call_ids = ContextVar[set[str] | None]("terminal_tool_call_ids", default=None)
 
 
 def get_current_acp_tool_call_id_or_none() -> str | None:
@@ -48,6 +50,17 @@ def get_current_acp_tool_call_id_or_none() -> str | None:
     if tool_call is None:
         return None
     return f"{turn_id}/{tool_call.id}"
+
+
+def register_terminal_tool_call_id(tool_call_id: str) -> None:
+    calls = _terminal_tool_call_ids.get()
+    if calls is not None:
+        calls.add(tool_call_id)
+
+
+def should_hide_terminal_output(tool_call_id: str) -> bool:
+    calls = _terminal_tool_call_ids.get()
+    return calls is not None and tool_call_id in calls
 
 
 class _ToolCallState:
@@ -100,10 +113,12 @@ class ACPSession:
         id: str,
         prompt_fn: Callable[[list[ContentPart], asyncio.Event], AsyncGenerator[WireMessage]],
         acp_conn: acp.Client,
+        kaos: Kaos | None = None,
     ) -> None:
         self._id = id
         self._prompt_fn = prompt_fn
         self._conn = acp_conn
+        self._kaos = kaos
         self._turn_state: _TurnState | None = None
 
     @property
@@ -115,6 +130,8 @@ class ACPSession:
         user_input = acp_blocks_to_content_parts(prompt)
         self._turn_state = _TurnState()
         token = _current_turn_id.set(self._turn_state.id)
+        kaos_token = set_current_kaos(self._kaos) if self._kaos is not None else None
+        terminal_tool_calls_token = _terminal_tool_call_ids.set(set())
         try:
             async for msg in self._prompt_fn(user_input, self._turn_state.cancel_event):
                 match msg:
@@ -169,6 +186,9 @@ class ACPSession:
             raise acp.RequestError.internal_error({"error": str(e)}) from e
         finally:
             self._turn_state = None
+            if kaos_token is not None:
+                reset_current_kaos(kaos_token)
+            _terminal_tool_call_ids.reset(terminal_tool_calls_token)
             _current_turn_id.reset(token)
         return acp.PromptResponse(stop_reason="end_turn")
 
@@ -286,7 +306,11 @@ class ACPSession:
             status="failed" if is_error else "completed",
         )
 
-        contents = tool_result_to_acp_content(tool_ret)
+        contents = (
+            []
+            if should_hide_terminal_output(state.acp_tool_call_id)
+            else tool_result_to_acp_content(tool_ret)
+        )
         if contents:
             update.content = contents
 
