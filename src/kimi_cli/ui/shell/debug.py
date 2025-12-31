@@ -11,6 +11,7 @@ from kosong.message import (
     TextPart,
     ThinkPart,
     ToolCall,
+    VideoURLPart,
 )
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -57,6 +58,11 @@ def _format_content_part(part: ContentPart) -> Text | Panel | Group:
             url_display = audio.url[:80] + "..." if len(audio.url) > 80 else audio.url
             id_text = f" (id: {audio.id})" if audio.id else ""
             return Text(f"[Audio{id_text}] {url_display}", style="blue")
+
+        case VideoURLPart(video_url=video):
+            url_display = video.url[:80] + "..." if len(video.url) > 80 else video.url
+            id_text = f" (id: {video.id})" if video.id else ""
+            return Text(f"[Video{id_text}] {url_display}", style="blue")
 
         case _:
             return Text(f"[Unknown content type: {type(part).__name__}]", style="red")

@@ -21,6 +21,7 @@ from kosong.message import (
     ThinkPart,
     ToolCall,
     ToolCallPart,
+    VideoURLPart,
 )
 from kosong.tooling import Tool
 
@@ -45,6 +46,7 @@ class EchoChatProvider:
     - `think`: a thinking chunk.
     - `image_url`: either a raw URL or `{"url": "...", "id": "opt"}`.
     - `audio_url`: either a raw URL or `{"url": "...", "id": "opt"}`.
+    - `video_url`: either a raw URL or `{"url": "...", "id": "opt"}`.
     - `tool_call`: a JSON or key/value object. Fields: `id`, `name` (or `function.name`),
       optional `arguments`/`function.arguments`, optional `extras`.
     - `tool_call_part`: a string/JSON with `arguments_part`; `null` becomes `None`.
@@ -137,6 +139,9 @@ class EchoChatProvider:
             case "audio_url":
                 url, audio_id = self._parse_url_payload(payload, kind)
                 return AudioURLPart(audio_url=AudioURLPart.AudioURL(url=url, id=audio_id))
+            case "video_url":
+                url, video_id = self._parse_url_payload(payload, kind)
+                return VideoURLPart(video_url=VideoURLPart.VideoURL(url=url, id=video_id))
             case "tool_call":
                 return self._parse_tool_call(payload, lineno, raw_line)
             case "tool_call_part":
