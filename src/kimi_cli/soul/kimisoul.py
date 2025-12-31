@@ -360,7 +360,7 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self) -> None:
+    async def compact_context(self, instruction: str | None = None) -> None:
         """
         Compact the context.
 
@@ -379,7 +379,11 @@ class KimiSoul:
         async def _compact_with_retry() -> Sequence[Message]:
             if self._runtime.llm is None:
                 raise LLMNotSet()
-            return await self._compaction.compact(self._context.history, self._runtime.llm)
+            return await self._compaction.compact(
+                self._context.history,
+                self._runtime.llm,
+                instruction=instruction,
+            )
 
         wire_send(CompactionBegin())
         compacted_messages = await _compact_with_retry()

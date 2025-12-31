@@ -24,7 +24,7 @@ requires = ["uv_build>=0.8.5,<0.9.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["kaos"]
+module-name = "kaos"
 source-exclude = ["tests/**/*"]
 
 [tool.ruff]

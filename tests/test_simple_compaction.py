@@ -73,3 +73,26 @@ def test_prepare_builds_compact_message_and_preserves_tail():
             Message(role="assistant", content=[TextPart(text="Latest answer")]),
         ]
     )
+
+
+def test_prepare_injects_custom_instruction():
+    messages = [
+        Message(role="user", content=[TextPart(text="Old question")]),
+        Message(role="assistant", content=[TextPart(text="Old answer")]),
+        Message(role="user", content=[TextPart(text="Latest question")]),
+        Message(role="assistant", content=[TextPart(text="Latest answer")]),
+    ]
+
+    instruction = "Summarize code only"
+    result = SimpleCompaction(max_preserved_messages=1).prepare(messages, instruction=instruction)
+
+    assert result.compact_message is not None
+    compact_tail = result.compact_message.content[-1]
+    assert isinstance(compact_tail, TextPart)
+    assert compact_tail.text == snapshot(
+        "\n"
+        + prompts.COMPACT
+        + """
+
+User instruction: Summarize code only"""
+    )
