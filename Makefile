@@ -20,7 +20,7 @@ prepare: download-deps install-prek ## Sync dependencies for all workspace packa
 .PHONY: prepare-build
 prepare-build: download-deps ## Sync dependencies for releases without workspace sources.
 	@echo "==> Syncing dependencies for release builds (no sources)"
-	@uv sync --frozen --all-extras --all-packages --no-sources
+	@uv sync --all-extras --all-packages --no-sources
 
 .PHONY: format format-kimi-cli format-kosong format-pykaos
 format: format-kimi-cli format-kosong format-pykaos ## Auto-format all workspace packages with ruff.

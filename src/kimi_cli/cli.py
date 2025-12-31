@@ -188,6 +188,20 @@ def kimi(
             help="Output format to use. Must be used with `--print`. Default: text.",
         ),
     ] = None,
+    final_only: Annotated[
+        bool,
+        typer.Option(
+            "--final-message-only",
+            help="Only print the final assistant message (print UI).",
+        ),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            help="Alias for `--print --output-format text --final-message-only`.",
+        ),
+    ] = False,
     mcp_config_file: Annotated[
         list[Path] | None,
         typer.Option(
@@ -265,6 +279,21 @@ def kimi(
         if not session_id:
             raise typer.BadParameter("Session ID cannot be empty", param_hint="--session")
 
+    if quiet:
+        if acp_mode or wire_mode:
+            raise typer.BadParameter(
+                "Quiet mode cannot be combined with ACP or Wire UI",
+                param_hint="--quiet",
+            )
+        if output_format not in (None, "text"):
+            raise typer.BadParameter(
+                "Quiet mode implies `--output-format text`",
+                param_hint="--quiet",
+            )
+        print_mode = True
+        output_format = "text"
+        final_only = True
+
     conflict_option_sets = [
         {
             "--print": print_mode,
@@ -321,6 +350,11 @@ def kimi(
         raise typer.BadParameter(
             "Output format is only supported for print UI",
             param_hint="--output-format",
+        )
+    if final_only and ui != "print":
+        raise typer.BadParameter(
+            "Final-message-only output is only supported for print UI",
+            param_hint="--final-message-only",
         )
 
     config: Config | Path | None = None
@@ -401,6 +435,7 @@ def kimi(
                     input_format or "text",
                     output_format or "text",
                     command,
+                    final_only=final_only,
                 )
             case "acp":
                 if command is not None:

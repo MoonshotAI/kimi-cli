@@ -11,10 +11,15 @@ Only write entries that are worth mentioning to users.
 
 ## [Unreleased]
 
+- CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI
+
+## [0.69] - 2025-12-29
+
 - Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
 - Python: Lower the minimum required Python version to 3.12
 - Nix: Add flake packaging; install with `nix profile install .#kimi-cli` or run `nix run .#kimi-cli`
 - CLI: Add `kimi-cli` script alias for invoking the CLI; can be run via `uvx kimi-cli`
+- Lib: Move LLM config validation into `create_llm` and return `None` when missing config
 
 ## [0.68] - 2025-12-24
 

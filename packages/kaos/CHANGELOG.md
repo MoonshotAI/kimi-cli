@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.3] - 2025-12-29
 
 - Add `host` property to `SSHKaos`
 
