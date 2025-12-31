@@ -50,7 +50,7 @@ Press `Ctrl-V` to paste text or images from the clipboard.
 If the clipboard contains an image, Kimi CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
 
 ::: tip
-Image input requires the current model to support vision capabilities.
+Image input requires the model to support the `image_in` capability. Video input requires the `video_in` capability.
 :::
 
 ## Slash commands

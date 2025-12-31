@@ -5,6 +5,7 @@ This page documents the changes in each Kimi CLI release.
 ## [Unreleased]
 
 - CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI
+- LLM: Add `video_in` model capability and support video inputs
 
 ## 0.69 (2025-12-29)
 

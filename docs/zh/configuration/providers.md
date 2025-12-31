@@ -110,6 +110,7 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 | --- | --- |
 | `thinking` | 支持 thinking 模式（深度思考） |
 | `image_in` | 支持图片输入 |
+| `video_in` | 支持视频输入 |
 
 ```toml
 [models.gemini-3-pro-preview]
@@ -126,6 +127,10 @@ capabilities = ["thinking", "image_in"]
 ### `image_in`
 
 启用图片输入能力后，可以在对话中粘贴图片（`Ctrl-V`）。
+
+### `video_in`
+
+启用视频输入能力后，可以在对话中发送视频内容。
 
 ## 搜索和抓取服务
 

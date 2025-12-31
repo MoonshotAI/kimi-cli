@@ -110,6 +110,7 @@ The `capabilities` field in model configuration declares the capabilities suppor
 | --- | --- |
 | `thinking` | Supports thinking mode (deep reasoning) |
 | `image_in` | Supports image input |
+| `video_in` | Supports video input |
 
 ```toml
 [models.gemini-3-pro-preview]
@@ -126,6 +127,10 @@ When thinking mode is enabled, the model performs deeper reasoning before answer
 ### `image_in`
 
 When image input capability is enabled, you can paste images in conversations (`Ctrl-V`).
+
+### `video_in`
+
+When video input capability is enabled, you can send video content in conversations.
 
 ## Search and fetch services
 
