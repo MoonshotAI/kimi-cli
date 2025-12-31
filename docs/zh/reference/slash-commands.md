@@ -35,6 +35,18 @@
 
 配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
 
+### `/model`
+
+切换默认模型。
+
+不带参数调用时，显示交互式选择界面；也可以直接指定模型名称，如 `/model kimi-k2`。
+
+选择新模型后，Kimi CLI 会自动更新配置文件并重新加载。
+
+::: tip 提示
+此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
+:::
+
 ### `/reload`
 
 重新加载配置文件，无需退出 Kimi CLI。
