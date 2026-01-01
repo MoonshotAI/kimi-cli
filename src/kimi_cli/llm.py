@@ -20,6 +20,7 @@ type ProviderType = Literal[
     "google_genai",  # for backward-compatibility, equals to `gemini`
     "gemini",
     "vertexai",
+    "lm_studio",  # LM Studio and similar local servers
     "_echo",
     "_chaos",
 ]
@@ -124,6 +125,21 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=provider.api_key.get_secret_value(),
+            )
+        case "lm_studio":
+            import httpx
+            from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+            # LM Studio requires explicit transport to avoid httpx default behavior issues
+            http_client = httpx.AsyncClient(
+                transport=httpx.AsyncHTTPTransport(),
+                timeout=httpx.Timeout(timeout=600.0, connect=10.0),
+            )
+            chat_provider = OpenAILegacy(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                http_client=http_client,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
