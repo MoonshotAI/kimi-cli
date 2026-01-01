@@ -49,6 +49,11 @@ def test_parse_slash_command_call():
         SlashCommandCall(name="search", args=["query"], raw_input="/search query")
     )
 
+    result = parse_slash_command_call("/skill:doc-writing")
+    assert result == snapshot(
+        SlashCommandCall(name="skill:doc-writing", args=[], raw_input="/skill:doc-writing")
+    )
+
     # Edge cases: double slash
     assert parse_slash_command_call("//comment") is None
     assert parse_slash_command_call("//") is None
@@ -73,7 +78,7 @@ def test_parse_slash_command_call():
         )
     )
 
-    # Chinese characters in command name should fail (regex only allows a-zA-Z0-9_-)
+    # Chinese characters in command name should fail (regex only allows a-zA-Z0-9_- and :)
     assert parse_slash_command_call("/测试命令 参数") is None
     assert parse_slash_command_call("/命令") is None
 
@@ -81,6 +86,7 @@ def test_parse_slash_command_call():
     assert parse_slash_command_call("") is None
     assert parse_slash_command_call("help") is None
     assert parse_slash_command_call("/") is None
+    assert parse_slash_command_call("/skill:") is None
     assert parse_slash_command_call("/.invalid") is None
 
     # Malformed input with quotes

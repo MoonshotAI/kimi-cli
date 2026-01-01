@@ -117,7 +117,7 @@ def parse_slash_command_call(user_input: str) -> SlashCommandCall | None:
     except ValueError:
         # Malformed input (e.g., unmatched quotes); not a valid slash command
         return None
-    name_match = re.match(r"^\/([a-zA-Z0-9_\-]+)$", name)
+    name_match = re.match(r"^\/([a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)*)$", name)
 
     if not name_match:
         return None

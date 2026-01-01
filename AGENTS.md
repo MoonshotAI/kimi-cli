@@ -58,7 +58,8 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
   and slash command autocomplete; it is the default interactive experience.
 - **Slash commands**: Soul-level commands live in `src/kimi_cli/soul/slash.py`; shell-level
   commands live in `src/kimi_cli/ui/shell/slash.py`. The shell UI exposes both and dispatches
-  based on the registry.
+  based on the registry. Skills are registered as soul-level commands; running
+  `/skill:<skill-name>` loads the skill's `SKILL.md` as a user prompt.
 
 ## Major modules and interfaces
 
