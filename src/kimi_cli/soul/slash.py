@@ -18,7 +18,7 @@ from kimi_cli.utils.slashcmd import SlashCommandRegistry
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
 
-type SoulSlashCmdFunc = Callable[[KimiSoul, list[str]], None | Awaitable[None]]
+type SoulSlashCmdFunc = Callable[[KimiSoul, str], None | Awaitable[None]]
 """
 A function that runs as a KimiSoul-level slash command.
 
@@ -30,7 +30,7 @@ registry = SlashCommandRegistry[SoulSlashCmdFunc]()
 
 
 @registry.command
-async def init(soul: KimiSoul, args: list[str]):
+async def init(soul: KimiSoul, args: str):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     from kimi_cli.soul.kimisoul import KimiSoul
 
@@ -50,7 +50,7 @@ async def init(soul: KimiSoul, args: list[str]):
 
 
 @registry.command
-async def compact(soul: KimiSoul, args: list[str]):
+async def compact(soul: KimiSoul, args: str):
     """Compact the context"""
     if soul.context.n_checkpoints == 0:
         wire_send(TextPart(text="The context is empty."))
@@ -62,7 +62,7 @@ async def compact(soul: KimiSoul, args: list[str]):
 
 
 @registry.command
-async def yolo(soul: KimiSoul, args: list[str]):
+async def yolo(soul: KimiSoul, args: str):
     """Enable YOLO mode (auto approve all actions)"""
     soul.runtime.approval.set_yolo(True)
     wire_send(TextPart(text="You only live once! All actions will be auto-approved."))

@@ -217,15 +217,15 @@ class KimiSoul:
 
     def _make_skill_command(
         self, skill: Skill
-    ) -> Callable[[KimiSoul, list[str]], None | Awaitable[None]]:
-        async def _run_skill(soul: KimiSoul, args: list[str], *, _skill: Skill = skill) -> None:
+    ) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
+        async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
             skill_text = read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
                     TextPart(text=f'Failed to load skill "/{SKILL_COMMAND_PREFIX}{_skill.name}".')
                 )
                 return
-            extra = " ".join(args).strip()
+            extra = args.strip()
             if extra:
                 skill_text = f"{skill_text}\n\nUser request:\n{extra}"
             await soul._turn(Message(role="user", content=skill_text))
