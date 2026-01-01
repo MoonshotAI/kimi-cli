@@ -111,7 +111,7 @@ Outline prompt:
 
 ```
 * Install and upgrade
-  * System requirements: Python 3.13+, recommend uv
+  * System requirements: Python 3.12+, recommend uv
   * Install, upgrade, uninstall steps
 ```
 
@@ -122,7 +122,7 @@ Outline prompt:
 
 ### System requirements
 
-- Python 3.13+
+- Python 3.12+
 - Recommend uv
 
 ### Install
@@ -139,7 +139,7 @@ Outline prompt:
 ```markdown
 ## Install and upgrade
 
-Kimi CLI requires Python 3.13+. We recommend using uv for installation and management.
+Kimi CLI requires Python 3.12+. We recommend using uv for installation and management.
 
 If you haven't installed uv yet, please refer to the uv installation docs first. Install Kimi CLI:
 

@@ -22,6 +22,7 @@ from kimi_cli.soul import LLMNotSet, LLMNotSupported, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
@@ -201,7 +202,7 @@ class KimiCLI:
                 while True:
                     msg = await wire_ui.receive()
                     yield msg
-            except asyncio.QueueShutDown:
+            except QueueShutDown:
                 pass
             finally:
                 # stop consuming Wire messages

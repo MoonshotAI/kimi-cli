@@ -17,6 +17,7 @@ from kimi_cli.constant import NAME, VERSION
 from kimi_cli.soul import Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.message import WireMessage
@@ -92,7 +93,7 @@ class ACPServerSingleSession:
                 while True:
                     msg = await wire_ui.receive()
                     yield msg
-            except asyncio.QueueShutDown:
+            except QueueShutDown:
                 pass
             finally:
                 # stop consuming Wire messages

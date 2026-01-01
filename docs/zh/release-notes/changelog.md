@@ -8,6 +8,8 @@
 - Shell：添加 `/model` 斜杠命令，在使用默认配置时切换默认模型并重新加载
 - Skills：添加 `/skill:<name>` 斜杠命令，按需加载 `SKILL.md` 指引
 - CLI：添加 `kimi info` 子命令，显示版本和协议信息（支持 `--json`）
+- CLI：添加 `kimi term` 命令，启动 Toad 终端 UI
+- Python：将默认工具/CI 版本升级到 3.14
 
 ## 0.70 (2025-12-31)
 

@@ -1,6 +1,6 @@
 {
   "typeCheckingMode": "standard",
-  "pythonVersion": "3.13",
+  "pythonVersion": "3.14",
   "include": [
     "src/**/*.py",
     "tests/**/*.py",

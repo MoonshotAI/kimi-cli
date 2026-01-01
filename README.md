@@ -30,7 +30,7 @@ Kimi CLI is published as a Python package on PyPI. We highly recommend installin
 Once uv is installed, you can install Kimi CLI with:
 
 ```sh
-uv tool install --python 3.13 kimi-cli
+uv tool install --python 3.14 kimi-cli
 ```
 
 Run `kimi --help` to check if Kimi CLI is installed successfully.

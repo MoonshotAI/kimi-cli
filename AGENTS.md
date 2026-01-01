@@ -18,7 +18,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 
 ## Tech stack
 
-- Python 3.12+ (tooling configured for 3.13)
+- Python 3.12+ (tooling configured for 3.14)
 - CLI framework: Typer
 - Async runtime: asyncio
 - LLM framework: kosong
@@ -88,7 +88,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 
 ## Conventions and quality
 
-- Python >=3.12 (ty config uses 3.13); line length 100.
+- Python >=3.12 (ty config uses 3.14); line length 100.
 - Ruff handles lint + format (rules: E, F, UP, B, SIM, I); pyright + ty for type checks.
 - Tests use pytest + pytest-asyncio; files are `tests/test_*.py`.
 - CLI entry points: `kimi` / `kimi-cli` -> `src/kimi_cli/cli.py`.

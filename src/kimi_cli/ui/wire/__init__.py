@@ -9,6 +9,7 @@ from kosong.chat_provider import ChatProviderError
 
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.message import ApprovalRequest, Request
@@ -37,7 +38,7 @@ class WireOverStdio:
 
         # outward
         self._write_task: asyncio.Task[None] | None = None
-        self._write_queue: asyncio.Queue[JSONRPCOutMessage] = asyncio.Queue()
+        self._write_queue: Queue[JSONRPCOutMessage] = Queue()
 
         # inward
         self._dispatch_tasks: set[asyncio.Task[None]] = set()
@@ -65,7 +66,7 @@ class WireOverStdio:
             while True:
                 try:
                     msg = await self._write_queue.get()
-                except asyncio.QueueShutDown:
+                except QueueShutDown:
                     logger.debug("Send queue shut down, stopping Wire server write loop")
                     break
                 self._writer.write(msg.model_dump_json().encode("utf-8") + b"\n")
@@ -141,7 +142,7 @@ class WireOverStdio:
     async def _send_msg(self, msg: JSONRPCOutMessage) -> None:
         try:
             await self._write_queue.put(msg)
-        except asyncio.QueueShutDown:
+        except QueueShutDown:
             logger.error("Send queue shut down; dropping message: {msg}", msg=msg)
 
     @property

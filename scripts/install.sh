@@ -28,4 +28,4 @@ if ! command -v "$UV_BIN" >/dev/null 2>&1; then
   exit 1
 fi
 
-"$UV_BIN" tool install --python 3.13 kimi-cli
+"$UV_BIN" tool install --python 3.14 kimi-cli
