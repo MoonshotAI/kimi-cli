@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -35,6 +35,7 @@ jobs:
         run: choco install make -y
 
       - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -46,22 +47,29 @@ jobs:
           version: "0.8.5"
 
       - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make prepare
 
       - name: Run checks
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make check
 
       - name: Run tests
         env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
           PYTHONUTF8: "1"
         run: make test
 
       - name: Build standalone binary
-        if: matrix.python-version == '3.13'
+        if: matrix.python-version == '3.14'
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make build-bin
 
       - name: Smoke test binary --help
-        if: matrix.python-version == '3.13'
+        if: matrix.python-version == '3.14'
         shell: python
         run: |
           import os
@@ -75,7 +83,7 @@ jobs:
           BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
-        if: matrix.python-version == '3.13' && success()
+        if: matrix.python-version == '3.14' && success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}

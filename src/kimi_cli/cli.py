@@ -491,6 +491,16 @@ def kimi(
             continue
 
 
+@cli.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def term(
+    ctx: typer.Context,
+) -> None:
+    """Run Toad terminal UI backed by Kimi ACP server (extra args go to `kimi --acp`)."""
+    from kimi_cli import toad as toad_cli
+
+    toad_cli.run_term(ctx)
+
+
 @cli.command()
 def acp():
     """Run Kimi CLI ACP server."""

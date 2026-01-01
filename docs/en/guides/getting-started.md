@@ -45,7 +45,7 @@ Due to macOS security checks, the first run of the `kimi` command may take longe
 If you already have uv installed, you can also run:
 
 ```sh
-uv tool install --python 3.13 kimi-cli
+uv tool install --python 3.14 kimi-cli
 ```
 
 ## Upgrade and uninstall

@@ -2,7 +2,8 @@ import asyncio
 
 import pytest
 
-from src.kimi_cli.utils.broadcast import BroadcastQueue
+from kimi_cli.utils.aioqueue import QueueShutDown
+from kimi_cli.utils.broadcast import BroadcastQueue
 
 
 async def test_basic_publish_subscribe():
@@ -60,9 +61,9 @@ async def test_shutdown():
 
     broadcast.shutdown()
 
-    with pytest.raises(asyncio.QueueShutDown):
+    with pytest.raises(QueueShutDown):
         queue1.get_nowait()
-    with pytest.raises(asyncio.QueueShutDown):
+    with pytest.raises(QueueShutDown):
         queue2.get_nowait()
     assert len(broadcast._queues) == 0
 

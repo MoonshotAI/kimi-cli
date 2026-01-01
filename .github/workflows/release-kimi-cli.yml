@@ -16,10 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           allow-prereleases: true
 
       - name: Check version tag
@@ -59,10 +59,10 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install make -y
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           allow-prereleases: true
 
       - name: Set up uv
@@ -169,10 +169,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           allow-prereleases: true
 
       - name: Set up uv

@@ -16,6 +16,7 @@ from kosong.tooling import ToolError, ToolOk
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
 from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.wire import Wire
@@ -66,7 +67,7 @@ async def replay_recent_history(
             wire.soul_side.send(event)
             await asyncio.sleep(0)  # yield to UI loop
         wire.shutdown()
-        with contextlib.suppress(asyncio.QueueShutDown):
+        with contextlib.suppress(QueueShutDown):
             await ui_task
 
 

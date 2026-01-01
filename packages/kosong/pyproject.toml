@@ -8,7 +8,7 @@ dependencies = [
     "anthropic>=0.75.0",
     "google-genai>=1.56.0",
     "jsonschema>=4.25.1",
-    "loguru>=0.7.3",
+    "loguru>=0.6.0,<0.8",
     "openai>=2.14.0,<2.15.0",
     "pydantic>=2.12.5",
     "python-dotenv>=1.2.1",
@@ -58,7 +58,7 @@ select = [
 ]
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ty.src]
 include = [
