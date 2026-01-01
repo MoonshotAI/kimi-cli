@@ -1,4 +1,4 @@
-# `kimi term` 命令
+# `kimi term` 子命令
 
 `kimi term` 命令启动 [Toad](https://github.com/batrachianai/toad) 终端 UI，这是一个基于 [Textual](https://textual.textualize.io/) 的现代终端界面。
 
