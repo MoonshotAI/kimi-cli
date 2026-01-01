@@ -14,7 +14,7 @@
   - Used when running CLI with `--acp` UI mode.
 - **Multi-session server**: `acp_main()` runs `ACPServer` with `use_unstable_protocol=True`.
   - Code: `src/kimi_cli/acp/__init__.py`, `src/kimi_cli/acp/server.py`.
-  - Exposed via the `kimi acp` command in `src/kimi_cli/cli.py`.
+  - Exposed via the `kimi acp` command in `src/kimi_cli/cli/__init__.py`.
 
 ## Capabilities advertised
 - `prompt_capabilities`: `embedded_context=False`, `image=True`, `audio=False`.

@@ -9,7 +9,9 @@ from typing import Annotated, Literal
 import typer
 
 from kimi_cli.constant import VERSION
-from kimi_cli.mcp import cli as mcp_cli
+
+from .info import cli as info_cli
+from .mcp import cli as mcp_cli
 
 
 class Reload(Exception):
@@ -267,10 +269,11 @@ def kimi(
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.config import Config, load_config_from_string
     from kimi_cli.exception import ConfigError
-    from kimi_cli.mcp import get_global_mcp_config_file
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.utils.logging import logger
+
+    from .mcp import get_global_mcp_config_file
 
     enable_logging(debug)
 
@@ -489,6 +492,9 @@ def kimi(
         except Reload as e:
             session_id = e.session_id
             continue
+
+
+cli.add_typer(info_cli, name="info")
 
 
 @cli.command()
