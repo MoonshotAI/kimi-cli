@@ -35,6 +35,18 @@ Configuration flow:
 
 After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
 
+### `/model`
+
+Switch the default model.
+
+When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
+
+After selecting a new model, Kimi CLI will automatically update the configuration file and reload.
+
+::: tip
+This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
+:::
+
 ### `/reload`
 
 Reload the configuration file without exiting Kimi CLI.
@@ -85,6 +97,20 @@ Alias: `/reset`
 Manually compact the context to reduce token usage.
 
 When the context is too long, Kimi CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
+
+## Skills
+
+### `/skill:<name>`
+
+Load a specific skill, sending the `SKILL.md` content to the Agent as a prompt.
+
+For example:
+
+- `/skill:code-style`: Load code style guidelines
+- `/skill:pptx`: Load PPT creation workflow
+- `/skill:git-commits fix user login issue`: Load the skill with an additional task description
+
+You can append additional text after the command, which will be added to the skill prompt. See [Agent Skills](../customization/skills.md) for details.
 
 ## Others
 

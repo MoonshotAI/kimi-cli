@@ -35,6 +35,18 @@
 
 配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
 
+### `/model`
+
+切换默认模型。
+
+不带参数调用时，显示交互式选择界面；也可以直接指定模型名称，如 `/model kimi-k2`。
+
+选择新模型后，Kimi CLI 会自动更新配置文件并重新加载。
+
+::: tip 提示
+此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
+:::
+
 ### `/reload`
 
 重新加载配置文件，无需退出 Kimi CLI。
@@ -85,6 +97,20 @@
 手动压缩上下文，减少 token 使用。
 
 当上下文过长时，Kimi CLI 会自动触发压缩。此命令可手动触发压缩过程。
+
+## Skills
+
+### `/skill:<name>`
+
+加载指定的 Skill，将 `SKILL.md` 内容作为提示词发送给 Agent。
+
+例如：
+
+- `/skill:code-style`：加载代码风格规范
+- `/skill:pptx`：加载 PPT 制作流程
+- `/skill:git-commits 修复用户登录问题`：加载 Skill 并附带额外的任务描述
+
+命令后面可以附带额外的文本，这些内容会追加到 Skill 提示词之后。详见 [Agent Skills](../customization/skills.md)。
 
 ## 其他
 

@@ -1,5 +1,4 @@
 import re
-import shlex
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import overload
@@ -51,13 +50,13 @@ class SlashCommandRegistry[F: Callable[..., None | Awaitable[None]]]:
 
         Usage examples:
           @registry.command
-          def help(app: App, args: list[str]): ...
+          def help(app: App, args: str): ...
 
           @registry.command(name="run")
-          def start(app: App, args: list[str]): ...
+          def start(app: App, args: str): ...
 
           @registry.command(aliases=["h", "?", "assist"])
-          def help(app: App, args: list[str]): ...
+          def help(app: App, args: str): ...
         """
 
         def _register(f: F) -> F:
@@ -97,7 +96,7 @@ class SlashCommandRegistry[F: Callable[..., None | Awaitable[None]]]:
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SlashCommandCall:
     name: str
-    args: list[str]
+    args: str
     raw_input: str
 
 
@@ -106,21 +105,20 @@ def parse_slash_command_call(user_input: str) -> SlashCommandCall | None:
     Parse a slash command call from user input.
 
     Returns:
-        SlashCommandCall if a slash command is found, else None.
+        SlashCommandCall if a slash command is found, else None. The `args` field contains
+        the raw argument string after the command name.
     """
     user_input = user_input.strip()
     if not user_input or not user_input.startswith("/"):
         return None
 
-    try:
-        name, *args = shlex.split(user_input)
-    except ValueError:
-        # Malformed input (e.g., unmatched quotes); not a valid slash command
-        return None
-    name_match = re.match(r"^\/([a-zA-Z0-9_\-]+)$", name)
+    name_match = re.match(r"^\/([a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)*)", user_input)
 
     if not name_match:
         return None
 
     command_name = name_match.group(1)
-    return SlashCommandCall(name=command_name, args=args, raw_input=user_input)
+    if len(user_input) > name_match.end() and not user_input[name_match.end()].isspace():
+        return None
+    raw_args = user_input[name_match.end() :].lstrip()
+    return SlashCommandCall(name=command_name, args=raw_args, raw_input=user_input)

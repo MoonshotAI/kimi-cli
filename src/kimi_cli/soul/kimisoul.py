@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from functools import partial
 from pathlib import Path
@@ -22,6 +22,7 @@ from kosong.tooling import ToolResult
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -58,6 +59,10 @@ if TYPE_CHECKING:
 
 RESERVED_TOKENS = 50_000
 
+SKILL_COMMAND_PREFIX = "skill:"
+
+_registered_skill_commands: set[str] = set()
+
 
 class KimiSoul:
     """The soul of Kimi CLI."""
@@ -93,6 +98,8 @@ class KimiSoul:
                 break
         else:
             self._checkpoint_with_user_message = False
+
+        self._register_skill_commands()
 
     @property
     def name(self) -> str:
@@ -165,8 +172,9 @@ class KimiSoul:
     async def run(self, user_input: str | list[ContentPart]):
         wire_send(TurnBegin(user_input=user_input))
         user_message = Message(role="user", content=user_input)
+        text_input = user_message.extract_text(" ").strip()
 
-        if command_call := parse_slash_command_call(user_message.extract_text(" ").strip()):
+        if command_call := parse_slash_command_call(text_input):
             command = soul_slash_registry.find_command(command_call.name)
             if command is None:
                 # this should not happen actually, the shell should have filtered it out
@@ -178,6 +186,9 @@ class KimiSoul:
                 await ret
             return
 
+        await self._turn(user_message)
+
+    async def _turn(self, user_message: Message) -> None:
         if self._runtime.llm is None:
             raise LLMNotSet()
 
@@ -188,6 +199,39 @@ class KimiSoul:
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
         await self._agent_loop()
+
+    def _register_skill_commands(self) -> None:
+        for skill in self._runtime.skills.values():
+            name = f"{SKILL_COMMAND_PREFIX}{skill.name}"
+            if soul_slash_registry.find_command(name) is not None:
+                if name in _registered_skill_commands:
+                    soul_slash_registry.command(name=name)(self._make_skill_command(skill))
+                    continue
+                logger.warning(
+                    "Skipping skill slash command /{name}: name already registered",
+                    name=name,
+                )
+                continue
+            _registered_skill_commands.add(name)
+            soul_slash_registry.command(name=name)(self._make_skill_command(skill))
+
+    def _make_skill_command(
+        self, skill: Skill
+    ) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
+        async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
+            skill_text = read_skill_text(_skill)
+            if skill_text is None:
+                wire_send(
+                    TextPart(text=f'Failed to load skill "/{SKILL_COMMAND_PREFIX}{_skill.name}".')
+                )
+                return
+            extra = args.strip()
+            if extra:
+                skill_text = f"{skill_text}\n\nUser request:\n{extra}"
+            await soul._turn(Message(role="user", content=skill_text))
+
+        _run_skill.__doc__ = skill.description
+        return _run_skill
 
     async def _agent_loop(self):
         """The main agent loop for one run."""

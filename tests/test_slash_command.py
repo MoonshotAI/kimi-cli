@@ -42,11 +42,16 @@ def test_parse_slash_command_call():
 
     # Regular cases should work
     result = parse_slash_command_call("/help")
-    assert result == snapshot(SlashCommandCall(name="help", args=[], raw_input="/help"))
+    assert result == snapshot(SlashCommandCall(name="help", args="", raw_input="/help"))
 
     result = parse_slash_command_call("/search query")
     assert result == snapshot(
-        SlashCommandCall(name="search", args=["query"], raw_input="/search query")
+        SlashCommandCall(name="search", args="query", raw_input="/search query")
+    )
+
+    result = parse_slash_command_call("/skill:doc-writing")
+    assert result == snapshot(
+        SlashCommandCall(name="skill:doc-writing", args="", raw_input="/skill:doc-writing")
     )
 
     # Edge cases: double slash
@@ -61,19 +66,28 @@ def test_parse_slash_command_call():
     # Edge cases: Chinese characters in args (should work)
     result = parse_slash_command_call("/echo 你好世界")
     assert result == snapshot(
-        SlashCommandCall(name="echo", args=["你好世界"], raw_input="/echo 你好世界")
+        SlashCommandCall(name="echo", args="你好世界", raw_input="/echo 你好世界")
     )
 
     result = parse_slash_command_call("/search 中文查询 english query")
     assert result == snapshot(
         SlashCommandCall(
             name="search",
-            args=["中文查询", "english", "query"],
+            args="中文查询 english query",
             raw_input="/search 中文查询 english query",
         )
     )
 
-    # Chinese characters in command name should fail (regex only allows a-zA-Z0-9_-)
+    result = parse_slash_command_call("/skill:update-docs 这是一个 带空格的    内容")
+    assert result == snapshot(
+        SlashCommandCall(
+            name="skill:update-docs",
+            args="这是一个 带空格的    内容",
+            raw_input="/skill:update-docs 这是一个 带空格的    内容",
+        )
+    )
+
+    # Chinese characters in command name should fail (regex only allows a-zA-Z0-9_- and :)
     assert parse_slash_command_call("/测试命令 参数") is None
     assert parse_slash_command_call("/命令") is None
 
@@ -81,14 +95,17 @@ def test_parse_slash_command_call():
     assert parse_slash_command_call("") is None
     assert parse_slash_command_call("help") is None
     assert parse_slash_command_call("/") is None
+    assert parse_slash_command_call("/skill:") is None
     assert parse_slash_command_call("/.invalid") is None
 
-    # Malformed input with quotes
+    # Quoted input should be preserved as raw text
     result = parse_slash_command_call('/cmd "unmatched quote')
-    assert result is None
+    assert result == snapshot(
+        SlashCommandCall(name="cmd", args='"unmatched quote', raw_input='/cmd "unmatched quote')
+    )
 
     result = parse_slash_command_call("/cmd '")
-    assert result is None
+    assert result == snapshot(SlashCommandCall(name="cmd", args="'", raw_input="/cmd '"))
 
 
 @pytest.fixture
@@ -102,40 +119,44 @@ def test_slash_command_registration(test_registry: SlashCommandRegistry[Any]) ->
 
     # Basic registration
     @test_registry.command  # noqa: F811
-    def basic(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def basic(app: object, args: str) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Basic command."""
         pass
 
     # Custom name, original name should be ignored
     @test_registry.command(name="run")  # noqa: F811
-    def start(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def start(app: object, args: str) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Run something."""
         pass
 
     # Aliases only, original name should be kept
     @test_registry.command(aliases=["h", "?"])  # noqa: F811
-    def help(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def help(app: object, args: str) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Show help."""
         pass
 
     # Custom name with aliases
     @test_registry.command(name="search", aliases=["s", "find"])  # noqa: F811
-    def query(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def query(app: object, args: str) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """Search items."""
         pass
 
     # Edge cases: no doc, whitespace doc, duplicate aliases
     @test_registry.command  # noqa: F811
-    def no_doc(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def no_doc(app: object, args: str) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         pass
 
     @test_registry.command  # noqa: F811
-    def whitespace_doc(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def whitespace_doc(  # noqa: F811 # type: ignore[reportUnusedFunction]
+        app: object, args: str
+    ) -> None:
         """\n\t"""
         pass
 
     @test_registry.command(aliases=["dup", "dup"])  # noqa: F811
-    def dedup_test(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def dedup_test(  # noqa: F811 # type: ignore[reportUnusedFunction]
+        app: object, args: str
+    ) -> None:
         """Test deduplication."""
         pass
 
@@ -164,7 +185,7 @@ def test_slash_command_overwriting(test_registry: SlashCommandRegistry[Any]) -> 
     """Test command overwriting behavior."""
 
     @test_registry.command  # noqa: F811
-    def test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def test_cmd(app: object, args: str) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
         """First version."""
         pass
 
@@ -178,7 +199,9 @@ def test_slash_command_overwriting(test_registry: SlashCommandRegistry[Any]) -> 
     )
 
     @test_registry.command(name="test_cmd")  # noqa: F811
-    def _test_cmd(app: object, args: list[str]) -> None:  # noqa: F811 # type: ignore[reportUnusedFunction]
+    def _test_cmd(  # noqa: F811 # type: ignore[reportUnusedFunction]
+        app: object, args: str
+    ) -> None:
         """Second version."""
         pass
 

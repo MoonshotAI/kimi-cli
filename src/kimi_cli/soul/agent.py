@@ -17,7 +17,13 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
-from kimi_cli.skill import discover_skills, get_claude_skills_dir, get_skills_dir
+from kimi_cli.skill import (
+    Skill,
+    discover_skills,
+    get_claude_skills_dir,
+    get_skills_dir,
+    index_skills,
+)
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -70,6 +76,7 @@ class Runtime:
     approval: Approval
     labor_market: LaborMarket
     environment: Environment
+    skills: dict[str, Skill]
 
     @staticmethod
     async def create(
@@ -91,6 +98,7 @@ class Runtime:
             if not skills_dir.is_dir() and (claude_skills_dir := get_claude_skills_dir()).is_dir():
                 skills_dir = claude_skills_dir
         skills = discover_skills(skills_dir)
+        skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
         skills_formatted = "\n".join(
             (
@@ -116,6 +124,7 @@ class Runtime:
             approval=Approval(yolo=yolo),
             labor_market=LaborMarket(),
             environment=environment,
+            skills=skills_by_name,
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -129,6 +138,7 @@ class Runtime:
             approval=self.approval,
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
+            skills=self.skills,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -142,6 +152,7 @@ class Runtime:
             approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
+            skills=self.skills,
         )
 
 
