@@ -125,3 +125,11 @@ Thinking 模式需要模型支持。如果不指定，使用上次会话的设�
 | `--skills-dir PATH` | 指定 skills 目录（默认 `~/.kimi/skills`） |
 
 详见 [Agent Skills](../customization/skills.md)。
+
+## 子命令
+
+| 子命令 | 说明 |
+|--------|------|
+| [`kimi info`](./kimi-info.md) | 显示版本和协议信息 |
+| [`kimi acp`](./kimi-acp.md) | 启动多会话 ACP 服务器 |
+| [`kimi mcp`](./kimi-mcp.md) | 管理 MCP 服务器配置 |

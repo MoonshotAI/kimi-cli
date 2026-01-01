@@ -1,4 +1,4 @@
-# `kimi acp` 命令
+# `kimi acp` 子命令
 
 `kimi acp` 命令启动一个支持多会话的 ACP (Agent Client Protocol) 服务器。
 

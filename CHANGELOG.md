@@ -14,6 +14,7 @@ Only write entries that are worth mentioning to users.
 - ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
 - Shell: Add `/model` slash command to switch default models and reload when using the default config
 - Skills: Add `/skill:<name>` slash commands to load `SKILL.md` instructions on demand
+- CLI: Add `kimi info` subcommand for version/protocol details (supports `--json`)
 - CLI: Add `kimi term` to launch the Toad terminal UI
 - Python: Bump the default tooling/CI version to 3.14
 

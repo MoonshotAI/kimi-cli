@@ -1,4 +1,4 @@
-# `kimi acp` Command
+# `kimi acp` Subcommand
 
 The `kimi acp` command starts a multi-session ACP (Agent Client Protocol) server.
 
