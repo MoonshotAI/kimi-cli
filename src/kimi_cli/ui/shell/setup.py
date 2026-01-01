@@ -16,9 +16,14 @@ from kimi_cli.config import (
     load_config,
     save_config,
 )
+from kimi_cli.soul.kimisoul import RESERVED_TOKENS
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import registry
 from kimi_cli.utils.aiohttp import new_client_session
+
+# Minimum context size must be at least RESERVED_TOKENS
+MIN_CONTEXT_SIZE = RESERVED_TOKENS
+DEFAULT_LOCAL_CONTEXT_SIZE = 131072  # 128k for local models
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
@@ -227,11 +232,21 @@ async def _setup_local(platform: _Platform) -> _SetupResult | None:
         return None
 
     # Ask for context size
-    context_size_str = await _prompt_text("Enter max context size (default: 32768)")
+    context_size_str = await _prompt_text(
+        f"Enter max context size (default: {DEFAULT_LOCAL_CONTEXT_SIZE}, min: {MIN_CONTEXT_SIZE})"
+    )
     try:
-        max_context_size = int(context_size_str) if context_size_str else 32768
+        max_context_size = int(context_size_str) if context_size_str else DEFAULT_LOCAL_CONTEXT_SIZE
     except ValueError:
-        max_context_size = 32768
+        max_context_size = DEFAULT_LOCAL_CONTEXT_SIZE
+
+    # Ensure context size meets minimum requirement
+    if max_context_size < MIN_CONTEXT_SIZE:
+        console.print(
+            f"[yellow]Context size {max_context_size} is below minimum ({MIN_CONTEXT_SIZE}). "
+            f"Using {MIN_CONTEXT_SIZE} instead.[/yellow]"
+        )
+        max_context_size = MIN_CONTEXT_SIZE
 
     return _SetupResult(
         platform=platform,
