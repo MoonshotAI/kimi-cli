@@ -57,11 +57,11 @@ jobs:
         run: make test
 
       - name: Build standalone binary
-        if: matrix.python-version == '3.13'
+        if: matrix.python-version == '3.14'
         run: make build-bin
 
       - name: Smoke test binary --help
-        if: matrix.python-version == '3.13'
+        if: matrix.python-version == '3.14'
         shell: python
         run: |
           import os
@@ -75,7 +75,7 @@ jobs:
           BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
-        if: matrix.python-version == '3.13' && success()
+        if: matrix.python-version == '3.14' && success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}

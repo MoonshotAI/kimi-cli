@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+import sys
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -10,12 +11,14 @@ def test_pyinstaller_datas():
     from kimi_cli.utils.pyinstaller import datas
 
     project_root = Path(__file__).parent.parent
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    site_packages = f".venv/lib/python{python_version}/site-packages"
     datas = [
         (
             Path(path)
             .relative_to(project_root)
             .as_posix()
-            .replace(".venv/Lib/site-packages", ".venv/lib/python3.13/site-packages"),
+            .replace(".venv/Lib/site-packages", site_packages),
             Path(dst).as_posix(),
         )
         for path, dst in datas
@@ -24,35 +27,35 @@ def test_pyinstaller_datas():
     assert sorted(datas) == snapshot(
         [
             (
-                ".venv/lib/python3.13/site-packages/dateparser/data/dateparser_tz_cache.pkl",
+                f"{site_packages}/dateparser/data/dateparser_tz_cache.pkl",
                 "dateparser/data",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/INSTALLER",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/INSTALLER",
                 "fastmcp/../fastmcp-2.12.5.dist-info",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/METADATA",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/METADATA",
                 "fastmcp/../fastmcp-2.12.5.dist-info",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/RECORD",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/RECORD",
                 "fastmcp/../fastmcp-2.12.5.dist-info",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/REQUESTED",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/REQUESTED",
                 "fastmcp/../fastmcp-2.12.5.dist-info",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/WHEEL",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/WHEEL",
                 "fastmcp/../fastmcp-2.12.5.dist-info",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/entry_points.txt",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/entry_points.txt",
                 "fastmcp/../fastmcp-2.12.5.dist-info",
             ),
             (
-                ".venv/lib/python3.13/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/licenses/LICENSE",
+                f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/licenses/LICENSE",
                 "fastmcp/../fastmcp-2.12.5.dist-info/licenses",
             ),
             (

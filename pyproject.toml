@@ -72,7 +72,7 @@ select = [
 ]
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ty.src]
 include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]

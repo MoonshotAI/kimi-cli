@@ -45,7 +45,7 @@ kimi --version
 如果你已经安装了 uv，也可以直接运行：
 
 ```sh
-uv tool install --python 3.13 kimi-cli
+uv tool install --python 3.14 kimi-cli
 ```
 
 ## 升级与卸载
@@ -90,4 +90,3 @@ kimi
 :::
 
 输入 `/help` 可以查看所有可用的 [斜杠命令](../reference/slash-commands.md) 和使用提示。
-
