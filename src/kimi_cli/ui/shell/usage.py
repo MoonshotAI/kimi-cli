@@ -33,7 +33,7 @@ class UsageRow:
 
 
 @registry.command
-async def usage(app: Shell, args: list[str]):
+async def usage(app: Shell, args: str):
     """Display API usage and quota information"""
     assert isinstance(app.soul, KimiSoul)
     if app.soul.runtime.llm is None:

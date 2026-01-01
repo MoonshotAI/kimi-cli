@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import webbrowser
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, cast
 
@@ -19,7 +18,7 @@ from kimi_cli.utils.slashcmd import SlashCommandRegistry
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
 
-type ShellSlashCmdFunc = Callable[[Shell, list[str]], None | Awaitable[None]]
+type ShellSlashCmdFunc = Callable[[Shell, str], None | Awaitable[None]]
 """
 A function that runs as a Shell-level slash command.
 
@@ -38,7 +37,7 @@ def _ensure_kimi_soul(app: Shell) -> KimiSoul:
 
 
 @registry.command(aliases=["quit"])
-def exit(app: Shell, args: list[str]):
+def exit(app: Shell, args: str):
     """Exit the application"""
     # should be handled by `Shell`
     raise NotImplementedError
@@ -59,7 +58,7 @@ Slash commands are also available:
 
 
 @registry.command(aliases=["h", "?"])
-def help(app: Shell, args: list[str]):
+def help(app: Shell, args: str):
     """Show help information"""
     console.print(
         Panel(
@@ -78,7 +77,7 @@ def help(app: Shell, args: list[str]):
 
 
 @registry.command
-def version(app: Shell, args: list[str]):
+def version(app: Shell, args: str):
     """Show version information"""
     from kimi_cli.constant import VERSION
 
@@ -86,8 +85,10 @@ def version(app: Shell, args: list[str]):
 
 
 @registry.command
-async def model(app: Shell, args: list[str]):
+async def model(app: Shell, args: str):
     """List or switch LLM models"""
+    import shlex
+
     soul = _ensure_kimi_soul(app)
     config = soul.runtime.config
 
@@ -102,7 +103,8 @@ async def model(app: Shell, args: list[str]):
             current_model_name = name
             break
 
-    if not args:
+    raw_args = args.strip()
+    if not raw_args:
         choices: list[tuple[str, str]] = []
         for name in sorted(config.models):
             model = config.models[name]
@@ -122,13 +124,17 @@ async def model(app: Shell, args: list[str]):
         if not selection:
             return
 
-        args = [selection]
-
-    if len(args) != 1:
-        console.print("[red]Usage: /model <name>[/red]")
-        return
-
-    model_name = args[0]
+        model_name = selection
+    else:
+        try:
+            parsed_args = shlex.split(raw_args)
+        except ValueError:
+            console.print("[red]Usage: /model <name>[/red]")
+            return
+        if len(parsed_args) != 1:
+            console.print("[red]Usage: /model <name>[/red]")
+            return
+        model_name = parsed_args[0]
     if model_name not in config.models:
         console.print(f"[red]Unknown model: {model_name}[/red]")
         return
@@ -164,7 +170,7 @@ async def model(app: Shell, args: list[str]):
 
 
 @registry.command(name="release-notes")
-def release_notes(app: Shell, args: list[str]):
+def release_notes(app: Shell, args: str):
     """Show release notes"""
     text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
@@ -172,8 +178,9 @@ def release_notes(app: Shell, args: list[str]):
 
 
 @registry.command
-def feedback(app: Shell, args: list[str]):
+def feedback(app: Shell, args: str):
     """Submit feedback to make Kimi CLI better"""
+    import webbrowser
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
     if webbrowser.open(ISSUE_URL):
@@ -182,7 +189,7 @@ def feedback(app: Shell, args: list[str]):
 
 
 @registry.command(aliases=["reset"])
-async def clear(app: Shell, args: list[str]):
+async def clear(app: Shell, args: str):
     """Clear the context"""
     soul = _ensure_kimi_soul(app)
     await soul.context.clear()
@@ -190,7 +197,7 @@ async def clear(app: Shell, args: list[str]):
 
 
 @registry.command(name="sessions", aliases=["resume"])
-async def list_sessions(app: Shell, args: list[str]):
+async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""
     soul = _ensure_kimi_soul(app)
 
@@ -232,7 +239,7 @@ async def list_sessions(app: Shell, args: list[str]):
 
 
 @registry.command
-async def mcp(app: Shell, args: list[str]):
+async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
     from kimi_cli.soul.toolset import KimiToolset
 

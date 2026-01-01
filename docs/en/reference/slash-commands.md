@@ -98,6 +98,20 @@ Manually compact the context to reduce token usage.
 
 When the context is too long, Kimi CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
 
+## Skills
+
+### `/skill:<name>`
+
+Load a specific skill, sending the `SKILL.md` content to the Agent as a prompt.
+
+For example:
+
+- `/skill:code-style`: Load code style guidelines
+- `/skill:pptx`: Load PPT creation workflow
+- `/skill:git-commits fix user login issue`: Load the skill with an additional task description
+
+You can append additional text after the command, which will be added to the skill prompt. See [Agent Skills](../customization/skills.md) for details.
+
 ## Others
 
 ### `/init`
