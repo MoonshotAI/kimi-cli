@@ -31,6 +31,8 @@ class _Platform(NamedTuple):
     search_url: str | None = None
     fetch_url: str | None = None
     allowed_prefixes: list[str] | None = None
+    provider_type: str = "kimi"
+    is_local: bool = False
 
 
 _PLATFORMS = [
@@ -53,6 +55,13 @@ _PLATFORMS = [
         base_url="https://api.moonshot.ai/v1",
         allowed_prefixes=["kimi-k2-"],
     ),
+    _Platform(
+        id="lm-studio",
+        name="LM Studio (Local)",
+        base_url="http://localhost:1234/v1",
+        provider_type="lm_studio",
+        is_local=True,
+    ),
 ]
 
 
@@ -66,8 +75,8 @@ async def setup(app: Shell, args: list[str]):
 
     config = load_config()
     config.providers[result.platform.id] = LLMProvider(
-        type="kimi",
-        base_url=result.platform.base_url,
+        type=result.platform.provider_type,  # type: ignore[arg-type]
+        base_url=result.base_url,
         api_key=result.api_key,
     )
     config.models[result.model_id] = LLMModel(
@@ -101,6 +110,7 @@ async def setup(app: Shell, args: list[str]):
 
 class _SetupResult(NamedTuple):
     platform: _Platform
+    base_url: str
     api_key: SecretStr
     model_id: str
     max_context_size: int
@@ -117,6 +127,10 @@ async def _setup() -> _SetupResult | None:
         return None
 
     platform = next(platform for platform in _PLATFORMS if platform.name == platform_name)
+
+    # For local servers (LM Studio), use a different setup flow
+    if platform.is_local:
+        return await _setup_local(platform)
 
     # enter the API key
     api_key = await _prompt_text("Enter your API key", is_password=True)
@@ -168,9 +182,63 @@ async def _setup() -> _SetupResult | None:
 
     return _SetupResult(
         platform=platform,
+        base_url=platform.base_url,
         api_key=SecretStr(api_key),
         model_id=model_id,
         max_context_size=model["context_length"],
+    )
+
+
+async def _setup_local(platform: _Platform) -> _SetupResult | None:
+    """Setup flow for local servers like LM Studio."""
+    import httpx
+
+    # Ask for base URL with default
+    base_url = await _prompt_text(f"Enter server URL (default: {platform.base_url})")
+    if not base_url:
+        base_url = platform.base_url
+
+    # Try to get models from local server
+    console.print(f"[dim]Connecting to {base_url}...[/dim]")
+    try:
+        # Use explicit transport for LM Studio compatibility
+        transport = httpx.AsyncHTTPTransport()
+        async with httpx.AsyncClient(transport=transport, timeout=10.0) as client:
+            resp = await client.get(f"{base_url}/models")
+            resp.raise_for_status()
+            resp_json = resp.json()
+    except Exception as e:
+        console.print(f"[red]Failed to connect to {base_url}: {e}[/red]")
+        console.print("[yellow]Make sure LM Studio is running and a model is loaded.[/yellow]")
+        return None
+
+    model_ids: list[str] = [model["id"] for model in resp_json.get("data", [])]
+    if not model_ids:
+        console.print("[red]No models found. Make sure a model is loaded in LM Studio.[/red]")
+        return None
+
+    # Select model
+    model_id = await _prompt_choice(
+        header="Select the model",
+        choices=model_ids,
+    )
+    if not model_id:
+        console.print("[red]No model selected[/red]")
+        return None
+
+    # Ask for context size
+    context_size_str = await _prompt_text("Enter max context size (default: 32768)")
+    try:
+        max_context_size = int(context_size_str) if context_size_str else 32768
+    except ValueError:
+        max_context_size = 32768
+
+    return _SetupResult(
+        platform=platform,
+        base_url=base_url,
+        api_key=SecretStr("lm-studio"),  # LM Studio doesn't require API key
+        model_id=model_id,
+        max_context_size=max_context_size,
     )
 
 
