@@ -10,7 +10,8 @@ dependencies = [
     "aiohttp==3.13.2",
     "typer==0.21.0",
     "kosong[contrib]==0.36.0",
-    "loguru==0.7.3",
+    # loguru stays >=0.6.0 because notify-py (via batrachian-toad) caps it at <=0.6.0 on 3.14+.
+    "loguru>=0.6.0,<0.8",
     "prompt-toolkit==3.0.52",
     "pillow==12.0.0",
     "pyyaml==6.0.3",
@@ -23,6 +24,7 @@ dependencies = [
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
     "pykaos==0.5.3",
+    "batrachian-toad==0.5.14; python_version >= \"3.14\"",
     "tomlkit==0.13.3",
 ]
 
@@ -73,11 +75,7 @@ select = [
 python-version = "3.13"
 
 [tool.ty.src]
-include = [
-    "src/**/*.py",
-    "tests/**/*.py",
-    "tests_ai/scripts/**/*.py",
-]
+include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]
 
 [tool.typos.files]
 extend-exclude = ["kimi.spec", "pyinstaller.py"]
