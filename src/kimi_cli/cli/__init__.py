@@ -501,10 +501,10 @@ cli.add_typer(info_cli, name="info")
 def term(
     ctx: typer.Context,
 ) -> None:
-    """Run Toad terminal UI backed by Kimi ACP server (extra args go to `kimi --acp`)."""
-    from kimi_cli import toad as toad_cli
+    """Run Toad TUI backed by Kimi CLI ACP server (extra args go to `kimi --acp`)."""
+    from kimi_cli.toad import run_term
 
-    toad_cli.run_term(ctx)
+    run_term(ctx)
 
 
 @cli.command()
