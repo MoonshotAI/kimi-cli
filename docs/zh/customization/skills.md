@@ -148,4 +148,20 @@ description: Git 提交信息规范，使用 Conventional Commits 格式
 - docs(readme): 更新安装说明
 ```
 
+## 使用斜杠命令加载 Skill
+
+`/skill:<name>` 斜杠命令让你可以将常用的提示词模板保存为 Skill，需要时快速调用。输入命令后，Kimi CLI 会读取对应的 `SKILL.md` 文件内容，并将其作为提示词发送给 Agent。
+
+例如：
+
+- `/skill:code-style`：加载代码风格规范
+- `/skill:pptx`：加载 PPT 制作流程
+- `/skill:git-commits 修复用户登录问题`：加载 Git 提交规范，同时附带额外的任务描述
+
+斜杠命令后面可以附带额外的文本，这些内容会追加到 Skill 提示词之后，作为用户的具体请求。
+
+::: tip 提示
+如果只是普通对话，Agent 会根据上下文自动判断是否需要读取 Skill 内容，不需要手动调用。
+:::
+
 Skills 让你可以将团队的最佳实践和项目规范固化下来，确保 AI 始终遵循一致的标准。
