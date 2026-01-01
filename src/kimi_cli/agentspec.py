@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.exception import AgentSpecError
 
-DEFAULT_AGENT_SPEC_VERSION = 1
+DEFAULT_AGENT_SPEC_VERSION = "1"
 SUPPORTED_AGENT_SPEC_VERSIONS = (DEFAULT_AGENT_SPEC_VERSION,)
 
 
@@ -108,7 +108,7 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
     except yaml.YAMLError as e:
         raise AgentSpecError(f"Invalid YAML in agent spec file: {e}") from e
 
-    version = data.get("version", DEFAULT_AGENT_SPEC_VERSION)
+    version = str(data.get("version", DEFAULT_AGENT_SPEC_VERSION))
     if version not in SUPPORTED_AGENT_SPEC_VERSIONS:
         raise AgentSpecError(f"Unsupported agent spec version: {version}")
 
