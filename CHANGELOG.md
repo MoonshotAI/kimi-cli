@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
 - Shell: Add `/model` slash command to switch default models and reload when using the default config
+- CLI: Add `kimi info` subcommand for version/protocol details (supports `--json`)
 
 ## [0.70] - 2025-12-31
 
