@@ -199,7 +199,7 @@ async def test_wire_message_serde():
     _test_serde(msg)
 
 
-def test_approval_request_deserialize_without_display():
+async def test_approval_request_deserialize_without_display():
     msg = deserialize_wire_message(
         {
             "type": "ApprovalRequest",

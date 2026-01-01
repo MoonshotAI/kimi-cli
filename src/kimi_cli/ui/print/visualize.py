@@ -1,4 +1,3 @@
-import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -8,6 +7,7 @@ from kosong.tooling import ToolResult
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.message import StepBegin, StepInterrupted, WireMessage
 
@@ -162,7 +162,7 @@ async def visualize(output_format: OutputFormat, final_only: bool, wire: Wire) -
     while True:
         try:
             msg = await wire_ui.receive()
-        except asyncio.QueueShutDown:
+        except QueueShutDown:
             handler.flush()
             break
 

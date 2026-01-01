@@ -10,6 +10,7 @@ from typing import cast
 import aiofiles
 from kosong.message import ContentPart, MergeableMixin, ToolCallPart
 
+from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.broadcast import BroadcastQueue
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.message import WireMessage, is_wire_message
@@ -75,7 +76,7 @@ class WireSoulSide:
         # send raw message
         try:
             self._raw_queue.publish_nowait(msg)
-        except asyncio.QueueShutDown:
+        except QueueShutDown:
             logger.info("Failed to send raw wire message, queue is shut down: {msg}", msg=msg)
 
         # merge and send merged message
@@ -101,7 +102,7 @@ class WireSoulSide:
     def _send_merged(self, msg: WireMessage) -> None:
         try:
             self._merged_queue.publish_nowait(msg)
-        except asyncio.QueueShutDown:
+        except QueueShutDown:
             logger.info("Failed to send merged wire message, queue is shut down: {msg}", msg=msg)
 
 
@@ -110,7 +111,7 @@ class WireUISide:
     The UI side of a `Wire`.
     """
 
-    def __init__(self, queue: asyncio.Queue[WireMessage]):
+    def __init__(self, queue: Queue[WireMessage]):
         self._queue = queue
 
     async def receive(self) -> WireMessage:
@@ -121,16 +122,16 @@ class WireUISide:
 
 
 class _WireRecorder:
-    def __init__(self, file_backend: Path, queue: asyncio.Queue[WireMessage]) -> None:
+    def __init__(self, file_backend: Path, queue: Queue[WireMessage]) -> None:
         self._file_backend = file_backend
         self._task = asyncio.create_task(self._consume_loop(queue))
 
-    async def _consume_loop(self, queue: asyncio.Queue[WireMessage]) -> None:
+    async def _consume_loop(self, queue: Queue[WireMessage]) -> None:
         while True:
             try:
                 msg = await queue.get()
                 await self._record(msg)
-            except asyncio.QueueShutDown:
+            except QueueShutDown:
                 break
 
     async def _record(self, msg: WireMessage) -> None:

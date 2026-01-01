@@ -19,6 +19,7 @@ from rich.text import Text
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
@@ -350,7 +351,7 @@ class _LiveView:
                 while True:
                     try:
                         msg = await wire.receive()
-                    except asyncio.QueueShutDown:
+                    except QueueShutDown:
                         self.cleanup(is_interrupt=False)
                         live.update(self.compose())
                         break

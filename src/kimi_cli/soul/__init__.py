@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from kosong.message import ContentPart
 
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.message import WireMessage
@@ -164,7 +165,7 @@ async def run_soul(
         wire.shutdown()
         try:
             await asyncio.wait_for(ui_task, timeout=0.5)
-        except asyncio.QueueShutDown:
+        except QueueShutDown:
             logger.debug("UI loop shut down")
             pass
         except TimeoutError:
