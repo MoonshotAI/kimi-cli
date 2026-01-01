@@ -169,6 +169,7 @@ def runtime(
         approval=approval,
         labor_market=labor_market,
         environment=environment,
+        skills={},
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",

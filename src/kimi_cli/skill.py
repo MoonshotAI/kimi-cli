@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from loguru import logger
@@ -23,6 +24,29 @@ def get_claude_skills_dir() -> Path:
     Get the default skills directory path of Claude.
     """
     return Path.home() / ".claude" / "skills"
+
+
+def normalize_skill_name(name: str) -> str:
+    """Normalize a skill name for lookup."""
+    return name.casefold()
+
+
+def index_skills(skills: Iterable[Skill]) -> dict[str, Skill]:
+    """Build a lookup table for skills by normalized name."""
+    return {normalize_skill_name(skill.name): skill for skill in skills}
+
+
+def read_skill_text(skill: Skill) -> str | None:
+    """Read the SKILL.md contents for a skill."""
+    try:
+        return skill.skill_md_file.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.warning(
+            "Failed to read skill file {path}: {error}",
+            path=skill.skill_md_file,
+            error=exc,
+        )
+        return None
 
 
 class Skill(BaseModel):

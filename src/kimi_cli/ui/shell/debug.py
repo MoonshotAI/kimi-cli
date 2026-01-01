@@ -147,7 +147,7 @@ def _format_message(msg: Message, index: int) -> Panel:
 
 
 @registry.command
-def debug(app: Shell, args: list[str]):
+def debug(app: Shell, args: str):
     """Debug the context"""
     assert isinstance(app.soul, KimiSoul)
 

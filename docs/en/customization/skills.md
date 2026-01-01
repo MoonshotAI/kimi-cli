@@ -148,4 +148,20 @@ Examples:
 - docs(readme): update installation instructions
 ```
 
+## Using slash commands to load a skill
+
+The `/skill:<name>` slash command lets you save commonly used prompt templates as skills and quickly invoke them when needed. When you enter the command, Kimi CLI reads the corresponding `SKILL.md` file content and sends it to the Agent as a prompt.
+
+For example:
+
+- `/skill:code-style`: Load code style guidelines
+- `/skill:pptx`: Load PPT creation workflow
+- `/skill:git-commits fix user login issue`: Load Git commit conventions with an additional task description
+
+You can append additional text after the slash command, which will be added to the skill prompt as the user's specific request.
+
+::: tip
+For regular conversations, the Agent will automatically decide whether to read skill content based on context, so you don't need to invoke it manually.
+:::
+
 Skills allow you to codify your team's best practices and project standards, ensuring the AI always follows consistent standards.

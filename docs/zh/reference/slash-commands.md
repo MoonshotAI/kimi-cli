@@ -98,6 +98,20 @@
 
 当上下文过长时，Kimi CLI 会自动触发压缩。此命令可手动触发压缩过程。
 
+## Skills
+
+### `/skill:<name>`
+
+加载指定的 Skill，将 `SKILL.md` 内容作为提示词发送给 Agent。
+
+例如：
+
+- `/skill:code-style`：加载代码风格规范
+- `/skill:pptx`：加载 PPT 制作流程
+- `/skill:git-commits 修复用户登录问题`：加载 Skill 并附带额外的任务描述
+
+命令后面可以附带额外的文本，这些内容会追加到 Skill 提示词之后。详见 [Agent Skills](../customization/skills.md)。
+
 ## 其他
 
 ### `/init`

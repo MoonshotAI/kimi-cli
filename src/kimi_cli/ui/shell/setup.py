@@ -57,7 +57,7 @@ _PLATFORMS = [
 
 
 @registry.command
-async def setup(app: Shell, args: list[str]):
+async def setup(app: Shell, args: str):
     """Setup Kimi CLI"""
     result = await _setup()
     if not result:
@@ -202,7 +202,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 
 
 @registry.command
-def reload(app: Shell, args: list[str]):
+def reload(app: Shell, args: str):
     """Reload configuration"""
     from kimi_cli.cli import Reload
 
