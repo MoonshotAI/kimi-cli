@@ -11,6 +11,7 @@ datas = (
             "agents/**/*.md",
             "deps/bin/**",
             "prompts/**/*.md",
+            "skills/**",
             "tools/**/*.md",
             "CHANGELOG.md",
         ],

@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 from inline_snapshot import snapshot
 
-from kimi_cli.skill import Skill, discover_skills
+from kimi_cli.skill import Skill, discover_skills, discover_skills_from_roots
 
 
 def _write_skill(skill_dir: Path, content: str) -> None:
@@ -119,4 +119,48 @@ description: OK
             skill.dir = Path("/path/to") / (skill.dir.relative_to(tmpdir))
         assert skills == snapshot(
             [Skill(name="valid", description="OK", dir=Path("/path/to/valid"))]
+        )
+
+
+def test_discover_skills_from_roots_prefers_later_dirs():
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        system_dir = root / "system"
+        user_dir = root / "user"
+        system_dir.mkdir()
+        user_dir.mkdir()
+
+        _write_skill(
+            system_dir / "shared",
+            """---
+name: shared
+description: System version
+---
+""",
+        )
+        _write_skill(
+            user_dir / "shared",
+            """---
+name: shared
+description: User version
+---
+""",
+        )
+        _write_skill(
+            user_dir / "beta",
+            """---
+name: beta
+description: Beta description
+---
+""",
+        )
+
+        skills = discover_skills_from_roots([system_dir, user_dir])
+        for skill in skills:
+            skill.dir = Path("/path/to") / (skill.dir.relative_to(tmpdir))
+        assert skills == snapshot(
+            [
+                Skill(name="beta", description="Beta description", dir=Path("/path/to/user/beta")),
+                Skill(name="shared", description="User version", dir=Path("/path/to/user/shared")),
+            ]
         )

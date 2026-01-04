@@ -15,7 +15,12 @@ Kimi CLI discovers skills from the following directories:
 1. `~/.kimi/skills` (default directory)
 2. `~/.claude/skills` (compatible with Claude's skills)
 
-You can also specify other directories with the `--skills-dir` flag:
+Kimi CLI ships built-in skills inside the app bundle (for example, `skill-creator`) and
+always loads them. You can override a built-in skill by creating a skill with the same
+name in your own skills directory.
+
+You can also specify another directory with the `--skills-dir` flag (this replaces the
+default user skills directory; built-in skills are still loaded):
 
 ```sh
 kimi --skills-dir /path/to/my-skills

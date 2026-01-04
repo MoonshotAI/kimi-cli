@@ -19,6 +19,13 @@ def get_skills_dir() -> Path:
     return get_share_dir() / "skills"
 
 
+def get_builtin_skills_dir() -> Path:
+    """
+    Get the built-in skills directory path.
+    """
+    return Path(__file__).parent / "skills"
+
+
 def get_claude_skills_dir() -> Path:
     """
     Get the default skills directory path of Claude.
@@ -34,6 +41,17 @@ def normalize_skill_name(name: str) -> str:
 def index_skills(skills: Iterable[Skill]) -> dict[str, Skill]:
     """Build a lookup table for skills by normalized name."""
     return {normalize_skill_name(skill.name): skill for skill in skills}
+
+
+def discover_skills_from_roots(skills_dirs: Iterable[Path]) -> list[Skill]:
+    """
+    Discover skills from multiple directory roots.
+    """
+    skills_by_name: dict[str, Skill] = {}
+    for skills_dir in skills_dirs:
+        for skill in discover_skills(skills_dir):
+            skills_by_name[normalize_skill_name(skill.name)] = skill
+    return sorted(skills_by_name.values(), key=lambda s: s.name)
 
 
 def read_skill_text(skill: Skill) -> str | None:
