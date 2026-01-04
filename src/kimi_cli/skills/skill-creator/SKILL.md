@@ -1,8 +1,6 @@
 ---
 name: skill-creator
 description: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Codex's capabilities with specialized knowledge, workflows, or tool integrations.
-metadata:
-  short-description: Create or update a skill
 ---
 
 # Skill Creator
@@ -268,30 +266,11 @@ At this point, it is time to actually create the skill.
 
 Skip this step only if the skill being developed already exists, and iteration or packaging is needed. In this case, continue to the next step.
 
-When creating a new skill from scratch, always run the `init_skill.py` script. The script conveniently generates a new template skill directory that automatically includes everything a skill requires, making the skill creation process much more efficient and reliable.
+When creating a new skill from scratch, create a new skill directory with a required `SKILL.md`
+file and any optional resource directories that the skill needs (`scripts/`, `references/`,
+`assets/`). Create only the directories you intend to populate.
 
-Usage:
-
-```bash
-scripts/init_skill.py <skill-name> --path <output-directory> [--resources scripts,references,assets] [--examples]
-```
-
-Examples:
-
-```bash
-scripts/init_skill.py my-skill --path skills/public
-scripts/init_skill.py my-skill --path skills/public --resources scripts,references
-scripts/init_skill.py my-skill --path skills/public --resources scripts --examples
-```
-
-The script:
-
-- Creates the skill directory at the specified path
-- Generates a SKILL.md template with proper frontmatter and TODO placeholders
-- Optionally creates resource directories based on `--resources`
-- Optionally adds example files when `--examples` is set
-
-After initialization, customize the SKILL.md and add resources as needed. If you used `--examples`, replace or delete placeholder files.
+After initialization, customize the SKILL.md and add resources as needed.
 
 ### Step 4: Edit the Skill
 
@@ -299,12 +278,10 @@ When editing the (newly-generated or existing) skill, remember that the skill is
 
 #### Learn Proven Design Patterns
 
-Consult these helpful guides based on your skill's needs:
+Capture proven design patterns directly in this SKILL.md:
 
-- **Multi-step processes**: See references/workflows.md for sequential workflows and conditional logic
-- **Specific output formats or quality standards**: See references/output-patterns.md for template and example patterns
-
-These files contain established best practices for effective skill design.
+- **Multi-step processes**: Clearly describe sequential workflows and conditional branches, including triggers, decision points, and expected outputs at each step.
+- **Specific output formats or quality standards**: Document required output shapes, templates, and examples directly in this SKILL.md so they are easy to follow.
 
 #### Start with Reusable Skill Contents
 
@@ -312,7 +289,7 @@ To begin implementation, start with the reusable resources identified above: `sc
 
 Added scripts must be tested by actually running them to ensure there are no bugs and that the output matches what is expected. If there are many similar scripts, only a representative sample needs to be tested to ensure confidence that they all work while balancing time to completion.
 
-If you used `--examples`, delete any placeholder files that are not needed for the skill. Only create resource directories that are actually required.
+Delete any placeholder files that are not needed for the skill. Only create resource directories that are actually required.
 
 #### Update SKILL.md
 
@@ -336,30 +313,31 @@ Write instructions for using the skill and its bundled resources.
 
 ### Step 5: Packaging a Skill
 
-Once development of the skill is complete, it must be packaged into a distributable .skill file that gets shared with the user. The packaging process automatically validates the skill first to ensure it meets all requirements:
+Once development of the skill is complete, package it into a distributable `.skill` file (a zip
+archive). Before packaging, validate that the skill meets all requirements:
 
-```bash
-scripts/package_skill.py <path/to/skill-folder>
-```
-
-Optional output directory specification:
-
-```bash
-scripts/package_skill.py <path/to/skill-folder> ./dist
-```
-
-The packaging script will:
-
-1. **Validate** the skill automatically, checking:
+1. **Validate** the skill, checking:
 
    - YAML frontmatter format and required fields
    - Skill naming conventions and directory structure
    - Description completeness and quality
    - File organization and resource references
 
-2. **Package** the skill if validation passes, creating a .skill file named after the skill (e.g., `my-skill.skill`) that includes all files and maintains the proper directory structure for distribution. The .skill file is a zip file with a .skill extension.
+2. **Package** the skill if validation passes:
 
-If validation fails, the script will report the errors and exit without creating a package. Fix any validation errors and run the packaging command again.
+   - Create an archive of the skill's root folder (the folder containing `SKILL.md` and all related files).
+   - Ensure the archive preserves the internal directory structure.
+   - Name the archive `<skill-name>.skill` (for example, `my-skill.skill`). The `.skill` file is a zip file with a `.skill` extension.
+
+Example packaging command:
+
+```bash
+cd <skills-root>
+zip -r my-skill.skill my-skill
+```
+
+If validation fails (for example, due to malformed frontmatter, missing files, or an incomplete
+description), fix the issues and repackage the skill.
 
 ### Step 6: Iterate
 
