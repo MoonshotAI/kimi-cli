@@ -7,8 +7,8 @@ from typing import Any, Callable
 import pandas as pd
 from kimi_cli.utils.logging import logger
 
-from swebench_kimi_eval.config import EvalConfig
-from swebench_kimi_eval.evaluator import EvalResult, SWEBenchEvaluator
+from swebench.config import EvalConfig
+from swebench.evaluator import EvalResult, SWEBenchEvaluator
 
 
 class SWEBenchRunner:
@@ -115,4 +115,3 @@ async def run_evaluation(
     results = await runner.run(on_instance_complete=on_complete)
 
     return results
-

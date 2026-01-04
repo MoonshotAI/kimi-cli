@@ -1,3 +1,4 @@
+# type: ignore
 import asyncio
 import json
 import tempfile
@@ -8,31 +9,27 @@ from typing import Any
 import pandas as pd
 from kimi_cli.app import KimiCLI
 from kimi_cli.session import Session
-from kimi_cli.utils.logging import logger
 
-from swebench_kimi_eval.config import EvalConfig, RuntimeConfig
-from swebench_kimi_eval.utils.git import get_diff
-from swebench_kimi_eval.utils.patch import filter_binary_diffs
+from swebench.config import EvalConfig
+from swebench.utils.git import get_diff
+from swebench.utils.patch import filter_binary_diffs
 
 
 @dataclass
 class EvalResult:
     instance_id: str
-    status: str  # "success", "failed", "timeout", "error"
+    status: str
     git_patch: str = ""
     error: str | None = None
-    history: list[dict[str, Any]] = None
+    history: list[dict[str, Any]] | None = None
     metrics: dict[str, Any] | None = None
     duration_seconds: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.history is None:
-            self.history = []
-        if self.metrics is None:
-            self.metrics = {}
+        self.history = self.history or []
+        self.metrics = self.metrics or {}
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
         return {
             "instance_id": self.instance_id,
             "status": self.status,
@@ -48,23 +45,22 @@ class EvalResult:
 
 
 class SWEBenchInstanceEvaluator:
-
     def __init__(
         self,
         instance: pd.Series,
         config: EvalConfig,
-        work_dir: Path,
+        working_dir: Path,
     ):
         self.instance = instance
         self.config = config
-        self.work_dir = work_dir
+        self.working_dir = working_dir
 
     def _get_instruction(self) -> str:
         problem_statement = self.instance.get("problem_statement", "")
 
         instruction = f"""
 <uploaded_files>
-{self.work_dir}
+{self.working_dir}
 </uploaded_files>
 
 I've uploaded a code repository. Consider the following issue description:
@@ -94,13 +90,13 @@ Be thorough in your exploration and testing.
 
         try:
             async with tempfile.TemporaryDirectory() as tmpdir:
-                session = await Session.create(work_dir=self.work_dir)
+                session = await Session.create(working_dir=self.working_dir)
 
                 try:
                     kimi = await KimiCLI.create(
                         session,
                         model_name=self.config.kimi.model,
-                        yolo=True,  # Auto-approve actions
+                        yolo=True,
                     )
 
                     instruction = self._get_instruction()
@@ -113,7 +109,7 @@ Be thorough in your exploration and testing.
 
                     try:
                         git_patch = get_diff(
-                            self.work_dir,
+                            self.working_dir,
                             self.instance.get("base_commit", "")
                         )
                         result.git_patch = filter_binary_diffs(git_patch)
@@ -164,8 +160,8 @@ class SWEBenchEvaluator:
 
         logger.info(f"Loaded {len(instances)} instances for evaluation")
 
-        with tempfile.TemporaryDirectory() as work_dir:
-            work_path = Path(work_dir)
+        with tempfile.TemporaryDirectory() as working_dir:
+            work_path = Path(working_dir)
 
             for idx, instance in enumerate(instances.iterrows(), 1):
                 idx_val, row = instance
@@ -212,8 +208,8 @@ class SWEBenchEvaluator:
         if instance.empty:
             raise ValueError(f"Instance not found: {instance_id}")
 
-        with tempfile.TemporaryDirectory() as work_dir:
+        with tempfile.TemporaryDirectory() as working_dir:
             evaluator = SWEBenchInstanceEvaluator(
-                instance.iloc[0], self.config, Path(work_dir)
+                instance.iloc[0], self.config, Path(working_dir)
             )
             return await evaluator.evaluate()
