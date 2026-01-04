@@ -65,6 +65,14 @@ The working directory determines the root directory for file operations. The age
 
 When using `--command`, Kimi CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
 
+## Ralph loop
+
+| Option | Description |
+|--------|-------------|
+| `--max-ralph-iterations N` | Extra automatic iterations after each user message; `0` disables; `-1` is unlimited |
+
+When `--max-ralph-iterations` is not `0`, Kimi CLI keeps feeding the same prompt back to the agent until an assistant message includes `<safeword>STOP</safeword>` or the iteration limit is reached.
+
 ## UI modes
 
 | Option | Description |

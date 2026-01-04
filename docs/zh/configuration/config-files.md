@@ -49,6 +49,7 @@ max_context_size = 262144
 [loop_control]
 max_steps_per_run = 100
 max_retries_per_step = 3
+max_ralph_iterations = 0
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -113,6 +114,7 @@ capabilities = ["thinking", "image_in"]
 | --- | --- | --- | --- |
 | `max_steps_per_run` | `integer` | `100` | 单次运行最大步数 |
 | `max_retries_per_step` | `integer` | `3` | 单步最大重试次数 |
+| `max_ralph_iterations` | `integer` | `0` | 每个 User 消息后额外自动迭代次数；`0` 表示关闭；`-1` 表示无限 |
 
 ### `services`
 
@@ -155,4 +157,3 @@ capabilities = ["thinking", "image_in"]
 如果 `~/.kimi/config.toml` 不存在但 `~/.kimi/config.json` 存在，Kimi CLI 会自动将 JSON 配置迁移到 TOML 格式，并将原文件备份为 `config.json.bak`。
 
 `--config-file` 指定的配置文件根据扩展名自动选择解析方式。`--config` 传入的配置内容会先尝试按 JSON 解析，失败后再尝试 TOML。
-
