@@ -245,6 +245,13 @@ def kimi(
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
+    max_ralph_iterations: Annotated[
+        int | None,
+        typer.Option(
+            "--max-ralph-iterations",
+            help="Extra iterations after the first turn in Ralph mode. Use -1 for unlimited.",
+        ),
+    ] = None,
     skills_dir: Annotated[
         Path | None,
         typer.Option(
@@ -267,7 +274,7 @@ def kimi(
 
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
-    from kimi_cli.config import Config, load_config_from_string
+    from kimi_cli.config import Config, load_config, load_config_from_string
     from kimi_cli.exception import ConfigError
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
@@ -297,6 +304,11 @@ def kimi(
         output_format = "text"
         final_only = True
 
+    if max_ralph_iterations is not None and max_ralph_iterations < -1:
+        raise typer.BadParameter(
+            "Max Ralph iterations must be >= -1",
+            param_hint="--max-ralph-iterations",
+        )
     conflict_option_sets = [
         {
             "--print": print_mode,
@@ -371,6 +383,14 @@ def kimi(
             raise typer.BadParameter(str(e), param_hint="--config") from e
     elif config_file is not None:
         config = config_file
+
+    if max_ralph_iterations is not None:
+        if isinstance(config, Config):
+            config.loop_control.max_ralph_iterations = max_ralph_iterations
+        else:
+            config_path = config if isinstance(config, Path) else None
+            config = load_config(config_path)
+            config.loop_control.max_ralph_iterations = max_ralph_iterations
 
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])

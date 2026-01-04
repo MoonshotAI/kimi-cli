@@ -777,6 +777,8 @@ class Markdown(JupyterMixin):
 
             if node_type == "text":
                 context.on_text(token.content, node_type)
+            elif node_type in {"html_inline", "html_block"}:
+                context.on_text(token.content, node_type)
             elif node_type == "hardbreak":
                 context.on_text("\n", node_type)
             elif node_type == "softbreak":
