@@ -1,9 +1,9 @@
 # type: ignore
 import asyncio
 import io
+import os
 import tarfile
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import docker
@@ -22,7 +22,7 @@ class ContainerConfig:
     use_gpu: bool = False
     network_mode: str = "bridge"
     memory: str | None = "16g"
-    cpus: str | None = "8"
+    cpus: int = 8
 
 
 class Container:
@@ -45,9 +45,18 @@ class Container:
         if not self.container_name:
             raise RuntimeError("Container not started")
 
-        exit_code, stdout, stderr = self.manager.exec_command(
-            self.container_name, command, timeout=timeout
-        )
+        try:
+            exit_code, stdout, stderr = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.manager.exec_command,
+                    self.container_name,
+                    command,
+                ),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Command execution timeout after {timeout}s in {self.container_name}")
+            raise RuntimeError(f"Command execution timeout after {timeout}s")
 
         if check and exit_code != 0:
             logger.error(f"Command failed with exit code {exit_code}")
@@ -60,12 +69,12 @@ class Container:
     ) -> dict[str, Any]:
         return await self.execute(["bash", "-c", script], timeout=timeout, check=check)
 
-    async def copy_to(self, src: Path | str, dst: str) -> None:
+    async def copy_to(self, src: str, dst: str) -> None:
         if not self.container_name:
             raise RuntimeError("Container not started")
         self.manager.copy_to_container(self.container_name, src, dst)
 
-    async def copy_from(self, src: str, dst: Path | str) -> None:
+    async def copy_from(self, src: str, dst: str) -> None:
         if not self.container_name:
             raise RuntimeError("Container not started")
         self.manager.copy_from_container(self.container_name, src, dst)
@@ -103,7 +112,7 @@ class Docker:
                 working_dir=config.working_dir,
                 network_mode=config.network_mode,
                 mem_limit=config.memory,
-                nano_cpus=int(config.cpus) * 1e9 if config.cpus else None,
+                nano_cpus=int(config.cpus * 1e9) if config.cpus else None,
                 device_requests=device_requests,
                 remove=False,
             )
@@ -121,13 +130,15 @@ class Docker:
         if isinstance(command, str):
             command = ["bash", "-c", command]
 
-        logger.debug(f"Executing in container {container_name}: {' '.join(command)}")
+        try:
+            cmd_str = " ".join(str(c) for c in command)
+        except Exception:
+            cmd_str = str(command)
+        logger.debug(f"Executing in container {container_name}: {cmd_str}")
 
         try:
             container = self.client.containers.get(container_name)
-            result = container.exec_run(
-                cmd=command, stdout=True, stderr=True, timeout=timeout
-            )
+            result = container.exec_run(cmd=command, stdout=True, stderr=True)
 
             stdout = (
                 result.output.decode("utf-8", errors="replace")
@@ -140,24 +151,20 @@ class Docker:
             raise RuntimeError(f"Failed to execute command: {e}")
 
     def copy_to_container(
-        self, container_name: str, src: Path | str, dst: str
+        self, container_name: str, src: str, dst: str
     ) -> None:
-        src = Path(src)
-        if not src.exists():
-            raise FileNotFoundError(f"Source not found: {src}")
-
         logger.info(f"Copying {src} to {container_name}:{dst}")
 
         try:
             container = self.client.containers.get(container_name)
             tar_buffer = io.BytesIO()
             with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
-                if src.is_file():
-                    tar.add(src, arcname=src.name)
+                if os.path.isfile(src):
+                    tar.add(src, arcname=os.path.basename(src))
                 else:
-                    for item in src.rglob("*"):
-                        if item.is_file():
-                            arcname = item.relative_to(src.parent)
+                    for item in os.listdir(src):
+                        if os.path.isfile(os.path.join(src, item)):
+                            arcname = os.path.join(src, item)
                             tar.add(item, arcname=arcname)
 
             tar_buffer.seek(0)
@@ -168,11 +175,8 @@ class Docker:
             raise RuntimeError(f"Failed to copy to container: {e}")
 
     def copy_from_container(
-        self, container_name: str, src: str, dst: Path | str
+        self, container_name: str, src: str, dst: str
     ) -> None:
-        dst = Path(dst)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-
         logger.info(f"Copying {container_name}:{src} to {dst}")
 
         try:

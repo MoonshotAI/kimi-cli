@@ -2,15 +2,18 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig
+from swebench.kimi_solver import KimiContainerSolver
 from swebench.runtime import SWEBenchContainerRuntime
 from swebench.utils.patch import filter_binary_diffs
+
+if TYPE_CHECKING:
+    from swebench.utils.log import EvalRunLogger
 
 
 @dataclass
@@ -46,40 +49,91 @@ class EvalResult:
 
 
 class SWEBenchInstanceEvaluator:
-    def __init__(self, instance: pd.Series, config: EvalConfig):
+    def __init__(self, instance: pd.Series, config: EvalConfig, run_logger: "EvalRunLogger | None" = None):
         self.instance = instance
         self.config = config
+        self.run_logger = run_logger
 
 
     async def evaluate(self) -> EvalResult:
         start_time = asyncio.get_event_loop().time()
-        result = EvalResult(instance_id=self.instance["instance_id"], status="error")
+        instance_id = self.instance["instance_id"]
+        result = EvalResult(instance_id=instance_id, status="error")
 
         try:
-            runtime = SWEBenchContainerRuntime(self.instance.to_dict(), self.config, Path("/testbed"))
+            runtime = SWEBenchContainerRuntime(self.instance.to_dict(), self.config, "/testbed")
             await runtime.start()
 
             try:
-                base_commit = self.instance.get("base_commit")
-                if base_commit:
-                    await runtime.checkout_base_commit()
+                await runtime.checkout_base_commit()
+
+                problem_statement = self.instance["problem_statement"]
+
+                def log_interaction(round_num: int, role: str, content: str) -> None:
+                    if self.run_logger:
+                        self.run_logger.log_instance_interaction(instance_id, round_num, role, content)
+                
+                solver = KimiContainerSolver(
+                    container=runtime.runtime,
+                    working_dir=runtime.working_dir,
+                    config=self.config,
+                    problem_statement=problem_statement,
+                    interaction_logger=log_interaction,
+                )
+                
+                solve_result = await solver.solve()
+                logger.info(
+                    f"Kimi solver completed: {solve_result['rounds']} rounds, "
+                    f"{len(solve_result['tool_calls'])} tool calls"
+                )
+                
+                if self.run_logger:
+                    self.run_logger.log_instance_interaction(
+                        instance_id, 1, "user", problem_statement
+                    )
+                    self.run_logger.log_instance_interaction(
+                        instance_id, 1, "assistant", solve_result["output"]
+                    )
 
                 git_patch = await runtime.get_git_diff()
                 result.git_patch = filter_binary_diffs(git_patch)
                 result.status = "success"
 
-                logger.info(f"✓ {self.instance['instance_id']}: completed")
+                logger.info(f"✓ {instance_id}: completed")
+
+                if self.run_logger:
+                    self.run_logger.log_instance_summary(
+                        instance_id,
+                        "success",
+                        {"duration_seconds": result.duration_seconds},
+                    )
+                    
             except Exception as e:
-                logger.error(f"✗ {self.instance['instance_id']}: {e}")
+                logger.error(f"✗ {instance_id}: {e}")
                 result.status = "error"
                 result.error = str(e)
+                
+                if self.run_logger:
+                    self.run_logger.log_instance_summary(
+                        instance_id,
+                        "error",
+                        {"error": str(e), "duration_seconds": result.duration_seconds},
+                    )
             finally:
                 await runtime.cleanup()
 
         except Exception as e:
-            logger.error(f"Failed to evaluate {self.instance['instance_id']}: {e}")
+            logger.error(f"Failed to evaluate {instance_id}: {e}")
             result.status = "error"
             result.error = str(e)
+            
+            # Log initialization error
+            if self.run_logger:
+                self.run_logger.log_instance_summary(
+                    instance_id,
+                    "error",
+                    {"error": str(e), "duration_seconds": result.duration_seconds},
+                )
         finally:
             end_time = asyncio.get_event_loop().time()
             result.duration_seconds = end_time - start_time

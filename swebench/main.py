@@ -2,23 +2,38 @@
 import argparse
 import asyncio
 import json
-from pathlib import Path
+import sys
+import os
 
 import pandas as pd
-from kimi_cli.utils.logging import enable_logging, logger  # type: ignore
+from kimi_cli.app import enable_logging
+from kimi_cli.utils.logging import logger  # type: ignore
 
 from swebench.config import EvalConfig, KimiCliConfig
 from swebench.evaluator import EvalResult, SWEBenchInstanceEvaluator
+from swebench.utils.log import EvalRunLogger
 
 
 async def main(args: argparse.Namespace) -> None:
     enable_logging(debug=args.debug)
+    logger.add(
+        sys.stderr,
+        level="DEBUG" if args.debug else "INFO",
+        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
+    )
     logger.info("Starting SWE-Bench evaluation")
 
     config = EvalConfig(
         dataset_path=args.dataset,
         output_dir=args.output,
-        kimi=KimiCliConfig(model=args.model),
+        kimi=KimiCliConfig(
+            model=args.model,
+            api_key=args.api_key,
+            base_url=args.base_url,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            max_output_tokens=args.max_output_tokens,
+        ),
         timeout_seconds=args.timeout,
     )
 
@@ -26,7 +41,7 @@ async def main(args: argparse.Namespace) -> None:
         config.selected_ids = [id.strip() for id in args.instances.split(",")]
         logger.info(f"Evaluating {len(config.selected_ids)} specific instances")
 
-    Path(config.output_dir).mkdir(parents=True, exist_ok=True)
+    os.makedirs(config.output_dir, exist_ok=True)
 
     logger.info(f"Dataset: {config.dataset_path}")
     logger.info(f"Output: {config.output_dir}")
@@ -34,9 +49,9 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Workers: {args.workers}")
     logger.info(f"Timeout: {config.timeout_seconds}s per instance")
 
-    output_file = Path(config.output_dir) / "results.jsonl"
+    output_file = os.path.join(config.output_dir, "results.jsonl")
     completed_ids = set()
-    if output_file.exists():
+    if os.path.exists(output_file):
         with open(output_file) as f:
             for line in f:
                 if line.strip():
@@ -46,11 +61,11 @@ async def main(args: argparse.Namespace) -> None:
                     except Exception:
                         pass
 
-    dataset_path = Path(config.dataset_path)
-    if not dataset_path.exists():
+    dataset_path = os.path.join(config.dataset_path)
+    if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
-    if dataset_path.suffix == ".jsonl":
+    if os.path.splitext(dataset_path)[1] == ".jsonl":
         records = []
         with open(dataset_path) as f:
             for line in f:
@@ -58,7 +73,8 @@ async def main(args: argparse.Namespace) -> None:
                     records.append(json.loads(line))
         instances_df = pd.DataFrame(records)
     else:
-        instances_df = pd.read_json(dataset_path, lines=True)
+        with open(dataset_path) as f:
+            instances_df = pd.read_json(f, lines=True)
 
     if config.selected_ids:
         instances_df = instances_df[instances_df["instance_id"].isin(config.selected_ids)]
@@ -69,6 +85,10 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Loaded {total_tasks} instances")
     logger.info(f"Already completed: {already_completed}")
     logger.info(f"Running with {args.workers} concurrent workers")
+
+    # Initialize structured logging
+    run_logger = EvalRunLogger(config.output_dir, config.kimi.model)
+    logger.info(f"Structured logs: {run_logger.run_dir}")
 
     semaphore = asyncio.Semaphore(args.workers)
     current_task = 0
@@ -86,7 +106,8 @@ async def main(args: argparse.Namespace) -> None:
 
             try:
                 instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
-                evaluator = SWEBenchInstanceEvaluator(instance, config)
+                config.kimi.model = args.model
+                evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
                 result = await evaluator.evaluate()
                 logger.info(f"✓ {instance_id}: {result.status}")
 
@@ -114,9 +135,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SWE-Bench evaluation")
     parser.add_argument("--dataset", required=True, help="Path to dataset")
     parser.add_argument("--output", default="./results", help="Output directory")
-    parser.add_argument("--model", default="gpt-4", help="LLM model")
+    parser.add_argument("--model", default="gpt-4", help="LLM model name")
+    parser.add_argument("--api-key", default=None, help="API key for LLM")
+    parser.add_argument("--base-url", default=None, help="Base URL for LLM API")
+    parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for sampling")
+    parser.add_argument("--top-p", type=float, default=1.0, help="Top-p for sampling")
+    parser.add_argument("--max-output-tokens", type=int, default=8192, help="Max output tokens")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent workers")
-    parser.add_argument("--timeout", type=int, default=43200, help="Timeout (s)")
+    parser.add_argument("--timeout", type=int, default=7200, help="Timeout per instance (s)")
     parser.add_argument("--instances", help="Comma-separated instance IDs")
     parser.add_argument("--debug", action="store_true", help="Debug logging")
     args = parser.parse_args()

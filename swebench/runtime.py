@@ -1,5 +1,4 @@
 # type: ignore
-from pathlib import Path
 from typing import Any
 import uuid
 import os
@@ -7,7 +6,7 @@ import os
 from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig
-from swebench.utils.docker import ContainerConfig, Container
+from swebench.utils.docker import ContainerConfig, Container, Docker
 
 USE_VERIFIED = os.environ.get('USE_VERIFIED', 'false').lower() == 'true'
 USE_LIVE = os.environ.get('USE_LIVE', 'false').lower() == 'true'
@@ -18,7 +17,7 @@ class SWEBenchContainerRuntime:
         self,
         instance: dict[str, Any],
         config: EvalConfig,
-        working_dir: Path,
+        working_dir: str,
     ):
         self.instance = instance
         self.config = config
@@ -54,7 +53,8 @@ class SWEBenchContainerRuntime:
             },
         )
 
-        self.runtime = Container(None, "")
+        docker_client = Docker()
+        self.runtime = Container(docker_client, "")
         await self.runtime.start(container_config)
         await self._initialize_container()
         return self.runtime
@@ -87,16 +87,7 @@ git config --global --add safe.directory "*"
 
 
     async def checkout_base_commit(self) -> None:
-        if not self.runtime:
-            raise RuntimeError("Container not started")
-
-        base_commit = self.instance.get("base_commit")
-        if not base_commit:
-            logger.warning("No base_commit in instance, skipping checkout")
-            return
-
-        logger.info(f"Checking out base commit: {base_commit}")
-
+        base_commit = self.instance["base_commit"]
         script = f"""
 cd {self.working_dir}
 git reset --hard
