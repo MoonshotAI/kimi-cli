@@ -6,7 +6,7 @@
 [![Downloads](https://img.shields.io/pypi/dw/kimi-cli)](https://pypistats.org/packages/kimi-cli)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MoonshotAI/kimi-cli)
 
-[中文](https://www.kimi.com/coding/docs/kimi-cli.html)
+[中文](https://www.kimi.com/code/docs/kimi-cli.html)
 
 Kimi CLI is a new CLI agent that can help you with your software development tasks and terminal operations.
 
