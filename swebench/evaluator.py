@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 from kimi_cli.app import KimiCLI
 from kimi_cli.session import Session
+from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig
 from swebench.utils.git import get_diff

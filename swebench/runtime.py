@@ -7,7 +7,7 @@ import os
 from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig
-from swebench.utils.docker import ContainerConfig, ContainerRuntime
+from swebench.utils.docker import ContainerConfig, Container
 
 USE_VERIFIED = os.environ.get('USE_VERIFIED', 'false').lower() == 'true'
 USE_LIVE = os.environ.get('USE_LIVE', 'false').lower() == 'true'
@@ -23,7 +23,7 @@ class SWEBenchContainerRuntime:
         self.instance = instance
         self.config = config
         self.working_dir = working_dir
-        self.runtime: ContainerRuntime | None = None
+        self.runtime: Container | None = None
 
 
     def _get_container_image(self) -> str:
@@ -40,12 +40,9 @@ class SWEBenchContainerRuntime:
         return image_name
 
 
-    async def start(self) -> ContainerRuntime:
+    async def start(self) -> Container:
         logger.info(f"Starting container for {self.instance['instance_id']}")
-
         image = self._get_container_image()
-        logger.info(f"Using image: {image}")
-
         container_config = ContainerConfig(
             image=image,
             name=f"kimicli-{uuid.uuid4().hex[:32]}",
@@ -57,7 +54,7 @@ class SWEBenchContainerRuntime:
             },
         )
 
-        self.runtime = ContainerRuntime()
+        self.runtime = Container(None, "")
         await self.runtime.start(container_config)
         await self._initialize_container()
         return self.runtime
