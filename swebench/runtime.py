@@ -88,6 +88,7 @@ git config --global --add safe.directory "*"
 
     async def checkout_base_commit(self) -> None:
         base_commit = self.instance["base_commit"]
+        # TODO: hacking
         script = f"""
 cd {self.working_dir}
 git reset --hard
@@ -96,7 +97,6 @@ git clean -fd
 """
 
         await self.runtime.execute_shell(script, timeout=300)
-
         logger.info(f"Successfully checked out {base_commit}")
 
 

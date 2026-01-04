@@ -85,8 +85,21 @@ class SWEBenchInstanceEvaluator:
                     problem_statement=problem_statement,
                     interaction_logger=log_interaction,
                 )
+                logger.info("KimiContainerSolver created, calling solve()...")
+                print("DEBUG: About to call solver.solve()", file=sys.stderr, flush=True)
+                sys.stderr.flush()
                 
-                solve_result = await solver.solve()
+                try:
+                    # Add timeout to prevent hanging
+                    solve_result = await asyncio.wait_for(
+                        solver.solve(),
+                        timeout=self.config.timeout_seconds
+                    )
+                except asyncio.TimeoutError:
+                    print(f"ERROR: solver.solve() timed out after {self.config.timeout_seconds}s", file=sys.stderr, flush=True)
+                    logger.error("Solver timed out after {} seconds", self.config.timeout_seconds)
+                    raise
+
                 logger.info(
                     f"Kimi solver completed: {solve_result['rounds']} rounds, "
                     f"{len(solve_result['tool_calls'])} tool calls"

@@ -94,12 +94,18 @@ class Container:
     async def copy_to(self, src: str, dst: str) -> None:
         if not self.container_name:
             raise RuntimeError("Container not started")
-        self.manager.copy_to_container(self.container_name, src, dst)
+        # copy_to_container is synchronous, so run it in a thread
+        await asyncio.to_thread(
+            self.manager.copy_to_container, self.container_name, src, dst
+        )
 
     async def copy_from(self, src: str, dst: str) -> None:
         if not self.container_name:
             raise RuntimeError("Container not started")
-        self.manager.copy_from_container(self.container_name, src, dst)
+        # copy_from_container is synchronous, so run it in a thread
+        await asyncio.to_thread(
+            self.manager.copy_from_container, self.container_name, src, dst
+        )
 
     async def cleanup(self) -> None:
         if self.container_name:
@@ -147,20 +153,28 @@ class Docker:
         try:
             container = self.client.containers.get(container_name)
             tar_buffer = io.BytesIO()
+            
+            logger.debug(f"Creating tar archive for {src}...")
             with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
                 if os.path.isfile(src):
+                    logger.debug(f"Adding file {src}")
                     tar.add(src, arcname=os.path.basename(src))
+                elif os.path.isdir(src):
+                    logger.debug(f"Adding directory {src} recursively")
+                    # For directories, recursively add all contents
+                    tar.add(src, arcname=os.path.basename(src.rstrip("/")))
                 else:
-                    for item in os.listdir(src):
-                        if os.path.isfile(os.path.join(src, item)):
-                            arcname = os.path.join(src, item)
-                            tar.add(item, arcname=arcname)
+                    raise RuntimeError(f"Source path does not exist: {src}")
 
+            tar_data = tar_buffer.getvalue()
+            logger.info(f"Archive created: {len(tar_data)} bytes")
             tar_buffer.seek(0)
+            
+            logger.debug(f"Uploading archive to container...")
             container.put_archive(dst, tar_buffer)
-            logger.info(f"Successfully copied {src} to {dst}")
+            logger.info(f"✓ Successfully copied {src} to {dst}")
         except Exception as e:
-            logger.error(f"Failed to copy to container: {e}")
+            logger.error(f"Failed to copy to container: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to copy to container: {e}")
 
     def copy_from_container(
