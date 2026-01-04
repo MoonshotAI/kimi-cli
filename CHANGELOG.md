@@ -12,6 +12,10 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 
+## 0.72 (2026-01-04)
+
+- Python: Fix installation on Python 3.14.
+
 ## 0.71 (2026-01-04)
 
 - ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
