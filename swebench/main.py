@@ -34,7 +34,6 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Workers: {args.workers}")
     logger.info(f"Timeout: {config.timeout_seconds}s per instance")
 
-    # Load completed instances
     output_file = Path(config.output_dir) / "results.jsonl"
     completed_ids = set()
     if output_file.exists():
