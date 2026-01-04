@@ -3,6 +3,7 @@ import asyncio
 import json
 from typing import Any, Callable
 
+from kaos.path import KaosPath
 from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.session import Session
 from kosong.tooling import ToolCall, ToolResult, ToolOk, ToolError
@@ -32,17 +33,23 @@ class KimiContainerSolver:
     async def solve(self) -> dict[str, Any]:
         enable_logging()
         
-        session = await Session.create(self.working_dir)
-        kimi_instance = await KimiCLI.create(
-            session,
-            yolo=True,
-            model_name=self.config.kimi.model,
-        )
-        
-        final_response = ""
-        tool_calls_executed: list[dict[str, Any]] = []
-        
         try:
+            work_dir = KaosPath.cwd()
+            logger.info(f"Creating Kimi session in: {work_dir}")
+            
+            session = await Session.create(work_dir)
+            logger.info(f"Session created: {session.id}")
+            
+            kimi_instance = await KimiCLI.create(
+                session,
+                yolo=True,
+                model_name=self.config.kimi.model,
+            )
+            logger.info("KimiCLI instance created")
+            
+            final_response = ""
+            tool_calls_executed: list[dict[str, Any]] = []
+            
             logger.info(f"Starting Kimi solver for: {self.problem_statement[:100]}")
             
             async for msg in kimi_instance.run(
@@ -59,18 +66,15 @@ class KimiContainerSolver:
             
             logger.info(f"Kimi solver completed. Executed {len(tool_calls_executed)} tool calls")
             
+            return {
+                "output": final_response,
+                "tool_calls": tool_calls_executed,
+                "rounds": self.round,
+            }
+            
         except Exception as e:
-            logger.error(f"Kimi solver failed: {e}")
+            logger.error(f"Kimi solver failed: {e}", exc_info=True)
             raise
-        finally:
-            # Cleanup
-            pass
-        
-        return {
-            "output": final_response,
-            "tool_calls": tool_calls_executed,
-            "rounds": self.round,
-        }
 
     async def _handle_message(
         self, msg: WireMessage, tool_calls_executed: list[dict[str, Any]]

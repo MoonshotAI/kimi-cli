@@ -66,13 +66,16 @@ class SWEBenchInstanceEvaluator:
 
             try:
                 await runtime.checkout_base_commit()
+                logger.info("Base commit checked out, starting Kimi solver...")
 
-                problem_statement = self.instance["problem_statement"]
+                problem_statement = self.instance.get("problem_statement") or self.instance.get("description", "Fix this issue")
+                logger.info(f"Problem statement: {problem_statement[:100]}...")
 
                 def log_interaction(round_num: int, role: str, content: str) -> None:
                     if self.run_logger:
                         self.run_logger.log_instance_interaction(instance_id, round_num, role, content)
                 
+                logger.info(f"Creating KimiContainerSolver with container: {runtime.runtime.container_name}")
                 solver = KimiContainerSolver(
                     container=runtime.runtime,
                     working_dir=runtime.working_dir,
@@ -80,6 +83,7 @@ class SWEBenchInstanceEvaluator:
                     problem_statement=problem_statement,
                     interaction_logger=log_interaction,
                 )
+                logger.info("KimiContainerSolver created, calling solve()...")
                 
                 solve_result = await solver.solve()
                 logger.info(
