@@ -114,7 +114,7 @@ description: Python 项目开发规范，包括代码风格、测试和依赖管
 
 ## Python 开发规范
 
-- 使用 Python 3.12+
+- 使用 Python 3.14+
 - 使用 ruff 进行代码格式化和 lint
 - 使用 pyright 进行类型检查
 - 测试使用 pytest
