@@ -1102,7 +1102,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.71"
+version = "0.72"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -1178,7 +1178,7 @@ dev = [
 
 [[package]]
 name = "kosong"
-version = "0.36.0"
+version = "0.36.1"
 source = { editable = "packages/kosong" }
 dependencies = [
     { name = "anthropic" },

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-01-04
+
+- Relax `loguru` lower bound.
 
 ## [0.36.0] - 2025-12-31
 

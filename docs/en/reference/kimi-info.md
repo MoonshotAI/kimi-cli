@@ -37,5 +37,5 @@ python version: 3.14.0
 
 ```sh
 $ kimi info --json
-{"kimi_cli_version": "0.70", "agent_spec_versions": ["1"], "wire_protocol_version": "1", "python_version": "3.13.1"}
+{"kimi_cli_version": "0.71", "agent_spec_versions": ["1"], "wire_protocol_version": "1", "python_version": "3.13.1"}
 ```
