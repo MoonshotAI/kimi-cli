@@ -33,11 +33,33 @@ class Container:
 
     async def start(self, config: ContainerConfig) -> str:
         self.config = config
-        self.container_name = self.manager.create_container(
-            config, command=["bash", "-c", "sleep infinity"]
-        )
-        await asyncio.sleep(2)
-        return self.container_name
+        
+        device_requests = None
+        if config.use_gpu:
+            device_requests = [DeviceRequest(capabilities=[["gpu"]], count=-1)]
+        
+        try:
+            container = self.manager.client.containers.run(
+                config.image,
+                command=["bash", "-c", "tail -f /dev/null"],
+                name=config.name,
+                detach=True,
+                environment=config.environment,
+                volumes=config.volumes,
+                working_dir=config.working_dir,
+                network_mode=config.network_mode,
+                mem_limit=config.memory,
+                nano_cpus=int(config.cpus * 1e9) if config.cpus else None,
+                device_requests=device_requests,
+                remove=False,
+            )
+            self.container_name = container.name
+            logger.info(f"Container started: {container.short_id}")
+            await asyncio.sleep(2)
+            return self.container_name
+        except Exception as e:
+            logger.error(f"Failed to start container: {e}")
+            raise RuntimeError(f"Failed to start container: {e}")
 
     async def execute(
         self, command: list[str] | str, timeout: int = 300, check: bool = True
@@ -90,39 +112,6 @@ class Docker:
     def __init__(self):
         self.client = docker.from_env(timeout=3600)
         self.containers: dict[str, Any] = {}
-
-    def create_container(
-        self, config: ContainerConfig, command: list[str] | None = None
-    ) -> str:
-        if command is None:
-            command = ["bash", "-c", "sleep infinity"]
-
-        device_requests = None
-        if config.use_gpu:
-            device_requests = [DeviceRequest(capabilities=[["gpu"]], count=-1)]
-
-        try:
-            container = self.client.containers.run(
-                config.image,
-                command=command,
-                name=config.name,
-                detach=True,
-                environment=config.environment,
-                volumes=config.volumes,
-                working_dir=config.working_dir,
-                network_mode=config.network_mode,
-                mem_limit=config.memory,
-                nano_cpus=int(config.cpus * 1e9) if config.cpus else None,
-                device_requests=device_requests,
-                remove=False,
-            )
-            if config.name:
-                self.containers[config.name] = container
-            logger.info(f"Container created: {container.short_id}")
-            return container.name
-        except Exception as e:
-            logger.error(f"Failed to create container: {e}")
-            raise RuntimeError(f"Failed to create container: {e}")
 
     def exec_command(
         self, container_name: str, command: list[str] | str, timeout: int = 300
