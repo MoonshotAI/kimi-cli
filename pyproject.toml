@@ -28,6 +28,7 @@ dependencies = [
     "pykaos==0.5.3",
     "batrachian-toad==0.5.14; python_version >= \"3.14\"",
     "tomlkit==0.13.3",
+    "docker>=7.0.0",
 ]
 
 [dependency-groups]
