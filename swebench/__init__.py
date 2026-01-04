@@ -1,13 +1,8 @@
-"""SWE-Bench evaluation using Kimi CLI."""
-
 from swebench.config import EvalConfig
-from swebench.evaluator import EvalResult, SWEBenchEvaluator
-
-__version__ = "0.1.0"
+from swebench.evaluator import EvalResult, SWEBenchInstanceEvaluator
 
 __all__ = [
-    "SWEBenchEvaluator",
     "EvalConfig",
     "EvalResult",
+    "SWEBenchInstanceEvaluator",
 ]
-
