@@ -268,7 +268,7 @@ wheels = [
 
 [[package]]
 name = "batrachian-toad"
-version = "0.5.14"
+version = "0.5.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bashlex", marker = "python_full_version >= '3.14'" },
@@ -289,9 +289,9 @@ dependencies = [
     { name = "typeguard", marker = "python_full_version >= '3.14'" },
     { name = "xdg-base-dirs", marker = "python_full_version >= '3.14'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/04/d8103b5db0135114ce1fb64198058c8fec117289bf1a77a6d57f764656da/batrachian_toad-0.5.14.tar.gz", hash = "sha256:95b3c00afea67f420601f4bb201d64272a70e051693761e95d9bc40f0d89da1b", size = 1307417, upload-time = "2025-12-31T11:05:03.421Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/b1/af623f2f4a2e30ee486033946c9cd52654a586d5428ead75c1002a7f0456/batrachian_toad-0.5.18.tar.gz", hash = "sha256:f51f156620bca5d049847b8f1e65b9cf454c7c65cf9022a75c211fab33bc132e", size = 1308411, upload-time = "2026-01-03T12:31:56.037Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/d5/3f8f10626e8c0da2ad986bae404eb54c8aecfc0eb9f51ac19cef644ff42e/batrachian_toad-0.5.14-py3-none-any.whl", hash = "sha256:24623bf1d24a8c05bda8ce7f012ffb55cf628ca5daaeef39a76355446d2f382b", size = 1342775, upload-time = "2025-12-31T11:05:01.549Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/e3/b1871479df2644806a10d4e419604f75cfbe13eb65dc56e9479599525397/batrachian_toad-0.5.18-py3-none-any.whl", hash = "sha256:194a194c445576bbcd010abdc36a47f32e245fb14b84ac2570f4bf998debadf4", size = 1343632, upload-time = "2026-01-03T12:31:54.183Z" },
 ]
 
 [[package]]
@@ -1102,7 +1102,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.70"
+version = "0.71"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -1145,7 +1145,7 @@ requires-dist = [
     { name = "agent-client-protocol", specifier = "==0.7.0" },
     { name = "aiofiles", specifier = "==25.1.0" },
     { name = "aiohttp", specifier = "==3.13.2" },
-    { name = "batrachian-toad", marker = "python_full_version >= '3.14'", specifier = "==0.5.14" },
+    { name = "batrachian-toad", marker = "python_full_version >= '3.14'", specifier = "==0.5.18" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
     { name = "kosong", extras = ["contrib"], editable = "packages/kosong" },
@@ -2789,7 +2789,7 @@ wheels = [
 
 [[package]]
 name = "textual"
-version = "6.11.0"
+version = "7.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown-it-py", extra = ["linkify"], marker = "python_full_version >= '3.14'" },
@@ -2799,9 +2799,9 @@ dependencies = [
     { name = "rich", marker = "python_full_version >= '3.14'" },
     { name = "typing-extensions", marker = "python_full_version >= '3.14'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/55/06/906f86bbc59ec7cd3fb424250e19ce670406d1f28e49e86c2221e9fd7ed2/textual-6.11.0.tar.gz", hash = "sha256:08237ebda0cfbbfd1a4e2fd3039882b35894a73994f6f0fcc12c5b0d78acf3cc", size = 1584292, upload-time = "2025-12-18T10:48:38.033Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/9c/ebc9ca1f95366bef4c0e8360f4a77400d47a79aeecc08747de1990ef8bdc/textual-7.0.0.tar.gz", hash = "sha256:617638a2be74fb7507aff3ea6ec9374148be02e5a7bb1d02396d1d557b66c0a9", size = 1582005, upload-time = "2026-01-03T11:48:10.909Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/fc/5e2988590ff2e0128eea6446806c904445a44e17256c67141573ea16b5a5/textual-6.11.0-py3-none-any.whl", hash = "sha256:9e663b73ed37123a9b13c16a0c85e09ef917a4cfded97814361ed5cccfa40f89", size = 714886, upload-time = "2025-12-18T10:48:36.269Z" },
+    { url = "https://files.pythonhosted.org/packages/63/f8/a1ef9034b2a7f334f91b2f673f2ec03020a2529bb30a9437a6beb855beee/textual-7.0.0-py3-none-any.whl", hash = "sha256:190de0f65e5f4bc820fae46f32f591e509621d76688b36400ce01fa63dc6b623", size = 715156, upload-time = "2026-01-03T11:48:09.067Z" },
 ]
 
 [package.optional-dependencies]

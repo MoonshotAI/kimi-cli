@@ -27,10 +27,10 @@ kimi info [--json]
 
 ```sh
 $ kimi info
-kimi-cli version: 0.70
+kimi-cli version: 0.71
 agent spec versions: 1
 wire protocol: 1
-python version: 3.13.1
+python version: 3.14.0
 ```
 
 **JSON 输出**

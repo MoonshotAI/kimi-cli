@@ -114,7 +114,7 @@ description: Python project development standards, including code style, testing
 
 ## Python Development Standards
 
-- Use Python 3.12+
+- Use Python 3.14+
 - Use ruff for code formatting and linting
 - Use pyright for type checking
 - Use pytest for testing
