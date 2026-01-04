@@ -1,8 +1,10 @@
 # type: ignore
 import asyncio
 import json
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+import traceback
 
 import pandas as pd
 from kimi_cli.utils.logging import logger
@@ -83,7 +85,6 @@ class SWEBenchInstanceEvaluator:
                     problem_statement=problem_statement,
                     interaction_logger=log_interaction,
                 )
-                logger.info("KimiContainerSolver created, calling solve()...")
                 
                 solve_result = await solver.solve()
                 logger.info(
@@ -113,7 +114,10 @@ class SWEBenchInstanceEvaluator:
                     )
                     
             except Exception as e:
-                logger.error(f"✗ {instance_id}: {e}")
+                error_msg = f"✗ {instance_id}: {type(e).__name__}: {str(e)}"
+                traceback.print_exc()
+                logger.error("Error during evaluation: {}", error_msg, exc_info=True)
+                print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)  # Direct stderr output
                 result.status = "error"
                 result.error = str(e)
                 
@@ -127,7 +131,7 @@ class SWEBenchInstanceEvaluator:
                 await runtime.cleanup()
 
         except Exception as e:
-            logger.error(f"Failed to evaluate {instance_id}: {e}")
+            logger.error("Failed to evaluate {}: {}", instance_id, str(e), exc_info=True)
             result.status = "error"
             result.error = str(e)
             

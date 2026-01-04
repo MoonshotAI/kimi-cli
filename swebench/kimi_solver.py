@@ -3,7 +3,9 @@ import asyncio
 import json
 from typing import Any, Callable
 
+from pydantic import SecretStr
 from kaos.path import KaosPath
+from kimi_cli.config import Config, LLMModel, LLMProvider
 from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.session import Session
 from kosong.tooling import ToolCall, ToolResult, ToolOk, ToolError
@@ -39,24 +41,58 @@ class KimiContainerSolver:
             
             session = await Session.create(work_dir)
             logger.info(f"Session created: {session.id}")
+                        
+            logger.info(f"Creating KimiCLI with model={self.config.kimi.model}")
             
-            kimi_instance = await KimiCLI.create(
-                session,
-                yolo=True,
-                model_name=self.config.kimi.model,
-            )
-            logger.info("KimiCLI instance created")
+            llm_config = Config()
+            if self.config.kimi.model and self.config.kimi.api_key:
+                logger.info(f"Building LLM config: model={self.config.kimi.model}, api_key_len={len(self.config.kimi.api_key)}")
+                logger.debug(f"Base URL: {self.config.kimi.base_url}")
+                
+                model_config = LLMModel(
+                    model=self.config.kimi.model,
+                    provider="kimi",
+                    max_context_size=128000,
+                )
+                # Ensure base_url has a value, use Kimi default if not provided
+                base_url = self.config.kimi.base_url or "https://api.moonshot.cn/v1"
+                logger.info(f"Using base_url: {base_url}")
+                
+                provider_config = LLMProvider(
+                    type="kimi",
+                    api_key=SecretStr(self.config.kimi.api_key),
+                    base_url=base_url,
+                )
+                llm_config.models[self.config.kimi.model] = model_config
+                llm_config.providers["kimi"] = provider_config
+                llm_config.default_model = self.config.kimi.model
+                logger.info(f"Configured LLM: model={self.config.kimi.model}, provider=kimi")
+            
+            try:
+                kimi_instance = await KimiCLI.create(
+                    session,
+                    yolo=True,
+                    model_name=self.config.kimi.model,
+                    config=llm_config,
+                )
+                logger.info(f"KimiCLI instance created")
+                logger.info(f"KimiCLI soul model: {kimi_instance._soul.model_name}")
+            except Exception as e:
+                logger.error("Failed to create KimiCLI: {}", str(e), exc_info=True)
+                raise
             
             final_response = ""
             tool_calls_executed: list[dict[str, Any]] = []
             
             logger.info(f"Starting Kimi solver for: {self.problem_statement[:100]}")
+            logger.info(f"Using model: {self.config.kimi.model}")
             
             async for msg in kimi_instance.run(
                 user_input=self.problem_statement,
                 cancel_event=asyncio.Event(),
                 merge_wire_messages=False,
             ):
+                logger.debug(f"Message received: {msg.__class__.__name__}")
                 await self._handle_message(msg, tool_calls_executed)
             
             # Extract final response from context
@@ -73,7 +109,7 @@ class KimiContainerSolver:
             }
             
         except Exception as e:
-            logger.error(f"Kimi solver failed: {e}", exc_info=True)
+            logger.error("Kimi solver failed: {}", str(e), exc_info=True)
             raise
 
     async def _handle_message(
@@ -85,12 +121,16 @@ class KimiContainerSolver:
                 id=tool_id,
                 function=func,
             ):
-                logger.info(f"Tool call: {func.name}")
+                logger.info(f"Tool call received: {func.name} (id={tool_id})")
+                logger.debug(f"Tool arguments: {func.arguments[:100]}")
                 if func.name in ["bash", "shell"]:
+                    logger.info(f"Executing shell command")
                     await self._handle_shell_call(tool_id, func.name, func.arguments)
                 elif func.name in ["write_file", "str_replace_file"]:
+                    logger.info(f"Handling file operation")
                     await self._handle_file_call(tool_id, func.name, func.arguments)
                 elif func.name == "read_file":
+                    logger.info(f"Reading file")
                     await self._handle_read_file(tool_id, func.arguments)
                 else:
                     logger.debug(f"Skipping non-container tool: {func.name}")
@@ -100,6 +140,8 @@ class KimiContainerSolver:
                     "args": func.arguments,
                     "id": tool_id,
                 })
+            case msg if hasattr(msg, "text"):
+                logger.info(f"Text message received: {msg.text[:100] if hasattr(msg, 'text') else 'N/A'}")
             case _:
                 if hasattr(msg, "__class__"):
                     logger.debug(f"Message type: {msg.__class__.__name__}")
@@ -120,7 +162,7 @@ class KimiContainerSolver:
             logger.debug(f"Shell output: {output[:200]}")
             
         except Exception as e:
-            logger.error(f"Shell execution failed: {e}")
+            logger.error("Shell execution failed: {}", str(e), exc_info=True)
 
     async def _handle_file_call(
         self, tool_id: str, tool_name: str, args_json: str
@@ -147,7 +189,7 @@ class KimiContainerSolver:
                 logger.info(f"Modified file: {file_path}")
                 
         except Exception as e:
-            logger.error(f"File operation failed: {e}")
+            logger.error("File operation failed: {}", str(e), exc_info=True)
 
     async def _handle_read_file(self, tool_id: str, args_json: str) -> None:
         """Handle file read operations in the container."""
@@ -165,7 +207,7 @@ class KimiContainerSolver:
             logger.debug(f"Read file: {file_path} ({len(content)} bytes)")
             
         except Exception as e:
-            logger.error(f"File read failed: {e}")
+            logger.error("File read failed: {}", str(e), exc_info=True)
 
     @staticmethod
     def _escape_sed(s: str) -> str:

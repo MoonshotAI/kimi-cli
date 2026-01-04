@@ -46,6 +46,8 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Dataset: {config.dataset_path}")
     logger.info(f"Output: {config.output_dir}")
     logger.info(f"Model: {config.kimi.model}")
+    logger.info(f"API Key: {config.kimi.api_key}")
+    logger.info(f"Base URL: {config.kimi.base_url}")
     logger.info(f"Workers: {args.workers}")
     logger.info(f"Timeout: {config.timeout_seconds}s per instance")
 
@@ -107,6 +109,7 @@ async def main(args: argparse.Namespace) -> None:
             try:
                 instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
                 config.kimi.model = args.model
+                logger.info(f"Model configured: {config.kimi.model}, API Key set: {bool(config.kimi.api_key)}")
                 evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
                 result = await evaluator.evaluate()
                 logger.info(f"✓ {instance_id}: {result.status}")

@@ -189,15 +189,19 @@ class KimiSoul:
         await self._turn(user_message)
 
     async def _turn(self, user_message: Message) -> None:
+        logger.info(f"Starting turn, LLM check: {self._runtime.llm is not None}")
         if self._runtime.llm is None:
+            logger.error("LLM is None! Runtime LLM: {}", self._runtime.llm)
             raise LLMNotSet()
 
+        logger.info(f"LLM initialized: {self._runtime.llm.model_name if self._runtime.llm else 'None'}")
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
+        logger.info(f"Starting agent loop with model: {self._runtime.llm.model_name if self._runtime.llm else 'Unknown'}")
         await self._agent_loop()
 
     def _register_skill_commands(self) -> None:
@@ -313,6 +317,8 @@ class KimiSoul:
         # already checked in `run`
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
+        logger.info(f"Step starting with chat_provider: {chat_provider}")
+        logger.info(f"Chat provider model: {chat_provider.model_name}")
 
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
@@ -323,6 +329,7 @@ class KimiSoul:
         )
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
+            logger.info("Calling kosong.step to invoke LLM")
             return await kosong.step(
                 chat_provider.with_thinking(self._thinking_effort),
                 self._agent.system_prompt,
@@ -332,7 +339,9 @@ class KimiSoul:
                 on_tool_result=wire_send,
             )
 
+        logger.info("Executing step with retry logic")
         result = await _kosong_step_with_retry()
+        logger.info(f"LLM step completed, got result id: {result.id}")
         logger.debug("Got step result: {result}", result=result)
         status_update = StatusUpdate(token_usage=result.usage, message_id=result.id)
         if result.usage is not None:
