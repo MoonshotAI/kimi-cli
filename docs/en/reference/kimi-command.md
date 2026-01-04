@@ -71,7 +71,7 @@ When using `--command`, Kimi CLI exits after processing the query (unless `--pri
 |--------|-------------|
 | `--max-ralph-iterations N` | Extra automatic iterations after each user message; `0` disables; `-1` is unlimited |
 
-Ralph is a technique that puts an agent in a while loop: each output lands in the workspace, then the same prompt is fed again so the agent can keep iterating. See <https://ghuntley.com/ralph/> for background.
+[Ralph](https://ghuntley.com/ralph/) is a technique that puts an agent in a loop: the same prompt is fed again and again so the agent can keep iterating one big task.
 
 When `--max-ralph-iterations` is not `0`, Kimi CLI keeps feeding the same prompt back to the agent until an assistant message includes `<safeword>STOP</safeword>` or the iteration limit is reached.
 

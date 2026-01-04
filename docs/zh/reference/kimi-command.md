@@ -71,7 +71,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 |------|------|
 | `--max-ralph-iterations N` | 每个 User 消息后额外自动迭代 `N` 次；`0` 表示关闭；`-1` 表示无限 |
 
-Ralph 是一种把 Agent 放进 while 循环的迭代方法：每次输出都会写入工作区，再把同一条 prompt 重新喂给 Agent，让它继续迭代。更多背景说明可参考 <https://ghuntley.com/ralph/>。
+[Ralph](https://ghuntley.com/ralph/) 是一种把 Agent 放进循环的迭代方法：同一条 prompt 会被反复喂给 Agent，让它围绕一个任务持续迭代。
 
 当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会反复把相同的 prompt 喂给 Agent，直到 Assistant 消息包含 `<safeword>STOP</safeword>` 或达到迭代上限。
 
