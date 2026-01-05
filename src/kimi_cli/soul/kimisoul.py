@@ -75,7 +75,7 @@ class StepOutcome:
     assistant_message: Message
 
 
-type AgentLoopStopReason = Literal["no_tool_calls", "tool_rejected"]
+type AgentLoopStopReason = StepOutcomeReason
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,8 +209,9 @@ class KimiSoul:
 
         remaining = self._loop_control.max_ralph_iterations
         while True:
+            # Ralph mode intentionally replays the original prompt each iteration.
             wire_send(TurnBegin(user_input=user_input))
-            result = await self._turn(Message(role="user", content=user_input))
+            result = await self._turn(user_message)
             if result.stop_reason == "tool_rejected":
                 return
             if result.final_message and RALPH_SAFEWORD in result.final_message.extract_text(" "):

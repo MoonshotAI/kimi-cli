@@ -776,6 +776,7 @@ class Markdown(JupyterMixin):
             self_closing = token.nesting == 0
 
             if node_type in {"text", "html_inline", "html_block"}:
+                # Render HTML tokens as plain text so safeword markup stays visible.
                 context.on_text(token.content, node_type)
             elif node_type == "hardbreak":
                 context.on_text("\n", node_type)
