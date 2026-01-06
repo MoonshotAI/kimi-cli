@@ -12,6 +12,8 @@ permissions:
 
 jobs:
   deploy:
+    # Only run on the original repository, not on forks
+    if: github.repository == 'MoonshotAI/kimi-cli'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

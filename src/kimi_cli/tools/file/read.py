@@ -86,7 +86,7 @@ class ReadFile(CallableTool2[Params]):
             )
 
         try:
-            p = KaosPath(params.path)
+            p = KaosPath(params.path).expanduser()
 
             if err := await self._validate_path(p):
                 return err

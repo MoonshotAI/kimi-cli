@@ -2,9 +2,10 @@
 
 本页面记录 Kimi CLI 各版本的变更内容。
 
-## Unreleased
+## 未发布
 
 - Skills：添加内置的 `skill-creator` Skill，随程序打包发布
+- Tool：在 `ReadFile` 路径中将 `~` 展开为主目录
 
 ## 0.72 (2026-01-04)
 
