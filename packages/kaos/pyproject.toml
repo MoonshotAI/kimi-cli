@@ -1,11 +1,11 @@
 [project]
 name = "pykaos"
-version = "0.5.3"
+version = "0.5.4"
 description = ""
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "aiofiles>=24.0,<25.0",
+    "aiofiles>=24.0,<26.0",
     "asyncssh==2.21.1",
 ]
 
