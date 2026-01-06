@@ -86,9 +86,7 @@ class ReadFile(CallableTool2[Params]):
             )
 
         try:
-            # Expand ~ to home directory
-            expanded_path = Path(params.path).expanduser()
-            p = KaosPath(str(expanded_path))
+            p = KaosPath(params.path).expanduser()
 
             if err := await self._validate_path(p):
                 return err

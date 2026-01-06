@@ -107,6 +107,17 @@ class KaosPath:
         """Return the current working directory as a KaosPath."""
         return kaos.getcwd()
 
+    def expanduser(self) -> KaosPath:
+        """Expand `~` to the backend home directory."""
+        parts = self._path.parts
+        if not parts or parts[0] != "~":
+            return self
+
+        home = KaosPath.home()
+        if len(parts) == 1:
+            return home
+        return home.joinpath(*parts[1:])
+
     async def stat(self, follow_symlinks: bool = True) -> kaos.StatResult:
         """Return an os.stat_result for the path."""
         return await kaos.stat(self, follow_symlinks=follow_symlinks)
