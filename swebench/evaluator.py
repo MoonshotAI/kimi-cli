@@ -76,17 +76,12 @@ class SWEBenchInstanceEvaluator:
                 problem_statement = self.instance.get("problem_statement") or self.instance.get("description", "Fix this issue")
                 logger.info(f"Problem statement: {problem_statement[:100]}...")
 
-                def log_interaction(round_num: int, role: str, content: str) -> None:
-                    if self.run_logger:
-                        self.run_logger.log_instance_interaction(instance_id, round_num, role, content)
-                
                 logger.info(f"Creating KimiContainerSolver with container: {runtime.runtime.container_name}")
                 solver = KimiContainerSolver(
                     container=runtime.runtime,
                     working_dir=runtime.working_dir,
                     config=self.config,
                     problem_statement=problem_statement,
-                    interaction_logger=log_interaction,
                 )
                 logger.info("KimiContainerSolver created, calling solve()...")
                 sys.stderr.flush()
@@ -103,14 +98,6 @@ class SWEBenchInstanceEvaluator:
                 trace = solve_result.get("trace", [])
                 logger.info(f"Extracted {len(trace)} trace records")
                 result.trace = trace
-                
-                if self.run_logger:
-                    self.run_logger.log_instance_interaction(
-                        instance_id, 1, "user", problem_statement
-                    )
-                    self.run_logger.log_instance_interaction(
-                        instance_id, 1, "assistant", solve_result["output"]
-                    )
 
                 git_patch = await runtime.get_git_diff()
                 result.git_patch = filter_binary_diffs(git_patch)

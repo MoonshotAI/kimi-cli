@@ -19,13 +19,11 @@ class KimiContainerSolver:
         working_dir: str,
         config: EvalConfig,
         problem_statement: str,
-        interaction_logger: Callable[[int, str, str], None] | None = None,
     ):
         self.container = container
         self.working_dir = working_dir
         self.config = config
         self.problem_statement = problem_statement
-        self.interaction_logger = interaction_logger
         self.round = 0
 
     async def solve(self) -> dict[str, Any]:

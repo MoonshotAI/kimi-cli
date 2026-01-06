@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import os
+from pathlib import Path
 
 import pandas as pd
 from kimi_cli.app import enable_logging
@@ -51,18 +52,6 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Workers: {args.workers}")
     logger.info(f"Timeout: {config.timeout_seconds}s per instance")
 
-    output_file = os.path.join(config.output_dir, "results.jsonl")
-    completed_ids = set()
-    if os.path.exists(output_file):
-        with open(output_file) as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        result = json.loads(line)
-                        completed_ids.add(result.get("instance_id"))
-                    except Exception:
-                        pass
-
     dataset_path = os.path.join(config.dataset_path)
     if not os.path.exists(dataset_path):
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
@@ -82,15 +71,28 @@ async def main(args: argparse.Namespace) -> None:
         instances_df = instances_df[instances_df["instance_id"].isin(config.selected_ids)]
 
     total_tasks = len(instances_df)
-    already_completed = len(completed_ids)
 
     logger.info(f"Loaded {total_tasks} instances")
-    logger.info(f"Already completed: {already_completed}")
     logger.info(f"Running with {args.workers} concurrent workers")
 
     # Initialize structured logging
     run_logger = EvalRunLogger(config.output_dir, config.kimi.model)
     logger.info(f"Structured logs: {run_logger.run_dir}")
+    run_output_file = run_logger.run_dir / "results.jsonl"
+
+    completed_ids = set()
+    if run_output_file.exists():
+        with open(run_output_file) as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        result = json.loads(line)
+                        completed_ids.add(result.get("instance_id"))
+                    except Exception:
+                        pass
+    
+    already_completed = len(completed_ids)
+    logger.info(f"Already completed in this run: {already_completed}")
 
     semaphore = asyncio.Semaphore(args.workers)
     current_task = 0
@@ -114,14 +116,14 @@ async def main(args: argparse.Namespace) -> None:
                 result = await evaluator.evaluate()
                 logger.info(f"✓ {instance_id}: {result.status}")
 
-                with open(output_file, "a") as f:
+                with open(run_output_file, "a") as f:
                     f.write(result.to_json() + "\n")
 
                 return result
             except Exception as e:
                 logger.error(f"✗ {instance_id}: {e}")
                 result = EvalResult(instance_id=instance_id, status="error", error=str(e))
-                with open(output_file, "a") as f:
+                with open(run_output_file, "a") as f:
                     f.write(result.to_json() + "\n")
                 return result
 
