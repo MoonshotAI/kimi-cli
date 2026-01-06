@@ -12,14 +12,21 @@ For example, you can create a "code style" skill to tell the AI your project's n
 
 Kimi CLI discovers skills from the following directories:
 
-1. `~/.kimi/skills` (default directory)
-2. `~/.claude/skills` (compatible with Claude's skills)
+1. Built-in skills (shipped with the package)
+2. `~/.kimi/skills` (user directory)
+3. `~/.claude/skills` (compatible with Claude's skills)
 
-You can also specify other directories with the `--skills-dir` flag:
+If a skill with the same name exists in multiple directories, later ones override earlier ones. You can also specify other directories with the `--skills-dir` flag:
 
 ```sh
 kimi --skills-dir /path/to/my-skills
 ```
+
+## Built-in skills
+
+Kimi CLI includes the following built-in skills:
+
+- **skill-creator**: Guide for creating skills. When you need to create a new skill (or update an existing skill) to extend Kimi's capabilities, you can use this skill to get detailed creation guidance and best practices.
 
 ## Creating a skill
 

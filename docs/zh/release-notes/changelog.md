@@ -2,6 +2,11 @@
 
 本页面记录 Kimi CLI 各版本的变更内容。
 
+## 未发布
+
+- Skills：添加随软件包发布的内置 skill-creator Skill
+- Tool：在 `ReadFile` 路径中将 `~` 展开为用户主目录
+
 ## 0.72 (2026-01-04)
 
 - Python：修复在 Python 3.14 上的安装问题
