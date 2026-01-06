@@ -86,12 +86,16 @@ class KimiContainerSolver:
         env_vars = f"KIMI_API_KEY={shlex.quote(self.config.kimi.api_key)}"
         env_vars += f" KIMI_BASE_URL={shlex.quote(self.config.kimi.base_url)}"
         env_vars += f" KIMI_MODEL_NAME={shlex.quote(self.config.kimi.model)}"
+        # --print will all --yolo automatically
+        # TODO: set --agent-file
         kimi_cmd = (
             f"cd /openhands && "
             f"{env_vars} "
             f"/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin/python -m kimi_cli.cli "
+            f"--work-dir {shlex.quote(self.working_dir)} "
             f"--command {shlex.quote(self.problem_statement)} "
-            f"--print"
+            f"--print "
+            f"--thinking "
         )
 
         logger.debug(f"Command: {kimi_cmd}")
