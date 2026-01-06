@@ -30,6 +30,8 @@ from .jsonrpc import (
     Statuses,
 )
 
+STDIO_BUFFER_LIMIT = 100 * 1024 * 1024
+
 
 class WireOverStdio:
     def __init__(self, soul: Soul):
@@ -52,7 +54,7 @@ class WireOverStdio:
     async def serve(self) -> None:
         logger.info("Starting Wire server on stdio")
 
-        self._reader, self._writer = await acp.stdio_streams()
+        self._reader, self._writer = await acp.stdio_streams(limit=STDIO_BUFFER_LIMIT)
         self._write_task = asyncio.create_task(self._write_loop())
         try:
             await self._read_loop()
