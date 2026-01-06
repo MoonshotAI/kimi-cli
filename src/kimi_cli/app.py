@@ -58,6 +58,7 @@ class KimiCLI:
         thinking: bool = False,
         agent_file: Path | None = None,
         skills_dir: Path | None = None,
+        max_ralph_iterations: int | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -73,6 +74,8 @@ class KimiCLI:
             thinking (bool, optional): Whether to enable thinking mode. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
+            max_ralph_iterations (int | None, optional): Extra iterations after the first turn in
+                Ralph mode. Defaults to None.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -84,6 +87,8 @@ class KimiCLI:
                 connected.
         """
         config = config if isinstance(config, Config) else load_config(config)
+        if max_ralph_iterations is not None:
+            config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
         model: LLMModel | None = None

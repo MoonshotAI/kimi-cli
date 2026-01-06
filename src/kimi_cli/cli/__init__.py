@@ -274,7 +274,7 @@ def kimi(
 
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE, OKABE_AGENT_FILE
     from kimi_cli.app import KimiCLI, enable_logging
-    from kimi_cli.config import Config, load_config, load_config_from_string
+    from kimi_cli.config import Config, load_config_from_string
     from kimi_cli.exception import ConfigError
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
@@ -384,14 +384,6 @@ def kimi(
     elif config_file is not None:
         config = config_file
 
-    if max_ralph_iterations is not None:
-        if isinstance(config, Config):
-            config.loop_control.max_ralph_iterations = max_ralph_iterations
-        else:
-            config_path = config if isinstance(config, Path) else None
-            config = load_config(config_path)
-            config.loop_control.max_ralph_iterations = max_ralph_iterations
-
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
 
@@ -449,6 +441,7 @@ def kimi(
             thinking=thinking_mode,
             agent_file=agent_file,
             skills_dir=skills_dir,
+            max_ralph_iterations=max_ralph_iterations,
         )
         match ui:
             case "shell":
