@@ -173,6 +173,47 @@ class KimiContainerSolver:
                     record = json.loads(line)
                     if record.get("role", "").startswith("_"):
                         continue
+                    
+                    if isinstance(record.get("content"), list):
+                        content_list = record["content"]
+                        if record.get("role") == "tool":
+                            combined_text = "\n".join(
+                                item.get("text", "") if isinstance(item, dict) else str(item)
+                                for item in content_list
+                                if item
+                            )
+                            record["content"] = combined_text
+                        
+                        elif record.get("role") == "assistant":
+                            reasoning_texts = []
+                            content_texts = []
+                            for item in content_list:
+                                if isinstance(item, dict):
+                                    if item.get("type") == "think":
+                                        think_text = item.get("think", "")
+                                        if think_text:
+                                            reasoning_texts.append(think_text)
+                                    elif item.get("type") == "text":
+                                        text = item.get("text", "")
+                                        if text:
+                                            content_texts.append(text)
+                            
+                            if content_texts:
+                                record["content"] = "\n".join(content_texts)
+                            else:
+                                record["content"] = ""
+                            
+                            if reasoning_texts:
+                                record["reasoning_content"] = "\n".join(reasoning_texts)
+                        
+                        else:
+                            combined_text = "\n".join(
+                                item.get("text", "") if isinstance(item, dict) else str(item)
+                                for item in content_list
+                                if item
+                            )
+                            record["content"] = combined_text
+                    
                     messages.append(record)
                 except json.JSONDecodeError:
                     logger.debug(f"Skipped invalid JSON line: {line[:50]}")
@@ -232,6 +273,47 @@ class KimiContainerSolver:
                         try:
                             record = json.loads(line)
                             if not record.get("role", "").startswith("_"):
+                                if isinstance(record.get("content"), list):
+                                    content_list = record["content"]
+                                    if record.get("role") == "tool":
+                                        combined_text = "\n".join(
+                                            item.get("text", "") if isinstance(item, dict) else str(item)
+                                            for item in content_list
+                                            if item
+                                        )
+                                        record["content"] = combined_text
+                                    
+                                    elif record.get("role") == "assistant":
+                                        reasoning_texts = []
+                                        content_texts = []
+                                        
+                                        for item in content_list:
+                                            if isinstance(item, dict):
+                                                if item.get("type") == "think":
+                                                    think_text = item.get("think", "")
+                                                    if think_text:
+                                                        reasoning_texts.append(think_text)
+                                                elif item.get("type") == "text":
+                                                    text = item.get("text", "")
+                                                    if text:
+                                                        content_texts.append(text)
+                                        
+                                        if content_texts:
+                                            record["content"] = "\n".join(content_texts)
+                                        else:
+                                            record["content"] = ""
+
+                                        if reasoning_texts:
+                                            record["reasoning_content"] = "\n".join(reasoning_texts)
+                                    
+                                    else:
+                                        combined_text = "\n".join(
+                                            item.get("text", "") if isinstance(item, dict) else str(item)
+                                            for item in content_list
+                                            if item
+                                        )
+                                        record["content"] = combined_text
+                                
                                 messages.append(record)
                         except json.JSONDecodeError:
                             continue
