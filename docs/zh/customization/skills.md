@@ -15,11 +15,7 @@ Kimi CLI 会从以下目录发现 Skills：
 1. `~/.kimi/skills`（默认目录）
 2. `~/.claude/skills`（兼容 Claude 的 Skills）
 
-Kimi CLI 内置了部分 Skills（例如 `skill-creator`），随程序打包并始终加载。
-你可以在自己的 Skills 目录里创建同名 Skill 来覆盖内置版本。
-
-你也可以通过 `--skills-dir` 参数指定其他目录（会替换默认的用户 Skills 目录；
-内置 Skills 仍然会被加载）：
+你也可以通过 `--skills-dir` 参数指定其他目录：
 
 ```sh
 kimi --skills-dir /path/to/my-skills
