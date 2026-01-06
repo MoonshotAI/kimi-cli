@@ -12,7 +12,7 @@ from kimi_cli.utils.logging import logger
 from swebench.config import EvalConfig
 from swebench.kimi_solver import KimiContainerSolver
 from swebench.runtime import SWEBenchContainerRuntime
-from swebench.utils.patch import filter_binary_diffs
+from swebench.utils.utils import filter_binary_diffs
 
 if TYPE_CHECKING:
     from swebench.utils.log import EvalRunLogger
