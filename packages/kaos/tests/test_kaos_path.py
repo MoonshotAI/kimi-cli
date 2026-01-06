@@ -39,6 +39,12 @@ def test_home_and_cwd(kaos_cwd: KaosPath):
     assert str(KaosPath.cwd()) == str(kaos_cwd)
 
 
+def test_expanduser(kaos_cwd: KaosPath):
+    home = KaosPath.home()
+    assert str(KaosPath("~").expanduser()) == str(home)
+    assert str(KaosPath("~/docs").expanduser()) == str(home / "docs")
+
+
 def test_canonical_and_relative_to(kaos_cwd: KaosPath):
     canonical = KaosPath("nested/../file.txt").canonical()
     assert str(canonical) == str(kaos_cwd / "file.txt")

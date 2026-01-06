@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tool: Expand `~` to the home directory in `ReadFile` paths.
 
 ## 0.72 (2026-01-04)
 
