@@ -2205,7 +2205,7 @@ wheels = [
 
 [[package]]
 name = "pykaos"
-version = "0.5.3"
+version = "0.5.4"
 source = { editable = "packages/kaos" }
 dependencies = [
     { name = "aiofiles" },
@@ -2224,7 +2224,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiofiles", specifier = ">=24.0,<25.0" },
+    { name = "aiofiles", specifier = ">=24.0,<26.0" },
     { name = "asyncssh", specifier = "==2.21.1" },
 ]
 

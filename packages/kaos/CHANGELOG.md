@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.4] - 2026-01-06
+
+- Relax `aiofiles` dependency version to `>=24.0,<26.0`
+
 ## [0.5.3] - 2025-12-29
 
 - Add `host` property to `SSHKaos`
