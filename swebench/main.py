@@ -9,7 +9,7 @@ import pandas as pd
 from kimi_cli.app import enable_logging
 from kimi_cli.utils.logging import logger
 
-from swebench.config import EvalConfig, KimiCliConfig
+from swebench.config import EvalConfig
 from swebench.evaluator import EvalResult, SWEBenchInstanceEvaluator
 from swebench.utils.log import EvalRunLogger
 
@@ -22,31 +22,31 @@ async def main(args: argparse.Namespace) -> None:
         format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
     )
     config = EvalConfig(
-        dataset_path=args.dataset,
-        output_dir=args.output,
-        kimi=KimiCliConfig(
-            model=args.model,
-            api_key=args.api_key,
-            base_url=args.base_url,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            max_output_tokens=args.max_output_tokens,
-        ),
+        api_key=args.api_key,
+        base_url=args.base_url,
+        model=args.model,
+        max_context_size=args.max_context_size,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        debug=args.debug,
+        dataset_path=args.dataset_path,
+        split=args.split,
+        output_dir=args.output_dir,
         timeout_seconds=args.timeout,
+        max_workers=args.max_workers,
+        use_gpu=args.use_gpu,
+        max_iterations=args.max_iterations,
     )
-
-    if args.instances:
-        config.selected_ids = [id.strip() for id in args.instances.split(",")]
-        logger.info(f"Evaluating {len(config.selected_ids)} specific instances")
 
     os.makedirs(config.output_dir, exist_ok=True)
 
     logger.info(f"Dataset: {config.dataset_path}")
     logger.info(f"Output: {config.output_dir}")
-    logger.info(f"Model: {config.kimi.model}")
-    logger.info(f"API Key: {config.kimi.api_key}")
-    logger.info(f"Base URL: {config.kimi.base_url}")
-    logger.info(f"Workers: {args.workers}")
+    logger.info(f"Model: {config.model}")
+    logger.info(f"API Key: {config.api_key}")
+    logger.info(f"Base URL: {config.base_url}")
+    logger.info(f"Workers: {args.max_workers}")
     logger.info(f"Timeout: {config.timeout_seconds}s per instance")
 
     dataset_path = os.path.join(config.dataset_path)
@@ -64,15 +64,12 @@ async def main(args: argparse.Namespace) -> None:
         with open(dataset_path) as f:
             instances_df = pd.read_json(f, lines=True)
 
-    if config.selected_ids:
-        instances_df = instances_df[instances_df["instance_id"].isin(config.selected_ids)]
-
     total_tasks = len(instances_df)
 
     logger.info(f"Loaded {total_tasks} instances")
-    logger.info(f"Running with {args.workers} concurrent workers")
+    logger.info(f"Running with {args.max_workers} concurrent workers")
 
-    run_logger = EvalRunLogger(config.output_dir, config.kimi.model)
+    run_logger = EvalRunLogger(config.output_dir, config.model)
     logger.info(f"Structured logs: {run_logger.run_dir}")
     run_output_file = run_logger.run_dir / "results.jsonl"
 
@@ -90,7 +87,7 @@ async def main(args: argparse.Namespace) -> None:
     already_completed = len(completed_ids)
     logger.info(f"Already completed in this run: {already_completed}")
 
-    semaphore = asyncio.Semaphore(args.workers)
+    semaphore = asyncio.Semaphore(args.max_workers)
     current_task = 0
 
     async def evaluate_with_limit(instance_id: str) -> EvalResult | None:
@@ -106,7 +103,6 @@ async def main(args: argparse.Namespace) -> None:
 
             try:
                 instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
-                config.kimi.model = args.model
                 evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
                 result = await evaluator.evaluate()
                 logger.info(f"✓ {instance_id}: {result.status}")
@@ -130,17 +126,21 @@ async def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SWE-Bench evaluation")
-    parser.add_argument("--dataset", required=True, help="Path to dataset")
-    parser.add_argument("--output", default="./results", help="Output directory")
-    parser.add_argument("--model", default="gpt-4", help="LLM model name")
-    parser.add_argument("--api-key", default=None, help="API key for LLM")
-    parser.add_argument("--base-url", default=None, help="Base URL for LLM API")
+    parser.add_argument("--api-key", required=True, help="API key")
+    parser.add_argument("--base-url", required=True, help="Base URL")
+    parser.add_argument("--model", required=True, help="Model name")
+    parser.add_argument("--max-context-size", type=int, default=131072, help="Max context size")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for sampling")
     parser.add_argument("--top-p", type=float, default=1.0, help="Top-p for sampling")
-    parser.add_argument("--max-output-tokens", type=int, default=8192, help="Max output tokens")
-    parser.add_argument("--workers", type=int, default=1, help="Concurrent workers")
-    parser.add_argument("--timeout", type=int, default=7200, help="Timeout per instance (s)")
-    parser.add_argument("--instances", help="Comma-separated instance IDs")
+    parser.add_argument("--max-tokens", type=int, default=8192, help="Max output tokens")
     parser.add_argument("--debug", action="store_true", help="Debug logging")
+    parser.add_argument("--dataset-path", required=True, help="Path to dataset")
+    parser.add_argument("--split", default="train", help="Dataset split to use")
+    parser.add_argument("--selected-ids", help="Comma-separated instance IDs")
+    parser.add_argument("--output-dir", default="./results", help="Output directory")
+    parser.add_argument("--timeout", type=int, default=7200, help="Timeout per instance (s)")
+    parser.add_argument("--max-workers", type=int, default=1, help="Concurrent workers")
+    parser.add_argument("--use-gpu", action="store_true", help="Enable GPU support")
+    parser.add_argument("--max-iterations", type=int, default=100, help="Max iterations per instance")
     args = parser.parse_args()
     asyncio.run(main(args))

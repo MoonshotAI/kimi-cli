@@ -18,11 +18,13 @@ class KimiContainerSolver:
         working_dir: str,
         config: EvalConfig,
         problem_statement: str,
+        instance: dict,
     ):
         self.container = container
         self.working_dir = working_dir
         self.config = config
         self.problem_statement = problem_statement
+        self.instance = instance
         self.round = 0
 
     async def solve(self):
@@ -34,11 +36,7 @@ class KimiContainerSolver:
             await self._install_kimi_in_container()
             logger.info("Running kimi-cli in container...")
             result = await self._run_kimi_in_container()
-            return {
-                "output": result.get("output", ""),
-                "trace": result.get("trace", []),
-                "git_diff": result.get("git_diff", ""),
-            }
+            return result
         except Exception as e:
             logger.error("Kimi solver failed: {}", str(e), exc_info=True)
             raise
@@ -83,23 +81,35 @@ class KimiContainerSolver:
         logger.info("✓ kimi-cli dependencies installed in poetry environment")
 
     async def _run_kimi_in_container(self):
-        env_vars = f"KIMI_API_KEY={shlex.quote(self.config.kimi.api_key)}"
-        env_vars += f" KIMI_BASE_URL={shlex.quote(self.config.kimi.base_url)}"
-        env_vars += f" KIMI_MODEL_NAME={shlex.quote(self.config.kimi.model)}"
-        # --print will all --yolo automatically
-        # TODO: set --agent-file
+        env_vars = f"KIMI_API_KEY={shlex.quote(self.config.api_key)}"
+        env_vars += f" KIMI_BASE_URL={shlex.quote(self.config.base_url)}"
+        env_vars += f" KIMI_MODEL_NAME={shlex.quote(self.config.model)}"
+        env_vars += f" KIMI_MODEL_MAX_CONTEXT_SIZE={shlex.quote(str(self.config.max_context_size))}"
+        env_vars += f" KIMI_MODEL_TEMPERATURE={shlex.quote(str(self.config.temperature))}"
+        env_vars += f" KIMI_MODEL_TOP_P={shlex.quote(str(self.config.top_p))}"
+        env_vars += f" KIMI_MODEL_MAX_TOKENS={shlex.quote(str(self.config.max_tokens))}"
+        
+        config_json = json.dumps({
+            "loop_control": {
+                "max_steps_per_run": self.config.max_iterations,
+                "max_retries_per_step": 3,
+            }
+        })
+        
+        # --print will auto approve, use config for loop control
         kimi_cmd = (
-            f"cd /openhands && "
+            f"cd {shlex.quote(self.working_dir)} && "
             f"{env_vars} "
             f"/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin/python -m kimi_cli.cli "
             f"--work-dir {shlex.quote(self.working_dir)} "
-            f"--command {shlex.quote(self.problem_statement)} "
+            f"--command 'echo hello world to /testbed/text.txt' "
+            f"--config {shlex.quote(config_json)} "
             f"--print "
             f"--thinking "
         )
 
-        logger.debug(f"Command: {kimi_cmd}")
-
+            # f"--command {shlex.quote(self.problem_statement)} "
+        # logger.debug(f"Command: {kimi_cmd}")
         result = await self.container.execute(
             ["bash", "-c", kimi_cmd],
             timeout=self.config.timeout_seconds,
@@ -118,49 +128,137 @@ class KimiContainerSolver:
                 logger.warning(f"Stderr: {stderr}")
             logger.info(f"Stdout: {stdout}")
         
-        trace_json = await self._extract_trace()
+        trace_result = await self._extract_trace()
         git_diff = await self._get_container_diff()
         return {
             "output": stdout,
             "git_diff": git_diff,
-            "trace": trace_json,
+            "messages": trace_result.get("messages", []),
+            "sub_messages": trace_result.get("sub_messages", []),
         }
 
-    async def _extract_trace(self):
+    async def _extract_trace(self) -> dict:
+        """Extract conversation history from context.jsonl (main and subagent contexts separately)."""
         try:
-            find_wire_cmd = "find ~/.kimi/sessions -name 'wire.jsonl' -type f 2>/dev/null | sort -r | head -1"
+            # Find the most recent context.jsonl file (main agent)
+            find_context_cmd = "find ~/.kimi/sessions -name 'context.jsonl' -type f 2>/dev/null | sort -r | head -1"
             find_result = await self.container.execute(
-                ["bash", "-c", find_wire_cmd],
+                ["bash", "-c", find_context_cmd],
                 timeout=120,
                 check=False,
             )
-            wire_file = find_result.get("stdout", "").strip()
-            logger.info(f"Found wire file: {wire_file}")
-            read_cmd = f"cat {wire_file}"
-            wire_result = await self.container.execute(
+            context_file = find_result.get("stdout", "").strip()
+            if not context_file:
+                logger.warning("No context.jsonl file found")
+                return {"messages": [], "sub_messages": []}
+                
+            logger.info(f"Found context file: {context_file}")
+            
+            # Read main context.jsonl
+            read_cmd = f"cat {context_file}"
+            context_result = await self.container.execute(
                 ["bash", "-c", read_cmd],
                 timeout=120,
                 check=False,
             )
-            wire_content = wire_result.get("stdout", "").strip()
-            trace_lines = wire_content.split("\n")
-            trace_json = []
+            
+            context_content = context_result.get("stdout", "").strip()
+            trace_lines = context_content.split("\n")
+            messages = []
+            
             for line in trace_lines:
                 if not line.strip():
                     continue
-                record = json.loads(line)
-                trace_json.append(record)            
-            logger.info(f"✓ Extracted {len(trace_json)} trace records from {wire_file}")
-            return trace_json
+                try:
+                    record = json.loads(line)
+                    if record.get("role", "").startswith("_"):
+                        continue
+                    messages.append(record)
+                except json.JSONDecodeError:
+                    logger.debug(f"Skipped invalid JSON line: {line[:50]}")
+                    continue
+            
+            logger.info(f"✓ Extracted {len(messages)} messages from main context")
+            
+            sub_messages = await self._extract_subagent_contexts()
+            if sub_messages:
+                logger.info(f"✓ Found {len(sub_messages)} subagent(s)")
+            
+            return {
+                "messages": messages,
+                "sub_messages": sub_messages,
+            }
         except Exception as e:
             logger.warning(f"Failed to extract trace: {e}", exc_info=True)
+            return {"messages": [], "sub_messages": []}
+    
+    async def _extract_subagent_contexts(self) -> list:
+        """Extract context from subagent sessions (context_sub*.jsonl files).
+        
+        Returns:
+            List of dicts with format: [{"id": "context_sub.jsonl", "messages": [...]}, ...]
+        """
+        try:
+            # Find all subagent context files (context_sub.jsonl, context_sub_1.jsonl, context_sub_2.jsonl, ...)
+            # These are created via next_available_rotation when subagents are called
+            find_subagent_cmd = (
+                "find ~/.kimi/sessions -name 'context_sub*.jsonl' -type f 2>/dev/null | sort"
+            )
+            find_result = await self.container.execute(
+                ["bash", "-c", find_subagent_cmd],
+                timeout=120,
+                check=False,
+            )
+            
+            subagent_files = [f for f in find_result.get("stdout", "").strip().split("\n") if f.strip()]
+            if not subagent_files:
+                return []
+            
+            sub_messages = []
+            for context_file in subagent_files:
+                try:
+                    read_cmd = f"cat {context_file}"
+                    result = await self.container.execute(
+                        ["bash", "-c", read_cmd],
+                        timeout=120,
+                        check=False,
+                    )
+                    
+                    content = result.get("stdout", "").strip()
+                    messages = []
+                    for line in content.split("\n"):
+                        if not line.strip():
+                            continue
+                        try:
+                            record = json.loads(line)
+                            if not record.get("role", "").startswith("_"):
+                                messages.append(record)
+                        except json.JSONDecodeError:
+                            continue
+                    
+                    if messages:
+                        # Extract the filename as the subagent ID
+                        subagent_id = Path(context_file).name
+                        
+                        sub_messages.append({
+                            "id": subagent_id,
+                            "messages": messages,
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to read subagent context {context_file}: {e}")
+                    continue
+            
+            return sub_messages
+        except Exception as e:
+            logger.debug(f"No subagent contexts found: {e}")
             return []
 
     async def _get_container_diff(self) -> str:
         try:
+            base_commit = self.instance.get("base_commit", "HEAD")
             result = await self.container.execute(
-                ["bash", "-c", f"cd {self.working_dir} && git diff"],
-                timeout=120,
+                ["bash", "-c", f"cd {self.working_dir} && git add -A && git diff --no-color --cached {base_commit}"],
+                timeout=300,
                 check=False,
             )
             return result.get("stdout", "")

@@ -22,6 +22,7 @@ type ProviderType = Literal[
     "vertexai",
     "_echo",
     "_chaos",
+    # TODO(haoran): generate api
 ]
 
 type ModelCapability = Literal["image_in", "video_in", "thinking"]

@@ -199,6 +199,13 @@ class KimiSoul:
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
+        
+        # haoran: save system prompt
+        if not self._context.history:
+            system_message = Message(role="system", content=[system(self._agent.system_prompt)])
+            await self._context.append_message(system_message)
+            logger.debug("Appended system prompt to context")
+        
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
         logger.info(f"Starting agent loop with model: {self._runtime.llm.model_name if self._runtime.llm else 'Unknown'}")

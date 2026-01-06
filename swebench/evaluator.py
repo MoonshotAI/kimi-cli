@@ -23,17 +23,11 @@ class EvalResult:
     instance_id: str
     status: str
     git_patch: str = ""
+    messages: list[dict[str, Any]] | None = None
+    sub_messages: list[dict[str, Any]] | None = None
     error: str | None = None
-    history: list[dict[str, Any]] | None = None
     metrics: dict[str, Any] | None = None
     duration_seconds: float = 0.0
-    trace: list[dict[str, Any]] | None = None
-
-
-    def __post_init__(self) -> None:
-        self.history = self.history or []
-        self.metrics = self.metrics or {}
-        self.trace = self.trace or []
 
 
     def to_dict(self) -> dict[str, Any]:
@@ -42,10 +36,10 @@ class EvalResult:
             "status": self.status,
             "git_patch": self.git_patch,
             "error": self.error,
-            "history": self.history,
             "metrics": self.metrics,
             "duration_seconds": self.duration_seconds,
-            "trace": self.trace,
+            "messages": self.messages,
+            "sub_messages": self.sub_messages,
         }
 
 
@@ -69,13 +63,14 @@ class SWEBenchInstanceEvaluator:
 
             try:
                 await runtime.checkout_base_commit()
-                problem_statement = self.instance.get("problem_statement") or self.instance.get("description", "Fix this issue")
+                problem_statement = self.instance["problem_statement"]
                 logger.info(f"Creating KimiContainerSolver with container: {runtime.runtime.container_name}")
                 solver = KimiContainerSolver(
                     container=runtime.runtime,
                     working_dir=runtime.working_dir,
                     config=self.config,
                     problem_statement=problem_statement,
+                    instance=self.instance,
                 )
                 sys.stderr.flush()
                 
@@ -88,10 +83,8 @@ class SWEBenchInstanceEvaluator:
                     logger.error("Solver timed out after {} seconds", self.config.timeout_seconds)
                     raise
 
-                trace = solve_result.get("trace", [])
-                logger.info(f"Extracted {len(trace)} trace records")
-                result.trace = trace
-
+                result.messages = solve_result.get("messages", [])
+                result.sub_messages = solve_result.get("sub_messages", [])
                 git_patch = await runtime.get_git_diff()
                 result.git_patch = filter_binary_diffs(git_patch)
                 result.status = "success"
