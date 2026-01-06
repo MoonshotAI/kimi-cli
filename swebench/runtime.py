@@ -6,7 +6,7 @@ import os
 from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig
-from swebench.utils.docker import ContainerConfig, Container, Docker
+from swebench.utils.docker import ContainerConfig, Container
 
 USE_VERIFIED = os.environ.get('USE_VERIFIED', 'false').lower() == 'true'
 USE_LIVE = os.environ.get('USE_LIVE', 'false').lower() == 'true'
@@ -47,8 +47,7 @@ class SWEBenchContainerRuntime:
             },
         )
 
-        docker_client = Docker()
-        self.runtime = Container(docker_client, "")
+        self.runtime = Container()
         await self.runtime.start(container_config)
         await self._initialize_container()
         return self.runtime

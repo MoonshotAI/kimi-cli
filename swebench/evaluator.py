@@ -27,7 +27,7 @@ class EvalResult:
     history: list[dict[str, Any]] | None = None
     metrics: dict[str, Any] | None = None
     duration_seconds: float = 0.0
-    trace: list[dict[str, Any]] | None = None  # Add trace field
+    trace: list[dict[str, Any]] | None = None
 
 
     def __post_init__(self) -> None:
@@ -45,7 +45,7 @@ class EvalResult:
             "history": self.history,
             "metrics": self.metrics,
             "duration_seconds": self.duration_seconds,
-            "trace": self.trace,  # Include trace in output
+            "trace": self.trace,
         }
 
 
@@ -89,26 +89,17 @@ class SWEBenchInstanceEvaluator:
                     interaction_logger=log_interaction,
                 )
                 logger.info("KimiContainerSolver created, calling solve()...")
-                print("DEBUG: About to call solver.solve()", file=sys.stderr, flush=True)
                 sys.stderr.flush()
                 
                 try:
-                    # Add timeout to prevent hanging
                     solve_result = await asyncio.wait_for(
                         solver.solve(),
                         timeout=self.config.timeout_seconds
                     )
                 except asyncio.TimeoutError:
-                    print(f"ERROR: solver.solve() timed out after {self.config.timeout_seconds}s", file=sys.stderr, flush=True)
                     logger.error("Solver timed out after {} seconds", self.config.timeout_seconds)
                     raise
 
-                logger.info(
-                    f"Kimi solver completed: {solve_result['rounds']} rounds, "
-                    f"{len(solve_result['tool_calls'])} tool calls"
-                )
-                
-                # Extract and store trace
                 trace = solve_result.get("trace", [])
                 logger.info(f"Extracted {len(trace)} trace records")
                 result.trace = trace
@@ -138,7 +129,7 @@ class SWEBenchInstanceEvaluator:
                 error_msg = f"✗ {instance_id}: {type(e).__name__}: {str(e)}"
                 traceback.print_exc()
                 logger.error("Error during evaluation: {}", error_msg, exc_info=True)
-                print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)  # Direct stderr output
+                print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
                 result.status = "error"
                 result.error = str(e)
                 
@@ -156,7 +147,6 @@ class SWEBenchInstanceEvaluator:
             result.status = "error"
             result.error = str(e)
             
-            # Log initialization error
             if self.run_logger:
                 self.run_logger.log_instance_summary(
                     instance_id,

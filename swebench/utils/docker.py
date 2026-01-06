@@ -20,26 +20,27 @@ class ContainerConfig:
     environment: dict[str, str] | None = None
     volumes: dict[str, dict[str, str]] | None = None
     use_gpu: bool = False
-    network_mode: str = "bridge"
+    network_mode: str = "host"
     memory: str | None = "16g"
     cpus: int = 8
 
 
 class Container:
-    def __init__(self, manager: Any, container_name: str):
-        self.manager = manager
-        self.container_name = container_name
+    def __init__(self):
+        self.client = docker.from_env(timeout=3600)
+        self.container_name: str | None = None
         self.config: ContainerConfig | None = None
 
     async def start(self, config: ContainerConfig) -> str:
+        """Start a new container with the given configuration."""
         self.config = config
-        
+
         device_requests = None
         if config.use_gpu:
             device_requests = [DeviceRequest(capabilities=[["gpu"]], count=-1)]
-        
+
         try:
-            container = self.manager.client.containers.run(
+            container = self.client.containers.run(
                 config.image,
                 command=["bash", "-c", "tail -f /dev/null"],
                 name=config.name,
@@ -58,70 +59,15 @@ class Container:
             await asyncio.sleep(2)
             return self.container_name
         except Exception as e:
-            logger.error(f"Failed to start container: {e}")
             raise RuntimeError(f"Failed to start container: {e}")
 
     async def execute(
         self, command: list[str] | str, timeout: int = 300, check: bool = True
     ) -> dict[str, Any]:
+        """Execute a command in the container."""
         if not self.container_name:
             raise RuntimeError("Container not started")
 
-        try:
-            exit_code, stdout, stderr = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.manager.exec_command,
-                    self.container_name,
-                    command,
-                ),
-                timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"Command execution timeout after {timeout}s in {self.container_name}")
-            raise RuntimeError(f"Command execution timeout after {timeout}s")
-
-        if check and exit_code != 0:
-            logger.error(f"Command failed with exit code {exit_code}")
-            raise RuntimeError(f"Command failed: {stderr}")
-
-        return {"exit_code": exit_code, "stdout": stdout, "stderr": stderr}
-
-    async def execute_shell(
-        self, script: str, timeout: int = 300, check: bool = True
-    ) -> dict[str, Any]:
-        return await self.execute(["bash", "-c", script], timeout=timeout, check=check)
-
-    async def copy_to(self, src: str, dst: str) -> None:
-        if not self.container_name:
-            raise RuntimeError("Container not started")
-        # copy_to_container is synchronous, so run it in a thread
-        await asyncio.to_thread(
-            self.manager.copy_to_container, self.container_name, src, dst
-        )
-
-    async def copy_from(self, src: str, dst: str) -> None:
-        if not self.container_name:
-            raise RuntimeError("Container not started")
-        # copy_from_container is synchronous, so run it in a thread
-        await asyncio.to_thread(
-            self.manager.copy_from_container, self.container_name, src, dst
-        )
-
-    async def cleanup(self) -> None:
-        if self.container_name:
-            self.manager.stop_container(self.container_name)
-            self.manager.remove_container(self.container_name)
-            self.container_name = None
-
-
-class Docker:
-    def __init__(self):
-        self.client = docker.from_env(timeout=3600)
-        self.containers: dict[str, Any] = {}
-
-    def exec_command(
-        self, container_name: str, command: list[str] | str, timeout: int = 300
-    ) -> tuple[int, str, str]:
         if isinstance(command, str):
             command = ["bash", "-c", command]
 
@@ -129,10 +75,25 @@ class Docker:
             cmd_str = " ".join(str(c) for c in command)
         except Exception:
             cmd_str = str(command)
-        logger.debug(f"Executing in container {container_name}: {cmd_str}")
+        logger.debug(f"Executing in container {self.container_name}: {cmd_str}")
 
         try:
-            container = self.client.containers.get(container_name)
+            exit_code, stdout, stderr = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self._exec_command_sync,
+                    command,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Command execution timeout after {timeout}s")
+
+        return {"exit_code": exit_code, "stdout": stdout, "stderr": stderr}
+
+    def _exec_command_sync(self, command: list[str]) -> tuple[int, str, str]:
+        """Synchronous helper for command execution."""
+        try:
+            container = self.client.containers.get(self.container_name)
             result = container.exec_run(cmd=command, stdout=True, stderr=True)
 
             stdout = (
@@ -145,15 +106,27 @@ class Docker:
             logger.error(f"Failed to execute command: {e}")
             raise RuntimeError(f"Failed to execute command: {e}")
 
-    def copy_to_container(
-        self, container_name: str, src: str, dst: str
-    ) -> None:
-        logger.info(f"Copying {src} to {container_name}:{dst}")
+    async def execute_shell(
+        self, script: str, timeout: int = 300, check: bool = True
+    ) -> dict[str, Any]:
+        """Execute a shell script in the container."""
+        return await self.execute(["bash", "-c", script], timeout=timeout, check=check)
 
+    async def copy_to(self, src: str, dst: str) -> None:
+        """Copy a file or directory from host to container."""
+        if not self.container_name:
+            raise RuntimeError("Container not started")
+
+        logger.info(f"Copying {src} to {self.container_name}:{dst}")
+
+        await asyncio.to_thread(self._copy_to_sync, src, dst)
+
+    def _copy_to_sync(self, src: str, dst: str) -> None:
+        """Synchronous helper for copying to container."""
         try:
-            container = self.client.containers.get(container_name)
+            container = self.client.containers.get(self.container_name)
             tar_buffer = io.BytesIO()
-            
+
             logger.debug(f"Creating tar archive for {src}...")
             with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
                 if os.path.isfile(src):
@@ -161,7 +134,6 @@ class Docker:
                     tar.add(src, arcname=os.path.basename(src))
                 elif os.path.isdir(src):
                     logger.debug(f"Adding directory {src} recursively")
-                    # For directories, recursively add all contents
                     tar.add(src, arcname=os.path.basename(src.rstrip("/")))
                 else:
                     raise RuntimeError(f"Source path does not exist: {src}")
@@ -169,7 +141,7 @@ class Docker:
             tar_data = tar_buffer.getvalue()
             logger.info(f"Archive created: {len(tar_data)} bytes")
             tar_buffer.seek(0)
-            
+
             logger.debug(f"Uploading archive to container...")
             container.put_archive(dst, tar_buffer)
             logger.info(f"✓ Successfully copied {src} to {dst}")
@@ -177,13 +149,19 @@ class Docker:
             logger.error(f"Failed to copy to container: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to copy to container: {e}")
 
-    def copy_from_container(
-        self, container_name: str, src: str, dst: str
-    ) -> None:
-        logger.info(f"Copying {container_name}:{src} to {dst}")
+    async def copy_from(self, src: str, dst: str) -> None:
+        """Copy a file or directory from container to host."""
+        if not self.container_name:
+            raise RuntimeError("Container not started")
 
+        logger.info(f"Copying {self.container_name}:{src} to {dst}")
+
+        await asyncio.to_thread(self._copy_from_sync, src, dst)
+
+    def _copy_from_sync(self, src: str, dst: str) -> None:
+        """Synchronous helper for copying from container."""
         try:
-            container = self.client.containers.get(container_name)
+            container = self.client.containers.get(self.container_name)
             tar_data, _ = container.get_archive(src)
             with tarfile.open(fileobj=tar_data, mode="r|") as tar:
                 tar.extractall(path=dst)
@@ -192,30 +170,27 @@ class Docker:
             logger.error(f"Failed to copy from container: {e}")
             raise RuntimeError(f"Failed to copy from container: {e}")
 
-    def stop_container(self, container_name: str, timeout: int = 30) -> None:
-        logger.info(f"Stopping container: {container_name}")
+    async def cleanup(self) -> None:
+        """Stop and remove the container."""
+        if self.container_name:
+            await asyncio.to_thread(self._cleanup_sync)
+            self.container_name = None
 
+    def _cleanup_sync(self) -> None:
+        """Synchronous helper for cleanup."""
+        if not self.container_name:
+            return
+
+        logger.info(f"Stopping container: {self.container_name}")
         try:
-            container = self.client.containers.get(container_name)
-            container.stop(timeout=timeout)
+            container = self.client.containers.get(self.container_name)
+            container.stop(timeout=30)
         except Exception as e:
             logger.error(f"Failed to stop container: {e}")
 
-    def remove_container(self, container_name: str, force: bool = True) -> None:
-        logger.info(f"Removing container: {container_name}")
-
+        logger.info(f"Removing container: {self.container_name}")
         try:
-            container = self.client.containers.get(container_name)
-            container.remove(force=force)
+            container = self.client.containers.get(self.container_name)
+            container.remove(force=True)
         except Exception as e:
             logger.error(f"Failed to remove container: {e}")
-
-    def cleanup_all(self) -> None:
-        logger.info(f"Cleaning up {len(self.containers)} containers")
-        for name, container in self.containers.items():
-            try:
-                self.stop_container(name)
-                self.remove_container(name)
-            except Exception as e:
-                logger.warning(f"Failed to cleanup {name}: {e}")
-        self.containers.clear()

@@ -1,4 +1,4 @@
-from swebench.utils.docker import ContainerConfig, Container, Docker
+from swebench.utils.docker import ContainerConfig, Container
 
 from swebench.utils.git import (
     add_all,
@@ -18,10 +18,8 @@ from swebench.utils.patch import (
 )
 
 __all__ = [
-    # Docker
     "ContainerConfig",
     "Container",
-    "Docker",
     # Git
     "add_all",
     "checkout_commit",

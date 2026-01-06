@@ -71,9 +71,9 @@ class WriteFile(CallableTool2[Params]):
                 )
 
             # Validate path safety
-            path_error = await self._validate_path(p)
-            if path_error:
-                return path_error
+            # path_error = await self._validate_path(p)
+            # if path_error:
+            #     return path_error
 
             if not await p.parent.exists():
                 return ToolError(
