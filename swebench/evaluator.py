@@ -59,23 +59,17 @@ class SWEBenchInstanceEvaluator:
         self.config = config
         self.run_logger = run_logger
 
-
     async def evaluate(self) -> EvalResult:
         start_time = asyncio.get_event_loop().time()
         instance_id = self.instance["instance_id"]
         result = EvalResult(instance_id=instance_id, status="error")
-
         try:
             runtime = SWEBenchContainerRuntime(self.instance.to_dict(), self.config, "/testbed")
             await runtime.start()
 
             try:
                 await runtime.checkout_base_commit()
-                logger.info("Base commit checked out, starting Kimi solver...")
-
                 problem_statement = self.instance.get("problem_statement") or self.instance.get("description", "Fix this issue")
-                logger.info(f"Problem statement: {problem_statement[:100]}...")
-
                 logger.info(f"Creating KimiContainerSolver with container: {runtime.runtime.container_name}")
                 solver = KimiContainerSolver(
                     container=runtime.runtime,
@@ -83,7 +77,6 @@ class SWEBenchInstanceEvaluator:
                     config=self.config,
                     problem_statement=problem_statement,
                 )
-                logger.info("KimiContainerSolver created, calling solve()...")
                 sys.stderr.flush()
                 
                 try:
@@ -102,8 +95,6 @@ class SWEBenchInstanceEvaluator:
                 git_patch = await runtime.get_git_diff()
                 result.git_patch = filter_binary_diffs(git_patch)
                 result.status = "success"
-
-                logger.info(f"✓ {instance_id}: completed")
 
                 if self.run_logger:
                     self.run_logger.log_instance_summary(

@@ -21,9 +21,6 @@ class EvalConfig(BaseModel):
         default_factory=list, description="Specific instance IDs to evaluate"
     )
     output_dir: str = Field(description="Output directory for results")
-    eval_output_dir: str | None = Field(
-        default=None, description="Evaluation output directory (auto-generated if None)"
-    )
     timeout_seconds: int = Field(default=12 * 3600, description="Timeout per instance")
     max_workers: int = Field(default=1, description="Number of parallel workers")
     use_gpu: bool = Field(default=False, description="Enable GPU support")

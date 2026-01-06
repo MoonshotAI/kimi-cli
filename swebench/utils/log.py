@@ -1,7 +1,6 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 class EvalRunLogger:
     def __init__(self, output_dir: str, model: str):
@@ -17,7 +16,6 @@ class EvalRunLogger:
         self.instance_logs_dir = self.run_dir / "instances"
         self.instance_logs_dir.mkdir(exist_ok=True)
     
-        # write metadata for the run
         metadata = {
             "run_id": self.run_id,
             "model": self.model,

@@ -4,7 +4,6 @@ import subprocess
 import tarfile
 import io
 from pathlib import Path
-from typing import Any, Callable
 import json
 
 from kimi_cli.utils.logging import logger
@@ -26,7 +25,7 @@ class KimiContainerSolver:
         self.problem_statement = problem_statement
         self.round = 0
 
-    async def solve(self) -> dict[str, Any]:
+    async def solve(self):
         """Run Kimi CLI in container to solve the problem."""
         try:
             logger.info("Copying kimi-cli source to container...")
@@ -83,7 +82,7 @@ class KimiContainerSolver:
             logger.warning(f"Installation warnings: {result.get('stderr', '')}")
         logger.info("✓ kimi-cli dependencies installed in poetry environment")
 
-    async def _run_kimi_in_container(self) -> dict[str, Any]:
+    async def _run_kimi_in_container(self):
         env_vars = f"KIMI_API_KEY={shlex.quote(self.config.kimi.api_key)}"
         env_vars += f" KIMI_BASE_URL={shlex.quote(self.config.kimi.base_url)}"
         env_vars += f" KIMI_MODEL_NAME={shlex.quote(self.config.kimi.model)}"
@@ -108,7 +107,6 @@ class KimiContainerSolver:
         stderr = result.get("stderr", "")
         
         logger.info(f"Kimi execution completed with exit code: {exit_code}")
-        logger.info(f"Output length: {len(stdout)} bytes")
         
         if exit_code != 0:
             logger.warning(f"Kimi exit code: {exit_code}")
@@ -124,7 +122,7 @@ class KimiContainerSolver:
             "trace": trace_json,
         }
 
-    async def _extract_trace(self) -> list[dict[str, Any]]:
+    async def _extract_trace(self):
         try:
             find_wire_cmd = "find ~/.kimi/sessions -name 'wire.jsonl' -type f 2>/dev/null | sort -r | head -1"
             find_result = await self.container.execute(

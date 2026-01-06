@@ -1,16 +1,11 @@
 # type: ignore
 from typing import Any
 import uuid
-import os
 
 from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig
 from swebench.utils.docker import ContainerConfig, Container
-
-USE_VERIFIED = os.environ.get('USE_VERIFIED', 'false').lower() == 'true'
-USE_LIVE = os.environ.get('USE_LIVE', 'false').lower() == 'true'
-USE_MULTILINGUAL = os.environ.get('USE_MULTILINGUAL', 'false').lower() == 'true'
 
 class SWEBenchContainerRuntime:
     def __init__(
@@ -24,14 +19,12 @@ class SWEBenchContainerRuntime:
         self.working_dir = working_dir
         self.runtime: Container | None = None
 
-
     def _get_container_image(self) -> str:
         instance_id = self.instance["instance_id"]
         repo, name = instance_id.split('__')
         image_name = f'docker-local-registry.glm.ai/swedev/sweb.eval.x86_64.{repo}_1776_{name}:latest'.lower()
         image_name = image_name.replace(":latest", "-oh_0.34.0:latest").lower()
         return image_name
-
 
     async def start(self) -> Container:
         logger.info(f"Starting container for {self.instance['instance_id']}")
@@ -52,15 +45,11 @@ class SWEBenchContainerRuntime:
         await self._initialize_container()
         return self.runtime
 
-
     async def _initialize_container(self) -> None:
-        if not self.runtime:
-            raise RuntimeError("Container not started")
-
         logger.info("Initializing container environment")
         await self.runtime.execute(
             ["bash", "-c", f"cd {self.working_dir}"],
-            timeout=60,
+            timeout=120,
         )
 
         init_script = """
@@ -76,9 +65,6 @@ git config --global --add safe.directory "*"
 
         await self.runtime.execute_shell(init_script, timeout=120)
 
-        logger.info("Container initialization complete")
-
-
     async def checkout_base_commit(self) -> None:
         base_commit = self.instance["base_commit"]
         # TODO: hacking
@@ -88,10 +74,8 @@ git reset --hard
 git checkout {base_commit}
 git clean -fd
 """
-
         await self.runtime.execute_shell(script, timeout=300)
         logger.info(f"Successfully checked out {base_commit}")
-
 
     async def get_git_diff(self) -> str:
         base_commit = self.instance["base_commit"]
@@ -109,7 +93,6 @@ git clean -fd
             check=False,
         )
         return result["stdout"]
-
 
     async def cleanup(self) -> None:
         if self.runtime:

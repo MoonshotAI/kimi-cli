@@ -126,8 +126,6 @@ class Container:
         try:
             container = self.client.containers.get(self.container_name)
             tar_buffer = io.BytesIO()
-
-            logger.debug(f"Creating tar archive for {src}...")
             with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
                 if os.path.isfile(src):
                     logger.debug(f"Adding file {src}")
@@ -178,17 +176,13 @@ class Container:
 
     def _cleanup_sync(self) -> None:
         """Synchronous helper for cleanup."""
-        if not self.container_name:
-            return
+        # TODO: stuck in dp
+        # try:
+        #     container = self.client.containers.get(self.container_name)
+        #     container.stop(timeout=1800)
+        # except Exception as e:
+        #     logger.error(f"Failed to stop container: {e}")
 
-        logger.info(f"Stopping container: {self.container_name}")
-        try:
-            container = self.client.containers.get(self.container_name)
-            container.stop(timeout=30)
-        except Exception as e:
-            logger.error(f"Failed to stop container: {e}")
-
-        logger.info(f"Removing container: {self.container_name}")
         try:
             container = self.client.containers.get(self.container_name)
             container.remove(force=True)

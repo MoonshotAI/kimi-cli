@@ -4,11 +4,10 @@ import asyncio
 import json
 import sys
 import os
-from pathlib import Path
 
 import pandas as pd
 from kimi_cli.app import enable_logging
-from kimi_cli.utils.logging import logger  # type: ignore
+from kimi_cli.utils.logging import logger
 
 from swebench.config import EvalConfig, KimiCliConfig
 from swebench.evaluator import EvalResult, SWEBenchInstanceEvaluator
@@ -22,8 +21,6 @@ async def main(args: argparse.Namespace) -> None:
         level="DEBUG" if args.debug else "INFO",
         format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
     )
-    logger.info("Starting SWE-Bench evaluation")
-
     config = EvalConfig(
         dataset_path=args.dataset,
         output_dir=args.output,
@@ -75,7 +72,6 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Loaded {total_tasks} instances")
     logger.info(f"Running with {args.workers} concurrent workers")
 
-    # Initialize structured logging
     run_logger = EvalRunLogger(config.output_dir, config.kimi.model)
     logger.info(f"Structured logs: {run_logger.run_dir}")
     run_output_file = run_logger.run_dir / "results.jsonl"
@@ -111,14 +107,11 @@ async def main(args: argparse.Namespace) -> None:
             try:
                 instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
                 config.kimi.model = args.model
-                logger.info(f"Model configured: {config.kimi.model}, API Key set: {bool(config.kimi.api_key)}")
                 evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
                 result = await evaluator.evaluate()
                 logger.info(f"✓ {instance_id}: {result.status}")
-
                 with open(run_output_file, "a") as f:
                     f.write(result.to_json() + "\n")
-
                 return result
             except Exception as e:
                 logger.error(f"✗ {instance_id}: {e}")
@@ -132,7 +125,6 @@ async def main(args: argparse.Namespace) -> None:
     ]
     results = await asyncio.gather(*tasks)
     new_results = [r for r in results if r is not None]
-
     logger.info(f"Evaluation completed: {len(new_results)} new results")
 
 
