@@ -7,7 +7,7 @@ agent:
   tools:
     - "kimi_cli.tools.multiagent:Task"
     # - "kimi_cli.tools.multiagent:CreateSubagent"
-    # - "kimi_cli.tools.dmail:SendDMail"
+    - "kimi_cli.tools.dmail:SendDMail"
     # - "kimi_cli.tools.think:Think"
     - "kimi_cli.tools.todo:SetTodoList"
     - "kimi_cli.tools.shell:Shell"
