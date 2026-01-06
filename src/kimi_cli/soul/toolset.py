@@ -308,6 +308,17 @@ class KimiToolset:
         else:
             await _connect()
 
+    async def wait_for_mcp_tools(self) -> None:
+        """Wait for background MCP tool loading to finish."""
+        task = self._mcp_loading_task
+        if not task:
+            return
+        try:
+            await task
+        finally:
+            if self._mcp_loading_task is task and task.done():
+                self._mcp_loading_task = None
+
     async def cleanup(self) -> None:
         """Cleanup any resources held by the toolset."""
         if self._mcp_loading_task:
