@@ -30,6 +30,12 @@ from .jsonrpc import (
     Statuses,
 )
 
+# Maximum buffer size for the asyncio StreamReader used for stdio.
+# Passed as the `limit` argument to `acp.stdio_streams`, this caps how much
+# data can be buffered when reading from stdin (e.g., large tool or model
+# outputs sent over JSON-RPC). A 100MB limit is large enough for typical
+# interactive use while still protecting the process from unbounded memory
+# growth or buffer-overrun errors when peers send unexpectedly large payloads.
 STDIO_BUFFER_LIMIT = 100 * 1024 * 1024
 
 
