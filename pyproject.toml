@@ -13,7 +13,7 @@ dependencies = [
     # loguru stays >=0.6.0 because notify-py (via batrachian-toad) caps it at <=0.6.0 on 3.14+.
     "loguru>=0.6.0,<0.8",
     "prompt-toolkit==3.0.52",
-    "pillow==12.0.0",
+    "pillow==12.1.0",
     "pyyaml==6.0.3",
     "rich==14.2.0",
     "ripgrepy==2.2.0",
