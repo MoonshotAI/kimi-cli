@@ -27,11 +27,13 @@ class EvalResult:
     history: list[dict[str, Any]] | None = None
     metrics: dict[str, Any] | None = None
     duration_seconds: float = 0.0
+    trace: list[dict[str, Any]] | None = None  # Add trace field
 
 
     def __post_init__(self) -> None:
         self.history = self.history or []
         self.metrics = self.metrics or {}
+        self.trace = self.trace or []
 
 
     def to_dict(self) -> dict[str, Any]:
@@ -43,6 +45,7 @@ class EvalResult:
             "history": self.history,
             "metrics": self.metrics,
             "duration_seconds": self.duration_seconds,
+            "trace": self.trace,  # Include trace in output
         }
 
 
@@ -104,6 +107,11 @@ class SWEBenchInstanceEvaluator:
                     f"Kimi solver completed: {solve_result['rounds']} rounds, "
                     f"{len(solve_result['tool_calls'])} tool calls"
                 )
+                
+                # Extract and store trace
+                trace = solve_result.get("trace", [])
+                logger.info(f"Extracted {len(trace)} trace records")
+                result.trace = trace
                 
                 if self.run_logger:
                     self.run_logger.log_instance_interaction(

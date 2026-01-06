@@ -28,14 +28,8 @@ class SWEBenchContainerRuntime:
     def _get_container_image(self) -> str:
         instance_id = self.instance["instance_id"]
         repo, name = instance_id.split('__')
-        if USE_VERIFIED:
-            image_name = f'sweb.eval.x86_64.{repo}_1776_{name}:latest'.lower()
-        elif USE_MULTILINGUAL:
-            image_name = f'swebench/sweb.eval.x86_64.{repo}_1776_{name}:latest'.lower()
-        elif USE_LIVE:
-            image_name = f'docker-local-registry.glm.ai/swedev/sweb.eval.x86_64.{repo}_1776_{name}:latest'.lower()
-        else:
-            image_name = f'sweb.eval.x86_64.{repo}__{name}:latest'.lower()
+        image_name = f'docker-local-registry.glm.ai/swedev/sweb.eval.x86_64.{repo}_1776_{name}:latest'.lower()
+        image_name = image_name.replace(":latest", "-oh_0.34.0:latest").lower()
         return image_name
 
 

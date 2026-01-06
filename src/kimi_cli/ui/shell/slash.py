@@ -11,7 +11,7 @@ from kimi_cli.config import save_config
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
+# from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
 
@@ -169,12 +169,12 @@ async def model(app: Shell, args: str):
     raise Reload()
 
 
-@registry.command(name="release-notes")
-def release_notes(app: Shell, args: str):
-    """Show release notes"""
-    text = format_release_notes(CHANGELOG, include_lib_changes=False)
-    with console.pager(styles=True):
-        console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
+# @registry.command(name="release-notes")
+# def release_notes(app: Shell, args: str):
+#     """Show release notes"""
+#     text = format_release_notes(CHANGELOG, include_lib_changes=False)
+#     with console.pager(styles=True):
+#         console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
 
 
 @registry.command
