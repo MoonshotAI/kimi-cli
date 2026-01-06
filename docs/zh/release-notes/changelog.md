@@ -2,6 +2,10 @@
 
 本页面记录 Kimi CLI 各版本的变更内容。
 
+## Unreleased
+
+- Skills：添加内置的 `skill-creator` Skill，随程序打包发布
+
 ## 0.72 (2026-01-04)
 
 - Python：修复在 Python 3.14 上的安装问题

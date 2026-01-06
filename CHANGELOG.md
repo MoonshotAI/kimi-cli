@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Skills: Add built-in skill-creator skill shipped with the package
 
 ## 0.72 (2026-01-04)
 
