@@ -4,7 +4,8 @@
 
 ## 未发布
 
-- Tool：在 `ReadFile` 路径中将 `~` 展开为主目录
+- Skills：添加随软件包发布的内置 skill-creator Skill
+- Tool：在 `ReadFile` 路径中将 `~` 展开为用户主目录
 
 ## 0.72 (2026-01-04)
 
