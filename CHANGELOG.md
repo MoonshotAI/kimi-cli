@@ -12,7 +12,8 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Skills: Add built-in skill-creator skill shipped with the package
-- Tool: Expand `~` to the home directory in `ReadFile` paths.
+- Tool: Expand `~` to the home directory in `ReadFile` paths
+- MCP: Ensure MCP tools finish loading before starting the agent loop
 
 ## 0.72 (2026-01-04)
 
