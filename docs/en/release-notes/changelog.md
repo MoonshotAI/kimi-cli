@@ -7,6 +7,7 @@ This page documents the changes in each Kimi CLI release.
 - Skills: Add built-in skill-creator skill shipped with the package
 - Tool: Expand `~` to the home directory in `ReadFile` paths
 - MCP: Ensure MCP tools finish loading before starting the agent loop
+- Wire: Fix Wire mode failing to accept valid `cancel` requests
 
 ## 0.72 (2026-01-04)
 
