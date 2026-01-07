@@ -257,7 +257,7 @@ agent:
 ### `SearchWeb`
 
 - **路径**：`kimi_cli.tools.web:SearchWeb`
-- **描述**：搜索网页。需要配置搜索服务（Kimi for Coding 平台自动配置）。
+- **描述**：搜索网页。需要配置搜索服务（Kimi Code 平台自动配置）。
 
 | 参数 | 类型 | 说明 |
 |------|------|------|

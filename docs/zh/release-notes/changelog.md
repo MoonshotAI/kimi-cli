@@ -8,6 +8,7 @@
 - Tool：在 `ReadFile` 路径中将 `~` 展开为用户主目录
 - MCP：确保 MCP 工具加载完成后再开始 Agent 循环
 - Wire：修复 Wire 模式无法接受有效 `cancel` 请求的问题
+- Setup：`/model` 命令现在可以切换所选供应商的所有可用模型
 
 ## 0.72 (2026-01-04)
 
@@ -82,7 +83,7 @@
 - CLI：退出时删除空会话，列表中忽略上下文文件为空的会话
 - UI：改进会话回放
 - Lib：在 `LLM` 类中添加 `model_config: LLMModel | None` 和 `provider_config: LLMProvider | None` 属性
-- MetaCmd：添加 `/usage` 元命令，为 Kimi for Coding 用户显示 API 使用情况
+- MetaCmd：添加 `/usage` 元命令，为 Kimi Code 用户显示 API 使用情况
 
 ## 0.64 (2025-12-15)
 
@@ -147,7 +148,7 @@
 - Core：修复使用 `extend` 时 Agent 规格文件的字段继承问题
 - Core：支持在子代理中使用 MCP 工具
 - Tool：添加 `CreateSubagent` 工具，动态创建子代理（默认 Agent 中未启用）
-- Tool：Kimi for Coding 方案在 `FetchURL` 工具中使用 MoonshotFetch 服务
+- Tool：Kimi Code 方案在 `FetchURL` 工具中使用 MoonshotFetch 服务
 - Tool：截断 Grep 工具输出，避免超出 token 限制
 
 ## 0.57 (2025-11-20)
