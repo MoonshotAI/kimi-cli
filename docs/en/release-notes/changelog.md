@@ -7,6 +7,7 @@ This page documents the changes in each Kimi CLI release.
 - Skills: Add built-in skill-creator skill shipped with the package
 - Tool: Expand `~` to the home directory in `ReadFile` paths
 - MCP: Ensure MCP tools finish loading before starting the agent loop
+- Setup: Allow `/model` to switch between all available models for the selected provider
 
 ## 0.72 (2026-01-04)
 

@@ -39,7 +39,7 @@ After configuration, settings are automatically saved to `~/.kimi/config.toml` a
 
 Switch the default model.
 
-When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
+This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
 
 After selecting a new model, Kimi CLI will automatically update the configuration file and reload.
 
