@@ -102,13 +102,12 @@ class KimiContainerSolver:
             f"{env_vars} "
             f"/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin/python -m kimi_cli.cli "
             f"--work-dir {shlex.quote(self.working_dir)} "
-            f"--command 'echo hello world to /testbed/text.txt' "
+            f"--command {shlex.quote(self.problem_statement)} "
             f"--config {shlex.quote(config_json)} "
             f"--print "
             f"--thinking "
         )
 
-            # f"--command {shlex.quote(self.problem_statement)} "
         # logger.debug(f"Command: {kimi_cmd}")
         result = await self.container.execute(
             ["bash", "-c", kimi_cmd],
@@ -171,8 +170,6 @@ class KimiContainerSolver:
                     continue
                 try:
                     record = json.loads(line)
-                    if record.get("role", "").startswith("_"):
-                        continue
                     
                     if isinstance(record.get("content"), list):
                         content_list = record["content"]
@@ -272,8 +269,8 @@ class KimiContainerSolver:
                             continue
                         try:
                             record = json.loads(line)
-                            if not record.get("role", "").startswith("_"):
-                                if isinstance(record.get("content"), list):
+                            
+                            if isinstance(record.get("content"), list):
                                     content_list = record["content"]
                                     if record.get("role") == "tool":
                                         combined_text = "\n".join(
