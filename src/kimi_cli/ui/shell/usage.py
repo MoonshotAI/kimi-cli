@@ -47,7 +47,7 @@ async def usage(app: Shell, args: str):
 
     usage_url = _usage_url(provider)
     if usage_url is None:
-        console.print("[yellow]Usage is available on Kimi for Coding platform only.[/yellow]")
+        console.print("[yellow]Usage is available on Kimi Code platform only.[/yellow]")
         return
 
     with console.status("[cyan]Fetching usage...[/cyan]"):
