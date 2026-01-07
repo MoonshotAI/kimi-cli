@@ -33,6 +33,7 @@ class EvalConfig(BaseModel):
     max_workers: int = Field(default=1, description="Number of parallel workers")
     use_gpu: bool = Field(default=False, description="Enable GPU support")
     max_iterations: int = Field(default=100, description="Max iterations per instance")
+    max_retries: int = Field(default=3, description="Max retries for failed instances")
 
 
 @dataclass

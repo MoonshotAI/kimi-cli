@@ -37,6 +37,7 @@ async def main(args: argparse.Namespace) -> None:
         max_workers=args.max_workers,
         use_gpu=args.use_gpu,
         max_iterations=args.max_iterations,
+        max_retries=args.max_retries,
     )
 
     os.makedirs(config.output_dir, exist_ok=True)
@@ -101,20 +102,52 @@ async def main(args: argparse.Namespace) -> None:
             current_task += 1
             logger.info(f"[{current_task}/{total_tasks}] Evaluating {instance_id}")
 
-            try:
-                instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
-                evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
-                result = await evaluator.evaluate()
-                logger.info(f"✓ {instance_id}: {result.status}")
+            instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
+            result = None
+            
+            for attempt in range(1, config.max_retries + 1):
+                try:
+                    evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
+                    result = await evaluator.evaluate()
+                    if result.status == "success":
+                        logger.info(f"✓ {instance_id}: {result.status}")
+                        with open(run_output_file, "a") as f:
+                            f.write(result.to_json() + "\n")
+                        return result
+                    elif attempt < config.max_retries:
+                        logger.warning(
+                            f"✗ {instance_id} (attempt {attempt}/{config.max_retries}): "
+                            f"status={result.status}, will retry..."
+                        )
+                        continue
+                    else:
+                        logger.error(
+                            f"✗ {instance_id}: Failed after {config.max_retries} attempts, "
+                            f"final status={result.status}"
+                        )
+                        with open(run_output_file, "a") as f:
+                            f.write(result.to_json() + "\n")
+                        return result
+                        
+                except Exception as e:
+                    if attempt < config.max_retries:
+                        logger.warning(
+                            f"✗ {instance_id} (attempt {attempt}/{config.max_retries}): {e}, "
+                            f"will retry..."
+                        )
+                        continue
+                    else:
+                        logger.error(f"✗ {instance_id}: Failed after {config.max_retries} attempts")
+                        result = EvalResult(instance_id=instance_id, status="error", error=str(e))
+                        with open(run_output_file, "a") as f:
+                            f.write(result.to_json() + "\n")
+                        return result
+            
+            if result is None:
+                result = EvalResult(instance_id=instance_id, status="error", error="Unknown error")
                 with open(run_output_file, "a") as f:
                     f.write(result.to_json() + "\n")
-                return result
-            except Exception as e:
-                logger.error(f"✗ {instance_id}: {e}")
-                result = EvalResult(instance_id=instance_id, status="error", error=str(e))
-                with open(run_output_file, "a") as f:
-                    f.write(result.to_json() + "\n")
-                return result
+            return result
 
     tasks = [
         evaluate_with_limit(instance_id) for instance_id in instances_df["instance_id"]
@@ -142,5 +175,6 @@ if __name__ == "__main__":
     parser.add_argument("--max-workers", type=int, default=1, help="Concurrent workers")
     parser.add_argument("--use-gpu", action="store_true", help="Enable GPU support")
     parser.add_argument("--max-iterations", type=int, default=100, help="Max iterations per instance")
+    parser.add_argument("--max-retries", type=int, default=3, help="Max retries for failed instances")
     args = parser.parse_args()
     asyncio.run(main(args))

@@ -1,4 +1,5 @@
 # type: ignore
+# TODO: error retrying
 import shlex
 import subprocess
 import tarfile
@@ -96,19 +97,27 @@ class KimiContainerSolver:
             }
         })
         
+        instruction = f"""
+Please help me solve the following issue:
+<issue_description>
+{self.problem_statement}
+</issue_description>
+
+You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/python`.
+        """.strip()
+        
         # --print will auto approve, use config for loop control
         kimi_cmd = (
             f"cd {shlex.quote(self.working_dir)} && "
             f"{env_vars} "
             f"/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin/python -m kimi_cli.cli "
             f"--work-dir {shlex.quote(self.working_dir)} "
-            f"--command {shlex.quote(self.problem_statement)} "
+            f"--command {shlex.quote(instruction)} "
             f"--config {shlex.quote(config_json)} "
             f"--print "
             f"--thinking "
         )
 
-        # logger.debug(f"Command: {kimi_cmd}")
         result = await self.container.execute(
             ["bash", "-c", kimi_cmd],
             timeout=self.config.timeout_seconds,
@@ -137,9 +146,7 @@ class KimiContainerSolver:
         }
 
     async def _extract_trace(self) -> dict:
-        """Extract conversation history from context.jsonl (main and subagent contexts separately)."""
         try:
-            # Find the most recent context.jsonl file (main agent)
             find_context_cmd = "find ~/.kimi/sessions -name 'context.jsonl' -type f 2>/dev/null | sort -r | head -1"
             find_result = await self.container.execute(
                 ["bash", "-c", find_context_cmd],
@@ -153,7 +160,6 @@ class KimiContainerSolver:
                 
             logger.info(f"Found context file: {context_file}")
             
-            # Read main context.jsonl
             read_cmd = f"cat {context_file}"
             context_result = await self.container.execute(
                 ["bash", "-c", read_cmd],
@@ -316,9 +322,7 @@ class KimiContainerSolver:
                             continue
                     
                     if messages:
-                        # Extract the filename as the subagent ID
                         subagent_id = Path(context_file).name
-                        
                         sub_messages.append({
                             "id": subagent_id,
                             "messages": messages,
@@ -344,3 +348,14 @@ class KimiContainerSolver:
         except Exception as e:
             logger.warning("Failed to get git diff: {}", str(e))
             return ""
+
+    def should_retry(self, result: dict) -> bool:
+        git_patch = result.get("git_patch", "")
+        if not git_patch:
+            logger.warning("No git patch found - likely incomplete run")
+            return True
+        messages = result.get("messages", [])
+        if not messages:
+            logger.warning("No messages extracted from context - likely incomplete run")
+            return True
+        return False

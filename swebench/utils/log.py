@@ -14,8 +14,6 @@ class EvalRunLogger:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         
         self.metadata_file = self.run_dir / "metadata.json"
-        self.instance_logs_dir = self.run_dir / "instances"
-        self.instance_logs_dir.mkdir(exist_ok=True)
     
         metadata = {
             "run_id": self.run_id,
