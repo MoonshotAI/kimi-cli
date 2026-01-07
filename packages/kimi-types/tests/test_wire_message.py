@@ -1,4 +1,5 @@
 import inspect
+from typing import cast
 
 import pytest
 from inline_snapshot import snapshot
@@ -13,6 +14,7 @@ from kimi_types import (
     ToolResult,
     ToolReturnValue,
 )
+from kimi_types.utils.typing import flatten_union
 from kimi_types.wire import (
     ApprovalRequest,
     ApprovalRequestResolved,
@@ -297,13 +299,17 @@ def test_wire_message_type_alias():
     import kimi_types.wire
 
     module = kimi_types.wire
-    wire_message_types = {
-        obj
-        for _, obj in inspect.getmembers(module, inspect.isclass)
-        if obj.__module__ == module.__name__
-        and issubclass(obj, BaseModel)
-        and obj not in (WireMessageEnvelope, WireMessageRecord)
-    }
+    wire_message_types: set[type[BaseModel]] = set()
+    for _, obj in inspect.getmembers(module, inspect.isclass):
+        if obj.__module__ != module.__name__:
+            continue
+        if not issubclass(obj, BaseModel):
+            continue
+        if obj in (WireMessageEnvelope, WireMessageRecord):
+            continue
+        wire_message_types.add(obj)
+
+    union_types = {cast(type[BaseModel], typ) for typ in flatten_union(module.WireMessage)}
 
     for type_ in wire_message_types:
-        assert type_ in module._WIRE_MESSAGE_TYPES
+        assert type_ in union_types
