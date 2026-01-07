@@ -72,6 +72,7 @@ class JSONRPCPromptMessage(_MessageBase):
 class JSONRPCCancelMessage(_MessageBase):
     method: Literal["cancel"] = "cancel"
     id: str
+    params: JsonType | None = None
 
     @model_serializer()
     def _serialize(self) -> dict[str, Any]:
