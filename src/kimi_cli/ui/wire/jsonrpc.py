@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from kosong.message import ContentPart
-from kosong.utils.typing import JsonType
+from kimi_types import ContentPart, JsonType
+from kimi_types.wire import (
+    ApprovalRequestResolved,
+    Event,
+    Request,
+    is_event,
+    is_request,
+    serialize_wire_message,
+)
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -12,9 +19,6 @@ from pydantic import (
     field_validator,
     model_serializer,
 )
-
-from kimi_cli.wire.message import ApprovalRequestResolved, Event, Request, is_event, is_request
-from kimi_cli.wire.serde import serialize_wire_message
 
 
 class _MessageBase(BaseModel):

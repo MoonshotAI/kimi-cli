@@ -2,6 +2,12 @@ import asyncio
 from pathlib import Path
 from typing import override
 
+from kimi_types.wire import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
+    SubagentEvent,
+    WireMessage,
+)
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -13,12 +19,6 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.path import next_available_rotation
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import (
-    ApprovalRequest,
-    ApprovalRequestResolved,
-    SubagentEvent,
-    WireMessage,
-)
 
 # Maximum continuation attempts for task summary
 MAX_CONTINUE_ATTEMPTS = 1

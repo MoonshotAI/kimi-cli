@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
+from kimi_types.wire import StepBegin
 from kosong.message import TextPart, ThinkPart
 
 from kimi_cli.ui.print.visualize import FinalOnlyJsonPrinter, FinalOnlyTextPrinter
-from kimi_cli.wire.message import StepBegin
 
 
 def test_final_only_text_printer_outputs_final_text(capsys):

@@ -32,6 +32,7 @@ jobs:
         run: |
           python scripts/check_kimi_dependency_versions.py \
             --root-pyproject pyproject.toml \
+            --kimi-types-pyproject packages/kimi-types/pyproject.toml \
             --kosong-pyproject packages/kosong/pyproject.toml \
             --pykaos-pyproject packages/kaos/pyproject.toml
 

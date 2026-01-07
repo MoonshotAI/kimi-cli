@@ -1,4 +1,4 @@
-name: CI
+name: CI (kimi-cli)
 
 on:
   pull_request:
@@ -54,13 +54,13 @@ jobs:
       - name: Run checks
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make check
+        run: make check-kimi-cli
 
       - name: Run tests
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
           PYTHONUTF8: "1"
-        run: make test
+        run: make test-kimi-cli
 
       - name: Build standalone binary
         if: matrix.python-version == '3.14'

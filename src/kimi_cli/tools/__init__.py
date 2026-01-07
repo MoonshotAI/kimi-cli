@@ -3,7 +3,7 @@ from typing import cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kaos.path import KaosPath
-from kosong.utils.typing import JsonType
+from kimi_types import JsonType
 
 from kimi_cli.utils.string import shorten_middle
 

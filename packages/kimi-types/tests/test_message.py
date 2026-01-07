@@ -1,6 +1,6 @@
 from inline_snapshot import snapshot
 
-from kosong.message import (
+from kimi_types import (
     AudioURLPart,
     ImageURLPart,
     Message,

@@ -22,6 +22,7 @@ from typing import LiteralString, cast
 import psycopg
 import typer
 from kaos.path import KaosPath
+from kimi_types.wire import StatusUpdate
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import FormattedText
@@ -40,7 +41,6 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.visualize import visualize
-from kimi_cli.wire.message import StatusUpdate
 
 
 class ExecuteSqlParams(BaseModel):

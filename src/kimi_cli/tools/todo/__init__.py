@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import Literal, override
 
+from kimi_types import TodoDisplayBlock, TodoDisplayItem
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.tools.utils import load_desc
-from kimi_cli.wire.display import TodoDisplayBlock, TodoDisplayItem
 
 
 class Todo(BaseModel):

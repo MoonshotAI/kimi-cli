@@ -5,6 +5,7 @@ import contextlib
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
+from kimi_types.wire import ApprovalRequest, Request
 from kosong.chat_provider import ChatProviderError
 
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
@@ -12,7 +13,6 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import ApprovalRequest, Request
 
 from .jsonrpc import (
     ErrorCodes,

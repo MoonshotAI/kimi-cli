@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Literal
 
 from inline_snapshot import snapshot
+from kimi_types import JsonType
 from pydantic import BaseModel, Field
 
 from kosong.utils.jsonschema import deref_json_schema
-from kosong.utils.typing import JsonType
 
 JsonSchema = dict[str, JsonType]
 

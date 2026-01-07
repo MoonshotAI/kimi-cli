@@ -1,8 +1,8 @@
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass
 from typing import Literal, Protocol, Self, runtime_checkable
 
-from kosong.message import ContentPart, Message, ToolCall, ToolCallPart
+from kimi_types import ContentPart, Message, TokenUsage, ToolCall, ToolCallPart
+
 from kosong.tooling import Tool
 
 
@@ -67,30 +67,6 @@ class StreamedMessage(Protocol):
     def usage(self) -> "TokenUsage | None":
         """The token usage of the streamed message."""
         ...
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class TokenUsage:
-    """Token usage statistics."""
-
-    input_other: int
-    """Input tokens excluding `input_cache_read` and `input_cache_creation`."""
-    output: int
-    """Total output tokens."""
-    input_cache_read: int = 0
-    """Cached input tokens."""
-    input_cache_creation: int = 0
-    """Input tokens used for cache creation. For now, only Anthropic API supports this."""
-
-    @property
-    def total(self) -> int:
-        """Total tokens used, including input and output tokens."""
-        return self.input + self.output
-
-    @property
-    def input(self) -> int:
-        """Total input tokens, including cached and uncached tokens."""
-        return self.input_other + self.input_cache_read + self.input_cache_creation
 
 
 type ThinkingEffort = Literal["off", "low", "medium", "high"]

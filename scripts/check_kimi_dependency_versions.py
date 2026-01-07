@@ -43,6 +43,7 @@ def find_pinned_dependency(deps: list[str], name: str) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate kimi-cli dependency versions.")
     parser.add_argument("--root-pyproject", type=Path, required=True)
+    parser.add_argument("--kimi-types-pyproject", type=Path, required=True)
     parser.add_argument("--kosong-pyproject", type=Path, required=True)
     parser.add_argument("--pykaos-pyproject", type=Path, required=True)
     args = parser.parse_args()
@@ -63,6 +64,7 @@ def main() -> int:
 
     errors: list[str] = []
     for name, pyproject_path in (
+        ("kimi-types", args.kimi_types_pyproject),
         ("kosong", args.kosong_pyproject),
         ("pykaos", args.pykaos_pyproject),
     ):

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeGuard, cast
 
-from kosong.chat_provider import TokenUsage
-from kosong.message import ContentPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolResult
-from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
-from kimi_cli.utils.typing import flatten_union
-from kimi_cli.wire.display import DisplayBlock
+from kimi_types import (
+    ContentPart,
+    DisplayBlock,
+    JsonType,
+    TokenUsage,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+)
+from kimi_types.utils.typing import flatten_union
 
 
 class TurnBegin(BaseModel):
@@ -106,7 +110,7 @@ class SubagentEvent(BaseModel):
         event = envelope.to_wire_message()
         if not is_event(event):
             raise ValueError("SubagentEvent event must be an Event")
-        return cast(Event, event)
+        return event
 
 
 class ApprovalRequest(BaseModel):
@@ -137,7 +141,7 @@ class ApprovalRequest(BaseModel):
         Wait for the request to be resolved or cancelled.
 
         Returns:
-            ApprovalResponse: The response to the approval request.
+            ApprovalRequest.Response: The response to the approval request.
         """
         return await self._future
 
@@ -189,22 +193,22 @@ type WireMessage = Event | Request
 """Any message sent over the `Wire`."""
 
 
-_EVENT_TYPES: tuple[type[Event]] = flatten_union(Event)
-_REQUEST_TYPES: tuple[type[Request]] = flatten_union(Request)
-_WIRE_MESSAGE_TYPES: tuple[type[WireMessage]] = flatten_union(WireMessage)
+_EVENT_TYPES = cast(tuple[type[Event], ...], flatten_union(Event))
+_REQUEST_TYPES = cast(tuple[type[Request], ...], flatten_union(Request))
+_WIRE_MESSAGE_TYPES = cast(tuple[type[WireMessage], ...], flatten_union(WireMessage))
 
 
-def is_event(msg: Any) -> bool:
+def is_event(msg: Any) -> TypeGuard[Event]:
     """Check if the message is an Event."""
     return isinstance(msg, _EVENT_TYPES)
 
 
-def is_request(msg: Any) -> bool:
+def is_request(msg: Any) -> TypeGuard[Request]:
     """Check if the message is a Request."""
     return isinstance(msg, _REQUEST_TYPES)
 
 
-def is_wire_message(msg: Any) -> bool:
+def is_wire_message(msg: Any) -> TypeGuard[WireMessage]:
     """Check if the message is a WireMessage."""
     return isinstance(msg, _WIRE_MESSAGE_TYPES)
 
@@ -242,3 +246,67 @@ class WireMessageEnvelope(BaseModel):
         if msg_type is None:
             raise ValueError(f"Unknown wire message type: {self.type}")
         return msg_type.model_validate(self.payload)
+
+
+def serialize_wire_message(msg: WireMessage) -> dict[str, JsonType]:
+    """
+    Convert a `WireMessage` into a jsonifiable dict.
+    """
+    envelope = WireMessageEnvelope.from_wire_message(msg)
+    return envelope.model_dump(mode="json")
+
+
+def deserialize_wire_message(data: dict[str, JsonType] | Any) -> WireMessage:
+    """
+    Convert a jsonifiable dict into a `WireMessage`.
+
+    Raises:
+        ValueError: If the message type is unknown or the payload is invalid.
+    """
+    envelope = WireMessageEnvelope.model_validate(data)
+    return envelope.to_wire_message()
+
+
+class WireMessageRecord(BaseModel):
+    """
+    The persisted record of a `WireMessage`.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    timestamp: float
+    message: WireMessageEnvelope
+
+    @classmethod
+    def from_wire_message(cls, msg: WireMessage, *, timestamp: float) -> WireMessageRecord:
+        return cls(timestamp=timestamp, message=WireMessageEnvelope.from_wire_message(msg))
+
+    def to_wire_message(self) -> WireMessage:
+        return self.message.to_wire_message()
+
+
+__all__ = [
+    "TurnBegin",
+    "StepBegin",
+    "StepInterrupted",
+    "CompactionBegin",
+    "CompactionEnd",
+    "StatusUpdate",
+    "ContentPart",
+    "ToolCall",
+    "ToolCallPart",
+    "ToolResult",
+    "SubagentEvent",
+    "ApprovalRequest",
+    "ApprovalRequestResolved",
+    "Event",
+    "Request",
+    "WireMessage",
+    "is_event",
+    "is_request",
+    "is_wire_message",
+    "WireMessageEnvelope",
+    "serialize_wire_message",
+    "deserialize_wire_message",
+    "WireMessageRecord",
+]

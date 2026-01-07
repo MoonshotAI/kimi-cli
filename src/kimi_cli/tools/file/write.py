@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Literal, override
 
 from kaos.path import KaosPath
+from kimi_types import DisplayBlock
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -11,7 +12,6 @@ from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.file.diff_utils import build_diff_blocks
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.path import is_within_directory
-from kimi_cli.wire.display import DisplayBlock
 
 
 class Params(BaseModel):

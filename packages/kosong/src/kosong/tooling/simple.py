@@ -4,6 +4,8 @@ import json
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Self
 
+from kimi_types import JsonType
+
 from kosong.message import ToolCall
 from kosong.tooling import (
     CallableTool,
@@ -19,7 +21,6 @@ from kosong.tooling.error import (
     ToolParseError,
     ToolRuntimeError,
 )
-from kosong.utils.typing import JsonType
 
 if TYPE_CHECKING:
 

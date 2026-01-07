@@ -90,6 +90,11 @@ jobs:
         if: matrix.runner == 'ubuntu-22.04'
         run: ssh -i "$HOME/.ssh/id_ci" -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@127.0.0.1" true
 
+      - name: Run checks
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make check-pykaos
+
       - name: Run tests
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}

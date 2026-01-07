@@ -9,6 +9,7 @@ dependencies = [
     "aiofiles>=24.0,<25.0",
     "aiohttp==3.13.3",
     "typer==0.21.0",
+    "kimi-types==0.1.0",
     "kosong[contrib]==0.36.1",
     # loguru stays >=0.6.0 because notify-py (via batrachian-toad) caps it at <=0.6.0 on 3.14+.
     "loguru>=0.6.0,<0.8",
@@ -50,9 +51,10 @@ module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [tool.uv.workspace]
-members = ["packages/kosong", "packages/kaos"]
+members = ["packages/kimi-types", "packages/kosong", "packages/kaos"]
 
 [tool.uv.sources]
+kimi-types = { workspace = true }
 kosong = { workspace = true }
 pykaos = { workspace = true }
 

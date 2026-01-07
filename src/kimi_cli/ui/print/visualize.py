@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import rich
+from kimi_types.wire import StepBegin, StepInterrupted, WireMessage
 from kosong.message import ContentPart, Message, ToolCall, ToolCallPart
 from kosong.tooling import ToolResult
 
@@ -9,7 +10,6 @@ from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import StepBegin, StepInterrupted, WireMessage
 
 
 class Printer(Protocol):

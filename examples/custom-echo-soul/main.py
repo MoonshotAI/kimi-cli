@@ -1,13 +1,13 @@
 import asyncio
 from typing import Any
 
+from kimi_types.wire import StepBegin
 from kosong.message import ContentPart, TextPart
 
 from kimi_cli.llm import ALL_MODEL_CAPABILITIES, ModelCapability
 from kimi_cli.soul import StatusSnapshot, wire_send
 from kimi_cli.ui.shell import Shell
 from kimi_cli.utils.slashcmd import SlashCommand
-from kimi_cli.wire.message import StepBegin
 
 
 class EchoSoul:

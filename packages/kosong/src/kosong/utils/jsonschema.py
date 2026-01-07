@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from typing import cast
 
-from kosong.utils.typing import JsonType
+from kimi_types import JsonType
 
 type JsonDict = dict[str, JsonType]
 

@@ -2,8 +2,8 @@ import re
 import string
 from pathlib import Path
 
+from kimi_types import JsonType
 from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
-from kosong.utils.typing import JsonType
 
 
 def load_desc(path: Path, substitutions: dict[str, str] | None = None) -> str:

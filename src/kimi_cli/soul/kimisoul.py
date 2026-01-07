@@ -9,6 +9,16 @@ from typing import TYPE_CHECKING, Any
 
 import kosong
 import tenacity
+from kimi_types.wire import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
+    CompactionBegin,
+    CompactionEnd,
+    StatusUpdate,
+    StepBegin,
+    StepInterrupted,
+    TurnBegin,
+)
 from kosong import StepResult
 from kosong.chat_provider import (
     APIConnectionError,
@@ -41,16 +51,6 @@ from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
-from kimi_cli.wire.message import (
-    ApprovalRequest,
-    ApprovalRequestResolved,
-    CompactionBegin,
-    CompactionEnd,
-    StatusUpdate,
-    StepBegin,
-    StepInterrupted,
-    TurnBegin,
-)
 
 if TYPE_CHECKING:
 

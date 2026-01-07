@@ -10,12 +10,11 @@ from textwrap import shorten
 
 import aiofiles
 from kaos.path import KaosPath
+from kimi_types.wire import TurnBegin, WireMessageRecord
 from kosong.message import Message
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.message import TurnBegin
-from kimi_cli.wire.serde import WireMessageRecord
 
 
 @dataclass(slots=True, kw_only=True)

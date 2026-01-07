@@ -8,6 +8,19 @@ from contextvars import ContextVar
 import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kaos import Kaos, reset_current_kaos, set_current_kaos
+from kimi_types import TodoDisplayBlock
+from kimi_types.wire import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
+    CompactionBegin,
+    CompactionEnd,
+    StatusUpdate,
+    StepBegin,
+    StepInterrupted,
+    SubagentEvent,
+    TurnBegin,
+    WireMessage,
+)
 from kosong.chat_provider import ChatProviderError
 from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import ToolError, ToolResult
@@ -21,19 +34,6 @@ from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.display import TodoDisplayBlock
-from kimi_cli.wire.message import (
-    ApprovalRequest,
-    ApprovalRequestResolved,
-    CompactionBegin,
-    CompactionEnd,
-    StatusUpdate,
-    StepBegin,
-    StepInterrupted,
-    SubagentEvent,
-    TurnBegin,
-    WireMessage,
-)
 
 _current_turn_id = ContextVar[str | None]("current_turn_id", default=None)
 _terminal_tool_call_ids = ContextVar[set[str] | None]("terminal_tool_call_ids", default=None)

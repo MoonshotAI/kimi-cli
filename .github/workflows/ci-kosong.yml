@@ -43,6 +43,11 @@ jobs:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: uv sync --frozen --all-extras --project packages/kosong
 
+      - name: Run checks
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make check-kosong
+
       - name: Run tests
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}

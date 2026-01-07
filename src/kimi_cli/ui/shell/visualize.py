@@ -7,8 +7,30 @@ from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
-from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import BriefDisplayBlock, ToolError, ToolOk, ToolResult, ToolReturnValue
+from kimi_types import (
+    BriefDisplayBlock,
+    ContentPart,
+    TextPart,
+    ThinkPart,
+    TodoDisplayBlock,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+    ToolReturnValue,
+)
+from kimi_types.wire import (
+    ApprovalRequest,
+    ApprovalRequestResolved,
+    CompactionBegin,
+    CompactionEnd,
+    StatusUpdate,
+    StepBegin,
+    StepInterrupted,
+    SubagentEvent,
+    TurnBegin,
+    WireMessage,
+)
+from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
@@ -23,19 +45,6 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
-from kimi_cli.wire.display import TodoDisplayBlock
-from kimi_cli.wire.message import (
-    ApprovalRequest,
-    ApprovalRequestResolved,
-    CompactionBegin,
-    CompactionEnd,
-    StatusUpdate,
-    StepBegin,
-    StepInterrupted,
-    SubagentEvent,
-    TurnBegin,
-    WireMessage,
-)
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 

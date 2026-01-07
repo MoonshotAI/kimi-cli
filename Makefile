@@ -22,12 +22,16 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 	@echo "==> Syncing dependencies for release builds (no sources)"
 	@uv sync --all-extras --all-packages --no-sources
 
-.PHONY: format format-kimi-cli format-kosong format-pykaos
-format: format-kimi-cli format-kosong format-pykaos ## Auto-format all workspace packages with ruff.
+.PHONY: format format-kimi-cli format-kimi-types format-kosong format-pykaos
+format: format-kimi-cli format-kimi-types format-kosong format-pykaos ## Auto-format all workspace packages with ruff.
 format-kimi-cli: ## Auto-format Kimi CLI sources with ruff.
 	@echo "==> Formatting Kimi CLI sources"
 	@uv run ruff check --fix
 	@uv run ruff format
+format-kimi-types: ## Auto-format kimi-types sources with ruff.
+	@echo "==> Formatting kimi-types sources"
+	@uv run --project packages/kimi-types --directory packages/kimi-types ruff check --fix
+	@uv run --project packages/kimi-types --directory packages/kimi-types ruff format
 format-kosong: ## Auto-format kosong sources with ruff.
 	@echo "==> Formatting kosong sources"
 	@uv run --project packages/kosong --directory packages/kosong ruff check --fix
@@ -37,14 +41,20 @@ format-pykaos: ## Auto-format pykaos sources with ruff.
 	@uv run --project packages/kaos --directory packages/kaos ruff check --fix
 	@uv run --project packages/kaos --directory packages/kaos ruff format
 
-.PHONY: check check-kimi-cli check-kosong check-pykaos
-check: check-kimi-cli check-kosong check-pykaos ## Run linting and type checks for all packages.
+.PHONY: check check-kimi-cli check-kimi-types check-kosong check-pykaos
+check: check-kimi-cli check-kimi-types check-kosong check-pykaos ## Run linting and type checks for all packages.
 check-kimi-cli: ## Run linting and type checks for Kimi CLI.
 	@echo "==> Checking Kimi CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
 	@uv run ruff format --check
 	@uv run pyright
 	@uv run ty check || true
+check-kimi-types: ## Run linting and type checks for kimi-types.
+	@echo "==> Checking kimi-types (ruff + pyright + ty; ty is non-blocking)"
+	@uv run --project packages/kimi-types --directory packages/kimi-types ruff check
+	@uv run --project packages/kimi-types --directory packages/kimi-types ruff format --check
+	@uv run --project packages/kimi-types --directory packages/kimi-types pyright
+	@uv run --project packages/kimi-types --directory packages/kimi-types ty check || true
 check-kosong: ## Run linting and type checks for kosong.
 	@echo "==> Checking kosong (ruff + pyright + ty; ty is non-blocking)"
 	@uv run --project packages/kosong --directory packages/kosong ruff check
@@ -59,11 +69,14 @@ check-pykaos: ## Run linting and type checks for pykaos.
 	@uv run --project packages/kaos --directory packages/kaos ty check || true
 
 
-.PHONY: test test-kimi-cli test-kosong test-pykaos
-test: test-kimi-cli test-kosong test-pykaos ## Run all test suites.
+.PHONY: test test-kimi-cli test-kimi-types test-kosong test-pykaos
+test: test-kimi-cli test-kimi-types test-kosong test-pykaos ## Run all test suites.
 test-kimi-cli: ## Run Kimi CLI tests.
 	@echo "==> Running Kimi CLI tests"
 	@uv run pytest tests -vv
+test-kimi-types: ## Run kimi-types tests.
+	@echo "==> Running kimi-types tests"
+	@uv run --project packages/kimi-types --directory packages/kimi-types pytest tests -vv
 test-kosong: ## Run kosong tests (including doctests).
 	@echo "==> Running kosong tests"
 	@uv run --project packages/kosong --directory packages/kosong pytest --doctest-modules -vv
@@ -71,11 +84,14 @@ test-pykaos: ## Run pykaos tests.
 	@echo "==> Running pykaos tests"
 	@uv run --project packages/kaos --directory packages/kaos pytest tests -vv
 
-.PHONY: build build-kimi-cli build-kosong build-pykaos build-bin
-build: build-kimi-cli build-kosong build-pykaos ## Build Python packages for release.
+.PHONY: build build-kimi-cli build-kimi-types build-kosong build-pykaos build-bin
+build: build-kimi-cli build-kimi-types build-kosong build-pykaos ## Build Python packages for release.
 build-kimi-cli: ## Build the kimi-cli sdist and wheel.
 	@echo "==> Building kimi-cli distributions"
 	@uv build --package kimi-cli --no-sources --out-dir dist
+build-kimi-types: ## Build the kimi-types sdist and wheel.
+	@echo "==> Building kimi-types distributions"
+	@uv build --package kimi-types --no-sources --out-dir dist/kimi-types
 build-kosong: ## Build the kosong sdist and wheel.
 	@echo "==> Building kosong distributions"
 	@uv build --package kosong --no-sources --out-dir dist/kosong

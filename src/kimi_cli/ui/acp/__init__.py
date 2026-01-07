@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import acp
+from kimi_types.wire import WireMessage
 from kosong.message import ContentPart
 
 from kimi_cli.acp.kaos import ACPKaos
@@ -20,7 +21,6 @@ from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.message import WireMessage
 
 
 class ACPServerSingleSession:

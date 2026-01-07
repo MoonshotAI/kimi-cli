@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "kimi-cli",
+    "kimi-types",
     "kosong",
     "pykaos",
 ]
@@ -1111,6 +1112,7 @@ dependencies = [
     { name = "batrachian-toad", marker = "python_full_version >= '3.14'" },
     { name = "fastmcp" },
     { name = "httpx", extra = ["socks"] },
+    { name = "kimi-types" },
     { name = "kosong", extra = ["contrib"] },
     { name = "loguru", version = "0.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "loguru", version = "0.7.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
@@ -1148,6 +1150,7 @@ requires-dist = [
     { name = "batrachian-toad", marker = "python_full_version >= '3.14'", specifier = "==0.5.18" },
     { name = "fastmcp", specifier = "==2.12.5" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
+    { name = "kimi-types", editable = "packages/kimi-types" },
     { name = "kosong", extras = ["contrib"], editable = "packages/kosong" },
     { name = "loguru", specifier = ">=0.6.0,<0.8" },
     { name = "lxml", specifier = "==6.0.2" },
@@ -1177,6 +1180,37 @@ dev = [
 ]
 
 [[package]]
+name = "kimi-types"
+version = "0.1.0"
+source = { editable = "packages/kimi-types" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "inline-snapshot", extra = ["black"] },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.12.5" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "inline-snapshot", extras = ["black"], specifier = ">=0.31.1" },
+    { name = "pyright", specifier = ">=1.1.407" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "ruff", specifier = ">=0.14.10" },
+    { name = "ty", specifier = ">=0.0.7" },
+]
+
+[[package]]
 name = "kosong"
 version = "0.36.1"
 source = { editable = "packages/kosong" }
@@ -1184,6 +1218,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "google-genai" },
     { name = "jsonschema" },
+    { name = "kimi-types" },
     { name = "loguru", version = "0.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "loguru", version = "0.7.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "mcp" },
@@ -1218,6 +1253,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=1.56.0" },
     { name = "google-genai", marker = "extra == 'contrib'", specifier = ">=1.55.0" },
     { name = "jsonschema", specifier = ">=4.25.1" },
+    { name = "kimi-types", editable = "packages/kimi-types" },
     { name = "loguru", specifier = ">=0.6.0,<0.8" },
     { name = "mcp", specifier = ">=1,<2" },
     { name = "openai", specifier = ">=2.14.0,<2.15.0" },

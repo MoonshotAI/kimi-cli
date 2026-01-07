@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from kimi_cli.utils.typing import flatten_union
+from kimi_types.utils.typing import flatten_union
 
 
 class A:

@@ -2,11 +2,18 @@ import inspect
 
 import pytest
 from inline_snapshot import snapshot
-from kosong.message import ImageURLPart, TextPart, ToolCall, ToolCallPart
-from kosong.tooling import BriefDisplayBlock, ToolResult, ToolReturnValue
 from pydantic import BaseModel
 
-from kimi_cli.wire.message import (
+from kimi_types import (
+    BriefDisplayBlock,
+    ImageURLPart,
+    TextPart,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+    ToolReturnValue,
+)
+from kimi_types.wire import (
     ApprovalRequest,
     ApprovalRequestResolved,
     CompactionBegin,
@@ -18,11 +25,13 @@ from kimi_cli.wire.message import (
     TurnBegin,
     WireMessage,
     WireMessageEnvelope,
+    WireMessageRecord,
+    deserialize_wire_message,
     is_event,
     is_request,
     is_wire_message,
+    serialize_wire_message,
 )
-from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
 
 
 def _test_serde(msg: WireMessage):
@@ -174,7 +183,10 @@ async def test_wire_message_serde():
     _test_serde(msg)
 
     with pytest.raises(ValueError):
-        ApprovalRequestResolved(request_id="request_123", response="invalid_response")  # type: ignore
+        ApprovalRequestResolved(
+            request_id="request_123",
+            response="invalid_response",  # type: ignore
+        )
 
     msg = ApprovalRequest(
         id="request_123",
@@ -282,15 +294,15 @@ async def test_type_inspection():
 
 
 def test_wire_message_type_alias():
-    import kimi_cli.wire.message
+    import kimi_types.wire
 
-    module = kimi_cli.wire.message
+    module = kimi_types.wire
     wire_message_types = {
         obj
         for _, obj in inspect.getmembers(module, inspect.isclass)
         if obj.__module__ == module.__name__
         and issubclass(obj, BaseModel)
-        and obj is not WireMessageEnvelope
+        and obj not in (WireMessageEnvelope, WireMessageRecord)
     }
 
     for type_ in wire_message_types:

@@ -7,11 +7,10 @@ from pathlib import Path
 
 import pytest
 from kaos.path import KaosPath
+from kimi_types.wire import TurnBegin, WireMessageRecord
 from kosong.message import Message, TextPart
 
 from kimi_cli.session import Session
-from kimi_cli.wire.message import TurnBegin
-from kimi_cli.wire.serde import WireMessageRecord
 
 
 @pytest.fixture

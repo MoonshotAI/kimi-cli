@@ -195,6 +195,17 @@ Context compaction ended, no additional fields.
 Status update.
 
 ```typescript
+interface TokenUsage {
+  /** Input tokens excluding `input_cache_read` and `input_cache_creation`. */
+  input_other: number
+  /** Total output tokens. */
+  output: number
+  /** Cached input tokens */
+  input_cache_read: number
+  /** Input tokens used for cache creation. For now, only Anthropic API supports this. */
+  input_cache_creation: number
+}
+
 interface StatusUpdate {
   /** Context usage ratio, float between 0-1, may be absent in JSON */
   context_usage?: number | null
@@ -210,7 +221,7 @@ interface StatusUpdate {
 Message content part. Serialized with `type` as `"ContentPart"`, specific type distinguished by `payload.type`.
 
 ```typescript
-type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart
+type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart | VideoURLPart
 
 interface TextPart {
   type: "text"
@@ -242,6 +253,16 @@ interface AudioURLPart {
     /** Audio URL, can be data URI (e.g., data:audio/aac;base64,...) */
     url: string
     /** Audio ID for distinguishing different audio, may be absent in JSON */
+    id?: string | null
+  }
+}
+
+interface VideoURLPart {
+  type: "video_url"
+  video_url: {
+    /** Video URL, can be data URI (e.g., data:video/mp4;base64,...) */
+    url: string
+    /** Video ID for distinguishing different video, may be absent in JSON */
     id?: string | null
   }
 }

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal, overload
 
+from kimi_types import JsonType
 from kosong.message import ContentPart, ToolCall
 from kosong.tooling import (
     CallableTool,
@@ -28,7 +29,6 @@ from kosong.tooling.error import (
     ToolRuntimeError,
 )
 from kosong.tooling.mcp import convert_mcp_content
-from kosong.utils.typing import JsonType
 from loguru import logger
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError

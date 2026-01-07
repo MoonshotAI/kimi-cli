@@ -5,16 +5,14 @@ import copy
 import json
 import time
 from pathlib import Path
-from typing import cast
 
 import aiofiles
-from kosong.message import ContentPart, MergeableMixin, ToolCallPart
+from kimi_types import ContentPart, MergeableMixin, ToolCallPart
+from kimi_types.wire import WireMessage, WireMessageRecord, is_wire_message
 
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.broadcast import BroadcastQueue
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.message import WireMessage, is_wire_message
-from kimi_cli.wire.serde import WireMessageRecord
 
 WireMessageQueue = BroadcastQueue[WireMessage]
 
@@ -96,7 +94,7 @@ class WireSoulSide:
     def flush(self) -> None:
         if self._merge_buffer is not None:
             assert is_wire_message(self._merge_buffer)
-            self._send_merged(cast(WireMessage, self._merge_buffer))
+            self._send_merged(self._merge_buffer)
             self._merge_buffer = None
 
     def _send_merged(self, msg: WireMessage) -> None:
