@@ -59,6 +59,9 @@ class LocalKaos:
         async def kill(self) -> None:
             self._process.kill()
 
+    def gethost(self) -> str:
+        return "127.0.0.1"
+
     def pathclass(self) -> type[PurePath]:
         return PurePathClass
 

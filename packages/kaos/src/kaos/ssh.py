@@ -152,8 +152,7 @@ class SSHKaos:
         self._cwd = cwd
         self._host = host
 
-    @property
-    def host(self) -> str:
+    def gethost(self) -> str:
         return self._host
 
     def pathclass(self) -> type[PurePath]:

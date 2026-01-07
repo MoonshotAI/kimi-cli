@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Iterable
 from contextlib import suppress
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import acp
 from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
@@ -13,6 +13,11 @@ from kaos.path import KaosPath
 _DEFAULT_TERMINAL_OUTPUT_LIMIT = 50_000
 _DEFAULT_POLL_INTERVAL = 0.2
 _TRUNCATION_NOTICE = "[acp output truncated]\n"
+
+if TYPE_CHECKING:
+
+    def type_check(acp: ACPKaos) -> None:
+        _: Kaos = acp
 
 
 class _NullWritable:
@@ -165,6 +170,9 @@ class ACPKaos:
         self._supports_terminal = bool(client_capabilities and client_capabilities.terminal)
         self._output_byte_limit = output_byte_limit
         self._poll_interval = poll_interval
+
+    def gethost(self) -> str:
+        return self._fallback.gethost()
 
     def pathclass(self):
         return self._fallback.pathclass()

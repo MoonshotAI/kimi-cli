@@ -136,6 +136,10 @@ class Kaos(Protocol):
     name: str
     """The name of the KAOS implementation."""
 
+    def gethost(self) -> str:
+        """Get the host."""
+        ...
+
     def pathclass(self) -> type[PurePath]:
         """Get the path class used under `KaosPath`."""
         ...
@@ -258,6 +262,10 @@ def reset_current_kaos(token: contextvars.Token[Kaos]) -> None:
     from kaos._current import current_kaos
 
     current_kaos.reset(token)
+
+
+def gethost() -> str:
+    return get_current_kaos().gethost()
 
 
 def pathclass() -> type[PurePath]:
