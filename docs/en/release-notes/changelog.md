@@ -81,7 +81,7 @@ This page documents the changes in each Kimi CLI release.
 - CLI: Delete empty sessions on exit and ignore sessions whose context file is empty when listing
 - UI: Improve session replaying
 - Lib: Add `model_config: LLMModel | None` and `provider_config: LLMProvider | None` properties to `LLM` class
-- MetaCmd: Add `/usage` meta command to show API usage for Kimi for Coding users
+- MetaCmd: Add `/usage` meta command to show API usage for Kimi Code users
 
 ## 0.64 (2025-12-15)
 
@@ -146,7 +146,7 @@ This page documents the changes in each Kimi CLI release.
 - Core: Fix field inheritance of agent spec files when using `extend`
 - Core: Support using MCP tools in subagents
 - Tool: Add `CreateSubagent` tool to create subagents dynamically (not enabled in default agent)
-- Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi for Coding plan
+- Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi Code plan
 - Tool: Truncate Grep tool output to avoid exceeding token limit
 
 ## 0.57 (2025-11-20)

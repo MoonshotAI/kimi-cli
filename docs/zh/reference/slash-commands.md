@@ -29,7 +29,7 @@
 启动配置向导，设置 API 平台和模型。
 
 配置流程：
-1. 选择 API 平台（Kimi for Coding、Moonshot AI 开放平台等）
+1. 选择 API 平台（Kimi Code、Moonshot AI 开放平台等）
 2. 输入 API 密钥
 3. 选择可用模型
 
@@ -65,7 +65,7 @@
 显示 API 用量和配额信息。
 
 ::: tip 提示
-此命令仅适用于 Kimi for Coding 平台。
+此命令仅适用于 Kimi Code 平台。
 :::
 
 ### `/mcp`

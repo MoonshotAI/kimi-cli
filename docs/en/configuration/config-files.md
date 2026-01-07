@@ -139,7 +139,7 @@ Configures web fetch service. When enabled, the `FetchURL` tool prioritizes usin
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
 
 ::: tip
-When configuring the Kimi for Coding platform using the `/setup` command, search and fetch services are automatically configured.
+When configuring the Kimi Code platform using the `/setup` command, search and fetch services are automatically configured.
 :::
 
 ### `mcp`

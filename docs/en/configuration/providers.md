@@ -16,7 +16,7 @@ After configuration, Kimi CLI will automatically save settings to `~/.kimi/confi
 
 | Platform | Description |
 | --- | --- |
-| Kimi for Coding | Kimi for Coding platform, supports search and fetch services |
+| Kimi Code | Kimi Code platform, supports search and fetch services |
 | Moonshot AI Open Platform (moonshot.cn) | China region API endpoint |
 | Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint |
 
@@ -37,7 +37,7 @@ The `type` field in `providers` configuration specifies the API provider type. D
 
 ### `kimi`
 
-For connecting to Kimi API, including Kimi for Coding and Moonshot AI Open Platform.
+For connecting to Kimi API, including Kimi Code and Moonshot AI Open Platform.
 
 ```toml
 [providers.kimi-for-coding]
@@ -134,9 +134,9 @@ When video input capability is enabled, you can send video content in conversati
 
 ## Search and fetch services
 
-The `SearchWeb` and `FetchURL` tools depend on external services, currently only provided by the Kimi for Coding platform.
+The `SearchWeb` and `FetchURL` tools depend on external services, currently only provided by the Kimi Code platform.
 
-When selecting the Kimi for Coding platform using `/setup`, search and fetch services are automatically configured.
+When selecting the Kimi Code platform using `/setup`, search and fetch services are automatically configured.
 
 | Service | Corresponding tool | Behavior when not configured |
 | --- | --- | --- |
