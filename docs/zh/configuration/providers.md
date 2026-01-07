@@ -16,7 +16,7 @@ Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令�
 
 | 平台 | 说明 |
 | --- | --- |
-| Kimi for Coding | Kimi for Coding 平台，支持搜索和抓取服务 |
+| Kimi Code | Kimi Code 平台，支持搜索和抓取服务 |
 | Moonshot AI 开放平台 (moonshot.cn) | 中国区 API 端点 |
 | Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点 |
 
@@ -37,7 +37,7 @@ Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令�
 
 ### `kimi`
 
-用于连接 Kimi API，包括 Kimi for Coding 和 Moonshot AI 开放平台。
+用于连接 Kimi API，包括 Kimi Code 和 Moonshot AI 开放平台。
 
 ```toml
 [providers.kimi-for-coding]
@@ -134,9 +134,9 @@ capabilities = ["thinking", "image_in"]
 
 ## 搜索和抓取服务
 
-`SearchWeb` 和 `FetchURL` 工具依赖外部服务，目前仅 Kimi for Coding 平台提供这些服务。
+`SearchWeb` 和 `FetchURL` 工具依赖外部服务，目前仅 Kimi Code 平台提供这些服务。
 
-使用 `/setup` 选择 Kimi for Coding 平台时，搜索和抓取服务会自动配置。
+使用 `/setup` 选择 Kimi Code 平台时，搜索和抓取服务会自动配置。
 
 | 服务 | 对应工具 | 未配置时的行为 |
 | --- | --- | --- |

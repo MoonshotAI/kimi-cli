@@ -73,7 +73,7 @@ kimi
 
 On first launch, you need to configure the API platform and model. Enter the `/setup` command to start the configuration wizard:
 
-1. Select an API platform (e.g., Kimi for Coding, Moonshot AI Open Platform)
+1. Select an API platform (e.g., Kimi Code, Moonshot AI Open Platform)
 2. Enter your API key
 3. Select the model to use
 

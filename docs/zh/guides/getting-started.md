@@ -73,7 +73,7 @@ kimi
 
 首次启动时，你需要配置 API 平台和模型。输入 `/setup` 命令进入配置向导：
 
-1. 选择 API 平台（如 Kimi for Coding、Moonshot AI 开放平台）
+1. 选择 API 平台（如 Kimi Code、Moonshot AI 开放平台）
 2. 输入你的 API 密钥
 3. 选择要使用的模型
 
