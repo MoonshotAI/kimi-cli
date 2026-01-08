@@ -4,6 +4,10 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- ACP: Allow ACP clients to select and switch models (with thinking variants)
+- ACP: Add `terminal-auth` authentication method for setup flow
+- CLI: Deprecate `--acp` option in favor of `kimi acp` subcommand
+
 ## 0.73 (2026-01-09)
 
 - Skills: Add built-in skill-creator skill shipped with the package
@@ -17,9 +21,6 @@ This page documents the changes in each Kimi CLI release.
 - CLI: Add `--max-steps-per-turn`, `--max-retries-per-step` and `--max-ralph-iterations` options to override loop control config
 - SlashCmd: Make `/yolo` toggle auto-approve mode
 - UI: Show a YOLO badge in the shell prompt
-- ACP: Allow ACP clients to select and switch models (with thinking variants)
-- ACP: Add `terminal-auth` authentication method for setup flow
-- CLI: Deprecate `--acp` option in favor of `kimi acp` subcommand
 
 ## 0.72 (2026-01-04)
 

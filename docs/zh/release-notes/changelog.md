@@ -4,6 +4,10 @@
 
 ## 未发布
 
+- ACP：允许 ACP 客户端选择和切换模型（包含 Thinking 变体）
+- ACP：添加 `terminal-auth` 认证方式，用于配置流程
+- CLI：弃用 `--acp` 选项，请使用 `kimi acp` 子命令
+
 ## 0.73 (2026-01-09)
 
 - Skills：添加随软件包发布的内置 skill-creator Skill
@@ -17,9 +21,6 @@
 - CLI：添加 `--max-steps-per-turn`、`--max-retries-per-step` 和 `--max-ralph-iterations` 选项，覆盖循环控制配置
 - SlashCmd：`/yolo` 命令现在切换 YOLO 模式
 - UI：在 Shell 模式的提示符中显示 YOLO 标识
-- ACP：允许 ACP 客户端选择和切换模型（包含 Thinking 变体）
-- ACP：添加 `terminal-auth` 认证方式，用于配置流程
-- CLI：弃用 `--acp` 选项，请使用 `kimi acp` 子命令
 
 ## 0.72 (2026-01-04)
 

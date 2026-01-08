@@ -69,7 +69,7 @@ Kimi CLI is not only a coding agent, but also a shell. You can switch the shell 
 
 Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
-To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi --acp` (or `kimi --acp --thinking` with thinking mode enabled).
+To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi acp`.
 
 For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
@@ -78,7 +78,7 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https:/
   "agent_servers": {
     "Kimi CLI": {
       "command": "kimi",
-      "args": ["--acp", "--thinking"],
+      "args": ["acp"],
       "env": {}
     }
   }
