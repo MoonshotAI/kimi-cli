@@ -64,6 +64,10 @@ async def compact(soul: KimiSoul, args: str):
 
 @registry.command
 async def yolo(soul: KimiSoul, args: str):
-    """Enable YOLO mode (auto approve all actions)"""
-    soul.runtime.approval.set_yolo(True)
-    wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
+    """Toggle YOLO mode (auto-approve all actions)"""
+    if soul.runtime.approval.is_yolo():
+        soul.runtime.approval.set_yolo(False)
+        wire_send(TextPart(text="You only die once! Actions will require approval."))
+    else:
+        soul.runtime.approval.set_yolo(True)
+        wire_send(TextPart(text="You only live once! All actions will be auto-approved."))

@@ -53,6 +53,8 @@ class MaxStepsReached(Exception):
 class StatusSnapshot:
     context_usage: float
     """The usage of the context, in percentage."""
+    yolo_enabled: bool = False
+    """Whether YOLO (auto-approve) mode is enabled."""
 
 
 @runtime_checkable

@@ -107,4 +107,12 @@ ai-test: ## Run the test suite with Kimi CLI.
 	@echo "==> Running AI test suite"
 	@uv run tests_ai/scripts/run.py tests_ai
 
+.PHONY: gen-changelog gen-docs
+gen-changelog: ## Generate changelog with Kimi CLI.
+	@echo "==> Generating changelog"
+	@uv run kimi -c "$$(cat ./docs/prompts/gen-changelog.txt)" --yolo
+gen-docs: ## Generate user docs with Kimi CLI.
+	@echo "==> Generating user docs"
+	@uv run kimi -c "$$(cat ./docs/prompts/gen-docs.txt)" --yolo
+
 include src/kimi_cli/deps/Makefile

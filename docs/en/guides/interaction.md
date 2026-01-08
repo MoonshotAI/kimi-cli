@@ -87,6 +87,8 @@ kimi --yolo
 /yolo
 ```
 
+When YOLO mode is enabled, a yellow YOLO badge appears in the status bar at the bottom. Enter `/yolo` again to disable it.
+
 ::: warning Note
 YOLO mode skips all confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
 :::

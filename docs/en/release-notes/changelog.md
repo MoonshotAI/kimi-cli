@@ -13,6 +13,8 @@ This page documents the changes in each Kimi CLI release.
 - Loop: Add `max_ralph_iterations` loop control config to limit extra Ralph iterations
 - Config: Rename `max_steps_per_run` to `max_steps_per_turn` in loop control config (backward-compatible)
 - CLI: Add `--max-steps-per-turn`, `--max-retries-per-step` and `--max-ralph-iterations` options to override loop control config
+- SlashCmd: Make `/yolo` toggle auto-approve mode
+- UI: Show a YOLO badge in the shell prompt
 
 ## 0.72 (2026-01-04)
 

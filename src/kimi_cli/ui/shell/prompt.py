@@ -786,10 +786,12 @@ class CustomPromptSession:
         mode = str(self._mode).lower()
         if self._mode == PromptMode.AGENT and self._thinking:
             mode += " (think)"
+        status = self._status_provider()
+        if status.yolo_enabled:
+            fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
+            columns -= len("yolo") + 2
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
-
-        status = self._status_provider()
         right_text = self._render_right_span(status)
 
         current_toast_left = _current_toast("left")

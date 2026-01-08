@@ -122,10 +122,10 @@ This command starts a temporary sub-session to analyze the codebase structure an
 
 ### `/yolo`
 
-Enable YOLO mode, automatically approving all subsequent operations.
+Toggle YOLO mode. When enabled, all operations are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable.
 
 ::: warning Note
-Once enabled, it cannot be disabled in the current session. To restore manual approval, restart Kimi CLI.
+YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
 
 ## Command completion

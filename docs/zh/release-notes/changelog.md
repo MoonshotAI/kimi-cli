@@ -13,6 +13,8 @@
 - Loop：添加 `max_ralph_iterations` 循环控制配置，限制额外的 Ralph 迭代次数
 - Config：将循环控制配置中的 `max_steps_per_run` 重命名为 `max_steps_per_turn`（向后兼容）
 - CLI：添加 `--max-steps-per-turn`、`--max-retries-per-step` 和 `--max-ralph-iterations` 选项，覆盖循环控制配置
+- SlashCmd：`/yolo` 命令现在切换 YOLO 模式
+- UI：在 Shell 模式的提示符中显示 YOLO 标识
 
 ## 0.72 (2026-01-04)
 

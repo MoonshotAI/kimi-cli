@@ -35,6 +35,9 @@ class Approval:
     def set_yolo(self, yolo: bool) -> None:
         self._yolo = yolo
 
+    def is_yolo(self) -> bool:
+        return self._yolo
+
     async def request(
         self,
         sender: str,

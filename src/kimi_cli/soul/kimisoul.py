@@ -141,7 +141,10 @@ class KimiSoul:
 
     @property
     def status(self) -> StatusSnapshot:
-        return StatusSnapshot(context_usage=self._context_usage)
+        return StatusSnapshot(
+            context_usage=self._context_usage,
+            yolo_enabled=self._approval.is_yolo(),
+        )
 
     @property
     def agent(self) -> Agent:
