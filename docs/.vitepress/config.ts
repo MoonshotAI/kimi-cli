@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import llmstxt from 'vitepress-plugin-llms'
 
 const rawBase = process.env.VITEPRESS_BASE
 const base = rawBase
@@ -178,5 +179,9 @@ export default defineConfig({
     socialLinks: [
       { icon: 'github', link: 'https://github.com/MoonshotAI/kimi-cli' },
     ],
+  },
+
+  vite: {
+    plugins: [llmstxt()],
   },
 })
