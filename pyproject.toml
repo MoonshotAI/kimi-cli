@@ -73,6 +73,18 @@ select = [
     "I",   # isort
 ]
 
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.14"
+include = [
+    "src/**/*.py",
+    "tests/**/*.py",
+    "tests_ai/scripts/**/*.py",
+]
+strict = [
+    "src/kimi_cli/**/*.py",
+]
+
 [tool.ty.environment]
 python-version = "3.14"
 
