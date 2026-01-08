@@ -1,7 +1,7 @@
 ---
-Author: @codex
+Author: "@stdrc"
 Updated: 2026-01-07
-Status: Draft
+Status: Implemented
 ---
 
 # KLIP-6: /setup 平台模型自动刷新与托管命名空间
