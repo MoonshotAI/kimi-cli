@@ -32,7 +32,7 @@ def test_default_config_dump():
             "models": {},
             "providers": {},
             "loop_control": {
-                "max_steps_per_run": 100,
+                "max_steps_per_turn": 100,
                 "max_retries_per_step": 3,
                 "max_ralph_iterations": 0,
             },

@@ -310,8 +310,8 @@ class KimiSoul:
         step_no = 0
         while True:
             step_no += 1
-            if step_no > self._loop_control.max_steps_per_run:
-                raise MaxStepsReached(self._loop_control.max_steps_per_run)
+            if step_no > self._loop_control.max_steps_per_turn:
+                raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
             wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())

@@ -245,13 +245,6 @@ def kimi(
             help="Enable thinking mode if supported. Default: same as last time.",
         ),
     ] = None,
-    max_ralph_iterations: Annotated[
-        int | None,
-        typer.Option(
-            "--max-ralph-iterations",
-            help="Extra iterations after the first turn in Ralph mode. Use -1 for unlimited.",
-        ),
-    ] = None,
     skills_dir: Annotated[
         Path | None,
         typer.Option(
@@ -261,6 +254,33 @@ def kimi(
             dir_okay=True,
             readable=True,
             help="Path to the skills directory. Default: ~/.kimi/skills",
+        ),
+    ] = None,
+    max_steps_per_turn: Annotated[
+        int | None,
+        typer.Option(
+            "--max-steps-per-turn",
+            min=1,
+            help="Maximum number of steps in one turn. Default: from config.",
+        ),
+    ] = None,
+    max_retries_per_step: Annotated[
+        int | None,
+        typer.Option(
+            "--max-retries-per-step",
+            min=1,
+            help="Maximum number of retries in one step. Default: from config.",
+        ),
+    ] = None,
+    max_ralph_iterations: Annotated[
+        int | None,
+        typer.Option(
+            "--max-ralph-iterations",
+            min=-1,
+            help=(
+                "Extra iterations after the first turn in Ralph mode. Use -1 for unlimited. "
+                "Default: from config."
+            ),
         ),
     ] = None,
 ):
@@ -304,11 +324,6 @@ def kimi(
         output_format = "text"
         final_only = True
 
-    if max_ralph_iterations is not None and max_ralph_iterations < -1:
-        raise typer.BadParameter(
-            "Max Ralph iterations must be >= -1",
-            param_hint="--max-ralph-iterations",
-        )
     conflict_option_sets = [
         {
             "--print": print_mode,
@@ -441,6 +456,8 @@ def kimi(
             thinking=thinking_mode,
             agent_file=agent_file,
             skills_dir=skills_dir,
+            max_steps_per_turn=max_steps_per_turn,
+            max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
         )
         match ui:

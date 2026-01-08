@@ -197,29 +197,35 @@ async def test_ralph_loop_replays_original_prompt(runtime: Runtime, tmp_path: Pa
             [
                 Message(
                     role="user",
-                    content=RALPH_IMAGE_USER_INPUT,
-                ),
-                Message(
-                    role="user",
-                    content=[TextPart(text=RALPH_LOOP_SYSTEM_TEXT)],
+                    content=[
+                        TextPart(text="Check this image"),
+                        ImageURLPart(
+                            image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")
+                        ),
+                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                    ],
                 ),
                 Message(role="assistant", content=[TextPart(text="first")]),
                 Message(
                     role="user",
-                    content=RALPH_IMAGE_USER_INPUT,
-                ),
-                Message(
-                    role="user",
-                    content=[TextPart(text=RALPH_LOOP_SYSTEM_TEXT)],
+                    content=[
+                        TextPart(text="Check this image"),
+                        ImageURLPart(
+                            image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")
+                        ),
+                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                    ],
                 ),
                 Message(role="assistant", content=[TextPart(text="second")]),
                 Message(
                     role="user",
-                    content=RALPH_IMAGE_USER_INPUT,
-                ),
-                Message(
-                    role="user",
-                    content=[TextPart(text=RALPH_LOOP_SYSTEM_TEXT)],
+                    content=[
+                        TextPart(text="Check this image"),
+                        ImageURLPart(
+                            image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")
+                        ),
+                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                    ],
                 ),
                 Message(role="assistant", content=[TextPart(text="third")]),
             ]
@@ -247,16 +253,20 @@ async def test_ralph_loop_stops_on_safeword(runtime: Runtime, tmp_path: Path) ->
         context.history,
         snapshot(
             [
-                Message(role="user", content=[TextPart(text="do it")]),
                 Message(
                     role="user",
-                    content=[TextPart(text=RALPH_LOOP_SYSTEM_TEXT)],
+                    content=[
+                        TextPart(text="do it"),
+                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                    ],
                 ),
                 Message(role="assistant", content=[TextPart(text="first")]),
-                Message(role="user", content=[TextPart(text="do it")]),
                 Message(
                     role="user",
-                    content=[TextPart(text=RALPH_LOOP_SYSTEM_TEXT)],
+                    content=[
+                        TextPart(text="do it"),
+                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                    ],
                 ),
                 Message(
                     role="assistant", content=[TextPart(text="done <safeword>STOP</safeword>")]
@@ -290,10 +300,12 @@ async def test_ralph_loop_stops_on_tool_rejected(runtime: Runtime, tmp_path: Pat
         context.history,
         snapshot(
             [
-                Message(role="user", content=[TextPart(text="do it")]),
                 Message(
                     role="user",
-                    content=[TextPart(text=RALPH_LOOP_SYSTEM_TEXT)],
+                    content=[
+                        TextPart(text="do it"),
+                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                    ],
                 ),
                 Message(
                     role="assistant",
