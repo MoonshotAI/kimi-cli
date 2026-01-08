@@ -124,6 +124,7 @@ You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/
             f"--command {shlex.quote(instruction)} "
             f"--config {shlex.quote(config_json)} "
             f"--print "
+            f"--yolo "
             f"--thinking "
         )
 
