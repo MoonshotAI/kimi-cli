@@ -40,7 +40,7 @@ class DisplayBlock(BaseModel, ABC):
     Similar to `ContentPart`, but scoped to user-facing UI.
     `ContentPart` is for model-facing message content; `DisplayBlock` is for tool/UI extensions.
 
-    Dislike `ContentPart`, Kosong users may directly subclass `DisplayBlock` to define custom
+    Unlike `ContentPart`, Kosong users may directly subclass `DisplayBlock` to define custom
     display blocks for their applications.
     """
 
