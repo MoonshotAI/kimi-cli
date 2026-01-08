@@ -129,7 +129,7 @@ Suggested dependency range:
 
 ```
 dependencies = [
-  "kosong>=0.36.1,<0.37.0"
+  "kosong>=0.37.0,<0.38.0"
 ]
 ```
 

@@ -5,7 +5,7 @@ description = "A lightweight Python SDK for the Kimi API."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "kosong>=0.36.1,<0.37.0",
+    "kosong>=0.37.0,<0.38.0",
 ]
 
 [dependency-groups]
