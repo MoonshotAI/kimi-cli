@@ -162,7 +162,7 @@ def kimi(
         bool,
         typer.Option(
             "--acp",
-            help="Run as ACP server.",
+            help="(Deprecated, use `kimi acp` instead) Run as ACP server.",
         ),
     ] = False,
     wire_mode: Annotated[
@@ -531,7 +531,7 @@ cli.add_typer(info_cli, name="info")
 def term(
     ctx: typer.Context,
 ) -> None:
-    """Run Toad TUI backed by Kimi CLI ACP server (extra args go to `kimi --acp`)."""
+    """Run Toad TUI backed by Kimi CLI ACP server."""
     from kimi_cli.toad import run_term
 
     run_term(ctx)

@@ -29,7 +29,7 @@ class ACPServer:
     def __init__(self) -> None:
         self.client_capabilities: acp.schema.ClientCapabilities | None = None
         self.conn: acp.Client | None = None
-        self.sessions: dict[str, tuple[ACPSession, _ModelIDConv, KimiCLI]] = {}
+        self.sessions: dict[str, tuple[ACPSession, _ModelIDConv]] = {}
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -109,9 +109,9 @@ class ACPServer:
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
-        acp_session = ACPSession(session.id, cli_instance.run, self.conn, kaos=acp_kaos)
+        acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
         model_id_conv = _ModelIDConv(config.default_model, metadata.thinking)
-        self.sessions[session.id] = (acp_session, model_id_conv, cli_instance)
+        self.sessions[session.id] = (acp_session, model_id_conv)
 
         if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
             replace_tools(
@@ -181,9 +181,9 @@ class ACPServer:
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
-        acp_session = ACPSession(session.id, cli_instance.run, self.conn, kaos=acp_kaos)
+        acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
         model_id_conv = _ModelIDConv(config.default_model, metadata.thinking)
-        self.sessions[session.id] = (acp_session, model_id_conv, cli_instance)
+        self.sessions[session.id] = (acp_session, model_id_conv)
 
         if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
             replace_tools(
@@ -230,7 +230,8 @@ class ACPServer:
             logger.error("Session not found: {id}", id=session_id)
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        session, current_model_id, cli_instance = self.sessions[session_id]
+        acp_session, current_model_id = self.sessions[session_id]
+        cli_instance = acp_session.cli
         model_id_conv = _ModelIDConv.from_acp_model_id(model_id)
         if model_id_conv == current_model_id:
             return
@@ -252,7 +253,7 @@ class ACPServer:
         new_llm = create_llm(
             new_provider,
             new_model,
-            session_id=session.id,
+            session_id=acp_session.id,
         )
         cli_instance.soul.runtime.llm = new_llm
         cli_instance.soul.set_thinking(model_id_conv.thinking)
@@ -274,16 +275,16 @@ class ACPServer:
         if session_id not in self.sessions:
             logger.error("Session not found: {id}", id=session_id)
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
-        session, *_ = self.sessions[session_id]
-        return await session.prompt(prompt)
+        acp_session, *_ = self.sessions[session_id]
+        return await acp_session.prompt(prompt)
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         logger.info("Received cancel request for session: {id}", id=session_id)
         if session_id not in self.sessions:
             logger.error("Session not found: {id}", id=session_id)
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
-        session, *_ = self.sessions[session_id]
-        await session.cancel()
+        acp_session, *_ = self.sessions[session_id]
+        await acp_session.cancel()
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
