@@ -15,7 +15,7 @@ Kimi CLI is an AI agent that runs in the terminal, helping you complete software
 
 ## Getting Started
 
-Follow the instructions in [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) to install and start using Kimi CLI.
+See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi CLI.
 
 ## Key Features
 
