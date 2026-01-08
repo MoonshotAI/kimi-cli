@@ -31,7 +31,11 @@ def test_default_config_dump():
             "default_model": "",
             "models": {},
             "providers": {},
-            "loop_control": {"max_steps_per_run": 100, "max_retries_per_step": 3},
+            "loop_control": {
+                "max_steps_per_turn": 100,
+                "max_retries_per_step": 3,
+                "max_ralph_iterations": 0,
+            },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
         }
@@ -51,3 +55,8 @@ def test_load_config_text_json():
 def test_load_config_text_invalid():
     with pytest.raises(ConfigError, match="Invalid configuration text"):
         load_config_from_string("not valid {")
+
+
+def test_load_config_invalid_ralph_iterations():
+    with pytest.raises(ConfigError, match="max_ralph_iterations"):
+        load_config_from_string('{"loop_control": {"max_ralph_iterations": -2}}')

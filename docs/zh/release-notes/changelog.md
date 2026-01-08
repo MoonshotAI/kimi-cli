@@ -10,6 +10,9 @@
 - Wire：修复 Wire 模式无法接受有效 `cancel` 请求的问题
 - Setup：`/model` 命令现在可以切换所选供应商的所有可用模型
 - Lib：从 `kimi_cli.wire.types` 重新导出所有 Wire 消息类型，作为 `kimi_cli.wire.message` 的替代
+- Loop：添加 `max_ralph_iterations` 循环控制配置，限制额外的 Ralph 迭代次数
+- Config：将循环控制配置中的 `max_steps_per_run` 重命名为 `max_steps_per_turn`（向后兼容）
+- CLI：添加 `--max-steps-per-turn`、`--max-retries-per-step` 和 `--max-ralph-iterations` 选项，覆盖循环控制配置
 
 ## 0.72 (2026-01-04)
 

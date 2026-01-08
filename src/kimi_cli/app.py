@@ -57,6 +57,9 @@ class KimiCLI:
         thinking: bool = False,
         agent_file: Path | None = None,
         skills_dir: Path | None = None,
+        max_steps_per_turn: int | None = None,
+        max_retries_per_step: int | None = None,
+        max_ralph_iterations: int | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -72,6 +75,12 @@ class KimiCLI:
             thinking (bool, optional): Whether to enable thinking mode. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
+            max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
+                Defaults to None.
+            max_retries_per_step (int | None, optional): Maximum number of retries in one step.
+                Defaults to None.
+            max_ralph_iterations (int | None, optional): Extra iterations after the first turn in
+                Ralph mode. Defaults to None.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -83,6 +92,12 @@ class KimiCLI:
                 connected.
         """
         config = config if isinstance(config, Config) else load_config(config)
+        if max_steps_per_turn is not None:
+            config.loop_control.max_steps_per_turn = max_steps_per_turn
+        if max_retries_per_step is not None:
+            config.loop_control.max_retries_per_step = max_retries_per_step
+        if max_ralph_iterations is not None:
+            config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
         model: LLMModel | None = None

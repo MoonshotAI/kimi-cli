@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import kosong
 import tenacity
@@ -61,10 +62,30 @@ if TYPE_CHECKING:
 
 
 RESERVED_TOKENS = 50_000
+RALPH_SAFEWORD = "<safeword>STOP</safeword>"
 
 SKILL_COMMAND_PREFIX = "skill:"
 
 _registered_skill_commands: set[str] = set()
+
+
+type StepOutcomeReason = Literal["no_tool_calls", "tool_rejected"]
+
+
+@dataclass(frozen=True, slots=True)
+class StepOutcome:
+    reason: StepOutcomeReason
+    assistant_message: Message
+
+
+type AgentLoopStopReason = StepOutcomeReason
+
+
+@dataclass(frozen=True, slots=True)
+class AgentLoopResult:
+    stop_reason: AgentLoopStopReason
+    final_message: Message | None
+    step_count: int
 
 
 class KimiSoul:
@@ -173,11 +194,11 @@ class KimiSoul:
         return registry.list_commands()
 
     async def run(self, user_input: str | list[ContentPart]):
-        wire_send(TurnBegin(user_input=user_input))
         user_message = Message(role="user", content=user_input)
         text_input = user_message.extract_text(" ").strip()
 
         if command_call := parse_slash_command_call(text_input):
+            wire_send(TurnBegin(user_input=user_input))
             command = soul_slash_registry.find_command(command_call.name)
             if command is None:
                 # this should not happen actually, the shell should have filtered it out
@@ -189,9 +210,32 @@ class KimiSoul:
                 await ret
             return
 
-        await self._turn(user_message)
+        if self._loop_control.max_ralph_iterations != 0:
+            user_message.content.append(
+                system(
+                    "You are running in an automated loop where the same prompt is fed repeatedly. "
+                    "Only include the safeword when the task is fully complete: "
+                    f"{RALPH_SAFEWORD}. "
+                    "Including it will stop further iterations."
+                )
+            )
 
-    async def _turn(self, user_message: Message) -> None:
+        remaining = self._loop_control.max_ralph_iterations
+        while True:
+            # Ralph mode intentionally replays the original prompt each iteration.
+            wire_send(TurnBegin(user_input=user_input))
+            result = await self._turn(user_message)
+            if result.stop_reason == "tool_rejected":
+                return
+            if result.final_message and RALPH_SAFEWORD in result.final_message.extract_text(" "):
+                return
+            if remaining == -1:
+                continue
+            if remaining == 0:
+                return
+            remaining -= 1
+
+    async def _turn(self, user_message: Message) -> AgentLoopResult:
         if self._runtime.llm is None:
             raise LLMNotSet()
 
@@ -201,7 +245,7 @@ class KimiSoul:
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
-        await self._agent_loop()
+        return await self._agent_loop()
 
     def _register_skill_commands(self) -> None:
         for skill in self._runtime.skills.values():
@@ -236,7 +280,7 @@ class KimiSoul:
         _run_skill.__doc__ = skill.description
         return _run_skill
 
-    async def _agent_loop(self):
+    async def _agent_loop(self) -> AgentLoopResult:
         """The main agent loop for one run."""
         assert self._runtime.llm is not None
         if isinstance(self._agent.toolset, KimiToolset):
@@ -266,8 +310,8 @@ class KimiSoul:
         step_no = 0
         while True:
             step_no += 1
-            if step_no > self._loop_control.max_steps_per_run:
-                raise MaxStepsReached(self._loop_control.max_steps_per_run)
+            if step_no > self._loop_control.max_steps_per_turn:
+                raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
             wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
@@ -276,6 +320,7 @@ class KimiSoul:
             # to the main wire. See `_SubWire` for more details. Later we need to figure
             # out a better solution.
             back_to_the_future: BackToTheFuture | None = None
+            step_outcome: StepOutcome | None = None
             try:
                 # compact the context if needed
                 if (
@@ -288,10 +333,9 @@ class KimiSoul:
                 logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
-                finished = await self._step()
+                step_outcome = await self._step()
             except BackToTheFuture as e:
                 back_to_the_future = e
-                finished = False
             except Exception:
                 # any other exception should interrupt the step
                 wire_send(StepInterrupted())
@@ -305,16 +349,25 @@ class KimiSoul:
                     except Exception:
                         logger.exception("Approval piping task failed")
 
-            if finished:
-                return
+            if step_outcome is not None:
+                final_message = (
+                    step_outcome.assistant_message
+                    if step_outcome.reason == "no_tool_calls"
+                    else None
+                )
+                return AgentLoopResult(
+                    stop_reason=step_outcome.reason,
+                    final_message=final_message,
+                    step_count=step_no,
+                )
 
             if back_to_the_future is not None:
                 await self._context.revert_to(back_to_the_future.checkpoint_id)
                 await self._checkpoint()
                 await self._context.append_message(back_to_the_future.messages)
 
-    async def _step(self) -> bool:
-        """Run an single step and return whether the run should be stopped."""
+    async def _step(self) -> StepOutcome | None:
+        """Run a single step and return a stop outcome, or None to continue."""
         # already checked in `run`
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
@@ -356,7 +409,7 @@ class KimiSoul:
         rejected = any(isinstance(result.return_value, ToolRejectedError) for result in results)
         if rejected:
             _ = self._denwa_renji.fetch_pending_dmail()
-            return True
+            return StepOutcome(reason="tool_rejected", assistant_message=result.message)
 
         # handle pending D-Mail
         if dmail := self._denwa_renji.fetch_pending_dmail():
@@ -384,7 +437,9 @@ class KimiSoul:
                 ],
             )
 
-        return not result.tool_calls
+        if result.tool_calls:
+            return None
+        return StepOutcome(reason="no_tool_calls", assistant_message=result.message)
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)

@@ -17,6 +17,9 @@ Only write entries that are worth mentioning to users.
 - Wire: Fix Wire mode failing to accept valid `cancel` requests
 - Setup: Allow `/model` to switch between all available models for the selected provider
 - Lib: Re-export all Wire message types from `kimi_cli.wire.types`, as a replacement of `kimi_cli.wire.message`
+- Loop: Add `max_ralph_iterations` loop control config to limit extra Ralph iterations
+- Config: Rename `max_steps_per_run` to `max_steps_per_turn` in loop control config (backward-compatible)
+- CLI: Add `--max-steps-per-turn`, `--max-retries-per-step` and `--max-ralph-iterations` options to override loop control config
 
 ## 0.72 (2026-01-04)
 

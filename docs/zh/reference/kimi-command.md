@@ -65,6 +65,20 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 使用 `--command` 时，Kimi CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
 
+## 循环控制
+
+| 选项 | 说明 |
+|------|------|
+| `--max-steps-per-turn N` | 单轮最大步数，覆盖配置文件中的 `loop_control.max_steps_per_turn` |
+| `--max-retries-per-step N` | 单步最大重试次数，覆盖配置文件中的 `loop_control.max_retries_per_step` |
+| `--max-ralph-iterations N` | 每个 User 消息后额外自动迭代 `N` 次；`0` 表示关闭；`-1` 表示无限 |
+
+### Ralph 循环
+
+[Ralph](https://ghuntley.com/ralph/) 是一种把 Agent 放进循环的技术：同一条提示词会被反复喂给 Agent，让它围绕一个任务持续迭代。
+
+当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会反复把相同的提示词喂给 Agent，直到 Assistant 消息包含 `<safeword>STOP</safeword>` 或达到迭代上限。
+
 ## UI 模式
 
 | 选项 | 说明 |

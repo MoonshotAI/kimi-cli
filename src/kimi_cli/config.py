@@ -49,10 +49,12 @@ class LLMModel(BaseModel):
 class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
-    max_steps_per_run: int = 100
-    """Maximum number of steps in one run"""
-    max_retries_per_step: int = 3
+    max_steps_per_turn: int = Field(default=100, ge=1, validation_alias="max_steps_per_run")
+    """Maximum number of steps in one turn"""
+    max_retries_per_step: int = Field(default=3, ge=1)
     """Maximum number of retries in one step"""
+    max_ralph_iterations: int = Field(default=0, ge=-1)
+    """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
 
 
 class MoonshotSearchConfig(BaseModel):
