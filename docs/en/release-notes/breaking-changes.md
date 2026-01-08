@@ -2,7 +2,7 @@
 
 This page documents breaking changes in Kimi CLI releases and provides migration guidance.
 
-## 0.74 - ACP command change
+## Unreleased - ACP command change
 
 ### `--acp` option deprecated
 
