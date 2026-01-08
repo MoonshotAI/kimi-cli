@@ -12,6 +12,15 @@ from kimi_cli.utils.logging import logger
 from swebench.config import EvalConfig
 from swebench.utils.docker import Container
 
+
+def _filter_messages(messages: list) -> list:
+    filtered = []
+    for msg in messages:
+        role = msg.get("role", "")
+        if not role.startswith("_"):
+            filtered.append(msg)
+    return filtered
+
 class KimiContainerSolver:
     def __init__(
         self,
@@ -100,7 +109,7 @@ class KimiContainerSolver:
         instruction = f"""
 Please help me solve the following issue:
 <issue_description>
-{self.problem_statement}
+{self.problem_statement.strip()}
 </issue_description>
 
 You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/python`.
@@ -170,6 +179,7 @@ You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/
             context_content = context_result.get("stdout", "").strip()
             trace_lines = context_content.split("\n")
             messages = []
+            skipped_count = 0
             
             for line in trace_lines:
                 if not line.strip():
@@ -218,22 +228,24 @@ You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/
                             record["content"] = combined_text
                     
                     messages.append(record)
-                except json.JSONDecodeError:
-                    logger.debug(f"Skipped invalid JSON line: {line[:50]}")
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Skipped invalid JSON line: {line[:50]} - Error: {e}")
+                    skipped_count += 1
                     continue
             
-            logger.info(f"✓ Extracted {len(messages)} messages from main context")
+            filtered_messages = _filter_messages(messages)
+            logger.info(f"✓ Extracted {len(messages)} messages from context file, {len(filtered_messages)} valid after filtering (skipped {len(messages) - len(filtered_messages)} internal entries, {skipped_count} JSON decode errors)")
             
             sub_messages = await self._extract_subagent_contexts()
             if sub_messages:
                 logger.info(f"✓ Found {len(sub_messages)} subagent(s)")
             
             return {
-                "messages": messages,
+                "messages": filtered_messages,
                 "sub_messages": sub_messages,
             }
         except Exception as e:
-            logger.warning(f"Failed to extract trace: {e}", exc_info=True)
+            logger.error(f"Failed to extract trace: {e}", exc_info=True)
             return {"messages": [], "sub_messages": []}
     
     async def _extract_subagent_contexts(self) -> list:
@@ -256,8 +268,10 @@ You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/
             
             subagent_files = [f for f in find_result.get("stdout", "").strip().split("\n") if f.strip()]
             if not subagent_files:
+                logger.debug("No subagent context files found")
                 return []
             
+            logger.info(f"Found {len(subagent_files)} subagent context file(s)")
             sub_messages = []
             for context_file in subagent_files:
                 try:
@@ -269,7 +283,12 @@ You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/
                     )
                     
                     content = result.get("stdout", "").strip()
+                    if not content:
+                        logger.debug(f"Subagent context file is empty: {context_file}")
+                        continue
+                        
                     messages = []
+                    skipped_count = 0
                     for line in content.split("\n"):
                         if not line.strip():
                             continue
@@ -277,63 +296,72 @@ You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/
                             record = json.loads(line)
                             
                             if isinstance(record.get("content"), list):
-                                    content_list = record["content"]
-                                    if record.get("role") == "tool":
-                                        combined_text = "\n".join(
-                                            item.get("text", "") if isinstance(item, dict) else str(item)
-                                            for item in content_list
-                                            if item
-                                        )
-                                        record["content"] = combined_text
-                                    
-                                    elif record.get("role") == "assistant":
-                                        reasoning_texts = []
-                                        content_texts = []
-                                        
-                                        for item in content_list:
-                                            if isinstance(item, dict):
-                                                if item.get("type") == "think":
-                                                    think_text = item.get("think", "")
-                                                    if think_text:
-                                                        reasoning_texts.append(think_text)
-                                                elif item.get("type") == "text":
-                                                    text = item.get("text", "")
-                                                    if text:
-                                                        content_texts.append(text)
-                                        
-                                        if content_texts:
-                                            record["content"] = "\n".join(content_texts)
-                                        else:
-                                            record["content"] = ""
-
-                                        if reasoning_texts:
-                                            record["reasoning_content"] = "\n".join(reasoning_texts)
-                                    
-                                    else:
-                                        combined_text = "\n".join(
-                                            item.get("text", "") if isinstance(item, dict) else str(item)
-                                            for item in content_list
-                                            if item
-                                        )
-                                        record["content"] = combined_text
+                                content_list = record["content"]
+                                if record.get("role") == "tool":
+                                    combined_text = "\n".join(
+                                        item.get("text", "") if isinstance(item, dict) else str(item)
+                                        for item in content_list
+                                        if item
+                                    )
+                                    record["content"] = combined_text
                                 
-                                messages.append(record)
-                        except json.JSONDecodeError:
+                                elif record.get("role") == "assistant":
+                                    reasoning_texts = []
+                                    content_texts = []
+                                    
+                                    for item in content_list:
+                                        if isinstance(item, dict):
+                                            if item.get("type") == "think":
+                                                think_text = item.get("think", "")
+                                                if think_text:
+                                                    reasoning_texts.append(think_text)
+                                            elif item.get("type") == "text":
+                                                text = item.get("text", "")
+                                                if text:
+                                                    content_texts.append(text)
+                                    
+                                    if content_texts:
+                                        record["content"] = "\n".join(content_texts)
+                                    else:
+                                        record["content"] = ""
+
+                                    if reasoning_texts:
+                                        record["reasoning_content"] = "\n".join(reasoning_texts)
+                                
+                                else:
+                                    combined_text = "\n".join(
+                                        item.get("text", "") if isinstance(item, dict) else str(item)
+                                        for item in content_list
+                                        if item
+                                    )
+                                    record["content"] = combined_text
+                            
+                            messages.append(record)
+                        except json.JSONDecodeError as e:
+                            logger.debug(f"Skipped invalid JSON line in subagent: {line[:50]} - Error: {e}")
+                            skipped_count += 1
                             continue
                     
                     if messages:
+                        filtered_messages = _filter_messages(messages)
                         subagent_id = Path(context_file).name
-                        sub_messages.append({
-                            "id": subagent_id,
-                            "messages": messages,
-                        })
+                        if filtered_messages:
+                            sub_messages.append({
+                                "id": subagent_id,
+                                "messages": filtered_messages,
+                            })
+                            logger.info(f"✓ Extracted {len(messages)} messages from subagent {subagent_id}, {len(filtered_messages)} valid after filtering (skipped {len(messages) - len(filtered_messages)} internal entries, {skipped_count} JSON decode errors)")
+                        else:
+                            logger.warning(f"Subagent {subagent_id} has no valid messages after filtering (skipped {len(messages)} entries)")
+                    else:
+                        logger.warning(f"Subagent context file has no messages: {context_file} (skipped {skipped_count} JSON decode errors)")
                 except Exception as e:
-                    logger.warning(f"Failed to read subagent context {context_file}: {e}")
+                    logger.error(f"Failed to read subagent context {context_file}: {e}", exc_info=True)
                     continue
             
             return sub_messages
         except Exception as e:
-            logger.debug(f"No subagent contexts found: {e}")
+            logger.error(f"Failed to extract subagent contexts: {e}", exc_info=True)
             return []
 
     async def _get_container_diff(self) -> str:
