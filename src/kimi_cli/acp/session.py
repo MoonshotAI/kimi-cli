@@ -172,7 +172,7 @@ class ACPSession:
                         await self._handle_approval_request(msg)
         except LLMNotSet as e:
             logger.exception("LLM not set:")
-            raise acp.RequestError.internal_error({"error": str(e)}) from e
+            raise acp.RequestError.auth_required() from e
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
             raise acp.RequestError.internal_error({"error": str(e)}) from e

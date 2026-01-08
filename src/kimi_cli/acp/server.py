@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,15 @@ class ACPServer:
             info=client_info,
         )
         self.client_capabilities = client_capabilities
+
+        # get command and args of current process for terminal-auth
+        command = sys.argv[0]
+        if command.endswith("kimi"):
+            args = []
+        else:
+            idx = sys.argv.index("kimi")
+            args = sys.argv[1 : idx + 1]
+
         return acp.InitializeResponse(
             protocol_version=protocol_version,
             agent_capabilities=acp.schema.AgentCapabilities(
@@ -58,7 +68,23 @@ class ACPServer:
                     list=acp.schema.SessionListCapabilities(),
                 ),
             ),
-            auth_methods=[],
+            auth_methods=[
+                acp.schema.AuthMethod(
+                    id="setup",
+                    name="Setup LLM with /setup slash command",
+                    description=(
+                        "Run `kimi` command in the terminal, "
+                        "then send `/setup` command to complete the setup."
+                    ),
+                    field_meta={
+                        "terminal-auth": {
+                            "command": command,
+                            "args": args,
+                            "label": "Kimi CLI Setup",
+                        }
+                    },
+                )
+            ],
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
