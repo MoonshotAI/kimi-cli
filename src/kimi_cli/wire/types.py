@@ -4,7 +4,6 @@ import asyncio
 from typing import Any, Literal, TypeGuard, cast
 
 from kosong.chat_provider import TokenUsage
-from kosong.display import BriefDisplayBlock, DisplayBlock, UnknownDisplayBlock
 from kosong.message import (
     AudioURLPart,
     ContentPart,
@@ -15,7 +14,13 @@ from kosong.message import (
     ToolCallPart,
     VideoURLPart,
 )
-from kosong.tooling import ToolResult, ToolReturnValue
+from kosong.tooling import (
+    BriefDisplayBlock,
+    DisplayBlock,
+    ToolResult,
+    ToolReturnValue,
+    UnknownDisplayBlock,
+)
 from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field, field_serializer, field_validator
 

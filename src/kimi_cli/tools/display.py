@@ -1,6 +1,6 @@
 from typing import Literal
 
-from kosong.display import DisplayBlock
+from kosong.tooling import DisplayBlock
 from pydantic import BaseModel
 
 

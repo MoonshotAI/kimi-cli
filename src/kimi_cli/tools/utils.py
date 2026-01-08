@@ -2,8 +2,7 @@ import re
 import string
 from pathlib import Path
 
-from kosong.display import BriefDisplayBlock, DisplayBlock
-from kosong.tooling import ToolError, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
 
