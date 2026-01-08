@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.73 (2026-01-09)
+
 - Skills：添加随软件包发布的内置 skill-creator Skill
 - Tool：在 `ReadFile` 路径中将 `~` 展开为用户主目录
 - MCP：确保 MCP 工具加载完成后再开始 Agent 循环
