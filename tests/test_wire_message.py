@@ -2,19 +2,25 @@ import inspect
 
 import pytest
 from inline_snapshot import snapshot
-from kosong.message import ImageURLPart, TextPart, ToolCall, ToolCallPart
-from kosong.tooling import BriefDisplayBlock, ToolResult, ToolReturnValue
 from pydantic import BaseModel
 
-from kimi_cli.wire.message import (
+from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
+    BriefDisplayBlock,
     CompactionBegin,
     CompactionEnd,
+    ImageURLPart,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TextPart,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+    ToolReturnValue,
     TurnBegin,
     WireMessage,
     WireMessageEnvelope,
@@ -22,7 +28,6 @@ from kimi_cli.wire.message import (
     is_request,
     is_wire_message,
 )
-from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
 
 
 def _test_serde(msg: WireMessage):
@@ -282,9 +287,9 @@ async def test_type_inspection():
 
 
 def test_wire_message_type_alias():
-    import kimi_cli.wire.message
+    import kimi_cli.wire.types
 
-    module = kimi_cli.wire.message
+    module = kimi_cli.wire.types
     wire_message_types = {
         obj
         for _, obj in inspect.getmembers(module, inspect.isclass)

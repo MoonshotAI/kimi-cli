@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import acp
-from kosong.message import (
-    ContentPart,
-    ImageURLPart,
-    TextPart,
-)
-from kosong.tooling import ToolReturnValue
 
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.display import DiffDisplayBlock, DisplayBlock
+from kimi_cli.wire.types import (
+    ContentPart,
+    DiffDisplayBlock,
+    DisplayBlock,
+    ImageURLPart,
+    TextPart,
+    ToolReturnValue,
+)
 
 
 def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPart]:

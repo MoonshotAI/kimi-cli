@@ -1,8 +1,7 @@
 import acp
-from kosong.tooling import ToolReturnValue
 
 from kimi_cli.acp.convert import tool_result_to_acp_content
-from kimi_cli.wire.display import DiffDisplayBlock
+from kimi_cli.wire.types import DiffDisplayBlock, ToolReturnValue
 
 
 def test_tool_result_to_acp_content_handles_diff_display():

@@ -322,3 +322,29 @@ async def test_max_bytes_boundary(read_file_tool: ReadFile, temp_work_dir: KaosP
 
     assert not result.is_error
     assert f"Max {MAX_BYTES} bytes reached" in result.message
+
+
+async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading with ~ path expansion."""
+    # Create a test file in temp_work_dir and use ~ to reference it
+    # We simulate by creating a file and checking that ~ expands correctly
+    home = Path.home()
+    test_file = home / ".kimi_test_expanduser_temp"
+    test_content = "Test content for tilde expansion"
+
+    try:
+        # Create the test file in home directory
+        test_file.write_text(test_content)
+
+        # Read using ~ path
+        result = await read_file_tool(Params(path="~/.kimi_test_expanduser_temp"))
+
+        assert not result.is_error
+        assert "Test content for tilde expansion" in result.output
+        assert result.message == snapshot(
+            "1 lines read from file starting from line 1. End of file reached."
+        )
+    finally:
+        # Clean up
+        if test_file.exists():
+            test_file.unlink()

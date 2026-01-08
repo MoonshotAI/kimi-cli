@@ -4,8 +4,8 @@ from typing import Literal, override
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
+from kimi_cli.tools.display import TodoDisplayBlock, TodoDisplayItem
 from kimi_cli.tools.utils import load_desc
-from kimi_cli.wire.display import TodoDisplayBlock, TodoDisplayItem
 
 
 class Todo(BaseModel):

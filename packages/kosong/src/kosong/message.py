@@ -14,7 +14,16 @@ class MergeableMixin:
 
 
 class ContentPart(BaseModel, ABC, MergeableMixin):
-    """A part of a message content."""
+    """
+    A part of a message content.
+
+    This is the abstract base class for all supported content parts. Subclasses must define a `type`
+    field of type `str` and optional other fields specific to the content part.
+
+    For Kosong users, you typically do not need to subclass this directly. Instead, use the provided
+    subclasses like `TextPart`, `ThinkPart`, `ImageURLPart`, etc. Unless you are implementing custom
+    `ChatProvider`s that supports new content part types.
+    """
 
     __content_part_registry: ClassVar[dict[str, type["ContentPart"]]] = {}
 

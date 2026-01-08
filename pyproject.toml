@@ -6,14 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agent-client-protocol==0.7.0",
-    "aiofiles==25.1.0",
-    "aiohttp==3.13.2",
+    "aiofiles>=24.0,<25.0",
+    "aiohttp==3.13.3",
     "typer==0.21.0",
     "kosong[contrib]==0.36.1",
     # loguru stays >=0.6.0 because notify-py (via batrachian-toad) caps it at <=0.6.0 on 3.14+.
     "loguru>=0.6.0,<0.8",
     "prompt-toolkit==3.0.52",
-    "pillow==12.0.0",
+    "pillow==12.1.0",
     "pyyaml==6.0.3",
     "rich==14.2.0",
     "ripgrepy==2.2.0",
@@ -25,7 +25,7 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
-    "pykaos==0.5.3",
+    "pykaos==0.5.4",
     "batrachian-toad==0.5.18; python_version >= \"3.14\"",
     "tomlkit==0.13.3",
 ]
@@ -35,7 +35,7 @@ dev = [
     "pyinstaller==6.17.0",
     "inline-snapshot[black]>=0.31.1",
     "pyright>=1.1.407",
-    "ty>=0.0.7",
+    "ty>=0.0.9",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.14.10",

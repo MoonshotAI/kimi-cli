@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from kosong.message import ContentPart, ImageURLPart, Message, TextPart, ThinkPart, VideoURLPart
-from kosong.tooling import ToolError, ToolResult
+from kosong.message import Message
 from kosong.tooling.error import ToolRuntimeError
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.wire.types import (
+    ContentPart,
+    ImageURLPart,
+    TextPart,
+    ThinkPart,
+    ToolResult,
+    VideoURLPart,
+)
 
 
 def system(message: str) -> ContentPart:
@@ -15,8 +22,8 @@ def system(message: str) -> ContentPart:
 
 def tool_result_to_message(tool_result: ToolResult) -> Message:
     """Convert a tool result to a message."""
-    if isinstance(tool_result.return_value, ToolError):
-        assert tool_result.return_value.message, "ToolError should have a message"
+    if tool_result.return_value.is_error:
+        assert tool_result.return_value.message, "Error return value should have a message"
         message = tool_result.return_value.message
         if isinstance(tool_result.return_value, ToolRuntimeError):
             message += "\nThis is an unexpected error and the tool is probably not working."

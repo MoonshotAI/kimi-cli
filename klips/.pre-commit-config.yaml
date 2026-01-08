@@ -1,0 +1,4 @@
+orphan: true
+
+# Docs changes do not need pre-commit hooks.
+repos: []

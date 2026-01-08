@@ -2,14 +2,21 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import rich
-from kosong.message import ContentPart, Message, ToolCall, ToolCallPart
-from kosong.tooling import ToolResult
+from kosong.message import Message
 
 from kimi_cli.cli import OutputFormat
 from kimi_cli.soul.message import tool_result_to_message
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import StepBegin, StepInterrupted, WireMessage
+from kimi_cli.wire.types import (
+    ContentPart,
+    StepBegin,
+    StepInterrupted,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+    WireMessage,
+)
 
 
 class Printer(Protocol):

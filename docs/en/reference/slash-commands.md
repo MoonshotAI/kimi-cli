@@ -29,7 +29,7 @@ Open the GitHub Issues page to submit feedback.
 Start the configuration wizard to set up API platform and model.
 
 Configuration flow:
-1. Select an API platform (Kimi for Coding, Moonshot AI Open Platform, etc.)
+1. Select an API platform (Kimi Code, Moonshot AI Open Platform, etc.)
 2. Enter your API key
 3. Select an available model
 
@@ -39,7 +39,7 @@ After configuration, settings are automatically saved to `~/.kimi/config.toml` a
 
 Switch the default model.
 
-When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
+This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
 
 After selecting a new model, Kimi CLI will automatically update the configuration file and reload.
 
@@ -65,7 +65,7 @@ Debug information is displayed in a pager, press `q` to exit.
 Display API usage and quota information.
 
 ::: tip
-This command only works with the Kimi for Coding platform.
+This command only works with the Kimi Code platform.
 :::
 
 ### `/mcp`

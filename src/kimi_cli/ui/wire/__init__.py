@@ -12,7 +12,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import ApprovalRequest, Request
+from kimi_cli.wire.types import ApprovalRequest, Request
 
 from .jsonrpc import (
     ErrorCodes,
@@ -29,6 +29,14 @@ from .jsonrpc import (
     JSONRPCSuccessResponse,
     Statuses,
 )
+
+# Maximum buffer size for the asyncio StreamReader used for stdio.
+# Passed as the `limit` argument to `acp.stdio_streams`, this caps how much
+# data can be buffered when reading from stdin (e.g., large tool or model
+# outputs sent over JSON-RPC). A 100MB limit is large enough for typical
+# interactive use while still protecting the process from unbounded memory
+# growth or buffer-overrun errors when peers send unexpectedly large payloads.
+STDIO_BUFFER_LIMIT = 100 * 1024 * 1024
 
 
 class WireOverStdio:
@@ -52,7 +60,7 @@ class WireOverStdio:
     async def serve(self) -> None:
         logger.info("Starting Wire server on stdio")
 
-        self._reader, self._writer = await acp.stdio_streams()
+        self._reader, self._writer = await acp.stdio_streams(limit=STDIO_BUFFER_LIMIT)
         self._write_task = asyncio.create_task(self._write_loop())
         try:
             await self._read_loop()

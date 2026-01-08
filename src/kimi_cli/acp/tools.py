@@ -4,7 +4,7 @@ from contextlib import suppress
 import acp
 from kaos import get_current_kaos
 from kaos.local import local_kaos
-from kosong.tooling import CallableTool2, DisplayBlock, ToolReturnValue
+from kosong.tooling import CallableTool2, ToolReturnValue
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
@@ -12,6 +12,7 @@ from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder
+from kimi_cli.wire.types import DisplayBlock
 
 
 def replace_tools(

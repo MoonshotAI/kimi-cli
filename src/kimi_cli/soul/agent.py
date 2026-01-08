@@ -19,7 +19,8 @@ from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.skill import (
     Skill,
-    discover_skills,
+    discover_skills_from_roots,
+    get_builtin_skills_dir,
     get_claude_skills_dir,
     get_skills_dir,
     index_skills,
@@ -93,11 +94,13 @@ class Runtime:
         )
 
         # Discover and format skills
+        builtin_skills_dir = get_builtin_skills_dir()
         if skills_dir is None:
             skills_dir = get_skills_dir()
             if not skills_dir.is_dir() and (claude_skills_dir := get_claude_skills_dir()).is_dir():
                 skills_dir = claude_skills_dir
-        skills = discover_skills(skills_dir)
+        skills_roots = [builtin_skills_dir, skills_dir]
+        skills = discover_skills_from_roots(skills_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
         skills_formatted = "\n".join(

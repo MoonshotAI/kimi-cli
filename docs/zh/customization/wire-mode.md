@@ -203,6 +203,17 @@ interface StatusUpdate {
   /** 当前步骤的消息 ID，JSON 中可能不存在 */
   message_id?: string | null
 }
+
+interface TokenUsage {
+  /** 不包括 `input_cache_read` 和 `input_cache_creation` 的输入 token 数。 */
+  input_other: number
+  /** 总输出 token 数。 */
+  output: number
+  /** 缓存的输入 token 数 */
+  input_cache_read: number
+  /** 用于缓存创建的输入 token 数。目前仅 Anthropic API 支持此字段。 */
+  input_cache_creation: number
+}
 ```
 
 ### `ContentPart`
@@ -210,7 +221,7 @@ interface StatusUpdate {
 消息内容片段。序列化时 `type` 为 `"ContentPart"`，具体类型由 `payload.type` 区分。
 
 ```typescript
-type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart
+type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart | VideoURLPart
 
 interface TextPart {
   type: "text"
@@ -242,6 +253,16 @@ interface AudioURLPart {
     /** 音频 URL，可以是 data URI（如 data:audio/aac;base64,...） */
     url: string
     /** 音频 ID，用于区分不同音频，JSON 中可能不存在 */
+    id?: string | null
+  }
+}
+
+interface VideoURLPart {
+  type: "video_url"
+  video_url: {
+    /** 视频 URL，可以是 data URI（如 data:video/mp4;base64,...） */
+    url: string
+    /** 视频 ID，用于区分不同视频，JSON 中可能不存在 */
     id?: string | null
   }
 }
@@ -287,18 +308,20 @@ interface ToolCallPart {
 interface ToolResult {
   /** 对应的工具调用 ID */
   tool_call_id: string
-  return_value: {
-    /** 是否为错误 */
-    is_error: boolean
-    /** 返回给模型的输出内容 */
-    output: string | ContentPart[]
-    /** 给模型的解释性消息 */
-    message: string
-    /** 显示给用户的内容块 */
-    display: DisplayBlock[]
-    /** 额外调试信息，JSON 中可能不存在 */
-    extras?: object | null
-  }
+  return_value: ToolReturnValue
+}
+
+interface ToolReturnValue {
+  /** 是否为错误 */
+  is_error: boolean
+  /** 返回给模型的输出内容 */
+  output: string | ContentPart[]
+  /** 给模型的解释性消息 */
+  message: string
+  /** 显示给用户的内容块 */
+  display: DisplayBlock[]
+  /** 额外调试信息，JSON 中可能不存在 */
+  extras?: object | null
 }
 ```
 
@@ -355,10 +378,18 @@ interface ApprovalRequest {
 
 ```typescript
 type DisplayBlock =
+  UnknownDisplayBlock
   | BriefDisplayBlock
   | DiffDisplayBlock
   | TodoDisplayBlock
-  | UnknownDisplayBlock
+
+/** 无法识别的显示块类型的 fallback */
+interface UnknownDisplayBlock {
+  /** 任意类型标识 */
+  type: string
+  /** 原始数据 */
+  data: object
+}
 
 interface BriefDisplayBlock {
   type: "brief"
@@ -379,19 +410,13 @@ interface DiffDisplayBlock {
 interface TodoDisplayBlock {
   type: "todo"
   /** 待办事项列表 */
-  items: {
-    /** 待办事项标题 */
-    title: string
-    /** 状态 */
-    status: "pending" | "in_progress" | "done"
-  }[]
+  items: TodoDisplayItem[]
 }
 
-/** 无法识别的显示块类型的 fallback */
-interface UnknownDisplayBlock {
-  /** 任意类型标识 */
-  type: string
-  /** 原始数据 */
-  data: object
+interface TodoDisplayItem {
+  /** 待办事项标题 */
+  title: string
+  /** 状态 */
+  status: "pending" | "in_progress" | "done"
 }
 ```

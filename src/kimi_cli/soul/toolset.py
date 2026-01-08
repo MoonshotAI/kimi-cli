@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal, overload
 
-from kosong.message import ContentPart, ToolCall
 from kosong.tooling import (
     CallableTool,
     CallableTool2,
@@ -18,8 +17,6 @@ from kosong.tooling import (
     Tool,
     ToolError,
     ToolOk,
-    ToolResult,
-    ToolReturnValue,
     Toolset,
 )
 from kosong.tooling.error import (
@@ -34,6 +31,7 @@ from loguru import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
+from kimi_cli.wire.types import ContentPart, ToolCall, ToolResult, ToolReturnValue
 
 if TYPE_CHECKING:
     import fastmcp
@@ -307,6 +305,17 @@ class KimiToolset:
             self._mcp_loading_task = asyncio.create_task(_connect())
         else:
             await _connect()
+
+    async def wait_for_mcp_tools(self) -> None:
+        """Wait for background MCP tool loading to finish."""
+        task = self._mcp_loading_task
+        if not task:
+            return
+        try:
+            await task
+        finally:
+            if self._mcp_loading_task is task and task.done():
+                self._mcp_loading_task = None
 
     async def cleanup(self) -> None:
         """Cleanup any resources held by the toolset."""

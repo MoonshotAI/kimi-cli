@@ -18,8 +18,7 @@ from kosong.chat_provider import (
     APITimeoutError,
     ThinkingEffort,
 )
-from kosong.message import ContentPart, Message, TextPart
-from kosong.tooling import ToolResult
+from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
@@ -37,18 +36,22 @@ from kimi_cli.soul.compaction import SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
-from kimi_cli.wire.message import (
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
+    ContentPart,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    TextPart,
+    ToolResult,
     TurnBegin,
 )
 
@@ -278,6 +281,8 @@ class KimiSoul:
     async def _agent_loop(self) -> AgentLoopResult:
         """The main agent loop for one run."""
         assert self._runtime.llm is not None
+        if isinstance(self._agent.toolset, KimiToolset):
+            await self._agent.toolset.wait_for_mcp_tools()
 
         async def _pipe_approval_to_wire():
             while True:
