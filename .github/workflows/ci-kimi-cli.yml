@@ -62,10 +62,10 @@ jobs:
         with:
           version: "0.8.5"
 
-      - name: Install dependencies
+      - name: Prepare building environment
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: uv sync --frozen --all-extras
+        run: make prepare
 
       - name: Run checks
         env:
