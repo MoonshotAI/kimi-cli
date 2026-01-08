@@ -5,15 +5,7 @@ from pathlib import Path
 from typing import Self
 
 import tomlkit
-from pydantic import (
-    BaseModel,
-    Field,
-    SecretStr,
-    ValidationError,
-    field_serializer,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, Field, SecretStr, ValidationError, field_serializer, model_validator
 from tomlkit.exceptions import TOMLKitError
 
 from kimi_cli.exception import ConfigError
@@ -61,15 +53,8 @@ class LoopControl(BaseModel):
     """Maximum number of steps in one run"""
     max_retries_per_step: int = 3
     """Maximum number of retries in one step"""
-    max_ralph_iterations: int = 0
+    max_ralph_iterations: int = Field(default=0, ge=-1)
     """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
-
-    @field_validator("max_ralph_iterations")
-    @classmethod
-    def _validate_max_ralph_iterations(cls, value: int) -> int:
-        if value < -1:
-            raise ValueError("max_ralph_iterations must be >= -1")
-        return value
 
 
 class MoonshotSearchConfig(BaseModel):

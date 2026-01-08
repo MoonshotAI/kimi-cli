@@ -210,6 +210,16 @@ class KimiSoul:
                 await ret
             return
 
+        if self._loop_control.max_ralph_iterations != 0:
+            user_message.content.append(
+                system(
+                    "You are running in an automated loop where the same prompt is fed repeatedly. "
+                    "Only include the safeword when the task is fully complete: "
+                    f"{RALPH_SAFEWORD}. "
+                    "Including it will stop further iterations."
+                )
+            )
+
         remaining = self._loop_control.max_ralph_iterations
         while True:
             # Ralph mode intentionally replays the original prompt each iteration.
@@ -234,14 +244,6 @@ class KimiSoul:
 
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
-        if self._loop_control.max_ralph_iterations != 0:
-            text = (
-                "You are running in an automated loop where the same prompt is fed repeatedly. "
-                "Only include the safeword when the task is fully complete: "
-                f"{RALPH_SAFEWORD}. "
-                "Including it will stop further iterations."
-            )
-            await self._context.append_message(Message(role="user", content=[system(text)]))
         logger.debug("Appended user message to context")
         return await self._agent_loop()
 
