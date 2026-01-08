@@ -369,6 +369,13 @@ class KimiSoul:
             _ = self._denwa_renji.fetch_pending_dmail()
             return True
 
+        # haoran: finish tool
+        if result.tool_calls:
+            for tool_call in result.tool_calls:
+                if tool_call.function.name == "Finish":
+                    logger.info("Finish tool called, ending task")
+                    return True
+
         # handle pending D-Mail
         if dmail := self._denwa_renji.fetch_pending_dmail():
             assert dmail.checkpoint_id >= 0, "DenwaRenji guarantees checkpoint_id >= 0"
