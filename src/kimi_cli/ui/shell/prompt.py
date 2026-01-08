@@ -497,6 +497,7 @@ class CustomPromptSession:
         model_capabilities: set[ModelCapability],
         initial_thinking: bool,
         available_slash_commands: Sequence[SlashCommand[Any]],
+        queue_count_provider: Callable[[], int] | None = None,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -504,6 +505,7 @@ class CustomPromptSession:
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._model_capabilities = model_capabilities
+        self._queue_count_provider = queue_count_provider
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = initial_thinking
@@ -788,6 +790,14 @@ class CustomPromptSession:
             mode += " (think)"
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
+
+        # Show queue count if available
+        if self._queue_count_provider is not None:
+            queue_count = self._queue_count_provider()
+            if queue_count > 0:
+                queue_text = f"queue: {queue_count}"
+                fragments.extend([("fg:yellow", queue_text), ("", " " * 2)])
+                columns -= len(queue_text) + 2
 
         status = self._status_provider()
         right_text = self._render_right_span(status)

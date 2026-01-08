@@ -18,7 +18,8 @@ from rich.text import Text
 
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.ui.shell.keyboard import KeyEvent, KeyEventData, listen_for_keyboard
+from kimi_cli.ui.shell.queue import MessageQueue
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
@@ -44,6 +45,7 @@ async def visualize(
     *,
     initial_status: StatusUpdate,
     cancel_event: asyncio.Event | None = None,
+    message_queue: MessageQueue | None = None,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -52,8 +54,13 @@ async def visualize(
         wire: Communication channel with the agent
         initial_status: Initial status snapshot
         cancel_event: Event that can be set (e.g., by ESC key) to cancel the run
+        message_queue: Optional message queue for displaying queue status
     """
-    view = _LiveView(initial_status, cancel_event)
+    view = _LiveView(
+        initial_status,
+        cancel_event,
+        message_queue=message_queue,
+    )
     await view.visualize_loop(wire)
 
 
@@ -295,10 +302,82 @@ class _StatusBlock:
             self.text.plain = f"context: {status.context_usage:.1%}"
 
 
+class _InputLineBlock:
+    """A block that displays the current input line at the bottom of the screen."""
+
+    def __init__(self) -> None:
+        self._buffer: list[str] = []
+        self._cursor_visible = True
+
+    def render(self) -> RenderableType:
+        """Render the input line with a prompt."""
+        text = "".join(self._buffer)
+        cursor = "▌" if self._cursor_visible else " "
+        return Text.from_markup(f"[grey50]▸[/grey50] {escape(text)}{cursor}")
+
+    def append_char(self, char: str) -> None:
+        """Append a character to the input buffer."""
+        self._buffer.append(char)
+
+    def backspace(self) -> None:
+        """Remove the last character from the input buffer."""
+        if self._buffer:
+            self._buffer.pop()
+
+    def clear(self) -> str:
+        """Clear and return the current input."""
+        text = "".join(self._buffer)
+        self._buffer.clear()
+        return text
+
+    def get_text(self) -> str:
+        """Get the current input text."""
+        return "".join(self._buffer)
+
+    def is_empty(self) -> bool:
+        """Check if the input buffer is empty."""
+        return len(self._buffer) == 0
+
+
+class _QueueStatusBlock:
+    """A block that displays the current queue status with item details."""
+
+    def __init__(self, message_queue: MessageQueue | None) -> None:
+        self._queue = message_queue
+
+    def pending_count(self) -> int:
+        """Get the count of pending items."""
+        if self._queue is None:
+            return 0
+        return self._queue.pending_count()
+
+    def render(self) -> RenderableType:
+        """Render the queue status with item details."""
+        if self._queue is None:
+            return Text("")
+
+        # Get pending items from the queue
+        pending_items = self._queue.list_pending_sync()
+
+        if not pending_items:
+            return Text("")
+
+        lines: list[RenderableType] = []
+
+        # Show each queued item
+        for item in pending_items:
+            lines.append(Text.from_markup(f"[yellow]Queued [{item.id}]: {item.preview}[/yellow]"))
+
+        return Group(*lines)
+
+
 @asynccontextmanager
-async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
+async def _keyboard_listener(
+    handler: Callable[[KeyEvent | KeyEventData], None],
+    capture_text: bool = False,
+):
     async def _keyboard():
-        async for event in listen_for_keyboard():
+        async for event in listen_for_keyboard(capture_text=capture_text):
             handler(event)
 
     task = asyncio.create_task(_keyboard())
@@ -311,8 +390,14 @@ async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
 
 
 class _LiveView:
-    def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
+    def __init__(
+        self,
+        initial_status: StatusUpdate,
+        cancel_event: asyncio.Event | None = None,
+        message_queue: MessageQueue | None = None,
+    ):
         self._cancel_event = cancel_event
+        self._message_queue = message_queue
 
         self._mooning_spinner: Spinner | None = None
         self._compacting_spinner: Spinner | None = None
@@ -329,9 +414,16 @@ class _LiveView:
         self._reject_all_following = False
         self._status_block = _StatusBlock(initial_status)
 
+        # Input and queue blocks (enabled when message_queue is provided)
+        self._input_block = _InputLineBlock() if message_queue is not None else None
+        self._queue_block = _QueueStatusBlock(message_queue)
+
         self._need_recompose = False
 
     async def visualize_loop(self, wire: WireUISide):
+        # Determine if we need to capture text input (enabled when message_queue is provided)
+        capture_text = self._message_queue is not None
+
         with Live(
             self.compose(),
             console=console,
@@ -340,13 +432,13 @@ class _LiveView:
             vertical_overflow="visible",
         ) as live:
 
-            def keyboard_handler(event: KeyEvent) -> None:
+            def keyboard_handler(event: KeyEvent | KeyEventData) -> None:
                 self.dispatch_keyboard_event(event)
                 if self._need_recompose:
                     live.update(self.compose())
                     self._need_recompose = False
 
-            async with _keyboard_listener(keyboard_handler):
+            async with _keyboard_listener(keyboard_handler, capture_text=capture_text):
                 while True:
                     try:
                         msg = await wire.receive()
@@ -382,7 +474,26 @@ class _LiveView:
                 blocks.append(tool_call.compose())
         if self._current_approval_request_panel:
             blocks.append(self._current_approval_request_panel.render())
-        blocks.append(self._status_block.render())
+
+        # Queue items (each item on its own line)
+        queue_render = self._queue_block.render()
+        if isinstance(queue_render, Group):
+            blocks.append(queue_render)
+
+        # Status line (queue count + context usage)
+        status_parts: list[RenderableType] = []
+        queue_count = self._queue_block.pending_count()
+        if queue_count > 0:
+            status_parts.append(Text.from_markup(f"[yellow]queue: {queue_count}[/yellow]"))
+            status_parts.append(Text("  "))
+        status_parts.append(self._status_block.render())
+        status_line = Text.assemble(*[p if isinstance(p, Text) else Text("") for p in status_parts])
+        blocks.append(status_line)
+
+        # Input line at the very bottom
+        if self._input_block is not None:
+            blocks.append(self._input_block.render())
+
         return Group(*blocks)
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
@@ -427,14 +538,48 @@ class _LiveView:
             case ApprovalRequest():
                 self.request_approval(msg)
 
-    def dispatch_keyboard_event(self, event: KeyEvent) -> None:
+    def dispatch_keyboard_event(self, event: KeyEvent | KeyEventData) -> None:
+        # Handle character input first
+        if isinstance(event, KeyEventData):
+            if event.event == KeyEvent.TEXT_CHAR and event.data is not None:
+                # Handle character input for the input block
+                if self._input_block is not None:
+                    self.handle_char_input(event.data)
+                return
+            else:
+                # Convert to regular KeyEvent for further processing
+                event = event.event
+
         # handle ESC key to cancel the run
         if event == KeyEvent.ESCAPE and self._cancel_event is not None:
             self._cancel_event.set()
             return
 
+        # Handle Enter key for submitting input (only when no approval panel is shown)
+        if (
+            self._input_block is not None
+            and self._message_queue is not None
+            and event == KeyEvent.ENTER
+            and self._current_approval_request_panel is None
+        ):
+            text = self._input_block.clear().strip()
+            # Queue management commands execute immediately, others enqueue
+            if text and not self._handle_queue_command(text):
+                from kimi_cli.ui.shell.prompt import PromptMode, UserInput
+
+                user_input = UserInput(
+                    mode=PromptMode.AGENT,
+                    thinking=False,
+                    command=text,
+                    content=[TextPart(text=text)],
+                )
+                self._message_queue.enqueue_sync(user_input)
+            self.refresh_soon()
+            return
+
         if not self._current_approval_request_panel:
             # just ignore any keyboard event when there's no approval request
+            # (except for input handling above)
             return
 
         match event:
@@ -465,6 +610,44 @@ class _LiveView:
             case _:
                 # just ignore any other keyboard event
                 return
+
+    def handle_char_input(self, char: str) -> None:
+        """Handle a single character input."""
+        if self._input_block is None:
+            return
+
+        if char == "\x7f" or char == "\x08":  # Backspace
+            self._input_block.backspace()
+        elif char >= " ":  # Printable characters
+            self._input_block.append_char(char)
+        self.refresh_soon()
+
+    def _handle_queue_command(self, text: str) -> bool:
+        """Handle queue management commands immediately. Returns True if handled."""
+        if self._message_queue is None:
+            return False
+        cmd = text.lower()
+        # /p, /promote - requires id argument
+        if cmd in ("/p", "/promote") or cmd.startswith(("/p ", "/promote ")):
+            try:
+                item_id = int(cmd.split()[1])
+                self._message_queue.promote_sync(item_id)
+            except (ValueError, IndexError):
+                pass
+            return True
+        # /cq, /cancel-queued - requires id argument
+        if cmd in ("/cq", "/cancel-queued") or cmd.startswith(("/cq ", "/cancel-queued ")):
+            try:
+                item_id = int(cmd.split()[1])
+                self._message_queue.cancel_sync(item_id)
+            except (ValueError, IndexError):
+                pass
+            return True
+        # /clearq, /clear-queue - no argument
+        if cmd in ("/clear-queue", "/clearq"):
+            self._message_queue.clear_sync()
+            return True
+        return False
 
     def cleanup(self, is_interrupt: bool) -> None:
         """Cleanup the live view on step end or interruption."""

@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass
 from enum import Enum, auto
 
 
@@ -16,20 +17,48 @@ class KeyEvent(Enum):
     ENTER = auto()
     ESCAPE = auto()
     TAB = auto()
+    TEXT_CHAR = auto()  # A single text character input
 
 
-async def listen_for_keyboard() -> AsyncGenerator[KeyEvent]:
+@dataclass
+class KeyEventData:
+    """Keyboard event with optional associated data."""
+
+    event: KeyEvent
+    data: str | None = None
+
+
+async def listen_for_keyboard(
+    *, capture_text: bool = False
+) -> AsyncGenerator[KeyEvent | KeyEventData]:
+    """
+    Listen for keyboard events.
+
+    Args:
+        capture_text: If True, also capture text input and emit TEXT_CHAR events.
+                     When True, yields KeyEventData instead of KeyEvent.
+    """
     loop = asyncio.get_running_loop()
-    queue = asyncio.Queue[KeyEvent]()
+    queue: asyncio.Queue[KeyEvent | KeyEventData] = asyncio.Queue()
     cancel_event = threading.Event()
 
-    def emit(event: KeyEvent) -> None:
-        # print(f"emit: {event}")
-        loop.call_soon_threadsafe(queue.put_nowait, event)
+    if capture_text:
+
+        def emit(event: KeyEvent | KeyEventData) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+    else:
+
+        def emit(event: KeyEvent | KeyEventData) -> None:
+            if isinstance(event, KeyEvent):
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+            else:
+                # event is KeyEventData
+                if event.event != KeyEvent.TEXT_CHAR:
+                    loop.call_soon_threadsafe(queue.put_nowait, event.event)
 
     listener = threading.Thread(
         target=_listen_for_keyboard_thread,
-        args=(cancel_event, emit),
+        args=(cancel_event, emit, capture_text),
         name="kimi-cli-keyboard-listener",
         daemon=True,
     )
@@ -46,17 +75,19 @@ async def listen_for_keyboard() -> AsyncGenerator[KeyEvent]:
 
 def _listen_for_keyboard_thread(
     cancel: threading.Event,
-    emit: Callable[[KeyEvent], None],
+    emit: Callable[[KeyEvent | KeyEventData], None],
+    capture_text: bool = False,
 ) -> None:
     if sys.platform == "win32":
-        _listen_for_keyboard_windows(cancel, emit)
+        _listen_for_keyboard_windows(cancel, emit, capture_text)
     else:
-        _listen_for_keyboard_unix(cancel, emit)
+        _listen_for_keyboard_unix(cancel, emit, capture_text)
 
 
 def _listen_for_keyboard_unix(
     cancel: threading.Event,
-    emit: Callable[[KeyEvent], None],
+    emit: Callable[[KeyEvent | KeyEventData], None],
+    capture_text: bool = False,
 ) -> None:
     if sys.platform == "win32":
         raise RuntimeError("Unix keyboard listener requires a non-Windows platform")
@@ -109,6 +140,17 @@ def _listen_for_keyboard_unix(
                 emit(KeyEvent.ENTER)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
+            elif capture_text:
+                # Capture text characters and emit them individually
+                try:
+                    char = c.decode("utf-8")
+                    if char == "\x03":  # Ctrl-C - ignore
+                        pass
+                    else:
+                        # Emit each character (including backspace)
+                        emit(KeyEventData(event=KeyEvent.TEXT_CHAR, data=char))
+                except UnicodeDecodeError:
+                    pass
     finally:
         # restore the terminal settings
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
@@ -116,7 +158,8 @@ def _listen_for_keyboard_unix(
 
 def _listen_for_keyboard_windows(
     cancel: threading.Event,
-    emit: Callable[[KeyEvent], None],
+    emit: Callable[[KeyEvent | KeyEventData], None],
+    capture_text: bool = False,
 ) -> None:
     if sys.platform != "win32":
         raise RuntimeError("Windows keyboard listener requires a Windows platform")
@@ -155,6 +198,17 @@ def _listen_for_keyboard_windows(
                 emit(KeyEvent.ENTER)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
+            elif capture_text:
+                # Capture text characters and emit them individually
+                try:
+                    char = c.decode("utf-8")
+                    if char == "\x03":  # Ctrl-C - ignore
+                        pass
+                    else:
+                        # Emit each character (including backspace)
+                        emit(KeyEventData(event=KeyEvent.TEXT_CHAR, data=char))
+                except UnicodeDecodeError:
+                    pass
         else:
             if cancel.is_set():
                 break
@@ -179,7 +233,18 @@ _WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
 if __name__ == "__main__":
 
     async def dev_main():
-        async for event in listen_for_keyboard():
-            print(event)
+        print("Listening for keyboard events (with text capture)...")
+        print("Type some text and press Enter, or use arrow keys, ESC to exit")
+        async for event in listen_for_keyboard(capture_text=True):
+            if isinstance(event, KeyEventData):
+                print(f"\nEvent: {event.event}, Data: {event.data!r}")
+                if event.event == KeyEvent.TEXT_CHAR:
+                    print(f"Got text line: {event.data}")
+            else:
+                print(f"\nEvent: {event}")
+            if event == KeyEvent.ESCAPE or (
+                isinstance(event, KeyEventData) and event.event == KeyEvent.ESCAPE
+            ):
+                break
 
     asyncio.run(dev_main())

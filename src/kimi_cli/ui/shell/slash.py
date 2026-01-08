@@ -152,6 +152,45 @@ async def list_sessions(app: Shell, args: list[str]):
     raise Reload(session_id=selection)
 
 
+@registry.command(aliases=["p"])
+async def promote(app: Shell, args: list[str]):
+    """Promote a queued message to front (usage: /promote <id>)"""
+    if not args:
+        console.print("[red]Usage: /promote <id>[/red]")
+        return
+    try:
+        item_id = int(args[0])
+        if await app.message_queue.promote(item_id):
+            console.print(f"[green]Promoted [{item_id}] to front[/green]")
+        else:
+            console.print(f"[red]Item [{item_id}] not found in queue[/red]")
+    except ValueError:
+        console.print("[red]Usage: /promote <id>[/red]")
+
+
+@registry.command(name="cancel-queued", aliases=["cq"])
+async def cancel_queued(app: Shell, args: list[str]):
+    """Cancel a queued message (usage: /cancel-queued <id>)"""
+    if not args:
+        console.print("[red]Usage: /cancel-queued <id>[/red]")
+        return
+    try:
+        item_id = int(args[0])
+        if await app.message_queue.cancel(item_id):
+            console.print(f"[yellow]Cancelled [{item_id}][/yellow]")
+        else:
+            console.print(f"[red]Item [{item_id}] not found in queue[/red]")
+    except ValueError:
+        console.print("[red]Usage: /cancel-queued <id>[/red]")
+
+
+@registry.command(name="clear-queue", aliases=["clearq"])
+async def clear_queue(app: Shell, args: list[str]):
+    """Clear all queued messages"""
+    count = await app.message_queue.clear()
+    console.print(f"[yellow]Cleared {count} item(s) from queue[/yellow]")
+
+
 @registry.command
 async def mcp(app: Shell, args: list[str]):
     """Show MCP servers and tools"""
