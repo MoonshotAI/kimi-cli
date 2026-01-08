@@ -15,3 +15,11 @@ Resolve #(issue_number)
 ## Description
 
 <!-- Please describe your changes in detail. -->
+
+## Checklist
+
+- [ ] I have read the [CONTRIBUTING](https://github.com/MoonshotAI/kimi-cli/blob/main/CONTRIBUTING.md) document.
+- [ ] I have linked the related issue, if any.
+- [ ] I have added tests that prove my fix is effective or that my feature works.
+- [ ] I have run `make gen-changelog` to update the changelog.
+- [ ] I have run `make gen-docs` to update the user documentation.
