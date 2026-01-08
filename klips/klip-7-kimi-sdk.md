@@ -1,7 +1,7 @@
 ---
 Author: "@stdrc"
 Updated: 2026-01-08
-Status: Draft
+Status: Implemented
 ---
 
 # KLIP-7: Kimi SDK (thin wrapper around Kosong)
