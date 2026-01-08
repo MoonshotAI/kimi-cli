@@ -21,7 +21,7 @@ from kimi_cli.soul.kimisoul import RALPH_SAFEWORD, KimiSoul
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import TurnBegin
+from kimi_cli.wire.types import TurnBegin
 
 T = TypeVar("T")
 RALPH_LOOP_SYSTEM_TEXT = (
