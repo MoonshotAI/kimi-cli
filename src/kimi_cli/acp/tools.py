@@ -12,7 +12,7 @@ from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder
-from kimi_cli.wire.display import DisplayBlock
+from kimi_cli.wire.types import DisplayBlock
 
 
 def replace_tools(

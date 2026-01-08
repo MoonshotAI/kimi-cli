@@ -195,6 +195,15 @@ interface StepBegin {
 状态更新。
 
 ```typescript
+interface StatusUpdate {
+  /** 上下文使用率，0-1 之间的浮点数，JSON 中可能不存在 */
+  context_usage?: number | null
+  /** 当前步骤的 token 用量统计，JSON 中可能不存在 */
+  token_usage?: TokenUsage | null
+  /** 当前步骤的消息 ID，JSON 中可能不存在 */
+  message_id?: string | null
+}
+
 interface TokenUsage {
   /** 不包括 `input_cache_read` 和 `input_cache_creation` 的输入 token 数。 */
   input_other: number
@@ -204,15 +213,6 @@ interface TokenUsage {
   input_cache_read: number
   /** 用于缓存创建的输入 token 数。目前仅 Anthropic API 支持此字段。 */
   input_cache_creation: number
-}
-
-interface StatusUpdate {
-  /** 上下文使用率，0-1 之间的浮点数，JSON 中可能不存在 */
-  context_usage?: number | null
-  /** 当前步骤的 token 用量统计，JSON 中可能不存在 */
-  token_usage?: TokenUsage | null
-  /** 当前步骤的消息 ID，JSON 中可能不存在 */
-  message_id?: string | null
 }
 ```
 
@@ -310,18 +310,20 @@ interface ToolCallPart {
 interface ToolResult {
   /** 对应的工具调用 ID */
   tool_call_id: string
-  return_value: {
-    /** 是否为错误 */
-    is_error: boolean
-    /** 返回给模型的输出内容 */
-    output: string | ContentPart[]
-    /** 给模型的解释性消息 */
-    message: string
-    /** 显示给用户的内容块 */
-    display: DisplayBlock[]
-    /** 额外调试信息，JSON 中可能不存在 */
-    extras?: object | null
-  }
+  return_value: ToolReturnValue
+}
+
+interface ToolReturnValue {
+  /** 是否为错误 */
+  is_error: boolean
+  /** 返回给模型的输出内容 */
+  output: string | ContentPart[]
+  /** 给模型的解释性消息 */
+  message: string
+  /** 显示给用户的内容块 */
+  display: DisplayBlock[]
+  /** 额外调试信息，JSON 中可能不存在 */
+  extras?: object | null
 }
 ```
 
@@ -412,11 +414,13 @@ interface DiffDisplayBlock {
 interface TodoDisplayBlock {
   type: "todo"
   /** 待办事项列表 */
-  items: {
-    /** 待办事项标题 */
-    title: string
-    /** 状态 */
-    status: "pending" | "in_progress" | "done"
-  }[]
+  items: TodoDisplayItem[]
+}
+
+interface TodoDisplayItem {
+  /** 待办事项标题 */
+  title: string
+  /** 状态 */
+  status: "pending" | "in_progress" | "done"
 }
 ```

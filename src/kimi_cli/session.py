@@ -14,8 +14,8 @@ from kosong.message import Message
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.message import TurnBegin
 from kimi_cli.wire.serde import WireMessageRecord
+from kimi_cli.wire.types import TurnBegin
 
 
 @dataclass(slots=True, kw_only=True)

@@ -13,7 +13,7 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.path import next_available_rotation
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import (
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
     SubagentEvent,

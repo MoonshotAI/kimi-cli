@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import aiofiles
-from kosong.message import Message, TextPart
+from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.ui.shell.console import console
@@ -19,15 +19,16 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import (
+from kimi_cli.wire.serde import WireMessageRecord
+from kimi_cli.wire.types import (
     Event,
     StatusUpdate,
     StepBegin,
+    TextPart,
     ToolResult,
     TurnBegin,
     is_event,
 )
-from kimi_cli.wire.serde import WireMessageRecord
 
 MAX_REPLAY_TURNS = 5
 

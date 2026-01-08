@@ -195,6 +195,15 @@ Context compaction ended, no additional fields.
 Status update.
 
 ```typescript
+interface StatusUpdate {
+  /** Context usage ratio, float between 0-1, may be absent in JSON */
+  context_usage?: number | null
+  /** Token usage stats for current step, may be absent in JSON */
+  token_usage?: TokenUsage | null
+  /** Message ID for current step, may be absent in JSON */
+  message_id?: string | null
+}
+
 interface TokenUsage {
   /** Input tokens excluding `input_cache_read` and `input_cache_creation`. */
   input_other: number
@@ -204,15 +213,6 @@ interface TokenUsage {
   input_cache_read: number
   /** Input tokens used for cache creation. For now, only Anthropic API supports this. */
   input_cache_creation: number
-}
-
-interface StatusUpdate {
-  /** Context usage ratio, float between 0-1, may be absent in JSON */
-  context_usage?: number | null
-  /** Token usage stats for current step, may be absent in JSON */
-  token_usage?: TokenUsage | null
-  /** Message ID for current step, may be absent in JSON */
-  message_id?: string | null
 }
 ```
 
@@ -310,18 +310,20 @@ Tool execution result.
 interface ToolResult {
   /** Corresponding tool call ID */
   tool_call_id: string
-  return_value: {
-    /** Whether this is an error */
-    is_error: boolean
-    /** Output content returned to model */
-    output: string | ContentPart[]
-    /** Explanatory message for model */
-    message: string
-    /** Display blocks shown to user */
-    display: DisplayBlock[]
-    /** Extra debug info, may be absent in JSON */
-    extras?: object | null
-  }
+  return_value: ToolReturnValue
+}
+
+interface ToolReturnValue {
+  /** Whether this is an error */
+  is_error: boolean
+  /** Output content returned to model */
+  output: string | ContentPart[]
+  /** Explanatory message for model */
+  message: string
+  /** Display blocks shown to user */
+  display: DisplayBlock[]
+  /** Extra debug info, may be absent in JSON */
+  extras?: object | null
 }
 ```
 
@@ -412,11 +414,13 @@ interface DiffDisplayBlock {
 interface TodoDisplayBlock {
   type: "todo"
   /** Todo list items */
-  items: {
-    /** Todo item title */
-    title: string
-    /** Status */
-    status: "pending" | "in_progress" | "done"
-  }[]
+  items: TodoDisplayItem[]
+}
+
+interface TodoDisplayItem {
+  /** Todo item title */
+  title: string
+  /** Status */
+  status: "pending" | "in_progress" | "done"
 }
 ```

@@ -8,7 +8,6 @@ from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from kosong.message import ContentPart
 from loguru import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -27,7 +26,7 @@ from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
-from kimi_cli.wire.message import StatusUpdate
+from kimi_cli.wire.types import ContentPart, StatusUpdate
 
 
 class Shell:

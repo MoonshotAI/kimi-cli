@@ -4,13 +4,23 @@ import asyncio
 from typing import Any, Literal, TypeGuard, cast
 
 from kosong.chat_provider import TokenUsage
-from kosong.message import ContentPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolResult
+from kosong.display import BriefDisplayBlock, DisplayBlock, UnknownDisplayBlock
+from kosong.message import (
+    AudioURLPart,
+    ContentPart,
+    ImageURLPart,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    ToolCallPart,
+    VideoURLPart,
+)
+from kosong.tooling import ToolResult, ToolReturnValue
 from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
+from kimi_cli.tools.display import DiffDisplayBlock, TodoDisplayBlock, TodoDisplayItem
 from kimi_cli.utils.typing import flatten_union
-from kimi_cli.wire.display import DisplayBlock
 
 
 class TurnBegin(BaseModel):
@@ -245,6 +255,7 @@ class WireMessageEnvelope(BaseModel):
 
 
 __all__ = [
+    # `WireMessage` variants
     "TurnBegin",
     "StepBegin",
     "StepInterrupted",
@@ -258,5 +269,23 @@ __all__ = [
     "SubagentEvent",
     "ApprovalRequestResolved",
     "ApprovalRequest",
+    # helpers
     "WireMessageEnvelope",
+    # `StatusUpdate`-related
+    "TokenUsage",
+    # `ContentPart` types
+    "TextPart",
+    "ThinkPart",
+    "ImageURLPart",
+    "AudioURLPart",
+    "VideoURLPart",
+    # `ToolResult`-related
+    "ToolReturnValue",
+    # `DisplayBlock` types
+    "DisplayBlock",
+    "UnknownDisplayBlock",
+    "BriefDisplayBlock",
+    "DiffDisplayBlock",
+    "TodoDisplayBlock",
+    "TodoDisplayItem",
 ]

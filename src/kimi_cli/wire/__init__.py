@@ -7,13 +7,13 @@ import time
 from pathlib import Path
 
 import aiofiles
-from kosong.message import ContentPart, MergeableMixin, ToolCallPart
+from kosong.message import MergeableMixin
 
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.broadcast import BroadcastQueue
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.message import WireMessage, is_wire_message
 from kimi_cli.wire.serde import WireMessageRecord
+from kimi_cli.wire.types import ContentPart, ToolCallPart, WireMessage, is_wire_message
 
 WireMessageQueue = BroadcastQueue[WireMessage]
 

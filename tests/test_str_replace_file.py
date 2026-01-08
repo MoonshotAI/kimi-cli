@@ -7,7 +7,7 @@ from pathlib import Path
 from kaos.path import KaosPath
 
 from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
-from kimi_cli.wire.display import DiffDisplayBlock
+from kimi_cli.wire.types import DiffDisplayBlock
 
 
 async def test_replace_single_occurrence(
