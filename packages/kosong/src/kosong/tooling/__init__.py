@@ -37,8 +37,11 @@ class DisplayBlock(BaseModel, ABC):
     """
     A block of content to be displayed to the user.
 
-    Similar to ContentPart, but scoped to tool return display payloads (user-facing UI).
-    ContentPart is for model-facing message content; DisplayBlock is for tool/UI extensions.
+    Similar to `ContentPart`, but scoped to user-facing UI.
+    `ContentPart` is for model-facing message content; `DisplayBlock` is for tool/UI extensions.
+
+    Unlike `ContentPart`, Kosong users may directly subclass `DisplayBlock` to define custom
+    display blocks for their applications.
     """
 
     __display_block_registry: ClassVar[dict[str, type["DisplayBlock"]]] = {}

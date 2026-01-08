@@ -198,6 +198,6 @@ def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCap
     if provider.type not in {"kimi", "_chaos"}:
         return capabilities
 
-    if model.model == "kimi-for-coding" or "thinking" in model.model:
+    if model.model in {"kimi-for-coding", "kimi-code"} or "thinking" in model.model:
         capabilities.add("thinking")
     return capabilities

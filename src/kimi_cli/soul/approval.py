@@ -8,7 +8,7 @@ from typing import Literal
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.utils.aioqueue import Queue
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.display import DisplayBlock
+from kimi_cli.wire.types import DisplayBlock
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -60,15 +60,16 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | Agent Skills | Agent Skills | yes | yes |
 | Skill | skill | yes | no |
 | 系统提示词 | system prompt | no | no |
+| 提示词 | prompt | no | no |
 | 会话 | session | no | no |
 | 上下文 | context | no | no |
 | 子 Agent | subagent | yes (Agent) | no |
-| API 密钥 | API key | no | no |
-| JSON | JSON | no | no |
-| JSONL | JSONL | no | no |
-| OAuth | OAuth | no | no |
-| macOS | macOS | no | no |
-| uv | uv | no | no |
+| API 密钥 | API key | yes | no |
+| JSON | JSON | yes | yes |
+| JSONL | JSONL | yes | yes |
+| OAuth | OAuth | yes | yes |
+| macOS | macOS | yes | yes |
+| uv | uv | yes | yes |
 | 审批请求 | approval request | no | no |
 | 斜杠命令 | slash command | no | no |
 | 工具调用 | tool call | no | no |

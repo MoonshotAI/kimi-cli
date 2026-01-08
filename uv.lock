@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "kimi-cli",
+    "kimi-sdk",
     "kosong",
     "pykaos",
 ]
@@ -1177,8 +1178,43 @@ dev = [
 ]
 
 [[package]]
+name = "kimi-sdk"
+version = "0.1.0"
+source = { editable = "sdks/kimi-sdk" }
+dependencies = [
+    { name = "kosong" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "inline-snapshot", extra = ["black"] },
+    { name = "pdoc" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "kosong", editable = "packages/kosong" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
+    { name = "inline-snapshot", extras = ["black"], specifier = ">=0.31.1" },
+    { name = "pdoc", specifier = ">=16.0.0" },
+    { name = "pyright", specifier = ">=1.1.407" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "ruff", specifier = ">=0.14.10" },
+    { name = "ty", specifier = ">=0.0.7" },
+]
+
+[[package]]
 name = "kosong"
-version = "0.36.1"
+version = "0.37.0"
 source = { editable = "packages/kosong" }
 dependencies = [
     { name = "anthropic" },

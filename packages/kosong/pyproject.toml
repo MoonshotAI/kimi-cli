@@ -1,6 +1,6 @@
 [project]
 name = "kosong"
-version = "0.36.1"
+version = "0.37.0"
 description = "The LLM abstraction layer for modern AI agent applications."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -55,6 +55,14 @@ select = [
     "B",   # flake8-bugbear
     "SIM", # flake8-simplify
     "I",   # isort
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+include = [
+    "src/**/*.py",
+    "tests/**/*.py",
 ]
 
 [tool.ty.environment]

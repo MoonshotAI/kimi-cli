@@ -47,8 +47,9 @@ model = "kimi-for-coding"
 max_context_size = 262144
 
 [loop_control]
-max_steps_per_run = 100
+max_steps_per_turn = 100
 max_retries_per_step = 3
+max_ralph_iterations = 0
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -111,8 +112,9 @@ capabilities = ["thinking", "image_in"]
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `max_steps_per_run` | `integer` | `100` | Maximum steps per run |
+| `max_steps_per_turn` | `integer` | `100` | Maximum steps per turn (alias: `max_steps_per_run`) |
 | `max_retries_per_step` | `integer` | `3` | Maximum retries per step |
+| `max_ralph_iterations` | `integer` | `0` | Extra iterations after each user message; `0` disables; `-1` is unlimited |
 
 ### `services`
 
@@ -139,7 +141,7 @@ Configures web fetch service. When enabled, the `FetchURL` tool prioritizes usin
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
 
 ::: tip
-When configuring the Kimi for Coding platform using the `/setup` command, search and fetch services are automatically configured.
+When configuring the Kimi Code platform using the `/setup` command, search and fetch services are automatically configured.
 :::
 
 ### `mcp`

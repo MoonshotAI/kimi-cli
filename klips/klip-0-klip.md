@@ -1,5 +1,5 @@
 ---
-Author: @stdrc
+Author: "@stdrc"
 Updated: 2026-01-07
 Status: Implemented
 ---

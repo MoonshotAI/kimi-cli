@@ -8,12 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from kosong.message import ContentPart
-
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire.types import ContentPart, WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability

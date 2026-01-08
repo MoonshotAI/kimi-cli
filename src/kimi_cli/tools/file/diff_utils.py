@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from difflib import SequenceMatcher
 
-from kimi_cli.wire.display import DiffDisplayBlock
+from kimi_cli.tools.display import DiffDisplayBlock
 
 N_CONTEXT_LINES = 3
 

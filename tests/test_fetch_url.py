@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 from inline_snapshot import snapshot
-from kosong.tooling import ToolError, ToolOk, ToolReturnValue
+from kosong.tooling import ToolReturnValue
 
 from kimi_cli.tools.web.fetch import FetchURL, Params
 
@@ -244,7 +244,7 @@ async def test_fetch_url_with_service() -> None:
         fetch_tool = FetchURL(config=config)
 
         # Execute fetch with tool call context
-        from kosong.message import ToolCall
+        from kimi_cli.wire.types import ToolCall
         from kimi_cli.soul.toolset import current_tool_call
 
         token = current_tool_call.set(

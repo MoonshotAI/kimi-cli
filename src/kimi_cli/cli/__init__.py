@@ -256,6 +256,33 @@ def kimi(
             help="Path to the skills directory. Default: ~/.kimi/skills",
         ),
     ] = None,
+    max_steps_per_turn: Annotated[
+        int | None,
+        typer.Option(
+            "--max-steps-per-turn",
+            min=1,
+            help="Maximum number of steps in one turn. Default: from config.",
+        ),
+    ] = None,
+    max_retries_per_step: Annotated[
+        int | None,
+        typer.Option(
+            "--max-retries-per-step",
+            min=1,
+            help="Maximum number of retries in one step. Default: from config.",
+        ),
+    ] = None,
+    max_ralph_iterations: Annotated[
+        int | None,
+        typer.Option(
+            "--max-ralph-iterations",
+            min=-1,
+            help=(
+                "Extra iterations after the first turn in Ralph mode. Use -1 for unlimited. "
+                "Default: from config."
+            ),
+        ),
+    ] = None,
 ):
     """Kimi, your next CLI agent."""
     if ctx.invoked_subcommand is not None:
@@ -429,6 +456,9 @@ def kimi(
             thinking=thinking_mode,
             agent_file=agent_file,
             skills_dir=skills_dir,
+            max_steps_per_turn=max_steps_per_turn,
+            max_retries_per_step=max_retries_per_step,
+            max_ralph_iterations=max_ralph_iterations,
         )
         match ui:
             case "shell":

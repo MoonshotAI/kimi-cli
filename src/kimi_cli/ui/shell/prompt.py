@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any, Literal, override
 
 from kaos.path import KaosPath
-from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
@@ -50,6 +49,7 @@ from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
+from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
 
 PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"

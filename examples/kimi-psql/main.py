@@ -40,7 +40,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.visualize import visualize
-from kimi_cli.wire.message import StatusUpdate
+from kimi_cli.wire.types import StatusUpdate
 
 
 class ExecuteSqlParams(BaseModel):

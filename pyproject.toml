@@ -9,7 +9,7 @@ dependencies = [
     "aiofiles>=24.0,<25.0",
     "aiohttp==3.13.3",
     "typer==0.21.0",
-    "kosong[contrib]==0.36.1",
+    "kosong[contrib]==0.37.0",
     # loguru stays >=0.6.0 because notify-py (via batrachian-toad) caps it at <=0.6.0 on 3.14+.
     "loguru>=0.6.0,<0.8",
     "prompt-toolkit==3.0.52",
@@ -50,7 +50,7 @@ module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [tool.uv.workspace]
-members = ["packages/kosong", "packages/kaos"]
+members = ["packages/kosong", "packages/kaos", "sdks/kimi-sdk"]
 
 [tool.uv.sources]
 kosong = { workspace = true }
@@ -72,6 +72,12 @@ select = [
     "SIM", # flake8-simplify
     "I",   # isort
 ]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.14"
+include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]
+strict = ["src/kimi_cli/**/*.py"]
 
 [tool.ty.environment]
 python-version = "3.14"

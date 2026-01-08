@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 import kaos
 from kaos.path import KaosPath
-from kosong.message import ContentPart
 from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
@@ -26,7 +25,7 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire.types import ContentPart, WireMessage
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
@@ -58,6 +57,9 @@ class KimiCLI:
         thinking: bool = False,
         agent_file: Path | None = None,
         skills_dir: Path | None = None,
+        max_steps_per_turn: int | None = None,
+        max_retries_per_step: int | None = None,
+        max_ralph_iterations: int | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -73,6 +75,12 @@ class KimiCLI:
             thinking (bool, optional): Whether to enable thinking mode. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
+            max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
+                Defaults to None.
+            max_retries_per_step (int | None, optional): Maximum number of retries in one step.
+                Defaults to None.
+            max_ralph_iterations (int | None, optional): Extra iterations after the first turn in
+                Ralph mode. Defaults to None.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -84,6 +92,12 @@ class KimiCLI:
                 connected.
         """
         config = config if isinstance(config, Config) else load_config(config)
+        if max_steps_per_turn is not None:
+            config.loop_control.max_steps_per_turn = max_steps_per_turn
+        if max_retries_per_step is not None:
+            config.loop_control.max_retries_per_step = max_retries_per_step
+        if max_ralph_iterations is not None:
+            config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
         model: LLMModel | None = None

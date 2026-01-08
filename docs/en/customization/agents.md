@@ -257,7 +257,7 @@ The following are all built-in tools in Kimi CLI.
 ### `SearchWeb`
 
 - **Path**: `kimi_cli.tools.web:SearchWeb`
-- **Description**: Search the web. Requires search service configuration (auto-configured on Kimi for Coding platform).
+- **Description**: Search the web. Requires search service configuration (auto-configured on Kimi Code platform).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

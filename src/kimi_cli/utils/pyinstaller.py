@@ -15,6 +15,9 @@ datas = (
             "tools/**/*.md",
             "CHANGELOG.md",
         ],
+        excludes=[
+            "tools/*.md",
+        ],
     )
     + collect_data_files(
         "dateparser",

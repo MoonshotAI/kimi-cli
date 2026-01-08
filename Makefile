@@ -22,8 +22,8 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 	@echo "==> Syncing dependencies for release builds (no sources)"
 	@uv sync --all-extras --all-packages --no-sources
 
-.PHONY: format format-kimi-cli format-kosong format-pykaos
-format: format-kimi-cli format-kosong format-pykaos ## Auto-format all workspace packages with ruff.
+.PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk
+format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk ## Auto-format all workspace packages with ruff.
 format-kimi-cli: ## Auto-format Kimi CLI sources with ruff.
 	@echo "==> Formatting Kimi CLI sources"
 	@uv run ruff check --fix
@@ -36,9 +36,13 @@ format-pykaos: ## Auto-format pykaos sources with ruff.
 	@echo "==> Formatting pykaos sources"
 	@uv run --project packages/kaos --directory packages/kaos ruff check --fix
 	@uv run --project packages/kaos --directory packages/kaos ruff format
+format-kimi-sdk: ## Auto-format kimi-sdk sources with ruff.
+	@echo "==> Formatting kimi-sdk sources"
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff check --fix
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff format
 
-.PHONY: check check-kimi-cli check-kosong check-pykaos
-check: check-kimi-cli check-kosong check-pykaos ## Run linting and type checks for all packages.
+.PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk
+check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk ## Run linting and type checks for all packages.
 check-kimi-cli: ## Run linting and type checks for Kimi CLI.
 	@echo "==> Checking Kimi CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
@@ -57,10 +61,16 @@ check-pykaos: ## Run linting and type checks for pykaos.
 	@uv run --project packages/kaos --directory packages/kaos ruff format --check
 	@uv run --project packages/kaos --directory packages/kaos pyright
 	@uv run --project packages/kaos --directory packages/kaos ty check || true
+check-kimi-sdk: ## Run linting and type checks for kimi-sdk.
+	@echo "==> Checking kimi-sdk (ruff + pyright + ty; ty is non-blocking)"
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff check
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff format --check
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pyright
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ty check || true
 
 
-.PHONY: test test-kimi-cli test-kosong test-pykaos
-test: test-kimi-cli test-kosong test-pykaos ## Run all test suites.
+.PHONY: test test-kimi-cli test-kosong test-pykaos test-kimi-sdk
+test: test-kimi-cli test-kosong test-pykaos test-kimi-sdk ## Run all test suites.
 test-kimi-cli: ## Run Kimi CLI tests.
 	@echo "==> Running Kimi CLI tests"
 	@uv run pytest tests -vv
@@ -70,9 +80,12 @@ test-kosong: ## Run kosong tests (including doctests).
 test-pykaos: ## Run pykaos tests.
 	@echo "==> Running pykaos tests"
 	@uv run --project packages/kaos --directory packages/kaos pytest tests -vv
+test-kimi-sdk: ## Run kimi-sdk tests.
+	@echo "==> Running kimi-sdk tests"
+	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pytest tests -vv
 
-.PHONY: build build-kimi-cli build-kosong build-pykaos build-bin
-build: build-kimi-cli build-kosong build-pykaos ## Build Python packages for release.
+.PHONY: build build-kimi-cli build-kosong build-pykaos build-kimi-sdk build-bin
+build: build-kimi-cli build-kosong build-pykaos build-kimi-sdk ## Build Python packages for release.
 build-kimi-cli: ## Build the kimi-cli sdist and wheel.
 	@echo "==> Building kimi-cli distributions"
 	@uv build --package kimi-cli --no-sources --out-dir dist
@@ -82,6 +95,9 @@ build-kosong: ## Build the kosong sdist and wheel.
 build-pykaos: ## Build the pykaos sdist and wheel.
 	@echo "==> Building pykaos distributions"
 	@uv build --package pykaos --no-sources --out-dir dist/pykaos
+build-kimi-sdk: ## Build the kimi-sdk sdist and wheel.
+	@echo "==> Building kimi-sdk distributions"
+	@uv build --package kimi-sdk --no-sources --out-dir dist/kimi-sdk
 build-bin: ## Build the standalone executable with PyInstaller.
 	@echo "==> Building PyInstaller binary"
 	@uv run pyinstaller kimi.spec

@@ -8,6 +8,7 @@ from rich.panel import Panel
 
 from kimi_cli.cli import Reload
 from kimi_cli.config import save_config
+from kimi_cli.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
@@ -92,24 +93,29 @@ async def model(app: Shell, args: str):
     soul = _ensure_kimi_soul(app)
     config = soul.runtime.config
 
+    await refresh_managed_models(config)
+
     if not config.models:
         console.print('[yellow]No models configured, send "/setup" to configure.[/yellow]')
         return
 
     current_model = soul.runtime.llm.model_config if soul.runtime.llm else None
     current_model_name: str | None = None
-    for name, model in config.models.items():
-        if model is current_model:
-            current_model_name = name
-            break
+    if current_model is not None:
+        for name, model in config.models.items():
+            if model == current_model:
+                current_model_name = name
+                break
+        assert current_model_name is not None
 
     raw_args = args.strip()
     if not raw_args:
         choices: list[tuple[str, str]] = []
         for name in sorted(config.models):
             model = config.models[name]
+            provider_label = get_platform_name_for_provider(model.provider) or model.provider
             marker = " (current)" if name == current_model_name else ""
-            label = f"{name} ({model.provider}){marker}"
+            label = f"{model.model} ({provider_label}){marker}"
             choices.append((name, label))
 
         try:

@@ -7,8 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
-from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import BriefDisplayBlock, ToolError, ToolOk, ToolResult, ToolReturnValue
+from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
@@ -23,16 +22,24 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
-from kimi_cli.wire.display import TodoDisplayBlock
-from kimi_cli.wire.message import (
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
+    BriefDisplayBlock,
     CompactionBegin,
     CompactionEnd,
+    ContentPart,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TextPart,
+    ThinkPart,
+    TodoDisplayBlock,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+    ToolReturnValue,
     TurnBegin,
     WireMessage,
 )
