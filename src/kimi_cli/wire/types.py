@@ -1,16 +1,31 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeGuard, cast
 
 from kosong.chat_provider import TokenUsage
-from kosong.message import ContentPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolResult
+from kosong.message import (
+    AudioURLPart,
+    ContentPart,
+    ImageURLPart,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    ToolCallPart,
+    VideoURLPart,
+)
+from kosong.tooling import (
+    BriefDisplayBlock,
+    DisplayBlock,
+    ToolResult,
+    ToolReturnValue,
+    UnknownDisplayBlock,
+)
 from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
+from kimi_cli.tools.display import DiffDisplayBlock, TodoDisplayBlock, TodoDisplayItem
 from kimi_cli.utils.typing import flatten_union
-from kimi_cli.wire.display import DisplayBlock
 
 
 class TurnBegin(BaseModel):
@@ -106,7 +121,18 @@ class SubagentEvent(BaseModel):
         event = envelope.to_wire_message()
         if not is_event(event):
             raise ValueError("SubagentEvent event must be an Event")
-        return cast(Event, event)
+        return event
+
+
+class ApprovalRequestResolved(BaseModel):
+    """
+    Indicates that an approval request has been resolved.
+    """
+
+    request_id: str
+    """The ID of the resolved approval request."""
+    response: ApprovalRequest.Response
+    """The response to the approval request."""
 
 
 class ApprovalRequest(BaseModel):
@@ -137,7 +163,7 @@ class ApprovalRequest(BaseModel):
         Wait for the request to be resolved or cancelled.
 
         Returns:
-            ApprovalResponse: The response to the approval request.
+            ApprovalRequest.Response: The response to the approval request.
         """
         return await self._future
 
@@ -152,17 +178,6 @@ class ApprovalRequest(BaseModel):
     def resolved(self) -> bool:
         """Whether the request is resolved."""
         return self._future.done()
-
-
-class ApprovalRequestResolved(BaseModel):
-    """
-    Indicates that an approval request has been resolved.
-    """
-
-    request_id: str
-    """The ID of the resolved approval request."""
-    response: ApprovalRequest.Response
-    """The response to the approval request."""
 
 
 type Event = (
@@ -189,22 +204,22 @@ type WireMessage = Event | Request
 """Any message sent over the `Wire`."""
 
 
-_EVENT_TYPES: tuple[type[Event]] = flatten_union(Event)
-_REQUEST_TYPES: tuple[type[Request]] = flatten_union(Request)
-_WIRE_MESSAGE_TYPES: tuple[type[WireMessage]] = flatten_union(WireMessage)
+_EVENT_TYPES = cast(tuple[type[Event], ...], flatten_union(Event))
+_REQUEST_TYPES = cast(tuple[type[Request], ...], flatten_union(Request))
+_WIRE_MESSAGE_TYPES = cast(tuple[type[WireMessage], ...], flatten_union(WireMessage))
 
 
-def is_event(msg: Any) -> bool:
+def is_event(msg: Any) -> TypeGuard[Event]:
     """Check if the message is an Event."""
     return isinstance(msg, _EVENT_TYPES)
 
 
-def is_request(msg: Any) -> bool:
+def is_request(msg: Any) -> TypeGuard[Request]:
     """Check if the message is a Request."""
     return isinstance(msg, _REQUEST_TYPES)
 
 
-def is_wire_message(msg: Any) -> bool:
+def is_wire_message(msg: Any) -> TypeGuard[WireMessage]:
     """Check if the message is a WireMessage."""
     return isinstance(msg, _WIRE_MESSAGE_TYPES)
 
@@ -242,3 +257,40 @@ class WireMessageEnvelope(BaseModel):
         if msg_type is None:
             raise ValueError(f"Unknown wire message type: {self.type}")
         return msg_type.model_validate(self.payload)
+
+
+__all__ = [
+    # `WireMessage` variants
+    "TurnBegin",
+    "StepBegin",
+    "StepInterrupted",
+    "CompactionBegin",
+    "CompactionEnd",
+    "StatusUpdate",
+    "ContentPart",
+    "ToolCall",
+    "ToolCallPart",
+    "ToolResult",
+    "SubagentEvent",
+    "ApprovalRequestResolved",
+    "ApprovalRequest",
+    # helpers
+    "WireMessageEnvelope",
+    # `StatusUpdate`-related
+    "TokenUsage",
+    # `ContentPart` types
+    "TextPart",
+    "ThinkPart",
+    "ImageURLPart",
+    "AudioURLPart",
+    "VideoURLPart",
+    # `ToolResult`-related
+    "ToolReturnValue",
+    # `DisplayBlock` types
+    "DisplayBlock",
+    "UnknownDisplayBlock",
+    "BriefDisplayBlock",
+    "DiffDisplayBlock",
+    "TodoDisplayBlock",
+    "TodoDisplayItem",
+]

@@ -12,7 +12,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import ApprovalRequest, Request
+from kimi_cli.wire.types import ApprovalRequest, Request
 
 from .jsonrpc import (
     ErrorCodes,

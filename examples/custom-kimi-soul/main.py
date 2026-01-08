@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
-from kosong.message import ContentPart
-from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue, Toolset
+from kosong.tooling import CallableTool2, ToolError, ToolOk, Toolset
 from kosong.tooling.simple import SimpleToolset
 from pydantic import BaseModel, Field, SecretStr
 
@@ -16,12 +15,13 @@ from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import Shell
+from kimi_cli.wire.types import ContentPart, ToolReturnValue
 
 
 class HakimiSoul(KimiSoul):
     @staticmethod
     async def create(
-        llm: LLM,
+        llm: LLM | None,
         system_prompt: str,
         toolset: Toolset,
         session: Session | None = None,

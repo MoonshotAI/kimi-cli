@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 import kaos
 from kaos.path import KaosPath
-from kosong.message import ContentPart
 from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
@@ -26,7 +25,7 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import StreamToLogger, logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire.types import ContentPart, WireMessage
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig

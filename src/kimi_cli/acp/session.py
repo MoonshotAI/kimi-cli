@@ -9,8 +9,6 @@ import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kaos import Kaos, reset_current_kaos, set_current_kaos
 from kosong.chat_provider import ChatProviderError
-from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolError, ToolResult
 
 from kimi_cli.acp.convert import (
     acp_blocks_to_content_parts,
@@ -21,16 +19,22 @@ from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.display import TodoDisplayBlock
-from kimi_cli.wire.message import (
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
+    ContentPart,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TextPart,
+    ThinkPart,
+    TodoDisplayBlock,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
     TurnBegin,
     WireMessage,
 )
@@ -293,7 +297,6 @@ class ACPSession:
             return
 
         tool_ret = result.return_value
-        is_error = isinstance(tool_ret, ToolError)
 
         state = self._turn_state.tool_calls.pop(result.tool_call_id, None)
         if state is None:
@@ -303,7 +306,7 @@ class ACPSession:
         update = acp.schema.ToolCallProgress(
             session_update="tool_call_update",
             tool_call_id=state.acp_tool_call_id,
-            status="failed" if is_error else "completed",
+            status="failed" if tool_ret.is_error else "completed",
         )
 
         contents = (

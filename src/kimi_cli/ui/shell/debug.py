@@ -3,16 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from kosong.message import (
-    AudioURLPart,
-    ContentPart,
-    ImageURLPart,
-    Message,
-    TextPart,
-    ThinkPart,
-    ToolCall,
-    VideoURLPart,
-)
+from kosong.message import Message
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.rule import Rule
@@ -22,6 +13,15 @@ from rich.text import Text
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import registry
+from kimi_cli.wire.types import (
+    AudioURLPart,
+    ContentPart,
+    ImageURLPart,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    VideoURLPart,
+)
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell

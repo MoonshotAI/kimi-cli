@@ -192,9 +192,8 @@ def toolset() -> KimiToolset:
 @contextmanager
 def tool_call_context(tool_name: str) -> Generator[None]:
     """Create a tool call context."""
-    from kosong.message import ToolCall
-
     from kimi_cli.soul.toolset import current_tool_call
+    from kimi_cli.wire.types import ToolCall
 
     token = current_tool_call.set(
         ToolCall(id="test", function=ToolCall.FunctionBody(name=tool_name, arguments=None))

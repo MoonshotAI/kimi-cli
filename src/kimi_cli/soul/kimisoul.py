@@ -17,8 +17,7 @@ from kosong.chat_provider import (
     APITimeoutError,
     ThinkingEffort,
 )
-from kosong.message import ContentPart, Message, TextPart
-from kosong.tooling import ToolResult
+from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
@@ -41,14 +40,17 @@ from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
-from kimi_cli.wire.message import (
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
     CompactionBegin,
     CompactionEnd,
+    ContentPart,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
+    TextPart,
+    ToolResult,
     TurnBegin,
 )
 

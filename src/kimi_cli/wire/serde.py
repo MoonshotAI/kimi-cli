@@ -5,7 +5,7 @@ from typing import Any
 from kosong.utils.typing import JsonType
 from pydantic import BaseModel, ConfigDict
 
-from kimi_cli.wire.message import WireMessage, WireMessageEnvelope
+from kimi_cli.wire.types import WireMessage, WireMessageEnvelope
 
 
 def serialize_wire_message(msg: WireMessage) -> dict[str, JsonType]:
