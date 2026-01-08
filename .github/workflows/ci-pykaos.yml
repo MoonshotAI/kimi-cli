@@ -58,10 +58,10 @@ jobs:
         with:
           version: "0.8.5"
 
-      - name: Prepare environment
+      - name: Install dependencies
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make prepare
+        run: uv sync --frozen --all-extras --project packages/kaos
 
       - name: Configure local SSH server
         if: matrix.runner == 'ubuntu-22.04'
