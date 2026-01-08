@@ -65,12 +65,12 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
     return None
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class Runtime:
     """Agent runtime."""
 
     config: Config
-    llm: LLM | None
+    llm: LLM | None  # we do not freeze the `Runtime` dataclass because LLM can be changed
     session: Session
     builtin_args: BuiltinSystemPromptArgs
     denwa_renji: DenwaRenji
@@ -230,6 +230,7 @@ async def load_agent(
     tool_deps = {
         KimiToolset: toolset,
         Runtime: runtime,
+        # TODO: remove all the following dependencies and use Runtime instead
         Config: runtime.config,
         BuiltinSystemPromptArgs: runtime.builtin_args,
         Session: runtime.session,

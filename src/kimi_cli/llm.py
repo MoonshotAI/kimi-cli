@@ -187,17 +187,14 @@ def create_llm(
     return LLM(
         chat_provider=chat_provider,
         max_context_size=model.max_context_size,
-        capabilities=_derive_capabilities(provider, model),
+        capabilities=derive_model_capabilities(model),
         model_config=model,
         provider_config=provider,
     )
 
 
-def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCapability]:
+def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
     capabilities = model.capabilities or set()
-    if provider.type not in {"kimi", "_chaos"}:
-        return capabilities
-
     if model.model in {"kimi-for-coding", "kimi-code"} or "thinking" in model.model:
         capabilities.add("thinking")
     return capabilities
