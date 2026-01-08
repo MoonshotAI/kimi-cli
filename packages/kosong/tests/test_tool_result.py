@@ -1,12 +1,11 @@
 from inline_snapshot import snapshot
 
+from kosong.display import BriefDisplayBlock, UnknownDisplayBlock
 from kosong.message import ImageURLPart, TextPart
 from kosong.tooling import (
-    BriefDisplayBlock,
     ToolError,
     ToolOk,
     ToolReturnValue,
-    UnknownDisplayBlock,
 )
 from kosong.tooling.error import ToolNotFoundError
 

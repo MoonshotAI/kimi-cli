@@ -7,7 +7,6 @@ from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 import aiofiles
 from kosong.message import Message, TextPart
@@ -110,10 +109,9 @@ async def _build_replay_turns_from_wire(wire_file: Path | None) -> list[_ReplayT
                     continue
 
                 current_turn = turns[-1]
-                wire_event = cast(Event, wire_msg)
-                if isinstance(wire_event, StepBegin):
-                    current_turn.n_steps = wire_event.n
-                current_turn.events.append(wire_event)
+                if isinstance(wire_msg, StepBegin):
+                    current_turn.n_steps = wire_msg.n
+                current_turn.events.append(wire_msg)
     except Exception:
         logger.exception("Failed to build replay turns from wire file {file}:", file=wire_file)
         return []

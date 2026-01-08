@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from kosong.tooling import DisplayBlock
+from kosong.display import BriefDisplayBlock, DisplayBlock, UnknownDisplayBlock
 from pydantic import BaseModel
 
 __all__ = [
     "DisplayBlock",  # re-export for convenience
+    "UnknownDisplayBlock",
+    "BriefDisplayBlock",
     "DiffDisplayBlock",
     "TodoDisplayBlock",
     "TodoDisplayItem",

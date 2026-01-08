@@ -5,7 +5,6 @@ import copy
 import json
 import time
 from pathlib import Path
-from typing import cast
 
 import aiofiles
 from kosong.message import ContentPart, MergeableMixin, ToolCallPart
@@ -96,7 +95,7 @@ class WireSoulSide:
     def flush(self) -> None:
         if self._merge_buffer is not None:
             assert is_wire_message(self._merge_buffer)
-            self._send_merged(cast(WireMessage, self._merge_buffer))
+            self._send_merged(self._merge_buffer)
             self._merge_buffer = None
 
     def _send_merged(self, msg: WireMessage) -> None:

@@ -195,6 +195,17 @@ interface StepBegin {
 状态更新。
 
 ```typescript
+interface TokenUsage {
+  /** 不包括 `input_cache_read` 和 `input_cache_creation` 的输入 token 数。 */
+  input_other: number
+  /** 总输出 token 数。 */
+  output: number
+  /** 缓存的输入 token 数 */
+  input_cache_read: number
+  /** 用于缓存创建的输入 token 数。目前仅 Anthropic API 支持此字段。 */
+  input_cache_creation: number
+}
+
 interface StatusUpdate {
   /** 上下文使用率，0-1 之间的浮点数，JSON 中可能不存在 */
   context_usage?: number | null
@@ -207,10 +218,12 @@ interface StatusUpdate {
 
 ### `ContentPart`
 
+<!-- Source: packages/kosong/src/kosong/message.py -->
+
 消息内容片段。序列化时 `type` 为 `"ContentPart"`，具体类型由 `payload.type` 区分。
 
 ```typescript
-type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart
+type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart | VideoURLPart
 
 interface TextPart {
   type: "text"
@@ -242,6 +255,16 @@ interface AudioURLPart {
     /** 音频 URL，可以是 data URI（如 data:audio/aac;base64,...） */
     url: string
     /** 音频 ID，用于区分不同音频，JSON 中可能不存在 */
+    id?: string | null
+  }
+}
+
+interface VideoURLPart {
+  type: "video_url"
+  video_url: {
+    /** 视频 URL，可以是 data URI（如 data:video/mp4;base64,...） */
+    url: string
+    /** 视频 ID，用于区分不同视频，JSON 中可能不存在 */
     id?: string | null
   }
 }
@@ -351,14 +374,24 @@ interface ApprovalRequest {
 
 ### `DisplayBlock`
 
+<!-- Source: src/kimi_cli/wire/display.py -->
+
 `ToolResult` 和 `ApprovalRequest` 的 `display` 字段使用的显示块类型。
 
 ```typescript
 type DisplayBlock =
+  UnknownDisplayBlock
   | BriefDisplayBlock
   | DiffDisplayBlock
   | TodoDisplayBlock
-  | UnknownDisplayBlock
+
+/** 无法识别的显示块类型的 fallback */
+interface UnknownDisplayBlock {
+  /** 任意类型标识 */
+  type: string
+  /** 原始数据 */
+  data: object
+}
 
 interface BriefDisplayBlock {
   type: "brief"
@@ -385,13 +418,5 @@ interface TodoDisplayBlock {
     /** 状态 */
     status: "pending" | "in_progress" | "done"
   }[]
-}
-
-/** 无法识别的显示块类型的 fallback */
-interface UnknownDisplayBlock {
-  /** 任意类型标识 */
-  type: string
-  /** 原始数据 */
-  data: object
 }
 ```

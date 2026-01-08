@@ -3,9 +3,10 @@ import inspect
 import pytest
 from inline_snapshot import snapshot
 from kosong.message import ImageURLPart, TextPart, ToolCall, ToolCallPart
-from kosong.tooling import BriefDisplayBlock, ToolResult, ToolReturnValue
+from kosong.tooling import ToolResult, ToolReturnValue
 from pydantic import BaseModel
 
+from kimi_cli.wire.display import BriefDisplayBlock
 from kimi_cli.wire.message import (
     ApprovalRequest,
     ApprovalRequestResolved,
@@ -295,3 +296,10 @@ def test_wire_message_type_alias():
 
     for type_ in wire_message_types:
         assert type_ in module._WIRE_MESSAGE_TYPES
+
+
+def test_wire_message_all_order():
+    import kimi_cli.wire.message as wire_message
+
+    expected = [cls.__name__ for cls in wire_message._WIRE_MESSAGE_TYPES] + ["WireMessageEnvelope"]
+    assert wire_message.__all__ == expected
