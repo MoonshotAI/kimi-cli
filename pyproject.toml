@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agent-client-protocol==0.7.0",
-    "aiofiles>=24.0,<25.0",
+    "aiofiles>=24.0,<26.0",
     "aiohttp==3.13.3",
     "typer==0.21.1",
     "kosong[contrib]==0.37.0",
