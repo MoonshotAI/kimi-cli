@@ -40,6 +40,14 @@ select = [
     "I",   # isort
 ]
 
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+include = [
+    "src/**/*.py",
+    "tests/**/*.py",
+]
+
 [tool.ty.environment]
 python-version = "3.14"
 
