@@ -18,9 +18,9 @@ def _default_acp_command() -> list[str]:
             and resolved_path.suffix != ".py"
             and not resolved_path.name.startswith(("python", "pypy"))
         ):
-            return [str(resolved_path), "--acp"]
+            return [str(resolved_path), "acp"]
 
-    return [sys.executable, "-m", "kimi_cli.cli", "--acp"]
+    return [sys.executable, "-m", "kimi_cli.cli", "acp"]
 
 
 def _default_toad_command() -> list[str]:
@@ -61,7 +61,7 @@ def _extract_project_dir(extra_args: list[str]) -> Path | None:
 
 def run_term(ctx: typer.Context) -> None:
     extra_args = list(ctx.args)
-    acp_args = _default_acp_command() + extra_args
+    acp_args = _default_acp_command()
     acp_command = shlex.join(acp_args)
     toad_parts = _default_toad_command()
     args = [*toad_parts, "acp", acp_command]

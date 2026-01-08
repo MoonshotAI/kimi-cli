@@ -18,7 +18,7 @@ Add the following to Zed's configuration file `~/.config/zed/settings.json`:
     "Kimi CLI": {
       "type": "custom",
       "command": "kimi",
-      "args": ["--acp", "--thinking"],
+      "args": ["acp"],
       "env": {}
     }
   }
@@ -29,7 +29,7 @@ Configuration notes:
 
 - `type`: Fixed value `"custom"`
 - `command`: Path to the Kimi CLI command. If `kimi` is not in PATH, use the full path
-- `args`: Startup arguments. `--acp` enables ACP mode, `--thinking` enables thinking mode (optional)
+- `args`: Startup arguments. `acp` enables ACP mode
 - `env`: Environment variables, usually left empty
 
 After saving the configuration, you can create Kimi CLI sessions in Zed's Agent panel.
@@ -47,7 +47,7 @@ In the AI Chat panel menu, click "Configure ACP agents" and add the following co
   "agent_servers": {
     "Kimi CLI": {
       "command": "~/.local/bin/kimi",
-      "args": ["--acp", "--thinking"],
+      "args": ["acp"],
       "env": {}
     }
   }

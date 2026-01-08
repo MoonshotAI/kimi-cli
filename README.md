@@ -6,55 +6,18 @@
 [![Downloads](https://img.shields.io/pypi/dw/kimi-cli)](https://pypistats.org/packages/kimi-cli)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MoonshotAI/kimi-cli)
 
-[中文](https://www.kimi.com/code/docs/kimi-cli.html)
+[Kimi Code](https://www.kimi.com/code/) | [Documentation](https://moonshotai.github.io/kimi-cli/en/) | [文档](https://moonshotai.github.io/kimi-cli/zh/)
 
-Kimi CLI is a new CLI agent that can help you with your software development tasks and terminal operations.
+Kimi CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
 > [!IMPORTANT]
 > Kimi CLI is currently in technical preview.
 
-## Key features
+## Getting Started
 
-- Shell-like UI and shell command execution
-- IDE integration via [Agent Client Protocol]
-- Zsh integration
-- MCP support
-- And more to come...
+See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi CLI.
 
-[Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
-
-## Installation
-
-Kimi CLI is published as a Python package on PyPI. We highly recommend installing it with [uv](https://docs.astral.sh/uv/). If you have not installed uv yet, please follow the instructions [here](https://docs.astral.sh/uv/getting-started/installation/) to install it first.
-
-Once uv is installed, you can install Kimi CLI with:
-
-```sh
-uv tool install --python 3.14 kimi-cli
-```
-
-Run `kimi --help` to check if Kimi CLI is installed successfully.
-
-> [!IMPORTANT]
-> Due to the security checks on macOS, the first time you run `kimi` command may take 10 seconds or more depending on your system environment.
-
-## Upgrading
-
-Upgrade Kimi CLI to the latest version with:
-
-```sh
-uv tool upgrade kimi-cli --no-cache
-```
-
-## Usage
-
-Run `kimi` command in the directory you want to work on, then send `/setup` to setup Kimi CLI:
-
-![](./docs/media/setup.jpg)
-
-After setup, Kimi CLI will be ready to use. You can send `/help` to get more information.
-
-## Features
+## Key Features
 
 ### Shell command mode
 
@@ -69,7 +32,9 @@ Kimi CLI is not only a coding agent, but also a shell. You can switch the shell 
 
 Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
-To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi --acp` (or `kimi --acp --thinking` with thinking mode enabled).
+[Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
+
+To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi acp`.
 
 For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
@@ -78,7 +43,7 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https:/
   "agent_servers": {
     "Kimi CLI": {
       "command": "kimi",
-      "args": ["--acp", "--thinking"],
+      "args": ["acp"],
       "env": {}
     }
   }
@@ -111,7 +76,7 @@ plugins=(... kimi-cli)
 
 After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
 
-### Using MCP tools
+### MCP support
 
 Kimi CLI supports MCP (Model Context Protocol) tools.
 
@@ -167,6 +132,10 @@ Run `kimi` with `--mcp-config-file` option to connect to the specified MCP serve
 ```sh
 kimi --mcp-config-file /path/to/mcp.json
 ```
+
+### More
+
+See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/en/).
 
 ## Development
 

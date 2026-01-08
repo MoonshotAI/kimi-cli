@@ -2,6 +2,15 @@
 
 This page documents breaking changes in Kimi CLI releases and provides migration guidance.
 
+## Unreleased - ACP command change
+
+### `--acp` option deprecated
+
+The `--acp` option has been deprecated. Use the `kimi acp` subcommand instead.
+
+- **Affected**: Scripts and IDE configurations using `kimi --acp`
+- **Migration**: `kimi --acp` → `kimi acp`
+
 ## 0.66 - Config File and Provider Type
 
 ### Config file format migration
@@ -78,7 +87,7 @@ The `--ui` option has been removed in favor of separate flags.
 - **Affected**: Scripts using `--ui print`, `--ui acp`, or `--ui wire`
 - **Migration**:
   - `--ui print` → `--print`
-  - `--ui acp` → `--acp`
+  - `--ui acp` → `kimi acp`
   - `--ui wire` → `--wire`
 
 ## 0.42 - Keyboard Shortcut Changes
