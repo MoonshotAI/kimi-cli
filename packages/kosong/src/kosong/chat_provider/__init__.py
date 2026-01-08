@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass
 from typing import Literal, Protocol, Self, runtime_checkable
+
+from pydantic import BaseModel
 
 from kosong.message import ContentPart, Message, ToolCall, ToolCallPart
 from kosong.tooling import Tool
@@ -69,8 +70,7 @@ class StreamedMessage(Protocol):
         ...
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
-class TokenUsage:
+class TokenUsage(BaseModel):
     """Token usage statistics."""
 
     input_other: int
