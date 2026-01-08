@@ -15,7 +15,7 @@ from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import Shell
-from kimi_cli.wire.message import ContentPart, ToolReturnValue
+from kimi_cli.wire.types import ContentPart, ToolReturnValue
 
 
 class HakimiSoul(KimiSoul):
