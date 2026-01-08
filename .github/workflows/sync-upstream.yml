@@ -1,0 +1,31 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每6小时同步一次
+  workflow_dispatch:  # 支持手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync upstream
+        run: |
+          git remote add upstream https://github.com/MoonshotAI/kimi-cli.git || true
+          git fetch upstream
+          git checkout main
+          git merge upstream/main --no-edit || echo "No changes to merge"
+          git push origin main
