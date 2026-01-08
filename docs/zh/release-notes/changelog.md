@@ -9,6 +9,7 @@
 - MCP：确保 MCP 工具加载完成后再开始 Agent 循环
 - Wire：修复 Wire 模式无法接受有效 `cancel` 请求的问题
 - Setup：`/model` 命令现在可以切换所选供应商的所有可用模型
+- Lib：从 `kimi_cli.wire.types` 重新导出所有 Wire 消息类型，作为 `kimi_cli.wire.message` 的替代
 
 ## 0.72 (2026-01-04)
 

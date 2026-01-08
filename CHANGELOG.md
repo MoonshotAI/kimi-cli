@@ -16,6 +16,7 @@ Only write entries that are worth mentioning to users.
 - MCP: Ensure MCP tools finish loading before starting the agent loop
 - Wire: Fix Wire mode failing to accept valid `cancel` requests
 - Setup: Allow `/model` to switch between all available models for the selected provider
+- Lib: Re-export all Wire message types from `kimi_cli.wire.types`, as a replacement of `kimi_cli.wire.message`
 
 ## 0.72 (2026-01-04)
 
