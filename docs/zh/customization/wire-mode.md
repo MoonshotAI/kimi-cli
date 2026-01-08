@@ -218,8 +218,6 @@ interface TokenUsage {
 
 ### `ContentPart`
 
-<!-- Source: packages/kosong/src/kosong/message.py -->
-
 消息内容片段。序列化时 `type` 为 `"ContentPart"`，具体类型由 `payload.type` 区分。
 
 ```typescript
@@ -375,8 +373,6 @@ interface ApprovalRequest {
 ```
 
 ### `DisplayBlock`
-
-<!-- Source: src/kimi_cli/wire/display.py -->
 
 `ToolResult` 和 `ApprovalRequest` 的 `display` 字段使用的显示块类型。
 

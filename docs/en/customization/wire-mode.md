@@ -218,8 +218,6 @@ interface TokenUsage {
 
 ### `ContentPart`
 
-<!-- Source: packages/kosong/src/kosong/message.py -->
-
 Message content part. Serialized with `type` as `"ContentPart"`, specific type distinguished by `payload.type`.
 
 ```typescript
@@ -375,8 +373,6 @@ interface ApprovalRequest {
 ```
 
 ### `DisplayBlock`
-
-<!-- Source: src/kimi_cli/wire/display.py -->
 
 Display block types used in `display` field of `ToolResult` and `ApprovalRequest`.
 
