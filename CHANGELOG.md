@@ -22,6 +22,9 @@ Only write entries that are worth mentioning to users.
 - CLI: Add `--max-steps-per-turn`, `--max-retries-per-step` and `--max-ralph-iterations` options to override loop control config
 - SlashCmd: Make `/yolo` toggle auto-approve mode
 - UI: Show a YOLO badge in the shell prompt
+- ACP: Allow ACP clients to select and switch models (with thinking variants)
+- ACP: Add `terminal-auth` authentication method for setup flow
+- CLI: Deprecate `--acp` option in favor of `kimi acp` subcommand
 
 ## 0.72 (2026-01-04)
 

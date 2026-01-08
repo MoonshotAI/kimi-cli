@@ -85,7 +85,7 @@ When `--max-ralph-iterations` is not `0`, Kimi CLI keeps feeding the same prompt
 |--------|-------------|
 | `--print` | Run in print mode (non-interactive), implicitly enables `--yolo` |
 | `--quiet` | Shortcut for `--print --output-format text --final-message-only` |
-| `--acp` | Run in ACP server mode |
+| `--acp` | Run in ACP server mode (deprecated, use `kimi acp` instead) |
 | `--wire` | Run in Wire server mode (experimental) |
 
 The four options are mutually exclusive, only one can be selected. Default is shell mode. See [Print Mode](../customization/print-mode.md) and [Wire Mode](../customization/wire-mode.md) for details.
