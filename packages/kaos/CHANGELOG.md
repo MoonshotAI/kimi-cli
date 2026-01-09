@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0 (2026-01-09)
+
 - Add optional `n` parameter to `readbytes` to read only the first n bytes
 
 ## 0.5.4 (2026-01-06)

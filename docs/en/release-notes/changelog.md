@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.74 (2026-01-09)
+
 - ACP: Allow ACP clients to select and switch models (with thinking variants)
 - ACP: Add `terminal-auth` authentication method for setup flow
 - CLI: Deprecate `--acp` option in favor of `kimi acp` subcommand
