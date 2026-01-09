@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.file import diff_utils
+from kimi_cli.tools.file.utils import build_diff_blocks
 from kimi_cli.wire.types import DiffDisplayBlock
 
 
@@ -23,7 +23,7 @@ Line five modified
 Line six added
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/simple.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/simple.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -61,7 +61,7 @@ Line three
 Line four
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/insert.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/insert.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -94,7 +94,7 @@ Line one
 Line four
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/delete.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/delete.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -131,7 +131,7 @@ Delta
 Echo
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/replace.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/replace.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -184,7 +184,7 @@ Line ten
 Line eleven
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/complex.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/complex.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -259,7 +259,7 @@ Line 15
 Line 16
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/context.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/context.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -310,7 +310,7 @@ Line 1
 Line 2
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/old-empty.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/old-empty.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -333,7 +333,7 @@ Line 2
 """.strip()
     new_text = ""
 
-    blocks = diff_utils.build_diff_blocks("/tmp/new-empty.txt", old_text, new_text)
+    blocks = build_diff_blocks("/tmp/new-empty.txt", old_text, new_text)
 
     assert blocks == snapshot(
         [
@@ -350,7 +350,7 @@ Line 2\
 
 
 def test_build_diff_blocks_both_empty() -> None:
-    blocks = diff_utils.build_diff_blocks("/tmp/both-empty.txt", "", "")
+    blocks = build_diff_blocks("/tmp/both-empty.txt", "", "")
 
     assert blocks == snapshot([])
 
@@ -361,6 +361,6 @@ Line 1
 Line 2
 """.strip()
 
-    blocks = diff_utils.build_diff_blocks("/tmp/equal.txt", text, text)
+    blocks = build_diff_blocks("/tmp/equal.txt", text, text)
 
     assert blocks == snapshot([])

@@ -192,8 +192,8 @@ class ACPKaos:
     ) -> AsyncGenerator[KaosPath]:
         return self._fallback.glob(path, pattern, case_sensitive=case_sensitive)
 
-    async def readbytes(self, path: StrOrKaosPath) -> bytes:
-        return await self._fallback.readbytes(path)
+    async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
+        return await self._fallback.readbytes(path, n=n)
 
     async def readtext(
         self,

@@ -106,10 +106,10 @@ class LocalKaos:
         for entry in entries:
             yield KaosPath.unsafe_from_local_path(entry)
 
-    async def readbytes(self, path: StrOrKaosPath) -> bytes:
+    async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
         async with aiofiles.open(local_path, mode="rb") as f:
-            return await f.read()
+            return await f.read() if n is None else await f.read(n)
 
     async def readtext(
         self,

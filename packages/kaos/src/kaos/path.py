@@ -154,9 +154,9 @@ class KaosPath:
         """Return all paths matching the pattern under this directory."""
         return kaos.glob(self, pattern, case_sensitive=case_sensitive)
 
-    async def read_bytes(self) -> bytes:
-        """Read the entire file contents as bytes."""
-        return await kaos.readbytes(self)
+    async def read_bytes(self, n: int | None = None) -> bytes:
+        """Read the entire file contents as bytes, or the first n bytes if provided."""
+        return await kaos.readbytes(self, n=n)
 
     async def read_text(
         self,

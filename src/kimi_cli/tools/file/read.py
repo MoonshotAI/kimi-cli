@@ -1,4 +1,5 @@
-from pathlib import Path, PurePath
+import base64
+from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
@@ -6,12 +7,20 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, FileType, detect_file_type
 from kimi_cli.tools.utils import load_desc, truncate_line
 from kimi_cli.utils.path import is_within_directory
+from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
 MAX_BYTES = 100 << 10  # 100KB
+MAX_MEDIA_BYTES = 80 << 20  # 80MB
+
+
+def _to_data_url(mime_type: str, data: bytes) -> str:
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 class Params(BaseModel):
@@ -49,6 +58,7 @@ class ReadFile(CallableTool2[Params]):
             "MAX_LINES": str(MAX_LINES),
             "MAX_LINE_LENGTH": str(MAX_LINE_LENGTH),
             "MAX_BYTES": str(MAX_BYTES),
+            "MAX_MEDIA_BYTES": str(MAX_MEDIA_BYTES),
         },
     )
     params: type[Params] = Params
@@ -73,6 +83,39 @@ class ReadFile(CallableTool2[Params]):
                 brief="Invalid path",
             )
         return None
+
+    async def _read_media(self, path: KaosPath, file_type: FileType) -> ToolReturnValue:
+        assert file_type.kind in ("image", "video")
+
+        stat = await path.stat()
+        size = stat.st_size
+        if size == 0:
+            return ToolError(
+                message=f"`{path}` is empty.",
+                brief="Empty file",
+            )
+        if size > MAX_MEDIA_BYTES:
+            return ToolError(
+                message=(
+                    f"`{path}` is {size} bytes, which exceeds the max "
+                    f"{MAX_MEDIA_BYTES} bytes for media files."
+                ),
+                brief="File too large",
+            )
+
+        data = await path.read_bytes()
+        data_url = _to_data_url(file_type.mime_type, data)
+        match file_type.kind:
+            case "image":
+                part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
+            case "video":
+                part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
+        return ToolOk(
+            output=part,
+            message=(
+                f"Loaded {file_type.kind} file `{path}` ({file_type.mime_type}, {size} bytes)."
+            ),
+        )
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -102,10 +145,16 @@ class ReadFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            if not file_seems_readable(p):
+            header = await p.read_bytes(MEDIA_SNIFF_BYTES)
+            file_type = detect_file_type(str(p), header=header)
+            if file_type.kind in ("image", "video"):
+                return await self._read_media(p, file_type)
+
+            if file_type.kind == "unknown":
                 return ToolError(
                     message=(
-                        f"`{params.path}` seems not readable. "
+                        f"`{params.path}` seems not readable as text. "
+                        "ReadFile only supports text, image, and video files. "
                         "You may need to read it with proper shell commands, Python tools "
                         "or MCP tools if available. "
                         "If you read/operate it with Python, you MUST ensure that any "
@@ -171,119 +220,3 @@ class ReadFile(CallableTool2[Params]):
                 message=f"Failed to read {params.path}. Error: {e}",
                 brief="Failed to read file",
             )
-
-
-_NON_TEXT_SUFFIXES = {
-    # Images
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".bmp",
-    ".tif",
-    ".tiff",
-    ".webp",
-    ".ico",
-    ".icns",
-    ".heic",
-    ".heif",
-    ".avif",
-    ".psd",
-    ".ai",
-    ".eps",
-    ".svg",
-    ".svgz",
-    # Documents / office formats
-    ".pdf",
-    ".doc",
-    ".docx",
-    ".dot",
-    ".dotx",
-    ".rtf",
-    ".odt",
-    ".xls",
-    ".xlsx",
-    ".xlsm",
-    ".xlt",
-    ".xltx",
-    ".xltm",
-    ".ods",
-    ".ppt",
-    ".pptx",
-    ".pptm",
-    ".pps",
-    ".ppsx",
-    ".odp",
-    ".pages",
-    ".numbers",
-    ".key",
-    # Archives / compressed
-    ".zip",
-    ".rar",
-    ".7z",
-    ".tar",
-    ".gz",
-    ".tgz",
-    ".bz2",
-    ".xz",
-    ".zst",
-    ".lz",
-    ".lz4",
-    ".br",
-    ".cab",
-    ".ar",
-    ".deb",
-    ".rpm",
-    # Audio
-    ".mp3",
-    ".wav",
-    ".flac",
-    ".ogg",
-    ".oga",
-    ".opus",
-    ".aac",
-    ".m4a",
-    ".wma",
-    # Video
-    ".mp4",
-    ".mkv",
-    ".avi",
-    ".mov",
-    ".wmv",
-    ".webm",
-    ".m4v",
-    ".flv",
-    ".3gp",
-    # Fonts
-    ".ttf",
-    ".otf",
-    ".woff",
-    ".woff2",
-    # Binaries / bundles
-    ".exe",
-    ".dll",
-    ".so",
-    ".dylib",
-    ".bin",
-    ".apk",
-    ".ipa",
-    ".jar",
-    ".class",
-    ".pyc",
-    ".pyo",
-    ".wasm",
-    # Disk images / databases
-    ".dmg",
-    ".iso",
-    ".img",
-    ".sqlite",
-    ".sqlite3",
-    ".db",
-    ".db3",
-}
-
-
-def file_seems_readable(path: KaosPath) -> bool:
-    """Guess whether the file is readable."""
-    suffix = PurePath(str(path)).suffix
-    return suffix.lower() not in _NON_TEXT_SUFFIXES
