@@ -170,8 +170,8 @@ class Kaos(Protocol):
         """Search for files/directories matching a pattern in the given path."""
         ...
 
-    async def readbytes(self, path: StrOrKaosPath) -> bytes:
-        """Read the entire file contents as bytes."""
+    async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
+        """Read the entire file contents as bytes, or the first n bytes if provided."""
         ...
 
     async def readtext(
@@ -294,8 +294,8 @@ def glob(
     return get_current_kaos().glob(path, pattern, case_sensitive=case_sensitive)
 
 
-async def readbytes(path: StrOrKaosPath) -> bytes:
-    return await get_current_kaos().readbytes(path)
+async def readbytes(path: StrOrKaosPath, n: int | None = None) -> bytes:
+    return await get_current_kaos().readbytes(path, n=n)
 
 
 async def readtext(
