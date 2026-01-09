@@ -14,8 +14,8 @@ from kimi_cli.tools.file.read import (
     MAX_LINES,
     Params,
     ReadFile,
-    file_seems_readable,
 )
+from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 
 @pytest.fixture
@@ -29,15 +29,6 @@ Line 4: For testing purposes
 Line 5: End of file"""
     await file_path.write_text(content)
     return file_path
-
-
-def test_file_is_readable_respects_suffixes():
-    assert not file_seems_readable(KaosPath("image.PNG"))
-    assert not file_seems_readable(KaosPath("archive.tar.gz"))
-    assert not file_seems_readable(KaosPath("my file.pdf"))
-    assert file_seems_readable(KaosPath("notes.txt"))
-    assert file_seems_readable(KaosPath("Makefile"))
-    assert file_seems_readable(KaosPath(".env"))
 
 
 async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath):
@@ -158,6 +149,54 @@ async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert not result.is_error
     assert result.output == snapshot("")
     assert result.message == snapshot("No lines read from file. End of file reached.")
+
+
+async def test_read_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading an image file."""
+    image_file = temp_work_dir / "sample.png"
+    data = b"\x89PNG\r\n\x1a\n" + b"pngdata"
+    await image_file.write_bytes(data)
+
+    result = await read_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    assert len(result.output) == 1
+    part = result.output[0]
+    assert isinstance(part, ImageURLPart)
+    assert part.image_url.url.startswith("data:image/png;base64,")
+
+
+async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading an extensionless image file."""
+    image_file = temp_work_dir / "sample"
+    data = b"\x89PNG\r\n\x1a\n" + b"pngdata"
+    await image_file.write_bytes(data)
+
+    result = await read_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    assert len(result.output) == 1
+    part = result.output[0]
+    assert isinstance(part, ImageURLPart)
+    assert part.image_url.url.startswith("data:image/png;base64,")
+
+
+async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading a video file."""
+    video_file = temp_work_dir / "sample.mp4"
+    data = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+    await video_file.write_bytes(data)
+
+    result = await read_file_tool(Params(path=str(video_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    assert len(result.output) == 1
+    part = result.output[0]
+    assert isinstance(part, VideoURLPart)
+    assert part.video_url.url.startswith("data:video/mp4;base64,")
 
 
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):

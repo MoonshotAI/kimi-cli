@@ -7,6 +7,7 @@
 - ACP：允许 ACP 客户端选择和切换模型（包含 Thinking 变体）
 - ACP：添加 `terminal-auth` 认证方式，用于配置流程
 - CLI：弃用 `--acp` 选项，请使用 `kimi acp` 子命令
+- Tool：`ReadFile` 工具现支持读取图片和视频文件
 
 ## 0.73 (2026-01-09)
 
