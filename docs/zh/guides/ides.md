@@ -18,7 +18,7 @@ Kimi CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.
     "Kimi CLI": {
       "type": "custom",
       "command": "kimi",
-      "args": ["--acp", "--thinking"],
+      "args": ["acp"],
       "env": {}
     }
   }
@@ -29,7 +29,7 @@ Kimi CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.
 
 - `type`：固定值 `"custom"`
 - `command`：Kimi CLI 的命令路径，如果 `kimi` 不在 PATH 中，需要使用完整路径
-- `args`：启动参数，`--acp` 启用 ACP 模式，`--thinking` 启用 Thinking 模式（可选）
+- `args`：启动参数，`acp` 启用 ACP 模式
 - `env`：环境变量，通常留空即可
 
 保存配置后，在 Zed 的 Agent 面板中就可以创建 Kimi CLI 会话了。
@@ -47,7 +47,7 @@ JetBrains 系列 IDE（IntelliJ IDEA、PyCharm、WebStorm 等）通过 AI 聊天
   "agent_servers": {
     "Kimi CLI": {
       "command": "~/.local/bin/kimi",
-      "args": ["--acp", "--thinking"],
+      "args": ["acp"],
       "env": {}
     }
   }

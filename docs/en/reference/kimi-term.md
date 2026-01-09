@@ -10,11 +10,11 @@ kimi term [OPTIONS]
 
 [Toad](https://github.com/batrachianai/toad) is a graphical terminal interface for Kimi CLI that communicates with the Kimi CLI backend via the ACP protocol. It provides a richer interactive experience with better output rendering and layout.
 
-When you run `kimi term`, it automatically starts a `kimi --acp` server in the background, and Toad connects to it as an ACP client.
+When you run `kimi term`, it automatically starts a `kimi acp` server in the background, and Toad connects to it as an ACP client.
 
 ## Options
 
-All extra options are passed through to the internal `kimi --acp` command. For example:
+All extra options are passed through to the internal `kimi acp` command. For example:
 
 ```sh
 kimi term --work-dir /path/to/project --model kimi-k2

@@ -10,11 +10,11 @@ kimi term [OPTIONS]
 
 [Toad](https://github.com/batrachianai/toad) 是 Kimi CLI 的图形化终端界面，通过 ACP 协议与 Kimi CLI 后端通信。它提供了更丰富的交互体验，包括更好的输出渲染和界面布局。
 
-运行 `kimi term` 时，会自动在后台启动一个 `kimi --acp` 服务器，Toad 作为 ACP 客户端连接到该服务器。
+运行 `kimi term` 时，会自动在后台启动一个 `kimi acp` 服务器，Toad 作为 ACP 客户端连接到该服务器。
 
 ## 选项
 
-所有额外的选项会透传给内部的 `kimi --acp` 命令。例如：
+所有额外的选项会透传给内部的 `kimi acp` 命令。例如：
 
 ```sh
 kimi term --work-dir /path/to/project --model kimi-k2
