@@ -1,6 +1,7 @@
 # type: ignore
 import argparse
 import asyncio
+import json
 import sys
 import os
 
@@ -8,8 +9,7 @@ import pandas as pd
 from kimi_cli.app import enable_logging
 from kimi_cli.utils.logging import logger
 
-from benchmarking.config import EvalConfig
-from benchmarking.utils.config import EvalResult
+from benchmarking.utils.config import EvalConfig, EvalResult
 from benchmarking.utils.log import EvalRunLogger
 from benchmarking.utils.utils import EVALUATOR_MAP
 
@@ -60,12 +60,12 @@ async def main(args: argparse.Namespace) -> None:
     logger.info(f"Loaded {len(instances_df)} instances")
     run_logger = EvalRunLogger(config.output_dir, config.model)
     logger.info(f"Structured logs: {run_logger.run_dir}")
-    run_output_file = run_logger.run_dir / "results.jsonl"
+    run_output_file = str(run_logger.run_dir / "results.jsonl")
 
     completed_ids = set()
-    if run_output_file.exists():
-        with jsonlines.open(run_output_file) as reader:
-            for result in reader:
+    if os.path.exists(run_output_file):
+        with jsonlines.open(run_output_file) as f:
+            for result in f:
                 completed_ids.add(result["instance_id"])
 
     already_completed = len(completed_ids)
@@ -89,8 +89,8 @@ async def main(args: argparse.Namespace) -> None:
                     result = await evaluator.evaluate()
                     if result.status == "success":
                         logger.info(f"✓ {instance_id}: {result.status}")
-                        with jsonlines.open(run_output_file, "a") as writer:
-                            writer.write(result.to_dict())
+                        with open(run_output_file, "a") as f:
+                            f.write(json.dumps(result.to_dict()) + "\n")
                         return
                     elif attempt < config.max_retries:
                         logger.warning(
@@ -103,8 +103,8 @@ async def main(args: argparse.Namespace) -> None:
                             f"✗ {instance_id}: Failed after {config.max_retries} attempts, "
                             f"final status={result.status}"
                         )
-                        with jsonlines.open(run_output_file, "a") as writer:
-                            writer.write(result.to_dict())
+                        with open(run_output_file, "a") as f:
+                            f.write(json.dumps(result.to_dict()) + "\n")
                         return
                 except Exception as e:
                     if attempt < config.max_retries:
@@ -116,8 +116,8 @@ async def main(args: argparse.Namespace) -> None:
                     else:
                         logger.error(f"✗ {instance_id}: Failed after {config.max_retries} attempts")
                         result = EvalResult(instance_id=instance_id, status="error", error=str(e))
-                        with jsonlines.open(run_output_file, "a") as writer:
-                            writer.write(result.to_dict())
+                        with open(run_output_file, "a") as f:
+                            f.write(json.dumps(result.to_dict()) + "\n")
                         return
 
     tasks = [evaluate_with_limit(instance_id) for instance_id in instances_df["instance_id"]]

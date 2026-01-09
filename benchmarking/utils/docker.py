@@ -26,31 +26,29 @@ class ContainerConfig:
 
 
 class Container:
-    def __init__(self):
+    def __init__(self, config: ContainerConfig):
         self.client = docker.from_env(timeout=3600)
         self.container_name: str | None = None
-        self.config: ContainerConfig | None = None
+        self.config: ContainerConfig = config
 
-    async def start(self, config: ContainerConfig) -> str:
+    async def start(self) -> str:
         """Start a new container with the given configuration."""
-        self.config = config
-
         device_requests = None
-        if config.use_gpu:
+        if self.config.use_gpu:
             device_requests = [DeviceRequest(capabilities=[["gpu"]], count=-1)]
 
         try:
             container = self.client.containers.run(
-                config.image,
+                self.config.image,
                 command=["bash", "-c", "tail -f /dev/null"],
-                name=config.name,
+                name=self.config.name,
                 detach=True,
                 environment=config.environment,
-                volumes=config.volumes,
-                working_dir=config.working_dir,
+                volumes=self.config.volumes,
+                working_dir=self.config.working_dir,
                 network_mode=config.network_mode,
-                mem_limit=config.memory,
-                nano_cpus=int(config.cpus * 1e9) if config.cpus else None,
+                mem_limit=self.config.memory,
+                nano_cpus=int(self.config.cpus * 1e9) if self.config.cpus else None,
                 device_requests=device_requests,
                 remove=False,
             )

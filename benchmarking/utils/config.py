@@ -1,5 +1,10 @@
 # type: ignore
+import json
+from dataclasses import dataclass
+from typing import Any
+
 from pydantic import BaseModel, Field
+
 
 class EvalConfig(BaseModel):
     api_key: str = Field(description="API key")
