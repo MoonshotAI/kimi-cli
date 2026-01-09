@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.75 (2026-01-09)
+
 - Tool：改进 `ReadFile` 工具描述
 - Skills：添加内置 `kimi-cli-help` Skill，解答 Kimi CLI 使用和配置问题
 
