@@ -21,7 +21,7 @@ class SWEBenchInstanceEvaluator(BaseInstanceEvaluator):
         image = self._get_container_image()
         self.container_config = ContainerConfig(
             image=image,
-            name=f"kimicli-{uuid.uuid4().hex}",
+            name=f"kimicli-swebench-{uuid.uuid4().hex}",
             working_dir=self.working_dir,
             use_gpu=self.config.use_gpu,
             environment={},
