@@ -7,7 +7,7 @@ from kimi_cli.utils.logging import logger
 from swebench.config import EvalConfig
 from swebench.utils.docker import ContainerConfig, Container
 
-class SWEBenchContainerRuntime:
+class ContainerRuntime:
     def __init__(
         self,
         instance: dict[str, Any],
@@ -34,10 +34,7 @@ class SWEBenchContainerRuntime:
             name=f"kimicli-{uuid.uuid4().hex[:32]}",
             working_dir=self.working_dir,
             use_gpu=self.config.use_gpu,
-            environment={
-                "SWE_INSTANCE_ID": self.instance["instance_id"],
-                "PIP_CACHE_DIR": "~/.cache/pip",
-            },
+            environment={},
         )
 
         self.runtime = Container()

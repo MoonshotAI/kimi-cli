@@ -1,4 +1,11 @@
 import re
+from benchmarking.benchmarks.swebench.run_infer import SWEBenchInstanceEvaluator
+from benchmarking.benchmarks.nl2repo.run_infer import NL2RepoInstanceEvaluator
+
+EVALUATOR_MAP = {
+    "swebench": SWEBenchInstanceEvaluator,
+    "nl2repo": NL2RepoInstanceEvaluator,
+}
 
 def filter_binary_diffs(patch: str) -> str:
     lines = patch.split("\n")

@@ -1,7 +1,6 @@
 # type: ignore
 import argparse
 import asyncio
-import json
 import sys
 import os
 
@@ -9,10 +8,10 @@ import pandas as pd
 from kimi_cli.app import enable_logging
 from kimi_cli.utils.logging import logger
 
-from swebench.config import EvalConfig
-from swebench.evaluator import EvalResult, SWEBenchInstanceEvaluator
-from swebench.utils.log import EvalRunLogger
-
+from benchmarking.config import EvalConfig
+from benchmarking.utils.config import EvalResult, InstanceEvaluator
+from benchmarking.utils.log import EvalRunLogger
+from benchmarking.utils.utils import EVALUATOR_MAP
 
 async def main(args: argparse.Namespace) -> None:
     enable_logging(debug=args.debug)
@@ -21,6 +20,7 @@ async def main(args: argparse.Namespace) -> None:
         level="DEBUG" if args.debug else "INFO",
         format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
     )
+    
     config = EvalConfig(
         api_key=args.api_key,
         base_url=args.base_url,
@@ -38,82 +38,60 @@ async def main(args: argparse.Namespace) -> None:
         use_gpu=args.use_gpu,
         max_iterations=args.max_iterations,
         max_retries=args.max_retries,
+        task_type=args.task_type,
     )
-
+ 
+    semaphore = asyncio.Semaphore(args.max_workers)
+    current_task = 0
+    evaluator_class = EVALUATOR_MAP[config.task_type]
+    
     os.makedirs(config.output_dir, exist_ok=True)
 
-    logger.info(f"Dataset: {config.dataset_path}")
-    logger.info(f"Output: {config.output_dir}")
-    logger.info(f"Model: {config.model}")
-    logger.info(f"API Key: {config.api_key}")
-    logger.info(f"Base URL: {config.base_url}")
-    logger.info(f"Workers: {args.max_workers}")
-    logger.info(f"Timeout: {config.timeout_seconds}s per instance")
+    logger.info(f"Running benchmarking with config: {config.model_dump_json(indent=2)}")
 
     dataset_path = os.path.join(config.dataset_path)
-    if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
-
-    if os.path.splitext(dataset_path)[1] == ".jsonl":
-        records = []
-        with open(dataset_path) as f:
-            for line in f:
-                if line.strip():
-                    records.append(json.loads(line))
+    if dataset_path.endswith(".jsonl"):
+        with jsonlines.open(dataset_path) as reader:
+            records = list(reader)
         instances_df = pd.DataFrame(records)
     else:
-        with open(dataset_path) as f:
-            instances_df = pd.read_json(f, lines=True)
+        instances_df = pd.read_json(dataset_path, lines=True)
 
-    total_tasks = len(instances_df)
-
-    logger.info(f"Loaded {total_tasks} instances")
-    logger.info(f"Running with {args.max_workers} concurrent workers")
-
+    logger.info(f"Loaded {len(instances_df)} instances")
     run_logger = EvalRunLogger(config.output_dir, config.model)
     logger.info(f"Structured logs: {run_logger.run_dir}")
     run_output_file = run_logger.run_dir / "results.jsonl"
 
     completed_ids = set()
     if run_output_file.exists():
-        with open(run_output_file) as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        result = json.loads(line)
-                        completed_ids.add(result.get("instance_id"))
-                    except Exception:
-                        pass
-    
+        with jsonlines.open(run_output_file) as reader:
+            for result in reader:
+                completed_ids.add(result["instance_id"])
+
     already_completed = len(completed_ids)
     logger.info(f"Already completed in this run: {already_completed}")
 
-    semaphore = asyncio.Semaphore(args.max_workers)
-    current_task = 0
-
-    async def evaluate_with_limit(instance_id: str) -> EvalResult | None:
+    async def evaluate_with_limit(instance_id):
         nonlocal current_task
-
         if instance_id in completed_ids:
             logger.debug(f"Skipping already completed: {instance_id}")
             return None
 
         async with semaphore:
             current_task += 1
-            logger.info(f"[{current_task}/{total_tasks}] Evaluating {instance_id}")
+            logger.info(f"[{current_task}/{len(instances_df)}] Evaluating {instance_id}")
 
-            instance = instances_df[instances_df["instance_id"] == instance_id].iloc[0]
+            instance = instances_df.loc[instance_id]
             result = None
-            
             for attempt in range(1, config.max_retries + 1):
                 try:
-                    evaluator = SWEBenchInstanceEvaluator(instance, config, run_logger)
+                    evaluator = InstanceEvaluator(instance, config, run_logger)
                     result = await evaluator.evaluate()
                     if result.status == "success":
                         logger.info(f"✓ {instance_id}: {result.status}")
-                        with open(run_output_file, "a") as f:
-                            f.write(result.to_json() + "\n")
-                        return result
+                        with jsonlines.open(run_output_file, "a") as writer:
+                            writer.write(result.to_dict())
+                        return
                     elif attempt < config.max_retries:
                         logger.warning(
                             f"✗ {instance_id} (attempt {attempt}/{config.max_retries}): "
@@ -125,10 +103,9 @@ async def main(args: argparse.Namespace) -> None:
                             f"✗ {instance_id}: Failed after {config.max_retries} attempts, "
                             f"final status={result.status}"
                         )
-                        with open(run_output_file, "a") as f:
-                            f.write(result.to_json() + "\n")
-                        return result
-                        
+                        with jsonlines.open(run_output_file, "a") as writer:
+                            writer.write(result.to_dict())
+                        return
                 except Exception as e:
                     if attempt < config.max_retries:
                         logger.warning(
@@ -139,26 +116,17 @@ async def main(args: argparse.Namespace) -> None:
                     else:
                         logger.error(f"✗ {instance_id}: Failed after {config.max_retries} attempts")
                         result = EvalResult(instance_id=instance_id, status="error", error=str(e))
-                        with open(run_output_file, "a") as f:
-                            f.write(result.to_json() + "\n")
-                        return result
-            
-            if result is None:
-                result = EvalResult(instance_id=instance_id, status="error", error="Unknown error")
-                with open(run_output_file, "a") as f:
-                    f.write(result.to_json() + "\n")
-            return result
+                        with jsonlines.open(run_output_file, "a") as writer:
+                            writer.write(result.to_dict())
+                        return
 
-    tasks = [
-        evaluate_with_limit(instance_id) for instance_id in instances_df["instance_id"]
-    ]
-    results = await asyncio.gather(*tasks)
-    new_results = [r for r in results if r is not None]
-    logger.info(f"Evaluation completed: {len(new_results)} new results")
+    tasks = [evaluate_with_limit(instance_id) for instance_id in instances_df["instance_id"]]
+    await asyncio.gather(*tasks)
+    logger.info(f"Evaluation completed!")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SWE-Bench evaluation")
+    parser = argparse.ArgumentParser(description="Benchmarking evaluation")
     parser.add_argument("--api-key", required=True, help="API key")
     parser.add_argument("--base-url", required=True, help="Base URL")
     parser.add_argument("--model", required=True, help="Model name")
@@ -176,5 +144,6 @@ if __name__ == "__main__":
     parser.add_argument("--use-gpu", action="store_true", help="Enable GPU support")
     parser.add_argument("--max-iterations", type=int, default=100, help="Max iterations per instance")
     parser.add_argument("--max-retries", type=int, default=3, help="Max retries for failed instances")
+    parser.add_argument("--task-type", required=True, help="Task type", choices=["swebench", "nl2repo"])
     args = parser.parse_args()
     asyncio.run(main(args))

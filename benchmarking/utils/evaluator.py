@@ -1,54 +1,18 @@
 # type: ignore
 import asyncio
-import json
 import sys
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
 import traceback
 
-import pandas as pd
 from kimi_cli.utils.logging import logger
 
-from swebench.config import EvalConfig
-from swebench.kimi_solver import KimiContainerSolver
-from swebench.runtime import SWEBenchContainerRuntime
-from swebench.utils.utils import filter_binary_diffs
-
-if TYPE_CHECKING:
-    from swebench.utils.log import EvalRunLogger
+from benchmarking.utils.config import EvalResult
+from benchmarking.kimi_solver import KimiContainerSolver
+from benchmarking.runtime import ContainerRuntime
+from benchmarking.utils.utils import filter_binary_diffs
 
 
-@dataclass
-class EvalResult:
-    instance_id: str
-    status: str
-    git_patch: str = ""
-    messages: list[dict[str, Any]] | None = None
-    sub_messages: list[dict[str, Any]] | None = None
-    error: str | None = None
-    metrics: dict[str, Any] | None = None
-    duration_seconds: float = 0.0
-
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "instance_id": self.instance_id,
-            "status": self.status,
-            "git_patch": self.git_patch,
-            "error": self.error,
-            "metrics": self.metrics,
-            "duration_seconds": self.duration_seconds,
-            "messages": self.messages,
-            "sub_messages": self.sub_messages,
-        }
-
-
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
-
-
-class SWEBenchInstanceEvaluator:
-    def __init__(self, instance: pd.Series, config: EvalConfig, run_logger: "EvalRunLogger | None" = None):
+class InstanceEvaluator:
+    def __init__(self, instance, config, run_logger = None):
         self.instance = instance
         self.config = config
         self.run_logger = run_logger
@@ -58,9 +22,8 @@ class SWEBenchInstanceEvaluator:
         instance_id = self.instance["instance_id"]
         result = EvalResult(instance_id=instance_id, status="error")
         try:
-            runtime = SWEBenchContainerRuntime(self.instance.to_dict(), self.config, "/testbed")
+            runtime = ContainerRuntime(self.instance.to_dict(), self.config, "/testbed")
             await runtime.start()
-
             try:
                 await runtime.checkout_base_commit()
                 problem_statement = self.instance["problem_statement"]
