@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.75 (2026-01-09)
+
 - Tool: Improve `ReadFile` tool description
 - Skills: Add built-in `kimi-cli-help` skill to answer Kimi CLI usage and configuration questions
 
