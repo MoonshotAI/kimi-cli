@@ -9,7 +9,7 @@ from kimi_cli.app import enable_logging
 from kimi_cli.utils.logging import logger
 
 from benchmarking.config import EvalConfig
-from benchmarking.utils.config import EvalResult, InstanceEvaluator
+from benchmarking.utils.config import EvalResult
 from benchmarking.utils.log import EvalRunLogger
 from benchmarking.utils.utils import EVALUATOR_MAP
 
@@ -43,7 +43,7 @@ async def main(args: argparse.Namespace) -> None:
  
     semaphore = asyncio.Semaphore(args.max_workers)
     current_task = 0
-    evaluator_class = EVALUATOR_MAP[config.task_type]
+    EVALUATOR_CLASS = EVALUATOR_MAP[config.task_type]
     
     os.makedirs(config.output_dir, exist_ok=True)
 
@@ -85,7 +85,7 @@ async def main(args: argparse.Namespace) -> None:
             result = None
             for attempt in range(1, config.max_retries + 1):
                 try:
-                    evaluator = InstanceEvaluator(instance, config, run_logger)
+                    evaluator = EVALUATOR_CLASS(instance, config, run_logger)
                     result = await evaluator.evaluate()
                     if result.status == "success":
                         logger.info(f"✓ {instance_id}: {result.status}")
