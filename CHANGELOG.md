@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Tool: Improve `ReadFile` tool description
+- Skills: Add built-in `kimi-cli-help` skill to answer Kimi CLI usage and configuration questions
 
 ## 0.74 (2026-01-09)
 
