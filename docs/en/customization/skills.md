@@ -26,6 +26,7 @@ kimi --skills-dir /path/to/my-skills
 
 Kimi CLI includes the following built-in skills:
 
+- **kimi-cli-help**: Kimi CLI help. Answers questions about Kimi CLI installation, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, and more.
 - **skill-creator**: Guide for creating skills. When you need to create a new skill (or update an existing skill) to extend Kimi's capabilities, you can use this skill to get detailed creation guidance and best practices.
 
 ## Creating a skill

@@ -26,6 +26,7 @@ kimi --skills-dir /path/to/my-skills
 
 Kimi CLI 内置了以下 Skills：
 
+- **kimi-cli-help**：Kimi CLI 帮助。解答关于 Kimi CLI 安装、配置、斜杠命令、键盘快捷键、MCP 集成、供应商、环境变量等问题。
 - **skill-creator**：Skill 创建指南。当你需要创建新的 Skill（或更新现有 Skill）来扩展 Kimi 的能力时，可以使用此 Skill 获取详细的创建指导和最佳实践。
 
 ## 创建 Skill
