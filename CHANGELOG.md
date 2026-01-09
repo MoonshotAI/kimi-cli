@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tool: Improve `ReadFile` tool description
+
 ## 0.74 (2026-01-09)
 
 - ACP: Allow ACP clients to select and switch models (with thinking variants)

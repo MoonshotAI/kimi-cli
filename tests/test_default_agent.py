@@ -320,7 +320,7 @@ Read content from a file.
   - The maximum number of lines that can be read at once is 1000.
   - Any lines longer than 2000 characters will be truncated, ending with "...".
 - For image and video files:
-  - Content will be returned as it is so that you can see the media. If you do not support image/video input, try other tools to process media files.
+  - Content will be returned in a form that you can view and understand. If you do not support image/video input, try other tools to process media files.
   - The maximum size that can be read is 83886080 bytes. An error will be returned if the file is larger than this limit.
 """,
                 parameters={

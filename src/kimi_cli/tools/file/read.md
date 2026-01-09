@@ -14,5 +14,5 @@ Read content from a file.
   - The maximum number of lines that can be read at once is ${MAX_LINES}.
   - Any lines longer than ${MAX_LINE_LENGTH} characters will be truncated, ending with "...".
 - For image and video files:
-  - Content will be returned as it is so that you can see the media. If you do not support image/video input, try other tools to process media files.
+  - Content will be returned in a form that you can view and understand. If you do not support image/video input, try other tools to process media files.
   - The maximum size that can be read is ${MAX_MEDIA_BYTES} bytes. An error will be returned if the file is larger than this limit.
