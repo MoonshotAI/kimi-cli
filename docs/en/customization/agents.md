@@ -191,13 +191,13 @@ The following are all built-in tools in Kimi CLI.
 ### `ReadFile`
 
 - **Path**: `kimi_cli.tools.file:ReadFile`
-- **Description**: Read file content. Max 1000 lines per read, max 2000 characters per line, max 100KB per read. Files outside working directory require absolute paths.
+- **Description**: Read file content. Supports text, image, and video files. For text files, max 1000 lines per read, max 2000 characters per line; for image/video files, max 80MB. Files outside working directory require absolute paths.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `path` | string | File path |
-| `line_offset` | int | Starting line number, default 1 |
-| `n_lines` | int | Number of lines to read, default/max 1000 |
+| `line_offset` | int | Starting line number, default 1 (text files only) |
+| `n_lines` | int | Number of lines to read, default/max 1000 (text files only) |
 
 ### `Glob`
 

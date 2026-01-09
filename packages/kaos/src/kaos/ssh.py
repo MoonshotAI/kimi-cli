@@ -217,9 +217,9 @@ class SSHKaos:
         for entry in await self._sftp.glob(f"{real_path}/{pattern}"):
             yield KaosPath(await self._sftp.realpath(str(entry)))
 
-    async def readbytes(self, path: StrOrKaosPath) -> bytes:
+    async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
         async with self._sftp.open(str(path), "rb") as f:
-            return await f.read()
+            return await f.read() if n is None else await f.read(n)
 
     async def readtext(
         self,

@@ -2,4 +2,4 @@
 
 我们现在对代码库有了一些修改，请你参考最近的 git commit、staged changes、changelog.md 等的内容，根据 @AGENTS.md 中的信息，必要时找到实际的代码全文，确保理解了所有变更对产品用户体验的真实改变，然后逐页、逐段地检查和更新文档内容。
 
-你应该首先确保英文 changelog 使用 node scripts/sync-changelog.mjs 进行了同步，然后确保中文文档符合最新代码的行为，最后，加载 translate-docs.txt 提供的要求，进行双语同步。
+你应该首先确保英文 changelog 使用 node docs/scripts/sync-changelog.mjs 进行了同步，然后确保中文文档符合最新代码的行为，最后，加载 translate-docs.txt 提供的要求，进行双语同步。
