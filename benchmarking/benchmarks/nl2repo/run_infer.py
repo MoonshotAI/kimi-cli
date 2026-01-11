@@ -8,6 +8,7 @@ import tempfile
 import uuid
 import tarfile
 import time
+import io
 
 from kimi_cli.utils.logging import logger
 
@@ -103,13 +104,13 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
             workspace_target = os.path.join(instance_output_dir, "workspace")
             
             try:
-                tar_data, _ = self.container.client.containers.get(
+                tar_stream, _ = self.container.client.containers.get(
                     self.container.container_name
                 ).get_archive(self.working_dir)
-                
+                tar_bytes = io.BytesIO(b"".join(tar_stream))
                 with tempfile.TemporaryDirectory() as extract_dir:
-                    with tarfile.open(fileobj=tar_data, mode="r|") as tar:
-                        tar.extractall(path=extract_dir)
+                    with tarfile.open(fileobj=tar_bytes, mode="r") as tar:
+                        tar.extractall(path=extract_dir, filter='data')
                     
                     extracted_items = os.listdir(extract_dir)
                     if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_dir, extracted_items[0])):
