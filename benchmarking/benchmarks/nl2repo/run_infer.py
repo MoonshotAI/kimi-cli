@@ -98,10 +98,8 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
             result.sub_messages = solve_result.get("sub_messages", [])
             result.status = "success"
 
-            # NL2Repo specific: copy generated workspace back to host
-            instance_output_dir = os.path.join(self.config.output_dir, "instances", instance_id)
+            instance_output_dir = os.path.join(self.run_logger.run_dir, "instances", instance_id)
             os.makedirs(instance_output_dir, exist_ok=True)
-            workspace_target = os.path.join(instance_output_dir, "workspace")
             
             try:
                 tar_stream, _ = self.container.client.containers.get(
@@ -113,15 +111,23 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
                         tar.extractall(path=extract_dir, filter='data')
                     
                     extracted_items = os.listdir(extract_dir)
-                    if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_dir, extracted_items[0])):
-                        src = os.path.join(extract_dir, extracted_items[0])
+                    if len(extracted_items) == 1 and extracted_items[0] == "workspace":
+                        workspace_src = os.path.join(extract_dir, "workspace")
+                        for item in os.listdir(workspace_src):
+                            src_item = os.path.join(workspace_src, item)
+                            dst_item = os.path.join(instance_output_dir, item)
+                            if os.path.exists(dst_item):
+                                if os.path.isdir(dst_item):
+                                    shutil.rmtree(dst_item)
+                                else:
+                                    os.remove(dst_item)
+                            if os.path.isdir(src_item):
+                                shutil.copytree(src_item, dst_item)
+                            else:
+                                shutil.copy2(src_item, dst_item)
+                        logger.info(f"✓ Copied generated workspace content to {instance_output_dir}")
                     else:
-                        src = extract_dir
-                    
-                    if os.path.exists(workspace_target):
-                        shutil.rmtree(workspace_target)
-                    shutil.copytree(src, workspace_target)
-                    logger.info(f"✓ Copied generated workspace to {workspace_target}")
+                        logger.warning(f"Unexpected tar structure: {extracted_items}")
             except Exception as e:
                 logger.warning(f"Failed to copy workspace from container: {e}")
 
