@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import json
+import jsonlines
 import sys
 import os
 
@@ -11,7 +12,7 @@ from kimi_cli.utils.logging import logger
 
 from benchmarking.utils.config import EvalConfig, EvalResult
 from benchmarking.utils.log import EvalRunLogger
-from benchmarking.utils.utils import EVALUATOR_MAP
+from benchmarking.utils.utils import get_evaluator_map
 
 async def main(args: argparse.Namespace) -> None:
     enable_logging(debug=args.debug)
@@ -43,7 +44,7 @@ async def main(args: argparse.Namespace) -> None:
  
     semaphore = asyncio.Semaphore(args.max_workers)
     current_task = 0
-    EVALUATOR_CLASS = EVALUATOR_MAP[config.task_type]
+    EVALUATOR_CLASS = get_evaluator_map()[config.task_type]
     
     os.makedirs(config.output_dir, exist_ok=True)
 
@@ -57,6 +58,7 @@ async def main(args: argparse.Namespace) -> None:
     else:
         instances_df = pd.read_json(dataset_path, lines=True)
 
+    instances_df = instances_df.set_index("instance_id")
     logger.info(f"Loaded {len(instances_df)} instances")
     run_logger = EvalRunLogger(config.output_dir, config.model)
     logger.info(f"Structured logs: {run_logger.run_dir}")
@@ -81,7 +83,8 @@ async def main(args: argparse.Namespace) -> None:
             current_task += 1
             logger.info(f"[{current_task}/{len(instances_df)}] Evaluating {instance_id}")
 
-            instance = instances_df.loc[instance_id]
+            instance = instances_df.loc[instance_id].to_dict()
+            instance["instance_id"] = instance_id
             result = None
             for attempt in range(1, config.max_retries + 1):
                 try:
@@ -120,7 +123,7 @@ async def main(args: argparse.Namespace) -> None:
                             f.write(json.dumps(result.to_dict()) + "\n")
                         return
 
-    tasks = [evaluate_with_limit(instance_id) for instance_id in instances_df["instance_id"]]
+    tasks = [evaluate_with_limit(instance_id) for instance_id in instances_df.index]
     await asyncio.gather(*tasks)
     logger.info(f"Evaluation completed!")
 
@@ -147,3 +150,18 @@ if __name__ == "__main__":
     parser.add_argument("--task-type", required=True, help="Task type", choices=["swebench", "nl2repo"])
     args = parser.parse_args()
     asyncio.run(main(args))
+
+# python -m benchmarking.main \
+#     --api-key 11979310bd934a60b38655558991d16a.2RI5rqFP46jtrBBi \
+#     --base-url https://open.bigmodel.cn/api/paas/v4/ \
+#     --model GLM-4.7 \
+#     --max-context-size 131072 \
+#     --temperature 1.0 \
+#     --top-p 1.0 \
+#     --max-tokens 8192 \
+#     --debug \
+#     --dataset-path /workspace/swe-data/dataset/rl/swebench-verified.jsonl \
+#     --timeout 7200 \
+#     --max-workers 1 \
+#     --max-iterations 1000 \
+#     --task-type swebench

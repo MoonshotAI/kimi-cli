@@ -26,6 +26,7 @@ class EvalConfig(BaseModel):
     use_gpu: bool = Field(default=False, description="Enable GPU support")
     max_iterations: int = Field(default=100, description="Max iterations per instance")
     max_retries: int = Field(default=3, description="Max retries for failed instances")
+    task_type: str = Field(description="Task type")
 
 
 @dataclass

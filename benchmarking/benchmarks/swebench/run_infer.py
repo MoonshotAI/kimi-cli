@@ -27,6 +27,14 @@ class SWEBenchInstanceEvaluator(BaseInstanceEvaluator):
             environment={},
         )
         self.container = Container(self.container_config)
+        self.instruction = f"""
+        Please help me solve the following issue:
+        <issue_description>
+        {self.instance["problem_statement"].strip()}
+        </issue_description>
+
+        You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/python`.
+                """.strip()
 
     def _get_container_image(self) -> str:
         instance_id = self.instance["instance_id"]
@@ -65,16 +73,16 @@ git prune --expire=now
 """
             await self.container.execute_shell(script, timeout=300)
 
-            # run KimiContainerSolver
             problem_statement = self.instance["problem_statement"]
-            logger.info(f"Running KimiContainerSolver for SWE-Bench task: {instance_id}")
-            sys.stderr.flush()
             solver = KimiContainerSolver(
                 container=self.container,
                 working_dir=self.working_dir,
                 config=self.config,
                 problem_statement=problem_statement,
                 instance=self.instance,
+                base_env_path="/openhands",
+                base_python_bin_path="/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin",
+                instruction=instruction,
             )
             try:
                 solve_result = await asyncio.wait_for(

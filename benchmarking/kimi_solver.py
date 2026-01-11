@@ -9,8 +9,8 @@ import json
 
 from kimi_cli.utils.logging import logger
 
-from swebench.config import EvalConfig
-from swebench.utils.docker import Container
+from benchmarking.utils.config import EvalConfig
+from benchmarking.utils.docker import Container
 
 
 def _filter_messages(messages: list) -> list:
@@ -29,6 +29,9 @@ class KimiContainerSolver:
         config: EvalConfig,
         problem_statement: str,
         instance: dict,
+        base_env_path: str,
+        base_python_bin_path: str,
+        instruction: str,
     ):
         self.container = container
         self.working_dir = working_dir
@@ -36,7 +39,10 @@ class KimiContainerSolver:
         self.problem_statement = problem_statement
         self.instance = instance
         self.round = 0
-
+        self.base_env_path = base_env_path
+        self.base_python_bin_path = base_python_bin_path
+        self.instruction = instruction
+        
     async def solve(self):
         """Run Kimi CLI in container to solve the problem."""
         try:
@@ -63,7 +69,7 @@ class KimiContainerSolver:
                 tar.add(pyproject, arcname="pyproject.toml")
             tar_buffer.seek(0)
             tar_data = tar_buffer.read()
-            tar_cmd = ["docker", "exec", "-i", container_name, "tar", "-xvf", "-", "-C", "/openhands"]
+            tar_cmd = ["docker", "exec", "-i", container_name, "tar", "-xvf", "-", "-C", self.base_env_path]
             result = subprocess.run(
                 tar_cmd,
                 input=tar_data,
@@ -80,7 +86,7 @@ class KimiContainerSolver:
             raise
 
     async def _install_kimi_in_container(self) -> None:
-        install_cmd = "cd /openhands && /openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin/pip install -e ."
+        install_cmd = f"cd {self.base_env_path} && {self.base_python_bin_path}/pip install -e ."
         result = await self.container.execute(
             ["bash", "-c", install_cmd],
             timeout=600,
@@ -105,23 +111,13 @@ class KimiContainerSolver:
                 "max_retries_per_step": 3,
             }
         })
-        
-        instruction = f"""
-Please help me solve the following issue:
-<issue_description>
-{self.problem_statement.strip()}
-</issue_description>
-
-You should always use the specified python at `/opt/miniconda3/envs/testbed/bin/python`.
-        """.strip()
-        
         # --print will auto approve, use config for loop control
         kimi_cmd = (
             f"cd {shlex.quote(self.working_dir)} && "
             f"{env_vars} "
-            f"/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin/python -m kimi_cli.cli "
+            f"{self.base_python_bin_path}/python -m kimi_cli.cli "
             f"--work-dir {shlex.quote(self.working_dir)} "
-            f"--command {shlex.quote(instruction)} "
+            f"--command {shlex.quote(self.instruction)} "
             f"--config {shlex.quote(config_json)} "
             f"--print "
             f"--yolo "

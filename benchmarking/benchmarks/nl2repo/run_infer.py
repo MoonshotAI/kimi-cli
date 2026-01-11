@@ -30,12 +30,12 @@ class NL2RepoInstanceEvaluator(BaseInstanceEvaluator):
             environment={},
         )
         self.container = Container(self.container_config)
+        self.instruction = "According to the start.md in the workspace, implement the entire project as per the requirements specified in the document, ensuring that the final product can be directly run in the current directory. The running requirements should comply with the <API Usage Guide> section of the document. Please complete this task step by step."
     
     def _get_container_image(self) -> str:
         NL2REPO_BASE_IMAGE = os.environ.get(
-            'NL2REPO_BASE_IMAGE', 
-            # 'docker-local-registry.glm.ai/swedev/all-hands-ai/openhands:0.56-nl2repo'
-            'da8c8fd6c1b2:latest'
+            "NL2REPO_BASE_IMAGE", 
+            "docker-local-registry.glm.ai/swedev/all-hands-ai/openhands:0.56-nl2repo",
         )
         return NL2REPO_BASE_IMAGE
 
@@ -53,7 +53,7 @@ class NL2RepoInstanceEvaluator(BaseInstanceEvaluator):
                 temp_file_path = os.path.join(temp_dir, "start.md")
                 with open(temp_file_path, "w") as f:
                     f.write(description)
-                await runtime.copy_to(temp_file_path, self.working_dir)
+                await self.container.copy_to(temp_file_path, self.working_dir)
             
             logger.info("✓ Task description copied to container")
             
@@ -68,17 +68,20 @@ git add -A 2>/dev/null || true
 git commit --allow-empty -m "Initial commit" 2>/dev/null || true
 """
             
-            await runtime.execute_shell(git_init_script, timeout=120)
+            await self.container.execute_shell(git_init_script, timeout=120)
             logger.info("✓ Git repository initialized")
             
             problem_statement = self.instance.get("description", "")
             logger.info(f"Creating KimiContainerSolver for NL2Repo task: {instance_id}")
             solver = KimiContainerSolver(
-                container=runtime,
+                container=self.container,
                 working_dir=self.working_dir,
                 config=self.config,
                 problem_statement=problem_statement,
                 instance=self.instance,
+                base_env_path="/app",
+                base_python_bin_path="/app/.venv/bin",
+                instruction=self.instruction
             )
             sys.stderr.flush()
             try:
@@ -100,17 +103,14 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
             workspace_target = os.path.join(instance_output_dir, "workspace")
             
             try:
-                # Get tar archive from container
-                tar_data, _ = runtime.client.containers.get(
-                    runtime.container_name
+                tar_data, _ = self.container.client.containers.get(
+                    self.container.container_name
                 ).get_archive(self.working_dir)
                 
-                # Extract to temporary directory first
                 with tempfile.TemporaryDirectory() as extract_dir:
                     with tarfile.open(fileobj=tar_data, mode="r|") as tar:
                         tar.extractall(path=extract_dir)
                     
-                    # Find the actual workspace content
                     extracted_items = os.listdir(extract_dir)
                     if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_dir, extracted_items[0])):
                         src = os.path.join(extract_dir, extracted_items[0])
@@ -130,12 +130,12 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
                     "success",
                     {"duration_seconds": result.duration_seconds},
                 )
-                
+
         except Exception as e:
             logger.error("Failed to evaluate {}: {}", instance_id, str(e), exc_info=True)
             result.status = "error"
             result.error = str(e)
-            
+
             if self.run_logger:
                 self.run_logger.log_instance_summary(
                     instance_id,
@@ -143,8 +143,8 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
                     {"error": str(e), "duration_seconds": result.duration_seconds},
                 )
         finally:
-            if runtime:
-                await runtime.cleanup()
+            if self.container:
+                await self.container.cleanup()
             end_time = asyncio.get_event_loop().time()
             result.duration_seconds = end_time - start_time
 

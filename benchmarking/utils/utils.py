@@ -1,11 +1,20 @@
 import re
-from benchmarking.benchmarks.swebench.run_infer import SWEBenchInstanceEvaluator
-from benchmarking.benchmarks.nl2repo.run_infer import NL2RepoInstanceEvaluator
 
-EVALUATOR_MAP = {
-    "swebench": SWEBenchInstanceEvaluator,
-    "nl2repo": NL2RepoInstanceEvaluator,
-}
+def _get_evaluator_map():
+    from benchmarking.benchmarks.swebench.run_infer import SWEBenchInstanceEvaluator
+    from benchmarking.benchmarks.nl2repo.run_infer import NL2RepoInstanceEvaluator
+    return {
+        "swebench": SWEBenchInstanceEvaluator,
+        "nl2repo": NL2RepoInstanceEvaluator,
+    }
+
+EVALUATOR_MAP = None 
+
+def get_evaluator_map():
+    global EVALUATOR_MAP
+    if EVALUATOR_MAP is None:
+        EVALUATOR_MAP = _get_evaluator_map()
+    return EVALUATOR_MAP
 
 def filter_binary_diffs(patch: str) -> str:
     lines = patch.split("\n")
