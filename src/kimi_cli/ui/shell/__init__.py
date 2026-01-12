@@ -68,6 +68,7 @@ class Shell:
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
+            model_name=self.soul.model_name,
             initial_thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
             available_slash_commands=list(self._available_slash_commands.values()),
         ) as prompt_session:
