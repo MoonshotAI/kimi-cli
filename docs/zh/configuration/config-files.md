@@ -25,6 +25,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | 配置项 | 类型 | 说明 |
 | --- | --- | --- |
 | `default_model` | `string` | 默认使用的模型名称，必须是 `models` 中定义的模型 |
+| `default_thinking` | `boolean` | 默认是否开启 Thinking 模式（默认为 `false`） |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -35,6 +36,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 
 ```toml
 default_model = "kimi-for-coding"
+default_thinking = false
 
 [providers.kimi-for-coding]
 type = "kimi"

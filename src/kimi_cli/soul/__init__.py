@@ -66,12 +66,20 @@ class Soul(Protocol):
 
     @property
     def model_name(self) -> str:
-        """The name of the LLM model used by the soul. Empty string indicates no LLM configured."""
+        """The name of the LLM model used by the soul. Empty string if LLM is not set."""
         ...
 
     @property
     def model_capabilities(self) -> set[ModelCapability] | None:
-        """The capabilities of the LLM model used by the soul. None indicates no LLM configured."""
+        """The capabilities of the LLM model used by the soul. None if LLM is not set."""
+        ...
+
+    @property
+    def thinking(self) -> bool | None:
+        """
+        Whether thinking mode is currently enabled.
+        None if LLM is not set or thinking mode is not set explicitly.
+        """
         ...
 
     @property

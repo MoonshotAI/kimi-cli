@@ -108,7 +108,8 @@ The `capabilities` field in model configuration declares the capabilities suppor
 
 | Capability | Description |
 | --- | --- |
-| `thinking` | Supports thinking mode (deep reasoning) |
+| `thinking` | Supports thinking mode (deep reasoning), can be toggled |
+| `always_thinking` | Always uses thinking mode (cannot be disabled) |
 | `image_in` | Supports image input |
 | `video_in` | Supports video input |
 
@@ -122,7 +123,11 @@ capabilities = ["thinking", "image_in"]
 
 ### `thinking`
 
-When thinking mode is enabled, the model performs deeper reasoning before answering, suitable for complex problems. In shell mode, you can toggle thinking mode with the `Tab` key, or control it at startup with `--thinking` / `--no-thinking` flags.
+Declares that the model supports thinking mode. When enabled, the model performs deeper reasoning before answering, suitable for complex problems. In shell mode, you can use the `/model` command to switch models and thinking mode, or control it at startup with `--thinking` / `--no-thinking` flags.
+
+### `always_thinking`
+
+Indicates the model always uses thinking mode and cannot be disabled. For example, models with "thinking" in their name like `kimi-k2-thinking-turbo` typically have this capability. When using such models, the `/model` command won't prompt for thinking mode toggle.
 
 ### `image_in`
 

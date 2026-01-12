@@ -43,11 +43,11 @@ After configuration, settings are automatically saved to `~/.kimi/config.toml` a
 
 ### `/model`
 
-Switch the default model.
+Switch models and thinking mode.
 
-This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
+This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface where you first select a model, then choose whether to enable thinking mode (if the model supports it).
 
-After selecting a new model, Kimi CLI will automatically update the configuration file and reload.
+After selection, Kimi CLI will automatically update the configuration file and reload.
 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.

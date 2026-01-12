@@ -33,15 +33,6 @@ API 密钥无效可能的原因：
 - **使用 `--work-dir` 参数**：启动时指定工作目录，如 `kimi --work-dir /path/to/project`。
 - **在命令中使用绝对路径**：直接使用绝对路径执行命令，如 `ls /path/to/dir`。
 
-### Thinking 模式不可用
-
-按 `Tab` 键切换 Thinking 模式时，如果提示 "Thinking mode requires a model with thinking capability"，说明当前模型不支持 Thinking 模式。
-
-解决方法：
-
-- **切换到支持的模型**：使用 `/setup` 选择支持 Thinking 的模型（如 `kimi-k2-thinking-turbo`）。
-- **检查模型能力配置**：如果你确定模型支持 Thinking，可以通过环境变量 `KIMI_MODEL_CAPABILITIES=thinking` 强制启用。
-
 ### 粘贴图片失败
 
 使用 `Ctrl-V` 粘贴图片时，如果提示 "Current model does not support image input"，说明当前模型不支持图片输入。

@@ -105,6 +105,37 @@ class GoogleGenAI:
     def model_name(self) -> str:
         return self._model
 
+    @property
+    def thinking_effort(self) -> "ThinkingEffort | None":
+        thinking_config = self._generation_kwargs.get("thinking_config")
+        if thinking_config is None:
+            return None
+
+        # For gemini-3 models that use thinking_level
+        thinking_level = thinking_config.thinking_level
+        if thinking_level is not None:
+            match thinking_level:
+                case ThinkingLevel.LOW | ThinkingLevel.MINIMAL:
+                    return "low"
+                case ThinkingLevel.MEDIUM:
+                    return "medium"
+                case ThinkingLevel.HIGH:
+                    return "high"
+                case _:
+                    return None
+
+        # For other models that use thinking_budget
+        thinking_budget = thinking_config.thinking_budget
+        if thinking_budget is not None:
+            if thinking_budget == 0:
+                return "off"
+            if thinking_budget <= 1024:
+                return "low"
+            if thinking_budget <= 4096:
+                return "medium"
+            return "high"
+        return None
+
     async def generate(
         self,
         system_prompt: str,

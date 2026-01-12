@@ -18,7 +18,6 @@ from kimi_cli.app import KimiCLI
 from kimi_cli.config import LLMModel, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
-from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -100,17 +99,15 @@ class ACPServer:
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
-        metadata = load_metadata()
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
-            thinking=metadata.thinking,
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
         acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
-        model_id_conv = _ModelIDConv(config.default_model, metadata.thinking)
+        model_id_conv = _ModelIDConv(config.default_model, config.default_thinking)
         self.sessions[session.id] = (acp_session, model_id_conv)
 
         if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
@@ -172,17 +169,15 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        metadata = load_metadata()
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
-            thinking=metadata.thinking,
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
         acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
-        model_id_conv = _ModelIDConv(config.default_model, metadata.thinking)
+        model_id_conv = _ModelIDConv(config.default_model, config.default_thinking)
         self.sessions[session.id] = (acp_session, model_id_conv)
 
         if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
@@ -254,16 +249,14 @@ class ACPServer:
             new_provider,
             new_model,
             session_id=acp_session.id,
+            thinking=model_id_conv.thinking,
         )
         cli_instance.soul.runtime.llm = new_llm
-        cli_instance.soul.set_thinking(model_id_conv.thinking)
 
         config.default_model = model_id_conv.model_key
+        config.default_thinking = model_id_conv.thinking
         assert config.is_from_default_location, "`kimi acp` must use the default config location"
         save_config(cli_instance.soul.runtime.config)
-        metadata = load_metadata()
-        metadata.thinking = model_id_conv.thinking
-        save_metadata(metadata)
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
         raise NotImplementedError

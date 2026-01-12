@@ -24,7 +24,7 @@ type ProviderType = Literal[
     "_chaos",
 ]
 
-type ModelCapability = Literal["image_in", "video_in", "thinking"]
+type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 
 
@@ -86,6 +86,7 @@ def create_llm(
     provider: LLMProvider,
     model: LLMModel,
     *,
+    thinking: bool | None = None,
     session_id: str | None = None,
 ) -> LLM | None:
     if provider.type != "_echo" and (not provider.base_url or not model.model):
@@ -184,17 +185,30 @@ def create_llm(
                 ),
             )
 
+    capabilities = derive_model_capabilities(model)
+
+    # Apply thinking if specified or if model always requires thinking
+    if "always_thinking" in capabilities or (thinking is True and "thinking" in capabilities):
+        chat_provider = chat_provider.with_thinking("high")
+    elif thinking is False:
+        chat_provider = chat_provider.with_thinking("off")
+    # If thinking is None and model doesn't always think, leave as-is (default behavior)
+
     return LLM(
         chat_provider=chat_provider,
         max_context_size=model.max_context_size,
-        capabilities=derive_model_capabilities(model),
+        capabilities=capabilities,
         model_config=model,
         provider_config=provider,
     )
 
 
 def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
-    capabilities = model.capabilities or set()
-    if model.model in {"kimi-for-coding", "kimi-code"} or "thinking" in model.model:
+    capabilities = set(model.capabilities or ())
+    # Models with "thinking" in their name are always-thinking models
+    if "thinking" in model.model.lower() or "reason" in model.model.lower():
+        capabilities.update(("thinking", "always_thinking"))
+    # These models support thinking but can be toggled on/off
+    elif model.model in {"kimi-for-coding", "kimi-code"}:
         capabilities.add("thinking")
     return capabilities

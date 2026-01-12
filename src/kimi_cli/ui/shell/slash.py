@@ -50,7 +50,6 @@ SKILL_COMMAND_PREFIX = "skill:"
 
 _KEYBOARD_SHORTCUTS = [
     ("Ctrl-X", "Toggle agent/shell mode"),
-    ("Tab", "Toggle thinking mode"),
     ("Ctrl-J / Alt-Enter", "Insert newline"),
     ("Ctrl-V", "Paste (supports images)"),
     ("Ctrl-D", "Exit"),
@@ -143,8 +142,8 @@ def version(app: Shell, args: str):
 
 @registry.command
 async def model(app: Shell, args: str):
-    """List or switch LLM models"""
-    import shlex
+    """Switch LLM model or thinking mode"""
+    from kimi_cli.llm import derive_model_capabilities
 
     soul = _ensure_kimi_soul(app)
     if soul is None:
@@ -157,62 +156,6 @@ async def model(app: Shell, args: str):
         console.print('[yellow]No models configured, send "/setup" to configure.[/yellow]')
         return
 
-    current_model = soul.runtime.llm.model_config if soul.runtime.llm else None
-    current_model_name: str | None = None
-    if current_model is not None:
-        for name, model in config.models.items():
-            if model == current_model:
-                current_model_name = name
-                break
-        assert current_model_name is not None
-
-    raw_args = args.strip()
-    if not raw_args:
-        choices: list[tuple[str, str]] = []
-        for name in sorted(config.models):
-            model = config.models[name]
-            provider_label = get_platform_name_for_provider(model.provider) or model.provider
-            marker = " (current)" if name == current_model_name else ""
-            label = f"{model.model} ({provider_label}){marker}"
-            choices.append((name, label))
-
-        try:
-            selection = await ChoiceInput(
-                message=("Select a model to switch to (↑↓ navigate, Enter select, Ctrl+C cancel):"),
-                options=choices,
-                default=current_model_name or choices[0][0],
-            ).prompt_async()
-        except (EOFError, KeyboardInterrupt):
-            return
-
-        if not selection:
-            return
-
-        model_name = selection
-    else:
-        try:
-            parsed_args = shlex.split(raw_args)
-        except ValueError:
-            console.print("[red]Usage: /model <name>[/red]")
-            return
-        if len(parsed_args) != 1:
-            console.print("[red]Usage: /model <name>[/red]")
-            return
-        model_name = parsed_args[0]
-    if model_name not in config.models:
-        console.print(f"[red]Unknown model: {model_name}[/red]")
-        return
-
-    if current_model_name == model_name:
-        console.print(f"[yellow]Already using model {model_name}.[/yellow]")
-        return
-
-    model = config.models[model_name]
-    provider = config.providers.get(model.provider)
-    if provider is None:
-        console.print(f"[red]Provider not found for model: {model.provider}[/red]")
-        return
-
     if not config.is_from_default_location:
         console.print(
             "[yellow]Model switching requires the default config file; "
@@ -220,16 +163,99 @@ async def model(app: Shell, args: str):
         )
         return
 
-    previous_model = config.default_model
-    config.default_model = model_name
+    # Find current model/thinking from runtime (may be overridden by --model/--thinking)
+    curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
+    curr_model_name: str | None = None
+    if curr_model_cfg is not None:
+        for name, model_cfg in config.models.items():
+            if model_cfg == curr_model_cfg:
+                curr_model_name = name
+                break
+    curr_thinking = soul.thinking
+
+    # Step 1: Select model
+    model_choices: list[tuple[str, str]] = []
+    for name in sorted(config.models):
+        model_cfg = config.models[name]
+        provider_label = get_platform_name_for_provider(model_cfg.provider) or model_cfg.provider
+        marker = " (current)" if name == curr_model_name else ""
+        label = f"{model_cfg.model} ({provider_label}){marker}"
+        model_choices.append((name, label))
+
+    try:
+        selected_model_name = await ChoiceInput(
+            message="Select a model (↑↓ navigate, Enter select, Ctrl+C cancel):",
+            options=model_choices,
+            default=curr_model_name or model_choices[0][0],
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if not selected_model_name:
+        return
+
+    selected_model_cfg = config.models[selected_model_name]
+    selected_provider = config.providers.get(selected_model_cfg.provider)
+    if selected_provider is None:
+        console.print(f"[red]Provider not found: {selected_model_cfg.provider}[/red]")
+        return
+
+    # Step 2: Determine thinking mode
+    capabilities = derive_model_capabilities(selected_model_cfg)
+    new_thinking: bool
+
+    if "always_thinking" in capabilities:
+        new_thinking = True
+    elif "thinking" in capabilities:
+        thinking_choices: list[tuple[str, str]] = [
+            ("off", "off" + (" (current)" if not curr_thinking else "")),
+            ("on", "on" + (" (current)" if curr_thinking else "")),
+        ]
+        try:
+            thinking_selection = await ChoiceInput(
+                message="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
+                options=thinking_choices,
+                default="on" if curr_thinking else "off",
+            ).prompt_async()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if not thinking_selection:
+            return
+
+        new_thinking = thinking_selection == "on"
+    else:
+        new_thinking = False
+
+    # Check if anything changed
+    model_changed = curr_model_name != selected_model_name
+    thinking_changed = curr_thinking != new_thinking
+
+    if not model_changed and not thinking_changed:
+        console.print(
+            f"[yellow]Already using {selected_model_name} "
+            f"with thinking {'on' if new_thinking else 'off'}.[/yellow]"
+        )
+        return
+
+    # Save and reload
+    prev_model = config.default_model
+    prev_thinking = config.default_thinking
+    config.default_model = selected_model_name
+    config.default_thinking = new_thinking
     try:
         save_config(config)
     except OSError as exc:
-        config.default_model = previous_model
-        console.print(f"[red]Failed to save default config: {exc}[/red]")
+        config.default_model = prev_model
+        config.default_thinking = prev_thinking
+        console.print(f"[red]Failed to save config: {exc}[/red]")
         return
 
-    console.print(f"[green]Switched to model {model_name}. Reloading...[/green]")
+    console.print(
+        f"[green]Switched to {selected_model_name} "
+        f"with thinking {'on' if new_thinking else 'off'}. "
+        "Reloading...[/green]"
+    )
     raise Reload(session_id=soul.runtime.session.id)
 
 
