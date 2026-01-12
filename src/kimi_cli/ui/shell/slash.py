@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
@@ -30,10 +30,11 @@ Raises:
 registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 
 
-def _ensure_kimi_soul(app: Shell) -> KimiSoul:
+def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
     if not isinstance(app.soul, KimiSoul):
         console.print("[red]KimiSoul required[/red]")
-    return cast(KimiSoul, app.soul)
+        return None
+    return app.soul
 
 
 @registry.command(aliases=["quit"])
@@ -142,6 +143,8 @@ async def model(app: Shell, args: str):
     import shlex
 
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
     config = soul.runtime.config
 
     await refresh_managed_models(config)
@@ -276,6 +279,8 @@ def feedback(app: Shell, args: str):
 async def clear(app: Shell, args: str):
     """Clear the context"""
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
     await soul.context.clear()
     raise Reload()
 
@@ -284,6 +289,8 @@ async def clear(app: Shell, args: str):
 async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
 
     work_dir = soul.runtime.session.work_dir
     current_session = soul.runtime.session
@@ -332,6 +339,8 @@ async def mcp(app: Shell, args: str):
     from kimi_cli.utils.rich.columns import BulletColumns
 
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
     toolset = soul.agent.toolset
     if not isinstance(toolset, KimiToolset):
         console.print("[red]KimiToolset required[/red]")
