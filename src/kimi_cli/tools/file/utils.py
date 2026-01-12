@@ -18,6 +18,11 @@ _EXTRA_MIME_TYPES = {
     ".m4v": "video/x-m4v",
     ".3gp": "video/3gpp",
     ".3g2": "video/3gpp2",
+    # TypeScript files: override mimetypes default (video/mp2t for MPEG Transport Stream)
+    ".ts": "text/typescript",
+    ".tsx": "text/typescript",
+    ".mts": "text/typescript",
+    ".cts": "text/typescript",
 }
 
 for suffix, mime_type in _EXTRA_MIME_TYPES.items():
