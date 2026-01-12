@@ -8,10 +8,11 @@ from typing import NamedTuple
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kosong.tooling import ToolError, ToolOk
-from rich.console import Group, RenderableType
+from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
+from rich.segment import Segment
 from rich.spinner import Spinner
 from rich.text import Text
 
@@ -21,6 +22,7 @@ from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
+from kimi_cli.utils.term import get_cursor_row
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
@@ -45,6 +47,35 @@ from kimi_cli.wire.types import (
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
+
+
+class _BottomStatusLayout:
+    """Layout with content at top and status line at bottom."""
+
+    def __init__(self, content: RenderableType, status: RenderableType, *, rows_to_bottom: int):
+        self.content = content
+        self.status = status
+        self.rows_to_bottom = rows_to_bottom
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        # Render content and status
+        content_rendered = list(console.render(self.content, options))
+        content_lines = list(Segment.split_lines(content_rendered))
+        content_height = len(content_lines)
+
+        status_rendered = list(console.render(self.status, options))
+        status_lines = list(Segment.split_lines(status_rendered))
+        status_height = len(status_lines)
+
+        # Calculate padding between content and status
+        total_height = content_height + status_height
+        padding = max(0, self.rows_to_bottom - total_height)
+
+        # Output: content + padding + status
+        yield from content_rendered
+        for _ in range(padding):
+            yield Segment.line()
+        yield from status_rendered
 
 
 async def visualize(
@@ -339,6 +370,17 @@ class _LiveView:
 
         self._need_recompose = False
 
+        # Calculate rows from cursor to terminal bottom for bottom-aligned status line
+        self._rows_to_bottom = self._calculate_rows_to_bottom()
+
+    def _calculate_rows_to_bottom(self) -> int:
+        """Calculate the number of rows from current cursor position to terminal bottom."""
+        cursor_row = get_cursor_row()
+        if cursor_row is None:
+            return 0  # Cannot determine, skip bottom alignment
+        terminal_height = console.size.height
+        return terminal_height - cursor_row + 1
+
     async def visualize_loop(self, wire: WireUISide):
         with Live(
             self.compose(),
@@ -390,8 +432,10 @@ class _LiveView:
                 blocks.append(tool_call.compose())
         if self._current_approval_request_panel:
             blocks.append(self._current_approval_request_panel.render())
-        blocks.append(self._status_block.render())
-        return Group(*blocks)
+        content = Group(*blocks) if blocks else Text("")
+        return _BottomStatusLayout(
+            content, self._status_block.render(), rows_to_bottom=self._rows_to_bottom
+        )
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
         """Dispatch the Wire message to UI components."""
