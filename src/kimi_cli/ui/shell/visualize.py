@@ -292,7 +292,7 @@ class _ApprovalRequestPanel:
 
 class _StatusBlock:
     def __init__(self, initial: StatusUpdate) -> None:
-        self.text = Text("", justify="right", style="grey50")
+        self.text = Text("", justify="right")
         self.update(initial)
 
     def render(self) -> RenderableType:

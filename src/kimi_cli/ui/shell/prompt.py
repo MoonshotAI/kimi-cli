@@ -39,6 +39,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style
 from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
@@ -606,6 +607,7 @@ class CustomPromptSession:
             clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
+            style=Style.from_dict({"bottom-toolbar": "noreverse"}),
         )
 
         # Allow completion to be triggered when the text is changed,
