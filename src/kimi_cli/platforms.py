@@ -28,15 +28,15 @@ PLATFORMS: list[Platform] = [
     ),
     Platform(
         id="moonshot-cn",
-        name="Moonshot AI 开放平台 (moonshot.cn)",
+        name="Moonshot AI Open Platform (moonshot.cn)",
         base_url="https://api.moonshot.cn/v1",
-        allowed_prefixes=["kimi-k2-"],
+        allowed_prefixes=["kimi-k"],
     ),
     Platform(
         id="moonshot-ai",
         name="Moonshot AI Open Platform (moonshot.ai)",
         base_url="https://api.moonshot.ai/v1",
-        allowed_prefixes=["kimi-k2-"],
+        allowed_prefixes=["kimi-k"],
     ),
 ]
 

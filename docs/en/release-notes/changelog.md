@@ -4,6 +4,14 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
+- Tool: Fix TypeScript files (`.ts`, `.tsx`, `.mts`, `.cts`) being misidentified as video files
+- Shell: Allow slash commands (`/help`, `/exit`, `/version`, `/changelog`, `/feedback`) in shell mode
+- Shell: Improve `/help` with fullscreen pager, showing slash commands, skills, and keyboard shortcuts
+- Shell: Improve `/changelog` and `/mcp` display with consistent bullet-style formatting
+- Shell: Show current model name in the bottom status bar
+- Shell: Add `Ctrl-/` shortcut to show help
+
 ## 0.75 (2026-01-09)
 
 - Tool: Improve `ReadFile` tool description

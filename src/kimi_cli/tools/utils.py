@@ -2,6 +2,7 @@ import re
 import string
 from pathlib import Path
 
+from jinja2 import Environment
 from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
@@ -12,6 +13,21 @@ def load_desc(path: Path, substitutions: dict[str, str] | None = None) -> str:
     if substitutions:
         description = string.Template(description).safe_substitute(substitutions)
     return description
+
+
+def load_desc_jinja(path: Path, context: dict[str, object] | None = None) -> str:
+    """Load a tool description from a file, rendered via Jinja2."""
+    description = path.read_text(encoding="utf-8")
+    env = Environment(
+        autoescape=False,
+        keep_trailing_newline=True,
+        lstrip_blocks=True,
+        trim_blocks=True,
+        variable_start_string="${",
+        variable_end_string="}",
+    )
+    template = env.from_string(description)
+    return template.render(context or {})
 
 
 def truncate_line(line: str, max_length: int, marker: str = "...") -> str:

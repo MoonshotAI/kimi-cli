@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
-from rich.panel import Panel
 
 from kimi_cli.cli import Reload
 from kimi_cli.config import save_config
@@ -12,9 +11,9 @@ from kimi_cli.platforms import get_platform_name_for_provider, refresh_managed_m
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
+from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
-from kimi_cli.utils.slashcmd import SlashCommandRegistry
+from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
@@ -29,55 +28,112 @@ Raises:
 
 
 registry = SlashCommandRegistry[ShellSlashCmdFunc]()
+shell_mode_registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 
 
-def _ensure_kimi_soul(app: Shell) -> KimiSoul:
+def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
     if not isinstance(app.soul, KimiSoul):
         console.print("[red]KimiSoul required[/red]")
-    return cast(KimiSoul, app.soul)
+        return None
+    return app.soul
 
 
 @registry.command(aliases=["quit"])
+@shell_mode_registry.command(aliases=["quit"])
 def exit(app: Shell, args: str):
     """Exit the application"""
     # should be handled by `Shell`
     raise NotImplementedError
 
 
-_HELP_MESSAGE_FMT = """
-[grey50]▌ Help! I need somebody. Help! Not just anybody.[/grey50]
-[grey50]▌ Help! You know I need someone. Help![/grey50]
-[grey50]▌ ― The Beatles, [italic]Help![/italic][/grey50]
+SKILL_COMMAND_PREFIX = "skill:"
 
-Sure, Kimi CLI is ready to help!
-Just send me messages and I will help you get things done!
-
-Slash commands are also available:
-
-[grey50]{slash_commands_md}[/grey50]
-"""
+_KEYBOARD_SHORTCUTS = [
+    ("Ctrl-X", "Toggle agent/shell mode"),
+    ("Tab", "Toggle thinking mode"),
+    ("Ctrl-J / Alt-Enter", "Insert newline"),
+    ("Ctrl-V", "Paste (supports images)"),
+    ("Ctrl-D", "Exit"),
+    ("Ctrl-C", "Interrupt"),
+]
 
 
 @registry.command(aliases=["h", "?"])
+@shell_mode_registry.command(aliases=["h", "?"])
 def help(app: Shell, args: str):
     """Show help information"""
-    console.print(
-        Panel(
-            _HELP_MESSAGE_FMT.format(
-                slash_commands_md="\n".join(
-                    f" • {command.slash_name()}: {command.description}"
-                    for command in app.available_slash_commands.values()
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
+    from kimi_cli.utils.rich.columns import BulletColumns
+
+    def section(title: str, items: list[tuple[str, str]], color: str) -> BulletColumns:
+        lines: list[RenderableType] = [Text.from_markup(f"[bold]{title}:[/bold]")]
+        for name, desc in items:
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[{color}]{name}[/{color}]: [grey50]{desc}[/grey50]"),
+                    bullet_style=color,
                 )
-            ).strip(),
-            title="Kimi CLI Help",
-            border_style="wheat4",
-            expand=False,
-            padding=(1, 2),
+            )
+        return BulletColumns(Group(*lines))
+
+    buffer = StringIO()
+    buf = RichConsole(file=buffer, force_terminal=True, width=console.width)
+
+    buf.print(
+        BulletColumns(
+            Group(
+                Text.from_markup("[grey50]Help! I need somebody. Help! Not just anybody.[/grey50]"),
+                Text.from_markup("[grey50]Help! You know I need someone. Help![/grey50]"),
+                Text.from_markup("[grey50]\u2015 The Beatles, [italic]Help![/italic][/grey50]"),
+            ),
+            bullet_style="grey50",
+        )
+    )
+    buf.print(
+        BulletColumns(
+            Text(
+                "Sure, Kimi CLI is ready to help! "
+                "Just send me messages and I will help you get things done!"
+            ),
         )
     )
 
+    commands: list[SlashCommand[Any]] = []
+    skills: list[SlashCommand[Any]] = []
+    for cmd in app.available_slash_commands.values():
+        if cmd.name.startswith(SKILL_COMMAND_PREFIX):
+            skills.append(cmd)
+        else:
+            commands.append(cmd)
+
+    buf.print(
+        section(
+            "Slash commands",
+            [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
+            "blue",
+        )
+    )
+    if skills:
+        buf.print(
+            section(
+                "Skills",
+                [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
+                "cyan",
+            )
+        )
+    buf.print(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
+
+    with console.pager(styles=True):
+        console.print(buffer.getvalue(), end="")
+
 
 @registry.command
+@shell_mode_registry.command
 def version(app: Shell, args: str):
     """Show version information"""
     from kimi_cli.constant import VERSION
@@ -91,6 +147,8 @@ async def model(app: Shell, args: str):
     import shlex
 
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
     config = soul.runtime.config
 
     await refresh_managed_models(config)
@@ -175,15 +233,44 @@ async def model(app: Shell, args: str):
     raise Reload()
 
 
-@registry.command(name="release-notes")
-def release_notes(app: Shell, args: str):
+@registry.command(aliases=["release-notes"])
+@shell_mode_registry.command(aliases=["release-notes"])
+def changelog(app: Shell, args: str):
     """Show release notes"""
-    text = format_release_notes(CHANGELOG, include_lib_changes=False)
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
+    from kimi_cli.utils.rich.columns import BulletColumns
+
+    buffer = StringIO()
+    buf_console = RichConsole(file=buffer, force_terminal=True, width=console.width)
+
+    for ver, entry in CHANGELOG.items():
+        title = f"[bold]{ver}[/bold]"
+        if entry.description:
+            title += f": {entry.description}"
+
+        lines: list[RenderableType] = [Text.from_markup(title)]
+        for item in entry.entries:
+            if item.lower().startswith("lib:"):
+                continue
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[grey50]{item}[/grey50]"),
+                    bullet_style="grey50",
+                ),
+            )
+        buf_console.print(BulletColumns(Group(*lines)))
+
     with console.pager(styles=True):
-        console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
+        console.print(buffer.getvalue(), end="")
 
 
 @registry.command
+@shell_mode_registry.command
 def feedback(app: Shell, args: str):
     """Submit feedback to make Kimi CLI better"""
     import webbrowser
@@ -198,6 +285,8 @@ def feedback(app: Shell, args: str):
 async def clear(app: Shell, args: str):
     """Clear the context"""
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
     await soul.context.clear()
     raise Reload()
 
@@ -206,6 +295,8 @@ async def clear(app: Shell, args: str):
 async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
 
     work_dir = soul.runtime.session.work_dir
     current_session = soul.runtime.session
@@ -247,9 +338,15 @@ async def list_sessions(app: Shell, args: str):
 @registry.command
 async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
     from kimi_cli.soul.toolset import KimiToolset
+    from kimi_cli.utils.rich.columns import BulletColumns
 
     soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
     toolset = soul.agent.toolset
     if not isinstance(toolset, KimiToolset):
         console.print("[red]KimiToolset required[/red]")
@@ -261,40 +358,40 @@ async def mcp(app: Shell, args: str):
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
-    lines: list[str] = []
-
     n_conn = sum(1 for s in servers.values() if s.status == "connected")
     n_tools = sum(len(s.tools) for s in servers.values())
-    lines.append(f"{n_conn}/{len(servers)} servers connected, {n_tools} tools loaded")
-    lines.append("")
-
-    status_dots = {
-        "connected": "[green]•[/green]",
-        "connecting": "[cyan]•[/cyan]",
-        "pending": "[yellow]•[/yellow]",
-        "failed": "[red]•[/red]",
-        "unauthorized": "[red]•[/red]",
-    }
-    for name, info in servers.items():
-        dot = status_dots.get(info.status, "[red]•[/red]")
-        server_line = f" {dot} {name}"
-        if info.status == "unauthorized":
-            server_line += f" (unauthorized - run: kimi mcp auth {name})"
-        elif info.status != "connected":
-            server_line += f" ({info.status})"
-        lines.append(server_line)
-        for tool in info.tools:
-            lines.append(f"   [dim]• {tool.name}[/dim]")
-
     console.print(
-        Panel(
-            "\n".join(lines),
-            title="MCP Servers",
-            border_style="wheat4",
-            expand=False,
-            padding=(1, 2),
+        BulletColumns(
+            Text.from_markup(
+                f"[bold]MCP Servers:[/bold] {n_conn}/{len(servers)} connected, {n_tools} tools"
+            )
         )
     )
+
+    status_colors = {
+        "connected": "green",
+        "connecting": "cyan",
+        "pending": "yellow",
+        "failed": "red",
+        "unauthorized": "red",
+    }
+    for name, info in servers.items():
+        color = status_colors.get(info.status, "red")
+        server_text = f"[{color}]{name}[/{color}]"
+        if info.status == "unauthorized":
+            server_text += " [grey50](unauthorized - run: kimi mcp auth {name})[/grey50]"
+        elif info.status != "connected":
+            server_text += f" [grey50]({info.status})[/grey50]"
+
+        lines: list[RenderableType] = [Text.from_markup(server_text)]
+        for tool in info.tools:
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[grey50]{tool.name}[/grey50]"),
+                    bullet_style="grey50",
+                )
+            )
+        console.print(BulletColumns(Group(*lines), bullet_style=color))
 
 
 from . import (  # noqa: E402

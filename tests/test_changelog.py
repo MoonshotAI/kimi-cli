@@ -16,7 +16,7 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## Unreleased
 
 ### Added
 - Added /release-notes command
@@ -24,7 +24,7 @@ Only write entries that are worth mentioning to users.
 ### Fixed
 - Fixed a bug
 
-## [v0.10.1] - 2025-09-18
+## 0.10.1 (2025-09-18)
 
 We now have release notes!
 - Made slash commands look slightly better
@@ -33,7 +33,7 @@ We now have release notes!
         "Unreleased": ReleaseEntry(
             description="", entries=["Added /release-notes command", "Fixed a bug"]
         ),
-        "v0.10.1": ReleaseEntry(
+        "0.10.1": ReleaseEntry(
             description="We now have release notes!",
             entries=["Made slash commands look slightly better"],
         ),

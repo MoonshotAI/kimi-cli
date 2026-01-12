@@ -6,9 +6,9 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, FileType, detect_file_type
-from kimi_cli.tools.utils import load_desc, truncate_line
+from kimi_cli.tools.utils import load_desc_jinja, truncate_line
 from kimi_cli.utils.path import is_within_directory
 from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
@@ -52,20 +52,22 @@ class Params(BaseModel):
 
 class ReadFile(CallableTool2[Params]):
     name: str = "ReadFile"
-    description: str = load_desc(
-        Path(__file__).parent / "read.md",
-        {
-            "MAX_LINES": str(MAX_LINES),
-            "MAX_LINE_LENGTH": str(MAX_LINE_LENGTH),
-            "MAX_BYTES": str(MAX_BYTES),
-            "MAX_MEDIA_BYTES": str(MAX_MEDIA_BYTES),
-        },
-    )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
-        super().__init__()
-        self._work_dir = builtin_args.KIMI_WORK_DIR
+    def __init__(self, runtime: Runtime) -> None:
+        capabilities = runtime.llm.capabilities if runtime.llm else set[str]()
+        description = load_desc_jinja(
+            Path(__file__).parent / "read.md",
+            {
+                "MAX_LINES": MAX_LINES,
+                "MAX_LINE_LENGTH": MAX_LINE_LENGTH,
+                "MAX_BYTES": MAX_BYTES,
+                "MAX_MEDIA_BYTES": MAX_MEDIA_BYTES,
+                "capabilities": capabilities,
+            },
+        )
+        super().__init__(description=description)
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
