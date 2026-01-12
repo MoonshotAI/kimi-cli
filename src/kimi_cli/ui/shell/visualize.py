@@ -80,7 +80,7 @@ class _ContentBlock:
                 self.raw_text,
                 style="grey50 italic" if self.is_think else "",
             ),
-            bullet_style="grey50",
+            bullet_style="grey50" if self.is_think else None,
         )
 
     def append(self, content: str) -> None:
