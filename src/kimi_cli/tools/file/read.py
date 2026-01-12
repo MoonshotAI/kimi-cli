@@ -155,8 +155,7 @@ class ReadFile(CallableTool2[Params]):
             if file_type.kind == "unknown":
                 return ToolError(
                     message=(
-                        f"`{params.path}` seems not readable as text. "
-                        "ReadFile only supports text, image, and video files. "
+                        f"`{params.path}` seems not readable. "
                         "You may need to read it with proper shell commands, Python tools "
                         "or MCP tools if available. "
                         "If you read/operate it with Python, you MUST ensure that any "
