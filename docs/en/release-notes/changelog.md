@@ -4,6 +4,10 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Shell: Use `/model` to toggle thinking mode instead of Tab key
+- Config: Add `default_thinking` config option (auto-migrated from metadata)
+- LLM: Add `always_thinking` capability for models that always use thinking mode
+
 ## 0.76 (2026-01-12)
 
 - Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
