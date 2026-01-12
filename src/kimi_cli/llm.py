@@ -204,7 +204,7 @@ def create_llm(
 
 
 def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
-    capabilities = model.capabilities or set()
+    capabilities = set(model.capabilities or ())
     # Models with "thinking" in their name are always-thinking models
     if "thinking" in model.model.lower() or "reason" in model.model.lower():
         capabilities.update(("thinking", "always_thinking"))
