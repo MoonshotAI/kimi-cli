@@ -53,7 +53,7 @@ export KIMI_MODEL_MAX_CONTEXT_SIZE="262144"
 
 ### `KIMI_MODEL_CAPABILITIES`
 
-Overrides the model's `capabilities` field in the configuration file. Multiple capabilities are comma-separated, supported values are `thinking`, `image_in`, and `video_in`.
+Overrides the model's `capabilities` field in the configuration file. Multiple capabilities are comma-separated, supported values are `thinking`, `always_thinking`, `image_in`, and `video_in`.
 
 ```sh
 export KIMI_MODEL_CAPABILITIES="thinking,image_in"
