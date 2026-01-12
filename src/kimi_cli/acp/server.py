@@ -249,9 +249,9 @@ class ACPServer:
             new_provider,
             new_model,
             session_id=acp_session.id,
+            thinking=model_id_conv.thinking,
         )
         cli_instance.soul.runtime.llm = new_llm
-        cli_instance.soul.set_thinking(model_id_conv.thinking)
 
         config.default_model = model_id_conv.model_key
         config.default_thinking = model_id_conv.thinking

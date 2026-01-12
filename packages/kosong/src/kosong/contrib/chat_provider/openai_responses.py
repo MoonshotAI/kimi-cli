@@ -31,7 +31,11 @@ from openai.types.shared.reasoning_effort import ReasoningEffort
 from openai.types.shared_params.responses_model import ResponsesModel
 
 from kosong.chat_provider import ChatProvider, StreamedMessagePart, ThinkingEffort, TokenUsage
-from kosong.chat_provider.openai_common import convert_error, thinking_effort_to_reasoning_effort
+from kosong.chat_provider.openai_common import (
+    convert_error,
+    reasoning_effort_to_thinking_effort,
+    thinking_effort_to_reasoning_effort,
+)
 from kosong.contrib.chat_provider.common import ToolMessageConversion
 from kosong.message import (
     AudioURLPart,
@@ -125,6 +129,13 @@ class OpenAIResponses:
     @property
     def model_name(self) -> str:
         return self._model
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        reasoning_effort = self._generation_kwargs.get("reasoning_effort")
+        if reasoning_effort is None:
+            return None
+        return reasoning_effort_to_thinking_effort(reasoning_effort)
 
     async def generate(
         self,

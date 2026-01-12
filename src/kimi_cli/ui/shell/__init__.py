@@ -70,7 +70,7 @@ class Shell:
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=self.soul.model_name,
-            thinking=isinstance(self.soul, KimiSoul) and self.soul.thinking,
+            thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
         ) as prompt_session:
