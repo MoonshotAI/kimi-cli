@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
-from rich.panel import Panel
 
 from kimi_cli.cli import Reload
 from kimi_cli.config import save_config
@@ -328,7 +327,11 @@ async def list_sessions(app: Shell, args: str):
 @registry.command
 async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
     from kimi_cli.soul.toolset import KimiToolset
+    from kimi_cli.utils.rich.columns import BulletColumns
 
     soul = _ensure_kimi_soul(app)
     toolset = soul.agent.toolset
@@ -342,40 +345,40 @@ async def mcp(app: Shell, args: str):
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
-    lines: list[str] = []
-
     n_conn = sum(1 for s in servers.values() if s.status == "connected")
     n_tools = sum(len(s.tools) for s in servers.values())
-    lines.append(f"{n_conn}/{len(servers)} servers connected, {n_tools} tools loaded")
-    lines.append("")
-
-    status_dots = {
-        "connected": "[green]•[/green]",
-        "connecting": "[cyan]•[/cyan]",
-        "pending": "[yellow]•[/yellow]",
-        "failed": "[red]•[/red]",
-        "unauthorized": "[red]•[/red]",
-    }
-    for name, info in servers.items():
-        dot = status_dots.get(info.status, "[red]•[/red]")
-        server_line = f" {dot} {name}"
-        if info.status == "unauthorized":
-            server_line += f" (unauthorized - run: kimi mcp auth {name})"
-        elif info.status != "connected":
-            server_line += f" ({info.status})"
-        lines.append(server_line)
-        for tool in info.tools:
-            lines.append(f"   [dim]• {tool.name}[/dim]")
-
     console.print(
-        Panel(
-            "\n".join(lines),
-            title="MCP Servers",
-            border_style="wheat4",
-            expand=False,
-            padding=(1, 2),
+        BulletColumns(
+            Text.from_markup(
+                f"[bold]MCP Servers:[/bold] {n_conn}/{len(servers)} connected, {n_tools} tools"
+            )
         )
     )
+
+    status_colors = {
+        "connected": "green",
+        "connecting": "cyan",
+        "pending": "yellow",
+        "failed": "red",
+        "unauthorized": "red",
+    }
+    for name, info in servers.items():
+        color = status_colors.get(info.status, "red")
+        server_text = f"[{color}]{name}[/{color}]"
+        if info.status == "unauthorized":
+            server_text += " [grey50](unauthorized - run: kimi mcp auth {name})[/grey50]"
+        elif info.status != "connected":
+            server_text += f" [grey50]({info.status})[/grey50]"
+
+        lines: list[RenderableType] = [Text.from_markup(server_text)]
+        for tool in info.tools:
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[grey50]{tool.name}[/grey50]"),
+                    bullet_style="grey50",
+                )
+            )
+        console.print(BulletColumns(Group(*lines), bullet_style=color))
 
 
 from . import (  # noqa: E402
