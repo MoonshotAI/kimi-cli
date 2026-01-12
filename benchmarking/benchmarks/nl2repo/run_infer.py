@@ -31,7 +31,14 @@ class NL2RepoInstanceEvaluator(BaseInstanceEvaluator):
             environment={},
         )
         self.container = Container(self.container_config)
-        self.instruction = "According to the start.md in the workspace, implement the entire project as per the requirements specified in the document, ensuring that the final product can be directly run in the current directory. The running requirements should comply with the <API Usage Guide> section of the document. Please complete this task step by step."
+        # self.instruction = "According to the start.md in the workspace, implement the entire project as per the requirements specified in the document, ensuring that the final product can be directly run in the current directory. The running requirements should comply with the <API Usage Guide> section of the document. Please complete this task step by step."
+        self.instruction = """Read `start.md` to understand the project requirements, then implement the complete project.
+
+        Guidelines:
+        - Try to decompose the `start.md` as it is very long. Getting critical information at first and referring to it later when needed.
+        - Plan the architecture before writing code: identify core modules, data models, and interfaces.
+        - Implement incrementally: start with the foundation, then build features layer by layer.
+        - Verify your implementation works before finishing."""
     
     def _get_container_image(self) -> str:
         NL2REPO_BASE_IMAGE = os.environ.get(

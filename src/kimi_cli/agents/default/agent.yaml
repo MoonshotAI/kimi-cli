@@ -1,7 +1,7 @@
 version: 1
 agent:
   name: ""
-  system_prompt_path: ./system_swe.md
+  system_prompt_path: ./system_nl2repo.md
   # system_prompt_path: ./system.md
   system_prompt_args:
     ROLE_ADDITIONAL: ""
