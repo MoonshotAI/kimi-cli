@@ -80,7 +80,7 @@ class _ContentBlock:
                 self.raw_text,
                 style="grey50 italic" if self.is_think else "",
             ),
-            bullet_style="grey50",
+            bullet_style="grey50" if self.is_think else None,
         )
 
     def append(self, content: str) -> None:
@@ -292,7 +292,7 @@ class _ApprovalRequestPanel:
 
 class _StatusBlock:
     def __init__(self, initial: StatusUpdate) -> None:
-        self.text = Text("", justify="right", style="grey50")
+        self.text = Text("", justify="right")
         self.update(initial)
 
     def render(self) -> RenderableType:
