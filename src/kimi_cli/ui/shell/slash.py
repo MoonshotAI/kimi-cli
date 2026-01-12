@@ -12,7 +12,7 @@ from kimi_cli.platforms import get_platform_name_for_provider, refresh_managed_m
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
+from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
@@ -232,9 +232,36 @@ async def model(app: Shell, args: str):
 @registry.command(aliases=["release-notes"])
 def changelog(app: Shell, args: str):
     """Show release notes"""
-    text = format_release_notes(CHANGELOG, include_lib_changes=False)
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
+    from kimi_cli.utils.rich.columns import BulletColumns
+
+    buffer = StringIO()
+    buf_console = RichConsole(file=buffer, force_terminal=True, width=console.width)
+
+    for ver, entry in CHANGELOG.items():
+        title = f"[bold]{ver}[/bold]"
+        if entry.description:
+            title += f": {entry.description}"
+
+        lines: list[RenderableType] = [Text.from_markup(title)]
+        for item in entry.entries:
+            if item.lower().startswith("lib:"):
+                continue
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[grey50]{item}[/grey50]"),
+                    bullet_style="grey50",
+                ),
+            )
+        buf_console.print(BulletColumns(Group(*lines)))
+
     with console.pager(styles=True):
-        console.print(Panel.fit(text, border_style="wheat4", title="Release Notes"))
+        console.print(buffer.getvalue(), end="")
 
 
 @registry.command
