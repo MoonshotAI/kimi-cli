@@ -44,6 +44,18 @@ def thinking_effort_to_reasoning_effort(effort: ThinkingEffort) -> ReasoningEffo
             return "high"
 
 
+def reasoning_effort_to_thinking_effort(effort: ReasoningEffort) -> ThinkingEffort:
+    match effort:
+        case "low" | "minimal":
+            return "low"
+        case "medium":
+            return "medium"
+        case "high" | "xhigh":
+            return "high"
+        case "none" | None:
+            return "off"
+
+
 def tool_to_openai(tool: Tool) -> ChatCompletionToolParam:
     """Convert a single tool to OpenAI tool format."""
     # simply `model_dump` because the `Tool` type is OpenAI-compatible

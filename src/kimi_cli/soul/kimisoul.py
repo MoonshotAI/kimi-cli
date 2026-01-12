@@ -16,7 +16,6 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
-    ThinkingEffort,
 )
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
@@ -114,7 +113,6 @@ class KimiSoul:
         self._reserved_tokens = RESERVED_TOKENS
         if self._runtime.llm is not None:
             assert self._reserved_tokens <= self._runtime.llm.max_context_size
-        self._thinking_effort: ThinkingEffort = "off"
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -138,6 +136,15 @@ class KimiSoul:
         if self._runtime.llm is None:
             return None
         return self._runtime.llm.capabilities
+
+    @property
+    def thinking(self) -> bool | None:
+        """Whether thinking mode is enabled."""
+        if self._runtime.llm is None:
+            return None
+        if thinking_effort := self._runtime.llm.chat_provider.thinking_effort:
+            return thinking_effort != "off"
+        return None
 
     @property
     def status(self) -> StatusSnapshot:
@@ -167,25 +174,6 @@ class KimiSoul:
     @property
     def wire_file(self) -> Path:
         return self._runtime.session.wire_file
-
-    @property
-    def thinking(self) -> bool:
-        """Whether thinking mode is enabled."""
-        return self._thinking_effort != "off"
-
-    def set_thinking(self, enabled: bool) -> None:
-        """
-        Enable/disable thinking mode for the soul.
-
-        Raises:
-            LLMNotSet: When the LLM is not set.
-            LLMNotSupported: When the LLM does not support thinking mode.
-        """
-        if self._runtime.llm is None:
-            raise LLMNotSet()
-        if enabled and "thinking" not in self._runtime.llm.capabilities:
-            raise LLMNotSupported(self._runtime.llm, ["thinking"])
-        self._thinking_effort = "high" if enabled else "off"
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
@@ -385,7 +373,7 @@ class KimiSoul:
         async def _kosong_step_with_retry() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                chat_provider.with_thinking(self._thinking_effort),
+                chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
                 self._context.history,

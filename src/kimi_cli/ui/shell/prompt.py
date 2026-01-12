@@ -32,7 +32,7 @@ from prompt_toolkit.completion import (
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Condition, has_completions
+from prompt_toolkit.filters import has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
@@ -406,7 +406,6 @@ class PromptMode(Enum):
 
 class UserInput(BaseModel):
     mode: PromptMode
-    thinking: bool
     command: str
     """The plain text representation of the user input."""
     content: list[ContentPart]
@@ -465,15 +464,6 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
     return queue[0]
 
 
-def _toast_thinking(thinking: bool) -> None:
-    toast(
-        f"thinking {'on' if thinking else 'off'}, tab to toggle",
-        duration=3.0,
-        topic="thinking",
-        immediate=True,
-    )
-
-
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
 )
@@ -495,7 +485,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         model_capabilities: set[ModelCapability],
         model_name: str | None,
-        initial_thinking: bool,
+        thinking: bool,
         agent_mode_slash_commands: Sequence[SlashCommand[Any]],
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
     ) -> None:
@@ -508,7 +498,7 @@ class CustomPromptSession:
         self._model_name = model_name
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
-        self._thinking = initial_thinking
+        self._thinking = thinking
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -572,24 +562,6 @@ class CustomPromptSession:
             clipboard = PyperclipClipboard()
         else:
             clipboard = None
-
-        @Condition
-        def is_agent_mode() -> bool:
-            return self._mode == PromptMode.AGENT
-
-        _toast_thinking(self._thinking)
-
-        @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
-        def _(event: KeyPressEvent) -> None:
-            """Toggle thinking mode when Tab is pressed and no completions are shown."""
-            if "thinking" not in self._model_capabilities:
-                console.print(
-                    "[yellow]Thinking mode is not supported by the selected LLM model[/yellow]"
-                )
-                return
-            self._thinking = not self._thinking
-            _toast_thinking(self._thinking)
-            event.app.invalidate()
 
         @_kb.add("c-_", eager=True)  # Ctrl-/ sends Ctrl-_ in most terminals
         def _(event: KeyPressEvent) -> None:
@@ -746,7 +718,6 @@ class CustomPromptSession:
 
         return UserInput(
             mode=self._mode,
-            thinking=self._thinking,
             content=content,
             command=command,
         )

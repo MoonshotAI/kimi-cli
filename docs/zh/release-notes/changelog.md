@@ -4,6 +4,12 @@
 
 ## 未发布
 
+- Shell：使用 `/model` 命令切换 Thinking 模式，取代 Tab 键
+- Config：添加 `default_thinking` 配置项（从 metadata 自动迁移）
+- LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
+
+## 0.76 (2026-01-12)
+
 - Tool：让 `ReadFile` 工具描述根据模型能力动态反映图片/视频支持情况
 - Tool：修复 TypeScript 文件（`.ts`、`.tsx`、`.mts`、`.cts`）被误识别为视频文件的问题
 - Shell：允许在 Shell 模式下使用部分斜杠命令（`/help`、`/exit`、`/version`、`/changelog`、`/feedback`）

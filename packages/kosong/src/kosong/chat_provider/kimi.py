@@ -98,6 +98,21 @@ class Kimi:
     def model_name(self) -> str:
         return self.model
 
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        reasoning_effort = self._generation_kwargs.get("reasoning_effort")
+        if reasoning_effort is None:
+            return None
+        match reasoning_effort:
+            case "low":
+                return "low"
+            case "medium":
+                return "medium"
+            case "high":
+                return "high"
+            case _:
+                return "off"
+
     async def generate(
         self,
         system_prompt: str,

@@ -7,7 +7,7 @@ from pathlib import Path
 from kaos import get_current_kaos
 from kaos.local import local_kaos
 from kaos.path import KaosPath
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
@@ -42,11 +42,10 @@ class WorkDirMeta(BaseModel):
 class Metadata(BaseModel):
     """Kimi metadata structure."""
 
+    model_config = ConfigDict(extra="ignore")
+
     work_dirs: list[WorkDirMeta] = Field(default_factory=list[WorkDirMeta])
     """Work directory list."""
-
-    thinking: bool = False
-    """Whether the last session was in thinking mode."""
 
     def get_work_dir_meta(self, path: KaosPath) -> WorkDirMeta | None:
         """Get the metadata for a work directory."""

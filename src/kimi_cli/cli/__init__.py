@@ -110,6 +110,13 @@ def kimi(
             help="LLM model to use. Default: default model set in config file.",
         ),
     ] = None,
+    thinking: Annotated[
+        bool | None,
+        typer.Option(
+            "--thinking/--no-thinking",
+            help="Enable thinking mode. Default: default thinking mode set in config file.",
+        ),
+    ] = None,
     local_work_dir: Annotated[
         Path | None,
         typer.Option(
@@ -238,13 +245,6 @@ def kimi(
             help="Automatically approve all actions. Default: no.",
         ),
     ] = False,
-    thinking: Annotated[
-        bool | None,
-        typer.Option(
-            "--thinking/--no-thinking",
-            help="Enable thinking mode if supported. Default: same as last time.",
-        ),
-    ] = None,
     skills_dir: Annotated[
         Path | None,
         typer.Option(
@@ -441,19 +441,13 @@ def kimi(
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
 
-        if thinking is None:
-            metadata = load_metadata()
-            thinking_mode = metadata.thinking
-        else:
-            thinking_mode = thinking
-
         instance = await KimiCLI.create(
             session,
             yolo=yolo or (ui == "print"),  # print mode implies yolo
             mcp_configs=mcp_configs,
             config=config,
             model_name=model_name,
-            thinking=thinking_mode,
+            thinking=thinking,
             agent_file=agent_file,
             skills_dir=skills_dir,
             max_steps_per_turn=max_steps_per_turn,
@@ -504,9 +498,6 @@ def kimi(
                     work_dir_meta.last_session_id = None
             else:
                 work_dir_meta.last_session_id = session.id
-
-            # Update thinking mode
-            metadata.thinking = instance.soul.thinking
 
             save_metadata(metadata)
 

@@ -175,6 +175,10 @@ class ChaosChatProvider:
             return f"chaos({self._provider.model_name})"
         return self._provider.model_name
 
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return self._provider.thinking_effort
+
     def with_thinking(self, effort: ThinkingEffort) -> "ChaosChatProvider":
         return ChaosChatProvider(self._provider.with_thinking(effort), self._chaos_config)
 

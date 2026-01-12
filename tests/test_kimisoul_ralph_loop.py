@@ -77,6 +77,10 @@ class SequenceChatProvider:
     def model_name(self) -> str:
         return "sequence"
 
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
     async def generate(
         self,
         system_prompt: str,
