@@ -175,8 +175,8 @@ async def model(app: Shell, args: str):
     raise Reload()
 
 
-@registry.command(name="release-notes")
-def release_notes(app: Shell, args: str):
+@registry.command(aliases=["release-notes"])
+def changelog(app: Shell, args: str):
     """Show release notes"""
     text = format_release_notes(CHANGELOG, include_lib_changes=False)
     with console.pager(styles=True):
