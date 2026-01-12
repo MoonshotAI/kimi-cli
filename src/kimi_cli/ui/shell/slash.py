@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from rich.panel import Panel
@@ -14,7 +14,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.changelog import CHANGELOG, format_release_notes
 from kimi_cli.utils.datetime import format_relative_time
-from kimi_cli.utils.slashcmd import SlashCommandRegistry
+from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
@@ -44,37 +44,91 @@ def exit(app: Shell, args: str):
     raise NotImplementedError
 
 
-_HELP_MESSAGE_FMT = """
-[grey50]▌ Help! I need somebody. Help! Not just anybody.[/grey50]
-[grey50]▌ Help! You know I need someone. Help![/grey50]
-[grey50]▌ ― The Beatles, [italic]Help![/italic][/grey50]
+SKILL_COMMAND_PREFIX = "skill:"
 
-Sure, Kimi CLI is ready to help!
-Just send me messages and I will help you get things done!
+_KEYBOARD_SHORTCUTS = [
+    ("Ctrl-X", "Toggle agent/shell mode"),
+    ("Tab", "Toggle thinking mode"),
+    ("Ctrl-J / Alt-Enter", "Insert newline"),
+    ("Ctrl-V", "Paste (supports images)"),
+    ("Ctrl-D", "Exit"),
+    ("Ctrl-C", "Interrupt"),
+]
 
-Slash commands are also available:
 
-[grey50]{slash_commands_md}[/grey50]
-"""
+def _print_section(title: str, items: list[tuple[str, str]], color: str) -> None:
+    """Print a help section with colored bullets."""
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
+    from kimi_cli.utils.rich.columns import BulletColumns
+
+    lines: list[RenderableType] = [Text.from_markup(f"[bold]{title}:[/bold]")]
+    for name, desc in items:
+        lines.append(
+            BulletColumns(
+                Text.from_markup(f"[{color}]{name}[/{color}]: [grey50]{desc}[/grey50]"),
+                bullet_style=color,
+            )
+        )
+    console.print(BulletColumns(Group(*lines)))
 
 
 @registry.command(aliases=["h", "?"])
 def help(app: Shell, args: str):
     """Show help information"""
+    from rich.console import Group
+    from rich.text import Text
+
+    from kimi_cli.utils.rich.columns import BulletColumns
+
+    # Header
     console.print(
-        Panel(
-            _HELP_MESSAGE_FMT.format(
-                slash_commands_md="\n".join(
-                    f" • {command.slash_name()}: {command.description}"
-                    for command in app.available_slash_commands.values()
-                )
-            ).strip(),
-            title="Kimi CLI Help",
-            border_style="wheat4",
-            expand=False,
-            padding=(1, 2),
+        BulletColumns(
+            Group(
+                Text.from_markup("[grey50]Help! I need somebody. Help! Not just anybody.[/grey50]"),
+                Text.from_markup("[grey50]Help! You know I need someone. Help![/grey50]"),
+                Text.from_markup("[grey50]\u2015 The Beatles, [italic]Help![/italic][/grey50]"),
+            ),
+            bullet_style="grey50",
         )
     )
+    # Intro
+    console.print(
+        BulletColumns(
+            Text(
+                "Sure, Kimi CLI is ready to help! "
+                "Just send me messages and I will help you get things done!"
+            ),
+        )
+    )
+
+    # Separate commands and skills
+    commands: list[SlashCommand[Any]] = []
+    skills: list[SlashCommand[Any]] = []
+    for cmd in app.available_slash_commands.values():
+        if cmd.name.startswith(SKILL_COMMAND_PREFIX):
+            skills.append(cmd)
+        else:
+            commands.append(cmd)
+
+    # Slash commands
+    _print_section(
+        "Slash commands",
+        [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
+        "blue",
+    )
+
+    # Skills
+    if skills:
+        _print_section(
+            "Skills",
+            [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
+            "cyan",
+        )
+
+    # Keyboard shortcuts
+    _print_section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow")
 
 
 @registry.command
