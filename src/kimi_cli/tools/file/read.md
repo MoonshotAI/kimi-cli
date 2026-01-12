@@ -13,6 +13,20 @@ Read content from a file.
   - Use `line_offset` and `n_lines` parameters when you only need to read a part of the file.
   - The maximum number of lines that can be read at once is ${MAX_LINES}.
   - Any lines longer than ${MAX_LINE_LENGTH} characters will be truncated, ending with "...".
+{% if "image_in" in capabilities and "video_in" in capabilities %}
 - For image and video files:
-  - Content will be returned in a form that you can view and understand. If you do not support image/video input, try other tools to process media files.
+  - Content will be returned in a form that you can view and understand. Feel confident to read image/video files with this tool.
   - The maximum size that can be read is ${MAX_MEDIA_BYTES} bytes. An error will be returned if the file is larger than this limit.
+{% elif "image_in" in capabilities %}
+- For image files:
+  - Content will be returned in a form that you can view and understand. Feel confident to read image files with this tool.
+  - The maximum size that can be read is ${MAX_MEDIA_BYTES} bytes. An error will be returned if the file is larger than this limit.
+- Other media files (e.g., video, PDFs) are not supported by this tool. Use other proper tools to process them.
+{% elif "video_in" in capabilities %}
+- For video files:
+  - Content will be returned in a form that you can view and understand. Feel confident to read video files with this tool.
+  - The maximum size that can be read is ${MAX_MEDIA_BYTES} bytes. An error will be returned if the file is larger than this limit.
+- Other media files (e.g., image, PDFs) are not supported by this tool. Use other proper tools to process them.
+{% else %}
+- Media files (e.g., image, video, PDFs) are not supported by this tool. Use other proper tools to process them.
+{% endif %}
