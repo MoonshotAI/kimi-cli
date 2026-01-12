@@ -7,7 +7,8 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl-X` | 切换 Agent/Shell 模式 |
-| `Tab` | 切换 thinking 模式 |
+| `Tab` | 切换 Thinking 模式 |
+| `Ctrl-/` | 显示帮助 |
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
 | `Ctrl-V` | 粘贴（支持图片） |
@@ -27,7 +28,7 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 - Agent 模式：`✨` 或 `💫`（thinking 模式）
 - Shell 模式：`$`
 
-### `Tab`：切换 thinking 模式
+### `Tab`：切换 Thinking 模式
 
 在 Agent 模式下，当输入框为空或没有显示补全菜单时，按 `Tab` 可切换 Thinking 模式。
 
@@ -37,6 +38,10 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 ::: tip 提示
 Thinking 模式需要模型支持。
 :::
+
+### `Ctrl-/`：显示帮助
+
+在输入框中按 `Ctrl-/` 可快速显示帮助信息，等价于输入 `/help` 命令。
 
 ## 多行输入
 
@@ -95,7 +100,8 @@ Thinking 模式需要模型支持。
 底部状态栏显示：
 
 - 当前时间
-- 当前模式（agent/agent (think)/shell）
+- 当前模式（agent/shell）和模型名称（Agent 模式下显示）
+- YOLO 标识（开启时显示）
 - 快捷键提示
 - 上下文使用率
 

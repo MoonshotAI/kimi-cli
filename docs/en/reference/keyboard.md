@@ -8,6 +8,7 @@ Kimi CLI shell mode supports the following keyboard shortcuts.
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
 | `Tab` | Toggle thinking mode |
+| `Ctrl-/` | Show help |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
@@ -37,6 +38,10 @@ In agent mode, when the input box is empty or no completion menu is displayed, p
 ::: tip
 Thinking mode requires model support.
 :::
+
+### `Ctrl-/`: Show help
+
+Press `Ctrl-/` in the input box to quickly display help information, equivalent to entering the `/help` command.
 
 ## Multi-line input
 
@@ -95,7 +100,8 @@ Completion operations:
 The bottom status bar displays:
 
 - Current time
-- Current mode (agent/agent (think)/shell)
+- Current mode (agent/shell) and model name (in agent mode)
+- YOLO badge (when enabled)
 - Shortcut hints
 - Context usage
 

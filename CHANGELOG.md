@@ -12,6 +12,11 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
+- Shell: Allow slash commands (`/help`, `/exit`, `/version`, `/changelog`, `/feedback`) in shell mode
+- Shell: Improve `/help` with fullscreen pager, showing slash commands, skills, and keyboard shortcuts
+- Shell: Improve `/changelog` and `/mcp` display with consistent bullet-style formatting
+- Shell: Show current model name in the bottom status bar
+- Shell: Add `Ctrl-/` shortcut to show help
 
 ## 0.75 (2026-01-09)
 
