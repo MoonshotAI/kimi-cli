@@ -28,6 +28,7 @@ Raises:
 
 
 registry = SlashCommandRegistry[ShellSlashCmdFunc]()
+shell_mode_registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 
 
 def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
@@ -38,6 +39,7 @@ def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
 
 
 @registry.command(aliases=["quit"])
+@shell_mode_registry.command(aliases=["quit"])
 def exit(app: Shell, args: str):
     """Exit the application"""
     # should be handled by `Shell`
@@ -57,6 +59,7 @@ _KEYBOARD_SHORTCUTS = [
 
 
 @registry.command(aliases=["h", "?"])
+@shell_mode_registry.command(aliases=["h", "?"])
 def help(app: Shell, args: str):
     """Show help information"""
     from io import StringIO
@@ -130,6 +133,7 @@ def help(app: Shell, args: str):
 
 
 @registry.command
+@shell_mode_registry.command
 def version(app: Shell, args: str):
     """Show version information"""
     from kimi_cli.constant import VERSION
@@ -230,6 +234,7 @@ async def model(app: Shell, args: str):
 
 
 @registry.command(aliases=["release-notes"])
+@shell_mode_registry.command(aliases=["release-notes"])
 def changelog(app: Shell, args: str):
     """Show release notes"""
     from io import StringIO
@@ -265,6 +270,7 @@ def changelog(app: Shell, args: str):
 
 
 @registry.command
+@shell_mode_registry.command
 def feedback(app: Shell, args: str):
     """Submit feedback to make Kimi CLI better"""
     import webbrowser

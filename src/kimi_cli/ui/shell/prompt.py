@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import contextlib
 import getpass
 import json
 import os
@@ -28,7 +27,6 @@ from prompt_toolkit.completion import (
     CompleteEvent,
     Completer,
     Completion,
-    DummyCompleter,
     FuzzyCompleter,
     WordCompleter,
     merge_completers,
@@ -498,7 +496,8 @@ class CustomPromptSession:
         model_capabilities: set[ModelCapability],
         model_name: str | None,
         initial_thinking: bool,
-        available_slash_commands: Sequence[SlashCommand[Any]],
+        agent_mode_slash_commands: Sequence[SlashCommand[Any]],
+        shell_mode_slash_commands: Sequence[SlashCommand[Any]],
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -525,12 +524,13 @@ class CustomPromptSession:
         # Build completers
         self._agent_mode_completer = merge_completers(
             [
-                SlashCommandCompleter(available_slash_commands),
+                SlashCommandCompleter(agent_mode_slash_commands),
                 # TODO(kaos): we need an async KaosFileMentionCompleter
                 LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
             deduplicate=True,
         )
+        self._shell_mode_completer = SlashCommandCompleter(shell_mode_slash_commands)
 
         # Build key bindings
         _kb = KeyBindings()
@@ -602,7 +602,7 @@ class CustomPromptSession:
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
-            complete_while_typing=Condition(lambda: self._mode == PromptMode.AGENT),
+            complete_while_typing=True,
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
@@ -633,12 +633,8 @@ class CustomPromptSession:
             buff = None
 
         if self._mode == PromptMode.SHELL:
-            # Cancel any active completion menu
-            with contextlib.suppress(Exception):
-                if buff is not None:
-                    buff.cancel_completion()
             if buff is not None:
-                buff.completer = DummyCompleter()
+                buff.completer = self._shell_mode_completer
         else:
             if buff is not None:
                 buff.completer = self._agent_mode_completer
