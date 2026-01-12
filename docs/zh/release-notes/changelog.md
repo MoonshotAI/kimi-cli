@@ -5,6 +5,11 @@
 ## 未发布
 
 - Tool：让 `ReadFile` 工具描述根据模型能力动态反映图片/视频支持情况
+- Shell：允许在 Shell 模式下使用部分斜杠命令（`/help`、`/exit`、`/version`、`/changelog`、`/feedback`）
+- Shell：改进 `/help` 显示，使用全屏分页器，展示斜杠命令、Skills 和键盘快捷键
+- Shell：改进 `/changelog` 和 `/mcp` 显示，采用一致的项目符号格式
+- Shell：在底部状态栏显示当前模型名称
+- Shell：添加 `Ctrl-/` 快捷键显示帮助
 
 ## 0.75 (2026-01-09)
 

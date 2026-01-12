@@ -2,11 +2,15 @@
 
 Slash commands are built-in commands for Kimi CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
+::: tip Shell mode
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+:::
+
 ## Help and info
 
 ### `/help`
 
-Display help information, listing all available slash commands.
+Display help information. Shows all available slash commands, loaded skills, and keyboard shortcuts in a fullscreen pager. Press `q` to exit.
 
 Aliases: `/h`, `/?`
 
@@ -14,9 +18,11 @@ Aliases: `/h`, `/?`
 
 Display Kimi CLI version number.
 
-### `/release-notes`
+### `/changelog`
 
-Display release notes for recent versions.
+Display the changelog for recent versions.
+
+Alias: `/release-notes`
 
 ### `/feedback`
 
