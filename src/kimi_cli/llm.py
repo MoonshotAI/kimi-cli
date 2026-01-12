@@ -24,7 +24,7 @@ type ProviderType = Literal[
     "_chaos",
 ]
 
-type ModelCapability = Literal["image_in", "video_in", "thinking"]
+type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 
 
@@ -195,6 +195,10 @@ def create_llm(
 
 def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
     capabilities = model.capabilities or set()
-    if model.model in {"kimi-for-coding", "kimi-code"} or "thinking" in model.model:
+    # Models with "thinking" in their name are always-thinking models
+    if "thinking" in model.model.lower() or "reason" in model.model.lower():
+        capabilities.update(("thinking", "always_thinking"))
+    # These models support thinking but can be toggled on/off
+    elif model.model in {"kimi-for-coding", "kimi-code"}:
         capabilities.add("thinking")
     return capabilities

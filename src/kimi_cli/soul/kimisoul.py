@@ -183,9 +183,23 @@ class KimiSoul:
         """
         if self._runtime.llm is None:
             raise LLMNotSet()
-        if enabled and "thinking" not in self._runtime.llm.capabilities:
+
+        capabilities = self._runtime.llm.capabilities
+
+        # Always-thinking models: always enable thinking, ignore disable requests
+        if "always_thinking" in capabilities:
+            self._thinking_effort = "high"
+            return
+
+        # Models with toggleable thinking
+        if "thinking" in capabilities:
+            self._thinking_effort = "high" if enabled else "off"
+            return
+
+        # Models without thinking capability
+        if enabled:
             raise LLMNotSupported(self._runtime.llm, ["thinking"])
-        self._thinking_effort = "high" if enabled else "off"
+        self._thinking_effort = "off"
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)

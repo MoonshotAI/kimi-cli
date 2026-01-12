@@ -120,6 +120,7 @@ class Config(BaseModel):
         exclude=True,
     )
     default_model: str = Field(default="", description="Default model to use")
+    default_thinking: bool = Field(default=False, description="Default thinking mode")
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"
@@ -200,7 +201,51 @@ def load_config(config_file: Path | None = None) -> Config:
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration file: {e}") from e
     config.is_from_default_location = is_default_config_file
+
+    # Migrate thinking setting from metadata to config (one-time migration)
+    if is_default_config_file:
+        _migrate_thinking_from_metadata(config, config_file)
+
     return config
+
+
+def _migrate_thinking_from_metadata(config: Config, config_file: Path) -> None:
+    """Migrate thinking setting from metadata.json to config.toml."""
+    from kimi_cli.share import get_share_dir
+
+    metadata_file = get_share_dir() / "kimi.json"
+    if not metadata_file.exists():
+        return
+
+    try:
+        with open(metadata_file, encoding="utf-8") as f:
+            metadata = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    try:
+        if "thinking" not in metadata:
+            return
+        # Migrate thinking to config if not already set
+        thinking_value = metadata.pop("thinking", False)
+    except (KeyError, TypeError):
+        return
+
+    logger.info(
+        "Migrating thinking setting from metadata to config: {thinking}",
+        thinking=thinking_value,
+    )
+
+    # Update config and save
+    config.default_thinking = thinking_value
+    save_config(config, config_file)
+
+    # Save metadata without thinking field
+    try:
+        with open(metadata_file, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+    except OSError as e:
+        logger.warning("Failed to update metadata after migration: {error}", error=e)
 
 
 def load_config_from_string(config_string: str) -> Config:
