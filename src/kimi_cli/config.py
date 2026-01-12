@@ -210,7 +210,7 @@ def load_config(config_file: Path | None = None) -> Config:
 
 
 def _migrate_thinking_from_metadata(config: Config, config_file: Path) -> None:
-    """Migrate thinking setting from metadata.json to config.toml."""
+    """Migrate thinking setting from metadata.json to config.toml (one-time migration)."""
     from kimi_cli.share import get_share_dir
 
     metadata_file = get_share_dir() / "kimi.json"
@@ -226,8 +226,7 @@ def _migrate_thinking_from_metadata(config: Config, config_file: Path) -> None:
     try:
         if "thinking" not in metadata:
             return
-        # Migrate thinking to config if not already set
-        thinking_value = metadata.pop("thinking", False)
+        thinking_value = metadata.pop("thinking")
     except (KeyError, TypeError):
         return
 
@@ -236,11 +235,9 @@ def _migrate_thinking_from_metadata(config: Config, config_file: Path) -> None:
         thinking=thinking_value,
     )
 
-    # Update config and save
-    config.default_thinking = thinking_value
+    config.default_thinking = bool(thinking_value)
     save_config(config, config_file)
 
-    # Save metadata without thinking field
     try:
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
