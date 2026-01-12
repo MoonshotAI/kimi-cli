@@ -812,10 +812,10 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcut = "ctrl-/: help"
-            if columns - len(right_text) > len(shortcut) + 2:
-                fragments.extend([("", shortcut), ("", " " * 2)])
-                columns -= len(shortcut) + 2
+            shortcuts = "ctrl-x: toggle mode  ctrl-/: help"
+            if columns - len(right_text) > len(shortcuts) + 2:
+                fragments.extend([("", shortcuts), ("", " " * 2)])
+                columns -= len(shortcuts) + 2
 
         padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))
