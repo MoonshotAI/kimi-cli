@@ -55,34 +55,32 @@ _KEYBOARD_SHORTCUTS = [
 ]
 
 
-def _print_section(title: str, items: list[tuple[str, str]], color: str) -> None:
-    """Print a help section with colored bullets."""
+@registry.command(aliases=["h", "?"])
+def help(app: Shell, args: str):
+    """Show help information"""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
     from rich.console import Group, RenderableType
     from rich.text import Text
 
     from kimi_cli.utils.rich.columns import BulletColumns
 
-    lines: list[RenderableType] = [Text.from_markup(f"[bold]{title}:[/bold]")]
-    for name, desc in items:
-        lines.append(
-            BulletColumns(
-                Text.from_markup(f"[{color}]{name}[/{color}]: [grey50]{desc}[/grey50]"),
-                bullet_style=color,
+    def section(title: str, items: list[tuple[str, str]], color: str) -> BulletColumns:
+        lines: list[RenderableType] = [Text.from_markup(f"[bold]{title}:[/bold]")]
+        for name, desc in items:
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[{color}]{name}[/{color}]: [grey50]{desc}[/grey50]"),
+                    bullet_style=color,
+                )
             )
-        )
-    console.print(BulletColumns(Group(*lines)))
+        return BulletColumns(Group(*lines))
 
+    buffer = StringIO()
+    buf = RichConsole(file=buffer, force_terminal=True, width=console.width)
 
-@registry.command(aliases=["h", "?"])
-def help(app: Shell, args: str):
-    """Show help information"""
-    from rich.console import Group
-    from rich.text import Text
-
-    from kimi_cli.utils.rich.columns import BulletColumns
-
-    # Header
-    console.print(
+    buf.print(
         BulletColumns(
             Group(
                 Text.from_markup("[grey50]Help! I need somebody. Help! Not just anybody.[/grey50]"),
@@ -92,8 +90,7 @@ def help(app: Shell, args: str):
             bullet_style="grey50",
         )
     )
-    # Intro
-    console.print(
+    buf.print(
         BulletColumns(
             Text(
                 "Sure, Kimi CLI is ready to help! "
@@ -102,7 +99,6 @@ def help(app: Shell, args: str):
         )
     )
 
-    # Separate commands and skills
     commands: list[SlashCommand[Any]] = []
     skills: list[SlashCommand[Any]] = []
     for cmd in app.available_slash_commands.values():
@@ -111,23 +107,25 @@ def help(app: Shell, args: str):
         else:
             commands.append(cmd)
 
-    # Slash commands
-    _print_section(
-        "Slash commands",
-        [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
-        "blue",
-    )
-
-    # Skills
-    if skills:
-        _print_section(
-            "Skills",
-            [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
-            "cyan",
+    buf.print(
+        section(
+            "Slash commands",
+            [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
+            "blue",
         )
+    )
+    if skills:
+        buf.print(
+            section(
+                "Skills",
+                [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
+                "cyan",
+            )
+        )
+    buf.print(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
 
-    # Keyboard shortcuts
-    _print_section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow")
+    with console.pager(styles=True):
+        console.print(buffer.getvalue(), end="")
 
 
 @registry.command
