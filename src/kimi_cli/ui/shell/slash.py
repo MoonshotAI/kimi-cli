@@ -230,7 +230,7 @@ async def model(app: Shell, args: str):
         return
 
     console.print(f"[green]Switched to model {model_name}. Reloading...[/green]")
-    raise Reload()
+    raise Reload(session_id=soul.runtime.session.id)
 
 
 @registry.command(aliases=["release-notes"])
