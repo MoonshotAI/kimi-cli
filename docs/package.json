@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "sync": "node scripts/sync-changelog.mjs",
+    "sitemap": "node scripts/generate-sitemap.mjs",
     "dev": "npm run sync && vitepress dev",
     "build": "npm run sync && vitepress build",
     "preview": "vitepress preview"
