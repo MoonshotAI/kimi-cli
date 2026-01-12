@@ -248,12 +248,15 @@ async def model(app: Shell, args: str):
         console.print(f"[red]Failed to save config: {exc}[/red]")
         return
 
-    console.print(
-        f"[green]Switched to {selected_model_name} "
-        f"with thinking {'on' if new_thinking else 'off'}. "
-        "Reloading...[/green]"
-    )
-    raise Reload()
+    if model_changed and thinking_changed:
+        msg = f"Switched to {selected_model_name} with thinking {'on' if new_thinking else 'off'}."
+    elif model_changed:
+        msg = f"Switched to {selected_model_name}."
+    else:
+        msg = f"Thinking {'enabled' if new_thinking else 'disabled'}."
+
+    console.print(f"[green]{msg} Reloading...[/green]")
+    raise Reload(session_id=soul.runtime.session.id)
 
 
 @registry.command(aliases=["release-notes"])
