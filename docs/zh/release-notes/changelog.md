@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.76 (2026-01-12)
+
 - Tool：让 `ReadFile` 工具描述根据模型能力动态反映图片/视频支持情况
 - Tool：修复 TypeScript 文件（`.ts`、`.tsx`、`.mts`、`.cts`）被误识别为视频文件的问题
 - Shell：允许在 Shell 模式下使用部分斜杠命令（`/help`、`/exit`、`/version`、`/changelog`、`/feedback`）
