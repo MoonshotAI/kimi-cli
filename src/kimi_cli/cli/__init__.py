@@ -110,6 +110,13 @@ def kimi(
             help="LLM model to use. Default: default model set in config file.",
         ),
     ] = None,
+    thinking: Annotated[
+        bool | None,
+        typer.Option(
+            "--thinking/--no-thinking",
+            help="Enable thinking mode. Default: default thinking mode set in config file.",
+        ),
+    ] = None,
     local_work_dir: Annotated[
         Path | None,
         typer.Option(
@@ -238,13 +245,6 @@ def kimi(
             help="Automatically approve all actions. Default: no.",
         ),
     ] = False,
-    thinking: Annotated[
-        bool | None,
-        typer.Option(
-            "--thinking/--no-thinking",
-            help="Enable thinking mode if supported. Default: same as last time.",
-        ),
-    ] = None,
     skills_dir: Annotated[
         Path | None,
         typer.Option(
