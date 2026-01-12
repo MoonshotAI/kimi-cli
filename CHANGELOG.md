@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
+
 ## 0.75 (2026-01-09)
 
 - Tool: Improve `ReadFile` tool description

@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
+
 ## 0.75 (2026-01-09)
 
 - Tool: Improve `ReadFile` tool description
