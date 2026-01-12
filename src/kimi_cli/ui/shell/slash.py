@@ -232,7 +232,10 @@ async def model(app: Shell, args: str):
     thinking_changed = curr_thinking != new_thinking
 
     if not model_changed and not thinking_changed:
-        console.print(f"[yellow]Already using {selected_model_name}.[/yellow]")
+        console.print(
+            f"[yellow]Already using {selected_model_name} "
+            f"with thinking {'on' if new_thinking else 'off'}.[/yellow]"
+        )
         return
 
     # Save and reload
@@ -248,14 +251,11 @@ async def model(app: Shell, args: str):
         console.print(f"[red]Failed to save config: {exc}[/red]")
         return
 
-    if model_changed and thinking_changed:
-        msg = f"Switched to {selected_model_name} with thinking {'on' if new_thinking else 'off'}."
-    elif model_changed:
-        msg = f"Switched to {selected_model_name}."
-    else:
-        msg = f"Thinking {'enabled' if new_thinking else 'disabled'}."
-
-    console.print(f"[green]{msg} Reloading...[/green]")
+    console.print(
+        f"[green]Switched to {selected_model_name} "
+        f"with thinking {'on' if new_thinking else 'off'}. "
+        "Reloading...[/green]"
+    )
     raise Reload(session_id=soul.runtime.session.id)
 
 
