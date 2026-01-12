@@ -450,7 +450,8 @@ class KimiSoul:
 
         wire_send(CompactionBegin())
         compacted_messages = await _compact_with_retry()
-        await self._context.clear()
+        # haoran: disable context clear after compaction
+        # await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
         wire_send(CompactionEnd())
