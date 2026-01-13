@@ -82,7 +82,7 @@ git prune --expire=now
                 instance=self.instance,
                 base_env_path="/openhands",
                 base_python_bin_path="/openhands/poetry/openhands-ai-5O4_aCHf-py3.12/bin",
-                instruction=instruction,
+                instruction=self.instruction,
             )
             try:
                 solve_result = await asyncio.wait_for(

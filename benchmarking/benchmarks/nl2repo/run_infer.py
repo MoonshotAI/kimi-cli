@@ -159,7 +159,6 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
         finally:
             if self.container:
                 await self.container.cleanup()
-            end_time = asyncio.get_event_loop().time()
-            result.duration_seconds = end_time - start_time
+            result.duration_seconds = time.time() - start_time
 
         return result
