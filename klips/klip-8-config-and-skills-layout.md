@@ -1,7 +1,7 @@
 ---
 Author: "@xxchan"
 Updated: 2026-01-14
-Status: Accepted
+Status: Implemented
 ---
 
 # KLIP-8: Unified Skills and AGENTS.md Discovery
