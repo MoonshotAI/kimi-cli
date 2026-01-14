@@ -86,7 +86,7 @@ async def main():
 
     async for message in prompt([
         "这张图片里有什么？",
-        ImageURLPart(image_url={"url": "https://example.com/image.png"}),
+        ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,iVBORw0KGgo...")),
     ], yolo=True):
         print(message.extract_text())
 ```
@@ -173,9 +173,9 @@ async for msg in prompt("Delete /tmp/cache directory", yolo=True):
 #### 方式二：自定义 approval_handler_fn
 
 ```python
-from kimi_agent_sdk import prompt, ApprovalRequest, ApprovalResponse
+from kimi_agent_sdk import prompt, ApprovalRequest, ApprovalResponseKind
 
-async def my_approval_handler(request: ApprovalRequest) -> ApprovalResponse:
+async def my_approval_handler(request: ApprovalRequest) -> ApprovalResponseKind:
     # request.sender: Tool name that initiated the request (e.g., "bash")
     # request.action: Action type (e.g., "run shell command")
     # request.description: Detailed description
@@ -556,10 +556,10 @@ asyncio.run(main())
 
 ```python
 import asyncio
-from kimi_agent_sdk import prompt, ApprovalRequest, ApprovalResponse
+from kimi_agent_sdk import prompt, ApprovalRequest, ApprovalResponseKind
 
 async def main():
-    async def gui_approval_handler(req: ApprovalRequest) -> ApprovalResponse:
+    async def gui_approval_handler(req: ApprovalRequest) -> ApprovalResponseKind:
         # Can integrate with Qt, Tkinter, or other GUI frameworks here
         print(f"[GUI Dialog] {req.sender}: {req.description}")
         await asyncio.sleep(0.1)  # Simulate user thinking
@@ -626,7 +626,7 @@ kimi_agent_sdk/
 
 from kimi_agent_sdk._prompt import prompt
 from kimi_agent_sdk._session import Session
-from kimi_agent_sdk._approval import ApprovalHandlerFn, ApprovalResponse
+from kimi_agent_sdk._approval import ApprovalHandlerFn
 
 # ============================================================
 # High-level types (returned by prompt())
@@ -660,6 +660,7 @@ from kimi_cli.wire.types import (
     # Approval (needed for low-level API)
     ApprovalRequest,
     ApprovalRequestResolved,
+    ApprovalResponseKind,
 
     # Sub-agent
     SubagentEvent,
@@ -697,7 +698,7 @@ __all__ = [
 
     # ========== Approval ==========
     "ApprovalHandlerFn",
-    "ApprovalResponse",
+    "ApprovalResponseKind",
     "ApprovalRequest",  # Needed for low-level API
 
     # ========== High-level types ==========
@@ -824,15 +825,12 @@ SDK 是 `kimi_cli` 的薄封装层，提供两层抽象：
 ```python
 # kimi_agent_sdk/_approval.py
 from collections.abc import Awaitable, Callable
-from typing import Literal
 
-from kimi_cli.wire.types import ApprovalRequest
-
-type ApprovalResponse = Literal["approve", "approve_for_session", "reject"]
+from kimi_cli.wire.types import ApprovalRequest, ApprovalResponseKind
 
 type ApprovalHandlerFn = (
-    Callable[[ApprovalRequest], ApprovalResponse]
-    | Callable[[ApprovalRequest], Awaitable[ApprovalResponse]]
+    Callable[[ApprovalRequest], ApprovalResponseKind]
+    | Callable[[ApprovalRequest], Awaitable[ApprovalResponseKind]]
 )
 """
 Approval handler callback function type.
