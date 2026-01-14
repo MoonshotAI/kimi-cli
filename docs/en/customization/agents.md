@@ -2,6 +2,15 @@
 
 An agent defines the AI's behavior, including system prompts, available tools, and subagents. You can use built-in agents or create custom agents.
 
+## AGENTS.md
+
+Kimi CLI looks in `AGENTS.md` files for project structure, build commands, and conventions.
+
+**Project level**: `AGENTS.md` (project dir) — architecture, build/test commands, coding standards
+
+**Global**: `~/.config/agents/AGENTS.md` — recommended; loaded and merged with project level (global first)
+
+
 ## Built-in agents
 
 Kimi CLI provides two built-in agents. You can select one at startup with the `--agent` flag:

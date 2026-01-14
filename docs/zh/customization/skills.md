@@ -10,17 +10,25 @@
 
 ## Skill 发现
 
-Kimi CLI 会从以下目录发现 Skills：
+两层逻辑：
 
-1. 内置 Skills（随软件包安装）
-2. `~/.kimi/skills`（用户目录）
-3. `~/.claude/skills`（兼容 Claude 的 Skills）
+1. **分层合并**：builtin → user → project 三个层级都会加载，同名 skill 后者覆盖前者
+2. **目录查找**：每个层级内按优先级查找，找到第一个存在的目录即停止
 
-如果同名 Skill 存在于多个目录中，后发现的会覆盖先前的。你也可以通过 `--skills-dir` 参数指定其他目录：
+**内置**：随软件包安装
 
-```sh
-kimi --skills-dir /path/to/my-skills
-```
+**用户级**（按优先级）：
+- `~/.config/agents/skills/` — 推荐
+- `~/.kimi/skills/`
+- `~/.claude/skills/`
+
+**项目级**（按优先级）：
+- `.agents/skills/` — 推荐
+- `.claude/skills/`
+
+Fallback 路径可能在未来版本中废弃。
+
+使用 `--skills-dir` 指定目录时，只用指定目录，跳过 user/project 查找。
 
 ## 内置 Skills
 
@@ -41,7 +49,7 @@ Kimi CLI 内置了以下 Skills：
 一个 Skill 目录至少需要包含 `SKILL.md` 文件，也可以包含辅助目录来组织更复杂的内容：
 
 ```
-~/.kimi/skills/
+~/.config/agents/skills/
 └── my-skill/
     ├── SKILL.md          # 必需：主文件
     ├── scripts/          # 可选：脚本文件

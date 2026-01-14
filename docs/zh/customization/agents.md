@@ -2,6 +2,15 @@
 
 Agent 定义了 AI 的行为方式，包括系统提示词、可用工具和子 Agent。你可以使用内置 Agent，也可以创建自定义 Agent。
 
+## AGENTS.md
+
+Kimi CLI 在 `AGENTS.md` 文件中查找项目结构、构建命令和代码规范。
+
+**项目级**：`AGENTS.md`（项目目录）— 项目架构、构建/测试命令、代码规范
+
+**全局**：`~/.config/agents/AGENTS.md` — 推荐；与项目级合并（全局在前）
+
+
 ## 内置 Agent
 
 Kimi CLI 提供两个内置 Agent。启动时可以通过 `--agent` 参数选择：
