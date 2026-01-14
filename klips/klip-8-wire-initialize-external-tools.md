@@ -1,5 +1,5 @@
 ---
-Author: "@codex"
+Author: "@stdrc"
 Updated: 2026-01-14
 Status: Draft
 ---
