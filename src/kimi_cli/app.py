@@ -50,13 +50,17 @@ class KimiCLI:
     async def create(
         session: Session,
         *,
-        yolo: bool = False,
-        mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
+        # Basic configuration
         config: Config | Path | None = None,
         model_name: str | None = None,
         thinking: bool | None = None,
+        # Run mode
+        yolo: bool = False,
+        # Extensions
         agent_file: Path | None = None,
+        mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
         skills_dir: Path | None = None,
+        # Loop control
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
         max_ralph_iterations: int | None = None,
@@ -66,14 +70,14 @@ class KimiCLI:
 
         Args:
             session (Session): A session created by `Session.create` or `Session.continue_`.
-            yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
-            mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
-                MCP tools from. Defaults to None.
             config (Config | Path | None, optional): Configuration to use, or path to config file.
                 Defaults to None.
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
+            yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
+            mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
+                MCP tools from. Defaults to None.
             skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
             max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
                 Defaults to None.
