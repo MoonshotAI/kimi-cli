@@ -550,7 +550,7 @@ class FlowRunner:
         prompt_text = Message(role="user", content=prompt_content).extract_text(" ").strip()
         total_runs = max_ralph_iterations + 1
         if max_ralph_iterations < 0:
-            total_runs = max(DEFAULT_MAX_FLOW_MOVES, 1)
+            total_runs = 1000000000000000  # effectively infinite
 
         nodes: dict[str, FlowNode] = {
             "BEGIN": FlowNode(id="BEGIN", label="BEGIN", kind="begin"),
