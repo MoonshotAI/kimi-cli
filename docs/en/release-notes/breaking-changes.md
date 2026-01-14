@@ -4,6 +4,8 @@ This page documents breaking changes in Kimi CLI releases and provides migration
 
 ## Unreleased
 
+## 0.77 - Thinking mode and CLI option changes
+
 ### Thinking mode setting migration change
 
 After upgrading from `0.76`, the thinking mode setting is no longer automatically preserved. The previous `thinking` state stored in `~/.kimi/kimi.json` is no longer used; instead, thinking mode is now managed via the `default_thinking` configuration option in `~/.kimi/config.toml`, but values are not automatically migrated from legacy `metadata`.
