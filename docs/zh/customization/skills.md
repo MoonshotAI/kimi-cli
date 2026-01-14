@@ -12,23 +12,20 @@
 
 两层逻辑：
 
-1. **分层合并**：builtin → user → project 三个层级都会加载，同名 skill 后者覆盖前者
-2. **目录查找**：每个层级内按优先级查找，找到第一个存在的目录即停止
+1. **分层合并**：builtin → user → project 三个层级会被加载，同名 skill 后者覆盖前者
+2. **目录查找**：每个层级按优先级查找，找到第一个存在的目录即停止
 
-**内置**：随软件包安装
+**内置**：随软件包安装（仅本地或 ACP 模式可用）
 
 **用户级**（按优先级）：
 - `~/.config/agents/skills/` — 推荐
-- `~/.kimi/skills/`
-- `~/.claude/skills/`
+- `~/.kimi/skills/` — 旧版回退
+- `~/.claude/skills/` — 旧版回退
 
-**项目级**（按优先级）：
-- `.agents/skills/` — 推荐
-- `.claude/skills/`
+**项目级**：
+- `.agents/skills/`
 
-Fallback 路径可能在未来版本中废弃。
-
-使用 `--skills-dir` 指定目录时，只用指定目录，跳过 user/project 查找。
+使用 `--skills-dir` 指定目录时，只用指定目录，跳过默认发现（内置 Skills 在支持的后端仍会加载）。
 
 ## 内置 Skills
 
@@ -46,10 +43,12 @@ Kimi CLI 内置了以下 Skills：
 
 **目录结构**
 
+同样的目录结构可用于项目级或用户级 skills 根目录（`~/.config/agents/skills/`）。
+
 一个 Skill 目录至少需要包含 `SKILL.md` 文件，也可以包含辅助目录来组织更复杂的内容：
 
 ```
-~/.config/agents/skills/
+<project>/.agents/skills/
 └── my-skill/
     ├── SKILL.md          # 必需：主文件
     ├── scripts/          # 可选：脚本文件

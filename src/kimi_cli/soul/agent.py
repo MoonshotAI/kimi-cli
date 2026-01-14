@@ -17,14 +17,7 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
-from kimi_cli.skill import (
-    Skill,
-    discover_skills_from_roots,
-    get_builtin_skills_dir,
-    get_claude_skills_dir,
-    get_skills_dir,
-    index_skills,
-)
+from kimi_cli.skill import Skill, discover_skills_from_roots, index_skills, resolve_skills_roots
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -53,16 +46,27 @@ class BuiltinSystemPromptArgs:
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
-    paths = [
+    contents: list[str] = []
+    global_candidates = (KaosPath.home() / ".config" / "agents" / "AGENTS.md",)
+    for path in global_candidates:
+        if await path.is_file():
+            logger.info("Loaded agents.md: {path}", path=path)
+            contents.append((await path.read_text()).strip())
+            break
+
+    project_paths = [
         work_dir / "AGENTS.md",
         work_dir / "agents.md",
     ]
-    for path in paths:
+    for path in project_paths:
         if await path.is_file():
             logger.info("Loaded agents.md: {path}", path=path)
-            return (await path.read_text()).strip()
-    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
-    return None
+            contents.append((await path.read_text()).strip())
+            break
+    if not contents:
+        logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
+        return None
+    return "\n\n".join(contents).strip()
 
 
 @dataclass(slots=True, kw_only=True)
@@ -85,7 +89,7 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
-        skills_dir: Path | None = None,
+        skills_dir: KaosPath | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
@@ -94,13 +98,8 @@ class Runtime:
         )
 
         # Discover and format skills
-        builtin_skills_dir = get_builtin_skills_dir()
-        if skills_dir is None:
-            skills_dir = get_skills_dir()
-            if not skills_dir.is_dir() and (claude_skills_dir := get_claude_skills_dir()).is_dir():
-                skills_dir = claude_skills_dir
-        skills_roots = [builtin_skills_dir, skills_dir]
-        skills = discover_skills_from_roots(skills_roots)
+        skills_roots = await resolve_skills_roots(session.work_dir, skills_dir_override=skills_dir)
+        skills = await discover_skills_from_roots(skills_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
         skills_formatted = "\n".join(

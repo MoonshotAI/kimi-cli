@@ -6,9 +6,11 @@ An agent defines the AI's behavior, including system prompts, available tools, a
 
 Kimi CLI looks in `AGENTS.md` files for project structure, build commands, and conventions.
 
-**Project level**: `AGENTS.md` (project dir) — architecture, build/test commands, coding standards
+**User level**: `~/.config/agents/AGENTS.md`
 
-**Global**: `~/.config/agents/AGENTS.md` — recommended; loaded and merged with project level (global first)
+**Project level**: `AGENTS.md` in project root
+
+User and project `AGENTS.md` are merged (user first, then project).
 
 
 ## Built-in agents

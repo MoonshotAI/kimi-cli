@@ -6,9 +6,11 @@ Agent 定义了 AI 的行为方式，包括系统提示词、可用工具和子 
 
 Kimi CLI 在 `AGENTS.md` 文件中查找项目结构、构建命令和代码规范。
 
-**项目级**：`AGENTS.md`（项目目录）— 项目架构、构建/测试命令、代码规范
+**用户级**：`~/.config/agents/AGENTS.md`
 
-**全局**：`~/.config/agents/AGENTS.md` — 推荐；与项目级合并（全局在前）
+**项目级**：项目根目录的 `AGENTS.md`
+
+用户级与项目级 `AGENTS.md` 会合并（先用户后项目）。
 
 
 ## 内置 Agent

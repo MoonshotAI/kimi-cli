@@ -136,7 +136,7 @@ Thinking mode requires model support. If not specified, uses the last session's 
 
 | Option | Description |
 |--------|-------------|
-| `--skills-dir PATH` | Specify skills directory (default `~/.kimi/skills`) |
+| `--skills-dir PATH` | Specify skills directory (overrides default discovery) |
 
 See [Agent Skills](../customization/skills.md) for details.
 

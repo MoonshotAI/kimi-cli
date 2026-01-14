@@ -12,23 +12,20 @@ For example, you can create a "code style" skill to tell the AI your project's n
 
 Two levels of logic:
 
-1. **Layered merging**: builtin → user → project levels are all loaded; same-name skills are overridden by later levels
+1. **Layered merging**: builtin → user → project levels are loaded; same-name skills are overridden by later levels
 2. **Directory lookup**: within each level, candidates are checked by priority; stops at first existing directory
 
-**Built-in**: shipped with the package
+**Built-in**: shipped with the package (available when running locally or via ACP)
 
 **User level** (by priority):
 - `~/.config/agents/skills/` — recommended
-- `~/.kimi/skills/`
-- `~/.claude/skills/`
+- `~/.kimi/skills/` — legacy fallback
+- `~/.claude/skills/` — legacy fallback
 
-**Project level** (by priority):
-- `.agents/skills/` — recommended
-- `.claude/skills/`
+**Project level**:
+- `.agents/skills/`
 
-Fallback paths may be deprecated in a future release.
-
-When using `--skills-dir`, only that directory is used; user/project lookup is skipped.
+When using `--skills-dir`, discovery is skipped; only that directory is used (built-ins still load when supported).
 
 ## Built-in skills
 
@@ -46,10 +43,12 @@ Creating a skill only requires two steps:
 
 **Directory structure**
 
+Use the same layout under either the project root or the user skills root (`~/.config/agents/skills/`).
+
 A skill directory needs at least a `SKILL.md` file, and can also include auxiliary directories to organize more complex content:
 
 ```
-~/.config/agents/skills/
+<project>/.agents/skills/
 └── my-skill/
     ├── SKILL.md          # Required: main file
     ├── scripts/          # Optional: script files
