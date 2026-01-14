@@ -5,7 +5,7 @@
 ## 未发布
 
 - Shell：使用 `/model` 命令切换 Thinking 模式，取代 Tab 键
-- Config：添加 `default_thinking` 配置项（从 metadata 自动迁移）
+- Config：添加 `default_thinking` 配置项（升级后需运行 `/model` 选择 Thinking 模式）
 - LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
 - CLI：将 `--command`/`-c` 重命名为 `--prompt`/`-p`，保留 `--command`/`-c` 作为别名，移除 `--query`/`-q`
 
