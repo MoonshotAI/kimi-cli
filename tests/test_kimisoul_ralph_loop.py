@@ -17,18 +17,13 @@ from kimi_cli.llm import LLM, ModelCapability
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.kimisoul import RALPH_SAFEWORD, KimiSoul
+from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import TurnBegin
 
 T = TypeVar("T")
-RALPH_LOOP_SYSTEM_TEXT = (
-    "<system>You are running in an automated loop where the same prompt is fed repeatedly. "
-    "Only include the safeword when the task is fully complete: <safeword>STOP</safeword>. "
-    "Including it will stop further iterations.</system>"
-)
 RALPH_IMAGE_URL = "https://example.com/test.png"
 RALPH_IMAGE_USER_INPUT = [
     TextPart(text="Check this image"),
@@ -185,8 +180,8 @@ async def test_ralph_loop_replays_original_prompt(runtime: Runtime, tmp_path: Pa
     llm = _make_llm(
         [
             [TextPart(text="first")],
-            [TextPart(text="second")],
-            [TextPart(text="third")],
+            [TextPart(text="second <choice>CONTINUE</choice>")],
+            [TextPart(text="third <choice>STOP</choice>")],
         ],
         {"image_in"},
     )
@@ -206,45 +201,58 @@ async def test_ralph_loop_replays_original_prompt(runtime: Runtime, tmp_path: Pa
                         ImageURLPart(
                             image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")
                         ),
-                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
                     ],
                 ),
                 Message(role="assistant", content=[TextPart(text="first")]),
                 Message(
                     role="user",
                     content=[
-                        TextPart(text="Check this image"),
-                        ImageURLPart(
-                            image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")
+                        TextPart(
+                            text="""\
+Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
+
+Available branches:
+- CONTINUE
+- STOP
+
+Reply with a choice using <choice>...</choice>.\
+"""  # noqa: E501
                         ),
-                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
                     ],
                 ),
-                Message(role="assistant", content=[TextPart(text="second")]),
+                Message(
+                    role="assistant", content=[TextPart(text="second <choice>CONTINUE</choice>")]
+                ),
                 Message(
                     role="user",
                     content=[
-                        TextPart(text="Check this image"),
-                        ImageURLPart(
-                            image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")
+                        TextPart(
+                            text="""\
+Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
+
+Available branches:
+- CONTINUE
+- STOP
+
+Reply with a choice using <choice>...</choice>.\
+"""  # noqa: E501
                         ),
-                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
                     ],
                 ),
-                Message(role="assistant", content=[TextPart(text="third")]),
+                Message(role="assistant", content=[TextPart(text="third <choice>STOP</choice>")]),
             ]
         ),
     )
 
 
 @pytest.mark.asyncio
-async def test_ralph_loop_stops_on_safeword(runtime: Runtime, tmp_path: Path) -> None:
+async def test_ralph_loop_stops_on_choice(runtime: Runtime, tmp_path: Path) -> None:
     runtime.config.loop_control.max_ralph_iterations = -1
 
     llm = _make_llm(
         [
             [TextPart(text="first")],
-            [TextPart(text=f"done {RALPH_SAFEWORD}")],
+            [TextPart(text="done <choice>STOP</choice>")],
         ],
         set(),
     )
@@ -261,20 +269,26 @@ async def test_ralph_loop_stops_on_safeword(runtime: Runtime, tmp_path: Path) ->
                     role="user",
                     content=[
                         TextPart(text="do it"),
-                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
                     ],
                 ),
                 Message(role="assistant", content=[TextPart(text="first")]),
                 Message(
                     role="user",
                     content=[
-                        TextPart(text="do it"),
-                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
+                        TextPart(
+                            text="""\
+do it. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
+
+Available branches:
+- CONTINUE
+- STOP
+
+Reply with a choice using <choice>...</choice>.\
+"""  # noqa: E501
+                        ),
                     ],
                 ),
-                Message(
-                    role="assistant", content=[TextPart(text="done <safeword>STOP</safeword>")]
-                ),
+                Message(role="assistant", content=[TextPart(text="done <choice>STOP</choice>")]),
             ]
         ),
     )
@@ -308,7 +322,6 @@ async def test_ralph_loop_stops_on_tool_rejected(runtime: Runtime, tmp_path: Pat
                     role="user",
                     content=[
                         TextPart(text="do it"),
-                        TextPart(text=RALPH_LOOP_SYSTEM_TEXT),
                     ],
                 ),
                 Message(
@@ -339,7 +352,7 @@ async def test_ralph_loop_stops_on_tool_rejected(runtime: Runtime, tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_ralph_loop_disabled_skips_safeword_prompt(runtime: Runtime, tmp_path: Path) -> None:
+async def test_ralph_loop_disabled_skips_loop_prompt(runtime: Runtime, tmp_path: Path) -> None:
     runtime.config.loop_control.max_ralph_iterations = 0
 
     llm = _make_llm([[TextPart(text="done")]], set())

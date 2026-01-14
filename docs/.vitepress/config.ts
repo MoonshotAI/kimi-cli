@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 import llmstxt from 'vitepress-plugin-llms'
 
 const rawBase = process.env.VITEPRESS_BASE
@@ -8,7 +9,7 @@ const base = rawBase
     : `/${rawBase}/`
   : '/'
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   base,
   title: 'Kimi CLI Docs',
   description: 'Kimi CLI Documentation',
@@ -184,4 +185,4 @@ export default defineConfig({
   vite: {
     plugins: [llmstxt()],
   },
-})
+}))

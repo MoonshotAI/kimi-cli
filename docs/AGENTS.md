@@ -79,6 +79,8 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | Tool 消息 | tool message | yes (Tool) | no |
 | 轮次 | turn | no | no |
 | 供应商 | provider | no | no |
+| 提示词流 | Prompt Flow | yes | yes |
+| Ralph 循环 | Ralph Loop | yes | yes |
 
 JetBrains IDE terminology (Chinese UI translations):
 
