@@ -42,6 +42,7 @@ def _version_callback(value: bool) -> None:
 @cli.callback(invoke_without_command=True)
 def kimi(
     ctx: typer.Context,
+    # Meta
     version: Annotated[
         bool,
         typer.Option(
@@ -66,24 +67,36 @@ def kimi(
             help="Log debug information. Default: no.",
         ),
     ] = False,
-    agent: Annotated[
-        Literal["default", "okabe"] | None,
-        typer.Option(
-            "--agent",
-            help="Builtin agent specification to use. Default: builtin default agent.",
-        ),
-    ] = None,
-    agent_file: Annotated[
+    # Basic configuration
+    local_work_dir: Annotated[
         Path | None,
         typer.Option(
-            "--agent-file",
+            "--work-dir",
+            "-w",
             exists=True,
-            file_okay=True,
-            dir_okay=False,
+            file_okay=False,
+            dir_okay=True,
             readable=True,
-            help="Custom agent specification file. Default: builtin default agent.",
+            writable=True,
+            help="Working directory for the agent. Default: current directory.",
         ),
     ] = None,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session",
+            "-S",
+            help="Session ID to resume for the working directory. Default: new session.",
+        ),
+    ] = None,
+    continue_: Annotated[
+        bool,
+        typer.Option(
+            "--continue",
+            "-C",
+            help="Continue the previous session for the working directory. Default: no.",
+        ),
+    ] = False,
     config_string: Annotated[
         str | None,
         typer.Option(
@@ -117,35 +130,17 @@ def kimi(
             help="Enable thinking mode. Default: default thinking mode set in config file.",
         ),
     ] = None,
-    local_work_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--work-dir",
-            "-w",
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-            writable=True,
-            help="Working directory for the agent. Default: current directory.",
-        ),
-    ] = None,
-    continue_: Annotated[
+    # Run mode
+    yolo: Annotated[
         bool,
         typer.Option(
-            "--continue",
-            "-C",
-            help="Continue the previous session for the working directory. Default: no.",
+            "--yolo",
+            "--yes",
+            "-y",
+            "--auto-approve",
+            help="Automatically approve all actions. Default: no.",
         ),
     ] = False,
-    session_id: Annotated[
-        str | None,
-        typer.Option(
-            "--session",
-            "-S",
-            help="Session ID to resume for the working directory. Default: new session.",
-        ),
-    ] = None,
     prompt: Annotated[
         str | None,
         typer.Option(
@@ -197,7 +192,7 @@ def kimi(
             help="Output format to use. Must be used with `--print`. Default: text.",
         ),
     ] = None,
-    final_only: Annotated[
+    final_message_only: Annotated[
         bool,
         typer.Option(
             "--final-message-only",
@@ -211,6 +206,25 @@ def kimi(
             help="Alias for `--print --output-format text --final-message-only`.",
         ),
     ] = False,
+    # Customization
+    agent: Annotated[
+        Literal["default", "okabe"] | None,
+        typer.Option(
+            "--agent",
+            help="Builtin agent specification to use. Default: builtin default agent.",
+        ),
+    ] = None,
+    agent_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--agent-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Custom agent specification file. Default: builtin default agent.",
+        ),
+    ] = None,
     mcp_config_file: Annotated[
         list[Path] | None,
         typer.Option(
@@ -235,16 +249,6 @@ def kimi(
             ),
         ),
     ] = None,
-    yolo: Annotated[
-        bool,
-        typer.Option(
-            "--yolo",
-            "--yes",
-            "-y",
-            "--auto-approve",
-            help="Automatically approve all actions. Default: no.",
-        ),
-    ] = False,
     skills_dir: Annotated[
         Path | None,
         typer.Option(
@@ -256,6 +260,7 @@ def kimi(
             help="Path to the skills directory. Default: ~/.kimi/skills",
         ),
     ] = None,
+    # Loop control
     max_steps_per_turn: Annotated[
         int | None,
         typer.Option(
@@ -322,7 +327,7 @@ def kimi(
             )
         print_mode = True
         output_format = "text"
-        final_only = True
+        final_message_only = True
 
     conflict_option_sets = [
         {
@@ -381,7 +386,7 @@ def kimi(
             "Output format is only supported for print UI",
             param_hint="--output-format",
         )
-    if final_only and ui != "print":
+    if final_message_only and ui != "print":
         raise typer.BadParameter(
             "Final-message-only output is only supported for print UI",
             param_hint="--final-message-only",
@@ -443,12 +448,12 @@ def kimi(
 
         instance = await KimiCLI.create(
             session,
-            yolo=yolo or (ui == "print"),  # print mode implies yolo
-            mcp_configs=mcp_configs,
             config=config,
             model_name=model_name,
             thinking=thinking,
+            yolo=yolo or (ui == "print"),  # print mode implies yolo
             agent_file=agent_file,
+            mcp_configs=mcp_configs,
             skills_dir=skills_dir,
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
@@ -462,7 +467,7 @@ def kimi(
                     input_format or "text",
                     output_format or "text",
                     prompt,
-                    final_only=final_only,
+                    final_only=final_message_only,
                 )
             case "acp":
                 if prompt is not None:
