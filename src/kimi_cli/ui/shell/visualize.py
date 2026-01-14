@@ -20,6 +20,7 @@ from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
 from kimi_cli.utils.aioqueue import QueueShutDown
+from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
@@ -412,8 +413,12 @@ class _LiveView:
         match msg:
             case TurnBegin():
                 self.flush_content()
-                user_text = Message(role="user", content=msg.user_input).extract_text(" ")
-                console.print(Panel(Text(user_text), padding=(0, 1)))
+                console.print(
+                    Panel(
+                        Text(message_stringify(Message(role="user", content=msg.user_input))),
+                        padding=(0, 1),
+                    )
+                )
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()

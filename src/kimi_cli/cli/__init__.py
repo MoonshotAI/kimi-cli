@@ -391,6 +391,11 @@ def kimi(
     if prompt_flow is not None:
         from kimi_cli.flow import PromptFlowError, parse_flowchart
 
+        if max_ralph_iterations != 0:
+            raise typer.BadParameter(
+                "Prompt flow cannot be used with Ralph mode",
+                param_hint="--prompt-flow",
+            )
         try:
             flow_text = prompt_flow.read_text(encoding="utf-8")
         except OSError as e:

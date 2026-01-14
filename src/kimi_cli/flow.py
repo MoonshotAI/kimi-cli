@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from kosong.message import ContentPart
+
 FlowNodeKind = Literal["begin", "end", "task", "decision"]
 
 
@@ -22,7 +24,7 @@ class PromptFlowValidationError(PromptFlowError):
 @dataclass(frozen=True, slots=True)
 class FlowNode:
     id: str
-    label: str
+    label: str | list[ContentPart]
     kind: FlowNodeKind
 
 

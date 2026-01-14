@@ -62,10 +62,9 @@ if TYPE_CHECKING:
 
 
 RESERVED_TOKENS = 50_000
-RALPH_SAFEWORD = "<safeword>STOP</safeword>"
 
 SKILL_COMMAND_PREFIX = "skill:"
-DEFAULT_MAX_FLOW_STEPS = 1000
+DEFAULT_MAX_FLOW_MOVES = 1000
 
 
 type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
@@ -202,30 +201,18 @@ class KimiSoul:
                 await ret
             return
 
-        if self._loop_control.max_ralph_iterations != 0:
-            user_message.content.append(
-                system(
-                    "You are running in an automated loop where the same prompt is fed repeatedly. "
-                    "Only include the safeword when the task is fully complete: "
-                    f"{RALPH_SAFEWORD}. "
-                    "Including it will stop further iterations."
-                )
+        if self._loop_control.max_ralph_iterations != 0 and self._flow_runner is None:
+            runner = FlowRunner.ralph_loop(
+                user_message,
+                self._loop_control.max_ralph_iterations,
             )
+            await runner.run(self, "")
+            return
 
-        remaining = self._loop_control.max_ralph_iterations
-        while True:
-            # Ralph mode intentionally replays the original prompt each iteration.
-            wire_send(TurnBegin(user_input=user_input))
-            result = await self._turn(user_message)
-            if result.stop_reason == "tool_rejected":
-                return
-            if result.final_message and RALPH_SAFEWORD in result.final_message.extract_text(" "):
-                return
-            if remaining == -1:
-                continue
-            if remaining == 0:
-                return
-            remaining -= 1
+        wire_send(TurnBegin(user_input=user_input))
+        result = await self._turn(user_message)
+        if result.stop_reason == "tool_rejected":
+            return
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -550,9 +537,49 @@ class BackToTheFuture(Exception):
 
 
 class FlowRunner:
-    def __init__(self, flow: PromptFlow, *, max_steps: int = DEFAULT_MAX_FLOW_STEPS) -> None:
+    def __init__(self, flow: PromptFlow, *, max_moves: int = DEFAULT_MAX_FLOW_MOVES) -> None:
         self._flow = flow
-        self._max_steps = max_steps
+        self._max_moves = max_moves
+
+    @staticmethod
+    def ralph_loop(
+        user_message: Message,
+        max_ralph_iterations: int,
+    ) -> FlowRunner:
+        prompt_content = list(user_message.content)
+        prompt_text = Message(role="user", content=prompt_content).extract_text(" ").strip()
+        total_runs = max_ralph_iterations + 1
+        if max_ralph_iterations < 0:
+            total_runs = max(DEFAULT_MAX_FLOW_MOVES, 1)
+
+        nodes: dict[str, FlowNode] = {
+            "BEGIN": FlowNode(id="BEGIN", label="BEGIN", kind="begin"),
+            "END": FlowNode(id="END", label="END", kind="end"),
+        }
+        outgoing: dict[str, list[FlowEdge]] = {"BEGIN": [], "END": []}
+
+        nodes["R1"] = FlowNode(id="R1", label=prompt_content, kind="task")
+        nodes["R2"] = FlowNode(
+            id="R2",
+            label=(
+                f"{prompt_text}. (You are running in an automated loop where the same "
+                "prompt is fed repeatedly. Only choose STOP when the task is fully complete. "
+                "Including it will stop futher iterations. If you are not 100% sure, "
+                "choose CONTINUE.)"
+            ).strip(),
+            kind="decision",
+        )
+        outgoing["R1"] = []
+        outgoing["R2"] = []
+
+        outgoing["BEGIN"].append(FlowEdge(src="BEGIN", dst="R1", label=None))
+        outgoing["R1"].append(FlowEdge(src="R1", dst="R2", label=None))
+        outgoing["R2"].append(FlowEdge(src="R2", dst="R2", label="CONTINUE"))
+        outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="STOP"))
+
+        flow = PromptFlow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
+        max_moves = total_runs
+        return FlowRunner(flow, max_moves=max_moves)
 
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
@@ -560,9 +587,9 @@ class FlowRunner:
             return
 
         current_id = self._flow.begin_id
-        iterations = 0
-        while iterations < self._max_steps:
-            iterations += 1
+        moves = 0
+        total_steps = 0
+        while True:
             node = self._flow.nodes[current_id]
             edges = self._flow.outgoing.get(current_id, [])
 
@@ -580,36 +607,40 @@ class FlowRunner:
                 current_id = edges[0].dst
                 continue
 
-            next_id = await self._execute_flow_node(soul, node, edges)
+            if moves >= self._max_moves:
+                raise MaxStepsReached(total_steps)
+            next_id, steps_used = await self._execute_flow_node(soul, node, edges)
+            total_steps += steps_used
             if next_id is None:
                 return
+            moves += 1
             current_id = next_id
-
-        raise MaxStepsReached(self._max_steps)
 
     async def _execute_flow_node(
         self,
         soul: KimiSoul,
         node: FlowNode,
         edges: list[FlowEdge],
-    ) -> str | None:
+    ) -> tuple[str | None, int]:
         if not edges:
             logger.error(
                 'Prompt flow node "{node_id}" has no outgoing edges; stopping.',
                 node_id=node.id,
             )
-            return None
+            return None, 0
 
         base_prompt = self._build_flow_prompt(node, edges)
         prompt = base_prompt
+        steps_used = 0
         while True:
             result = await self._flow_turn(soul, prompt)
+            steps_used += result.step_count
             if result.stop_reason == "tool_rejected":
                 logger.error("Prompt flow stopped after tool rejection.")
-                return None
+                return None, steps_used
 
             if node.kind != "decision":
-                return edges[0].dst
+                return edges[0].dst, steps_used
 
             choice = (
                 parse_choice(result.final_message.extract_text(" "))
@@ -618,7 +649,7 @@ class FlowRunner:
             )
             next_id = self._match_flow_edge(edges, choice)
             if next_id is not None:
-                return next_id
+                return next_id, steps_used
 
             options = ", ".join(edge.label or "" for edge in edges)
             logger.warning(
@@ -633,13 +664,17 @@ class FlowRunner:
             )
 
     @staticmethod
-    def _build_flow_prompt(node: FlowNode, edges: list[FlowEdge]) -> str:
+    def _build_flow_prompt(node: FlowNode, edges: list[FlowEdge]) -> str | list[ContentPart]:
         if node.kind != "decision":
             return node.label
 
+        if not isinstance(node.label, str):
+            label_text = Message(role="user", content=node.label).extract_text(" ")
+        else:
+            label_text = node.label
         choices = [edge.label for edge in edges if edge.label]
         lines = [
-            node.label,
+            label_text,
             "",
             "Available branches:",
             *(f"- {choice}" for choice in choices),
@@ -658,6 +693,9 @@ class FlowRunner:
         return None
 
     @staticmethod
-    async def _flow_turn(soul: KimiSoul, prompt: str) -> TurnOutcome:
+    async def _flow_turn(
+        soul: KimiSoul,
+        prompt: str | list[ContentPart],
+    ) -> TurnOutcome:
         wire_send(TurnBegin(user_input=prompt))
         return await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
