@@ -146,14 +146,14 @@ def kimi(
             help="Session ID to resume for the working directory. Default: new session.",
         ),
     ] = None,
-    command: Annotated[
+    prompt: Annotated[
         str | None,
         typer.Option(
+            "--prompt",
+            "-p",
             "--command",
             "-c",
-            "--query",
-            "-q",
-            help="User query to the agent. Default: prompt interactively.",
+            help="User prompt to the agent. Default: prompt interactively.",
         ),
     ] = None,
     print_mode: Annotated[
@@ -366,10 +366,10 @@ def kimi(
     elif wire_mode:
         ui = "wire"
 
-    if command is not None:
-        command = command.strip()
-        if not command:
-            raise typer.BadParameter("Command cannot be empty", param_hint="--command")
+    if prompt is not None:
+        prompt = prompt.strip()
+        if not prompt:
+            raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
@@ -456,22 +456,22 @@ def kimi(
         )
         match ui:
             case "shell":
-                succeeded = await instance.run_shell(command)
+                succeeded = await instance.run_shell(prompt)
             case "print":
                 succeeded = await instance.run_print(
                     input_format or "text",
                     output_format or "text",
-                    command,
+                    prompt,
                     final_only=final_only,
                 )
             case "acp":
-                if command is not None:
-                    logger.warning("ACP server ignores command argument")
+                if prompt is not None:
+                    logger.warning("ACP server ignores prompt argument")
                 await instance.run_acp()
                 succeeded = True
             case "wire":
-                if command is not None:
-                    logger.warning("Wire server ignores command argument")
+                if prompt is not None:
+                    logger.warning("Wire server ignores prompt argument")
                 await instance.run_wire_stdio()
                 succeeded = True
 

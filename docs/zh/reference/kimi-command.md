@@ -60,10 +60,10 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 | 选项 | 简写 | 说明 |
 |------|------|------|
-| `--command TEXT` | `-c` | 传入用户查询，不进入交互模式 |
-| `--query TEXT` | `-q` | `--command` 的别名 |
+| `--prompt TEXT` | `-p` | 传入用户提示，不进入交互模式 |
+| `--command TEXT` | `-c` | `--prompt` 的别名 |
 
-使用 `--command` 时，Kimi CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
+使用 `--prompt`（或 `--command`）时，Kimi CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
 
 ## 循环控制
 

@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 from kimi_cli.cli import Reload
-from kimi_cli.config import save_config
+from kimi_cli.config import load_config, save_config
+from kimi_cli.exception import ConfigError
 from kimi_cli.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -244,8 +245,11 @@ async def model(app: Shell, args: str):
     config.default_model = selected_model_name
     config.default_thinking = new_thinking
     try:
-        save_config(config)
-    except OSError as exc:
+        config_for_save = load_config()
+        config_for_save.default_model = selected_model_name
+        config_for_save.default_thinking = new_thinking
+        save_config(config_for_save)
+    except (ConfigError, OSError) as exc:
         config.default_model = prev_model
         config.default_thinking = prev_thinking
         console.print(f"[red]Failed to save config: {exc}[/red]")

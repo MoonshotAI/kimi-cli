@@ -60,10 +60,10 @@ The working directory determines the root directory for file operations. The age
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--command TEXT` | `-c` | Pass user query, doesn't enter interactive mode |
-| `--query TEXT` | `-q` | Alias for `--command` |
+| `--prompt TEXT` | `-p` | Pass user prompt, doesn't enter interactive mode |
+| `--command TEXT` | `-c` | Alias for `--prompt` |
 
-When using `--command`, Kimi CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
+When using `--prompt` (or `--command`), Kimi CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
 
 ## Loop control
 
