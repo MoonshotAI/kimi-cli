@@ -4,6 +4,19 @@
 
 ## 未发布
 
+### Thinking 模式设置迁移调整
+
+从 `0.76` 升级后，Thinking 模式设置不再自动保留。此前保存在 `~/.kimi/kimi.json` 中的 `thinking` 状态不再使用，改为通过 `~/.kimi/config.toml` 中的 `default_thinking` 配置项管理，但不会自动从旧版 `metadata` 迁移。
+
+- **受影响**：此前启用 Thinking 模式的用户
+- **迁移**：升级后需重新设置 Thinking 模式：
+  - 使用 `/model` 命令选择模型时设置 Thinking 模式（交互式）
+  - 或手动在 `~/.kimi/config.toml` 中添加：
+
+    ```toml
+    default_thinking = true  # 如需默认启用 Thinking 模式
+    ```
+
 ### `--query` 选项移除
 
 `--query`（`-q`）已移除，改用 `--prompt` 作为主推参数，`--command` 作为别名。

@@ -5,7 +5,7 @@ This page documents the changes in each Kimi CLI release.
 ## Unreleased
 
 - Shell: Use `/model` to toggle thinking mode instead of Tab key
-- Config: Add `default_thinking` config option (auto-migrated from metadata)
+- Config: Add `default_thinking` config option (need to run `/model` to select thinking mode after upgrade)
 - LLM: Add `always_thinking` capability for models that always use thinking mode
 - CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
 

@@ -4,6 +4,19 @@ This page documents breaking changes in Kimi CLI releases and provides migration
 
 ## Unreleased
 
+### Thinking mode setting migration change
+
+After upgrading from `0.76`, the thinking mode setting is no longer automatically preserved. The previous `thinking` state stored in `~/.kimi/kimi.json` is no longer used; instead, thinking mode is now managed via the `default_thinking` configuration option in `~/.kimi/config.toml`, but values are not automatically migrated from legacy `metadata`.
+
+- **Affected**: Users who previously had thinking mode enabled
+- **Migration**: Reconfigure thinking mode after upgrading:
+  - Use the `/model` command to select model and set thinking mode (interactive)
+  - Or manually add to `~/.kimi/config.toml`:
+
+    ```toml
+    default_thinking = true  # Set to true if you want thinking mode enabled by default
+    ```
+
 ### `--query` option removed
 
 The `--query` (`-q`) option has been removed. Use `--prompt` as the primary option, with `--command` as an alias.
