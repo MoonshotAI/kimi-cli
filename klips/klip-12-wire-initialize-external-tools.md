@@ -4,7 +4,7 @@ Updated: 2026-01-14
 Status: Draft
 ---
 
-# KLIP-8: Wire 初始化协商与外部工具调用
+# KLIP-12: Wire 初始化协商与外部工具调用
 
 ## Summary
 
