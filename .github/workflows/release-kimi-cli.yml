@@ -155,6 +155,11 @@ jobs:
 
           echo "✅ Notarization completed"
 
+          # Staple the notarization ticket to the binary
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple dist/kimi
+          echo "✅ Ticket stapled"
+
           # Verify
           echo "Verifying signature..."
           codesign -dv --verbose=2 dist/kimi
