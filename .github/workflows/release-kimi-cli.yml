@@ -155,10 +155,14 @@ jobs:
 
           echo "✅ Notarization completed"
 
-          # Staple the notarization ticket to the binary
-          echo "Stapling notarization ticket..."
-          xcrun stapler staple dist/kimi
-          echo "✅ Ticket stapled"
+          # Create DMG and staple ticket to it (stapler doesn't work on raw binaries)
+          echo "Creating DMG..."
+          dmg_path="dist/kimi.dmg"
+          hdiutil create -volname "Kimi CLI" -srcfolder dist/kimi -ov -format UDZO "$dmg_path"
+          
+          echo "Stapling notarization ticket to DMG..."
+          xcrun stapler staple "$dmg_path"
+          echo "✅ DMG created and stapled"
 
           # Verify
           echo "Verifying signature..."
@@ -183,6 +187,7 @@ jobs:
         run: |
           import os
           import pathlib
+          import shutil
           import tarfile
           import zipfile
 
@@ -194,23 +199,35 @@ jobs:
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
           is_windows = "windows" in target
-          binary_name = "kimi.exe" if is_windows else "kimi"
-          binary_path = dist_dir / binary_name
-          if not binary_path.exists():
-              raise SystemExit(f"Binary not found at {binary_path}")
+          is_macos = "apple-darwin" in target
 
-          archive_ext = "zip" if is_windows else "tar.gz"
-          archive_name = f"kimi-{tag}-{target}.{archive_ext}"
-          archive_path = artifacts_dir / archive_name
-
-          if is_windows:
-              with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
-                  archive_file.write(binary_path, arcname=binary_name)
+          # For macOS, use the stapled DMG
+          if is_macos:
+              dmg_path = dist_dir / "kimi.dmg"
+              if not dmg_path.exists():
+                  raise SystemExit(f"DMG not found at {dmg_path}")
+              archive_name = f"kimi-{tag}-{target}.dmg"
+              archive_path = artifacts_dir / archive_name
+              shutil.copy(dmg_path, archive_path)
+              print(f"Built artifact: {archive_path}")
           else:
-              with tarfile.open(archive_path, "w:gz") as archive_file:
-                  archive_file.add(binary_path, arcname=binary_name)
+              binary_name = "kimi.exe" if is_windows else "kimi"
+              binary_path = dist_dir / binary_name
+              if not binary_path.exists():
+                  raise SystemExit(f"Binary not found at {binary_path}")
 
-          print(f"Built artifact: {archive_path}")
+              archive_ext = "zip" if is_windows else "tar.gz"
+              archive_name = f"kimi-{tag}-{target}.{archive_ext}"
+              archive_path = artifacts_dir / archive_name
+
+              if is_windows:
+                  with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+                      archive_file.write(binary_path, arcname=binary_name)
+              else:
+                  with tarfile.open(archive_path, "w:gz") as archive_file:
+                      archive_file.add(binary_path, arcname=binary_name)
+
+              print(f"Built artifact: {archive_path}")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -240,7 +257,7 @@ jobs:
           set -euxo pipefail
           cd downloads
           shopt -s nullglob
-          for f in *.tar.gz *.zip; do
+          for f in *.tar.gz *.zip *.dmg; do
             sha256sum "$f" > "$f.sha256"
             echo "sha256($(basename "$f"))=$(cut -d' ' -f1 "$f.sha256")"
           done
@@ -255,8 +272,10 @@ jobs:
           files: |
             downloads/*.tar.gz
             downloads/*.zip
+            downloads/*.dmg
             downloads/*.tar.gz.sha256
             downloads/*.zip.sha256
+            downloads/*.dmg.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
