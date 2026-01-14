@@ -116,13 +116,10 @@ jobs:
 
           rm -f "$cert_path"
 
-      # Build with signing on macOS
+      # Build with signing on macOS (APPLE_SIGNING_IDENTITY is read by kimi.spec)
       - name: Build standalone binary (macOS with signing)
         if: runner.os == 'macOS'
-        run: |
-          # Build with PyInstaller using codesign identity
-          uv run pyinstaller kimi.spec \
-            --codesign-identity "$APPLE_SIGNING_IDENTITY"
+        run: make build-bin
 
       # Build without signing on other platforms
       - name: Build standalone binary

@@ -1,6 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 from kimi_cli.utils.pyinstaller import datas, hiddenimports
+
+# Read codesign identity from environment variable (for macOS signing in CI)
+codesign_identity = os.environ.get("APPLE_SIGNING_IDENTITY", None)
 
 a = Analysis(
     ["src/kimi_cli/cli/__main__.py"],
@@ -34,6 +38,6 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
+    codesign_identity=codesign_identity,
     entitlements_file=None,
 )
