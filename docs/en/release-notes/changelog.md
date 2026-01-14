@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.77 (2026-01-15)
+
 - Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
 - Shell: Use `/model` to toggle thinking mode instead of Tab key
 - Config: Add `default_thinking` config option (need to run `/model` to select thinking mode after upgrade)
@@ -11,7 +13,7 @@ This page documents the changes in each Kimi CLI release.
 - CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
 - Wire: Fix approval requests not responding properly in Wire mode
 - CLI: Add `--prompt-flow` option to load a Mermaid flowchart file as a Prompt Flow
-- Core: Add `/begin` slash command if a Prompt Flow is loaded for starting the flow
+- Core: Add `/begin` slash command if a Prompt Flow is loaded to start the flow
 - Core: Replace Ralph Loop with Prompt Flow-based implementation
 
 ## 0.76 (2026-01-12)
