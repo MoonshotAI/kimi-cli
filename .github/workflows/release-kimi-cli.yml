@@ -126,8 +126,8 @@ jobs:
         if: runner.os != 'macOS'
         run: make build-bin
 
-      # macOS: Create DMG, notarize it, and staple
-      - name: Create and notarize macOS DMG
+      # macOS: Notarize the signed binary
+      - name: Notarize macOS binary
         if: runner.os == 'macOS'
         env:
           APPLE_NOTARIZATION_KEY_P8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
@@ -140,18 +140,13 @@ jobs:
           key_path="${RUNNER_TEMP}/AuthKey.p8"
           echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
 
-          # Create DMG first (must notarize the DMG itself to staple it)
-          echo "Creating DMG..."
-          dmg_path="dist/kimi.dmg"
-          hdiutil create -volname "Kimi CLI" -srcfolder dist/kimi -ov -format UDZO "$dmg_path"
+          # Create zip for notarization
+          zip_path="${RUNNER_TEMP}/kimi.zip"
+          ditto -c -k --keepParent dist/kimi "$zip_path"
 
-          # Sign the DMG
-          echo "Signing DMG..."
-          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" --keychain "$APPLE_KEYCHAIN_PATH" "$dmg_path"
-
-          # Notarize the DMG
-          echo "Submitting DMG for notarization..."
-          xcrun notarytool submit "$dmg_path" \
+          echo "Submitting for notarization..."
+          
+          xcrun notarytool submit "$zip_path" \
             --key "$key_path" \
             --key-id "$APPLE_NOTARIZATION_KEY_ID" \
             --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
@@ -160,18 +155,12 @@ jobs:
 
           echo "✅ Notarization completed"
 
-          # Staple the ticket to the DMG
-          echo "Stapling notarization ticket to DMG..."
-          xcrun stapler staple "$dmg_path"
-          echo "✅ DMG stapled"
-
           # Verify
-          echo "Verifying DMG..."
-          xcrun stapler validate "$dmg_path"
-          spctl -a -vv "$dmg_path" || true
+          echo "Verifying signature..."
+          codesign -dv --verbose=2 dist/kimi
 
           # Cleanup
-          rm -f "$key_path"
+          rm -f "$key_path" "$zip_path"
 
       # macOS: Cleanup keychain
       - name: Cleanup macOS keychain
@@ -189,7 +178,6 @@ jobs:
         run: |
           import os
           import pathlib
-          import shutil
           import tarfile
           import zipfile
 
@@ -201,35 +189,23 @@ jobs:
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
           is_windows = "windows" in target
-          is_macos = "apple-darwin" in target
+          binary_name = "kimi.exe" if is_windows else "kimi"
+          binary_path = dist_dir / binary_name
+          if not binary_path.exists():
+              raise SystemExit(f"Binary not found at {binary_path}")
 
-          # For macOS, use the stapled DMG
-          if is_macos:
-              dmg_path = dist_dir / "kimi.dmg"
-              if not dmg_path.exists():
-                  raise SystemExit(f"DMG not found at {dmg_path}")
-              archive_name = f"kimi-{tag}-{target}.dmg"
-              archive_path = artifacts_dir / archive_name
-              shutil.copy(dmg_path, archive_path)
-              print(f"Built artifact: {archive_path}")
+          archive_ext = "zip" if is_windows else "tar.gz"
+          archive_name = f"kimi-{tag}-{target}.{archive_ext}"
+          archive_path = artifacts_dir / archive_name
+
+          if is_windows:
+              with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+                  archive_file.write(binary_path, arcname=binary_name)
           else:
-              binary_name = "kimi.exe" if is_windows else "kimi"
-              binary_path = dist_dir / binary_name
-              if not binary_path.exists():
-                  raise SystemExit(f"Binary not found at {binary_path}")
+              with tarfile.open(archive_path, "w:gz") as archive_file:
+                  archive_file.add(binary_path, arcname=binary_name)
 
-              archive_ext = "zip" if is_windows else "tar.gz"
-              archive_name = f"kimi-{tag}-{target}.{archive_ext}"
-              archive_path = artifacts_dir / archive_name
-
-              if is_windows:
-                  with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
-                      archive_file.write(binary_path, arcname=binary_name)
-              else:
-                  with tarfile.open(archive_path, "w:gz") as archive_file:
-                      archive_file.add(binary_path, arcname=binary_name)
-
-              print(f"Built artifact: {archive_path}")
+          print(f"Built artifact: {archive_path}")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -259,7 +235,7 @@ jobs:
           set -euxo pipefail
           cd downloads
           shopt -s nullglob
-          for f in *.tar.gz *.zip *.dmg; do
+          for f in *.tar.gz *.zip; do
             sha256sum "$f" > "$f.sha256"
             echo "sha256($(basename "$f"))=$(cut -d' ' -f1 "$f.sha256")"
           done
@@ -274,10 +250,8 @@ jobs:
           files: |
             downloads/*.tar.gz
             downloads/*.zip
-            downloads/*.dmg
             downloads/*.tar.gz.sha256
             downloads/*.zip.sha256
-            downloads/*.dmg.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
