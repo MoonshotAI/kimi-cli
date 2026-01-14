@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
 - Shell: Use `/model` to toggle thinking mode instead of Tab key
 - Config: Add `default_thinking` config option (auto-migrated from metadata)
 - LLM: Add `always_thinking` capability for models that always use thinking mode

@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：修复 `/help` 和 `/changelog` 全屏分页显示中的换行问题
 - Shell：使用 `/model` 命令切换 Thinking 模式，取代 Tab 键
 - Config：添加 `default_thinking` 配置项（从 metadata 自动迁移）
 - LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
