@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Config: Add `default_thinking` config option (need to run `/model` to select thinking mode after upgrade)
 - LLM: Add `always_thinking` capability for models that always use thinking mode
 - CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
+- Wire: Fix approval requests not responding properly in Wire mode
 
 ## 0.76 (2026-01-12)
 

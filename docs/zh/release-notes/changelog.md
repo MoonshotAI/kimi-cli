@@ -8,6 +8,7 @@
 - Config：添加 `default_thinking` 配置项（升级后需运行 `/model` 选择 Thinking 模式）
 - LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
 - CLI：将 `--command`/`-c` 重命名为 `--prompt`/`-p`，保留 `--command`/`-c` 作为别名，移除 `--query`/`-q`
+- Wire：修复 Wire 模式下审批请求无法正常响应的问题
 
 ## 0.76 (2026-01-12)
 
