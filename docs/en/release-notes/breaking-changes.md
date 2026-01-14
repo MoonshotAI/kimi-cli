@@ -2,6 +2,17 @@
 
 This page documents breaking changes in Kimi CLI releases and provides migration guidance.
 
+## Unreleased
+
+### `--query` option removed
+
+The `--query` (`-q`) option has been removed. Use `--prompt` as the primary option, with `--command` as an alias.
+
+- **Affected**: Scripts and automation using `--query` or `-q`
+- **Migration**:
+  - `--query` / `-q` → `--prompt` / `-p`
+  - Or continue using `--command` / `-c`
+
 ## 0.74 - ACP command change
 
 ### `--acp` option deprecated
