@@ -15,7 +15,7 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = join(__dirname, "..");
 
-const SITE_URL = "https://kimi-cli.com";
+const SITE_URL = "https://www.kimi-cli.com";
 const OUTPUT_PATH = join(docsDir, "public/sitemap.xml");
 
 /**
