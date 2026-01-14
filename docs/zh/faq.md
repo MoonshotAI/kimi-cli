@@ -112,7 +112,7 @@ kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CO
 
 如果 `--print` 模式下没有输出，可能是：
 
-- **未提供输入**：需要通过 `--command` 或 stdin 提供输入。例如：`kimi --print --command "你好"`。
+- **未提供输入**：需要通过 `--prompt`（或 `--command`）或 stdin 提供输入。例如：`kimi --print --prompt "你好"`。
 - **输出被缓冲**：尝试使用 `--output-format stream-json` 获取流式输出。
 - **配置未完成**：确保已通过 `/setup` 配置 API 密钥和模型。
 

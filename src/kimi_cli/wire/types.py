@@ -124,6 +124,9 @@ class SubagentEvent(BaseModel):
         return event
 
 
+type ApprovalResponseKind = Literal["approve", "approve_for_session", "reject"]
+
+
 class ApprovalRequestResolved(BaseModel):
     """
     Indicates that an approval request has been resolved.
@@ -131,7 +134,7 @@ class ApprovalRequestResolved(BaseModel):
 
     request_id: str
     """The ID of the resolved approval request."""
-    response: ApprovalRequest.Response
+    response: ApprovalResponseKind
     """The response to the approval request."""
 
 
@@ -148,7 +151,7 @@ class ApprovalRequest(BaseModel):
     display: list[DisplayBlock] = Field(default_factory=list[DisplayBlock])
     """Defaults to an empty list for backwards-compatible wire.jsonl loading."""
 
-    type Response = Literal["approve", "approve_for_session", "reject"]
+    type Response = ApprovalResponseKind
 
     # Note that the above fields are just a copy of `kimi_cli.soul.approval.Request`, but
     # we cannot directly use that class here because we want to avoid dependency from Wire
