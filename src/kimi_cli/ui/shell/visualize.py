@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
@@ -410,7 +411,9 @@ class _LiveView:
 
         match msg:
             case TurnBegin():
-                pass
+                self.flush_content()
+                user_text = Message(role="user", content=msg.user_input).extract_text(" ")
+                console.print(Panel(Text(user_text), padding=(0, 1)))
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
