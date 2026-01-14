@@ -36,6 +36,85 @@ Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通�
 {"jsonrpc": "2.0", "method": "...", "params": {...}}
 ```
 
+### `init`
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+Agent 启动时进行初始化的参数，可以配置外部工具。外部工具允许 Client 扩展 Agent 的能力，当模型决定调用这些工具时，Agent 会通过 `request` 方法发送 `ExternalToolCallRequest`。
+
+**参数格式**
+
+```typescript
+interface InitParams {
+  /** 外部工具列表 */
+  external_tools: ExternalTool[]
+}
+
+interface ExternalTool {
+  /** 固定为 "function" */
+  type: "function"
+  function: {
+    /** 工具名称，用于模型调用时引用 */
+    name: string
+    /** 工具描述，帮助模型理解何时使用此工具 */
+    description: string
+    /** JSON Schema 格式的参数定义 */
+    parameters: JSONSchema
+  }
+}
+```
+
+**示例请求**
+
+```json
+{"jsonrpc": "2.0", "method": "init", "id": "1", "params": {"external_tools": [
+  {
+    "type": "function",
+    "function": {
+      "name": "CodeRunner",
+      "description": "代码执行器，支持运行 python 和 javascript 代码",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string",
+            "enum": ["python", "javascript"],
+            "description": "编程语言"
+          },
+          "code": {
+            "type": "string",
+            "description": "要执行的代码"
+          }
+        },
+        "required": ["language", "code"]
+      }
+    }
+  }
+]}}
+```
+
+**成功响应**
+
+```typescript
+interface InitResult {
+  /** 可用的斜杠命令列表 */
+  slash_commands: string[]
+}
+```
+
+```json
+{"jsonrpc": "2.0", "id": "1", "result": {"slash_commands": ["init"]}}
+```
+
+**工具调用流程**
+
+1. Client 在 `init` 中注册外部工具
+2. 用户通过 `prompt` 发送请求
+3. 模型决定调用外部工具时，Agent 发送 `ExternalToolCallRequest`
+4. Client 执行工具并返回 `ExternalToolCallRequestResponse`
+5. Agent 将结果返回给模型继续处理
+
 ### `prompt`
 
 - **方向**：Client → Agent
@@ -153,7 +232,7 @@ type Event =
   | SubagentEvent | ApprovalRequestResolved
 
 // 请求：通过 request 方法发送，需要响应
-type Request = ApprovalRequest
+type Request = ApprovalRequest | ExternalToolCallRequest
 ```
 
 ### `TurnBegin`
@@ -369,6 +448,62 @@ interface ApprovalRequest {
   description: string
   /** 显示给用户的内容块，JSON 中可能不存在，默认为 [] */
   display?: DisplayBlock[]
+}
+```
+
+### `ExternalToolCallRequest`
+
+外部工具调用请求，通过 `request` 方法发送。当模型决定调用 `init` 中注册的外部工具时，Agent 会发送此请求。Client 必须返回 `ToolResult` 后 Agent 才能继续。
+
+```typescript
+interface ExternalToolCallRequest {
+  /** 请求 ID，用于响应时引用 */
+  id: string
+  /** 关联的工具调用 ID */
+  tool_call_id: string
+  /** 固定为 "function" */
+  type: "function"
+  function: {
+    /** 工具名称，与 init 中注册的名称对应 */
+    name: string
+    /** JSON 格式的参数字符串，JSON 中可能不存在 */
+    arguments?: string | null
+  }
+  /** 额外信息，JSON 中可能不存在 */
+  extras?: object | null
+}
+```
+
+**示例请求**
+
+```json
+{"jsonrpc": "2.0", "method": "request", "id": "req-2", "params": {"type": "ExternalToolCallRequest", "payload": {"id": "req-2", "tool_call_id": "tc-123", "type": "function", "function": {"name": "CodeRunner", "arguments": "{\"language\":\"python\",\"code\":\"print('hello')\"}"}}}}
+```
+
+**响应**
+
+Client 需要执行工具并返回结果：
+
+```json
+{"jsonrpc": "2.0", "id": "req-2", "result": {"request_id": "req-2", "response": {"tool_call_id": "tc-123", "return_value": {"is_error": false, "output": "hello\n", "message": "", "display": []}}}}
+```
+
+**响应格式**
+
+```typescript
+interface ExternalToolCallRequestResponse {
+  /** 对应的工具调用 ID，必须与请求中的 tool_call_id 一致 */
+  tool_call_id: string
+  return_value: {
+    /** 是否为错误 */
+    is_error: boolean
+    /** 返回给模型的输出内容，可以是字符串或 ContentPart 数组 */
+    output: string | ContentPart[]
+    /** 给模型的解释性消息 */
+    message: string
+    /** 显示给用户的内容块 */
+    display: DisplayBlock[]
+  }
 }
 ```
 
