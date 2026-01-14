@@ -564,7 +564,7 @@ class FlowRunner:
             label=(
                 f"{prompt_text}. (You are running in an automated loop where the same "
                 "prompt is fed repeatedly. Only choose STOP when the task is fully complete. "
-                "Including it will stop futher iterations. If you are not 100% sure, "
+                "Including it will stop further iterations. If you are not 100% sure, "
                 "choose CONTINUE.)"
             ).strip(),
             kind="decision",

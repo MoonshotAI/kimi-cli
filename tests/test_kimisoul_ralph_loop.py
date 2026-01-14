@@ -209,7 +209,7 @@ async def test_ralph_loop_replays_original_prompt(runtime: Runtime, tmp_path: Pa
                     content=[
                         TextPart(
                             text="""\
-Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop futher iterations. If you are not 100% sure, choose CONTINUE.)
+Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
 
 Available branches:
 - CONTINUE
@@ -228,7 +228,7 @@ Reply with a choice using <choice>...</choice>.\
                     content=[
                         TextPart(
                             text="""\
-Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop futher iterations. If you are not 100% sure, choose CONTINUE.)
+Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
 
 Available branches:
 - CONTINUE
@@ -277,7 +277,7 @@ async def test_ralph_loop_stops_on_choice(runtime: Runtime, tmp_path: Path) -> N
                     content=[
                         TextPart(
                             text="""\
-do it. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop futher iterations. If you are not 100% sure, choose CONTINUE.)
+do it. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
 
 Available branches:
 - CONTINUE
