@@ -62,9 +62,6 @@ _KEYBOARD_SHORTCUTS = [
 @shell_mode_registry.command(aliases=["h", "?"])
 def help(app: Shell, args: str):
     """Show help information"""
-    from io import StringIO
-
-    from rich.console import Console as RichConsole
     from rich.console import Group, RenderableType
     from rich.text import Text
 
@@ -81,10 +78,8 @@ def help(app: Shell, args: str):
             )
         return BulletColumns(Group(*lines))
 
-    buffer = StringIO()
-    buf = RichConsole(file=buffer, force_terminal=True, width=console.width)
-
-    buf.print(
+    renderables: list[RenderableType] = []
+    renderables.append(
         BulletColumns(
             Group(
                 Text.from_markup("[grey50]Help! I need somebody. Help! Not just anybody.[/grey50]"),
@@ -94,7 +89,7 @@ def help(app: Shell, args: str):
             bullet_style="grey50",
         )
     )
-    buf.print(
+    renderables.append(
         BulletColumns(
             Text(
                 "Sure, Kimi CLI is ready to help! "
@@ -111,7 +106,7 @@ def help(app: Shell, args: str):
         else:
             commands.append(cmd)
 
-    buf.print(
+    renderables.append(
         section(
             "Slash commands",
             [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
@@ -119,17 +114,17 @@ def help(app: Shell, args: str):
         )
     )
     if skills:
-        buf.print(
+        renderables.append(
             section(
                 "Skills",
                 [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
                 "cyan",
             )
         )
-    buf.print(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
+    renderables.append(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
 
     with console.pager(styles=True):
-        console.print(buffer.getvalue(), end="")
+        console.print(Group(*renderables))
 
 
 @registry.command
@@ -267,17 +262,12 @@ async def model(app: Shell, args: str):
 @shell_mode_registry.command(aliases=["release-notes"])
 def changelog(app: Shell, args: str):
     """Show release notes"""
-    from io import StringIO
-
-    from rich.console import Console as RichConsole
     from rich.console import Group, RenderableType
     from rich.text import Text
 
     from kimi_cli.utils.rich.columns import BulletColumns
 
-    buffer = StringIO()
-    buf_console = RichConsole(file=buffer, force_terminal=True, width=console.width)
-
+    renderables: list[RenderableType] = []
     for ver, entry in CHANGELOG.items():
         title = f"[bold]{ver}[/bold]"
         if entry.description:
@@ -293,10 +283,10 @@ def changelog(app: Shell, args: str):
                     bullet_style="grey50",
                 ),
             )
-        buf_console.print(BulletColumns(Group(*lines)))
+        renderables.append(BulletColumns(Group(*lines)))
 
     with console.pager(styles=True):
-        console.print(buffer.getvalue(), end="")
+        console.print(Group(*renderables))
 
 
 @registry.command
