@@ -93,10 +93,12 @@ class WireSoulSide:
                 self._send_merged(msg)
 
     def flush(self) -> None:
-        if self._merge_buffer is not None:
-            assert is_wire_message(self._merge_buffer)
-            self._send_merged(self._merge_buffer)
-            self._merge_buffer = None
+        buffer = self._merge_buffer
+        if buffer is None:
+            return
+        assert is_wire_message(buffer)
+        self._send_merged(buffer)
+        self._merge_buffer = None
 
     def _send_merged(self, msg: WireMessage) -> None:
         try:

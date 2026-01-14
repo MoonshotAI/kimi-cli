@@ -94,7 +94,9 @@ Use this as your basic understanding of the project structure.
 
 # Project Information
 
-Markdown files named `AGENTS.md` usually contain the background, structure, coding styles, user preferences and other relevant information about the project. You should use this information to understand the project and the user's preferences. `AGENTS.md` files may exist at different locations in the project, but typically there is one in the project root.
+Markdown files named `AGENTS.md` usually contain the background, structure, coding styles, user preferences and other relevant information about the project. You should use this information to understand the project and the user's preferences. `AGENTS.md` files may exist at different locations in the project, but typically there is one under `AGENTS.md`.
+
+Kimi CLI merges a user-level `AGENTS.md` from `~/.config/agents/AGENTS.md` with a project root `AGENTS.md` (fallback `agents.md`).
 
 > Why `AGENTS.md`?
 >
@@ -106,7 +108,7 @@ Markdown files named `AGENTS.md` usually contain the background, structure, codi
 > - Keep `README`s concise and focused on human contributors.
 > - Provide precise, agent-focused guidance that complements existing `README` and docs.
 
-The project level `/path/to/work/dir/AGENTS.md`:
+The merged `AGENTS.md` (global first, then project):
 
 `````````
 Test agents content
@@ -703,7 +705,9 @@ Use this as your basic understanding of the project structure.
 
 # Project Information
 
-Markdown files named `AGENTS.md` usually contain the background, structure, coding styles, user preferences and other relevant information about the project. You should use this information to understand the project and the user's preferences. `AGENTS.md` files may exist at different locations in the project, but typically there is one in the project root.
+Markdown files named `AGENTS.md` usually contain the background, structure, coding styles, user preferences and other relevant information about the project. You should use this information to understand the project and the user's preferences. `AGENTS.md` files may exist at different locations in the project, but typically there is one under `AGENTS.md`.
+
+Kimi CLI merges a user-level `AGENTS.md` from `~/.config/agents/AGENTS.md` with a project root `AGENTS.md` (fallback `agents.md`).
 
 > Why `AGENTS.md`?
 >
@@ -715,7 +719,7 @@ Markdown files named `AGENTS.md` usually contain the background, structure, codi
 > - Keep `README`s concise and focused on human contributors.
 > - Provide precise, agent-focused guidance that complements existing `README` and docs.
 
-The project level `/path/to/work/dir/AGENTS.md`:
+The merged `AGENTS.md` (global first, then project):
 
 `````````
 Test agents content

@@ -246,14 +246,10 @@ def kimi(
         ),
     ] = False,
     skills_dir: Annotated[
-        Path | None,
+        str | None,
         typer.Option(
             "--skills-dir",
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-            help="Path to the skills directory. Default: ~/.kimi/skills",
+            help="Path to the skills directory. Overrides discovery.",
         ),
     ] = None,
     max_steps_per_turn: Annotated[
@@ -370,6 +366,12 @@ def kimi(
         prompt = prompt.strip()
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
+    skills_dir_path: KaosPath | None = None
+    if skills_dir is not None:
+        skills_dir = skills_dir.strip()
+        if not skills_dir:
+            raise typer.BadParameter("Skills dir cannot be empty", param_hint="--skills-dir")
+        skills_dir_path = KaosPath(skills_dir).expanduser()
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
@@ -449,7 +451,7 @@ def kimi(
             model_name=model_name,
             thinking=thinking,
             agent_file=agent_file,
-            skills_dir=skills_dir,
+            skills_dir=skills_dir_path,
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,

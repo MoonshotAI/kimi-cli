@@ -198,6 +198,22 @@ Kimi reads REDLINING.md or OOXML.md only when the user needs those features.
 - **Avoid deeply nested references** - Keep references one level deep from SKILL.md. All reference files should link directly from SKILL.md.
 - **Structure longer reference files** - For files longer than 100 lines, include a table of contents at the top so Kimi can see the full scope when previewing.
 
+## Skill Locations and Discovery
+
+Kimi CLI loads skills in layers (built-in -> user -> project). Within each layer, it uses the
+first existing directory in priority order. Built-in skills only load for LocalKaos or ACPKaos.
+
+**User level** (by priority):
+- `~/.config/agents/skills/` (recommended)
+- `~/.kimi/skills/`
+- `~/.claude/skills/`
+
+**Project level**:
+- `.agents/skills/`
+
+`--skills-dir` overrides discovery and loads only that directory (built-ins still load when
+supported).
+
 ## Skill Creation Process
 
 Skill creation involves these steps:

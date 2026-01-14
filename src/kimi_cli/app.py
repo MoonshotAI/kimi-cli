@@ -56,7 +56,7 @@ class KimiCLI:
         model_name: str | None = None,
         thinking: bool | None = None,
         agent_file: Path | None = None,
-        skills_dir: Path | None = None,
+        skills_dir: KaosPath | None = None,
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
         max_ralph_iterations: int | None = None,
@@ -74,7 +74,8 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
-            skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
+            skills_dir (KaosPath | None, optional): Override skills directory discovery. Defaults
+                to None.
             max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
                 Defaults to None.
             max_retries_per_step (int | None, optional): Maximum number of retries in one step.
