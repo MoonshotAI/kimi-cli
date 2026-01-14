@@ -1,5 +1,5 @@
 name: macos-code-sign
-description: Sign and notarize macOS binaries
+description: Sign and notarize macOS PyInstaller binaries
 
 inputs:
   binary-path:
@@ -66,21 +66,26 @@ runs:
 
         rm -f "$cert_path"
 
-    - name: Sign binary
+    - name: Sign PyInstaller binary and embedded libraries
       shell: bash
       env:
         BINARY_PATH: ${{ inputs.binary-path }}
       run: |
         set -euo pipefail
 
-        echo "Signing: $BINARY_PATH"
+        echo "Signing PyInstaller binary: $BINARY_PATH"
+
+        # PyInstaller onefile binaries embed libraries that get extracted at runtime.
+        # We need to unpack, sign everything, and repack.
         
-        codesign --force --options runtime --timestamp \
+        # First, try signing the binary directly with --deep
+        # For single-file PyInstaller executables, this should work
+        codesign --deep --force --options runtime --timestamp \
           --sign "$APPLE_SIGNING_IDENTITY" \
           --keychain "$APPLE_KEYCHAIN_PATH" \
           "$BINARY_PATH"
 
-        echo "✅ Binary signed successfully"
+        echo "✅ Binary signed"
         codesign -dv --verbose=2 "$BINARY_PATH"
 
     - name: Notarize binary
@@ -105,14 +110,33 @@ runs:
         echo "Submitting for notarization..."
         
         # Submit and wait
-        xcrun notarytool submit "$zip_path" \
+        result=$(xcrun notarytool submit "$zip_path" \
           --key "$key_path" \
           --key-id "$APPLE_NOTARIZATION_KEY_ID" \
           --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
           --wait \
-          --timeout 10m
+          --timeout 10m \
+          --output-format json 2>&1) || true
 
-        echo "✅ Notarization completed"
+        echo "$result"
+        
+        status=$(echo "$result" | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+        
+        if [[ "$status" == "Accepted" ]]; then
+          echo "✅ Notarization successful"
+        else
+          echo "⚠️ Notarization status: $status"
+          # Get detailed log
+          submission_id=$(echo "$result" | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || echo "")
+          if [[ -n "$submission_id" ]]; then
+            echo "Fetching notarization log..."
+            xcrun notarytool log "$submission_id" \
+              --key "$key_path" \
+              --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+              --issuer "$APPLE_NOTARIZATION_ISSUER_ID" || true
+          fi
+          exit 1
+        fi
 
         # Cleanup
         rm -f "$key_path" "$zip_path"
@@ -125,8 +149,10 @@ runs:
         set -euo pipefail
         
         echo "Verifying signature and notarization..."
-        spctl -a -vv "$BINARY_PATH" 2>&1 || true
         codesign -dv --verbose=2 "$BINARY_PATH"
+        echo ""
+        echo "Gatekeeper check:"
+        spctl -a -vv "$BINARY_PATH" 2>&1 || true
 
     - name: Cleanup keychain
       if: always()
