@@ -17,6 +17,9 @@ Only write entries that are worth mentioning to users.
 - LLM: Add `always_thinking` capability for models that always use thinking mode
 - CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
 - Wire: Fix approval requests not responding properly in Wire mode
+- CLI: Add `--prompt-flow` option to load a Mermaid flowchart file as a Prompt Flow
+- Core: Add `/begin` slash command if a Prompt Flow is loaded to start the flow
+- Core: Replace Ralph Loop with Prompt Flow-based implementation
 
 ## 0.76 (2026-01-12)
 
