@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.flow import PromptFlowValidationError, parse_choice
+from kimi_cli.flow import PromptFlow, PromptFlowValidationError, parse_choice
 from kimi_cli.flow.d2 import parse_d2_flowchart
 from kimi_cli.flow.mermaid import parse_mermaid_flowchart
 
@@ -126,7 +126,7 @@ def test_parse_choice_last_match() -> None:
     assert parse_choice("No choice tag") is None
 
 
-def _flow_snapshot(flow) -> dict[str, object]:
+def _flow_snapshot(flow: PromptFlow) -> dict[str, object]:
     return {
         "begin_id": flow.begin_id,
         "end_id": flow.end_id,
