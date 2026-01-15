@@ -159,7 +159,7 @@ def kimi(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="Mermaid flowchart file to run as a prompt flow.",
+            help="D2 (.d2) or Mermaid (.mmd) flowchart file to run as a prompt flow.",
         ),
     ] = None,
     print_mode: Annotated[
@@ -389,9 +389,11 @@ def kimi(
 
     flow = None
     if prompt_flow is not None:
-        from kimi_cli.flow import PromptFlowError, parse_flowchart
+        from kimi_cli.flow import PromptFlowError
+        from kimi_cli.flow.d2 import parse_d2_flowchart
+        from kimi_cli.flow.mermaid import parse_mermaid_flowchart
 
-        if max_ralph_iterations != 0:
+        if max_ralph_iterations is not None and max_ralph_iterations != 0:
             raise typer.BadParameter(
                 "Prompt flow cannot be used with Ralph mode",
                 param_hint="--prompt-flow",
@@ -402,8 +404,18 @@ def kimi(
             raise typer.BadParameter(
                 f"Failed to read prompt flow file: {e}", param_hint="--prompt-flow"
             ) from e
+        suffix = prompt_flow.suffix.lower()
+        if suffix in {".mmd", ".mermaid"}:
+            parser = parse_mermaid_flowchart
+        elif suffix == ".d2":
+            parser = parse_d2_flowchart
+        else:
+            raise typer.BadParameter(
+                "Unsupported prompt flow extension; use .mmd or .d2",
+                param_hint="--prompt-flow",
+            )
         try:
-            flow = parse_flowchart(flow_text)
+            flow = parser(flow_text)
         except PromptFlowError as e:
             raise typer.BadParameter(str(e), param_hint="--prompt-flow") from e
 
