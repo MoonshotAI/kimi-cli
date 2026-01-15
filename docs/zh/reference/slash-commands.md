@@ -138,7 +138,7 @@ YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 
 启动 Prompt Flow 执行。
 
-此命令仅在通过 `--prompt-flow` 加载了流程图时可用。执行后，Agent 会从 `BEGIN` 节点开始，按照流程图的定义依次处理每个节点，直到达到 `END` 节点。详见 [`kimi` 命令](./kimi-command.md#提示词流)。
+此命令仅在通过 `--prompt-flow` 加载了流程图时可用。执行后，Agent 会从 `BEGIN` 节点开始，按照流程图的定义依次处理每个节点，直到达到 `END` 节点。详见 [`kimi` 命令](./kimi-command.md#prompt-flow)。
 
 ## 命令补全
 

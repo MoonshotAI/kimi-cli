@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
+
 ## 0.77 (2026-01-15)
 
 - Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
