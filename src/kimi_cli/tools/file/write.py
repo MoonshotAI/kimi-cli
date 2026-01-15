@@ -61,14 +61,9 @@ class WriteFile(CallableTool2[Params]):
         try:
             p = KaosPath(params.path)
 
+            # Auto-resolve relative paths to working directory
             if not p.is_absolute():
-                return ToolError(
-                    message=(
-                        f"`{params.path}` is not an absolute path. "
-                        "You must provide an absolute path to write a file."
-                    ),
-                    brief="Invalid path",
-                )
+                p = self._work_dir / params.path
 
             # Validate path safety
             path_error = await self._validate_path(p)
