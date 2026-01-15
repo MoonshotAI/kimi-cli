@@ -159,7 +159,7 @@ def kimi(
             file_okay=True,
             dir_okay=False,
             readable=True,
-            help="Mermaid flowchart file to run as a prompt flow.",
+            help="Prompt flow file (Mermaid flowchart or D2) to run as a prompt flow.",
         ),
     ] = None,
     print_mode: Annotated[
@@ -389,7 +389,7 @@ def kimi(
 
     flow = None
     if prompt_flow is not None:
-        from kimi_cli.flow import PromptFlowError, parse_flowchart
+        from kimi_cli.flow import PromptFlowError, PromptFlowFormat, parse_prompt_flow
 
         if max_ralph_iterations != 0:
             raise typer.BadParameter(
@@ -403,7 +403,15 @@ def kimi(
                 f"Failed to read prompt flow file: {e}", param_hint="--prompt-flow"
             ) from e
         try:
-            flow = parse_flowchart(flow_text)
+            flow_format: PromptFlowFormat = "auto"
+            match prompt_flow.suffix.lower():
+                case ".d2":
+                    flow_format = "d2"
+                case ".mmd" | ".mermaid":
+                    flow_format = "mermaid"
+                case _:
+                    pass
+            flow = parse_prompt_flow(flow_text, format=flow_format)
         except PromptFlowError as e:
             raise typer.BadParameter(str(e), param_hint="--prompt-flow") from e
 

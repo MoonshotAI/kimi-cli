@@ -138,7 +138,7 @@ YOLO mode skips all confirmations. Make sure you understand the potential risks.
 
 Start Prompt Flow execution.
 
-This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
+This command is only available when a Prompt Flow has been loaded via `--prompt-flow` (Mermaid or D2). After execution, the agent will start from the `BEGIN` node and process each node according to the flow definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
 
 ## Command completion
 

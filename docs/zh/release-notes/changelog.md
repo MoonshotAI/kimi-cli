@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- CLI：`--prompt-flow` 支持加载 D2 格式的 Prompt Flow
+
 ## 0.77 (2026-01-15)
 
 - Shell：修复 `/help` 和 `/changelog` 全屏分页显示中的换行问题

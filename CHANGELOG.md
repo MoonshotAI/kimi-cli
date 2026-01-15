@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- CLI: Support D2 prompt flow diagrams via `--prompt-flow`
+
 ## 0.77 (2026-01-15)
 
 - Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display

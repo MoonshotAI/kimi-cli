@@ -4,12 +4,12 @@ Updated: 2026-01-15
 Status: Implemented
 ---
 
-# KLIP-10: Mermaid Prompt Flow (--prompt-flow)
+# KLIP-10: Prompt Flow (--prompt-flow)
 
 ## 背景
 
 当前 Kimi CLI 只能通过交互式输入或 `--command` 单次输入驱动对话。希望支持一种
-"prompt flow"，让用户用 Mermaid flowchart 描述流程，每个节点对应一次对话轮次，
+"prompt flow"，让用户用 Mermaid flowchart 或 D2 描述流程，每个节点对应一次对话轮次，
 并能根据分支节点的选择继续走向不同的下一节点。
 
 示例见 `flowchart.mmd`：用 `BEGIN`/`END` 包住流程，中间节点为 prompt，分支节点用
@@ -17,7 +17,7 @@ Status: Implemented
 
 ## 目标
 
-- 新增 `--prompt-flow <file.mmd>`，从 Mermaid flowchart 解析为内存图结构。
+- 新增 `--prompt-flow <file>`，支持 Mermaid flowchart（`.mmd`/`.mermaid`）与 D2（`.d2`）。
 - 从 `BEGIN` 开始顺着图走，依次执行节点（除 BEGIN/END）。
 - 在 `KimiSoul` 中支持可选的 `PromptFlow`，通过 `/begin` 命令触发执行。
 - 分支节点会在 user input 中补充可选分支值，要求 LLM 在回复末尾输出
@@ -27,6 +27,7 @@ Status: Implemented
 ## 非目标
 
 - 不支持完整 Mermaid 语法，仅支持 flowchart 的最小子集。
+- 不支持完整 D2 语法，仅支持连接/节点声明的最小子集。
 - 不引入新的 UI（依旧使用 shell UI 输出）。
 - 不处理子图、样式、链接、点击事件等 Mermaid 特性。
 
@@ -44,6 +45,18 @@ Status: Implemented
 - 允许边上内联节点定义：`A([BEGIN]) --> B[...]`。
 
 不支持：子图、链式多节点（`A --> B --> C`）、复杂连线形态、label 中包含 `|`。
+
+### 1b) D2 最小子集
+
+仅支持以下语法（足够覆盖 prompt flow 用例）：
+
+- 注释：行注释 `# ...`，块注释 `\"\"\" ... \"\"\"`。
+- 语句分隔：换行或 `;`。
+- 节点：`ID`（隐式创建，label 默认使用 ID）、`ID: 文本`（显式 label，支持引号）。
+- 可选：`ID.shape: diamond`（显式标记分支节点）。
+- 边：`A -> B`、`A -> B: label`；支持链式连接 `A -> B <- C: label`（label 作用于链上的每条边）。
+
+不支持：`--`/`<->`（Prompt Flow 语义要求有向边）、导入、多 board、多层嵌套对象、复杂属性等。
 
 ### 2) 图结构与校验
 
@@ -79,7 +92,7 @@ class PromptFlowError(ValueError):
     """Base error for prompt flow parsing/validation."""
 
 class PromptFlowParseError(PromptFlowError):
-    """Raised when Mermaid flowchart parsing fails."""
+    """Raised when prompt flow parsing fails."""
 
 class PromptFlowValidationError(PromptFlowError):
     """Raised when a flowchart fails validation."""

@@ -87,11 +87,11 @@ Ralph 循环与 `--prompt-flow` 选项互斥，不能同时使用。
 
 | 选项 | 说明 |
 |------|------|
-| `--prompt-flow PATH` | 加载 Mermaid 流程图文件作为 Prompt Flow |
+| `--prompt-flow PATH` | 加载 Mermaid 流程图或 D2 文件作为 Prompt Flow |
 
-Prompt Flow 是一种基于 Mermaid 流程图的工作流描述方式，每个节点对应一次对话轮次。加载后，可以通过 `/begin` 命令启动流程执行。
+Prompt Flow 是一种基于 Mermaid 流程图或 D2 图表的工作流描述方式，每个节点对应一次对话轮次。加载后，可以通过 `/begin` 命令启动流程执行。
 
-流程图示例（`example.mmd` 文件）：
+Mermaid 流程图示例（`example.mmd` 文件）：
 
 ```
 flowchart TD
@@ -112,6 +112,23 @@ flowchart TD
 ```
 
 在节点处理过程中，分支节点（`{}`）会要求 Agent 输出 `<choice>分支名</choice>` 来选择下一个节点。
+
+D2 示例（`example.d2` 文件）：
+
+```d2
+BEGIN: BEGIN
+END: END
+
+TASK: 分析现有代码，为 XXX 功能编写设计文档，写在 design.md 文件中
+DECISION: Review 一遍 design.md，看看是否足够详细
+
+BEGIN -> TASK
+TASK -> DECISION
+DECISION -> END: 是
+DECISION -> TASK: 否
+```
+
+在 D2 中，节点在拥有多条出边时会被视为分支节点（也可以显式设置 `<node>.shape: diamond`）。分支节点要求所有出边都带有 label，Agent 需要输出 `<choice>分支名</choice>` 来选择下一个节点。
 
 ::: info 注意
 `--prompt-flow` 与 Ralph 循环模式互斥，不能同时使用。

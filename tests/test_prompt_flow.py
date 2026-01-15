@@ -5,7 +5,9 @@ import pytest
 from kimi_cli.flow import (
     PromptFlowValidationError,
     parse_choice,
+    parse_d2,
     parse_flowchart,
+    parse_prompt_flow,
 )
 
 
@@ -75,3 +77,59 @@ def test_parse_flowchart_decision_requires_labels() -> None:
 def test_parse_choice_last_match() -> None:
     assert parse_choice("Answer <choice>a</choice> <choice>b</choice>") == "b"
     assert parse_choice("No choice tag") is None
+
+
+def test_parse_d2_basic() -> None:
+    flow = parse_d2(
+        "\n".join(
+            [
+                "# D2 prompt flow example",
+                'BEGIN: "BEGIN"',
+                "END: END",
+                "TASK: Search stdrc",
+                'DECISION: "Enough?"',
+                "DECISION.shape: diamond",
+                "BEGIN -> TASK",
+                "TASK -> DECISION",
+                "DECISION -> END: yes",
+                "DECISION -> TASK: no",
+            ]
+        )
+    )
+
+    assert flow.begin_id == "BEGIN"
+    assert flow.end_id == "END"
+    assert flow.nodes["DECISION"].kind == "decision"
+    assert [edge.label for edge in flow.outgoing["DECISION"]] == ["yes", "no"]
+
+
+def test_parse_d2_connection_chaining_label_applies() -> None:
+    flow = parse_d2(
+        "\n".join(
+            [
+                "BEGIN",
+                "END",
+                "BEGIN -> A -> END: next",
+                "A: Step",
+            ]
+        )
+    )
+
+    assert flow.begin_id == "BEGIN"
+    assert flow.end_id == "END"
+    assert [edge.label for edge in flow.outgoing["BEGIN"]] == ["next"]
+    assert [edge.label for edge in flow.outgoing["A"]] == ["next"]
+
+
+def test_parse_prompt_flow_auto_detects_d2() -> None:
+    flow = parse_prompt_flow(
+        "\n".join(
+            [
+                "BEGIN",
+                "END",
+                "BEGIN -> END",
+            ]
+        )
+    )
+    assert flow.begin_id == "BEGIN"
+    assert flow.end_id == "END"

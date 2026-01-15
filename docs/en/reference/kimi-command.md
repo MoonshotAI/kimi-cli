@@ -87,11 +87,11 @@ Ralph Loop is mutually exclusive with the `--prompt-flow` option and cannot be u
 
 | Option | Description |
 |--------|-------------|
-| `--prompt-flow PATH` | Load a Mermaid flowchart file as a Prompt Flow |
+| `--prompt-flow PATH` | Load a Mermaid flowchart or D2 file as a Prompt Flow |
 
-Prompt Flow is a workflow description method based on Mermaid flowcharts, where each node corresponds to one conversation turn. After loading, you can start the flow execution with the `/begin` command.
+Prompt Flow is a workflow description method based on Mermaid flowcharts or D2 diagrams, where each node corresponds to one conversation turn. After loading, you can start the flow execution with the `/begin` command.
 
-Flowchart example (`example.mmd` file):
+Mermaid flowchart example (`example.mmd` file):
 
 ```
 flowchart TD
@@ -112,6 +112,23 @@ flowchart TD
 ```
 
 During node processing, decision nodes (`{}`) require the agent to output `<choice>branch name</choice>` to select the next node.
+
+D2 example (`example.d2` file):
+
+```d2
+BEGIN: BEGIN
+END: END
+
+TASK: Analyze existing code, write design doc for XXX feature in design.md
+DECISION: Review design.md, is it detailed enough?
+
+BEGIN -> TASK
+TASK -> DECISION
+DECISION -> END: Yes
+DECISION -> TASK: No
+```
+
+In D2, a node becomes a decision node if it has multiple outgoing edges (or you explicitly set `<node>.shape: diamond`). Decision nodes require labeled outgoing edges, and the agent must output `<choice>branch name</choice>` to select the next node.
 
 ::: info Note
 `--prompt-flow` is mutually exclusive with Ralph Loop mode and cannot be used together.
