@@ -1,6 +1,6 @@
 [project]
 name = "kimi-sdk"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight Python SDK for the Kimi API."
 readme = "README.md"
 requires-python = ">=3.12"
