@@ -134,6 +134,12 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
 
+### `/begin`
+
+Start Prompt Flow execution.
+
+This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
+
 ## Command completion
 
 After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands, press Enter to select.

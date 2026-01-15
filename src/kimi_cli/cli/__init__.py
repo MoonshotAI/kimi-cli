@@ -151,6 +151,17 @@ def kimi(
             help="User prompt to the agent. Default: prompt interactively.",
         ),
     ] = None,
+    prompt_flow: Annotated[
+        Path | None,
+        typer.Option(
+            "--prompt-flow",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Mermaid flowchart file to run as a prompt flow.",
+        ),
+    ] = None,
     print_mode: Annotated[
         bool,
         typer.Option(
@@ -376,6 +387,26 @@ def kimi(
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
 
+    flow = None
+    if prompt_flow is not None:
+        from kimi_cli.flow import PromptFlowError, parse_flowchart
+
+        if max_ralph_iterations != 0:
+            raise typer.BadParameter(
+                "Prompt flow cannot be used with Ralph mode",
+                param_hint="--prompt-flow",
+            )
+        try:
+            flow_text = prompt_flow.read_text(encoding="utf-8")
+        except OSError as e:
+            raise typer.BadParameter(
+                f"Failed to read prompt flow file: {e}", param_hint="--prompt-flow"
+            ) from e
+        try:
+            flow = parse_flowchart(flow_text)
+        except PromptFlowError as e:
+            raise typer.BadParameter(str(e), param_hint="--prompt-flow") from e
+
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
             "Input format is only supported for print UI",
@@ -458,6 +489,7 @@ def kimi(
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
+            flow=flow,
         )
         match ui:
             case "shell":

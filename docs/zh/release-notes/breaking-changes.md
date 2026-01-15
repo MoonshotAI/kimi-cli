@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.77 - Thinking 模式与 CLI 选项变更
+
 ### Thinking 模式设置迁移调整
 
 从 `0.76` 升级后，Thinking 模式设置不再自动保留。此前保存在 `~/.kimi/kimi.json` 中的 `thinking` 状态不再使用，改为通过 `~/.kimi/config.toml` 中的 `default_thinking` 配置项管理，但不会自动从旧版 `metadata` 迁移。

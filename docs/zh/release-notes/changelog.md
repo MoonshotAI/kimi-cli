@@ -4,12 +4,17 @@
 
 ## 未发布
 
+## 0.77 (2026-01-15)
+
 - Shell：修复 `/help` 和 `/changelog` 全屏分页显示中的换行问题
 - Shell：使用 `/model` 命令切换 Thinking 模式，取代 Tab 键
 - Config：添加 `default_thinking` 配置项（升级后需运行 `/model` 选择 Thinking 模式）
 - LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
 - CLI：将 `--command`/`-c` 重命名为 `--prompt`/`-p`，保留 `--command`/`-c` 作为别名，移除 `--query`/`-q`
 - Wire：修复 Wire 模式下审批请求无法正常响应的问题
+- CLI：添加 `--prompt-flow` 选项，加载 Mermaid 流程图文件作为 Prompt Flow
+- Core：加载 Prompt Flow 后添加 `/begin` 斜杠命令以启动流程
+- Core：使用基于 Prompt Flow 的实现替换旧的 Ralph 循环
 
 ## 0.76 (2026-01-12)
 
