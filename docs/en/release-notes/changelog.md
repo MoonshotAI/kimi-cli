@@ -4,6 +4,10 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.78 (2026-01-16)
+
+- CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
+
 ## 0.77 (2026-01-15)
 
 - Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
