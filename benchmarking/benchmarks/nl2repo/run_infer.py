@@ -134,6 +134,31 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
             result.messages = solve_result.get("messages", [])
             result.sub_messages = solve_result.get("sub_messages", [])
 
+            finished_with_finish = False
+            messages = result.messages
+            if messages:
+                for msg in reversed(messages):
+                    if msg.get("role") == "assistant":
+                        if isinstance(msg.get("tool_calls"), list) and msg["tool_calls"]:
+                            last_tool_call = msg["tool_calls"][0]
+                            if last_tool_call.get("function", {}).get("name") == "Finish":
+                                logger.info(f"✓ Agent properly finished task {instance_id} with Finish tool")
+                                finished_with_finish = True
+                            else:
+                                logger.warning(
+                                    f"Agent did not call Finish tool for {instance_id}, "
+                                    f"last tool: {last_tool_call.get('function', {}).get('name')}"
+                                )
+                        else:
+                            logger.warning(f"Last assistant message for {instance_id} has no tool calls")
+                        break
+            else:
+                logger.warning(f"No messages found for {instance_id}, may indicate incomplete run")
+
+            if not finished_with_finish:
+                logger.error(f"Task {instance_id} did not properly finish with Finish tool")
+                raise RuntimeError(f"Task {instance_id} did not call Finish tool")
+
             instance_output_dir = os.path.join(self.run_logger.run_dir, "instances", instance_id)
             os.makedirs(instance_output_dir, exist_ok=True)
             
