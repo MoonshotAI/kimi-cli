@@ -32,12 +32,21 @@ class NL2RepoInstanceEvaluator(BaseInstanceEvaluator):
         )
         self.container = Container(self.container_config)
         # self.instruction = "According to the start.md in the workspace, implement the entire project as per the requirements specified in the document, ensuring that the final product can be directly run in the current directory. The running requirements should comply with the <API Usage Guide> section of the document. Please complete this task step by step."
-        self.instruction = """Read `start.md` to understand the project requirements, then implement the complete project.
+        
+        base_instruction = """Read `start.md` to understand the project requirements, then implement the complete project.
 Guidelines:
 - Try to decompose the `start.md` as it is very long. Getting critical information at first and referring to it later when needed.
 - Plan the architecture before writing code: identify core modules, data models, and interfaces.
-- Implement incrementally: start with the foundation, then build features layer by layer.
+- Implement incrementally: start with the foundation, then build features layer by layer."""
+        
+        if self.config.use_golden_test:
+            base_instruction += """
+- Golden tests are available in `/tests/` directory. You can examine these tests to understand expected functionality and use them to validate your implementation. Especially the APIs!"""
+        else:
+            base_instruction += """
 - Verify your implementation works before finishing."""
+        
+        self.instruction = base_instruction
     
     def _get_container_image(self) -> str:
         NL2REPO_BASE_IMAGE = os.environ.get(
@@ -45,6 +54,25 @@ Guidelines:
             "docker-local-registry.glm.ai/swedev/all-hands-ai/openhands:0.56-nl2repo",
         )
         return NL2REPO_BASE_IMAGE
+    
+    async def _copy_golden_tests_to_container(self, instance_id: str) -> None:
+        tests_base_dir = "/workspace/swe-data/dataset/nl2repo/tests"
+        tests_source = os.path.join(tests_base_dir, instance_id)
+        
+        if not os.path.exists(tests_source):
+            logger.warning(f"Golden tests not found for instance {instance_id} at {tests_source}")
+            return
+        
+        if not os.path.isdir(tests_source):
+            logger.warning(f"Golden tests path is not a directory: {tests_source}")
+            return
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_tests_dir = os.path.join(temp_dir, "tests")
+            shutil.copytree(tests_source, temp_tests_dir)
+            await self.container.copy_to(temp_tests_dir, "/")
+        
+        logger.info(f"✓ Golden tests copied from {tests_source} to container:/tests")
 
     async def evaluate(self) -> EvalResult:
         start_time = time.time()
@@ -63,6 +91,9 @@ Guidelines:
                 await self.container.copy_to(temp_file_path, self.working_dir)
             
             logger.info("✓ Task description copied to container")
+            
+            if self.config.use_golden_test:
+                await self._copy_golden_tests_to_container(instance_id)
             
             # Initialize git repo
             git_init_script = f"""
@@ -102,7 +133,6 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
 
             result.messages = solve_result.get("messages", [])
             result.sub_messages = solve_result.get("sub_messages", [])
-            result.status = "success"
 
             instance_output_dir = os.path.join(self.run_logger.run_dir, "instances", instance_id)
             os.makedirs(instance_output_dir, exist_ok=True)
@@ -136,6 +166,8 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
                         logger.warning(f"Unexpected tar structure: {extracted_items}")
             except Exception as e:
                 logger.warning(f"Failed to copy workspace from container: {e}")
+
+            result.status = "success"
 
             if self.run_logger:
                 self.run_logger.log_instance_summary(

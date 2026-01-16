@@ -27,6 +27,7 @@ class EvalConfig(BaseModel):
     max_iterations: int = Field(default=100, description="Max iterations per instance")
     max_retries: int = Field(default=3, description="Max retries for failed instances")
     task_type: str = Field(description="Task type")
+    use_golden_test: bool = Field(default=False, description="Use golden tests from dataset")
 
 
 @dataclass

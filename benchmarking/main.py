@@ -40,6 +40,7 @@ async def main(args: argparse.Namespace) -> None:
         max_iterations=args.max_iterations,
         max_retries=args.max_retries,
         task_type=args.task_type,
+        use_golden_test=args.use_golden_test,
     )
  
     semaphore = asyncio.Semaphore(args.max_workers)
@@ -60,9 +61,13 @@ async def main(args: argparse.Namespace) -> None:
 
     instances_df = instances_df.set_index("instance_id")
     logger.info(f"Loaded {len(instances_df)} instances")
-    run_logger = EvalRunLogger(config.output_dir, config.model)
+    
+    run_logger = EvalRunLogger(config.output_dir, config.model, resume_from=args.resume_from)
     logger.info(f"Structured logs: {run_logger.run_dir}")
+    
     run_output_file = str(run_logger.run_dir / "results.jsonl")
+    if args.resume_from:
+        logger.info(f"Resuming from: {run_output_file}")
 
     completed_ids = set()
     if os.path.exists(run_output_file):
@@ -148,6 +153,8 @@ if __name__ == "__main__":
     parser.add_argument("--max-iterations", type=int, default=100, help="Max iterations per instance")
     parser.add_argument("--max-retries", type=int, default=3, help="Max retries for failed instances")
     parser.add_argument("--task-type", required=True, help="Task type", choices=["swebench", "nl2repo"])
+    parser.add_argument("--use-golden-test", action="store_true", help="Use golden tests from dataset (NL2Repo only)")
+    parser.add_argument("--resume-from", help="Run ID to resume from (e.g., GLM-4.7_20260113_073336)")
     args = parser.parse_args()
     asyncio.run(main(args))
 

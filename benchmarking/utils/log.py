@@ -3,25 +3,30 @@ from datetime import datetime
 from pathlib import Path
 
 class EvalRunLogger:
-    def __init__(self, output_dir: str, model: str):
+    def __init__(self, output_dir: str, model: str, resume_from: str = None):
         self.output_dir = Path(output_dir)
         self.model = model
         self.timestamp = datetime.now().isoformat()
         
-        self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_dir = self.output_dir / f"{self.model}_{self.run_id}"
-        self.run_dir.mkdir(parents=True, exist_ok=True)
+        if resume_from:
+            self.run_id = resume_from
+            self.run_dir = self.output_dir / resume_from
+        else:
+            self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.run_dir = self.output_dir / f"{self.model}_{self.run_id}"
+            self.run_dir.mkdir(parents=True, exist_ok=True)
         
         self.metadata_file = self.run_dir / "metadata.json"
     
-        metadata = {
-            "run_id": self.run_id,
-            "model": self.model,
-            "timestamp": self.timestamp,
-            "run_dir": str(self.run_dir),
-        }
-        with open(self.metadata_file, "w") as f:
-            json.dump(metadata, f, indent=2)
+        if not self.metadata_file.exists():
+            metadata = {
+                "run_id": self.run_id,
+                "model": self.model,
+                "timestamp": self.timestamp,
+                "run_dir": str(self.run_dir),
+            }
+            with open(self.metadata_file, "w") as f:
+                json.dump(metadata, f, indent=2)
     
     
     def log_instance_summary(self, instance_id, status, metadata = None):
