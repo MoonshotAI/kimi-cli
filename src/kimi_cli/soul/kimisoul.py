@@ -460,12 +460,19 @@ class KimiSoul:
     def _is_retryable_error(exception: BaseException) -> bool:
         if isinstance(exception, (APIConnectionError, APITimeoutError, APIEmptyResponseError)):
             return True
-        return isinstance(exception, APIStatusError) and exception.status_code in (
-            429,  # Too Many Requests
-            500,  # Internal Server Error
-            502,  # Bad Gateway
-            503,  # Service Unavailable
-        )
+        if isinstance(exception, APIStatusError):
+            retryable_status_codes = (
+                408,  # Request Timeout
+                422,  # Unprocessable Entity (server-side validation issue, often transient)
+                429,  # Too Many Requests (rate limit)
+                500,  # Internal Server Error
+                502,  # Bad Gateway
+                503,  # Service Unavailable
+                504,  # Gateway Timeout
+            )
+            return exception.status_code in retryable_status_codes
+
+        return True
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):

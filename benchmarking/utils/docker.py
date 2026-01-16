@@ -23,6 +23,7 @@ class ContainerConfig:
     network_mode: str = "host"
     memory: str | None = "16g"
     cpus: int = 8
+    keep_container: bool = False
 
 
 class Container:
@@ -170,10 +171,15 @@ class Container:
         """Stop and remove the container."""
         if self.container_name:
             await asyncio.to_thread(self._cleanup_sync)
-            self.container_name = None
+            if not self.config.keep_container:
+                self.container_name = None
 
     def _cleanup_sync(self) -> None:
         """Synchronous helper for cleanup."""
+        if self.config.keep_container:
+            logger.info(f"Keeping container {self.container_name} (--keep-container flag set)")
+            return
+        
         # TODO: stuck in dp
         # try:
         #     container = self.client.containers.get(self.container_name)

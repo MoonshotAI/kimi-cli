@@ -1,5 +1,4 @@
 # type: ignore
-# TODO: error retrying
 import shlex
 import subprocess
 import tarfile
@@ -61,12 +60,19 @@ class KimiContainerSolver:
         workspace_root = Path(__file__).parent.parent
         kimi_cli_src = workspace_root / "src" / "kimi_cli"
         pyproject = workspace_root / "pyproject.toml"
+        kosong_src = workspace_root / "packages" / "kosong"
+        kaos_src = workspace_root / "packages" / "kaos"
         container_name = self.container.container_name
         try:
             tar_buffer = io.BytesIO()
             with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
                 tar.add(kimi_cli_src, arcname="src/kimi_cli")
                 tar.add(pyproject, arcname="pyproject.toml")
+                
+                logger.info(f"Including local kosong/kaos from {kosong_src}/{kaos_src}")
+                tar.add(kosong_src, arcname="packages/kosong")
+                tar.add(kaos_src, arcname="packages/kaos")
+            
             tar_buffer.seek(0)
             tar_data = tar_buffer.read()
             tar_cmd = ["docker", "exec", "-i", container_name, "tar", "-xvf", "-", "-C", self.base_env_path]
@@ -81,20 +87,32 @@ class KimiContainerSolver:
                 logger.error(f"tar stderr: {result.stderr.decode()}")
                 logger.error(f"tar stdout: {result.stdout.decode()}")
                 raise RuntimeError(f"tar extract failed: {result.stderr.decode()}")
+            
         except Exception as e:
             logger.error("Failed to copy sources: {}", str(e), exc_info=True)
             raise
 
     async def _install_kimi_in_container(self) -> None:
-        install_cmd = f"cd {self.base_env_path} && {self.base_python_bin_path}/pip install -e ."
+        workspace_root = Path(__file__).parent.parent
+        kosong_src = workspace_root / "packages" / "kosong"
+        kaos_src = workspace_root / "packages" / "kaos"
+        
+        install_commands = []
+        
+        install_commands.append(f"cd {self.base_env_path} && {self.base_python_bin_path}/pip install -e .")
+        install_commands.append(f"{self.base_python_bin_path}/pip install -e {self.base_env_path}/packages/kosong --force-reinstall")
+        install_commands.append(f"{self.base_python_bin_path}/pip install -e {self.base_env_path}/packages/kaos --force-reinstall")
+        
+        full_cmd = " && ".join(install_commands)
+        
         result = await self.container.execute(
-            ["bash", "-c", install_cmd],
+            ["bash", "-c", full_cmd],
             timeout=600,
             check=False,
         )
         if result.get("exit_code", 0) != 0:
             logger.warning(f"Installation warnings: {result.get('stderr', '')}")
-        logger.info("✓ kimi-cli dependencies installed in poetry environment")
+        logger.info("✓ kimi-cli and workspace packages installed in container")
 
     async def _run_kimi_in_container(self):
         env_vars = f"KIMI_API_KEY={shlex.quote(self.config.api_key)}"
@@ -243,7 +261,7 @@ class KimiContainerSolver:
             }
         except Exception as e:
             logger.error(f"Failed to extract trace: {e}", exc_info=True)
-            return {"messages": [], "sub_messages": []}
+            raise RuntimeError(f"Failed to extract trace: {e}") from e
     
     async def _extract_subagent_contexts(self) -> list:
         """Extract context from subagent sessions (context_sub*.jsonl files).
@@ -252,8 +270,6 @@ class KimiContainerSolver:
             List of dicts with format: [{"id": "context_sub.jsonl", "messages": [...]}, ...]
         """
         try:
-            # Find all subagent context files (context_sub.jsonl, context_sub_1.jsonl, context_sub_2.jsonl, ...)
-            # These are created via next_available_rotation when subagents are called
             find_subagent_cmd = (
                 "find ~/.kimi/sessions -name 'context_sub*.jsonl' -type f 2>/dev/null | sort"
             )
@@ -359,7 +375,7 @@ class KimiContainerSolver:
             return sub_messages
         except Exception as e:
             logger.error(f"Failed to extract subagent contexts: {e}", exc_info=True)
-            return []
+            raise RuntimeError(f"Failed to extract subagent contexts: {e}") from e
 
     async def _get_container_diff(self) -> str:
         try:

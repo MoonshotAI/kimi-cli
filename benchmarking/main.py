@@ -5,6 +5,7 @@ import json
 import jsonlines
 import sys
 import os
+import time
 
 import pandas as pd
 from kimi_cli.app import enable_logging
@@ -41,6 +42,7 @@ async def main(args: argparse.Namespace) -> None:
         max_retries=args.max_retries,
         task_type=args.task_type,
         use_golden_test=args.use_golden_test,
+        keep_container=args.keep_container,
     )
  
     semaphore = asyncio.Semaphore(args.max_workers)
@@ -91,10 +93,20 @@ async def main(args: argparse.Namespace) -> None:
             instance = instances_df.loc[instance_id].to_dict()
             instance["instance_id"] = instance_id
             result = None
+            last_exception: Exception | None = None
+
             for attempt in range(1, config.max_retries + 1):
                 try:
+                    if attempt > 1:
+                        wait_time = 2 * attempt
+                        logger.info(
+                            f"[{instance_id}] Waiting {wait_time}s before attempt {attempt}/{config.max_retries}"
+                        )
+                        await asyncio.sleep(wait_time)
+
                     evaluator = EVALUATOR_CLASS(instance, config, run_logger)
                     result = await evaluator.evaluate()
+                    
                     if result.status == "success":
                         logger.info(f"✓ {instance_id}: {result.status}")
                         with open(run_output_file, "a") as f:
@@ -114,16 +126,28 @@ async def main(args: argparse.Namespace) -> None:
                         with open(run_output_file, "a") as f:
                             f.write(json.dumps(result.to_dict()) + "\n")
                         return
+                        
                 except Exception as e:
+                    last_exception = e
+                    error_name = type(e).__name__
+                    
                     if attempt < config.max_retries:
+                        wait_time = 2 ** (attempt - 1)  # 1s, 2s, 4s, 8s, ...
                         logger.warning(
-                            f"✗ {instance_id} (attempt {attempt}/{config.max_retries}): {e}, "
-                            f"will retry..."
+                            f"✗ {instance_id} (attempt {attempt}/{config.max_retries}): "
+                            f"{error_name}: {str(e)[:200]}, "
+                            f"will retry in {wait_time}s..."
                         )
+                        await asyncio.sleep(wait_time)
                         continue
                     else:
-                        logger.error(f"✗ {instance_id}: Failed after {config.max_retries} attempts")
-                        result = EvalResult(instance_id=instance_id, status="error", error=str(e))
+                        logger.error(
+                            f"✗ {instance_id}: Failed after {config.max_retries} attempts "
+                            f"with {error_name}: {str(e)}"
+                        )
+                        result = EvalResult(
+                            instance_id=instance_id, status="error", error=str(e)
+                        )
                         with open(run_output_file, "a") as f:
                             f.write(json.dumps(result.to_dict()) + "\n")
                         return
@@ -155,6 +179,7 @@ if __name__ == "__main__":
     parser.add_argument("--task-type", required=True, help="Task type", choices=["swebench", "nl2repo"])
     parser.add_argument("--use-golden-test", action="store_true", help="Use golden tests from dataset (NL2Repo only)")
     parser.add_argument("--resume-from", help="Run ID to resume from (e.g., GLM-4.7_20260113_073336)")
+    parser.add_argument("--keep-container", action="store_true", help="Keep container running after evaluation")
     args = parser.parse_args()
     asyncio.run(main(args))
 

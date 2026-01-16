@@ -28,6 +28,7 @@ class EvalConfig(BaseModel):
     max_retries: int = Field(default=3, description="Max retries for failed instances")
     task_type: str = Field(description="Task type")
     use_golden_test: bool = Field(default=False, description="Use golden tests from dataset")
+    keep_container: bool = Field(default=False, description="Keep container after evaluation")
 
 
 @dataclass

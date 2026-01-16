@@ -1,6 +1,6 @@
 import jsonlines
 count = 0
-with jsonlines.open("/workspace/haoran-cloud/code/kimi-cli/results/GLM-4.7_20260107_034639/results.jsonl", "r") as f:
+with jsonlines.open("/workspace/haoran-cloud/code/kimi-cli/results/GLM-4.7_20260113_073336/results.jsonl", "r") as f:
     results = list(f)
 filtered_results = []
 for result in results:
@@ -15,8 +15,9 @@ for result in results:
     # messages = [msg for msg in messages if msg["role"] in ["user", "system", "assistant", "tool"]]
     last_msg = messages[-1]
     try:
-        print(last_msg["content"])
         finish = "Task finished" in last_msg["content"]
+        if not finish:
+            print(last_msg)
     except:
         print(last_msg)
         finish = False
