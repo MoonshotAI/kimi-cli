@@ -402,7 +402,9 @@ class KimiSoul:
                 ],
             )
 
-        return not result.tool_calls
+        # return not result.tool_calls
+        # haoran: Don't stop just because there are no tool calls
+        return False
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
@@ -420,6 +422,14 @@ class KimiSoul:
         await self._context.append_message(result.message)
         if result.usage is not None:
             await self._context.update_token_count(result.usage.total)
+
+        if not result.tool_calls:
+            logger.debug("No tool calls made, adding empty observation")
+            empty_observation = Message(
+                role="tool",
+                content=[system("No tool calls were made in this step.")],
+            )
+            tool_messages.append(empty_observation)
 
         logger.debug(
             "Appending tool messages to context: {tool_messages}", tool_messages=tool_messages

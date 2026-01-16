@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
 
 import httpx
-from openai import OpenAI, Stream, OpenAIError, omit
+from openai import AsyncOpenAI, AsyncStream, OpenAIError, omit
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
@@ -87,12 +87,12 @@ class Kimi(ChatProvider):
         """The name of the model to use."""
         self.stream: bool = stream
         """Whether to generate responses as a stream."""
-        self.client: OpenAI = OpenAI(
+        self.client: AsyncOpenAI = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             **client_kwargs,
         )
-        """The underlying `OpenAI` client."""
+        """The underlying `AsyncOpenAI` client."""
         self._generation_kwargs: Kimi.GenerationKwargs = {}
 
     @property
@@ -123,7 +123,7 @@ class Kimi(ChatProvider):
                 generation_kwargs["temperature"] = 0.6
 
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 tools=(_convert_tool(tool) for tool in tools),
@@ -210,9 +210,11 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
 class KimiStreamedMessage(StreamedMessage):
     """The streamed message of the Kimi chat provider."""
 
-    def __init__(self, response: ChatCompletion | Stream[ChatCompletionChunk]):
-        self._parts = list(self._convert_response(response))
-        self._index = 0
+    def __init__(self, response: ChatCompletion | AsyncStream[ChatCompletionChunk]):
+        if isinstance(response, ChatCompletion):
+            self._iter = self._convert_non_stream_response(response)
+        else:
+            self._iter = self._convert_stream_response(response)
         self._id: str | None = None
         self._usage: CompletionUsage | None = None
 
@@ -220,11 +222,7 @@ class KimiStreamedMessage(StreamedMessage):
         return self
 
     async def __anext__(self) -> StreamedMessagePart:
-        if self._index >= len(self._parts):
-            raise StopAsyncIteration
-        part = self._parts[self._index]
-        self._index += 1
-        return part
+        return await self._iter.__anext__()
 
     @property
     def id(self) -> str | None:
@@ -253,74 +251,76 @@ class KimiStreamedMessage(StreamedMessage):
             )
         return None
 
-    def _convert_response(self, response: ChatCompletion | Stream[ChatCompletionChunk]) -> list[StreamedMessagePart]:
-        """Convert response to list of message parts (synchronous)."""
-        parts: list[StreamedMessagePart] = []
-        
-        if isinstance(response, ChatCompletion):
-            # Non-stream response
-            self._id = response.id
-            self._usage = response.usage
-            message = response.choices[0].message
-            if reasoning_content := getattr(message, "reasoning_content", None):
-                assert isinstance(reasoning_content, str)
-                parts.append(ThinkPart(think=reasoning_content))
-            if message.content:
-                parts.append(TextPart(text=message.content))
-            if message.tool_calls:
-                for tool_call in message.tool_calls:
-                    if isinstance(tool_call, ChatCompletionMessageFunctionToolCall):
-                        parts.append(ToolCall(
+    async def _convert_non_stream_response(
+        self,
+        response: ChatCompletion,
+    ) -> AsyncIterator[StreamedMessagePart]:
+        self._id = response.id
+        self._usage = response.usage
+        message = response.choices[0].message
+        if reasoning_content := getattr(message, "reasoning_content", None):
+            assert isinstance(reasoning_content, str)
+            yield ThinkPart(think=reasoning_content)
+        if message.content:
+            yield TextPart(text=message.content)
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                if isinstance(tool_call, ChatCompletionMessageFunctionToolCall):
+                    yield ToolCall(
+                        id=tool_call.id or str(uuid.uuid4()),
+                        function=ToolCall.FunctionBody(
+                            name=tool_call.function.name,
+                            arguments=tool_call.function.arguments,
+                        ),
+                    )
+
+    async def _convert_stream_response(
+        self,
+        response: AsyncIterator[ChatCompletionChunk],
+    ) -> AsyncIterator[StreamedMessagePart]:
+        try:
+            async for chunk in response:
+                if chunk.id:
+                    self._id = chunk.id
+                if chunk.usage:
+                    self._usage = chunk.usage
+
+                if not chunk.choices:
+                    continue
+
+                delta = chunk.choices[0].delta
+
+                # convert thinking content
+                if reasoning_content := getattr(delta, "reasoning_content", None):
+                    assert isinstance(reasoning_content, str)
+                    yield ThinkPart(think=reasoning_content)
+
+                # convert text content
+                if delta.content:
+                    yield TextPart(text=delta.content)
+
+                # convert tool calls
+                for tool_call in delta.tool_calls or []:
+                    if not tool_call.function:
+                        continue
+
+                    if tool_call.function.name:
+                        yield ToolCall(
                             id=tool_call.id or str(uuid.uuid4()),
                             function=ToolCall.FunctionBody(
                                 name=tool_call.function.name,
                                 arguments=tool_call.function.arguments,
                             ),
-                        ))
-        else:
-            # Stream response
-            try:
-                for chunk in response:
-                    if chunk.id:
-                        self._id = chunk.id
-                    if chunk.usage:
-                        self._usage = chunk.usage
-
-                    if not chunk.choices:
-                        continue
-
-                    delta = chunk.choices[0].delta
-
-                    # convert thinking content
-                    if reasoning_content := getattr(delta, "reasoning_content", None):
-                        assert isinstance(reasoning_content, str)
-                        parts.append(ThinkPart(think=reasoning_content))
-
-                    # convert text content
-                    if delta.content:
-                        parts.append(TextPart(text=delta.content))
-
-                    # convert tool calls
-                    for tool_call in delta.tool_calls or []:
-                        if not tool_call.function:
-                            continue
-
-                        if tool_call.function.name:
-                            parts.append(ToolCall(
-                                id=tool_call.id or str(uuid.uuid4()),
-                                function=ToolCall.FunctionBody(
-                                    name=tool_call.function.name,
-                                    arguments=tool_call.function.arguments,
-                                ),
-                            ))
-                        elif tool_call.function.arguments:
-                            parts.append(ToolCallPart(
-                                arguments_part=tool_call.function.arguments,
-                            ))
-            except (OpenAIError, httpx.HTTPError) as e:
-                raise convert_error(e) from e
-        
-        return parts
+                        )
+                    elif tool_call.function.arguments:
+                        yield ToolCallPart(
+                            arguments_part=tool_call.function.arguments,
+                        )
+                    else:
+                        # skip empty tool calls
+                        pass
+        except (OpenAIError, httpx.HTTPError) as e:
+            raise convert_error(e) from e
 
 
 if __name__ == "__main__":

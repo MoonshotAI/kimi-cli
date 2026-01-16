@@ -157,7 +157,7 @@ git commit --allow-empty -m "Initial commit" 2>/dev/null || true
 
             if not finished_with_finish:
                 logger.error(f"Task {instance_id} did not properly finish with Finish tool")
-                raise RuntimeError(f"Task {instance_id} did not call Finish tool, last assisi message: {messages[-1]}")
+                raise RuntimeError(f"Task {instance_id} did not call Finish tool, last message: {messages[-1]}")
 
             instance_output_dir = os.path.join(self.run_logger.run_dir, "instances", instance_id)
             os.makedirs(instance_output_dir, exist_ok=True)

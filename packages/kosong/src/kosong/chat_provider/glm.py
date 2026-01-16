@@ -1,19 +1,12 @@
 import copy
 import os
 import uuid
-from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
+from collections.abc import Sequence
+from typing import Any, Self, TypedDict, Unpack, cast
 
-import httpx
-from openai import OpenAI, Stream, OpenAIError, omit
-from openai.types.chat import (
-    ChatCompletion,
-    ChatCompletionChunk,
-    ChatCompletionMessageFunctionToolCall,
-    ChatCompletionMessageParam,
-    ChatCompletionToolParam,
-)
-from openai.types.completion_usage import CompletionUsage
+import requests
+from openai import OpenAIError
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from kosong.chat_provider import (
     ChatProvider,
@@ -27,13 +20,7 @@ from kosong.chat_provider.openai_common import convert_error, tool_to_openai
 from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import Tool
 
-if TYPE_CHECKING:
-
-    def type_check(kimi: "Kimi"):
-        _: ChatProvider = kimi
-
-
-class Kimi(ChatProvider):
+class GLM(ChatProvider):
     """
     A chat provider that uses the Kimi API.
 
@@ -87,13 +74,9 @@ class Kimi(ChatProvider):
         """The name of the model to use."""
         self.stream: bool = stream
         """Whether to generate responses as a stream."""
-        self.client: OpenAI = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            **client_kwargs,
-        )
-        """The underlying `OpenAI` client."""
-        self._generation_kwargs: Kimi.GenerationKwargs = {}
+        self.api_key: str = api_key
+        self.base_url: str = base_url
+        self._generation_kwargs: GLM.GenerationKwargs = {}
 
     @property
     def model_name(self) -> str:
@@ -123,17 +106,51 @@ class Kimi(ChatProvider):
                 generation_kwargs["temperature"] = 0.6
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            # Fake async - blocking call
+            response = self._chat_completion(
                 messages=messages,
-                tools=(_convert_tool(tool) for tool in tools),
-                stream=self.stream,
-                stream_options={"include_usage": True} if self.stream else omit,
+                tools=list(tools),
                 **generation_kwargs,
             )
             return KimiStreamedMessage(response)
-        except (OpenAIError, httpx.HTTPError) as e:
+        except OpenAIError as e:
             raise convert_error(e) from e
+
+    def _chat_completion(
+        self,
+        messages: list[ChatCompletionMessageParam],
+        tools: list[Tool],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Synchronous chat completion call via requests."""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 32000),
+            "temperature": kwargs.get("temperature", 0.6),
+            "top_p": kwargs.get("top_p", 1.0),
+            "stream": False,
+            "tools": [_convert_tool(tool) for tool in tools],
+        }
+
+        # Add optional parameters if provided
+        if "reasoning_effort" in kwargs and kwargs["reasoning_effort"]:
+            payload["reasoning_effort"] = kwargs["reasoning_effort"]
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        url = f"{self.base_url}/chat/completions"
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=1200,
+        )
+        response.raise_for_status()
+        return response.json()
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
         match effort:
@@ -147,7 +164,7 @@ class Kimi(ChatProvider):
                 reasoning_effort = "high"
         return self.with_generation_kwargs(reasoning_effort=reasoning_effort)
 
-    def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
+    def with_generation_kwargs(self, **kwargs: Unpack[GLM.GenerationKwargs]) -> Self:
         """
         Copy the chat provider, updating the generation kwargs with the given values.
 
@@ -167,7 +184,7 @@ class Kimi(ChatProvider):
         For tracing/logging purposes.
         """
 
-        model_parameters: dict[str, Any] = {"base_url": str(self.client.base_url)}
+        model_parameters: dict[str, Any] = {"base_url": str(self.base_url)}
         model_parameters.update(self._generation_kwargs)
         return model_parameters
 
@@ -180,8 +197,6 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
         if isinstance(part, ThinkPart):
             reasoning_content += part.think
         else:
-            if isinstance(part, TextPart) and not part.text:
-                continue
             content.append(part)
     message.content = content
     dumped_message = message.model_dump(exclude_none=True)
@@ -210,21 +225,17 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
 class KimiStreamedMessage(StreamedMessage):
     """The streamed message of the Kimi chat provider."""
 
-    def __init__(self, response: ChatCompletion | Stream[ChatCompletionChunk]):
-        self._parts = list(self._convert_response(response))
-        self._index = 0
+    def __init__(self, response: dict[str, Any]):
+        # Convert dict response to async iterator
+        self._iter = self._convert_response(response)
         self._id: str | None = None
-        self._usage: CompletionUsage | None = None
+        self._usage: TokenUsage | None = None
 
-    def __aiter__(self) -> AsyncIterator[StreamedMessagePart]:
+    def __aiter__(self):
         return self
 
     async def __anext__(self) -> StreamedMessagePart:
-        if self._index >= len(self._parts):
-            raise StopAsyncIteration
-        part = self._parts[self._index]
-        self._index += 1
-        return part
+        return await self._iter.__anext__()
 
     @property
     def id(self) -> str | None:
@@ -232,101 +243,64 @@ class KimiStreamedMessage(StreamedMessage):
 
     @property
     def usage(self) -> TokenUsage | None:
-        if self._usage:
-            cached = 0
-            other_input = self._usage.prompt_tokens
-            if hasattr(self._usage, "cached_tokens"):
-                # https://platform.moonshot.cn/docs/api/chat#%E8%BF%94%E5%9B%9E%E5%86%85%E5%AE%B9
-                # TODO: delete this when Moonshot API becomes compatible with OpenAI API
-                cached = getattr(self._usage, "cached_tokens") or 0  # noqa: B009
-                other_input -= cached
-            elif (
-                self._usage.prompt_tokens_details
-                and self._usage.prompt_tokens_details.cached_tokens
-            ):
-                cached = self._usage.prompt_tokens_details.cached_tokens
-                other_input -= cached
-            return TokenUsage(
-                input_other=other_input,
-                output=self._usage.completion_tokens,
-                input_cache_read=cached,
-            )
-        return None
+        return self._usage
 
-    def _convert_response(self, response: ChatCompletion | Stream[ChatCompletionChunk]) -> list[StreamedMessagePart]:
-        """Convert response to list of message parts (synchronous)."""
-        parts: list[StreamedMessagePart] = []
-        
-        if isinstance(response, ChatCompletion):
-            # Non-stream response
-            self._id = response.id
-            self._usage = response.usage
-            message = response.choices[0].message
-            if reasoning_content := getattr(message, "reasoning_content", None):
-                assert isinstance(reasoning_content, str)
-                parts.append(ThinkPart(think=reasoning_content))
-            if message.content:
-                parts.append(TextPart(text=message.content))
-            if message.tool_calls:
-                for tool_call in message.tool_calls:
-                    if isinstance(tool_call, ChatCompletionMessageFunctionToolCall):
-                        parts.append(ToolCall(
-                            id=tool_call.id or str(uuid.uuid4()),
-                            function=ToolCall.FunctionBody(
-                                name=tool_call.function.name,
-                                arguments=tool_call.function.arguments,
-                            ),
-                        ))
-        else:
-            # Stream response
-            try:
-                for chunk in response:
-                    if chunk.id:
-                        self._id = chunk.id
-                    if chunk.usage:
-                        self._usage = chunk.usage
-
-                    if not chunk.choices:
-                        continue
-
-                    delta = chunk.choices[0].delta
-
-                    # convert thinking content
-                    if reasoning_content := getattr(delta, "reasoning_content", None):
-                        assert isinstance(reasoning_content, str)
-                        parts.append(ThinkPart(think=reasoning_content))
-
-                    # convert text content
-                    if delta.content:
-                        parts.append(TextPart(text=delta.content))
-
-                    # convert tool calls
-                    for tool_call in delta.tool_calls or []:
-                        if not tool_call.function:
-                            continue
-
-                        if tool_call.function.name:
-                            parts.append(ToolCall(
-                                id=tool_call.id or str(uuid.uuid4()),
-                                function=ToolCall.FunctionBody(
-                                    name=tool_call.function.name,
-                                    arguments=tool_call.function.arguments,
-                                ),
-                            ))
-                        elif tool_call.function.arguments:
-                            parts.append(ToolCallPart(
-                                arguments_part=tool_call.function.arguments,
-                            ))
-            except (OpenAIError, httpx.HTTPError) as e:
-                raise convert_error(e) from e
-        
-        return parts
+    async def _convert_response(
+        self,
+        response: dict[str, Any],
+    ):
+        """Convert API response dict to async iterator of message parts."""
+        try:
+            self._id = response.get("id")
+            
+            # Extract usage information
+            usage_dict = response.get("usage", {})
+            if usage_dict:
+                cached = 0
+                other_input = usage_dict.get("prompt_tokens", 0)
+                cached_tokens = usage_dict.get("cached_tokens", 0)
+                if cached_tokens:
+                    cached = cached_tokens
+                    other_input -= cached
+                self._usage = TokenUsage(
+                    input_other=other_input,
+                    output=usage_dict.get("completion_tokens", 0),
+                    input_cache_read=cached,
+                )
+            
+            # Extract message from response
+            if response.get("choices"):
+                message = response["choices"][0].get("message", {})
+                
+                # Yield thinking content if present
+                if reasoning_content := message.get("reasoning_content"):
+                    yield ThinkPart(think=reasoning_content)
+                
+                # Yield text content if present
+                if content := message.get("content"):
+                    yield TextPart(text=content)
+                
+                # Yield tool calls if present
+                if tool_calls := message.get("tool_calls"):
+                    for tool_call in tool_calls:
+                        if isinstance(tool_call, dict):
+                            if tool_call.get("type") == "function":
+                                func = tool_call.get("function", {})
+                                yield ToolCall(
+                                    id=tool_call.get("id") or str(uuid.uuid4()),
+                                    function=ToolCall.FunctionBody(
+                                        name=func.get("name", ""),
+                                        arguments=func.get("arguments", ""),
+                                    ),
+                                )
+        except OpenAIError as e:
+            raise convert_error(e) from e
 
 
 if __name__ == "__main__":
 
     async def _dev_main():
-        chat = Kimi(model="kimi-k2-turbo-preview", stream=False)
+        chat = GLM(model="kimi-k2-turbo-preview", stream=False)
         system_prompt = ""
         history = [
             Message(role="user", content="Hello, who is Confucius?"),
