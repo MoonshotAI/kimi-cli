@@ -120,7 +120,7 @@ git prune --expire=now
 
             if not finished_with_finish:
                 logger.error(f"Task {instance_id} did not properly finish with Finish tool")
-                raise RuntimeError(f"Task {instance_id} did not call Finish tool")
+                raise RuntimeError(f"Task {instance_id} did not call Finish tool, last assisi message: {messages[-1]}")
 
             git_result = await self.container.execute_shell(
                 f"git diff --no-color --cached {base_commit}",

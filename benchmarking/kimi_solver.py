@@ -137,7 +137,6 @@ class KimiContainerSolver:
             f"--work-dir {shlex.quote(self.working_dir)} "
             f"--command {shlex.quote(self.instruction)} "
             f"--config {shlex.quote(config_json)} "
-            f"--print "
             f"--yolo "
             f"--thinking "
         )
@@ -151,15 +150,12 @@ class KimiContainerSolver:
         exit_code = result.get("exit_code", 0)
         stdout = result.get("stdout", "")
         stderr = result.get("stderr", "")
-        
-        logger.info(f"Kimi execution completed with exit code: {exit_code}")
-        
-        if exit_code != 0:
-            logger.warning(f"Kimi exit code: {exit_code}")
-            if stderr:
-                logger.warning(f"Stderr: {stderr}")
-            logger.info(f"Stdout: {stdout}")
-        
+
+        logger.warning(f"Kimi exit code: {exit_code}")
+        if stderr:
+            logger.warning(f"Stderr: {stderr}")
+        logger.info(f"Stdout: {stdout}")
+    
         trace_result = await self._extract_trace()
         git_diff = await self._get_container_diff()
         return {
