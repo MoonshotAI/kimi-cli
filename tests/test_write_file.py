@@ -96,12 +96,14 @@ async def test_write_multiline_content(write_file_tool: WriteFile, temp_work_dir
     assert await file_path.read_text() == content
 
 
-async def test_write_with_relative_path(write_file_tool: WriteFile):
-    """Test writing with a relative path (should fail)."""
-    result = await write_file_tool(Params(path="relative/path/file.txt", content="content"))
+async def test_write_with_relative_path(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing with a relative path (should auto-resolve to work directory)."""
+    result = await write_file_tool(Params(path="test_relative.txt", content="content"))
 
-    assert result.is_error
-    assert "not an absolute path" in result.message
+    assert not result.is_error
+    created_file = temp_work_dir / "test_relative.txt"
+    assert await created_file.exists()
+    assert await created_file.read_text() == "content"
 
 
 async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_file: Path):
