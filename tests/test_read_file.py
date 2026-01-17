@@ -8,14 +8,14 @@ import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.tools.file.read import (
+from gitrekt_cli.tools.file.read import (
     MAX_BYTES,
     MAX_LINE_LENGTH,
     MAX_LINES,
     Params,
     ReadFile,
 )
-from kimi_cli.wire.types import ImageURLPart, VideoURLPart
+from gitrekt_cli.wire.types import ImageURLPart, VideoURLPart
 
 
 @pytest.fixture
@@ -368,7 +368,7 @@ async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_wor
     # Create a test file in temp_work_dir and use ~ to reference it
     # We simulate by creating a file and checking that ~ expands correctly
     home = Path.home()
-    test_file = home / ".kimi_test_expanduser_temp"
+    test_file = home / ".Gitrekt_test_expanduser_temp"
     test_content = "Test content for tilde expansion"
 
     try:
@@ -376,7 +376,7 @@ async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_wor
         test_file.write_text(test_content)
 
         # Read using ~ path
-        result = await read_file_tool(Params(path="~/.kimi_test_expanduser_temp"))
+        result = await read_file_tool(Params(path="~/.Gitrekt_test_expanduser_temp"))
 
         assert not result.is_error
         assert "Test content for tilde expansion" in result.output

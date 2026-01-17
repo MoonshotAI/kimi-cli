@@ -1,18 +1,18 @@
-name: CI (kimi-sdk)
+name: CI (Gitrekt-sdk)
 
 on:
   pull_request:
     paths:
-      - ".github/workflows/ci-kimi-sdk.yml"
-      - "sdks/kimi-sdk/**"
+      - ".github/workflows/ci-Gitrekt-sdk.yml"
+      - "sdks/Gitrekt-sdk/**"
       - "pyproject.toml"
       - "uv.lock"
   push:
     branches:
       - main
     paths:
-      - ".github/workflows/ci-kimi-sdk.yml"
-      - "sdks/kimi-sdk/**"
+      - ".github/workflows/ci-Gitrekt-sdk.yml"
+      - "sdks/Gitrekt-sdk/**"
       - "pyproject.toml"
       - "uv.lock"
 
@@ -41,17 +41,17 @@ jobs:
       - name: Install dependencies
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: uv sync --frozen --all-extras --project sdks/kimi-sdk
+        run: uv sync --frozen --all-extras --project sdks/Gitrekt-sdk
 
       - name: Run checks
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make check-kimi-sdk
+        run: make check-Gitrekt-sdk
 
       - name: Run tests
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make test-kimi-sdk
+        run: make test-Gitrekt-sdk
 
   docs:
     runs-on: ubuntu-latest
@@ -73,17 +73,17 @@ jobs:
           version: "0.8.5"
 
       - name: Install dependencies
-        run: uv sync --frozen --all-extras --project sdks/kimi-sdk
+        run: uv sync --frozen --all-extras --project sdks/Gitrekt-sdk
 
       - name: Generate API documentation
         run: |
-          uv run --project sdks/kimi-sdk pdoc kimi_sdk \
+          uv run --project sdks/Gitrekt-sdk pdoc Gitrekt_sdk \
             --docformat google \
-            --footer-text "kimi-sdk ${FOOTER_VERSION}" \
-            -o sdks/kimi-sdk/docs
+            --footer-text "Gitrekt-sdk ${FOOTER_VERSION}" \
+            -o sdks/Gitrekt-sdk/docs
 
       - name: Upload docs preview
         uses: actions/upload-artifact@v4
         with:
           name: docs-preview
-          path: sdks/kimi-sdk/docs
+          path: sdks/Gitrekt-sdk/docs

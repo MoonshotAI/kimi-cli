@@ -22,10 +22,10 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 	@echo "==> Syncing dependencies for release builds (no sources)"
 	@uv sync --all-extras --all-packages --no-sources
 
-.PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk
-format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk ## Auto-format all workspace packages with ruff.
-format-kimi-cli: ## Auto-format Kimi CLI sources with ruff.
-	@echo "==> Formatting Kimi CLI sources"
+.PHONY: format format-gitrekt-cli format-kosong format-pykaos format-gitrekt-sdk
+format: format-gitrekt-cli format-kosong format-pykaos format-gitrekt-sdk ## Auto-format all workspace packages with ruff.
+format-gitrekt-cli: ## Auto-format Gitrekt CLI sources with ruff.
+	@echo "==> Formatting Gitrekt CLI sources"
 	@uv run ruff check --fix
 	@uv run ruff format
 format-kosong: ## Auto-format kosong sources with ruff.
@@ -36,15 +36,15 @@ format-pykaos: ## Auto-format pykaos sources with ruff.
 	@echo "==> Formatting pykaos sources"
 	@uv run --project packages/kaos --directory packages/kaos ruff check --fix
 	@uv run --project packages/kaos --directory packages/kaos ruff format
-format-kimi-sdk: ## Auto-format kimi-sdk sources with ruff.
-	@echo "==> Formatting kimi-sdk sources"
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff check --fix
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff format
+format-gitrekt-sdk: ## Auto-format gitrekt-sdk sources with ruff.
+	@echo "==> Formatting gitrekt-sdk sources"
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk ruff check --fix
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk ruff format
 
-.PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk
-check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk ## Run linting and type checks for all packages.
-check-kimi-cli: ## Run linting and type checks for Kimi CLI.
-	@echo "==> Checking Kimi CLI (ruff + pyright + ty; ty is non-blocking)"
+.PHONY: check check-gitrekt-cli check-kosong check-pykaos check-gitrekt-sdk
+check: check-gitrekt-cli check-kosong check-pykaos check-gitrekt-sdk ## Run linting and type checks for all packages.
+check-gitrekt-cli: ## Run linting and type checks for Gitrekt CLI.
+	@echo "==> Checking Gitrekt CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
 	@uv run ruff format --check
 	@uv run pyright
@@ -61,18 +61,18 @@ check-pykaos: ## Run linting and type checks for pykaos.
 	@uv run --project packages/kaos --directory packages/kaos ruff format --check
 	@uv run --project packages/kaos --directory packages/kaos pyright
 	@uv run --project packages/kaos --directory packages/kaos ty check || true
-check-kimi-sdk: ## Run linting and type checks for kimi-sdk.
-	@echo "==> Checking kimi-sdk (ruff + pyright + ty; ty is non-blocking)"
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff check
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff format --check
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pyright
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ty check || true
+check-gitrekt-sdk: ## Run linting and type checks for gitrekt-sdk.
+	@echo "==> Checking gitrekt-sdk (ruff + pyright + ty; ty is non-blocking)"
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk ruff check
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk ruff format --check
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk pyright
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk ty check || true
 
 
-.PHONY: test test-kimi-cli test-kosong test-pykaos test-kimi-sdk
-test: test-kimi-cli test-kosong test-pykaos test-kimi-sdk ## Run all test suites.
-test-kimi-cli: ## Run Kimi CLI tests.
-	@echo "==> Running Kimi CLI tests"
+.PHONY: test test-gitrekt-cli test-kosong test-pykaos test-gitrekt-sdk
+test: test-gitrekt-cli test-kosong test-pykaos test-gitrekt-sdk ## Run all test suites.
+test-gitrekt-cli: ## Run Gitrekt CLI tests.
+	@echo "==> Running Gitrekt CLI tests"
 	@uv run pytest tests -vv
 test-kosong: ## Run kosong tests (including doctests).
 	@echo "==> Running kosong tests"
@@ -80,39 +80,39 @@ test-kosong: ## Run kosong tests (including doctests).
 test-pykaos: ## Run pykaos tests.
 	@echo "==> Running pykaos tests"
 	@uv run --project packages/kaos --directory packages/kaos pytest tests -vv
-test-kimi-sdk: ## Run kimi-sdk tests.
-	@echo "==> Running kimi-sdk tests"
-	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pytest tests -vv
+test-gitrekt-sdk: ## Run gitrekt-sdk tests.
+	@echo "==> Running gitrekt-sdk tests"
+	@uv run --project sdks/gitrekt-sdk --directory sdks/gitrekt-sdk pytest tests -vv
 
-.PHONY: build build-kimi-cli build-kosong build-pykaos build-kimi-sdk build-bin
-build: build-kimi-cli build-kosong build-pykaos build-kimi-sdk ## Build Python packages for release.
-build-kimi-cli: ## Build the kimi-cli sdist and wheel.
-	@echo "==> Building kimi-cli distributions"
-	@uv build --package kimi-cli --no-sources --out-dir dist
+.PHONY: build build-gitrekt-cli build-kosong build-pykaos build-gitrekt-sdk build-bin
+build: build-gitrekt-cli build-kosong build-pykaos build-gitrekt-sdk ## Build Python packages for release.
+build-gitrekt-cli: ## Build the gitrekt-cli sdist and wheel.
+	@echo "==> Building gitrekt-cli distributions"
+	@uv build --package gitrekt-cli --no-sources --out-dir dist
 build-kosong: ## Build the kosong sdist and wheel.
 	@echo "==> Building kosong distributions"
 	@uv build --package kosong --no-sources --out-dir dist/kosong
 build-pykaos: ## Build the pykaos sdist and wheel.
 	@echo "==> Building pykaos distributions"
 	@uv build --package pykaos --no-sources --out-dir dist/pykaos
-build-kimi-sdk: ## Build the kimi-sdk sdist and wheel.
-	@echo "==> Building kimi-sdk distributions"
-	@uv build --package kimi-sdk --no-sources --out-dir dist/kimi-sdk
+build-gitrekt-sdk: ## Build the gitrekt-sdk sdist and wheel.
+	@echo "==> Building gitrekt-sdk distributions"
+	@uv build --package gitrekt-sdk --no-sources --out-dir dist/gitrekt-sdk
 build-bin: ## Build the standalone executable with PyInstaller.
 	@echo "==> Building PyInstaller binary"
-	@uv run pyinstaller kimi.spec
+	@uv run pyinstaller gitrekt.spec
 
 .PHONY: ai-test
-ai-test: ## Run the test suite with Kimi CLI.
+ai-test: ## Run the test suite with Gitrekt CLI.
 	@echo "==> Running AI test suite"
 	@uv run tests_ai/scripts/run.py tests_ai
 
 .PHONY: gen-changelog gen-docs
-gen-changelog: ## Generate changelog with Kimi CLI.
+gen-changelog: ## Generate changelog with Gitrekt CLI.
 	@echo "==> Generating changelog"
-	@uv run kimi -c "$$(cat .kimi/prompts/gen-changelog.md)" --yolo
-gen-docs: ## Generate user docs with Kimi CLI.
+	@uv run gitrekt -c "$$(cat .gitrekt/prompts/gen-changelog.md)" --yolo
+gen-docs: ## Generate user docs with Gitrekt CLI.
 	@echo "==> Generating user docs"
-	@uv run kimi -c "$$(cat .kimi/prompts/gen-docs.md)" --yolo
+	@uv run gitrekt -c "$$(cat .gitrekt/prompts/gen-docs.md)" --yolo
 
-include src/kimi_cli/deps/Makefile
+include src/gitrekt_cli/deps/Makefile

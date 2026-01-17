@@ -1,27 +1,27 @@
-# Kimi CLI
+# Gitrekt CLI
 
-[![Commit Activity](https://img.shields.io/github/commit-activity/w/MoonshotAI/kimi-cli)](https://github.com/MoonshotAI/kimi-cli/graphs/commit-activity)
-[![Checks](https://img.shields.io/github/check-runs/MoonshotAI/kimi-cli/main)](https://github.com/MoonshotAI/kimi-cli/actions)
-[![Version](https://img.shields.io/pypi/v/kimi-cli)](https://pypi.org/project/kimi-cli/)
-[![Downloads](https://img.shields.io/pypi/dw/kimi-cli)](https://pypistats.org/packages/kimi-cli)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MoonshotAI/kimi-cli)
+[![Commit Activity](https://img.shields.io/github/commit-activity/w/MoonshotAI/Gitrekt-cli)](https://github.com/MoonshotAI/Gitrekt-cli/graphs/commit-activity)
+[![Checks](https://img.shields.io/github/check-runs/MoonshotAI/Gitrekt-cli/main)](https://github.com/MoonshotAI/Gitrekt-cli/actions)
+[![Version](https://img.shields.io/pypi/v/Gitrekt-cli)](https://pypi.org/project/Gitrekt-cli/)
+[![Downloads](https://img.shields.io/pypi/dw/Gitrekt-cli)](https://pypistats.org/packages/Gitrekt-cli)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/MoonshotAI/Gitrekt-cli)
 
-[Kimi Code](https://www.kimi.com/code/) | [Documentation](https://moonshotai.github.io/kimi-cli/en/) | [文档](https://moonshotai.github.io/kimi-cli/zh/)
+[Gitrekt Code](https://www.Gitrekt.com/code/) | [Documentation](https://moonshotai.github.io/Gitrekt-cli/en/) | [文档](https://moonshotai.github.io/Gitrekt-cli/zh/)
 
-Kimi CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
+Gitrekt CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
 > [!IMPORTANT]
-> Kimi CLI is currently in technical preview.
+> Gitrekt CLI is currently in technical preview.
 
 ## Getting Started
 
-See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi CLI.
+See [Getting Started](https://moonshotai.github.io/Gitrekt-cli/en/guides/getting-started.html) for how to install and start using Gitrekt CLI.
 
 ## Key Features
 
 ### Shell command mode
 
-Kimi CLI is not only a coding agent, but also a shell. You can switch the shell command mode by pressing `Ctrl-X`. In this mode, you can directly run shell commands without leaving Kimi CLI.
+Gitrekt CLI is not only a coding agent, but also a shell. You can switch the shell command mode by pressing `Ctrl-X`. In this mode, you can directly run shell commands without leaving Gitrekt CLI.
 
 ![](./docs/media/shell-mode.gif)
 
@@ -30,19 +30,19 @@ Kimi CLI is not only a coding agent, but also a shell. You can switch the shell 
 
 ### IDE integration via ACP
 
-Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
+Gitrekt CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
 [Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
 
-To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi acp`.
+To use Gitrekt CLI with ACP clients, make sure to run Gitrekt CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Gitrekt CLI as an ACP agent server with command `Gitrekt acp`.
 
-For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
+For example, to use Gitrekt CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
 ```json
 {
   "agent_servers": {
-    "Kimi CLI": {
-      "command": "kimi",
+    "Gitrekt CLI": {
+      "command": "Gitrekt",
       "args": ["acp"],
       "env": {}
     }
@@ -50,63 +50,63 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https:/
 }
 ```
 
-Then you can create Kimi CLI threads in IDE's agent panel.
+Then you can create Gitrekt CLI threads in IDE's agent panel.
 
 ![](./docs/media/acp-integration.gif)
 
 ### Zsh integration
 
-You can use Kimi CLI together with Zsh, to empower your shell experience with AI agent capabilities.
+You can use Gitrekt CLI together with Zsh, to empower your shell experience with AI agent capabilities.
 
-Install the [zsh-kimi-cli](https://github.com/MoonshotAI/zsh-kimi-cli) plugin via:
+Install the [zsh-Gitrekt-cli](https://github.com/MoonshotAI/zsh-Gitrekt-cli) plugin via:
 
 ```sh
-git clone https://github.com/MoonshotAI/zsh-kimi-cli.git \
-  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/kimi-cli
+git clone https://github.com/MoonshotAI/zsh-Gitrekt-cli.git \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/Gitrekt-cli
 ```
 
 > [!NOTE]
 > If you are using a plugin manager other than Oh My Zsh, you may need to refer to the plugin's README for installation instructions.
 
-Then add `kimi-cli` to your Zsh plugin list in `~/.zshrc`:
+Then add `Gitrekt-cli` to your Zsh plugin list in `~/.zshrc`:
 
 ```sh
-plugins=(... kimi-cli)
+plugins=(... Gitrekt-cli)
 ```
 
 After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
 
 ### MCP support
 
-Kimi CLI supports MCP (Model Context Protocol) tools.
+Gitrekt CLI supports MCP (Model Context Protocol) tools.
 
-**`kimi mcp` sub-command group**
+**`Gitrekt mcp` sub-command group**
 
-You can manage MCP servers with `kimi mcp` sub-command group. For example:
+You can manage MCP servers with `Gitrekt mcp` sub-command group. For example:
 
 ```sh
 # Add streamable HTTP server:
-kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY: ctx7sk-your-key"
+Gitrekt mcp add --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY: ctx7sk-your-key"
 
 # Add streamable HTTP server with OAuth authorization:
-kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp
+Gitrekt mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp
 
 # Add stdio server:
-kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
+Gitrekt mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
 
 # List added MCP servers:
-kimi mcp list
+Gitrekt mcp list
 
 # Remove an MCP server:
-kimi mcp remove chrome-devtools
+Gitrekt mcp remove chrome-devtools
 
 # Authorize an MCP server:
-kimi mcp auth linear
+Gitrekt mcp auth linear
 ```
 
 **Ad-hoc MCP configuration**
 
-Kimi CLI also supports ad-hoc MCP server configuration via CLI option.
+Gitrekt CLI also supports ad-hoc MCP server configuration via CLI option.
 
 Given an MCP config file in the well-known MCP config format like the following:
 
@@ -127,38 +127,38 @@ Given an MCP config file in the well-known MCP config format like the following:
 }
 ```
 
-Run `kimi` with `--mcp-config-file` option to connect to the specified MCP servers:
+Run `Gitrekt` with `--mcp-config-file` option to connect to the specified MCP servers:
 
 ```sh
-kimi --mcp-config-file /path/to/mcp.json
+Gitrekt --mcp-config-file /path/to/mcp.json
 ```
 
 ### More
 
-See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/en/).
+See more features in the [Documentation](https://moonshotai.github.io/Gitrekt-cli/en/).
 
 ## Development
 
-To develop Kimi CLI, run:
+To develop Gitrekt CLI, run:
 
 ```sh
-git clone https://github.com/MoonshotAI/kimi-cli.git
-cd kimi-cli
+git clone https://github.com/MoonshotAI/Gitrekt-cli.git
+cd Gitrekt-cli
 
 make prepare  # prepare the development environment
 ```
 
-Then you can start working on Kimi CLI.
+Then you can start working on Gitrekt CLI.
 
 Refer to the following commands after you make changes:
 
 ```sh
-uv run kimi  # run Kimi CLI
+uv run Gitrekt  # run Gitrekt CLI
 
 make format  # format code
 make check  # run linting and type checking
 make test  # run tests
-make test-kimi-cli  # run Kimi CLI tests only
+make test-Gitrekt-cli  # run Gitrekt CLI tests only
 make test-kosong  # run kosong tests only
 make test-pykaos  # run pykaos tests only
 make build  # build python packages
@@ -168,4 +168,4 @@ make help  # show all make targets
 
 ## Contributing
 
-We welcome contributions to Kimi CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.
+We welcome contributions to Gitrekt CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.

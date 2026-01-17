@@ -1,4 +1,4 @@
-name: Release (kimi-cli)
+name: Release (Gitrekt-cli)
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
 
       - name: Check dependency versions
         run: |
-          python scripts/check_kimi_dependency_versions.py \
+          python scripts/check_Gitrekt_dependency_versions.py \
             --root-pyproject pyproject.toml \
             --kosong-pyproject packages/kosong/pyproject.toml \
             --pykaos-pyproject packages/kaos/pyproject.toml
@@ -95,13 +95,13 @@ jobs:
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
           is_windows = "windows" in target
-          binary_name = "kimi.exe" if is_windows else "kimi"
+          binary_name = "Gitrekt.exe" if is_windows else "Gitrekt"
           binary_path = dist_dir / binary_name
           if not binary_path.exists():
               raise SystemExit(f"Binary not found at {binary_path}")
 
           archive_ext = "zip" if is_windows else "tar.gz"
-          archive_name = f"kimi-{tag}-{target}.{archive_ext}"
+          archive_name = f"Gitrekt-{tag}-{target}.{archive_ext}"
           archive_path = artifacts_dir / archive_name
 
           if is_windows:
@@ -116,7 +116,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kimi-${{ github.ref_name }}-${{ matrix.target }}
+          name: Gitrekt-${{ github.ref_name }}-${{ matrix.target }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 7
@@ -181,7 +181,7 @@ jobs:
           version: "0.8.5"
 
       - name: Build distributions
-        run: make build-kimi-cli
+        run: make build-Gitrekt-cli
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

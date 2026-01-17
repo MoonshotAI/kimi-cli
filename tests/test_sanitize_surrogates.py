@@ -2,7 +2,7 @@
 
 import pytest
 
-from kimi_cli.ui.shell.prompt import _sanitize_surrogates
+from gitrekt_cli.ui.shell.prompt import _sanitize_surrogates
 
 
 class TestSanitizeSurrogates:

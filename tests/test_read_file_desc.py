@@ -6,9 +6,9 @@ from typing import cast
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.llm import ModelCapability
-from kimi_cli.soul.agent import Runtime
-from kimi_cli.tools.file.read import ReadFile
+from gitrekt_cli.llm import ModelCapability
+from gitrekt_cli.soul.agent import Runtime
+from gitrekt_cli.tools.file.read import ReadFile
 
 
 @pytest.mark.parametrize(

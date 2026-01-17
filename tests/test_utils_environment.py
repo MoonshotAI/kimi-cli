@@ -15,7 +15,7 @@ async def test_environment_detection(monkeypatch):
 
     monkeypatch.setattr(KaosPath, "is_file", _mock_is_file)
 
-    from kimi_cli.utils.environment import Environment
+    from gitrekt_cli.utils.environment import Environment
 
     env = await Environment.detect()
     assert env.os_kind == "Linux"
@@ -31,7 +31,7 @@ async def test_environment_detection_windows(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "AMD64")
     monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
 
-    from kimi_cli.utils.environment import Environment
+    from gitrekt_cli.utils.environment import Environment
 
     env = await Environment.detect()
     assert env.os_kind == "Windows"

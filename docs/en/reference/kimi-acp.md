@@ -1,9 +1,9 @@
-# `kimi acp` Subcommand
+# `Gitrekt acp` Subcommand
 
-The `kimi acp` command starts a multi-session ACP (Agent Client Protocol) server.
+The `Gitrekt acp` command starts a multi-session ACP (Agent Client Protocol) server.
 
 ```sh
-kimi acp
+Gitrekt acp
 ```
 
 ## Description
@@ -16,4 +16,4 @@ ACP is a standardized protocol that allows IDEs and other clients to interact wi
 - Custom ACP client development
 - Multi-session concurrent processing
 
-For using Kimi CLI in IDEs, see [Using in IDEs](/en/guides/ides).
+For using Gitrekt CLI in IDEs, see [Using in IDEs](/en/guides/ides).

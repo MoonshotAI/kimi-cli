@@ -1,6 +1,6 @@
 # Config Overrides
 
-Kimi CLI configuration can be set through multiple methods, with different sources overriding each other by priority.
+Gitrekt CLI configuration can be set through multiple methods, with different sources overriding each other by priority.
 
 ## Priority
 
@@ -8,7 +8,7 @@ Configuration priority from highest to lowest:
 
 1. **Environment variables** - Highest priority, for temporary overrides or CI/CD environments
 2. **CLI flags** - Flags specified at startup
-3. **Configuration file** - `~/.kimi/config.toml` or file specified via `--config-file`
+3. **Configuration file** - `~/.Gitrekt/config.toml` or file specified via `--config-file`
 
 ## CLI flags
 
@@ -17,7 +17,7 @@ Configuration priority from highest to lowest:
 | Flag | Description |
 | --- | --- |
 | `--config <TOML/JSON>` | Pass configuration content directly, overrides default config file |
-| `--config-file <PATH>` | Specify configuration file path, replaces default `~/.kimi/config.toml` |
+| `--config-file <PATH>` | Specify configuration file path, replaces default `~/.Gitrekt/config.toml` |
 
 `--config` and `--config-file` cannot be used together.
 
@@ -49,7 +49,7 @@ Environment variables can override provider and model settings without modifying
 
 Environment variables take effect based on the current provider type:
 
-- `kimi` type providers: Use `KIMI_*` environment variables
+- `Gitrekt` type providers: Use `GITREKT_*` environment variables
 - `openai_legacy` or `openai_responses` type providers: Use `OPENAI_*` environment variables
 - Other provider types: Environment variable overrides not supported
 
@@ -58,24 +58,24 @@ See [Environment Variables](./env-vars.md) for the complete list.
 Example:
 
 ```sh
-KIMI_API_KEY="sk-xxx" KIMI_MODEL_NAME="kimi-k2-thinking-turbo" kimi
+GITREKT_API_KEY="sk-xxx" GITREKT_MODEL_NAME="Gitrekt-k2-thinking-turbo" Gitrekt
 ```
 
 ## Configuration priority example
 
-Assume the configuration file `~/.kimi/config.toml` contains:
+Assume the configuration file `~/.Gitrekt/config.toml` contains:
 
 ```toml
-default_model = "kimi-for-coding"
+default_model = "Gitrekt-for-coding"
 
-[providers.kimi-for-coding]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt-for-coding]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "sk-config"
 
-[models.kimi-for-coding]
-provider = "kimi-for-coding"
-model = "kimi-for-coding"
+[models.Gitrekt-for-coding]
+provider = "Gitrekt-for-coding"
+model = "Gitrekt-for-coding"
 max_context_size = 262144
 ```
 
@@ -83,7 +83,7 @@ Here are the configuration sources in different scenarios:
 
 | Scenario | `base_url` | `api_key` | `model` |
 | --- | --- | --- | --- |
-| `kimi` | Config file | Config file | Config file |
-| `KIMI_API_KEY=sk-env kimi` | Config file | Environment variable | Config file |
-| `kimi --model other` | Config file | Config file | CLI flag |
-| `KIMI_MODEL_NAME=k2 kimi` | Config file | Config file | Environment variable |
+| `Gitrekt` | Config file | Config file | Config file |
+| `GITREKT_API_KEY=sk-env Gitrekt` | Config file | Environment variable | Config file |
+| `Gitrekt --model other` | Config file | Config file | CLI flag |
+| `GITREKT_MODEL_NAME=k2 Gitrekt` | Config file | Config file | Environment variable |

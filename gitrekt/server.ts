@@ -15,7 +15,7 @@ app.use("*", cors({
     origin: ["http://localhost:3000", "http://localhost:3123"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
-    exposeHeaders: ["Content-Length", "X-Kimi-Token"],
+    exposeHeaders: ["Content-Length", "X-Gitrekt-Token"],
     credentials: true,
 }));
 

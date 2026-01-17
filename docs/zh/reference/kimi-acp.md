@@ -1,9 +1,9 @@
-# `kimi acp` 子命令
+# `Gitrekt acp` 子命令
 
-`kimi acp` 命令启动一个支持多会话的 ACP (Agent Client Protocol) 服务器。
+`Gitrekt acp` 命令启动一个支持多会话的 ACP (Agent Client Protocol) 服务器。
 
 ```sh
-kimi acp
+Gitrekt acp
 ```
 
 ## 说明
@@ -16,4 +16,4 @@ ACP 是一种标准化协议，允许 IDE 和其他客户端与 AI Agent 进行�
 - 自定义 ACP 客户端开发
 - 多会话并发处理
 
-如需在 IDE 中使用 Kimi CLI，请参阅 [在 IDE 中使用](/zh/guides/ides)。
+如需在 IDE 中使用 Gitrekt CLI，请参阅 [在 IDE 中使用](/zh/guides/ides)。

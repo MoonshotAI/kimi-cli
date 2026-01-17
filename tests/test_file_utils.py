@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kimi_cli.tools.file.utils import detect_file_type
+from gitrekt_cli.tools.file.utils import detect_file_type
 
 
 def test_detect_file_type_suffixes():

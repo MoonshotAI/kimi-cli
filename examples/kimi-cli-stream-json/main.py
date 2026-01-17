@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 
-KIMI_CLI_COMMAND = "uv run --project ../../ kimi"
+KIMI_CLI_COMMAND = "uv run --project ../../ Gitrekt"
 
 
 async def main():

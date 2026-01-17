@@ -1,9 +1,9 @@
-name: Release (kimi-sdk)
+name: Release (Gitrekt-sdk)
 
 on:
   push:
     tags:
-      - "kimi-sdk-*"
+      - "Gitrekt-sdk-*"
 
 permissions:
   contents: read
@@ -25,8 +25,8 @@ jobs:
       - name: Check version tag
         run: |
           python scripts/check_version_tag.py \
-            --pyproject sdks/kimi-sdk/pyproject.toml \
-            --expected-version "${GITHUB_REF_NAME#kimi-sdk-}"
+            --pyproject sdks/Gitrekt-sdk/pyproject.toml \
+            --expected-version "${GITHUB_REF_NAME#Gitrekt-sdk-}"
 
   publish:
     runs-on: ubuntu-latest
@@ -47,11 +47,11 @@ jobs:
           version: "0.8.5"
 
       - name: Build distributions
-        run: make build-kimi-sdk
+        run: make build-Gitrekt-sdk
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
-          packages-dir: dist/kimi-sdk
+          packages-dir: dist/Gitrekt-sdk

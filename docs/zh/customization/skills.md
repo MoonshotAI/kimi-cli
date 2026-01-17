@@ -1,33 +1,33 @@
 # Agent Skills
 
-[Agent Skills](https://agentskills.io/) 是一个开放格式，用于为 AI Agent 添加专业知识和工作流程。Kimi CLI 支持加载 Agent Skills，扩展 AI 的能力。
+[Agent Skills](https://agentskills.io/) 是一个开放格式，用于为 AI Agent 添加专业知识和工作流程。Gitrekt CLI 支持加载 Agent Skills，扩展 AI 的能力。
 
 ## Agent Skills 是什么
 
-一个 Skill 就是一个包含 `SKILL.md` 文件的目录。Kimi CLI 启动时会发现所有 Skills，并将它们的名称、路径和描述注入到系统提示词中。AI 会根据当前任务的需要，自行决定是否读取具体的 `SKILL.md` 文件来获取详细指引。
+一个 Skill 就是一个包含 `SKILL.md` 文件的目录。Gitrekt CLI 启动时会发现所有 Skills，并将它们的名称、路径和描述注入到系统提示词中。AI 会根据当前任务的需要，自行决定是否读取具体的 `SKILL.md` 文件来获取详细指引。
 
 例如，你可以创建一个「代码风格」Skill，告诉 AI 你项目的命名规范、注释风格等；或者创建一个「安全审计」Skill，让 AI 在审查代码时关注特定的安全问题。
 
 ## Skill 发现
 
-Kimi CLI 会从以下目录发现 Skills：
+Gitrekt CLI 会从以下目录发现 Skills：
 
 1. 内置 Skills（随软件包安装）
-2. `~/.kimi/skills`（用户目录）
+2. `~/.Gitrekt/skills`（用户目录）
 3. `~/.claude/skills`（兼容 Claude 的 Skills）
 
 如果同名 Skill 存在于多个目录中，后发现的会覆盖先前的。你也可以通过 `--skills-dir` 参数指定其他目录：
 
 ```sh
-kimi --skills-dir /path/to/my-skills
+Gitrekt --skills-dir /path/to/my-skills
 ```
 
 ## 内置 Skills
 
-Kimi CLI 内置了以下 Skills：
+Gitrekt CLI 内置了以下 Skills：
 
-- **kimi-cli-help**：Kimi CLI 帮助。解答关于 Kimi CLI 安装、配置、斜杠命令、键盘快捷键、MCP 集成、供应商、环境变量等问题。
-- **skill-creator**：Skill 创建指南。当你需要创建新的 Skill（或更新现有 Skill）来扩展 Kimi 的能力时，可以使用此 Skill 获取详细的创建指导和最佳实践。
+- **Gitrekt-cli-help**：Gitrekt CLI 帮助。解答关于 Gitrekt CLI 安装、配置、斜杠命令、键盘快捷键、MCP 集成、供应商、环境变量等问题。
+- **skill-creator**：Skill 创建指南。当你需要创建新的 Skill（或更新现有 Skill）来扩展 Gitrekt 的能力时，可以使用此 Skill 获取详细的创建指导和最佳实践。
 
 ## 创建 Skill
 
@@ -41,7 +41,7 @@ Kimi CLI 内置了以下 Skills：
 一个 Skill 目录至少需要包含 `SKILL.md` 文件，也可以包含辅助目录来组织更复杂的内容：
 
 ```
-~/.kimi/skills/
+~/.Gitrekt/skills/
 └── my-skill/
     ├── SKILL.md          # 必需：主文件
     ├── scripts/          # 可选：脚本文件
@@ -158,7 +158,7 @@ description: Git 提交信息规范，使用 Conventional Commits 格式
 
 ## 使用斜杠命令加载 Skill
 
-`/skill:<name>` 斜杠命令让你可以将常用的提示词模板保存为 Skill，需要时快速调用。输入命令后，Kimi CLI 会读取对应的 `SKILL.md` 文件内容，并将其作为提示词发送给 Agent。
+`/skill:<name>` 斜杠命令让你可以将常用的提示词模板保存为 Skill，需要时快速调用。输入命令后，Gitrekt CLI 会读取对应的 `SKILL.md` 文件内容，并将其作为提示词发送给 Agent。
 
 例如：
 

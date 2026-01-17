@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.agentspec import DEFAULT_AGENT_FILE, load_agent_spec
-from kimi_cli.exception import AgentSpecError
+from gitrekt_cli.agentspec import DEFAULT_AGENT_FILE, load_agent_spec
+from gitrekt_cli.exception import AgentSpecError
 
 
 def test_load_default_agent_spec():
@@ -23,16 +23,16 @@ def test_load_default_agent_spec():
     assert spec.exclude_tools == snapshot([])
     assert spec.tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
-            "kimi_cli.tools.todo:SetTodoList",
-            "kimi_cli.tools.shell:Shell",
-            "kimi_cli.tools.file:ReadFile",
-            "kimi_cli.tools.file:Glob",
-            "kimi_cli.tools.file:Grep",
-            "kimi_cli.tools.file:WriteFile",
-            "kimi_cli.tools.file:StrReplaceFile",
-            "kimi_cli.tools.web:SearchWeb",
-            "kimi_cli.tools.web:FetchURL",
+            "gitrekt_cli.tools.multiagent:Task",
+            "gitrekt_cli.tools.todo:SetTodoList",
+            "gitrekt_cli.tools.shell:Shell",
+            "gitrekt_cli.tools.file:ReadFile",
+            "gitrekt_cli.tools.file:Glob",
+            "gitrekt_cli.tools.file:Grep",
+            "gitrekt_cli.tools.file:WriteFile",
+            "gitrekt_cli.tools.file:StrReplaceFile",
+            "gitrekt_cli.tools.web:SearchWeb",
+            "gitrekt_cli.tools.web:FetchURL",
         ]
     )
     subagents = {
@@ -53,24 +53,24 @@ def test_load_default_agent_spec():
     )
     assert subagent_specs["coder"].exclude_tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
-            "kimi_cli.tools.multiagent:CreateSubagent",
-            "kimi_cli.tools.dmail:SendDMail",
-            "kimi_cli.tools.todo:SetTodoList",
+            "gitrekt_cli.tools.multiagent:Task",
+            "gitrekt_cli.tools.multiagent:CreateSubagent",
+            "gitrekt_cli.tools.dmail:SendDMail",
+            "gitrekt_cli.tools.todo:SetTodoList",
         ]
     )
     assert subagent_specs["coder"].tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
-            "kimi_cli.tools.todo:SetTodoList",
-            "kimi_cli.tools.shell:Shell",
-            "kimi_cli.tools.file:ReadFile",
-            "kimi_cli.tools.file:Glob",
-            "kimi_cli.tools.file:Grep",
-            "kimi_cli.tools.file:WriteFile",
-            "kimi_cli.tools.file:StrReplaceFile",
-            "kimi_cli.tools.web:SearchWeb",
-            "kimi_cli.tools.web:FetchURL",
+            "gitrekt_cli.tools.multiagent:Task",
+            "gitrekt_cli.tools.todo:SetTodoList",
+            "gitrekt_cli.tools.shell:Shell",
+            "gitrekt_cli.tools.file:ReadFile",
+            "gitrekt_cli.tools.file:Glob",
+            "gitrekt_cli.tools.file:Grep",
+            "gitrekt_cli.tools.file:WriteFile",
+            "gitrekt_cli.tools.file:StrReplaceFile",
+            "gitrekt_cli.tools.web:SearchWeb",
+            "gitrekt_cli.tools.web:FetchURL",
         ]
     )
     sub_subagents = {
@@ -86,7 +86,7 @@ def test_load_agent_spec_basic(agent_file: Path):
 
     assert spec.name == snapshot("Test Agent")
     assert spec.system_prompt_path == agent_file.parent / "system.md"
-    assert spec.tools == snapshot(["kimi_cli.tools.think:Think"])
+    assert spec.tools == snapshot(["gitrekt_cli.tools.think:Think"])
 
 
 def test_load_agent_spec_missing_name(agent_file_no_name: Path):
@@ -111,8 +111,10 @@ def test_load_agent_spec_with_exclude_tools(agent_file_with_tools: Path):
     """Test loading agent spec with excluded tools."""
     spec = load_agent_spec(agent_file_with_tools)
 
-    assert spec.tools == snapshot(["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"])
-    assert spec.exclude_tools == snapshot(["kimi_cli.tools.shell:Shell"])
+    assert spec.tools == snapshot(
+        ["gitrekt_cli.tools.think:Think", "gitrekt_cli.tools.shell:Shell"]
+    )
+    assert spec.exclude_tools == snapshot(["gitrekt_cli.tools.shell:Shell"])
 
 
 def test_load_agent_spec_extension(agent_file_extending: Path):
@@ -120,7 +122,7 @@ def test_load_agent_spec_extension(agent_file_extending: Path):
     spec = load_agent_spec(agent_file_extending)
 
     assert spec.name == snapshot("Extended Agent")
-    assert spec.tools == snapshot(["kimi_cli.tools.think:Think"])
+    assert spec.tools == snapshot(["gitrekt_cli.tools.think:Think"])
 
 
 def test_load_agent_spec_default_extension():
@@ -137,8 +139,8 @@ agent:
   system_prompt_args:
     CUSTOM_ARG: "custom_value"
   exclude_tools:
-    - "kimi_cli.tools.web:SearchWeb"
-    - "kimi_cli.tools.web:FetchURL"
+    - "gitrekt_cli.tools.web:SearchWeb"
+    - "gitrekt_cli.tools.web:FetchURL"
 """)
 
         spec = load_agent_spec(extending_agent)
@@ -150,20 +152,20 @@ agent:
         )
         assert spec.tools == snapshot(
             [
-                "kimi_cli.tools.multiagent:Task",
-                "kimi_cli.tools.todo:SetTodoList",
-                "kimi_cli.tools.shell:Shell",
-                "kimi_cli.tools.file:ReadFile",
-                "kimi_cli.tools.file:Glob",
-                "kimi_cli.tools.file:Grep",
-                "kimi_cli.tools.file:WriteFile",
-                "kimi_cli.tools.file:StrReplaceFile",
-                "kimi_cli.tools.web:SearchWeb",
-                "kimi_cli.tools.web:FetchURL",
+                "gitrekt_cli.tools.multiagent:Task",
+                "gitrekt_cli.tools.todo:SetTodoList",
+                "gitrekt_cli.tools.shell:Shell",
+                "gitrekt_cli.tools.file:ReadFile",
+                "gitrekt_cli.tools.file:Glob",
+                "gitrekt_cli.tools.file:Grep",
+                "gitrekt_cli.tools.file:WriteFile",
+                "gitrekt_cli.tools.file:StrReplaceFile",
+                "gitrekt_cli.tools.web:SearchWeb",
+                "gitrekt_cli.tools.web:FetchURL",
             ]
         )
         assert spec.exclude_tools == snapshot(
-            ["kimi_cli.tools.web:SearchWeb", "kimi_cli.tools.web:FetchURL"]
+            ["gitrekt_cli.tools.web:SearchWeb", "gitrekt_cli.tools.web:FetchURL"]
         )
         assert "coder" in spec.subagents
 
@@ -179,7 +181,7 @@ version: 2
 agent:
   name: "Test Agent"
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.think:Think"]
+  tools: ["gitrekt_cli.tools.think:Think"]
 """)
 
         with pytest.raises(AgentSpecError, match="Unsupported agent spec version: 2"):
@@ -216,7 +218,7 @@ version: 1
 agent:
   name: "Test Agent"
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.think:Think"]
+  tools: ["gitrekt_cli.tools.think:Think"]
 """)
 
         yield agent_yaml
@@ -238,7 +240,7 @@ def agent_file_no_name() -> Generator[Path, Any, Any]:
 version: 1
 agent:
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.think:Think"]
+  tools: ["gitrekt_cli.tools.think:Think"]
 """)
 
         yield agent_yaml
@@ -256,7 +258,7 @@ def agent_file_no_prompt() -> Generator[Path, Any, Any]:
 version: 1
 agent:
   name: "Test Agent"
-  tools: ["kimi_cli.tools.think:Think"]
+  tools: ["gitrekt_cli.tools.think:Think"]
 """)
 
         yield agent_yaml
@@ -301,8 +303,8 @@ version: 1
 agent:
   name: "Test Agent"
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
-  exclude_tools: ["kimi_cli.tools.shell:Shell"]
+  tools: ["gitrekt_cli.tools.think:Think", "gitrekt_cli.tools.shell:Shell"]
+  exclude_tools: ["gitrekt_cli.tools.shell:Shell"]
 """)
 
         yield agent_yaml
@@ -321,7 +323,7 @@ version: 1
 agent:
   name: "Base Agent"
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.think:Think"]
+  tools: ["gitrekt_cli.tools.think:Think"]
 """)
 
         # Create system.md

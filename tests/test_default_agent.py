@@ -7,19 +7,19 @@ import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import Tool
 
-from kimi_cli.agentspec import DEFAULT_AGENT_FILE
-from kimi_cli.soul.agent import load_agent
-from kimi_cli.soul.agent import Runtime
+from gitrekt_cli.agentspec import DEFAULT_AGENT_FILE
+from gitrekt_cli.soul.agent import load_agent
+from gitrekt_cli.soul.agent import Runtime
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
     assert agent.system_prompt.replace(
-        f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
+        f"{runtime.builtin_args.GITREKT_WORK_DIR}", "/path/to/work/dir"
     ) == snapshot(
         """\
-You are Kimi CLI, an interactive general AI agent running on a user's computer.
+You are Gitrekt CLI, an interactive general AI agent running on a user's computer.
 
 Your primary goal is to answer questions and/or finish tasks safely and efficiently, adhering strictly to the following system instructions and the user's requirements, leveraging the available tools flexibly.
 
@@ -609,7 +609,7 @@ Replace specific strings within a specified file.
             name,
             runtime.labor_market.fixed_subagent_descs[name],
             agent.system_prompt.replace(
-                f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
+                f"{runtime.builtin_args.GITREKT_WORK_DIR}", "/path/to/work/dir"
             ),
             [tool.name for tool in agent.toolset.tools],
         )
@@ -627,7 +627,7 @@ Replace specific strings within a specified file.
                 "coder",
                 "Good at general software engineering tasks.",
                 """\
-You are Kimi CLI, an interactive general AI agent running on a user's computer.
+You are Gitrekt CLI, an interactive general AI agent running on a user's computer.
 
 Your primary goal is to answer questions and/or finish tasks safely and efficiently, adhering strictly to the following system instructions and the user's requirements, leveraging the available tools flexibly.
 

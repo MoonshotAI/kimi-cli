@@ -1,7 +1,7 @@
 [project]
-name = "kimi-cli"
+name = "gitrekt-cli"
 version = "0.78"
-description = "Kimi CLI is your next CLI agent."
+description = "Gitrekt CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -48,19 +48,19 @@ requires = ["uv_build>=0.8.5,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["kimi_cli"]
-source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
+module-name = ["gitrekt_cli"]
+source-exclude = ["examples/**/*", "tests/**/*", "src/gitrekt_cli/deps/**/*"]
 
 [tool.uv.workspace]
-members = ["packages/kosong", "packages/kaos", "sdks/kimi-sdk"]
+members = ["packages/kosong", "packages/kaos", "sdks/gitrekt-sdk"]
 
 [tool.uv.sources]
 kosong = { workspace = true }
 pykaos = { workspace = true }
 
 [project.scripts]
-kimi = "kimi_cli.cli:cli"
-kimi-cli = "kimi_cli.cli:cli"
+gitrekt = "gitrekt_cli.cli:cli"
+gitrekt-cli = "gitrekt_cli.cli:cli"
 
 [tool.ruff]
 line-length = 100
@@ -79,7 +79,7 @@ select = [
 typeCheckingMode = "standard"
 pythonVersion = "3.14"
 include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]
-strict = ["src/kimi_cli/**/*.py"]
+strict = ["src/gitrekt_cli/**/*.py"]
 
 [tool.ty.environment]
 python-version = "3.14"
@@ -88,7 +88,7 @@ python-version = "3.14"
 include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]
 
 [tool.typos.files]
-extend-exclude = ["kimi.spec", "pyinstaller.py"]
+extend-exclude = ["gitrekt.spec", "pyinstaller.py"]
 
 [tool.typos.default.extend-words]
 datas = "datas"

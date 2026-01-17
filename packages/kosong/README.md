@@ -20,7 +20,7 @@ Then add Kosong as a dependency:
 uv add kosong
 ```
 
-To enable chat providers other than Kimi (e.g. Anthropic and Google Gemini), install the optional extra:
+To enable chat providers other than Gitrekt (e.g. Anthropic and Google Gemini), install the optional extra:
 
 ```bash
 uv add 'kosong[contrib]'
@@ -34,15 +34,15 @@ uv add 'kosong[contrib]'
 import asyncio
 
 import kosong
-from kosong.chat_provider.kimi import Kimi
+from kosong.chat_provider.Gitrekt import Gitrekt
 from kosong.message import Message
 
 
 async def main() -> None:
-    kimi = Kimi(
+    Gitrekt = Gitrekt(
         base_url="https://api.moonshot.ai/v1",
-        api_key="your_kimi_api_key_here",
-        model="kimi-k2-turbo-preview",
+        api_key="your_Gitrekt_api_key_here",
+        model="Gitrekt-k2-turbo-preview",
     )
 
     history = [
@@ -50,7 +50,7 @@ async def main() -> None:
     ]
 
     result = await kosong.generate(
-        chat_provider=kimi,
+        chat_provider=Gitrekt,
         system_prompt="You are a helpful assistant.",
         tools=[],
         history=history,
@@ -69,15 +69,15 @@ import asyncio
 
 import kosong
 from kosong.chat_provider import StreamedMessagePart
-from kosong.chat_provider.kimi import Kimi
+from kosong.chat_provider.Gitrekt import Gitrekt
 from kosong.message import Message
 
 
 async def main() -> None:
-    kimi = Kimi(
+    Gitrekt = Gitrekt(
         base_url="https://api.moonshot.ai/v1",
-        api_key="your_kimi_api_key_here",
-        model="kimi-k2-turbo-preview",
+        api_key="your_Gitrekt_api_key_here",
+        model="Gitrekt-k2-turbo-preview",
     )
 
     history = [
@@ -88,7 +88,7 @@ async def main() -> None:
         print(message_part)
 
     result = await kosong.generate(
-        chat_provider=kimi,
+        chat_provider=Gitrekt,
         system_prompt="You are a helpful assistant.",
         tools=[],
         history=history,
@@ -110,7 +110,7 @@ from pydantic import BaseModel
 
 import kosong
 from kosong import StepResult
-from kosong.chat_provider.kimi import Kimi
+from kosong.chat_provider.Gitrekt import Gitrekt
 from kosong.message import Message
 from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from kosong.tooling.simple import SimpleToolset
@@ -131,10 +131,10 @@ class AddTool(CallableTool2[AddToolParams]):
 
 
 async def main() -> None:
-    kimi = Kimi(
+    Gitrekt = Gitrekt(
         base_url="https://api.moonshot.ai/v1",
-        api_key="your_kimi_api_key_here",
-        model="kimi-k2-turbo-preview",
+        api_key="your_Gitrekt_api_key_here",
+        model="Gitrekt-k2-turbo-preview",
     )
 
     toolset = SimpleToolset()
@@ -145,7 +145,7 @@ async def main() -> None:
     ]
 
     result: StepResult = await kosong.step(
-        chat_provider=kimi,
+        chat_provider=Gitrekt,
         system_prompt="You are a precise math tutor.",
         toolset=toolset,
         history=history,
@@ -162,10 +162,10 @@ asyncio.run(main())
 Kosong comes with a builtin demo agent that you can run locally. To start the demo, run:
 
 ```sh
-export KIMI_BASE_URL="https://api.moonshot.ai/v1"
-export KIMI_API_KEY="your_kimi_api_key"
+export GITREKT_BASE_URL="https://api.moonshot.ai/v1"
+export GITREKT_API_KEY="your_Gitrekt_api_key"
 
-uv run python -m kosong kimi --with-bash
+uv run python -m kosong Gitrekt --with-bash
 ```
 
 ## Development

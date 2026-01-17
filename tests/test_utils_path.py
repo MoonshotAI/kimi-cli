@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from kimi_cli.utils.path import next_available_rotation
+from gitrekt_cli.utils.path import next_available_rotation
 
 
 async def test_next_available_rotation_empty_dir(tmp_path):

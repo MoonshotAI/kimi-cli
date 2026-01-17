@@ -9,7 +9,7 @@ import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.utils.path import list_directory
+from gitrekt_cli.utils.path import list_directory
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific symlink tests.")

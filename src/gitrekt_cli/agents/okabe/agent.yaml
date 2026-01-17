@@ -1,0 +1,17 @@
+version: 1
+agent:
+  extend: default
+  tools:
+    - "gitrekt_cli.tools.multiagent:Task"
+    # - "gitrekt_cli.tools.multiagent:CreateSubagent"
+    - "gitrekt_cli.tools.dmail:SendDMail"
+    # - "gitrekt_cli.tools.think:Think"
+    - "gitrekt_cli.tools.todo:SetTodoList"
+    - "gitrekt_cli.tools.shell:Shell"
+    - "gitrekt_cli.tools.file:ReadFile"
+    - "gitrekt_cli.tools.file:Glob"
+    - "gitrekt_cli.tools.file:Grep"
+    - "gitrekt_cli.tools.file:WriteFile"
+    - "gitrekt_cli.tools.file:StrReplaceFile"
+    - "gitrekt_cli.tools.web:SearchWeb"
+    - "gitrekt_cli.tools.web:FetchURL"

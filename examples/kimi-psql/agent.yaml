@@ -2,7 +2,7 @@ version: 1
 
 agent:
   extend: default
-  name: kimi-psql
+  name: Gitrekt-psql
   system_prompt_args:
     ROLE_ADDITIONAL: |
       You are now a PostgreSQL assistant with read-only access to a PostgreSQL database.

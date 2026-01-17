@@ -9,9 +9,9 @@ import pytest
 from kaos.path import KaosPath
 from kosong.message import Message
 
-from kimi_cli.session import Session
-from kimi_cli.wire.serde import WireMessageRecord
-from kimi_cli.wire.types import TextPart, TurnBegin
+from gitrekt_cli.session import Session
+from gitrekt_cli.wire.serde import WireMessageRecord
+from gitrekt_cli.wire.types import TextPart, TurnBegin
 
 
 @pytest.fixture
@@ -25,8 +25,8 @@ def isolated_share_dir(monkeypatch, tmp_path: Path) -> Path:
         share_dir.mkdir(parents=True, exist_ok=True)
         return share_dir
 
-    monkeypatch.setattr("kimi_cli.share.get_share_dir", _get_share_dir)
-    monkeypatch.setattr("kimi_cli.metadata.get_share_dir", _get_share_dir)
+    monkeypatch.setattr("gitrekt_cli.share.get_share_dir", _get_share_dir)
+    monkeypatch.setattr("gitrekt_cli.metadata.get_share_dir", _get_share_dir)
     return share_dir
 
 

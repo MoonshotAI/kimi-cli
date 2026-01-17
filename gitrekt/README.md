@@ -1,6 +1,6 @@
-# Kimi CLI Gitrekt Server
+# Gitrekt CLI Gitrekt Server
 
-This is the backend for your Kimi CLI agent, providing GitHub authentication via Better Auth.
+This is the backend for your Gitrekt CLI agent, providing GitHub authentication via Better Auth.
 
 ## Tech Stack
 - **Frontend**: React + Vite + Tailwind CSS 4 + shadcn/ui
@@ -48,7 +48,7 @@ This is the backend for your Kimi CLI agent, providing GitHub authentication via
 3. After successful GitHub OAuth, the user is redirected to `/success`.
 4. The success page extracts the session token and redirects back to the CLI's local callback URL.
 5. **CLI fetches the model configuration from `/api/cli/config`** using the session token.
-6. Configuration is cached locally in `~/.kimi/gitrekt_config.json`.
+6. Configuration is cached locally in `~/.gitrekt/gitrekt_config.json`.
 7. User can now use the CLI with the pre-configured model.
 
 ## API Endpoints

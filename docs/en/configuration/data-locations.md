@@ -1,13 +1,13 @@
 # Data Locations
 
-Kimi CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
+Gitrekt CLI stores all data in the `~/.Gitrekt/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
 ## Directory structure
 
 ```
-~/.kimi/
+~/.Gitrekt/
 ├── config.toml           # Main configuration file
-├── kimi.json             # Metadata
+├── Gitrekt.json             # Metadata
 ├── mcp.json              # MCP server configuration
 ├── sessions/             # Session data
 │   └── <work-dir-hash>/
@@ -17,7 +17,7 @@ Kimi CLI stores all data in the `~/.kimi/` directory under the user's home direc
 ├── user-history/         # Input history
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # Logs
-    └── kimi.log
+    └── Gitrekt.log
 ```
 
 ## Configuration and metadata
@@ -28,18 +28,18 @@ Main configuration file, stores providers, models, services, and runtime paramet
 
 You can specify a configuration file at a different location with the `--config-file` flag.
 
-### `kimi.json`
+### `Gitrekt.json`
 
-Metadata file, stores Kimi CLI's runtime state, including:
+Metadata file, stores Gitrekt CLI's runtime state, including:
 
 - `work_dirs`: List of working directories and their last used session IDs
 - `thinking`: Whether thinking mode was enabled in the last session
 
-This file is automatically managed by Kimi CLI and typically doesn't need manual editing.
+This file is automatically managed by Gitrekt CLI and typically doesn't need manual editing.
 
 ### `mcp.json`
 
-MCP server configuration file, stores MCP servers added via the `kimi mcp add` command. See [MCP](../customization/mcp.md) for details.
+MCP server configuration file, stores MCP servers added via the `Gitrekt mcp add` command. See [MCP](../customization/mcp.md) for details.
 
 Example structure:
 
@@ -59,13 +59,13 @@ Example structure:
 
 ## Session data
 
-Session data is grouped by working directory and stored under `~/.kimi/sessions/`. Each working directory corresponds to a subdirectory named with the path's MD5 hash, and each session corresponds to a subdirectory named with the session ID.
+Session data is grouped by working directory and stored under `~/.Gitrekt/sessions/`. Each working directory corresponds to a subdirectory named with the path's MD5 hash, and each session corresponds to a subdirectory named with the session ID.
 
 ### `context.jsonl`
 
 Context history file, stores the session's message history in JSONL format. Each line is a message (user input, model response, tool calls, etc.).
 
-Kimi CLI uses this file to restore session context when using `--continue` or `--session`.
+Gitrekt CLI uses this file to restore session context when using `--continue` or `--session`.
 
 ### `wire.jsonl`
 
@@ -73,27 +73,27 @@ Wire message log file, stores Wire events during the session in JSONL format. Us
 
 ## Input history
 
-User input history is stored in the `~/.kimi/user-history/` directory. Each working directory corresponds to a `.jsonl` file named with the path's MD5 hash.
+User input history is stored in the `~/.Gitrekt/user-history/` directory. Each working directory corresponds to a `.jsonl` file named with the path's MD5 hash.
 
 Input history is used for history browsing (up/down arrow keys) and search (Ctrl-R) in shell mode.
 
 ## Logs
 
-Runtime logs are stored in `~/.kimi/logs/kimi.log`. Default log level is INFO, use the `--debug` flag to enable TRACE level.
+Runtime logs are stored in `~/.Gitrekt/logs/Gitrekt.log`. Default log level is INFO, use the `--debug` flag to enable TRACE level.
 
 Log files are used for troubleshooting. When reporting bugs, please include relevant log content.
 
 ## Cleaning data
 
-Deleting the `~/.kimi/` directory completely clears all Kimi CLI data, including configuration, sessions, and history.
+Deleting the `~/.Gitrekt/` directory completely clears all Gitrekt CLI data, including configuration, sessions, and history.
 
 To clean only specific data:
 
 | Need | Action |
 | --- | --- |
-| Reset configuration | Delete `~/.kimi/config.toml` |
-| Clear all sessions | Delete `~/.kimi/sessions/` directory |
+| Reset configuration | Delete `~/.Gitrekt/config.toml` |
+| Clear all sessions | Delete `~/.Gitrekt/sessions/` directory |
 | Clear sessions for specific working directory | Use `/sessions` in shell mode to view and delete |
-| Clear input history | Delete `~/.kimi/user-history/` directory |
-| Clear logs | Delete `~/.kimi/logs/` directory |
-| Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |
+| Clear input history | Delete `~/.Gitrekt/user-history/` directory |
+| Clear logs | Delete `~/.Gitrekt/logs/` directory |
+| Clear MCP configuration | Delete `~/.Gitrekt/mcp.json` or use `Gitrekt mcp remove` |

@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.flow import PromptFlow, PromptFlowValidationError, parse_choice
-from kimi_cli.flow.d2 import parse_d2_flowchart
-from kimi_cli.flow.mermaid import parse_mermaid_flowchart
+from gitrekt_cli.flow import PromptFlow, PromptFlowValidationError, parse_choice
+from gitrekt_cli.flow.d2 import parse_d2_flowchart
+from gitrekt_cli.flow.mermaid import parse_mermaid_flowchart
 
 
 def test_parse_flowchart_basic() -> None:

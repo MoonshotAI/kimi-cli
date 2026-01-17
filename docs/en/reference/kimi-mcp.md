@@ -1,9 +1,9 @@
-# `kimi mcp` Subcommand
+# `Gitrekt mcp` Subcommand
 
-`kimi mcp` is used to manage MCP (Model Context Protocol) server configurations. For concepts and usage of MCP, see [Model Context Protocol](../customization/mcp.md).
+`Gitrekt mcp` is used to manage MCP (Model Context Protocol) server configurations. For concepts and usage of MCP, see [Model Context Protocol](../customization/mcp.md).
 
 ```sh
-kimi mcp COMMAND [ARGS]
+Gitrekt mcp COMMAND [ARGS]
 ```
 
 ## `add`
@@ -11,7 +11,7 @@ kimi mcp COMMAND [ARGS]
 Add an MCP server configuration.
 
 ```sh
-kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
+Gitrekt mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 ```
 
 **Arguments**
@@ -35,7 +35,7 @@ kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 List all configured MCP servers.
 
 ```sh
-kimi mcp list
+Gitrekt mcp list
 ```
 
 Output includes:
@@ -48,7 +48,7 @@ Output includes:
 Remove an MCP server configuration.
 
 ```sh
-kimi mcp remove NAME
+Gitrekt mcp remove NAME
 ```
 
 **Arguments**
@@ -62,7 +62,7 @@ kimi mcp remove NAME
 Authorize an MCP server that uses OAuth.
 
 ```sh
-kimi mcp auth NAME
+Gitrekt mcp auth NAME
 ```
 
 This will open a browser for the OAuth authorization flow. After successful authorization, the token is cached for future use.
@@ -82,7 +82,7 @@ Only servers added with `--auth oauth` require this command.
 Clear the cached OAuth token for an MCP server.
 
 ```sh
-kimi mcp reset-auth NAME
+Gitrekt mcp reset-auth NAME
 ```
 
 **Arguments**
@@ -91,14 +91,14 @@ kimi mcp reset-auth NAME
 |----------|-------------|
 | `NAME` | Name of server to reset authorization |
 
-After clearing, you need to run `kimi mcp auth` again to re-authorize.
+After clearing, you need to run `Gitrekt mcp auth` again to re-authorize.
 
 ## `test`
 
 Test connection to an MCP server and list available tools.
 
 ```sh
-kimi mcp test NAME
+Gitrekt mcp test NAME
 ```
 
 **Arguments**

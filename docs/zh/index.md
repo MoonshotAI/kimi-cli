@@ -1,7 +1,7 @@
 ---
 layout: home
 hero:
-  name: Kimi CLI
+  name: Gitrekt CLI
   text: 你的终端智能助手
   tagline: 技术预览版
   actions:
@@ -10,5 +10,5 @@ hero:
       link: /zh/guides/getting-started
     - theme: alt
       text: GitHub
-      link: https://github.com/MoonshotAI/kimi-cli
+      link: https://github.com/MoonshotAI/Gitrekt-cli
 ---

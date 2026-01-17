@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kimi_cli.utils.changelog import ReleaseEntry, parse_changelog
+from gitrekt_cli.utils.changelog import ReleaseEntry, parse_changelog
 
 
 def test_changelog_parser():

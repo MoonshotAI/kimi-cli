@@ -1,6 +1,6 @@
 # 斜杠命令
 
-斜杠命令是 Kimi CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
+斜杠命令是 Gitrekt CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
 部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/changelog` 和 `/feedback`。
@@ -16,7 +16,7 @@
 
 ### `/version`
 
-显示 Kimi CLI 版本号。
+显示 Gitrekt CLI 版本号。
 
 ### `/changelog`
 
@@ -35,11 +35,11 @@
 启动配置向导，设置 API 平台和模型。
 
 配置流程：
-1. 选择 API 平台（Kimi Code、Moonshot AI 开放平台等）
+1. 选择 API 平台（Gitrekt Code、Moonshot AI 开放平台等）
 2. 输入 API 密钥
 3. 选择可用模型
 
-配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
+配置完成后自动保存到 `~/.Gitrekt/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
 
 ### `/model`
 
@@ -47,7 +47,7 @@
 
 此命令会先从 API 平台刷新可用模型列表。不带参数调用时，显示交互式选择界面，首先选择模型，然后选择是否开启 Thinking 模式（如果模型支持）。
 
-选择完成后，Kimi CLI 会自动更新配置文件并重新加载。
+选择完成后，Gitrekt CLI 会自动更新配置文件并重新加载。
 
 ::: tip 提示
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
@@ -55,7 +55,7 @@
 
 ### `/reload`
 
-重新加载配置文件，无需退出 Kimi CLI。
+重新加载配置文件，无需退出 Gitrekt CLI。
 
 ### `/debug`
 
@@ -71,7 +71,7 @@
 显示 API 用量和配额信息。
 
 ::: tip 提示
-此命令仅适用于 Kimi Code 平台。
+此命令仅适用于 Gitrekt Code 平台。
 :::
 
 ### `/mcp`
@@ -102,7 +102,7 @@
 
 手动压缩上下文，减少 token 使用。
 
-当上下文过长时，Kimi CLI 会自动触发压缩。此命令可手动触发压缩过程。
+当上下文过长时，Gitrekt CLI 会自动触发压缩。此命令可手动触发压缩过程。
 
 ## Skills
 
@@ -138,7 +138,7 @@ YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 
 启动 Prompt Flow 执行。
 
-此命令仅在通过 `--prompt-flow` 加载了流程图时可用。执行后，Agent 会从 `BEGIN` 节点开始，按照流程图的定义依次处理每个节点，直到达到 `END` 节点。详见 [`kimi` 命令](./kimi-command.md#prompt-flow)。
+此命令仅在通过 `--prompt-flow` 加载了流程图时可用。执行后，Agent 会从 `BEGIN` 节点开始，按照流程图的定义依次处理每个节点，直到达到 `END` 节点。详见 [`Gitrekt` 命令](./Gitrekt-command.md#prompt-flow)。
 
 ## 命令补全
 

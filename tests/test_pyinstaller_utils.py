@@ -8,7 +8,7 @@ from inline_snapshot import snapshot
 
 
 def test_pyinstaller_datas():
-    from kimi_cli.utils.pyinstaller import datas
+    from gitrekt_cli.utils.pyinstaller import datas
 
     project_root = Path(__file__).parent.parent
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -59,100 +59,100 @@ def test_pyinstaller_datas():
                 "fastmcp/../fastmcp-2.12.5.dist-info/licenses",
             ),
             (
-                "src/kimi_cli/CHANGELOG.md",
-                "kimi_cli",
+                "src/gitrekt_cli/CHANGELOG.md",
+                "gitrekt_cli",
             ),
-            ("src/kimi_cli/agents/default/agent.yaml", "kimi_cli/agents/default"),
-            ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
-            ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
-            ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
+            ("src/gitrekt_cli/agents/default/agent.yaml", "gitrekt_cli/agents/default"),
+            ("src/gitrekt_cli/agents/default/sub.yaml", "gitrekt_cli/agents/default"),
+            ("src/gitrekt_cli/agents/default/system.md", "gitrekt_cli/agents/default"),
+            ("src/gitrekt_cli/agents/okabe/agent.yaml", "gitrekt_cli/agents/okabe"),
             (
-                f"src/kimi_cli/deps/bin/{'rg.exe' if platform.system() == 'Windows' else 'rg'}",
-                "kimi_cli/deps/bin",
+                f"src/gitrekt_cli/deps/bin/{'rg.exe' if platform.system() == 'Windows' else 'rg'}",
+                "gitrekt_cli/deps/bin",
             ),
-            ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
-            ("src/kimi_cli/prompts/init.md", "kimi_cli/prompts"),
+            ("src/gitrekt_cli/prompts/compact.md", "gitrekt_cli/prompts"),
+            ("src/gitrekt_cli/prompts/init.md", "gitrekt_cli/prompts"),
             (
-                "src/kimi_cli/skills/kimi-cli-help/SKILL.md",
-                "kimi_cli/skills/kimi-cli-help",
-            ),
-            (
-                "src/kimi_cli/skills/skill-creator/SKILL.md",
-                "kimi_cli/skills/skill-creator",
+                "src/gitrekt_cli/skills/Gitrekt-cli-help/SKILL.md",
+                "gitrekt_cli/skills/Gitrekt-cli-help",
             ),
             (
-                "src/kimi_cli/tools/dmail/dmail.md",
-                "kimi_cli/tools/dmail",
+                "src/gitrekt_cli/skills/skill-creator/SKILL.md",
+                "gitrekt_cli/skills/skill-creator",
             ),
             (
-                "src/kimi_cli/tools/file/glob.md",
-                "kimi_cli/tools/file",
+                "src/gitrekt_cli/tools/dmail/dmail.md",
+                "gitrekt_cli/tools/dmail",
             ),
             (
-                "src/kimi_cli/tools/file/grep.md",
-                "kimi_cli/tools/file",
+                "src/gitrekt_cli/tools/file/glob.md",
+                "gitrekt_cli/tools/file",
             ),
             (
-                "src/kimi_cli/tools/file/read.md",
-                "kimi_cli/tools/file",
+                "src/gitrekt_cli/tools/file/grep.md",
+                "gitrekt_cli/tools/file",
             ),
             (
-                "src/kimi_cli/tools/file/replace.md",
-                "kimi_cli/tools/file",
+                "src/gitrekt_cli/tools/file/read.md",
+                "gitrekt_cli/tools/file",
             ),
             (
-                "src/kimi_cli/tools/file/write.md",
-                "kimi_cli/tools/file",
-            ),
-            ("src/kimi_cli/tools/multiagent/create.md", "kimi_cli/tools/multiagent"),
-            ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
-            ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
-            ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
-            (
-                "src/kimi_cli/tools/think/think.md",
-                "kimi_cli/tools/think",
+                "src/gitrekt_cli/tools/file/replace.md",
+                "gitrekt_cli/tools/file",
             ),
             (
-                "src/kimi_cli/tools/todo/set_todo_list.md",
-                "kimi_cli/tools/todo",
+                "src/gitrekt_cli/tools/file/write.md",
+                "gitrekt_cli/tools/file",
+            ),
+            ("src/gitrekt_cli/tools/multiagent/create.md", "gitrekt_cli/tools/multiagent"),
+            ("src/gitrekt_cli/tools/multiagent/task.md", "gitrekt_cli/tools/multiagent"),
+            ("src/gitrekt_cli/tools/shell/bash.md", "gitrekt_cli/tools/shell"),
+            ("src/gitrekt_cli/tools/shell/powershell.md", "gitrekt_cli/tools/shell"),
+            (
+                "src/gitrekt_cli/tools/think/think.md",
+                "gitrekt_cli/tools/think",
             ),
             (
-                "src/kimi_cli/tools/web/fetch.md",
-                "kimi_cli/tools/web",
+                "src/gitrekt_cli/tools/todo/set_todo_list.md",
+                "gitrekt_cli/tools/todo",
             ),
             (
-                "src/kimi_cli/tools/web/search.md",
-                "kimi_cli/tools/web",
+                "src/gitrekt_cli/tools/web/fetch.md",
+                "gitrekt_cli/tools/web",
+            ),
+            (
+                "src/gitrekt_cli/tools/web/search.md",
+                "gitrekt_cli/tools/web",
             ),
         ]
     )
 
 
 def test_pyinstaller_hiddenimports():
-    from kimi_cli.utils.pyinstaller import hiddenimports
+    from gitrekt_cli.utils.pyinstaller import hiddenimports
 
     assert sorted(hiddenimports) == snapshot(
         [
-            "kimi_cli.tools",
-            "kimi_cli.tools.display",
-            "kimi_cli.tools.dmail",
-            "kimi_cli.tools.file",
-            "kimi_cli.tools.file.glob",
-            "kimi_cli.tools.file.grep_local",
-            "kimi_cli.tools.file.read",
-            "kimi_cli.tools.file.replace",
-            "kimi_cli.tools.file.utils",
-            "kimi_cli.tools.file.write",
-            "kimi_cli.tools.multiagent",
-            "kimi_cli.tools.multiagent.create",
-            "kimi_cli.tools.multiagent.task",
-            "kimi_cli.tools.shell",
-            "kimi_cli.tools.test",
-            "kimi_cli.tools.think",
-            "kimi_cli.tools.todo",
-            "kimi_cli.tools.utils",
-            "kimi_cli.tools.web",
-            "kimi_cli.tools.web.fetch",
-            "kimi_cli.tools.web.search",
+            "gitrekt_cli.tools",
+            "gitrekt_cli.tools.display",
+            "gitrekt_cli.tools.dmail",
+            "gitrekt_cli.tools.file",
+            "gitrekt_cli.tools.file.glob",
+            "gitrekt_cli.tools.file.grep_local",
+            "gitrekt_cli.tools.file.read",
+            "gitrekt_cli.tools.file.replace",
+            "gitrekt_cli.tools.file.utils",
+            "gitrekt_cli.tools.file.write",
+            "gitrekt_cli.tools.multiagent",
+            "gitrekt_cli.tools.multiagent.create",
+            "gitrekt_cli.tools.multiagent.task",
+            "gitrekt_cli.tools.shell",
+            "gitrekt_cli.tools.test",
+            "gitrekt_cli.tools.think",
+            "gitrekt_cli.tools.todo",
+            "gitrekt_cli.tools.utils",
+            "gitrekt_cli.tools.web",
+            "gitrekt_cli.tools.web.fetch",
+            "gitrekt_cli.tools.web.search",
         ]
     )

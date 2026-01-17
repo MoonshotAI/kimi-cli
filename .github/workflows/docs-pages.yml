@@ -13,7 +13,7 @@ permissions:
 jobs:
   deploy:
     # Only run on the original repository, not on forks
-    if: github.repository == 'MoonshotAI/kimi-cli'
+    if: github.repository == 'MoonshotAI/Gitrekt-cli'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

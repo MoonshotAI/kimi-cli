@@ -53,7 +53,7 @@
 ## 0.30.0 (2025-12-03)
 
 - Serialize empty content as an empty list instead of `None`
-- Fix Kimi chat provider panicking when `stream` is `False`
+- Fix Gitrekt chat provider panicking when `stream` is `False`
 
 ## 0.29.0 (2025-12-02)
 
@@ -62,7 +62,7 @@
 
 ## 0.28.1 (2025-12-01)
 
-- Fix interleaved thinking for Kimi and OpenAILegacy chat providers
+- Fix interleaved thinking for Gitrekt and OpenAILegacy chat providers
 
 ## 0.28.0 (2025-11-28)
 
@@ -98,7 +98,7 @@
 
 ## 0.25.1 (2025-11-18)
 
-- Catch httpx exceptions correctly in Kimi and OpenAI providers
+- Catch httpx exceptions correctly in Gitrekt and OpenAI providers
 
 ## 0.25.0 (2025-11-13)
 
@@ -106,7 +106,7 @@
 
 ## 0.24.0 (2025-11-12)
 
-- Set default temperature settings for Kimi models based on model name
+- Set default temperature settings for Gitrekt models based on model name
 
 ## 0.23.0 (2025-11-10)
 

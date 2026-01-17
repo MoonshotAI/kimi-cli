@@ -1,4 +1,4 @@
-name: CI (kimi-cli)
+name: CI (Gitrekt-cli)
 
 on:
   pull_request:
@@ -31,16 +31,16 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            binary_path: dist/kimi
+            binary_path: dist/Gitrekt
           - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
-            binary_path: dist/kimi
+            binary_path: dist/Gitrekt
           - runner: macos-14
             target: aarch64-apple-darwin
-            binary_path: dist/kimi
+            binary_path: dist/Gitrekt
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
-            binary_path: dist/kimi.exe
+            binary_path: dist/Gitrekt.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
@@ -70,13 +70,13 @@ jobs:
       - name: Run checks
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make check-kimi-cli
+        run: make check-Gitrekt-cli
 
       - name: Run tests
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
           PYTHONUTF8: "1"
-        run: make test-kimi-cli
+        run: make test-Gitrekt-cli
 
       - name: Build standalone binary
         if: matrix.python-version == '3.14'
@@ -93,8 +93,8 @@ jobs:
 
           binary = os.path.abspath(os.environ["BINARY_PATH"])
           result = subprocess.run([binary, "--help"], capture_output=True, text=True, check=True)
-          if "Kimi" not in result.stdout:
-              raise SystemExit("'Kimi' not found in --help output")
+          if "Gitrekt" not in result.stdout:
+              raise SystemExit("'Gitrekt' not found in --help output")
         env:
           BINARY_PATH: ${{ matrix.binary_path }}
 
@@ -102,7 +102,7 @@ jobs:
         if: matrix.python-version == '3.14' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: kimi-${{ matrix.target }}
+          name: Gitrekt-${{ matrix.target }}
           path: ${{ matrix.binary_path }}
           if-no-files-found: error
           retention-days: 7
@@ -114,13 +114,13 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            binary_path: dist/kimi
+            binary_path: dist/Gitrekt
           - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
-            binary_path: dist/kimi
+            binary_path: dist/Gitrekt
           - runner: macos-14
             target: aarch64-apple-darwin
-            binary_path: dist/kimi
+            binary_path: dist/Gitrekt
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
@@ -130,4 +130,4 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@main
 
       - name: Run nix package
-        run: nix run .#kimi-cli -- --version && nix run . -- --help
+        run: nix run .#Gitrekt-cli -- --version && nix run . -- --help

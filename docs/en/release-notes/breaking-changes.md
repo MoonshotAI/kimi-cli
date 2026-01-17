@@ -1,6 +1,6 @@
 # Breaking Changes and Migration
 
-This page documents breaking changes in Kimi CLI releases and provides migration guidance.
+This page documents breaking changes in Gitrekt CLI releases and provides migration guidance.
 
 ## Unreleased
 
@@ -8,12 +8,12 @@ This page documents breaking changes in Kimi CLI releases and provides migration
 
 ### Thinking mode setting migration change
 
-After upgrading from `0.76`, the thinking mode setting is no longer automatically preserved. The previous `thinking` state stored in `~/.kimi/kimi.json` is no longer used; instead, thinking mode is now managed via the `default_thinking` configuration option in `~/.kimi/config.toml`, but values are not automatically migrated from legacy `metadata`.
+After upgrading from `0.76`, the thinking mode setting is no longer automatically preserved. The previous `thinking` state stored in `~/.Gitrekt/Gitrekt.json` is no longer used; instead, thinking mode is now managed via the `default_thinking` configuration option in `~/.Gitrekt/config.toml`, but values are not automatically migrated from legacy `metadata`.
 
 - **Affected**: Users who previously had thinking mode enabled
 - **Migration**: Reconfigure thinking mode after upgrading:
   - Use the `/model` command to select model and set thinking mode (interactive)
-  - Or manually add to `~/.kimi/config.toml`:
+  - Or manually add to `~/.Gitrekt/config.toml`:
 
     ```toml
     default_thinking = true  # Set to true if you want thinking mode enabled by default
@@ -32,10 +32,10 @@ The `--query` (`-q`) option has been removed. Use `--prompt` as the primary opti
 
 ### `--acp` option deprecated
 
-The `--acp` option has been deprecated. Use the `kimi acp` subcommand instead.
+The `--acp` option has been deprecated. Use the `Gitrekt acp` subcommand instead.
 
-- **Affected**: Scripts and IDE configurations using `kimi --acp`
-- **Migration**: `kimi --acp` → `kimi acp`
+- **Affected**: Scripts and IDE configurations using `Gitrekt --acp`
+- **Migration**: `Gitrekt --acp` → `Gitrekt acp`
 
 ## 0.66 - Config File and Provider Type
 
@@ -43,19 +43,19 @@ The `--acp` option has been deprecated. Use the `kimi acp` subcommand instead.
 
 The config file format has been migrated from JSON to TOML.
 
-- **Affected**: Users with `~/.kimi/config.json`
-- **Migration**: Kimi CLI will automatically read the old JSON config, but manual migration to TOML is recommended
-- **New location**: `~/.kimi/config.toml`
+- **Affected**: Users with `~/.Gitrekt/config.json`
+- **Migration**: Gitrekt CLI will automatically read the old JSON config, but manual migration to TOML is recommended
+- **New location**: `~/.Gitrekt/config.toml`
 
 JSON config example:
 
 ```json
 {
-  "default_model": "kimi-k2-0711",
+  "default_model": "Gitrekt-k2-0711",
   "providers": {
-    "kimi": {
-      "type": "kimi",
-      "base_url": "https://api.kimi.com/coding/v1",
+    "Gitrekt": {
+      "type": "Gitrekt",
+      "base_url": "https://api.Gitrekt.com/coding/v1",
       "api_key": "your-key"
     }
   }
@@ -65,11 +65,11 @@ JSON config example:
 Equivalent TOML config:
 
 ```toml
-default_model = "kimi-k2-0711"
+default_model = "Gitrekt-k2-0711"
 
-[providers.kimi]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "your-key"
 ```
 
@@ -92,10 +92,10 @@ The `Bash` tool (or `CMD` on Windows) has been unified and renamed to `Shell`.
 
 ### `Task` tool moved to `multiagent` module
 
-The `Task` tool has been moved from `kimi_cli.tools.task` to `kimi_cli.tools.multiagent`.
+The `Task` tool has been moved from `gitrekt_cli.tools.task` to `gitrekt_cli.tools.multiagent`.
 
 - **Affected**: Custom tools importing the `Task` tool
-- **Migration**: Change import path to `from kimi_cli.tools.multiagent import Task`
+- **Migration**: Change import path to `from gitrekt_cli.tools.multiagent import Task`
 
 ### `PatchFile` tool removed
 
@@ -113,7 +113,7 @@ The `--ui` option has been removed in favor of separate flags.
 - **Affected**: Scripts using `--ui print`, `--ui acp`, or `--ui wire`
 - **Migration**:
   - `--ui print` → `--print`
-  - `--ui acp` → `kimi acp`
+  - `--ui acp` → `Gitrekt acp`
   - `--ui wire` → `--wire`
 
 ## 0.42 - Keyboard Shortcut Changes
@@ -137,16 +137,16 @@ The `--agent` option has been renamed to `--agent-file`.
 
 ## 0.25 - Package Name Change
 
-### Package renamed from `ensoul` to `kimi-cli`
+### Package renamed from `ensoul` to `Gitrekt-cli`
 
 - **Affected**: Code or scripts using the `ensoul` package name
 - **Migration**:
-  - Installation: `pip install ensoul` → `pip install kimi-cli` or `uv tool install kimi-cli`
-  - Command: `ensoul` → `kimi`
+  - Installation: `pip install ensoul` → `pip install Gitrekt-cli` or `uv tool install Gitrekt-cli`
+  - Command: `ensoul` → `Gitrekt`
 
 ### `ENSOUL_*` parameter prefix changed
 
-The system prompt built-in parameter prefix has changed from `ENSOUL_*` to `KIMI_*`.
+The system prompt built-in parameter prefix has changed from `ENSOUL_*` to `GITREKT_*`.
 
 - **Affected**: Custom agent files using `ENSOUL_*` parameters
-- **Migration**: Change parameter prefix to `KIMI_*` (e.g., `ENSOUL_NOW` → `KIMI_NOW`)
+- **Migration**: Change parameter prefix to `GITREKT_*` (e.g., `ENSOUL_NOW` → `GITREKT_NOW`)

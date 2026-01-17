@@ -1,6 +1,6 @@
 # 变更记录
 
-本页面记录 Kimi CLI 各版本的变更内容。
+本页面记录 Gitrekt CLI 各版本的变更内容。
 
 ## 未发布
 
@@ -33,13 +33,13 @@
 ## 0.75 (2026-01-09)
 
 - Tool：改进 `ReadFile` 工具描述
-- Skills：添加内置 `kimi-cli-help` Skill，解答 Kimi CLI 使用和配置问题
+- Skills：添加内置 `Gitrekt-cli-help` Skill，解答 Gitrekt CLI 使用和配置问题
 
 ## 0.74 (2026-01-09)
 
 - ACP：允许 ACP 客户端选择和切换模型（包含 Thinking 变体）
 - ACP：添加 `terminal-auth` 认证方式，用于配置流程
-- CLI：弃用 `--acp` 选项，请使用 `kimi acp` 子命令
+- CLI：弃用 `--acp` 选项，请使用 `Gitrekt acp` 子命令
 - Tool：`ReadFile` 工具现支持读取图片和视频文件
 
 ## 0.73 (2026-01-09)
@@ -49,7 +49,7 @@
 - MCP：确保 MCP 工具加载完成后再开始 Agent 循环
 - Wire：修复 Wire 模式无法接受有效 `cancel` 请求的问题
 - Setup：`/model` 命令现在可以切换所选供应商的所有可用模型
-- Lib：从 `kimi_cli.wire.types` 重新导出所有 Wire 消息类型，作为 `kimi_cli.wire.message` 的替代
+- Lib：从 `gitrekt_cli.wire.types` 重新导出所有 Wire 消息类型，作为 `gitrekt_cli.wire.message` 的替代
 - Loop：添加 `max_ralph_iterations` 循环控制配置，限制额外的 Ralph 迭代次数
 - Config：将循环控制配置中的 `max_steps_per_run` 重命名为 `max_steps_per_turn`（向后兼容）
 - CLI：添加 `--max-steps-per-turn`、`--max-retries-per-step` 和 `--max-ralph-iterations` 选项，覆盖循环控制配置
@@ -65,8 +65,8 @@
 - ACP：通过 ACP 客户端路由文件读写和 Shell 命令，实现同步编辑/输出
 - Shell：添加 `/model` 斜杠命令，在使用默认配置时切换默认模型并重新加载
 - Skills：添加 `/skill:<name>` 斜杠命令，按需加载 `SKILL.md` 指引
-- CLI：添加 `kimi info` 子命令，显示版本和协议信息（支持 `--json`）
-- CLI：添加 `kimi term` 命令，启动 Toad 终端 UI
+- CLI：添加 `Gitrekt info` 子命令，显示版本和协议信息（支持 `--json`）
+- CLI：添加 `Gitrekt term` 命令，启动 Toad 终端 UI
 - Python：将默认工具/CI 版本升级到 3.14
 
 ## 0.70 (2025-12-31)
@@ -76,28 +76,28 @@
 
 ## 0.69 (2025-12-29)
 
-- Core：支持在 `~/.kimi/skills` 或 `~/.claude/skills` 中发现 Skills
+- Core：支持在 `~/.Gitrekt/skills` 或 `~/.claude/skills` 中发现 Skills
 - Python：降低最低 Python 版本要求至 3.12
-- Nix：添加 flake 打包支持；可通过 `nix profile install .#kimi-cli` 安装或 `nix run .#kimi-cli` 运行
-- CLI：添加 `kimi-cli` 脚本别名；可通过 `uvx kimi-cli` 运行
+- Nix：添加 flake 打包支持；可通过 `nix profile install .#Gitrekt-cli` 安装或 `nix run .#Gitrekt-cli` 运行
+- CLI：添加 `Gitrekt-cli` 脚本别名；可通过 `uvx Gitrekt-cli` 运行
 - Lib：将 LLM 配置验证移入 `create_llm`，配置缺失时返回 `None`
 
 ## 0.68 (2025-12-24)
 
 - CLI：添加 `--config` 和 `--config-file` 选项，支持传入 JSON/TOML 配置
-- Core：`KimiCLI.create` 的 `config` 参数现在除了 `Path` 也支持 `Config` 类型
+- Core：`GitrektCLI.create` 的 `config` 参数现在除了 `Path` 也支持 `Config` 类型
 - Tool：在 `WriteFile` 和 `StrReplaceFile` 的审批/结果中包含 diff 显示块
 - Wire：在审批请求中添加显示块（包括 diff），保持向后兼容
 - ACP：在工具结果和审批提示中显示文件 diff 预览
 - ACP：连接 ACP 客户端管理的 MCP 服务器
 - ACP：如果支持，在 ACP 客户端终端中运行 Shell 命令
-- Lib：添加 `KimiToolset.find` 方法，按类或名称查找工具
+- Lib：添加 `GitrektToolset.find` 方法，按类或名称查找工具
 - Lib：添加 `ToolResultBuilder.display` 方法，向工具结果追加显示块
-- MCP：添加 `kimi mcp auth` 及相关子命令，管理 MCP 授权
+- MCP：添加 `Gitrekt mcp auth` 及相关子命令，管理 MCP 授权
 
 ## 0.67 (2025-12-22)
 
-- ACP：在单会话 ACP 模式（`kimi --acp`）中广播斜杠命令
+- ACP：在单会话 ACP 模式（`Gitrekt --acp`）中广播斜杠命令
 - MCP：添加 `mcp.client` 配置节，用于配置 MCP 工具调用超时等选项
 - Core：改进默认系统提示词和 `ReadFile` 工具
 - UI：修复某些罕见情况下 Ctrl-C 不工作的问题
@@ -105,19 +105,19 @@
 ## 0.66 (2025-12-19)
 
 - Lib：在 `StatusUpdate` Wire 消息中提供 `token_usage` 和 `message_id`
-- Lib：添加 `KimiToolset.load_tools` 方法，支持依赖注入加载工具
-- Lib：添加 `KimiToolset.load_mcp_tools` 方法，加载 MCP 工具
-- Lib：将 `MCPTool` 从 `kimi_cli.tools.mcp` 移至 `kimi_cli.soul.toolset`
+- Lib：添加 `GitrektToolset.load_tools` 方法，支持依赖注入加载工具
+- Lib：添加 `GitrektToolset.load_mcp_tools` 方法，加载 MCP 工具
+- Lib：将 `MCPTool` 从 `gitrekt_cli.tools.mcp` 移至 `gitrekt_cli.soul.toolset`
 - Lib：添加 `InvalidToolError`、`MCPConfigError` 和 `MCPRuntimeError` 异常类
-- Lib：使 Kimi CLI 详细异常类扩展 `ValueError` 或 `RuntimeError`
-- Lib：`KimiCLI.create` 和 `load_agent` 的 `mcp_configs` 参数支持传入验证后的 `list[fastmcp.mcp_config.MCPConfig]`
-- Lib：修复 `KimiCLI.create`、`load_agent`、`KimiToolset.load_tools` 和 `KimiToolset.load_mcp_tools` 的异常抛出
+- Lib：使 Gitrekt CLI 详细异常类扩展 `ValueError` 或 `RuntimeError`
+- Lib：`GitrektCLI.create` 和 `load_agent` 的 `mcp_configs` 参数支持传入验证后的 `list[fastmcp.mcp_config.MCPConfig]`
+- Lib：修复 `GitrektCLI.create`、`load_agent`、`GitrektToolset.load_tools` 和 `GitrektToolset.load_mcp_tools` 的异常抛出
 - LLM：添加 `vertexai` 供应商类型，支持 Vertex AI
 - LLM：将 Gemini Developer API 的供应商类型从 `google_genai` 重命名为 `gemini`
 - Config：配置文件从 JSON 迁移至 TOML
 - MCP：后台并行连接 MCP 服务器，减少启动时间
 - MCP：连接 MCP 服务器时添加 `mcp-session-id` HTTP 头
-- Lib：将斜杠命令（原"元命令"）拆分为两组：Shell 级和 KimiSoul 级
+- Lib：将斜杠命令（原"元命令"）拆分为两组：Shell 级和 GitrektSoul 级
 - Lib：在 `Soul` 协议中添加 `available_slash_commands` 属性
 - ACP：向 ACP 客户端广播 `/init`、`/compact` 和 `/yolo` 斜杠命令
 - SlashCmd：添加 `/mcp` 斜杠命令，显示 MCP 服务器和工具状态
@@ -129,21 +129,21 @@
 - CLI：退出时删除空会话，列表中忽略上下文文件为空的会话
 - UI：改进会话回放
 - Lib：在 `LLM` 类中添加 `model_config: LLMModel | None` 和 `provider_config: LLMProvider | None` 属性
-- MetaCmd：添加 `/usage` 元命令，为 Kimi Code 用户显示 API 使用情况
+- MetaCmd：添加 `/usage` 元命令，为 Gitrekt Code 用户显示 API 使用情况
 
 ## 0.64 (2025-12-15)
 
 - UI：修复 Windows 上 UTF-16 代理字符输入问题
 - Core：添加 `/sessions` 元命令，列出现有会话并切换到选中的会话
 - CLI：添加 `--session/-S` 选项，指定要恢复的会话 ID
-- MCP：添加 `kimi mcp` 子命令组，管理全局 MCP 配置文件 `~/.kimi/mcp.json`
+- MCP：添加 `Gitrekt mcp` 子命令组，管理全局 MCP 配置文件 `~/.Gitrekt/mcp.json`
 
 ## 0.63 (2025-12-12)
 
 - Tool：修复 `FetchURL` 工具通过服务获取失败时输出不正确的问题
 - Tool：在 `Shell` 工具中使用 `bash` 而非 `sh`，提高兼容性
 - Tool：修复 Windows 上 `Grep` 工具的 Unicode 解码错误
-- ACP：通过 `kimi acp` 子命令支持 ACP 会话续接（列出/加载会话）
+- ACP：通过 `Gitrekt acp` 子命令支持 ACP 会话续接（列出/加载会话）
 - Lib：添加 `Session.find` 和 `Session.list` 静态方法，查找和列出会话
 - ACP：调用 `SetTodoList` 工具时在客户端更新 Agent 计划
 - UI：防止以 `/` 开头的普通消息被误当作元命令处理
@@ -166,16 +166,16 @@
 
 ## 0.60 (2025-12-01)
 
-- LLM：修复 Kimi 和 OpenAI 兼容供应商的交错思考问题
+- LLM：修复 Gitrekt 和 OpenAI 兼容供应商的交错思考问题
 
 ## 0.59 (2025-11-28)
 
-- Core：将上下文文件位置移至 `.kimi/sessions/{workdir_md5}/{session_id}/context.jsonl`
-- Lib：将 `WireMessage` 类型别名移至 `kimi_cli.wire.message`
-- Lib：添加 `kimi_cli.wire.message.Request` 类型别名，用于请求消息（目前仅包含 `ApprovalRequest`）
-- Lib：添加 `kimi_cli.wire.message.is_event`、`is_request` 和 `is_wire_message` 工具函数，检查 Wire 消息类型
-- Lib：添加 `kimi_cli.wire.serde` 模块，用于 Wire 消息的序列化和反序列化
-- Lib：修改 `StatusUpdate` Wire 消息，不再使用 `kimi_cli.soul.StatusSnapshot`
+- Core：将上下文文件位置移至 `.Gitrekt/sessions/{workdir_md5}/{session_id}/context.jsonl`
+- Lib：将 `WireMessage` 类型别名移至 `gitrekt_cli.wire.message`
+- Lib：添加 `gitrekt_cli.wire.message.Request` 类型别名，用于请求消息（目前仅包含 `ApprovalRequest`）
+- Lib：添加 `gitrekt_cli.wire.message.is_event`、`is_request` 和 `is_wire_message` 工具函数，检查 Wire 消息类型
+- Lib：添加 `gitrekt_cli.wire.serde` 模块，用于 Wire 消息的序列化和反序列化
+- Lib：修改 `StatusUpdate` Wire 消息，不再使用 `gitrekt_cli.soul.StatusSnapshot`
 - Core：在会话目录中记录 Wire 消息到 JSONL 文件
 - Core：引入 `TurnBegin` Wire 消息，标记每个 Agent 轮次的开始
 - UI：Shell 模式下用面板重新打印用户输入
@@ -183,8 +183,8 @@
 - UI：改进多个并行子代理时的"本会话批准"体验
 - Wire：重新实现 Wire 服务器模式（通过 `--wire` 选项启用）
 - Lib：重命名类以保持一致性：`ShellApp` → `Shell`，`PrintApp` → `Print`，`ACPServer` → `ACP`，`WireServer` → `WireOverStdio`
-- Lib：重命名方法以保持一致性：`KimiCLI.run_shell_mode` → `run_shell`，`run_print_mode` → `run_print`，`run_acp_server` → `run_acp`，`run_wire_server` → `run_wire_stdio`
-- Lib：添加 `KimiCLI.run` 方法，使用给定用户输入运行一轮并产生 Wire 消息
+- Lib：重命名方法以保持一致性：`GitrektCLI.run_shell_mode` → `run_shell`，`run_print_mode` → `run_print`，`run_acp_server` → `run_acp`，`run_wire_server` → `run_wire_stdio`
+- Lib：添加 `GitrektCLI.run` 方法，使用给定用户输入运行一轮并产生 Wire 消息
 - Print：修复 stream-json 打印模式输出刷新不正确的问题
 - LLM：改进与部分 OpenAI 和 Anthropic API 供应商的兼容性
 - Core：修复使用 Anthropic API 时压缩后的聊天供应商错误
@@ -194,7 +194,7 @@
 - Core：修复使用 `extend` 时 Agent 规格文件的字段继承问题
 - Core：支持在子代理中使用 MCP 工具
 - Tool：添加 `CreateSubagent` 工具，动态创建子代理（默认 Agent 中未启用）
-- Tool：Kimi Code 方案在 `FetchURL` 工具中使用 MoonshotFetch 服务
+- Tool：Gitrekt Code 方案在 `FetchURL` 工具中使用 MoonshotFetch 服务
 - Tool：截断 Grep 工具输出，避免超出 token 限制
 
 ## 0.57 (2025-11-20)
@@ -203,7 +203,7 @@
 - UI：改进审批请求措辞
 - Tool：移除 `PatchFile` 工具
 - Tool：将 `Bash`/`CMD` 工具重命名为 `Shell` 工具
-- Tool：将 `Task` 工具移至 `kimi_cli.tools.multiagent` 模块
+- Tool：将 `Task` 工具移至 `gitrekt_cli.tools.multiagent` 模块
 
 ## 0.56 (2025-11-19)
 
@@ -211,7 +211,7 @@
 
 ## 0.55 (2025-11-18)
 
-- Lib：添加 `kimi_cli.app.enable_logging` 函数，直接使用 `KimiCLI` 类时启用日志
+- Lib：添加 `gitrekt_cli.app.enable_logging` 函数，直接使用 `GitrektCLI` 类时启用日志
 - Core：修复 Agent 规格文件中的相对路径解析
 - Core：防止 LLM API 连接失败时 panic
 - Tool：优化 `FetchURL` 工具，改进内容提取
@@ -222,9 +222,9 @@
 
 ## 0.54 (2025-11-13)
 
-- Lib：将 `WireMessage` 从 `kimi_cli.wire.message` 移至 `kimi_cli.wire`
+- Lib：将 `WireMessage` 从 `gitrekt_cli.wire.message` 移至 `gitrekt_cli.wire`
 - Print：修复 `stream-json` 输出格式缺少最后一条助手消息的问题
-- UI：当 API 密钥被 `KIMI_API_KEY` 环境变量覆盖时添加警告
+- UI：当 API 密钥被 `GITREKT_API_KEY` 环境变量覆盖时添加警告
 - UI：审批请求时发出提示音
 - Core：修复 Windows 上的上下文压缩和清除问题
 
@@ -250,12 +250,12 @@
 ## 0.51 (2025-11-08)
 
 - Lib：将 `Soul.model` 重命名为 `Soul.model_name`
-- Lib：将 `LLMModelCapability` 重命名为 `ModelCapability` 并移至 `kimi_cli.llm`
+- Lib：将 `LLMModelCapability` 重命名为 `ModelCapability` 并移至 `gitrekt_cli.llm`
 - Lib：在 `ModelCapability` 中添加 `"thinking"`
 - Lib：移除 `LLM.supports_image_in` 属性
 - Lib：添加必需的 `Soul.model_capabilities` 属性
-- Lib：将 `KimiSoul.set_thinking_mode` 重命名为 `KimiSoul.set_thinking`
-- Lib：添加 `KimiSoul.thinking` 属性
+- Lib：将 `GitrektSoul.set_thinking_mode` 重命名为 `GitrektSoul.set_thinking`
+- Lib：添加 `GitrektSoul.thinking` 属性
 - UI：改进 LLM 模型能力检查和提示
 - UI：`/clear` 元命令时清屏
 - Tool：支持 Windows 上自动下载 ripgrep
@@ -273,7 +273,7 @@
 
 ## 0.48 (2025-11-06)
 
-- 支持 Kimi K2 思考模式
+- 支持 Gitrekt K2 思考模式
 
 ## 0.47 (2025-11-05)
 
@@ -289,7 +289,7 @@
 
 ## 0.45 (2025-10-31)
 
-- 允许 `KIMI_MODEL_CAPABILITIES` 环境变量覆盖模型能力
+- 允许 `GITREKT_MODEL_CAPABILITIES` 环境变量覆盖模型能力
 - 添加 `--no-markdown` 选项禁用 Markdown 渲染
 - 支持 `openai_responses` LLM 供应商类型
 
@@ -405,7 +405,7 @@
 
 - 修复 Ctrl-C 中断步骤的问题
 
-- 在 Kimi Koder Agent 中禁用 `SendDMail` 工具
+- 在 Gitrekt Koder Agent 中禁用 `SendDMail` 工具
 
 ## 0.28 (2025-10-13)
 
@@ -426,10 +426,10 @@
 
 ## 0.25 (2025-10-11)
 
-- 将包名从 `ensoul` 重命名为 `kimi-cli`
-- 将 `ENSOUL_*` 内置系统提示词参数重命名为 `KIMI_*`
+- 将包名从 `ensoul` 重命名为 `Gitrekt-cli`
+- 将 `ENSOUL_*` 内置系统提示词参数重命名为 `GITREKT_*`
 - 进一步解耦 `App` 与 `Soul`
-- 拆分 `Soul` 协议和 `KimiSoul` 实现以提高模块化
+- 拆分 `Soul` 协议和 `GitrektSoul` 实现以提高模块化
 
 ## 0.24 (2025-10-10)
 
@@ -453,8 +453,8 @@
 - 添加 `SearchWeb` 工具，使用 `services.moonshot_search` 配置。需要在配置文件中配置 `"services": {"moonshot_search": {"api_key": "your-search-api-key"}}`
 - 添加 `FetchURL` 工具
 - 添加 `Think` 工具
-- 添加 `PatchFile` 工具，Kimi Koder Agent 中未启用
-- 在 Kimi Koder Agent 中启用 `SendDMail` 和 `Task` 工具，改进工具提示词
+- 添加 `PatchFile` 工具，Gitrekt Koder Agent 中未启用
+- 在 Gitrekt Koder Agent 中启用 `SendDMail` 和 `Task` 工具，改进工具提示词
 - 添加 `ENSOUL_NOW` 内置系统提示词参数
 
 - 改进 `/release-notes` 外观
@@ -481,7 +481,7 @@
 ## 0.17 (2025-09-29)
 
 - 修复超过最大步数时错误消息中的步数
-- 修复 `kimi_run` 中的历史文件断言错误
+- 修复 `Gitrekt_run` 中的历史文件断言错误
 - 修复 print 模式和单命令 Shell 模式中的错误处理
 - 为 LLM API 连接错误和超时错误添加重试
 
@@ -489,7 +489,7 @@
 
 ## 0.16.0 (2025-09-26)
 
-- 添加 `SendDMail` 工具（Kimi Koder 中禁用，可在自定义 Agent 中启用）
+- 添加 `SendDMail` 工具（Gitrekt Koder 中禁用，可在自定义 Agent 中启用）
 
 - 可通过 `_history_file` 参数在创建新会话时指定会话历史文件
 
@@ -563,4 +563,4 @@
 - 支持中断 Agent 循环
 - 支持项目级 `AGENTS.md`
 - 支持 YAML 定义的自定义 Agent
-- 支持通过 `kimi -c` 执行一次性任务
+- 支持通过 `Gitrekt -c` 执行一次性任务

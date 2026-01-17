@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.file.grep_local import Grep, Params
-from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
+from gitrekt_cli.tools.file.grep_local import Grep, Params
+from gitrekt_cli.tools.utils import DEFAULT_MAX_CHARS
 
 
 @pytest.fixture

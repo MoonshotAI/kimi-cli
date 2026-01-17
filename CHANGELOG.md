@@ -40,13 +40,13 @@ Only write entries that are worth mentioning to users.
 ## 0.75 (2026-01-09)
 
 - Tool: Improve `ReadFile` tool description
-- Skills: Add built-in `kimi-cli-help` skill to answer Kimi CLI usage and configuration questions
+- Skills: Add built-in `Gitrekt-cli-help` skill to answer Gitrekt CLI usage and configuration questions
 
 ## 0.74 (2026-01-09)
 
 - ACP: Allow ACP clients to select and switch models (with thinking variants)
 - ACP: Add `terminal-auth` authentication method for setup flow
-- CLI: Deprecate `--acp` option in favor of `kimi acp` subcommand
+- CLI: Deprecate `--acp` option in favor of `Gitrekt acp` subcommand
 - Tool: Support reading image and video files in `ReadFile` tool
 
 ## 0.73 (2026-01-09)
@@ -56,7 +56,7 @@ Only write entries that are worth mentioning to users.
 - MCP: Ensure MCP tools finish loading before starting the agent loop
 - Wire: Fix Wire mode failing to accept valid `cancel` requests
 - Setup: Allow `/model` to switch between all available models for the selected provider
-- Lib: Re-export all Wire message types from `kimi_cli.wire.types`, as a replacement of `kimi_cli.wire.message`
+- Lib: Re-export all Wire message types from `gitrekt_cli.wire.types`, as a replacement of `gitrekt_cli.wire.message`
 - Loop: Add `max_ralph_iterations` loop control config to limit extra Ralph iterations
 - Config: Rename `max_steps_per_run` to `max_steps_per_turn` in loop control config (backward-compatible)
 - CLI: Add `--max-steps-per-turn`, `--max-retries-per-step` and `--max-ralph-iterations` options to override loop control config
@@ -72,8 +72,8 @@ Only write entries that are worth mentioning to users.
 - ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
 - Shell: Add `/model` slash command to switch default models and reload when using the default config
 - Skills: Add `/skill:<name>` slash commands to load `SKILL.md` instructions on demand
-- CLI: Add `kimi info` subcommand for version/protocol details (supports `--json`)
-- CLI: Add `kimi term` to launch the Toad terminal UI
+- CLI: Add `Gitrekt info` subcommand for version/protocol details (supports `--json`)
+- CLI: Add `Gitrekt term` to launch the Toad terminal UI
 - Python: Bump the default tooling/CI version to 3.14
 
 ## 0.70 (2025-12-31)
@@ -83,28 +83,28 @@ Only write entries that are worth mentioning to users.
 
 ## 0.69 (2025-12-29)
 
-- Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
+- Core: Support discovering skills in `~/.Gitrekt/skills` or `~/.claude/skills`
 - Python: Lower the minimum required Python version to 3.12
-- Nix: Add flake packaging; install with `nix profile install .#kimi-cli` or run `nix run .#kimi-cli`
-- CLI: Add `kimi-cli` script alias for invoking the CLI; can be run via `uvx kimi-cli`
+- Nix: Add flake packaging; install with `nix profile install .#Gitrekt-cli` or run `nix run .#Gitrekt-cli`
+- CLI: Add `Gitrekt-cli` script alias for invoking the CLI; can be run via `uvx Gitrekt-cli`
 - Lib: Move LLM config validation into `create_llm` and return `None` when missing config
 
 ## 0.68 (2025-12-24)
 
 - CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
-- Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
+- Core: Allow `Config` in addition to `Path` for the `config` parameter of `GitrektCLI.create`
 - Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
 - Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
 - ACP: Show file diff previews in tool results and approval prompts
 - ACP: Connect to MCP servers managed by ACP clients
 - ACP: Run shell commands in ACP client terminal if supported
-- Lib: Add `KimiToolset.find` method to find tools by class or name
+- Lib: Add `GitrektToolset.find` method to find tools by class or name
 - Lib: Add `ToolResultBuilder.display` method to append display blocks to tool results
-- MCP: Add `kimi mcp auth` and related subcommands to manage MCP authorization
+- MCP: Add `Gitrekt mcp auth` and related subcommands to manage MCP authorization
 
 ## 0.67 (2025-12-22)
 
-- ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
+- ACP: Advertise slash commands in single-session ACP mode (`Gitrekt --acp`)
 - MCP: Add `mcp.client` config section to configure MCP tool call timeout and other future options
 - Core: Improve default system prompt and `ReadFile` tool
 - UI: Fix Ctrl-C not working in some rare cases
@@ -112,19 +112,19 @@ Only write entries that are worth mentioning to users.
 ## 0.66 (2025-12-19)
 
 - Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
-- Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
-- Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
-- Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
+- Lib: Add `GitrektToolset.load_tools` method to load tools with dependency injection
+- Lib: Add `GitrektToolset.load_mcp_tools` method to load MCP tools
+- Lib: Move `MCPTool` from `gitrekt_cli.tools.mcp` to `gitrekt_cli.soul.toolset`
 - Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
-- Lib: Make the detailed Kimi CLI exception classes extend `ValueError` or `RuntimeError`
-- Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
-- Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
+- Lib: Make the detailed Gitrekt CLI exception classes extend `ValueError` or `RuntimeError`
+- Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `GitrektCLI.create` and `load_agent`
+- Lib: Fix exception raising for `GitrektCLI.create`, `load_agent`, `GitrektToolset.load_tools` and `GitrektToolset.load_mcp_tools`
 - LLM: Add provider type `vertexai` to support Vertex AI
 - LLM: Rename Gemini Developer API provider type from `google_genai` to `gemini`
 - Config: Migrate config file from JSON to TOML
 - MCP: Connect to MCP servers in background and parallel to reduce startup time
 - MCP: Add `mcp-session-id` HTTP header when connecting to MCP servers
-- Lib: Split slash commands (prev "meta commands") into two groups: Shell-level and KimiSoul-level
+- Lib: Split slash commands (prev "meta commands") into two groups: Shell-level and GitrektSoul-level
 - Lib: Add `available_slash_commands` property to `Soul` protocol
 - ACP: Advertise slash commands `/init`, `/compact` and `/yolo` to ACP clients
 - SlashCmd: Add `/mcp` slash command to display MCP server and tool status
@@ -136,21 +136,21 @@ Only write entries that are worth mentioning to users.
 - CLI: Delete empty sessions on exit and ignore sessions whose context file is empty when listing
 - UI: Improve session replaying
 - Lib: Add `model_config: LLMModel | None` and `provider_config: LLMProvider | None` properties to `LLM` class
-- MetaCmd: Add `/usage` meta command to show API usage for Kimi Code users
+- MetaCmd: Add `/usage` meta command to show API usage for Gitrekt Code users
 
 ## 0.64 (2025-12-15)
 
 - UI: Fix UTF-16 surrogate characters input on Windows
 - Core: Add `/sessions` meta command to list existing sessions and switch to a selected one
 - CLI: Add `--session/-S` option to specify session ID to resume
-- MCP: Add `kimi mcp` subcommand group to manage global MCP config file `~/.kimi/mcp.json`
+- MCP: Add `Gitrekt mcp` subcommand group to manage global MCP config file `~/.Gitrekt/mcp.json`
 
 ## 0.63 (2025-12-12)
 
 - Tool: Fix `FetchURL` tool incorrect output when fetching via service fails
 - Tool: Use `bash` instead of `sh` in `Shell` tool for better compatibility
 - Tool: Fix `Grep` tool unicode decoding error on Windows
-- ACP: Support ACP session continuation (list/load sessions) with `kimi acp` subcommand
+- ACP: Support ACP session continuation (list/load sessions) with `Gitrekt acp` subcommand
 - Lib: Add `Session.find` and `Session.list` static methods to find and list sessions
 - ACP: Update agent plans on the client side when `SetTodoList` tool is called
 - UI: Prevent normal messages starting with `/` from being treated as meta commands
@@ -173,16 +173,16 @@ Only write entries that are worth mentioning to users.
 
 ## 0.60 (2025-12-01)
 
-- LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
+- LLM: Fix interleaved thinking for Gitrekt and OpenAI-compatible providers
 
 ## 0.59 (2025-11-28)
 
-- Core: Move context file location to `.kimi/sessions/{workdir_md5}/{session_id}/context.jsonl`
-- Lib: Move `WireMessage` type alias to `kimi_cli.wire.message`
-- Lib: Add `kimi_cli.wire.message.Request` type alias request messages (which currently only includes `ApprovalRequest`)
-- Lib: Add `kimi_cli.wire.message.is_event`, `is_request` and `is_wire_message` utility functions to check the type of wire messages
-- Lib: Add `kimi_cli.wire.serde` module for serialization and deserialization of wire messages
-- Lib: Change `StatusUpdate` Wire message to not using `kimi_cli.soul.StatusSnapshot`
+- Core: Move context file location to `.Gitrekt/sessions/{workdir_md5}/{session_id}/context.jsonl`
+- Lib: Move `WireMessage` type alias to `gitrekt_cli.wire.message`
+- Lib: Add `gitrekt_cli.wire.message.Request` type alias request messages (which currently only includes `ApprovalRequest`)
+- Lib: Add `gitrekt_cli.wire.message.is_event`, `is_request` and `is_wire_message` utility functions to check the type of wire messages
+- Lib: Add `gitrekt_cli.wire.serde` module for serialization and deserialization of wire messages
+- Lib: Change `StatusUpdate` Wire message to not using `gitrekt_cli.soul.StatusSnapshot`
 - Core: Record Wire messages to a JSONL file in session directory
 - Core: Introduce `TurnBegin` Wire message to mark the beginning of each agent turn
 - UI: Print user input again with a panel in shell mode
@@ -190,8 +190,8 @@ Only write entries that are worth mentioning to users.
 - UI: Improve "Approve for session" experience when there are multiple parallel subagents
 - Wire: Reimplement Wire server mode (which is enabled with `--wire` option)
 - Lib: Rename `ShellApp` to `Shell`, `PrintApp` to `Print`, `ACPServer` to `ACP` and `WireServer` to `WireOverStdio` for better consistency
-- Lib: Rename `KimiCLI.run_shell_mode` to `run_shell`, `run_print_mode` to `run_print`, `run_acp_server` to `run_acp`, and `run_wire_server` to `run_wire_stdio` for better consistency
-- Lib: Add `KimiCLI.run` method to run a turn with given user input and yield Wire messages
+- Lib: Rename `GitrektCLI.run_shell_mode` to `run_shell`, `run_print_mode` to `run_print`, `run_acp_server` to `run_acp`, and `run_wire_server` to `run_wire_stdio` for better consistency
+- Lib: Add `GitrektCLI.run` method to run a turn with given user input and yield Wire messages
 - Print: Fix stream-json print mode not flushing output properly
 - LLM: Improve compatibility with some OpenAI and Anthropic API providers
 - Core: Fix chat provider error after compaction when using Anthropic API
@@ -201,7 +201,7 @@ Only write entries that are worth mentioning to users.
 - Core: Fix field inheritance of agent spec files when using `extend`
 - Core: Support using MCP tools in subagents
 - Tool: Add `CreateSubagent` tool to create subagents dynamically (not enabled in default agent)
-- Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi Code plan
+- Tool: Use MoonshotFetch service in `FetchURL` tool for Gitrekt Code plan
 - Tool: Truncate Grep tool output to avoid exceeding token limit
 
 ## 0.57 (2025-11-20)
@@ -210,7 +210,7 @@ Only write entries that are worth mentioning to users.
 - UI: Improve approval request wordings
 - Tool: Remove `PatchFile` tool
 - Tool: Rename `Bash`/`CMD` tool to `Shell` tool
-- Tool: Move `Task` tool to `kimi_cli.tools.multiagent` module
+- Tool: Move `Task` tool to `gitrekt_cli.tools.multiagent` module
 
 ## 0.56 (2025-11-19)
 
@@ -218,7 +218,7 @@ Only write entries that are worth mentioning to users.
 
 ## 0.55 (2025-11-18)
 
-- Lib: Add `kimi_cli.app.enable_logging` function to enable logging when directly using `KimiCLI` class
+- Lib: Add `gitrekt_cli.app.enable_logging` function to enable logging when directly using `GitrektCLI` class
 - Core: Fix relative path resolution in agent spec files
 - Core: Prevent from panic when LLM API connection failed
 - Tool: Optimize `FetchURL` tool for better content extraction
@@ -229,9 +229,9 @@ Only write entries that are worth mentioning to users.
 
 ## 0.54 (2025-11-13)
 
-- Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
+- Lib: Move `WireMessage` from `gitrekt_cli.wire.message` to `gitrekt_cli.wire`
 - Print: Fix `stream-json` output format missing the last assistant message
-- UI: Add warning when API key is overridden by `KIMI_API_KEY` environment variable
+- UI: Add warning when API key is overridden by `GITREKT_API_KEY` environment variable
 - UI: Make a bell sound when there's an approval request
 - Core: Fix context compaction and clearing on Windows
 
@@ -257,12 +257,12 @@ Only write entries that are worth mentioning to users.
 ## 0.51 (2025-11-08)
 
 - Lib: Rename `Soul.model` to `Soul.model_name`
-- Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `kimi_cli.llm`
+- Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `gitrekt_cli.llm`
 - Lib: Add `"thinking"` to `ModelCapability`
 - Lib: Remove `LLM.supports_image_in` property
 - Lib: Add required `Soul.model_capabilities` property
-- Lib: Rename `KimiSoul.set_thinking_mode` to `KimiSoul.set_thinking`
-- Lib: Add `KimiSoul.thinking` property
+- Lib: Rename `GitrektSoul.set_thinking_mode` to `GitrektSoul.set_thinking`
+- Lib: Add `GitrektSoul.thinking` property
 - UI: Better checks and notices for LLM model capabilities
 - UI: Clear the screen for `/clear` meta command
 - Tool: Support auto-downloading ripgrep on Windows
@@ -286,7 +286,7 @@ Only write entries that are worth mentioning to users.
 
 ### Added
 
-- Support Kimi K2 thinking mode
+- Support Gitrekt K2 thinking mode
 
 ## 0.47 (2025-11-05)
 
@@ -310,7 +310,7 @@ Only write entries that are worth mentioning to users.
 
 ### Added
 
-- Allow `KIMI_MODEL_CAPABILITIES` environment variable to override model capabilities
+- Allow `GITREKT_MODEL_CAPABILITIES` environment variable to override model capabilities
 - Add `--no-markdown` option to disable markdown rendering
 - Support `openai_responses` LLM provider type
 
@@ -482,7 +482,7 @@ Only write entries that are worth mentioning to users.
 
 ### Changed
 
-- Disable `SendDMail` tool in Kimi Koder agent
+- Disable `SendDMail` tool in Gitrekt Koder agent
 
 ## 0.28 (2025-10-13)
 
@@ -515,10 +515,10 @@ Only write entries that are worth mentioning to users.
 
 ### Changed
 
-- Rename package name `ensoul` to `kimi-cli`
-- Rename `ENSOUL_*` builtin system prompt arguments to `KIMI_*`
+- Rename package name `ensoul` to `Gitrekt-cli`
+- Rename `ENSOUL_*` builtin system prompt arguments to `GITREKT_*`
 - Further decouple `App` with `Soul`
-- Split `Soul` protocol and `KimiSoul` implementation for better modularity
+- Split `Soul` protocol and `GitrektSoul` implementation for better modularity
 
 ## 0.24 (2025-10-10)
 
@@ -550,8 +550,8 @@ Only write entries that are worth mentioning to users.
 - Add `SearchWeb` tool with `services.moonshot_search` configuration. You need to configure it with `"services": {"moonshot_search": {"api_key": "your-search-api-key"}}` in your config file.
 - Add `FetchURL` tool
 - Add `Think` tool
-- Add `PatchFile` tool, not enabled in Kimi Koder agent
-- Enable `SendDMail` and `Task` tool in Kimi Koder agent with better tool prompts
+- Add `PatchFile` tool, not enabled in Gitrekt Koder agent
+- Enable `SendDMail` and `Task` tool in Gitrekt Koder agent with better tool prompts
 - Add `ENSOUL_NOW` builtin system prompt argument
 
 ### Changed
@@ -592,7 +592,7 @@ Only write entries that are worth mentioning to users.
 ### Fixed
 
 - Fix step count in error message when exceeded max steps
-- Fix history file assertion error in `kimi_run`
+- Fix history file assertion error in `Gitrekt_run`
 - Fix error handling in print mode and single command shell mode
 - Add retry for LLM API connection errors and timeout errors
 
@@ -604,7 +604,7 @@ Only write entries that are worth mentioning to users.
 
 ### Tools
 
-- Add `SendDMail` tool (disabled in Kimi Koder, can be enabled in custom agent)
+- Add `SendDMail` tool (disabled in Gitrekt Koder, can be enabled in custom agent)
 
 ### SDK
 
@@ -702,4 +702,4 @@ Only write entries that are worth mentioning to users.
 - Support interrupting the agent loop
 - Support project-level `AGENTS.md`
 - Support custom agent defined with YAML
-- Support oneshot task via `kimi -c`
+- Support oneshot task via `Gitrekt -c`

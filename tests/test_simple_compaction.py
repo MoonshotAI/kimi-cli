@@ -3,9 +3,9 @@ from __future__ import annotations
 from inline_snapshot import snapshot
 from kosong.message import Message
 
-import kimi_cli.prompts as prompts
-from kimi_cli.soul.compaction import SimpleCompaction
-from kimi_cli.wire.types import TextPart, ThinkPart
+import gitrekt_cli.prompts as prompts
+from gitrekt_cli.soul.compaction import SimpleCompaction
+from gitrekt_cli.wire.types import TextPart, ThinkPart
 
 
 def test_prepare_returns_original_when_not_enough_messages():

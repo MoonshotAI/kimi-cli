@@ -1,21 +1,21 @@
 # 配置文件
 
-Kimi CLI 使用配置文件管理 API 供应商、模型、服务和运行参数，支持 TOML 和 JSON 两种格式。
+Gitrekt CLI 使用配置文件管理 API 供应商、模型、服务和运行参数，支持 TOML 和 JSON 两种格式。
 
 ## 配置文件位置
 
-默认配置文件位于 `~/.kimi/config.toml`。首次运行时，如果配置文件不存在，Kimi CLI 会自动创建一个默认的配置文件。
+默认配置文件位于 `~/.Gitrekt/config.toml`。首次运行时，如果配置文件不存在，Gitrekt CLI 会自动创建一个默认的配置文件。
 
 你可以通过 `--config-file` 参数指定其他配置文件（TOML 或 JSON 格式均可）：
 
 ```sh
-kimi --config-file /path/to/config.toml
+Gitrekt --config-file /path/to/config.toml
 ```
 
-在程序化调用 Kimi CLI 时，也可以通过 `--config` 参数直接传入完整的配置内容：
+在程序化调用 Gitrekt CLI 时，也可以通过 `--config` 参数直接传入完整的配置内容：
 
 ```sh
-kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models": {...}}'
+Gitrekt --config '{"default_model": "Gitrekt-for-coding", "providers": {...}, "models": {...}}'
 ```
 
 ## 配置项
@@ -35,17 +35,17 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 ### 完整配置示例
 
 ```toml
-default_model = "kimi-for-coding"
+default_model = "Gitrekt-for-coding"
 default_thinking = false
 
-[providers.kimi-for-coding]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt-for-coding]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "sk-xxx"
 
-[models.kimi-for-coding]
-provider = "kimi-for-coding"
-model = "kimi-for-coding"
+[models.Gitrekt-for-coding]
+provider = "Gitrekt-for-coding"
+model = "Gitrekt-for-coding"
 max_context_size = 262144
 
 [loop_control]
@@ -54,11 +54,11 @@ max_retries_per_step = 3
 max_ralph_iterations = 0
 
 [services.moonshot_search]
-base_url = "https://api.kimi.com/coding/v1/search"
+base_url = "https://api.Gitrekt.com/coding/v1/search"
 api_key = "sk-xxx"
 
 [services.moonshot_fetch]
-base_url = "https://api.kimi.com/coding/v1/fetch"
+base_url = "https://api.Gitrekt.com/coding/v1/fetch"
 api_key = "sk-xxx"
 
 [mcp.client]
@@ -81,7 +81,7 @@ tool_call_timeout_ms = 60000
 
 ```toml
 [providers.moonshot-cn]
-type = "kimi"
+type = "Gitrekt"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 custom_headers = { "X-Custom-Header" = "value" }
@@ -101,9 +101,9 @@ custom_headers = { "X-Custom-Header" = "value" }
 示例：
 
 ```toml
-[models.kimi-k2-thinking-turbo]
+[models.Gitrekt-k2-thinking-turbo]
 provider = "moonshot-cn"
-model = "kimi-k2-thinking-turbo"
+model = "Gitrekt-k2-thinking-turbo"
 max_context_size = 262144
 capabilities = ["thinking", "image_in"]
 ```
@@ -120,7 +120,7 @@ capabilities = ["thinking", "image_in"]
 
 ### `services`
 
-`services` 配置 Kimi CLI 使用的外部服务。
+`services` 配置 Gitrekt CLI 使用的外部服务。
 
 #### `moonshot_search`
 
@@ -143,7 +143,7 @@ capabilities = ["thinking", "image_in"]
 | `custom_headers` | `table` | 否 | 请求时附加的自定义 HTTP 头 |
 
 ::: tip 提示
-使用 `/setup` 命令配置 Kimi Code 平台时，搜索和抓取服务会自动配置。
+使用 `/setup` 命令配置 Gitrekt Code 平台时，搜索和抓取服务会自动配置。
 :::
 
 ### `mcp`
@@ -156,6 +156,6 @@ capabilities = ["thinking", "image_in"]
 
 ## JSON 配置迁移
 
-如果 `~/.kimi/config.toml` 不存在但 `~/.kimi/config.json` 存在，Kimi CLI 会自动将 JSON 配置迁移到 TOML 格式，并将原文件备份为 `config.json.bak`。
+如果 `~/.Gitrekt/config.toml` 不存在但 `~/.Gitrekt/config.json` 存在，Gitrekt CLI 会自动将 JSON 配置迁移到 TOML 格式，并将原文件备份为 `config.json.bak`。
 
 `--config-file` 指定的配置文件根据扩展名自动选择解析方式。`--config` 传入的配置内容会先尝试按 JSON 解析，失败后再尝试 TOML。

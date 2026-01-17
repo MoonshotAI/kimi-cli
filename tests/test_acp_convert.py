@@ -1,7 +1,7 @@
 import acp
 
-from kimi_cli.acp.convert import tool_result_to_acp_content
-from kimi_cli.wire.types import DiffDisplayBlock, ToolReturnValue
+from gitrekt_cli.acp.convert import tool_result_to_acp_content
+from gitrekt_cli.wire.types import DiffDisplayBlock, ToolReturnValue
 
 
 def test_tool_result_to_acp_content_handles_diff_display():

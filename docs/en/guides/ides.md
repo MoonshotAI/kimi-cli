@@ -1,10 +1,10 @@
 # Using in IDEs
 
-Kimi CLI supports integration with IDEs through the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/), allowing you to use AI-assisted programming directly within your editor.
+Gitrekt CLI supports integration with IDEs through the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/), allowing you to use AI-assisted programming directly within your editor.
 
 ## Prerequisites
 
-Before configuring your IDE, make sure you have installed Kimi CLI and completed the `/setup` configuration.
+Before configuring your IDE, make sure you have installed Gitrekt CLI and completed the `/setup` configuration.
 
 ## Using in Zed
 
@@ -15,9 +15,9 @@ Add the following to Zed's configuration file `~/.config/zed/settings.json`:
 ```json
 {
   "agent_servers": {
-    "Kimi CLI": {
+    "Gitrekt CLI": {
       "type": "custom",
-      "command": "kimi",
+      "command": "Gitrekt",
       "args": ["acp"],
       "env": {}
     }
@@ -28,11 +28,11 @@ Add the following to Zed's configuration file `~/.config/zed/settings.json`:
 Configuration notes:
 
 - `type`: Fixed value `"custom"`
-- `command`: Path to the Kimi CLI command. If `kimi` is not in PATH, use the full path
+- `command`: Path to the Gitrekt CLI command. If `Gitrekt` is not in PATH, use the full path
 - `args`: Startup arguments. `acp` enables ACP mode
 - `env`: Environment variables, usually left empty
 
-After saving the configuration, you can create Kimi CLI sessions in Zed's Agent panel.
+After saving the configuration, you can create Gitrekt CLI sessions in Zed's Agent panel.
 
 ## Using in JetBrains IDEs
 
@@ -45,8 +45,8 @@ In the AI Chat panel menu, click "Configure ACP agents" and add the following co
 ```json
 {
   "agent_servers": {
-    "Kimi CLI": {
-      "command": "~/.local/bin/kimi",
+    "Gitrekt CLI": {
+      "command": "~/.local/bin/Gitrekt",
       "args": ["acp"],
       "env": {}
     }
@@ -54,4 +54,4 @@ In the AI Chat panel menu, click "Configure ACP agents" and add the following co
 }
 ```
 
-`command` needs to be the full path. You can run `which kimi` in the terminal to get it. After saving, you can select Kimi CLI in the AI Chat Agent selector.
+`command` needs to be the full path. You can run `which Gitrekt` in the terminal to get it. After saving, you can select Gitrekt CLI in the AI Chat Agent selector.

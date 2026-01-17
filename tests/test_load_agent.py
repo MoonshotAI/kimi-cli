@@ -10,14 +10,14 @@ from typing import Any
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.config import Config
-from kimi_cli.exception import InvalidToolError
-from kimi_cli.session import Session
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
-from kimi_cli.soul.approval import Approval
-from kimi_cli.soul.denwarenji import DenwaRenji
-from kimi_cli.soul.toolset import KimiToolset
-from kimi_cli.utils.environment import Environment
+from gitrekt_cli.config import Config
+from gitrekt_cli.exception import InvalidToolError
+from gitrekt_cli.session import Session
+from gitrekt_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
+from gitrekt_cli.soul.approval import Approval
+from gitrekt_cli.soul.denwarenji import DenwaRenji
+from gitrekt_cli.soul.toolset import GitrektToolset
+from gitrekt_cli.utils.environment import Environment
 
 
 def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSystemPromptArgs):
@@ -26,14 +26,14 @@ def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSyste
 
     assert "Test system prompt with " in prompt
     assert "1970-01-01" in prompt  # Should contain the actual timestamp
-    assert builtin_args.KIMI_NOW in prompt
+    assert builtin_args.GITREKT_NOW in prompt
     assert "test_value" in prompt
 
 
 def test_load_tools_valid(runtime: Runtime):
     """Test loading valid tools."""
-    tool_paths = ["kimi_cli.tools.think:Think", "kimi_cli.tools.shell:Shell"]
-    toolset = KimiToolset()
+    tool_paths = ["gitrekt_cli.tools.think:Think", "gitrekt_cli.tools.shell:Shell"]
+    toolset = GitrektToolset()
     toolset.load_tools(
         tool_paths,
         {
@@ -51,8 +51,8 @@ def test_load_tools_valid(runtime: Runtime):
 
 def test_load_tools_invalid(runtime: Runtime):
     """Test loading with invalid tool paths."""
-    tool_paths = ["kimi_cli.tools.nonexistent:Tool", "kimi_cli.tools.think:Think"]
-    toolset = KimiToolset()
+    tool_paths = ["gitrekt_cli.tools.nonexistent:Tool", "gitrekt_cli.tools.think:Think"]
+    toolset = GitrektToolset()
     try:
         toolset.load_tools(
             tool_paths,
@@ -67,7 +67,7 @@ def test_load_tools_invalid(runtime: Runtime):
         )
         raise AssertionError("should fail to load non-existing tool")
     except InvalidToolError as e:
-        assert "kimi_cli.tools.nonexistent:Tool" in str(e)
+        assert "gitrekt_cli.tools.nonexistent:Tool" in str(e)
 
 
 async def test_load_agent_invalid_tools(agent_file_invalid_tools: Path, runtime: Runtime):
@@ -93,7 +93,7 @@ version: 1
 agent:
   name: "Test Agent"
   system_prompt_path: ./system.md
-  tools: ["kimi_cli.tools.nonexistent:Tool"]
+  tools: ["gitrekt_cli.tools.nonexistent:Tool"]
 """)
 
         yield agent_yaml
@@ -106,6 +106,6 @@ def system_prompt_file() -> Generator[Path, Any, Any]:
         tmpdir = Path(tmpdir)
 
         system_md = tmpdir / "system.md"
-        system_md.write_text("Test system prompt with ${KIMI_NOW} and ${CUSTOM_ARG}")
+        system_md.write_text("Test system prompt with ${GITREKT_NOW} and ${CUSTOM_ARG}")
 
         yield system_md

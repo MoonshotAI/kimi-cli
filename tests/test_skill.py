@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 from inline_snapshot import snapshot
 
-from kimi_cli.skill import Skill, discover_skills, discover_skills_from_roots
+from gitrekt_cli.skill import Skill, discover_skills, discover_skills_from_roots
 
 
 def _write_skill(skill_dir: Path, content: str) -> None:

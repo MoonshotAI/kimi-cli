@@ -1,10 +1,10 @@
 # 在 IDE 中使用
 
-Kimi CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 集成到 IDE 中，让你在编辑器内直接使用 AI 辅助编程。
+Gitrekt CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) 集成到 IDE 中，让你在编辑器内直接使用 AI 辅助编程。
 
 ## 前置准备
 
-在配置 IDE 之前，请确保已安装 Kimi CLI 并完成 `/setup` 配置。
+在配置 IDE 之前，请确保已安装 Gitrekt CLI 并完成 `/setup` 配置。
 
 ## 在 Zed 中使用
 
@@ -15,9 +15,9 @@ Kimi CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.
 ```json
 {
   "agent_servers": {
-    "Kimi CLI": {
+    "Gitrekt CLI": {
       "type": "custom",
-      "command": "kimi",
+      "command": "Gitrekt",
       "args": ["acp"],
       "env": {}
     }
@@ -28,11 +28,11 @@ Kimi CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.
 配置说明：
 
 - `type`：固定值 `"custom"`
-- `command`：Kimi CLI 的命令路径，如果 `kimi` 不在 PATH 中，需要使用完整路径
+- `command`：Gitrekt CLI 的命令路径，如果 `Gitrekt` 不在 PATH 中，需要使用完整路径
 - `args`：启动参数，`acp` 启用 ACP 模式
 - `env`：环境变量，通常留空即可
 
-保存配置后，在 Zed 的 Agent 面板中就可以创建 Kimi CLI 会话了。
+保存配置后，在 Zed 的 Agent 面板中就可以创建 Gitrekt CLI 会话了。
 
 ## 在 JetBrains IDE 中使用
 
@@ -45,8 +45,8 @@ JetBrains 系列 IDE（IntelliJ IDEA、PyCharm、WebStorm 等）通过 AI 聊天
 ```json
 {
   "agent_servers": {
-    "Kimi CLI": {
-      "command": "~/.local/bin/kimi",
+    "Gitrekt CLI": {
+      "command": "~/.local/bin/Gitrekt",
       "args": ["acp"],
       "env": {}
     }
@@ -54,4 +54,4 @@ JetBrains 系列 IDE（IntelliJ IDEA、PyCharm、WebStorm 等）通过 AI 聊天
 }
 ```
 
-`command` 需要使用完整路径，可以在终端中运行 `which kimi` 获取。保存后，在 AI 聊天的 Agent 选择器中就可以选择 Kimi CLI 了。
+`command` 需要使用完整路径，可以在终端中运行 `which Gitrekt` 获取。保存后，在 AI 聊天的 Agent 选择器中就可以选择 Gitrekt CLI 了。

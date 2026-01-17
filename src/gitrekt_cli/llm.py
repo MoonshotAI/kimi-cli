@@ -1,0 +1,212 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, cast, get_args
+
+from kosong.chat_provider import ChatProvider
+from kosong.chat_provider.kimi import Kimi as Gitrekt
+from pydantic import SecretStr
+
+from gitrekt_cli.constant import USER_AGENT
+
+if TYPE_CHECKING:
+    from gitrekt_cli.config import LLMModel, LLMProvider
+
+type ProviderType = Literal[
+    "gitrekt",
+    "openai_legacy",
+    "openai_responses",
+    "anthropic",
+    "google_genai",  # for backward-compatibility, equals to `gemini`
+    "gemini",
+    "vertexai",
+    "_echo",
+    "_chaos",
+]
+
+type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
+ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
+
+
+@dataclass(slots=True)
+class LLM:
+    chat_provider: ChatProvider
+    max_context_size: int
+    capabilities: set[ModelCapability]
+    model_config: LLMModel | None = None
+    provider_config: LLMProvider | None = None
+
+    @property
+    def model_name(self) -> str:
+        return self.chat_provider.model_name
+
+
+def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
+    """Override provider/model settings from environment variables.
+
+    Returns:
+        Mapping of environment variables that were applied.
+    """
+    applied: dict[str, str] = {}
+
+    match provider.type:
+        case "gitrekt":
+            if base_url := os.getenv("GITREKT_BASE_URL"):
+                provider.base_url = base_url
+                applied["GITREKT_BASE_URL"] = base_url
+            if api_key := os.getenv("GITREKT_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["GITREKT_API_KEY"] = "******"
+            if model_name := os.getenv("GITREKT_MODEL_NAME"):
+                model.model = model_name
+                applied["GITREKT_MODEL_NAME"] = model_name
+            if max_context_size := os.getenv("GITREKT_MODEL_MAX_CONTEXT_SIZE"):
+                model.max_context_size = int(max_context_size)
+                applied["GITREKT_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
+            if capabilities := os.getenv("GITREKT_MODEL_CAPABILITIES"):
+                caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
+                model.capabilities = set(
+                    cast(ModelCapability, cap)
+                    for cap in caps_lower
+                    if cap in get_args(ModelCapability.__value__)
+                )
+                applied["GITREKT_MODEL_CAPABILITIES"] = capabilities
+        case "openai_legacy" | "openai_responses":
+            if base_url := os.getenv("OPENAI_BASE_URL"):
+                provider.base_url = base_url
+            if api_key := os.getenv("OPENAI_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+        case _:
+            pass
+
+    return applied
+
+
+def create_llm(
+    provider: LLMProvider,
+    model: LLMModel,
+    *,
+    thinking: bool | None = None,
+    session_id: str | None = None,
+) -> LLM | None:
+    if provider.type != "_echo" and (not provider.base_url or not model.model):
+        return None
+
+    match provider.type:
+        case "gitrekt":
+            chat_provider = Gitrekt(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                default_headers={
+                    "User-Agent": USER_AGENT,
+                    **(provider.custom_headers or {}),
+                },
+            )
+
+            gen_kwargs: Gitrekt.GenerationKwargs = {}
+            if session_id:
+                gen_kwargs["prompt_cache_key"] = session_id
+            if temperature := os.getenv("GITREKT_MODEL_TEMPERATURE"):
+                gen_kwargs["temperature"] = float(temperature)
+            if top_p := os.getenv("GITREKT_MODEL_TOP_P"):
+                gen_kwargs["top_p"] = float(top_p)
+            if max_tokens := os.getenv("GITREKT_MODEL_MAX_TOKENS"):
+                gen_kwargs["max_tokens"] = int(max_tokens)
+
+            if gen_kwargs:
+                chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
+        case "openai_legacy":
+            from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+            chat_provider = OpenAILegacy(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+            )
+        case "openai_responses":
+            from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
+
+            chat_provider = OpenAIResponses(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+            )
+        case "anthropic":
+            from kosong.contrib.chat_provider.anthropic import Anthropic
+
+            chat_provider = Anthropic(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                default_max_tokens=50000,
+            )
+        case "google_genai" | "gemini":
+            from kosong.contrib.chat_provider.google_genai import GoogleGenAI
+
+            chat_provider = GoogleGenAI(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+            )
+        case "vertexai":
+            from kosong.contrib.chat_provider.google_genai import GoogleGenAI
+
+            os.environ.update(provider.env or {})
+            chat_provider = GoogleGenAI(
+                model=model.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key.get_secret_value(),
+                vertexai=True,
+            )
+        case "_echo":
+            from kosong.chat_provider.echo import EchoChatProvider
+
+            chat_provider = EchoChatProvider()
+        case "_chaos":
+            from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
+
+            chat_provider = ChaosChatProvider(
+                provider=Gitrekt(
+                    model=model.model,
+                    base_url=provider.base_url,
+                    api_key=provider.api_key.get_secret_value(),
+                    default_headers={
+                        "User-Agent": USER_AGENT,
+                        **(provider.custom_headers or {}),
+                    },
+                ),
+                chaos_config=ChaosConfig(
+                    error_probability=0.8,
+                    error_types=[429, 500, 503],
+                ),
+            )
+
+    capabilities = derive_model_capabilities(model)
+
+    # Apply thinking if specified or if model always requires thinking
+    if "always_thinking" in capabilities or (thinking is True and "thinking" in capabilities):
+        chat_provider = chat_provider.with_thinking("high")
+    elif thinking is False:
+        chat_provider = chat_provider.with_thinking("off")
+    # If thinking is None and model doesn't always think, leave as-is (default behavior)
+
+    return LLM(
+        chat_provider=chat_provider,
+        max_context_size=model.max_context_size,
+        capabilities=capabilities,
+        model_config=model,
+        provider_config=provider,
+    )
+
+
+def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
+    capabilities = set(model.capabilities or ())
+    # Models with "thinking" in their name are always-thinking models
+    if "thinking" in model.model.lower() or "reason" in model.model.lower():
+        capabilities.update(("thinking", "always_thinking"))
+    # These models support thinking but can be toggled on/off
+    elif model.model in {"gitrekt-for-coding", "gitrekt-code"}:
+        capabilities.add("thinking")
+    return capabilities

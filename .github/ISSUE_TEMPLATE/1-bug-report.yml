@@ -7,19 +7,19 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for submitting a bug report! It helps make Kimi CLI better for everyone.
+        Thank you for submitting a bug report! It helps make Gitrekt CLI better for everyone.
 
-        If you need help or support using Kimi CLI, and are not reporting a bug, please post on [kimi-cli/discussions](https://github.com/MoonshotAI/kimi-cli/discussions), where you can ask questions or engage with others on ideas for how to improve Kimi CLI.
+        If you need help or support using Gitrekt CLI, and are not reporting a bug, please post on [Gitrekt-cli/discussions](https://github.com/MoonshotAI/Gitrekt-cli/discussions), where you can ask questions or engage with others on ideas for how to improve Gitrekt CLI.
 
-        Make sure you are running the latest version of Kimi CLI (`uv tool upgrade kimi-cli` to upgrade). The bug you are experiencing may already have been fixed.
+        Make sure you are running the latest version of Gitrekt CLI (`uv tool upgrade Gitrekt-cli` to upgrade). The bug you are experiencing may already have been fixed.
 
         Please try to include as much information as possible.
 
   - type: input
     id: version
     attributes:
-      label: What version of Kimi CLI is running?
-      description: Copy the output of `kimi --version` or `/version`
+      label: What version of Gitrekt CLI is running?
+      description: Copy the output of `Gitrekt --version` or `/version`
     validations:
       required: true
   - type: input
@@ -33,7 +33,7 @@ body:
     id: model
     attributes:
       label: Which model were you using?
-      description: The one you selected when running `/setup`, like `kimi-k2-turbo-preview`, `kimi-for-coding`, etc.
+      description: The one you selected when running `/setup`, like `Gitrekt-k2-turbo-preview`, `Gitrekt-for-coding`, etc.
   - type: input
     id: platform
     attributes:

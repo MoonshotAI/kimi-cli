@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-Kimi CLI shell mode supports the following keyboard shortcuts.
+Gitrekt CLI shell mode supports the following keyboard shortcuts.
 
 ## Shortcuts list
 
@@ -11,7 +11,7 @@ Kimi CLI shell mode supports the following keyboard shortcuts.
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
-| `Ctrl-D` | Exit Kimi CLI |
+| `Ctrl-D` | Exit Gitrekt CLI |
 | `Ctrl-C` | Interrupt current operation |
 
 ## Mode switching
@@ -61,7 +61,7 @@ Image pasting requires the model to support `image_in` capability.
 
 ### `Ctrl-D`: Exit
 
-Press `Ctrl-D` when the input box is empty to exit Kimi CLI.
+Press `Ctrl-D` when the input box is empty to exit Gitrekt CLI.
 
 ### `Ctrl-C`: Interrupt
 

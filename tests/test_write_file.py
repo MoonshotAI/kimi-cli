@@ -8,8 +8,8 @@ import pytest
 from kaos.path import KaosPath
 from pydantic import ValidationError
 
-from kimi_cli.tools.file.write import Params, WriteFile
-from kimi_cli.wire.types import DiffDisplayBlock
+from gitrekt_cli.tools.file.write import Params, WriteFile
+from gitrekt_cli.wire.types import DiffDisplayBlock
 
 
 async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):

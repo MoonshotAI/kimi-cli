@@ -1,7 +1,7 @@
 ---
 layout: home
 hero:
-  name: Kimi CLI
+  name: Gitrekt CLI
   text: ' '
   actions:
     - theme: brand

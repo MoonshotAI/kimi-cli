@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from kimi_cli.ui.print.visualize import FinalOnlyJsonPrinter, FinalOnlyTextPrinter
-from kimi_cli.wire.types import StepBegin, TextPart, ThinkPart
+from gitrekt_cli.ui.print.visualize import FinalOnlyJsonPrinter, FinalOnlyTextPrinter
+from gitrekt_cli.wire.types import StepBegin, TextPart, ThinkPart
 
 
 def test_final_only_text_printer_outputs_final_text(capsys):

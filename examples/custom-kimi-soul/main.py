@@ -8,17 +8,17 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, Toolset
 from kosong.tooling.simple import SimpleToolset
 from pydantic import BaseModel, Field, SecretStr
 
-from kimi_cli.config import LLMModel, LLMProvider, get_default_config
-from kimi_cli.llm import LLM, create_llm
-from kimi_cli.session import Session
-from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.context import Context
-from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.ui.shell import Shell
-from kimi_cli.wire.types import ContentPart, ToolReturnValue
+from gitrekt_cli.config import LLMModel, LLMProvider, get_default_config
+from gitrekt_cli.llm import LLM, create_llm
+from gitrekt_cli.session import Session
+from gitrekt_cli.soul.agent import Agent, Runtime
+from gitrekt_cli.soul.context import Context
+from gitrekt_cli.soul.gitrechtsoul import GitrektSoul
+from gitrekt_cli.ui.shell import Shell
+from gitrekt_cli.wire.types import ContentPart, ToolReturnValue
 
 
-class HakimiSoul(KimiSoul):
+class HaGitrektSoul(GitrektSoul):
     @staticmethod
     async def create(
         llm: LLM | None,
@@ -26,7 +26,7 @@ class HakimiSoul(KimiSoul):
         toolset: Toolset,
         session: Session | None = None,
         work_dir: Path | None = None,
-    ) -> "HakimiSoul":
+    ) -> "HaGitrektSoul":
         config = get_default_config()
         kaos_work_dir = KaosPath.unsafe_from_local_path(work_dir) if work_dir else KaosPath.cwd()
         session = session or await Session.create(kaos_work_dir)
@@ -37,18 +37,18 @@ class HakimiSoul(KimiSoul):
             yolo=True,
         )
         agent = Agent(
-            name="HakimiAgent",
+            name="HaGitrektAgent",
             system_prompt=system_prompt,
             toolset=toolset,
             runtime=runtime,
         )
         context = Context(session.context_file)
-        return HakimiSoul(agent, context=context)
+        return HaGitrektSoul(agent, context=context)
 
     @property
     @override
     def name(self) -> str:
-        return "Hakimi"
+        return "HaGitrekt"
 
     @override
     async def run(self, user_input: str | list[ContentPart]) -> None:
@@ -83,20 +83,20 @@ async def main():
     toolset = SimpleToolset()
     toolset += MyBashTool()
 
-    soul = await HakimiSoul.create(
+    soul = await HaGitrektSoul.create(
         llm=create_llm(
             LLMProvider(
-                type="kimi",
+                type="Gitrekt",
                 base_url=os.getenv("KIMI_BASE_URL") or "https://api.moonshot.ai/v1",
                 api_key=SecretStr(os.getenv("KIMI_API_KEY") or ""),
             ),
             LLMModel(
-                provider="kimi",
-                model="kimi-k2-turbo-preview",
+                provider="Gitrekt",
+                model="Gitrekt-k2-turbo-preview",
                 max_context_size=250_000,
             ),
         ),
-        system_prompt="You are Hakimi, an AI assistant that helps users with various tasks.",
+        system_prompt="You are HaGitrekt, an AI assistant that helps users with various tasks.",
         toolset=toolset,
     )
     ui = Shell(soul)

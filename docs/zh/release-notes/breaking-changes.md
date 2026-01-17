@@ -1,6 +1,6 @@
 # 破坏性变更与迁移说明
 
-本页面记录 Kimi CLI 各版本中的破坏性变更及对应的迁移指引。
+本页面记录 Gitrekt CLI 各版本中的破坏性变更及对应的迁移指引。
 
 ## 未发布
 
@@ -8,12 +8,12 @@
 
 ### Thinking 模式设置迁移调整
 
-从 `0.76` 升级后，Thinking 模式设置不再自动保留。此前保存在 `~/.kimi/kimi.json` 中的 `thinking` 状态不再使用，改为通过 `~/.kimi/config.toml` 中的 `default_thinking` 配置项管理，但不会自动从旧版 `metadata` 迁移。
+从 `0.76` 升级后，Thinking 模式设置不再自动保留。此前保存在 `~/.Gitrekt/Gitrekt.json` 中的 `thinking` 状态不再使用，改为通过 `~/.Gitrekt/config.toml` 中的 `default_thinking` 配置项管理，但不会自动从旧版 `metadata` 迁移。
 
 - **受影响**：此前启用 Thinking 模式的用户
 - **迁移**：升级后需重新设置 Thinking 模式：
   - 使用 `/model` 命令选择模型时设置 Thinking 模式（交互式）
-  - 或手动在 `~/.kimi/config.toml` 中添加：
+  - 或手动在 `~/.Gitrekt/config.toml` 中添加：
 
     ```toml
     default_thinking = true  # 如需默认启用 Thinking 模式
@@ -32,10 +32,10 @@
 
 ### `--acp` 选项弃用
 
-`--acp` 选项已弃用，请使用 `kimi acp` 子命令。
+`--acp` 选项已弃用，请使用 `Gitrekt acp` 子命令。
 
-- **受影响**：使用 `kimi --acp` 的脚本和 IDE 配置
-- **迁移**：`kimi --acp` → `kimi acp`
+- **受影响**：使用 `Gitrekt --acp` 的脚本和 IDE 配置
+- **迁移**：`Gitrekt --acp` → `Gitrekt acp`
 
 ## 0.66 - 配置文件与供应商类型
 
@@ -43,19 +43,19 @@
 
 配置文件格式从 JSON 迁移至 TOML。
 
-- **受影响**：使用 `~/.kimi/config.json` 的用户
-- **迁移**：Kimi CLI 会自动读取旧的 JSON 配置，但建议手动迁移到 TOML 格式
-- **新位置**：`~/.kimi/config.toml`
+- **受影响**：使用 `~/.Gitrekt/config.json` 的用户
+- **迁移**：Gitrekt CLI 会自动读取旧的 JSON 配置，但建议手动迁移到 TOML 格式
+- **新位置**：`~/.Gitrekt/config.toml`
 
 JSON 配置示例：
 
 ```json
 {
-  "default_model": "kimi-k2-0711",
+  "default_model": "Gitrekt-k2-0711",
   "providers": {
-    "kimi": {
-      "type": "kimi",
-      "base_url": "https://api.kimi.com/coding/v1",
+    "Gitrekt": {
+      "type": "Gitrekt",
+      "base_url": "https://api.Gitrekt.com/coding/v1",
       "api_key": "your-key"
     }
   }
@@ -65,11 +65,11 @@ JSON 配置示例：
 对应的 TOML 配置：
 
 ```toml
-default_model = "kimi-k2-0711"
+default_model = "Gitrekt-k2-0711"
 
-[providers.kimi]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "your-key"
 ```
 
@@ -92,10 +92,10 @@ Gemini Developer API 的供应商类型从 `google_genai` 重命名为 `gemini`�
 
 ### `Task` 工具移至 `multiagent` 模块
 
-`Task` 工具从 `kimi_cli.tools.task` 移至 `kimi_cli.tools.multiagent` 模块。
+`Task` 工具从 `gitrekt_cli.tools.task` 移至 `gitrekt_cli.tools.multiagent` 模块。
 
 - **受影响**：自定义工具中导入 `Task` 工具的代码
-- **迁移**：将导入路径改为 `from kimi_cli.tools.multiagent import Task`
+- **迁移**：将导入路径改为 `from gitrekt_cli.tools.multiagent import Task`
 
 ### `PatchFile` 工具移除
 
@@ -113,7 +113,7 @@ Gemini Developer API 的供应商类型从 `google_genai` 重命名为 `gemini`�
 - **受影响**：使用 `--ui print`、`--ui acp`、`--ui wire` 的脚本
 - **迁移**：
   - `--ui print` → `--print`
-  - `--ui acp` → `kimi acp`
+  - `--ui acp` → `Gitrekt acp`
   - `--ui wire` → `--wire`
 
 ## 0.42 - 快捷键变更
@@ -137,16 +137,16 @@ Agent/Shell 模式切换快捷键从 `Ctrl-K` 改为 `Ctrl-X`。
 
 ## 0.25 - 包名变更
 
-### 包名从 `ensoul` 改为 `kimi-cli`
+### 包名从 `ensoul` 改为 `Gitrekt-cli`
 
 - **受影响**：使用 `ensoul` 包名的代码或脚本
 - **迁移**：
-  - 安装：`pip install ensoul` → `pip install kimi-cli` 或 `uv tool install kimi-cli`
-  - 命令：`ensoul` → `kimi`
+  - 安装：`pip install ensoul` → `pip install Gitrekt-cli` 或 `uv tool install Gitrekt-cli`
+  - 命令：`ensoul` → `Gitrekt`
 
 ### `ENSOUL_*` 参数前缀变更
 
-系统提示词内置参数前缀从 `ENSOUL_*` 改为 `KIMI_*`。
+系统提示词内置参数前缀从 `ENSOUL_*` 改为 `GITREKT_*`。
 
 - **受影响**：自定义 Agent 文件中使用 `ENSOUL_*` 参数的配置
-- **迁移**：将参数前缀改为 `KIMI_*`（如 `ENSOUL_NOW` → `KIMI_NOW`）
+- **迁移**：将参数前缀改为 `GITREKT_*`（如 `ENSOUL_NOW` → `GITREKT_NOW`）

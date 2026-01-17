@@ -8,7 +8,7 @@ from inline_snapshot import snapshot
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
-from kimi_cli.ui.shell.prompt import LocalFileMentionCompleter
+from gitrekt_cli.ui.shell.prompt import LocalFileMentionCompleter
 
 
 def _completion_texts(completer: LocalFileMentionCompleter, text: str) -> list[str]:
@@ -54,7 +54,7 @@ def test_completed_file_short_circuits_completions(tmp_path: Path):
     agents = tmp_path / "AGENTS.md"
     agents.write_text("# Agents\n")
 
-    nested_dir = tmp_path / "src" / "kimi_cli" / "agents"
+    nested_dir = tmp_path / "src" / "gitrekt_cli" / "agents"
     nested_dir.mkdir(parents=True)
     (nested_dir / "README.md").write_text("nested\n")
 
@@ -98,12 +98,12 @@ def test_basename_prefix_is_ranked_first(tmp_path: Path):
     match by spreading characters across segments like 'file/patch.py'.
     """
     # Build a small tree mimicking the real project structure
-    (tmp_path / "src" / "kimi_cli" / "tools" / "web").mkdir(parents=True)
-    (tmp_path / "src" / "kimi_cli" / "tools" / "file").mkdir(parents=True)
+    (tmp_path / "src" / "gitrekt_cli" / "tools" / "web").mkdir(parents=True)
+    (tmp_path / "src" / "gitrekt_cli" / "tools" / "file").mkdir(parents=True)
 
-    fetch_py = tmp_path / "src" / "kimi_cli" / "tools" / "web" / "fetch.py"
+    fetch_py = tmp_path / "src" / "gitrekt_cli" / "tools" / "web" / "fetch.py"
     fetch_py.write_text("# fetch\n")
-    patch_py = tmp_path / "src" / "kimi_cli" / "tools" / "file" / "patch.py"
+    patch_py = tmp_path / "src" / "gitrekt_cli" / "tools" / "file" / "patch.py"
     patch_py.write_text("# patch\n")
 
     completer = LocalFileMentionCompleter(tmp_path)
@@ -113,7 +113,7 @@ def test_basename_prefix_is_ranked_first(tmp_path: Path):
     # Snapshot the full candidate list to keep order/content deterministic
     assert texts == snapshot(
         [
-            "src/kimi_cli/tools/web/fetch.py",
-            "src/kimi_cli/tools/file/patch.py",
+            "src/gitrekt_cli/tools/web/fetch.py",
+            "src/gitrekt_cli/tools/file/patch.py",
         ]
     )

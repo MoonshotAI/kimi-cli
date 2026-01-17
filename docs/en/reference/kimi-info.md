@@ -1,9 +1,9 @@
-# `kimi info` Subcommand
+# `Gitrekt info` Subcommand
 
-`kimi info` displays version and protocol information for Kimi CLI.
+`Gitrekt info` displays version and protocol information for Gitrekt CLI.
 
 ```sh
-kimi info [--json]
+Gitrekt info [--json]
 ```
 
 ## Options
@@ -16,7 +16,7 @@ kimi info [--json]
 
 | Field | Description |
 |-------|-------------|
-| `kimi_cli_version` | Kimi CLI version number |
+| `gitrekt_cli_version` | Gitrekt CLI version number |
 | `agent_spec_versions` | List of supported agent spec versions |
 | `wire_protocol_version` | Wire protocol version |
 | `python_version` | Python runtime version |
@@ -26,8 +26,8 @@ kimi info [--json]
 **Text output**
 
 ```sh
-$ kimi info
-kimi-cli version: 0.71
+$ Gitrekt info
+Gitrekt-cli version: 0.71
 agent spec versions: 1
 wire protocol: 1
 python version: 3.14.0
@@ -36,6 +36,6 @@ python version: 3.14.0
 **JSON output**
 
 ```sh
-$ kimi info --json
-{"kimi_cli_version": "0.71", "agent_spec_versions": ["1"], "wire_protocol_version": "1", "python_version": "3.13.1"}
+$ Gitrekt info --json
+{"gitrekt_cli_version": "0.71", "agent_spec_versions": ["1"], "wire_protocol_version": "1", "python_version": "3.13.1"}
 ```

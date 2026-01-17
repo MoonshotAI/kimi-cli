@@ -11,22 +11,22 @@ const base = rawBase
 
 export default withMermaid(defineConfig({
   base,
-  title: 'Kimi CLI Docs',
-  description: 'Kimi CLI Documentation',
+  title: 'Gitrekt CLI Docs',
+  description: 'Gitrekt CLI Documentation',
 
   locales: {
     zh: {
       label: '简体中文',
       lang: 'zh-CN',
       link: '/zh/',
-      title: 'Kimi CLI 文档',
-      description: 'Kimi CLI 用户文档',
+      title: 'Gitrekt CLI 文档',
+      description: 'Gitrekt CLI 用户文档',
       themeConfig: {
         nav: [
           { text: '指南', link: '/zh/guides/getting-started', activeMatch: '/zh/guides/' },
           { text: '定制化', link: '/zh/customization/mcp', activeMatch: '/zh/customization/' },
           { text: '配置', link: '/zh/configuration/config-files', activeMatch: '/zh/configuration/' },
-          { text: '参考手册', link: '/zh/reference/kimi-command', activeMatch: '/zh/reference/' },
+          { text: '参考手册', link: '/zh/reference/Gitrekt-command', activeMatch: '/zh/reference/' },
           { text: '常见问题', link: '/zh/faq' },
           { text: '发布说明', link: '/zh/release-notes/changelog', activeMatch: '/zh/release-notes/' },
         ],
@@ -72,11 +72,11 @@ export default withMermaid(defineConfig({
             {
               text: '参考手册',
               items: [
-                { text: 'kimi 命令', link: '/zh/reference/kimi-command' },
-                { text: 'kimi info 子命令', link: '/zh/reference/kimi-info' },
-                { text: 'kimi acp 子命令', link: '/zh/reference/kimi-acp' },
-                { text: 'kimi mcp 子命令', link: '/zh/reference/kimi-mcp' },
-                { text: 'kimi term 子命令', link: '/zh/reference/kimi-term' },
+                { text: 'Gitrekt 命令', link: '/zh/reference/Gitrekt-command' },
+                { text: 'Gitrekt info 子命令', link: '/zh/reference/Gitrekt-info' },
+                { text: 'Gitrekt acp 子命令', link: '/zh/reference/Gitrekt-acp' },
+                { text: 'Gitrekt mcp 子命令', link: '/zh/reference/Gitrekt-mcp' },
+                { text: 'Gitrekt term 子命令', link: '/zh/reference/Gitrekt-term' },
                 { text: '斜杠命令', link: '/zh/reference/slash-commands' },
                 { text: '键盘快捷键', link: '/zh/reference/keyboard' },
               ],
@@ -98,14 +98,14 @@ export default withMermaid(defineConfig({
       label: 'English',
       lang: 'en-US',
       link: '/en/',
-      title: 'Kimi CLI Docs',
-      description: 'Kimi CLI User Documentation',
+      title: 'Gitrekt CLI Docs',
+      description: 'Gitrekt CLI User Documentation',
       themeConfig: {
         nav: [
           { text: 'Guides', link: '/en/guides/getting-started', activeMatch: '/en/guides/' },
           { text: 'Customization', link: '/en/customization/mcp', activeMatch: '/en/customization/' },
           { text: 'Configuration', link: '/en/configuration/config-files', activeMatch: '/en/configuration/' },
-          { text: 'Reference', link: '/en/reference/kimi-command', activeMatch: '/en/reference/' },
+          { text: 'Reference', link: '/en/reference/Gitrekt-command', activeMatch: '/en/reference/' },
           { text: 'FAQ', link: '/en/faq' },
           { text: 'Release Notes', link: '/en/release-notes/changelog', activeMatch: '/en/release-notes/' },
         ],
@@ -151,11 +151,11 @@ export default withMermaid(defineConfig({
             {
               text: 'Reference',
               items: [
-                { text: 'kimi Command', link: '/en/reference/kimi-command' },
-                { text: 'kimi info Subcommand', link: '/en/reference/kimi-info' },
-                { text: 'kimi acp Subcommand', link: '/en/reference/kimi-acp' },
-                { text: 'kimi mcp Subcommand', link: '/en/reference/kimi-mcp' },
-                { text: 'kimi term Subcommand', link: '/en/reference/kimi-term' },
+                { text: 'Gitrekt Command', link: '/en/reference/Gitrekt-command' },
+                { text: 'Gitrekt info Subcommand', link: '/en/reference/Gitrekt-info' },
+                { text: 'Gitrekt acp Subcommand', link: '/en/reference/Gitrekt-acp' },
+                { text: 'Gitrekt mcp Subcommand', link: '/en/reference/Gitrekt-mcp' },
+                { text: 'Gitrekt term Subcommand', link: '/en/reference/Gitrekt-term' },
                 { text: 'Slash Commands', link: '/en/reference/slash-commands' },
                 { text: 'Keyboard Shortcuts', link: '/en/reference/keyboard' },
               ],
@@ -178,7 +178,7 @@ export default withMermaid(defineConfig({
   themeConfig: {
     outline: [2, 3],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/MoonshotAI/kimi-cli' },
+      { icon: 'github', link: 'https://github.com/MoonshotAI/Gitrekt-cli' },
     ],
   },
 

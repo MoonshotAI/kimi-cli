@@ -8,8 +8,8 @@ Status: Implemented
 
 ## 背景与现状（最终实现）
 
-* `/setup` 位于 `src/kimi_cli/ui/shell/setup.py`：选择平台、输入 API key、调用 `list_models(platform, api_key)` 获取并过滤模型，然后写入 `config.providers` 与 `config.models`，并设置 `default_model` 为用户选中的模型。
-* `Config` 定义在 `src/kimi_cli/config.py`：`providers` 与 `models` 平级，`default_model` 必须指向 `models` 中的键，且每个 `LLMModel.provider` 必须存在于 `providers`。
+* `/setup` 位于 `src/gitrekt_cli/ui/shell/setup.py`：选择平台、输入 API key、调用 `list_models(platform, api_key)` 获取并过滤模型，然后写入 `config.providers` 与 `config.models`，并设置 `default_model` 为用户选中的模型。
+* `Config` 定义在 `src/gitrekt_cli/config.py`：`providers` 与 `models` 平级，`default_model` 必须指向 `models` 中的键，且每个 `LLMModel.provider` 必须存在于 `providers`。
 * `/setup` 使用托管命名空间（`managed:`）写入 provider/model，避免覆盖用户自定义配置。
 
 ## 目标
@@ -34,24 +34,24 @@ Status: Implemented
 
 ```toml
 [providers."managed:moonshot-cn"]
-type = "kimi"
+type = "Gitrekt"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 
-[models."moonshot-cn/kimi-k2-thinking-turbo"]
+[models."moonshot-cn/Gitrekt-k2-thinking-turbo"]
 provider = "managed:moonshot-cn"
-model = "kimi-k2-thinking-turbo"
+model = "Gitrekt-k2-thinking-turbo"
 max_context_size = 262144
 ```
 
 这样可以做到：
 
 * `/setup` 管理的模型可以被“强制覆盖”。
-* 用户仍可自由定义 `providers.moonshot-cn`、`models.kimi-k2-thinking-turbo` 等同名项，不会被覆盖。
+* 用户仍可自由定义 `providers.moonshot-cn`、`models.Gitrekt-k2-thinking-turbo` 等同名项，不会被覆盖。
 
 ### 2) 识别“/setup 平台”的最小信息源
 
-将 `/setup` 平台清单抽到公共模块（例如 `src/kimi_cli/platforms.py`），提供：
+将 `/setup` 平台清单抽到公共模块（例如 `src/gitrekt_cli/platforms.py`），提供：
 
 * `id`、`name`、`base_url`
 * `search_url`、`fetch_url`（可选）
@@ -61,7 +61,7 @@ max_context_size = 262144
 
 ### 3) 自动刷新机制（/model 触发）
 
-在 `/model` 命令（`src/kimi_cli/ui/shell/slash.py`）触发刷新逻辑，仅在默认配置文件位置时启用：
+在 `/model` 命令（`src/gitrekt_cli/ui/shell/slash.py`）触发刷新逻辑，仅在默认配置文件位置时启用：
 
 1. 仅当 `config.is_from_default_location` 为真时继续，否则直接跳过刷新。
 2. 扫描 `providers` 中以 `managed:` 开头的条目，视为托管平台；若没有托管 provider，则不刷新。
@@ -117,7 +117,7 @@ max_context_size = 262144
 
 ## 关键参考位置
 
-* `/setup`：`src/kimi_cli/ui/shell/setup.py`
-* 配置结构：`src/kimi_cli/config.py`
-* 平台与模型刷新：`src/kimi_cli/platforms.py`
-* `/model`：`src/kimi_cli/ui/shell/slash.py`
+* `/setup`：`src/gitrekt_cli/ui/shell/setup.py`
+* 配置结构：`src/gitrekt_cli/config.py`
+* 平台与模型刷新：`src/gitrekt_cli/platforms.py`
+* `/model`：`src/gitrekt_cli/ui/shell/slash.py`

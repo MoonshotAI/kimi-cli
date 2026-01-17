@@ -4,10 +4,10 @@ Agent 定义了 AI 的行为方式，包括系统提示词、可用工具和子 
 
 ## 内置 Agent
 
-Kimi CLI 提供两个内置 Agent。启动时可以通过 `--agent` 参数选择：
+Gitrekt CLI 提供两个内置 Agent。启动时可以通过 `--agent` 参数选择：
 
 ```sh
-kimi --agent okabe
+Gitrekt --agent okabe
 ```
 
 ### `default`
@@ -25,7 +25,7 @@ kimi --agent okabe
 Agent 使用 YAML 格式定义。通过 `--agent-file` 参数加载自定义 Agent：
 
 ```sh
-kimi --agent-file /path/to/my-agent.yaml
+Gitrekt --agent-file /path/to/my-agent.yaml
 ```
 
 **基本结构**
@@ -36,9 +36,9 @@ agent:
   name: my-agent
   system_prompt_path: ./system.md
   tools:
-    - "kimi_cli.tools.shell:Shell"
-    - "kimi_cli.tools.file:ReadFile"
-    - "kimi_cli.tools.file:WriteFile"
+    - "gitrekt_cli.tools.shell:Shell"
+    - "gitrekt_cli.tools.file:ReadFile"
+    - "gitrekt_cli.tools.file:WriteFile"
 ```
 
 **继承与覆盖**
@@ -51,8 +51,8 @@ agent:
   extend: default  # 继承默认 Agent
   system_prompt_path: ./my-prompt.md  # 覆盖系统提示词
   exclude_tools:  # 排除某些工具
-    - "kimi_cli.tools.web:SearchWeb"
-    - "kimi_cli.tools.web:FetchURL"
+    - "gitrekt_cli.tools.web:SearchWeb"
+    - "gitrekt_cli.tools.web:FetchURL"
 ```
 
 `extend: default` 会继承内置的默认 Agent。你也可以指定相对路径继承其他 Agent 文件。
@@ -75,11 +75,11 @@ agent:
 
 | 变量 | 说明 |
 |------|------|
-| `${KIMI_NOW}` | 当前时间（ISO 格式） |
-| `${KIMI_WORK_DIR}` | 工作目录路径 |
-| `${KIMI_WORK_DIR_LS}` | 工作目录文件列表 |
-| `${KIMI_AGENTS_MD}` | AGENTS.md 文件内容（如果存在） |
-| `${KIMI_SKILLS}` | 加载的 Skills 列表 |
+| `${GITREKT_NOW}` | 当前时间（ISO 格式） |
+| `${GITREKT_WORK_DIR}` | 工作目录路径 |
+| `${GITREKT_WORK_DIR_LS}` | 工作目录文件列表 |
+| `${GITREKT_AGENTS_MD}` | AGENTS.md 文件内容（如果存在） |
+| `${GITREKT_SKILLS}` | 加载的 Skills 列表 |
 
 你也可以通过 `system_prompt_args` 定义自定义参数：
 
@@ -96,9 +96,9 @@ agent:
 ```markdown
 # My Agent
 
-You are a helpful assistant. Current time: ${KIMI_NOW}.
+You are a helpful assistant. Current time: ${GITREKT_NOW}.
 
-Working directory: ${KIMI_WORK_DIR}
+Working directory: ${GITREKT_WORK_DIR}
 
 ${MY_VAR}
 ```
@@ -131,7 +131,7 @@ agent:
     ROLE_ADDITIONAL: |
       你现在作为子 Agent 运行...
   exclude_tools:
-    - "kimi_cli.tools.multiagent:Task"  # 排除 Task 工具，避免嵌套
+    - "gitrekt_cli.tools.multiagent:Task"  # 排除 Task 工具，避免嵌套
 ```
 
 ## 子 Agent 的运行方式
@@ -149,16 +149,16 @@ agent:
 ```yaml
 agent:
   tools:
-    - "kimi_cli.tools.multiagent:CreateSubagent"
+    - "gitrekt_cli.tools.multiagent:CreateSubagent"
 ```
 
 ## 内置工具列表
 
-以下是 Kimi CLI 内置的所有工具。
+以下是 Gitrekt CLI 内置的所有工具。
 
 ### `Task`
 
-- **路径**：`kimi_cli.tools.multiagent:Task`
+- **路径**：`gitrekt_cli.tools.multiagent:Task`
 - **描述**：调度子 Agent 执行任务。子 Agent 无法访问主 Agent 的上下文，需在 prompt 中提供所有必要信息。
 
 | 参数 | 类型 | 说明 |
@@ -169,7 +169,7 @@ agent:
 
 ### `SetTodoList`
 
-- **路径**：`kimi_cli.tools.todo:SetTodoList`
+- **路径**：`gitrekt_cli.tools.todo:SetTodoList`
 - **描述**：管理待办事项列表，跟踪任务进度
 
 | 参数 | 类型 | 说明 |
@@ -180,7 +180,7 @@ agent:
 
 ### `Shell`
 
-- **路径**：`kimi_cli.tools.shell:Shell`
+- **路径**：`gitrekt_cli.tools.shell:Shell`
 - **描述**：执行 Shell 命令。需要用户审批。根据操作系统使用对应的 Shell（Unix 使用 bash/zsh，Windows 使用 PowerShell）。
 
 | 参数 | 类型 | 说明 |
@@ -190,7 +190,7 @@ agent:
 
 ### `ReadFile`
 
-- **路径**：`kimi_cli.tools.file:ReadFile`
+- **路径**：`gitrekt_cli.tools.file:ReadFile`
 - **描述**：读取文件内容。支持文本、图片和视频文件。文本文件单次最多读取 1000 行，每行最多 2000 字符；图片/视频文件最大 80MB。工作目录外的文件需使用绝对路径。
 
 | 参数 | 类型 | 说明 |
@@ -201,7 +201,7 @@ agent:
 
 ### `Glob`
 
-- **路径**：`kimi_cli.tools.file:Glob`
+- **路径**：`gitrekt_cli.tools.file:Glob`
 - **描述**：按模式匹配文件和目录。最多返回 1000 个匹配项，不允许以 `**` 开头的模式。
 
 | 参数 | 类型 | 说明 |
@@ -212,7 +212,7 @@ agent:
 
 ### `Grep`
 
-- **路径**：`kimi_cli.tools.file:Grep`
+- **路径**：`gitrekt_cli.tools.file:Grep`
 - **描述**：使用正则表达式搜索文件内容，基于 ripgrep 实现
 
 | 参数 | 类型 | 说明 |
@@ -232,7 +232,7 @@ agent:
 
 ### `WriteFile`
 
-- **路径**：`kimi_cli.tools.file:WriteFile`
+- **路径**：`gitrekt_cli.tools.file:WriteFile`
 - **描述**：写入文件。只能写入工作目录内的文件，必须使用绝对路径，需要用户审批。
 
 | 参数 | 类型 | 说明 |
@@ -243,7 +243,7 @@ agent:
 
 ### `StrReplaceFile`
 
-- **路径**：`kimi_cli.tools.file:StrReplaceFile`
+- **路径**：`gitrekt_cli.tools.file:StrReplaceFile`
 - **描述**：使用字符串替换编辑文件。只能编辑工作目录内的文件，必须使用绝对路径，需要用户审批。
 
 | 参数 | 类型 | 说明 |
@@ -256,8 +256,8 @@ agent:
 
 ### `SearchWeb`
 
-- **路径**：`kimi_cli.tools.web:SearchWeb`
-- **描述**：搜索网页。需要配置搜索服务（Kimi Code 平台自动配置）。
+- **路径**：`gitrekt_cli.tools.web:SearchWeb`
+- **描述**：搜索网页。需要配置搜索服务（Gitrekt Code 平台自动配置）。
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
@@ -267,7 +267,7 @@ agent:
 
 ### `FetchURL`
 
-- **路径**：`kimi_cli.tools.web:FetchURL`
+- **路径**：`gitrekt_cli.tools.web:FetchURL`
 - **描述**：抓取网页内容，返回提取的主要文本内容。如果配置了抓取服务会优先使用，否则使用本地 HTTP 请求。
 
 | 参数 | 类型 | 说明 |
@@ -276,7 +276,7 @@ agent:
 
 ### `Think`
 
-- **路径**：`kimi_cli.tools.think:Think`
+- **路径**：`gitrekt_cli.tools.think:Think`
 - **描述**：让 Agent 记录思考过程，适用于复杂推理场景
 
 | 参数 | 类型 | 说明 |
@@ -285,7 +285,7 @@ agent:
 
 ### `SendDMail`
 
-- **路径**：`kimi_cli.tools.dmail:SendDMail`
+- **路径**：`gitrekt_cli.tools.dmail:SendDMail`
 - **描述**：发送延迟消息（D-Mail），用于检查点回滚场景
 
 | 参数 | 类型 | 说明 |
@@ -295,7 +295,7 @@ agent:
 
 ### `CreateSubagent`
 
-- **路径**：`kimi_cli.tools.multiagent:CreateSubagent`
+- **路径**：`gitrekt_cli.tools.multiagent:CreateSubagent`
 - **描述**：动态创建子 Agent
 
 | 参数 | 类型 | 说明 |

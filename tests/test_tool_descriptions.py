@@ -6,19 +6,19 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.multiagent.create import CreateSubagent
-from kimi_cli.tools.shell import Shell
-from kimi_cli.tools.dmail import SendDMail
-from kimi_cli.tools.file.glob import Glob
-from kimi_cli.tools.file.grep_local import Grep
-from kimi_cli.tools.file.read import ReadFile
-from kimi_cli.tools.file.replace import StrReplaceFile
-from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.multiagent.task import Task
-from kimi_cli.tools.think import Think
-from kimi_cli.tools.todo import SetTodoList
-from kimi_cli.tools.web.fetch import FetchURL
-from kimi_cli.tools.web.search import SearchWeb
+from gitrekt_cli.tools.multiagent.create import CreateSubagent
+from gitrekt_cli.tools.shell import Shell
+from gitrekt_cli.tools.dmail import SendDMail
+from gitrekt_cli.tools.file.glob import Glob
+from gitrekt_cli.tools.file.grep_local import Grep
+from gitrekt_cli.tools.file.read import ReadFile
+from gitrekt_cli.tools.file.replace import StrReplaceFile
+from gitrekt_cli.tools.file.write import WriteFile
+from gitrekt_cli.tools.multiagent.task import Task
+from gitrekt_cli.tools.think import Think
+from gitrekt_cli.tools.todo import SetTodoList
+from gitrekt_cli.tools.web.fetch import FetchURL
+from gitrekt_cli.tools.web.search import SearchWeb
 
 
 def test_task_description(task_tool: Task):

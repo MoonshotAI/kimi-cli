@@ -1,6 +1,6 @@
 # 平台与模型
 
-Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令进行配置。
+Gitrekt CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令进行配置。
 
 ## 平台选择
 
@@ -10,13 +10,13 @@ Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令�
 2. 输入 API 密钥
 3. 从可用模型列表中选择模型
 
-配置完成后，Kimi CLI 会自动保存设置到 `~/.kimi/config.toml` 并重新加载。
+配置完成后，Gitrekt CLI 会自动保存设置到 `~/.Gitrekt/config.toml` 并重新加载。
 
 `/setup` 目前支持以下平台：
 
 | 平台 | 说明 |
 | --- | --- |
-| Kimi Code | Kimi Code 平台，支持搜索和抓取服务 |
+| Gitrekt Code | Gitrekt Code 平台，支持搜索和抓取服务 |
 | Moonshot AI 开放平台 (moonshot.cn) | 中国区 API 端点 |
 | Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点 |
 
@@ -28,21 +28,21 @@ Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令�
 
 | 类型 | 说明 |
 | --- | --- |
-| `kimi` | Kimi API |
+| `Gitrekt` | Gitrekt API |
 | `openai_legacy` | OpenAI Chat Completions API |
 | `openai_responses` | OpenAI Responses API |
 | `anthropic` | Anthropic Claude API |
 | `gemini` | Google Gemini API |
 | `vertexai` | Google Vertex AI |
 
-### `kimi`
+### `Gitrekt`
 
-用于连接 Kimi API，包括 Kimi Code 和 Moonshot AI 开放平台。
+用于连接 Gitrekt API，包括 Gitrekt Code 和 Moonshot AI 开放平台。
 
 ```toml
-[providers.kimi-for-coding]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt-for-coding]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "sk-xxx"
 ```
 
@@ -104,7 +104,7 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 ## 模型能力
 
-模型配置中的 `capabilities` 字段声明模型支持的能力。这会影响 Kimi CLI 的功能可用性。
+模型配置中的 `capabilities` 字段声明模型支持的能力。这会影响 Gitrekt CLI 的功能可用性。
 
 | 能力 | 说明 |
 | --- | --- |
@@ -127,7 +127,7 @@ capabilities = ["thinking", "image_in"]
 
 ### `always_thinking`
 
-表示模型始终使用 Thinking 模式，无法关闭。例如 `kimi-k2-thinking-turbo` 等名称中包含 "thinking" 的模型通常具有此能力。使用这类模型时，`/model` 命令不会提示选择 Thinking 模式的开关。
+表示模型始终使用 Thinking 模式，无法关闭。例如 `Gitrekt-k2-thinking-turbo` 等名称中包含 "thinking" 的模型通常具有此能力。使用这类模型时，`/model` 命令不会提示选择 Thinking 模式的开关。
 
 ### `image_in`
 
@@ -139,9 +139,9 @@ capabilities = ["thinking", "image_in"]
 
 ## 搜索和抓取服务
 
-`SearchWeb` 和 `FetchURL` 工具依赖外部服务，目前仅 Kimi Code 平台提供这些服务。
+`SearchWeb` 和 `FetchURL` 工具依赖外部服务，目前仅 Gitrekt Code 平台提供这些服务。
 
-使用 `/setup` 选择 Kimi Code 平台时，搜索和抓取服务会自动配置。
+使用 `/setup` 选择 Gitrekt Code 平台时，搜索和抓取服务会自动配置。
 
 | 服务 | 对应工具 | 未配置时的行为 |
 | --- | --- | --- |

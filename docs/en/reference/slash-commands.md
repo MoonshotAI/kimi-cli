@@ -1,6 +1,6 @@
 # Slash Commands
 
-Slash commands are built-in commands for Kimi CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
+Slash commands are built-in commands for Gitrekt CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
 Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
@@ -16,7 +16,7 @@ Aliases: `/h`, `/?`
 
 ### `/version`
 
-Display Kimi CLI version number.
+Display Gitrekt CLI version number.
 
 ### `/changelog`
 
@@ -35,11 +35,11 @@ Open the GitHub Issues page to submit feedback.
 Start the configuration wizard to set up API platform and model.
 
 Configuration flow:
-1. Select an API platform (Kimi Code, Moonshot AI Open Platform, etc.)
+1. Select an API platform (Gitrekt Code, Moonshot AI Open Platform, etc.)
 2. Enter your API key
 3. Select an available model
 
-After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
+After configuration, settings are automatically saved to `~/.Gitrekt/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
 
 ### `/model`
 
@@ -47,7 +47,7 @@ Switch models and thinking mode.
 
 This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface where you first select a model, then choose whether to enable thinking mode (if the model supports it).
 
-After selection, Kimi CLI will automatically update the configuration file and reload.
+After selection, Gitrekt CLI will automatically update the configuration file and reload.
 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
@@ -55,7 +55,7 @@ This command is only available when using the default configuration file. If a c
 
 ### `/reload`
 
-Reload the configuration file without exiting Kimi CLI.
+Reload the configuration file without exiting Gitrekt CLI.
 
 ### `/debug`
 
@@ -71,7 +71,7 @@ Debug information is displayed in a pager, press `q` to exit.
 Display API usage and quota information.
 
 ::: tip
-This command only works with the Kimi Code platform.
+This command only works with the Gitrekt Code platform.
 :::
 
 ### `/mcp`
@@ -102,7 +102,7 @@ Alias: `/reset`
 
 Manually compact the context to reduce token usage.
 
-When the context is too long, Kimi CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
+When the context is too long, Gitrekt CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
 
 ## Skills
 
@@ -138,7 +138,7 @@ YOLO mode skips all confirmations. Make sure you understand the potential risks.
 
 Start Prompt Flow execution.
 
-This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
+This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`Gitrekt` command](./Gitrekt-command.md#prompt-flow) for details.
 
 ## Command completion
 

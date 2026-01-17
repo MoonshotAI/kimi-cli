@@ -8,7 +8,7 @@ Status: Implemented
 
 ## 背景
 
-当前 Kimi CLI 只能通过交互式输入或 `--command` 单次输入驱动对话。希望支持一种
+当前 Gitrekt CLI 只能通过交互式输入或 `--command` 单次输入驱动对话。希望支持一种
 "prompt flow"，让用户用 Mermaid flowchart 描述流程，每个节点对应一次对话轮次，
 并能根据分支节点的选择继续走向不同的下一节点。
 
@@ -19,7 +19,7 @@ Status: Implemented
 
 - 新增 `--prompt-flow <file.mmd>`，从 Mermaid flowchart 解析为内存图结构。
 - 从 `BEGIN` 开始顺着图走，依次执行节点（除 BEGIN/END）。
-- 在 `KimiSoul` 中支持可选的 `PromptFlow`，通过 `/begin` 命令触发执行。
+- 在 `GitrektSoul` 中支持可选的 `PromptFlow`，通过 `/begin` 命令触发执行。
 - 分支节点会在 user input 中补充可选分支值，要求 LLM 在回复末尾输出
   `<choice>{值}</choice>`，并据此选择下一节点。
 - 在同一 session/context 中持续推进，直到抵达 `END`。
@@ -47,7 +47,7 @@ Status: Implemented
 
 ### 2) 图结构与校验
 
-数据结构（位于 `src/kimi_cli/flow.py`）：
+数据结构（位于 `src/gitrekt_cli/flow.py`）：
 
 ```python
 FlowNodeKind = Literal["begin", "end", "task", "decision"]
@@ -94,13 +94,13 @@ class PromptFlowValidationError(PromptFlowError):
 - 分支节点（decision）要求出边 label 全部非空且唯一。
 - 未显式声明的节点允许隐式创建（label 默认使用节点 ID），以保持 Mermaid 的常见用法。
 
-### 3) FlowRunner 与 KimiSoul 扩展
+### 3) FlowRunner 与 GitrektSoul 扩展
 
-提取独立的 `FlowRunner` 类处理 flow 执行逻辑，`KimiSoul` 通过持有 `_flow_runner`
+提取独立的 `FlowRunner` 类处理 flow 执行逻辑，`GitrektSoul` 通过持有 `_flow_runner`
 实例来支持 prompt flow。同时重构 slash command 机制，将 skill commands 也改为
 实例级别（不再全局注册）。
 
-**FlowRunner 类**（位于 `src/kimi_cli/soul/kimisoul.py`）：
+**FlowRunner 类**（位于 `src/gitrekt_cli/soul/Gitrektsoul.py`）：
 
 ```python
 class FlowRunner:
@@ -108,13 +108,13 @@ class FlowRunner:
         self._flow = flow
         self._max_moves = max_moves
 
-    async def run(self, soul: KimiSoul, args: str) -> None:
+    async def run(self, soul: GitrektSoul, args: str) -> None:
         """执行 flow 遍历，通过 /begin 触发。"""
         ...
 
     async def _execute_flow_node(
         self,
-        soul: KimiSoul,
+        soul: GitrektSoul,
         node: FlowNode,
         edges: list[FlowEdge],
     ) -> tuple[str | None, int]:
@@ -140,10 +140,10 @@ class FlowRunner:
         ...
 ```
 
-**修改 KimiSoul**：
+**修改 GitrektSoul**：
 
 ```python
-class KimiSoul:
+class GitrektSoul:
     def __init__(
         self,
         agent: Agent,
@@ -187,7 +187,7 @@ class KimiSoul:
 
 运行规则：
 
-- `KimiSoul` 构造时可选传入 `PromptFlow`，内部创建 `FlowRunner`。
+- `GitrektSoul` 构造时可选传入 `PromptFlow`，内部创建 `FlowRunner`。
 - `available_slash_commands` 统一返回：静态命令 + skill commands + `/begin`。
 - `run` 方法查找实例命令（而非静态 registry），支持动态命令。
 - `/begin` 触发 `FlowRunner.run` 执行 flow 遍历。
@@ -232,7 +232,7 @@ def ralph_loop(
     ...
 ```
 
-在 `KimiSoul.run` 中，如果启用了 Ralph 模式且没有显式的 prompt flow，会自动创建
+在 `GitrektSoul.run` 中，如果启用了 Ralph 模式且没有显式的 prompt flow，会自动创建
 Ralph 循环流程：
 
 ```python
@@ -248,7 +248,7 @@ if self._loop_control.max_ralph_iterations != 0 and self._flow_runner is None:
 
 ### 5) CLI 集成
 
-在 `kimi` 根命令新增参数：
+在 `Gitrekt` 根命令新增参数：
 
 ```
 --prompt-flow <file.mmd>
@@ -263,19 +263,19 @@ if self._loop_control.max_ralph_iterations != 0 and self._flow_runner is None:
 
 实现路径：
 
-- `src/kimi_cli/flow.py`：
+- `src/gitrekt_cli/flow.py`：
   - `parse_flowchart(text) -> PromptFlow`（解析 Mermaid）
   - `parse_choice(text) -> str | None`（解析 choice 标签）
   - `PromptFlow`、`FlowNode`、`FlowEdge` 数据结构
   - `PromptFlowError`、`PromptFlowParseError`、`PromptFlowValidationError` 异常
-- `src/kimi_cli/soul/kimisoul.py`：
+- `src/gitrekt_cli/soul/Gitrektsoul.py`：
   - `FlowRunner` 类处理 flow 执行
-  - `KimiSoul.__init__` 新增 `flow: PromptFlow | None = None` 参数
+  - `GitrektSoul.__init__` 新增 `flow: PromptFlow | None = None` 参数
   - `available_slash_commands` 改为动态组合：静态 + skills + `/begin`
   - `run` 方法查找命令改为 `_find_slash_command`（实例级别）
-- `src/kimi_cli/cli/__init__.py`：
+- `src/gitrekt_cli/cli/__init__.py`：
   - 解析 `--prompt-flow` 参数
-  - 构造 `PromptFlow` 并传入 `KimiCLI.create`
+  - 构造 `PromptFlow` 并传入 `GitrektCLI.create`
   - 检查与 Ralph 模式的互斥
 
 ### 6) 错误处理与用户反馈
@@ -296,10 +296,10 @@ if self._loop_control.max_ralph_iterations != 0 and self._flow_runner is None:
 
 ## 关键参考位置
 
-- CLI 入口：`src/kimi_cli/cli/__init__.py`
-- Flow 解析：`src/kimi_cli/flow.py`
-- `KimiSoul` 与 `FlowRunner`：`src/kimi_cli/soul/kimisoul.py`
-- `SlashCommand`：`src/kimi_cli/utils/slashcmd.py`
-- 静态 soul commands：`src/kimi_cli/soul/slash.py`
-- Shell UI：`src/kimi_cli/ui/shell/__init__.py`
+- CLI 入口：`src/gitrekt_cli/cli/__init__.py`
+- Flow 解析：`src/gitrekt_cli/flow.py`
+- `GitrektSoul` 与 `FlowRunner`：`src/gitrekt_cli/soul/Gitrektsoul.py`
+- `SlashCommand`：`src/gitrekt_cli/utils/slashcmd.py`
+- 静态 soul commands：`src/gitrekt_cli/soul/slash.py`
+- Shell UI：`src/gitrekt_cli/ui/shell/__init__.py`
 - Mermaid 示例：`flowchart.mmd`

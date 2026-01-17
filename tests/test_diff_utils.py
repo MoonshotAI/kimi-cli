@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.file.utils import build_diff_blocks
-from kimi_cli.wire.types import DiffDisplayBlock
+from gitrekt_cli.tools.file.utils import build_diff_blocks
+from gitrekt_cli.wire.types import DiffDisplayBlock
 
 
 def test_build_diff_blocks_simple_change() -> None:

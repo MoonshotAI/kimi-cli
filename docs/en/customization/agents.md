@@ -4,10 +4,10 @@ An agent defines the AI's behavior, including system prompts, available tools, a
 
 ## Built-in agents
 
-Kimi CLI provides two built-in agents. You can select one at startup with the `--agent` flag:
+Gitrekt CLI provides two built-in agents. You can select one at startup with the `--agent` flag:
 
 ```sh
-kimi --agent okabe
+Gitrekt --agent okabe
 ```
 
 ### `default`
@@ -25,7 +25,7 @@ An experimental agent for testing new prompts and tools. Adds `SendDMail` on top
 Agents are defined in YAML format. Load a custom agent with the `--agent-file` flag:
 
 ```sh
-kimi --agent-file /path/to/my-agent.yaml
+Gitrekt --agent-file /path/to/my-agent.yaml
 ```
 
 **Basic structure**
@@ -36,9 +36,9 @@ agent:
   name: my-agent
   system_prompt_path: ./system.md
   tools:
-    - "kimi_cli.tools.shell:Shell"
-    - "kimi_cli.tools.file:ReadFile"
-    - "kimi_cli.tools.file:WriteFile"
+    - "gitrekt_cli.tools.shell:Shell"
+    - "gitrekt_cli.tools.file:ReadFile"
+    - "gitrekt_cli.tools.file:WriteFile"
 ```
 
 **Inheritance and overrides**
@@ -51,8 +51,8 @@ agent:
   extend: default  # Inherit from default agent
   system_prompt_path: ./my-prompt.md  # Override system prompt
   exclude_tools:  # Exclude certain tools
-    - "kimi_cli.tools.web:SearchWeb"
-    - "kimi_cli.tools.web:FetchURL"
+    - "gitrekt_cli.tools.web:SearchWeb"
+    - "gitrekt_cli.tools.web:FetchURL"
 ```
 
 `extend: default` inherits from the built-in default agent. You can also specify a relative path to inherit from another agent file.
@@ -75,11 +75,11 @@ The system prompt file is a Markdown template that can use `${VAR}` syntax to re
 
 | Variable | Description |
 |----------|-------------|
-| `${KIMI_NOW}` | Current time (ISO format) |
-| `${KIMI_WORK_DIR}` | Working directory path |
-| `${KIMI_WORK_DIR_LS}` | Working directory file list |
-| `${KIMI_AGENTS_MD}` | AGENTS.md file content (if exists) |
-| `${KIMI_SKILLS}` | Loaded skills list |
+| `${GITREKT_NOW}` | Current time (ISO format) |
+| `${GITREKT_WORK_DIR}` | Working directory path |
+| `${GITREKT_WORK_DIR_LS}` | Working directory file list |
+| `${GITREKT_AGENTS_MD}` | AGENTS.md file content (if exists) |
+| `${GITREKT_SKILLS}` | Loaded skills list |
 
 You can also define custom parameters via `system_prompt_args`:
 
@@ -96,9 +96,9 @@ Then use `${MY_VAR}` in the prompt.
 ```markdown
 # My Agent
 
-You are a helpful assistant. Current time: ${KIMI_NOW}.
+You are a helpful assistant. Current time: ${GITREKT_NOW}.
 
-Working directory: ${KIMI_WORK_DIR}
+Working directory: ${GITREKT_WORK_DIR}
 
 ${MY_VAR}
 ```
@@ -131,7 +131,7 @@ agent:
     ROLE_ADDITIONAL: |
       You are now running as a subagent...
   exclude_tools:
-    - "kimi_cli.tools.multiagent:Task"  # Exclude Task tool to avoid nesting
+    - "gitrekt_cli.tools.multiagent:Task"  # Exclude Task tool to avoid nesting
 ```
 
 ## How subagents run
@@ -149,16 +149,16 @@ Subagents launched via the `Task` tool run in an isolated context and return res
 ```yaml
 agent:
   tools:
-    - "kimi_cli.tools.multiagent:CreateSubagent"
+    - "gitrekt_cli.tools.multiagent:CreateSubagent"
 ```
 
 ## Built-in tools list
 
-The following are all built-in tools in Kimi CLI.
+The following are all built-in tools in Gitrekt CLI.
 
 ### `Task`
 
-- **Path**: `kimi_cli.tools.multiagent:Task`
+- **Path**: `gitrekt_cli.tools.multiagent:Task`
 - **Description**: Dispatch a subagent to execute a task. Subagents cannot access the main agent's context; all necessary information must be provided in the prompt.
 
 | Parameter | Type | Description |
@@ -169,7 +169,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `SetTodoList`
 
-- **Path**: `kimi_cli.tools.todo:SetTodoList`
+- **Path**: `gitrekt_cli.tools.todo:SetTodoList`
 - **Description**: Manage todo list, track task progress
 
 | Parameter | Type | Description |
@@ -180,7 +180,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `Shell`
 
-- **Path**: `kimi_cli.tools.shell:Shell`
+- **Path**: `gitrekt_cli.tools.shell:Shell`
 - **Description**: Execute shell commands. Requires user approval. Uses the appropriate shell for the OS (bash/zsh on Unix, PowerShell on Windows).
 
 | Parameter | Type | Description |
@@ -190,7 +190,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `ReadFile`
 
-- **Path**: `kimi_cli.tools.file:ReadFile`
+- **Path**: `gitrekt_cli.tools.file:ReadFile`
 - **Description**: Read file content. Supports text, image, and video files. For text files, max 1000 lines per read, max 2000 characters per line; for image/video files, max 80MB. Files outside working directory require absolute paths.
 
 | Parameter | Type | Description |
@@ -201,7 +201,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `Glob`
 
-- **Path**: `kimi_cli.tools.file:Glob`
+- **Path**: `gitrekt_cli.tools.file:Glob`
 - **Description**: Match files and directories by pattern. Returns max 1000 matches, patterns starting with `**` not allowed.
 
 | Parameter | Type | Description |
@@ -212,7 +212,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `Grep`
 
-- **Path**: `kimi_cli.tools.file:Grep`
+- **Path**: `gitrekt_cli.tools.file:Grep`
 - **Description**: Search file content with regular expressions, based on ripgrep
 
 | Parameter | Type | Description |
@@ -232,7 +232,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `WriteFile`
 
-- **Path**: `kimi_cli.tools.file:WriteFile`
+- **Path**: `gitrekt_cli.tools.file:WriteFile`
 - **Description**: Write files. Can only write to files within working directory, must use absolute paths, requires user approval.
 
 | Parameter | Type | Description |
@@ -243,7 +243,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `StrReplaceFile`
 
-- **Path**: `kimi_cli.tools.file:StrReplaceFile`
+- **Path**: `gitrekt_cli.tools.file:StrReplaceFile`
 - **Description**: Edit files using string replacement. Can only edit files within working directory, must use absolute paths, requires user approval.
 
 | Parameter | Type | Description |
@@ -256,8 +256,8 @@ The following are all built-in tools in Kimi CLI.
 
 ### `SearchWeb`
 
-- **Path**: `kimi_cli.tools.web:SearchWeb`
-- **Description**: Search the web. Requires search service configuration (auto-configured on Kimi Code platform).
+- **Path**: `gitrekt_cli.tools.web:SearchWeb`
+- **Description**: Search the web. Requires search service configuration (auto-configured on Gitrekt Code platform).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -267,7 +267,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `FetchURL`
 
-- **Path**: `kimi_cli.tools.web:FetchURL`
+- **Path**: `gitrekt_cli.tools.web:FetchURL`
 - **Description**: Fetch webpage content, returns extracted main text. Uses fetch service if configured, otherwise uses local HTTP request.
 
 | Parameter | Type | Description |
@@ -276,7 +276,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `Think`
 
-- **Path**: `kimi_cli.tools.think:Think`
+- **Path**: `gitrekt_cli.tools.think:Think`
 - **Description**: Let the agent record thinking process, suitable for complex reasoning scenarios
 
 | Parameter | Type | Description |
@@ -285,7 +285,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `SendDMail`
 
-- **Path**: `kimi_cli.tools.dmail:SendDMail`
+- **Path**: `gitrekt_cli.tools.dmail:SendDMail`
 - **Description**: Send delayed message (D-Mail), for checkpoint rollback scenarios
 
 | Parameter | Type | Description |
@@ -295,7 +295,7 @@ The following are all built-in tools in Kimi CLI.
 
 ### `CreateSubagent`
 
-- **Path**: `kimi_cli.tools.multiagent:CreateSubagent`
+- **Path**: `gitrekt_cli.tools.multiagent:CreateSubagent`
 - **Description**: Dynamically create subagents
 
 | Parameter | Type | Description |

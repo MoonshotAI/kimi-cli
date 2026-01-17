@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.multiagent.create import CreateSubagent, Params
+from gitrekt_cli.tools.multiagent.create import CreateSubagent, Params
 
 
 async def test_create_subagent(create_subagent_tool: CreateSubagent):

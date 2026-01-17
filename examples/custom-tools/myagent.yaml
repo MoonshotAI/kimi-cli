@@ -2,14 +2,14 @@ version: 1
 agent:
   extend: default
   tools:
-    - "kimi_cli.tools.multiagent:Task"
-    - "kimi_cli.tools.todo:SetTodoList"
-    - "kimi_cli.tools.shell:Shell"
-    - "kimi_cli.tools.file:ReadFile"
-    - "kimi_cli.tools.file:Glob"
-    - "kimi_cli.tools.file:Grep"
-    - "kimi_cli.tools.file:WriteFile"
-    - "kimi_cli.tools.file:StrReplaceFile"
-    - "kimi_cli.tools.web:SearchWeb"
-    - "kimi_cli.tools.web:FetchURL"
+    - "gitrekt_cli.tools.multiagent:Task"
+    - "gitrekt_cli.tools.todo:SetTodoList"
+    - "gitrekt_cli.tools.shell:Shell"
+    - "gitrekt_cli.tools.file:ReadFile"
+    - "gitrekt_cli.tools.file:Glob"
+    - "gitrekt_cli.tools.file:Grep"
+    - "gitrekt_cli.tools.file:WriteFile"
+    - "gitrekt_cli.tools.file:StrReplaceFile"
+    - "gitrekt_cli.tools.web:SearchWeb"
+    - "gitrekt_cli.tools.web:FetchURL"
     - "my_tools.ls:Ls" # custom tool

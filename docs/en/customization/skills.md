@@ -1,33 +1,33 @@
 # Agent Skills
 
-[Agent Skills](https://agentskills.io/) is an open format for adding specialized knowledge and workflows to AI agents. Kimi CLI supports loading Agent Skills to extend AI capabilities.
+[Agent Skills](https://agentskills.io/) is an open format for adding specialized knowledge and workflows to AI agents. Gitrekt CLI supports loading Agent Skills to extend AI capabilities.
 
 ## What are Agent Skills
 
-A skill is a directory containing a `SKILL.md` file. When Kimi CLI starts, it discovers all skills and injects their names, paths, and descriptions into the system prompt. The AI will decide on its own whether to read the specific `SKILL.md` file to get detailed guidance based on the current task's needs.
+A skill is a directory containing a `SKILL.md` file. When Gitrekt CLI starts, it discovers all skills and injects their names, paths, and descriptions into the system prompt. The AI will decide on its own whether to read the specific `SKILL.md` file to get detailed guidance based on the current task's needs.
 
 For example, you can create a "code style" skill to tell the AI your project's naming conventions, comment styles, etc.; or create a "security audit" skill to have the AI focus on specific security issues when reviewing code.
 
 ## Skill discovery
 
-Kimi CLI discovers skills from the following directories:
+Gitrekt CLI discovers skills from the following directories:
 
 1. Built-in skills (shipped with the package)
-2. `~/.kimi/skills` (user directory)
+2. `~/.Gitrekt/skills` (user directory)
 3. `~/.claude/skills` (compatible with Claude's skills)
 
 If a skill with the same name exists in multiple directories, later ones override earlier ones. You can also specify other directories with the `--skills-dir` flag:
 
 ```sh
-kimi --skills-dir /path/to/my-skills
+Gitrekt --skills-dir /path/to/my-skills
 ```
 
 ## Built-in skills
 
-Kimi CLI includes the following built-in skills:
+Gitrekt CLI includes the following built-in skills:
 
-- **kimi-cli-help**: Kimi CLI help. Answers questions about Kimi CLI installation, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, and more.
-- **skill-creator**: Guide for creating skills. When you need to create a new skill (or update an existing skill) to extend Kimi's capabilities, you can use this skill to get detailed creation guidance and best practices.
+- **Gitrekt-cli-help**: Gitrekt CLI help. Answers questions about Gitrekt CLI installation, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, and more.
+- **skill-creator**: Guide for creating skills. When you need to create a new skill (or update an existing skill) to extend Gitrekt's capabilities, you can use this skill to get detailed creation guidance and best practices.
 
 ## Creating a skill
 
@@ -41,7 +41,7 @@ Creating a skill only requires two steps:
 A skill directory needs at least a `SKILL.md` file, and can also include auxiliary directories to organize more complex content:
 
 ```
-~/.kimi/skills/
+~/.Gitrekt/skills/
 └── my-skill/
     ├── SKILL.md          # Required: main file
     ├── scripts/          # Optional: script files
@@ -158,7 +158,7 @@ Examples:
 
 ## Using slash commands to load a skill
 
-The `/skill:<name>` slash command lets you save commonly used prompt templates as skills and quickly invoke them when needed. When you enter the command, Kimi CLI reads the corresponding `SKILL.md` file content and sends it to the Agent as a prompt.
+The `/skill:<name>` slash command lets you save commonly used prompt templates as skills and quickly invoke them when needed. When you enter the command, Gitrekt CLI reads the corresponding `SKILL.md` file content and sends it to the Agent as a prompt.
 
 For example:
 

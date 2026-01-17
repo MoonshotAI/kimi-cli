@@ -1,6 +1,6 @@
 # Print Mode
 
-Print mode lets Kimi CLI run non-interactively, suitable for scripting and automation scenarios.
+Print mode lets Gitrekt CLI run non-interactively, suitable for scripting and automation scenarios.
 
 ## Basic usage
 
@@ -8,10 +8,10 @@ Use the `--print` flag to enable print mode:
 
 ```sh
 # Pass instructions via -p (or -c)
-kimi --print -p "List all Python files in the current directory"
+Gitrekt --print -p "List all Python files in the current directory"
 
 # Pass instructions via stdin
-echo "Explain what this code does" | kimi --print
+echo "Explain what this code does" | Gitrekt --print
 ```
 
 Print mode characteristics:
@@ -25,10 +25,10 @@ Print mode characteristics:
 
 ```sh
 # Analyze git diff and generate commit message
-git diff --staged | kimi --print -p "Generate a Conventional Commits compliant commit message based on this diff"
+git diff --staged | Gitrekt --print -p "Generate a Conventional Commits compliant commit message based on this diff"
 
 # Read file and generate documentation
-cat src/api.py | kimi --print -p "Generate API documentation for this Python module"
+cat src/api.py | Gitrekt --print -p "Generate API documentation for this Python module"
 ```
 -->
 
@@ -37,13 +37,13 @@ cat src/api.py | kimi --print -p "Generate API documentation for this Python mod
 Use the `--final-message-only` option to only output the final assistant message, skipping intermediate tool call processes:
 
 ```sh
-kimi --print -p "Give me a Git commit message based on the current changes" --final-message-only
+Gitrekt --print -p "Give me a Git commit message based on the current changes" --final-message-only
 ```
 
 `--quiet` is a shortcut for `--print --output-format text --final-message-only`, suitable for scenarios where only the final result is needed:
 
 ```sh
-kimi --quiet -p "Give me a Git commit message based on the current changes"
+Gitrekt --quiet -p "Give me a Git commit message based on the current changes"
 ```
 
 ## JSON format
@@ -55,7 +55,7 @@ Print mode supports JSON format for input and output, convenient for programmati
 Use `--output-format=stream-json` to output in JSONL (one JSON per line) format:
 
 ```sh
-kimi --print -p "Hello" --output-format=stream-json
+Gitrekt --print -p "Hello" --output-format=stream-json
 ```
 
 Example output:
@@ -77,10 +77,10 @@ If the AI called tools, assistant messages and tool messages are output sequenti
 Use `--input-format=stream-json` to receive JSONL format input:
 
 ```sh
-echo '{"role":"user","content":"Hello"}' | kimi --print --input-format=stream-json --output-format=stream-json
+echo '{"role":"user","content":"Hello"}' | Gitrekt --print --input-format=stream-json --output-format=stream-json
 ```
 
-In this mode, Kimi CLI continuously reads from stdin, processing and outputting responses for each user message received until stdin is closed.
+In this mode, Gitrekt CLI continuously reads from stdin, processing and outputting responses for each user message received until stdin is closed.
 
 ## Message format
 
@@ -136,7 +136,7 @@ Assistant message with tool calls:
 Auto-generate code or perform checks in CI workflows:
 
 ```sh
-kimi --print -p "Check if there are any obvious security issues in the src/ directory, output a JSON format report"
+Gitrekt --print -p "Check if there are any obvious security issues in the src/ directory, output a JSON format report"
 ```
 
 **Batch processing**
@@ -145,7 +145,7 @@ Combine with shell loops for batch file processing:
 
 ```sh
 for file in src/*.py; do
-  kimi --print -p "Add type annotations to $file"
+  Gitrekt --print -p "Add type annotations to $file"
 done
 ```
 
@@ -154,5 +154,5 @@ done
 Use as a backend for other tools, communicating via JSON format:
 
 ```sh
-my-tool | kimi --print --input-format=stream-json --output-format=stream-json | process-output
+my-tool | Gitrekt --print --input-format=stream-json --output-format=stream-json | process-output
 ```

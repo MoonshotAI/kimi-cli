@@ -8,8 +8,8 @@ import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.tools.shell import Params, Shell
-from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
+from gitrekt_cli.tools.shell import Params, Shell
+from gitrekt_cli.tools.utils import DEFAULT_MAX_CHARS
 
 pytestmark = pytest.mark.skipif(
     platform.system() == "Windows", reason="Bash tests run only on non-Windows."
@@ -197,7 +197,7 @@ async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
         Params(command="echo test", timeout=-1)
 
     # Test timeout > MAX_TIMEOUT (should fail validation)
-    from kimi_cli.tools.shell import MAX_TIMEOUT
+    from gitrekt_cli.tools.shell import MAX_TIMEOUT
 
     with pytest.raises(ValueError, match="timeout"):
         Params(command="echo test", timeout=MAX_TIMEOUT + 1)

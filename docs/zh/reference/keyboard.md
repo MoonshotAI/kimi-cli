@@ -1,6 +1,6 @@
 # 键盘快捷键
 
-Kimi CLI Shell 模式支持以下键盘快捷键。
+Gitrekt CLI Shell 模式支持以下键盘快捷键。
 
 ## 快捷键列表
 
@@ -11,7 +11,7 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
 | `Ctrl-V` | 粘贴（支持图片） |
-| `Ctrl-D` | 退出 Kimi CLI |
+| `Ctrl-D` | 退出 Gitrekt CLI |
 | `Ctrl-C` | 中断当前操作 |
 
 ## 模式切换
@@ -61,7 +61,7 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 
 ### `Ctrl-D`：退出
 
-在输入框为空时按 `Ctrl-D` 退出 Kimi CLI。
+在输入框为空时按 `Ctrl-D` 退出 Gitrekt CLI。
 
 ### `Ctrl-C`：中断
 

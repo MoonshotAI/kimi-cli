@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from kaos.path import KaosPath
 
-from kimi_cli.soul.agent import load_agents_md
+from gitrekt_cli.soul.agent import load_agents_md
 
 
 async def test_load_agents_md_found(temp_work_dir: KaosPath):

@@ -41,7 +41,7 @@ def find_pinned_dependency(deps: list[str], name: str) -> str | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate kimi-cli dependency versions.")
+    parser = argparse.ArgumentParser(description="Validate Gitrekt-cli dependency versions.")
     parser.add_argument("--root-pyproject", type=Path, required=True)
     parser.add_argument("--kosong-pyproject", type=Path, required=True)
     parser.add_argument("--pykaos-pyproject", type=Path, required=True)
@@ -88,7 +88,7 @@ def main() -> int:
             print(f"error: {error}", file=sys.stderr)
         return 1
 
-    print("ok: kimi-cli dependencies match workspace package versions")
+    print("ok: Gitrekt-cli dependencies match workspace package versions")
     return 0
 
 

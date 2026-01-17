@@ -1,6 +1,6 @@
 # Providers and Models
 
-Kimi CLI supports multiple LLM platforms, which can be configured via configuration files or the `/setup` command.
+Gitrekt CLI supports multiple LLM platforms, which can be configured via configuration files or the `/setup` command.
 
 ## Platform selection
 
@@ -10,13 +10,13 @@ The easiest way to configure is to run the `/setup` command in shell mode and fo
 2. Enter your API key
 3. Select a model from the available list
 
-After configuration, Kimi CLI will automatically save settings to `~/.kimi/config.toml` and reload.
+After configuration, Gitrekt CLI will automatically save settings to `~/.Gitrekt/config.toml` and reload.
 
 `/setup` currently supports the following platforms:
 
 | Platform | Description |
 | --- | --- |
-| Kimi Code | Kimi Code platform, supports search and fetch services |
+| Gitrekt Code | Gitrekt Code platform, supports search and fetch services |
 | Moonshot AI Open Platform (moonshot.cn) | China region API endpoint |
 | Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint |
 
@@ -28,21 +28,21 @@ The `type` field in `providers` configuration specifies the API provider type. D
 
 | Type | Description |
 | --- | --- |
-| `kimi` | Kimi API |
+| `Gitrekt` | Gitrekt API |
 | `openai_legacy` | OpenAI Chat Completions API |
 | `openai_responses` | OpenAI Responses API |
 | `anthropic` | Anthropic Claude API |
 | `gemini` | Google Gemini API |
 | `vertexai` | Google Vertex AI |
 
-### `kimi`
+### `Gitrekt`
 
-For connecting to Kimi API, including Kimi Code and Moonshot AI Open Platform.
+For connecting to Gitrekt API, including Gitrekt Code and Moonshot AI Open Platform.
 
 ```toml
-[providers.kimi-for-coding]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt-for-coding]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "sk-xxx"
 ```
 
@@ -104,7 +104,7 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 ## Model capabilities
 
-The `capabilities` field in model configuration declares the capabilities supported by the model. This affects feature availability in Kimi CLI.
+The `capabilities` field in model configuration declares the capabilities supported by the model. This affects feature availability in Gitrekt CLI.
 
 | Capability | Description |
 | --- | --- |
@@ -127,7 +127,7 @@ Declares that the model supports thinking mode. When enabled, the model performs
 
 ### `always_thinking`
 
-Indicates the model always uses thinking mode and cannot be disabled. For example, models with "thinking" in their name like `kimi-k2-thinking-turbo` typically have this capability. When using such models, the `/model` command won't prompt for thinking mode toggle.
+Indicates the model always uses thinking mode and cannot be disabled. For example, models with "thinking" in their name like `Gitrekt-k2-thinking-turbo` typically have this capability. When using such models, the `/model` command won't prompt for thinking mode toggle.
 
 ### `image_in`
 
@@ -139,9 +139,9 @@ When video input capability is enabled, you can send video content in conversati
 
 ## Search and fetch services
 
-The `SearchWeb` and `FetchURL` tools depend on external services, currently only provided by the Kimi Code platform.
+The `SearchWeb` and `FetchURL` tools depend on external services, currently only provided by the Gitrekt Code platform.
 
-When selecting the Kimi Code platform using `/setup`, search and fetch services are automatically configured.
+When selecting the Gitrekt Code platform using `/setup`, search and fetch services are automatically configured.
 
 | Service | Corresponding tool | Behavior when not configured |
 | --- | --- | --- |

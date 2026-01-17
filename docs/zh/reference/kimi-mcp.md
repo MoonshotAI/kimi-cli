@@ -1,9 +1,9 @@
-# `kimi mcp` 子命令
+# `Gitrekt mcp` 子命令
 
-`kimi mcp` 用于管理 MCP (Model Context Protocol) 服务器配置。关于 MCP 的概念和使用方式，详见 [Model Context Protocol](../customization/mcp.md)。
+`Gitrekt mcp` 用于管理 MCP (Model Context Protocol) 服务器配置。关于 MCP 的概念和使用方式，详见 [Model Context Protocol](../customization/mcp.md)。
 
 ```sh
-kimi mcp COMMAND [ARGS]
+Gitrekt mcp COMMAND [ARGS]
 ```
 
 ## `add`
@@ -11,7 +11,7 @@ kimi mcp COMMAND [ARGS]
 添加 MCP 服务器配置。
 
 ```sh
-kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
+Gitrekt mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 ```
 
 **参数**
@@ -35,7 +35,7 @@ kimi mcp add [OPTIONS] NAME [TARGET_OR_COMMAND...]
 列出所有已配置的 MCP 服务器。
 
 ```sh
-kimi mcp list
+Gitrekt mcp list
 ```
 
 输出包括：
@@ -48,7 +48,7 @@ kimi mcp list
 移除 MCP 服务器配置。
 
 ```sh
-kimi mcp remove NAME
+Gitrekt mcp remove NAME
 ```
 
 **参数**
@@ -62,7 +62,7 @@ kimi mcp remove NAME
 对使用 OAuth 的 MCP 服务器进行授权。
 
 ```sh
-kimi mcp auth NAME
+Gitrekt mcp auth NAME
 ```
 
 执行后会打开浏览器进行 OAuth 授权流程。授权成功后，token 会被缓存以供后续使用。
@@ -82,7 +82,7 @@ kimi mcp auth NAME
 清除 MCP 服务器的 OAuth 缓存 token。
 
 ```sh
-kimi mcp reset-auth NAME
+Gitrekt mcp reset-auth NAME
 ```
 
 **参数**
@@ -91,14 +91,14 @@ kimi mcp reset-auth NAME
 |------|------|
 | `NAME` | 要重置授权的服务器名称 |
 
-清除后需要重新执行 `kimi mcp auth` 进行授权。
+清除后需要重新执行 `Gitrekt mcp auth` 进行授权。
 
 ## `test`
 
 测试与 MCP 服务器的连接并列出可用工具。
 
 ```sh
-kimi mcp test NAME
+Gitrekt mcp test NAME
 ```
 
 **参数**

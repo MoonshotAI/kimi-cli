@@ -1,23 +1,23 @@
 # Wire Mode
 
-Wire mode is Kimi CLI's low-level communication protocol for structured bidirectional communication with external programs.
+Wire mode is Gitrekt CLI's low-level communication protocol for structured bidirectional communication with external programs.
 
 ## What is Wire
 
-Wire is the message-passing layer used internally by Kimi CLI. When you interact via terminal, the Shell UI receives AI output through Wire and displays it; when you integrate with IDEs via ACP, the ACP server also communicates with the Agent core through Wire.
+Wire is the message-passing layer used internally by Gitrekt CLI. When you interact via terminal, the Shell UI receives AI output through Wire and displays it; when you integrate with IDEs via ACP, the ACP server also communicates with the Agent core through Wire.
 
-Wire mode (`--wire`) exposes this communication protocol, allowing external programs to interact directly with Kimi CLI. This is suitable for building custom UIs or embedding Kimi CLI into other applications.
+Wire mode (`--wire`) exposes this communication protocol, allowing external programs to interact directly with Gitrekt CLI. This is suitable for building custom UIs or embedding Gitrekt CLI into other applications.
 
 ```sh
-kimi --wire
+Gitrekt --wire
 ```
 
 ## Use cases
 
 Wire mode is mainly used for:
 
-- **Custom UI**: Build web, desktop, or mobile frontends for Kimi CLI
-- **Application integration**: Embed Kimi CLI into other applications
+- **Custom UI**: Build web, desktop, or mobile frontends for Gitrekt CLI
+- **Application integration**: Embed Gitrekt CLI into other applications
 - **Automated testing**: Programmatic testing of agent behavior
 
 ::: tip

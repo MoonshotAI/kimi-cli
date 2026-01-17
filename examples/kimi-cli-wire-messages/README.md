@@ -1,9 +1,9 @@
-# Example: Kimi CLI Wire Messages
+# Example: Gitrekt CLI Wire Messages
 
-This example demonstrates how to create and run a Kimi CLI instance with raw Wire message output.
+This example demonstrates how to create and run a Gitrekt CLI instance with raw Wire message output.
 
 ```sh
-cd examples/kimi-cli-wire-messages
+cd examples/Gitrekt-cli-wire-messages
 uv sync --reinstall
 uv run main.py
 ```

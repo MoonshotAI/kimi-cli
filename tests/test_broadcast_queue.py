@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.utils.broadcast import BroadcastQueue
+from gitrekt_cli.utils.aioqueue import QueueShutDown
+from gitrekt_cli.utils.broadcast import BroadcastQueue
 
 
 async def test_basic_publish_subscribe():

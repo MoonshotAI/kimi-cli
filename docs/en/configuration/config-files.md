@@ -1,21 +1,21 @@
 # Config Files
 
-Kimi CLI uses configuration files to manage API providers, models, services, and runtime parameters, supporting both TOML and JSON formats.
+Gitrekt CLI uses configuration files to manage API providers, models, services, and runtime parameters, supporting both TOML and JSON formats.
 
 ## Config file location
 
-The default configuration file is located at `~/.kimi/config.toml`. On first run, if the configuration file doesn't exist, Kimi CLI will automatically create a default configuration file.
+The default configuration file is located at `~/.Gitrekt/config.toml`. On first run, if the configuration file doesn't exist, Gitrekt CLI will automatically create a default configuration file.
 
 You can specify a different configuration file (TOML or JSON format) with the `--config-file` flag:
 
 ```sh
-kimi --config-file /path/to/config.toml
+Gitrekt --config-file /path/to/config.toml
 ```
 
-When calling Kimi CLI programmatically, you can also pass the complete configuration content directly via the `--config` flag:
+When calling Gitrekt CLI programmatically, you can also pass the complete configuration content directly via the `--config` flag:
 
 ```sh
-kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models": {...}}'
+Gitrekt --config '{"default_model": "Gitrekt-for-coding", "providers": {...}, "models": {...}}'
 ```
 
 ## Config items
@@ -35,17 +35,17 @@ The configuration file contains the following top-level configuration items:
 ### Complete configuration example
 
 ```toml
-default_model = "kimi-for-coding"
+default_model = "Gitrekt-for-coding"
 default_thinking = false
 
-[providers.kimi-for-coding]
-type = "kimi"
-base_url = "https://api.kimi.com/coding/v1"
+[providers.Gitrekt-for-coding]
+type = "Gitrekt"
+base_url = "https://api.Gitrekt.com/coding/v1"
 api_key = "sk-xxx"
 
-[models.kimi-for-coding]
-provider = "kimi-for-coding"
-model = "kimi-for-coding"
+[models.Gitrekt-for-coding]
+provider = "Gitrekt-for-coding"
+model = "Gitrekt-for-coding"
 max_context_size = 262144
 
 [loop_control]
@@ -54,11 +54,11 @@ max_retries_per_step = 3
 max_ralph_iterations = 0
 
 [services.moonshot_search]
-base_url = "https://api.kimi.com/coding/v1/search"
+base_url = "https://api.Gitrekt.com/coding/v1/search"
 api_key = "sk-xxx"
 
 [services.moonshot_fetch]
-base_url = "https://api.kimi.com/coding/v1/fetch"
+base_url = "https://api.Gitrekt.com/coding/v1/fetch"
 api_key = "sk-xxx"
 
 [mcp.client]
@@ -81,7 +81,7 @@ Example:
 
 ```toml
 [providers.moonshot-cn]
-type = "kimi"
+type = "Gitrekt"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 custom_headers = { "X-Custom-Header" = "value" }
@@ -101,9 +101,9 @@ custom_headers = { "X-Custom-Header" = "value" }
 Example:
 
 ```toml
-[models.kimi-k2-thinking-turbo]
+[models.Gitrekt-k2-thinking-turbo]
 provider = "moonshot-cn"
-model = "kimi-k2-thinking-turbo"
+model = "Gitrekt-k2-thinking-turbo"
 max_context_size = 262144
 capabilities = ["thinking", "image_in"]
 ```
@@ -120,7 +120,7 @@ capabilities = ["thinking", "image_in"]
 
 ### `services`
 
-`services` configures external services used by Kimi CLI.
+`services` configures external services used by Gitrekt CLI.
 
 #### `moonshot_search`
 
@@ -143,7 +143,7 @@ Configures web fetch service. When enabled, the `FetchURL` tool prioritizes usin
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
 
 ::: tip
-When configuring the Kimi Code platform using the `/setup` command, search and fetch services are automatically configured.
+When configuring the Gitrekt Code platform using the `/setup` command, search and fetch services are automatically configured.
 :::
 
 ### `mcp`
@@ -156,6 +156,6 @@ When configuring the Kimi Code platform using the `/setup` command, search and f
 
 ## JSON configuration migration
 
-If `~/.kimi/config.toml` doesn't exist but `~/.kimi/config.json` exists, Kimi CLI will automatically migrate the JSON configuration to TOML format and backup the original file as `config.json.bak`.
+If `~/.Gitrekt/config.toml` doesn't exist but `~/.Gitrekt/config.json` exists, Gitrekt CLI will automatically migrate the JSON configuration to TOML format and backup the original file as `config.json.bak`.
 
 Configuration files specified via `--config-file` are parsed based on file extension. Configuration content passed via `--config` is first attempted as JSON, then falls back to TOML if that fails.

@@ -1,5 +1,5 @@
 {
-  description = "kimi-cli flake";
+  description = "gitrekt-cli flake";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixpkgs-unstable";
     systems.url = "github:nix-systems/default";
@@ -107,7 +107,7 @@
               doInstallCheck = true;
 
               meta = {
-                description = "Kimi CLI is a new CLI agent that can help you with your software development tasks and terminal operations";
+                description = "Gitrekt CLI is a new CLI agent that can help you with your software development tasks and terminal operations";
                 license = lib.licenses.asl20;
                 sourceProvenance = with lib.sourceTypes; [ fromSource ];
                 maintainers = with lib.maintainers; [

@@ -1,9 +1,9 @@
-# `kimi` 命令
+# `Gitrekt` 命令
 
-`kimi` 是 Kimi CLI 的主命令，用于启动交互式会话或执行单次查询。
+`Gitrekt` 是 Gitrekt CLI 的主命令，用于启动交互式会话或执行单次查询。
 
 ```sh
-kimi [OPTIONS] COMMAND [ARGS]
+Gitrekt [OPTIONS] COMMAND [ARGS]
 ```
 
 ## 基本信息
@@ -13,7 +13,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 | `--version` | `-V` | 显示版本号并退出 |
 | `--help` | `-h` | 显示帮助信息并退出 |
 | `--verbose` | | 输出详细运行信息 |
-| `--debug` | | 记录调试日志（输出到 `~/.kimi/logs/kimi.log`） |
+| `--debug` | | 记录调试日志（输出到 `~/.Gitrekt/logs/Gitrekt.log`） |
 
 ## Agent 配置
 
@@ -29,7 +29,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 | 选项 | 说明 |
 |------|------|
 | `--config STRING` | 加载 TOML/JSON 配置字符串 |
-| `--config-file PATH` | 加载配置文件（默认 `~/.kimi/config.toml`） |
+| `--config-file PATH` | 加载配置文件（默认 `~/.Gitrekt/config.toml`） |
 
 `--config` 和 `--config-file` 互斥。配置字符串和文件均支持 TOML 和 JSON 格式。详见 [配置文件](../configuration/config-files.md)。
 
@@ -63,7 +63,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 | `--prompt TEXT` | `-p` | 传入用户提示，不进入交互模式 |
 | `--command TEXT` | `-c` | `--prompt` 的别名 |
 
-使用 `--prompt`（或 `--command`）时，Kimi CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
+使用 `--prompt`（或 `--command`）时，Gitrekt CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
 
 ## 循环控制
 
@@ -77,7 +77,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 [Ralph](https://ghuntley.com/ralph/) 是一种把 Agent 放进循环的技术：同一条提示词会被反复喂给 Agent，让它围绕一个任务持续迭代。
 
-当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会进入 Ralph 循环模式，基于内置的 Prompt Flow 自动循环执行任务，直到 Agent 输出 `<choice>STOP</choice>` 或达到迭代上限。
+当 `--max-ralph-iterations` 非 `0` 时，Gitrekt CLI 会进入 Ralph 循环模式，基于内置的 Prompt Flow 自动循环执行任务，直到 Agent 输出 `<choice>STOP</choice>` 或达到迭代上限。
 
 ::: info 注意
 Ralph 循环与 `--prompt-flow` 选项互斥，不能同时使用。
@@ -135,7 +135,7 @@ D --> F([END])
 |------|------|
 | `--print` | 以 Print 模式运行（非交互式），隐式启用 `--yolo` |
 | `--quiet` | `--print --output-format text --final-message-only` 的快捷方式 |
-| `--acp` | 以 ACP 服务器模式运行（已弃用，请使用 `kimi acp`） |
+| `--acp` | 以 ACP 服务器模式运行（已弃用，请使用 `Gitrekt acp`） |
 | `--wire` | 以 Wire 服务器模式运行（实验性） |
 
 四个选项互斥，只能选择一个。默认使用 Shell 模式。详见 [Print 模式](../customization/print-mode.md) 和 [Wire 模式](../customization/wire-mode.md)。
@@ -159,7 +159,7 @@ D --> F([END])
 | `--mcp-config-file PATH` | 加载 MCP 配置文件，可多次指定 |
 | `--mcp-config JSON` | 加载 MCP 配置 JSON 字符串，可多次指定 |
 
-默认加载 `~/.kimi/mcp.json`（如果存在）。详见 [Model Context Protocol](../customization/mcp.md)。
+默认加载 `~/.Gitrekt/mcp.json`（如果存在）。详见 [Model Context Protocol](../customization/mcp.md)。
 
 ## 审批控制
 
@@ -186,7 +186,7 @@ Thinking 模式需要模型支持。如果不指定，使用上次会话的设�
 
 | 选项 | 说明 |
 |------|------|
-| `--skills-dir PATH` | 指定 skills 目录（默认 `~/.kimi/skills`） |
+| `--skills-dir PATH` | 指定 skills 目录（默认 `~/.Gitrekt/skills`） |
 
 详见 [Agent Skills](../customization/skills.md)。
 
@@ -194,7 +194,7 @@ Thinking 模式需要模型支持。如果不指定，使用上次会话的设�
 
 | 子命令 | 说明 |
 |--------|------|
-| [`kimi info`](./kimi-info.md) | 显示版本和协议信息 |
-| [`kimi acp`](./kimi-acp.md) | 启动多会话 ACP 服务器 |
-| [`kimi mcp`](./kimi-mcp.md) | 管理 MCP 服务器配置 |
-| [`kimi term`](./kimi-term.md) | 启动 Toad 终端 UI |
+| [`Gitrekt info`](./Gitrekt-info.md) | 显示版本和协议信息 |
+| [`Gitrekt acp`](./Gitrekt-acp.md) | 启动多会话 ACP 服务器 |
+| [`Gitrekt mcp`](./Gitrekt-mcp.md) | 管理 MCP 服务器配置 |
+| [`Gitrekt term`](./Gitrekt-term.md) | 启动 Toad 终端 UI |

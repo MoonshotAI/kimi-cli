@@ -1,10 +1,10 @@
 from inline_snapshot import snapshot
 
-from kimi_cli.llm import LLM
+from gitrekt_cli.llm import LLM
 
 
 def test_soul_exceptions(llm: LLM):
-    from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached
+    from gitrekt_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached
 
     try:
         raise LLMNotSet()

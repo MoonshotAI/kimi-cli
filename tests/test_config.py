@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.config import (
+from gitrekt_cli.config import (
     Config,
     Services,
     get_default_config,
     load_config_from_string,
 )
-from kimi_cli.exception import ConfigError
+from gitrekt_cli.exception import ConfigError
 
 
 def test_default_config():

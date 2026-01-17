@@ -3,8 +3,8 @@ from pathlib import Path
 
 from kaos.path import KaosPath
 
-from kimi_cli.app import KimiCLI, enable_logging
-from kimi_cli.session import Session
+from gitrekt_cli.app import KimiCLI, enable_logging
+from gitrekt_cli.session import Session
 
 
 async def main():

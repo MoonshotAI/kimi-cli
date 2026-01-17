@@ -4,7 +4,7 @@
 
 **Scope**
 
-All Python files inside `src/kimi_cli/`.
+All Python files inside `src/gitrekt_cli/`.
 
 **Requirements**
 

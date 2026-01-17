@@ -4,8 +4,12 @@ import pytest
 from inline_snapshot import snapshot
 from pydantic import BaseModel
 
-from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
-from kimi_cli.wire.types import (
+from gitrekt_cli.wire.serde import (
+    WireMessageRecord,
+    deserialize_wire_message,
+    serialize_wire_message,
+)
+from gitrekt_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
     BriefDisplayBlock,
@@ -287,9 +291,9 @@ async def test_type_inspection():
 
 
 def test_wire_message_type_alias():
-    import kimi_cli.wire.types
+    import gitrekt_cli.wire.types
 
-    module = kimi_cli.wire.types
+    module = gitrekt_cli.wire.types
     wire_message_types = {
         obj
         for _, obj in inspect.getmembers(module, inspect.isclass)

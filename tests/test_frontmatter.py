@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from inline_snapshot import snapshot
 
-from kimi_cli.utils.frontmatter import read_frontmatter
+from gitrekt_cli.utils.frontmatter import read_frontmatter
 
 
 def test_read_frontmatter_parses_yaml():

@@ -4,7 +4,7 @@
 
 **Scope**
 
-All Python files inside `src/kimi_cli/tools/` except for the `load_desc` function.
+All Python files inside `src/gitrekt_cli/tools/` except for the `load_desc` function.
 
 **Requirements**
 

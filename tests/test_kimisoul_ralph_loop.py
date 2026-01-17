@@ -13,15 +13,15 @@ from kosong.tooling import CallableTool2, Tool, ToolResult, ToolReturnValue, Too
 from kosong.tooling.simple import SimpleToolset
 from pydantic import BaseModel
 
-from kimi_cli.llm import LLM, ModelCapability
-from kimi_cli.soul import run_soul
-from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.context import Context
-from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.tools.utils import ToolRejectedError
-from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.wire import Wire
-from kimi_cli.wire.types import TurnBegin
+from gitrekt_cli.llm import LLM, ModelCapability
+from gitrekt_cli.soul import run_soul
+from gitrekt_cli.soul.agent import Agent, Runtime
+from gitrekt_cli.soul.context import Context
+from gitrekt_cli.soul.gitrechtsoul import GitrektSoul
+from gitrekt_cli.tools.utils import ToolRejectedError
+from gitrekt_cli.utils.aioqueue import QueueShutDown
+from gitrekt_cli.wire import Wire
+from gitrekt_cli.wire.types import TurnBegin
 
 T = TypeVar("T")
 RALPH_IMAGE_URL = "https://example.com/test.png"
@@ -117,7 +117,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
 
 def _make_soul(
     runtime: Runtime, llm: LLM, toolset: Toolset, tmp_path: Path
-) -> tuple[KimiSoul, Context]:
+) -> tuple[GitrektSoul, Context]:
     agent = Agent(
         name="Test Agent",
         system_prompt="Test system prompt.",
@@ -125,11 +125,11 @@ def _make_soul(
         runtime=_runtime_with_llm(runtime, llm),
     )
     context = Context(file_backend=tmp_path / "history.jsonl")
-    return KimiSoul(agent, context=context), context
+    return GitrektSoul(agent, context=context), context
 
 
 async def _run_and_collect_turns(
-    soul: KimiSoul, user_input: str | list[ContentPart]
+    soul: GitrektSoul, user_input: str | list[ContentPart]
 ) -> list[str | list[ContentPart]]:
     turns: list[str | list[ContentPart]] = []
 

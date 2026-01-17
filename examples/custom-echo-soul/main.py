@@ -1,11 +1,11 @@
 import asyncio
 from typing import Any
 
-from kimi_cli.llm import ALL_MODEL_CAPABILITIES, ModelCapability
-from kimi_cli.soul import StatusSnapshot, wire_send
-from kimi_cli.ui.shell import Shell
-from kimi_cli.utils.slashcmd import SlashCommand
-from kimi_cli.wire.types import ContentPart, StepBegin, TextPart
+from gitrekt_cli.llm import ALL_MODEL_CAPABILITIES, ModelCapability
+from gitrekt_cli.soul import StatusSnapshot, wire_send
+from gitrekt_cli.ui.shell import Shell
+from gitrekt_cli.utils.slashcmd import SlashCommand
+from gitrekt_cli.wire.types import ContentPart, StepBegin, TextPart
 
 
 class EchoSoul:

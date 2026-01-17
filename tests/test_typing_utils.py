@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from kimi_cli.utils.typing import flatten_union
+from gitrekt_cli.utils.typing import flatten_union
 
 
 class A:

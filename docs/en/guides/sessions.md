@@ -1,17 +1,17 @@
 # Sessions and Context
 
-Kimi CLI automatically saves your conversation history, allowing you to continue previous work at any time.
+Gitrekt CLI automatically saves your conversation history, allowing you to continue previous work at any time.
 
 ## Session resuming
 
-Each time you start Kimi CLI, a new session is created. If you want to continue a previous conversation, there are several ways:
+Each time you start Gitrekt CLI, a new session is created. If you want to continue a previous conversation, there are several ways:
 
 **Continue the most recent session**
 
 Use the `--continue` flag to continue the most recent session in the current working directory:
 
 ```sh
-kimi --continue
+Gitrekt --continue
 ```
 
 **Switch to a specific session**
@@ -19,7 +19,7 @@ kimi --continue
 Use the `--session` flag to switch to a session with a specific ID:
 
 ```sh
-kimi --session abc123
+Gitrekt --session abc123
 ```
 
 **Switch sessions during runtime**
@@ -34,11 +34,11 @@ The list shows each session's title and last update time, helping you find the c
 
 **Startup replay**
 
-When you continue an existing session, Kimi CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
+When you continue an existing session, Gitrekt CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
 
 ## Clear and compact
 
-As the conversation progresses, the context grows longer. Kimi CLI will automatically compress the context when needed to ensure the conversation can continue.
+As the conversation progresses, the context grows longer. Gitrekt CLI will automatically compress the context when needed to ensure the conversation can continue.
 
 You can also manually manage the context using slash commands:
 

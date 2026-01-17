@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from kosong.message import Message
 
-from kimi_cli.utils.message import message_stringify
-from kimi_cli.wire.types import ImageURLPart, TextPart
+from gitrekt_cli.utils.message import message_stringify
+from gitrekt_cli.wire.types import ImageURLPart, TextPart
 
 
 def test_extract_text_from_string_content():

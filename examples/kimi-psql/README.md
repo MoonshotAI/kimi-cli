@@ -1,4 +1,4 @@
-# kimi-psql
+# Gitrekt-psql
 
 AI-assisted PostgreSQL interactive terminal.
 
@@ -11,7 +11,7 @@ AI-assisted PostgreSQL interactive terminal.
 ## Usage
 
 ```sh
-cd examples/kimi-psql
+cd examples/Gitrekt-psql
 uv sync --reinstall
 
 # Connection URL with password
@@ -24,14 +24,14 @@ PGPASSWORD=yourpass uv run main.py -h localhost -U postgres -d mydb
 ## Example
 
 ```
-kimi-psql✨ show all users who registered last month
+Gitrekt-psql✨ show all users who registered last month
 • Used ExecuteSql ({"sql": "SELECT * FROM users WHERE ..."})
 
   id | name  | created_at
   ---+-------+------------
   42 | Alice | 2024-11-15
 
-kimi-psql✨ ^X    # Switch to PSQL mode
+Gitrekt-psql✨ ^X    # Switch to PSQL mode
 postgres=# \d users
 ...
 ```
