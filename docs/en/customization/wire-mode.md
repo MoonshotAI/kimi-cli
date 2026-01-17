@@ -36,6 +36,85 @@ Each message is a single line of JSON conforming to JSON-RPC 2.0 specification:
 {"jsonrpc": "2.0", "method": "...", "params": {...}}
 ```
 
+### `init`
+
+- **Direction**: Client → Agent
+- **Type**: Request (requires response)
+
+Initialize the agent with parameters, including external tools. External tools allow the client to extend agent capabilities. When the model decides to call these tools, the agent sends an `ExternalToolCallRequest` via the `request` method.
+
+**Parameter format**
+
+```typescript
+interface InitParams {
+  /** List of external tools */
+  external_tools: ExternalTool[]
+}
+
+interface ExternalTool {
+  /** Fixed as "function" */
+  type: "function"
+  function: {
+    /** Tool name, used by model to reference this tool */
+    name: string
+    /** Tool description, helps model understand when to use this tool */
+    description: string
+    /** Parameter definition in JSON Schema format */
+    parameters: JSONSchema
+  }
+}
+```
+
+**Example request**
+
+```json
+{"jsonrpc": "2.0", "method": "init", "id": "1", "params": {"external_tools": [
+  {
+    "type": "function",
+    "function": {
+      "name": "CodeRunner",
+      "description": "Code executor that supports running python and javascript code",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string",
+            "enum": ["python", "javascript"],
+            "description": "Programming language"
+          },
+          "code": {
+            "type": "string",
+            "description": "Code to execute"
+          }
+        },
+        "required": ["language", "code"]
+      }
+    }
+  }
+]}}
+```
+
+**Success response**
+
+```typescript
+interface InitResult {
+  /** List of available slash commands */
+  slash_commands: string[]
+}
+```
+
+```json
+{"jsonrpc": "2.0", "id": "1", "result": {"slash_commands": ["init"]}}
+```
+
+**Tool call flow**
+
+1. Client registers external tools in `init`
+2. User sends request via `prompt`
+3. When model decides to call an external tool, agent sends `ExternalToolCallRequest`
+4. Client executes the tool and returns `ExternalToolCallRequestResponse`
+5. Agent returns result to model for continued processing
+
 ### `prompt`
 
 - **Direction**: Client → Agent
@@ -153,7 +232,7 @@ type Event =
   | SubagentEvent | ApprovalRequestResolved
 
 // Requests: sent via request method, require response
-type Request = ApprovalRequest
+type Request = ApprovalRequest | ExternalToolCallRequest
 ```
 
 ### `TurnBegin`
@@ -369,6 +448,62 @@ interface ApprovalRequest {
   description: string
   /** Display blocks shown to user, may be absent in JSON, defaults to [] */
   display?: DisplayBlock[]
+}
+```
+
+### `ExternalToolCallRequest`
+
+External tool call request, sent via `request` method. When the model decides to call an external tool registered in `init`, the agent sends this request. Client must return a `ToolResult` before the agent can continue.
+
+```typescript
+interface ExternalToolCallRequest {
+  /** Request ID, used when responding */
+  id: string
+  /** Associated tool call ID */
+  tool_call_id: string
+  /** Fixed as "function" */
+  type: "function"
+  function: {
+    /** Tool name, corresponds to name registered in init */
+    name: string
+    /** JSON-format argument string, may be absent in JSON */
+    arguments?: string | null
+  }
+  /** Extra info, may be absent in JSON */
+  extras?: object | null
+}
+```
+
+**Example request**
+
+```json
+{"jsonrpc": "2.0", "method": "request", "id": "req-2", "params": {"type": "ExternalToolCallRequest", "payload": {"id": "req-2", "tool_call_id": "tc-123", "type": "function", "function": {"name": "CodeRunner", "arguments": "{\"language\":\"python\",\"code\":\"print('hello')\"}"}}}}
+```
+
+**Response**
+
+Client needs to execute the tool and return the result:
+
+```json
+{"jsonrpc": "2.0", "id": "req-2", "result": {"request_id": "req-2", "response": {"tool_call_id": "tc-123", "return_value": {"is_error": false, "output": "hello\n", "message": "", "display": []}}}}
+```
+
+**Response format**
+
+```typescript
+interface ExternalToolCallRequestResponse {
+  /** Corresponding tool call ID, must match tool_call_id in request */
+  tool_call_id: string
+  return_value: {
+    /** Whether this is an error */
+    is_error: boolean
+    /** Output content returned to model, can be string or ContentPart array */
+    output: string | ContentPart[]
+    /** Explanatory message for model */
+    message: string
+    /** Display blocks shown to user */
+    display: DisplayBlock[]
+  }
 }
 ```
 
