@@ -588,6 +588,40 @@ def acp():
 cli.add_typer(mcp_cli, name="mcp")
 
 
+@cli.command()
+def login():
+    """Login to Gitrekt via GitHub."""
+    from kimi_cli.auth import fetch_gitrekt_config, login_flow, save_gitrekt_config, save_token
+
+    async def _login():
+        token = await login_flow()
+        if token:
+            save_token(token)
+            # Fetch and save config from Gitrekt
+            gitrekt_config = await fetch_gitrekt_config(token)
+            if gitrekt_config:
+                save_gitrekt_config(gitrekt_config)
+                typer.echo("Successfully logged in and configured!")
+            else:
+                typer.echo("Logged in but failed to fetch configuration.", err=True)
+        else:
+            typer.echo("Login failed or timed out.", err=True)
+            raise typer.Exit(code=1)
+
+    asyncio.run(_login())
+
+
+@cli.command()
+def logout():
+    """Logout from Gitrekt and clear local configuration."""
+    from kimi_cli.auth import clear_auth_files
+
+    if clear_auth_files():
+        typer.echo("Successfully logged out.")
+    else:
+        typer.echo("No active session found.")
+
+
 if __name__ == "__main__":
     if "kimi_cli.cli" not in sys.modules:
         sys.modules["kimi_cli.cli"] = sys.modules[__name__]

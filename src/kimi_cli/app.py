@@ -46,6 +46,20 @@ def enable_logging(debug: bool = False) -> None:
     )
 
 
+def _apply_gitrekt_config(config: Config, gitrekt_config: dict[str, Any]) -> None:
+    """Apply Gitrekt configuration on top of local config."""
+    if gitrekt_config.get("default_model"):
+        config.default_model = gitrekt_config["default_model"]
+    if "default_thinking" in gitrekt_config:
+        config.default_thinking = gitrekt_config["default_thinking"]
+    for name, model_data in gitrekt_config.get("models", {}).items():
+        config.models[name] = LLMModel(**model_data)
+    for name, provider_data in gitrekt_config.get("providers", {}).items():
+        provider_data["api_key"] = SecretStr(provider_data.get("api_key", ""))
+        config.providers[name] = LLMProvider(**provider_data)
+    logger.info("Applied Gitrekt configuration")
+
+
 class KimiCLI:
     @staticmethod
     async def create(
@@ -106,6 +120,40 @@ class KimiCLI:
         if max_ralph_iterations is not None:
             config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
+
+        # Authentication check
+        from kimi_cli.auth import (
+            fetch_gitrekt_config,
+            load_gitrekt_config,
+            load_token,
+            login_flow,
+            save_gitrekt_config,
+            save_token,
+            show_login_prompt,
+        )
+
+        token = load_token()
+        if not token:
+            logger.info("No session token found, initiating login flow")
+            show_login_prompt()
+
+            try:
+                input()  # Wait for Enter key
+            except KeyboardInterrupt:
+                raise RuntimeError("Login cancelled by user.")
+
+            token = await login_flow()
+            if not token:
+                raise RuntimeError("Authentication required. Please run 'kimi login'.")
+            save_token(token)
+            gitrekt_config = await fetch_gitrekt_config(token)
+            if gitrekt_config:
+                save_gitrekt_config(gitrekt_config)
+
+        # Apply Gitrekt config on top of local config
+        gitrekt_config = load_gitrekt_config()
+        if gitrekt_config:
+            _apply_gitrekt_config(config, gitrekt_config)
 
         model: LLMModel | None = None
         provider: LLMProvider | None = None

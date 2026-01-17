@@ -27,3 +27,9 @@ tests_ai/report.json
 # nix build result
 result
 result-*
+
+# Database files
+dev.db
+
+# Vite cache
+.vite/

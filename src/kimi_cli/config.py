@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Self
 
 import tomlkit
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_serializer, model_validator
 from tomlkit.exceptions import TOMLKitError
 
@@ -12,6 +14,8 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.llm import ModelCapability, ProviderType
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
+
+load_dotenv()
 
 
 class LLMProvider(BaseModel):
@@ -170,7 +174,12 @@ def load_config(config_file: Path | None = None) -> Config:
     """
     default_config_file = get_config_file()
     if config_file is None:
-        config_file = default_config_file
+        local_config = Path("config.toml")
+        if local_config.exists():
+            config_file = local_config
+        else:
+            config_file = default_config_file
+
     is_default_config_file = config_file.expanduser().resolve(
         strict=False
     ) == default_config_file.expanduser().resolve(strict=False)

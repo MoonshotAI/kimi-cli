@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun install:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(uv run python:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

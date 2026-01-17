@@ -414,6 +414,27 @@ async def mcp(app: Shell, args: str):
         console.print(BulletColumns(Group(*lines), bullet_style=color))
 
 
+@registry.command
+async def login(app: Shell, args: str):
+    """Login to Gitrekt via GitHub"""
+    from kimi_cli.auth import fetch_gitrekt_config, login_flow, save_gitrekt_config, save_token
+
+    console.print("[cyan]Opening browser for authentication...[/cyan]")
+    token = await login_flow()
+    if token:
+        save_token(token)
+        # Fetch and save config from Gitrekt
+        gitrekt_config = await fetch_gitrekt_config(token)
+        if gitrekt_config:
+            save_gitrekt_config(gitrekt_config)
+            console.print("[green]Successfully logged in and configured![/green]")
+            console.print("[yellow]Note: Restart Kimi CLI to apply new configuration.[/yellow]")
+        else:
+            console.print("[yellow]Logged in but failed to fetch configuration.[/yellow]")
+    else:
+        console.print("[red]Login failed or timed out.[/red]")
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401 # type: ignore[reportUnusedImport]
     setup,  # noqa: F401 # type: ignore[reportUnusedImport]

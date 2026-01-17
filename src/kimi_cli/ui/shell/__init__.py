@@ -94,7 +94,15 @@ class Shell:
                         continue
                     logger.debug("Got user input: {user_input}", user_input=user_input)
 
-                    if user_input.command in ["exit", "quit", "/exit", "/quit"]:
+                    if user_input.command in ["exit", "quit", "/exit", "/quit", "/logout"]:
+                        if user_input.command == "/logout":
+                            from kimi_cli.auth import clear_auth_files
+
+                            if clear_auth_files():
+                                console.print("[green]Successfully logged out.[/green]")
+                            else:
+                                console.print("[yellow]No active session found.[/yellow]")
+
                         logger.debug("Exiting by slash command")
                         console.print("Bye!")
                         break
