@@ -7,11 +7,13 @@ from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
 from rich.padding import Padding
+from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
@@ -20,6 +22,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.diff import format_unified_diff
+from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.utils.rich.syntax import KimiSyntax
@@ -554,7 +557,13 @@ class _LiveView:
 
         match msg:
             case TurnBegin():
-                pass
+                self.flush_content()
+                console.print(
+                    Panel(
+                        Text(message_stringify(Message(role="user", content=msg.user_input))),
+                        padding=(0, 1),
+                    )
+                )
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()

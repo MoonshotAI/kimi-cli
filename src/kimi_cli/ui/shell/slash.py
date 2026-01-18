@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 from kimi_cli.cli import Reload
-from kimi_cli.config import save_config
+from kimi_cli.config import load_config, save_config
+from kimi_cli.exception import ConfigError
 from kimi_cli.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -61,9 +62,6 @@ _KEYBOARD_SHORTCUTS = [
 @shell_mode_registry.command(aliases=["h", "?"])
 def help(app: Shell, args: str):
     """Show help information"""
-    from io import StringIO
-
-    from rich.console import Console as RichConsole
     from rich.console import Group, RenderableType
     from rich.text import Text
 
@@ -80,10 +78,8 @@ def help(app: Shell, args: str):
             )
         return BulletColumns(Group(*lines))
 
-    buffer = StringIO()
-    buf = RichConsole(file=buffer, force_terminal=True, width=console.width)
-
-    buf.print(
+    renderables: list[RenderableType] = []
+    renderables.append(
         BulletColumns(
             Group(
                 Text.from_markup("[grey50]Help! I need somebody. Help! Not just anybody.[/grey50]"),
@@ -93,7 +89,7 @@ def help(app: Shell, args: str):
             bullet_style="grey50",
         )
     )
-    buf.print(
+    renderables.append(
         BulletColumns(
             Text(
                 "Sure, Kimi CLI is ready to help! "
@@ -110,7 +106,8 @@ def help(app: Shell, args: str):
         else:
             commands.append(cmd)
 
-    buf.print(
+    renderables.append(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
+    renderables.append(
         section(
             "Slash commands",
             [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
@@ -118,17 +115,16 @@ def help(app: Shell, args: str):
         )
     )
     if skills:
-        buf.print(
+        renderables.append(
             section(
                 "Skills",
                 [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
                 "cyan",
             )
         )
-    buf.print(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
 
     with console.pager(styles=True):
-        console.print(buffer.getvalue(), end="")
+        console.print(Group(*renderables))
 
 
 @registry.command
@@ -244,8 +240,11 @@ async def model(app: Shell, args: str):
     config.default_model = selected_model_name
     config.default_thinking = new_thinking
     try:
-        save_config(config)
-    except OSError as exc:
+        config_for_save = load_config()
+        config_for_save.default_model = selected_model_name
+        config_for_save.default_thinking = new_thinking
+        save_config(config_for_save)
+    except (ConfigError, OSError) as exc:
         config.default_model = prev_model
         config.default_thinking = prev_thinking
         console.print(f"[red]Failed to save config: {exc}[/red]")
@@ -263,17 +262,12 @@ async def model(app: Shell, args: str):
 @shell_mode_registry.command(aliases=["release-notes"])
 def changelog(app: Shell, args: str):
     """Show release notes"""
-    from io import StringIO
-
-    from rich.console import Console as RichConsole
     from rich.console import Group, RenderableType
     from rich.text import Text
 
     from kimi_cli.utils.rich.columns import BulletColumns
 
-    buffer = StringIO()
-    buf_console = RichConsole(file=buffer, force_terminal=True, width=console.width)
-
+    renderables: list[RenderableType] = []
     for ver, entry in CHANGELOG.items():
         title = f"[bold]{ver}[/bold]"
         if entry.description:
@@ -289,10 +283,10 @@ def changelog(app: Shell, args: str):
                     bullet_style="grey50",
                 ),
             )
-        buf_console.print(BulletColumns(Group(*lines)))
+        renderables.append(BulletColumns(Group(*lines)))
 
     with console.pager(styles=True):
-        console.print(buffer.getvalue(), end="")
+        console.print(Group(*renderables))
 
 
 @registry.command
@@ -310,10 +304,9 @@ def feedback(app: Shell, args: str):
 @registry.command(aliases=["reset"])
 async def clear(app: Shell, args: str):
     """Clear the context"""
-    soul = _ensure_kimi_soul(app)
-    if soul is None:
+    if _ensure_kimi_soul(app) is None:
         return
-    await soul.context.clear()
+    await app.run_soul_command("/clear")
     raise Reload()
 
 
