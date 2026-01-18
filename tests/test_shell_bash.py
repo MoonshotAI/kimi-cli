@@ -16,7 +16,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.mark.asyncio
 async def test_simple_command(shell_tool: Shell):
     """Test executing a simple command."""
     result = await shell_tool(Params(command="echo 'Hello World'"))
@@ -25,7 +24,6 @@ async def test_simple_command(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_command_with_error(shell_tool: Shell):
     """Test executing a command that returns an error."""
     result = await shell_tool(Params(command="ls /nonexistent/directory"))
@@ -36,7 +34,6 @@ async def test_command_with_error(shell_tool: Shell):
     assert "Failed with exit code:" in result.brief
 
 
-@pytest.mark.asyncio
 async def test_command_chaining(shell_tool: Shell):
     """Test command chaining with &&."""
     result = await shell_tool(Params(command="echo 'First' && echo 'Second'"))
@@ -48,7 +45,6 @@ Second
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_command_sequential(shell_tool: Shell):
     """Test sequential command execution with ;."""
     result = await shell_tool(Params(command="echo 'One'; echo 'Two'"))
@@ -60,7 +56,6 @@ Two
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_command_conditional(shell_tool: Shell):
     """Test conditional command execution with ||."""
     result = await shell_tool(Params(command="false || echo 'Success'"))
@@ -69,7 +64,6 @@ async def test_command_conditional(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_command_pipe(shell_tool: Shell):
     """Test command piping."""
     result = await shell_tool(Params(command="echo 'Hello World' | wc -w"))
@@ -78,7 +72,6 @@ async def test_command_pipe(shell_tool: Shell):
     assert result.output.strip() == snapshot("2")
 
 
-@pytest.mark.asyncio
 async def test_multiple_pipes(shell_tool: Shell):
     """Test multiple pipes in one command."""
     result = await shell_tool(Params(command="echo -e '1\\n2\\n3' | grep '2' | wc -l"))
@@ -87,7 +80,6 @@ async def test_multiple_pipes(shell_tool: Shell):
     assert result.output.strip() == snapshot("1")
 
 
-@pytest.mark.asyncio
 async def test_command_with_timeout(shell_tool: Shell):
     """Test command execution with timeout."""
     result = await shell_tool(Params(command="sleep 0.1", timeout=1))
@@ -96,7 +88,6 @@ async def test_command_with_timeout(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_command_timeout_expires(shell_tool: Shell):
     """Test command that times out."""
     result = await shell_tool(Params(command="sleep 2", timeout=1))
@@ -105,7 +96,6 @@ async def test_command_timeout_expires(shell_tool: Shell):
     assert result.brief == snapshot("Killed by timeout (1s)")
 
 
-@pytest.mark.asyncio
 async def test_environment_variables(shell_tool: Shell):
     """Test setting and using environment variables."""
     result = await shell_tool(Params(command="export TEST_VAR='test_value' && echo $TEST_VAR"))
@@ -114,7 +104,6 @@ async def test_environment_variables(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     """Test basic file operations."""
     # Create a test file
@@ -132,7 +121,6 @@ async def test_file_operations(shell_tool: Shell, temp_work_dir: KaosPath):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_text_processing(shell_tool: Shell):
     """Test text processing commands."""
     result = await shell_tool(Params(command="echo 'apple banana cherry' | sed 's/banana/orange/'"))
@@ -141,7 +129,6 @@ async def test_text_processing(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_command_substitution(shell_tool: Shell):
     """Test command substitution with a portable command."""
     result = await shell_tool(Params(command='echo "Result: $(echo hello)"'))
@@ -150,7 +137,6 @@ async def test_command_substitution(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_arithmetic_substitution(shell_tool: Shell):
     """Test arithmetic substitution - more portable than date command."""
     result = await shell_tool(Params(command='echo "Answer: $((2 + 2))"'))
@@ -159,7 +145,6 @@ async def test_arithmetic_substitution(shell_tool: Shell):
     assert result.message == snapshot("Command executed successfully.")
 
 
-@pytest.mark.asyncio
 async def test_very_long_output(shell_tool: Shell):
     """Test command that produces very long output."""
     result = await shell_tool(Params(command="seq 1 100 | head -50"))
@@ -171,7 +156,6 @@ async def test_very_long_output(shell_tool: Shell):
     assert "51" not in result.output  # Should not contain 51
 
 
-@pytest.mark.asyncio
 async def test_output_truncation_on_success(shell_tool: Shell):
     """Test that very long output gets truncated on successful command."""
     # Generate output longer than MAX_OUTPUT_LENGTH
@@ -187,7 +171,6 @@ async def test_output_truncation_on_success(shell_tool: Shell):
     assert "Command executed successfully" in result.message
 
 
-@pytest.mark.asyncio
 async def test_output_truncation_on_failure(shell_tool: Shell):
     """Test that very long output gets truncated even when command fails."""
     # Generate long output with a command that will fail
@@ -204,7 +187,6 @@ async def test_output_truncation_on_failure(shell_tool: Shell):
     assert "Command failed with exit code:" in result.message
 
 
-@pytest.mark.asyncio
 async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
     """Test timeout parameter validation (bounds checking)."""
     # Test timeout < 1 (should fail validation)

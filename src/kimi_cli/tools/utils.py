@@ -2,7 +2,8 @@ import re
 import string
 from pathlib import Path
 
-from kosong.tooling import DisplayBlock, ToolError, ToolReturnValue
+from jinja2 import Environment
+from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
 
@@ -12,6 +13,21 @@ def load_desc(path: Path, substitutions: dict[str, str] | None = None) -> str:
     if substitutions:
         description = string.Template(description).safe_substitute(substitutions)
     return description
+
+
+def load_desc_jinja(path: Path, context: dict[str, object] | None = None) -> str:
+    """Load a tool description from a file, rendered via Jinja2."""
+    description = path.read_text(encoding="utf-8")
+    env = Environment(
+        autoescape=False,
+        keep_trailing_newline=True,
+        lstrip_blocks=True,
+        trim_blocks=True,
+        variable_start_string="${",
+        variable_end_string="}",
+    )
+    template = env.from_string(description)
+    return template.render(context or {})
 
 
 def truncate_line(line: str, max_length: int, marker: str = "...") -> str:
@@ -54,7 +70,23 @@ class ToolResultBuilder:
         self._n_chars = 0
         self._n_lines = 0
         self._truncation_happened = False
+        self._display: list[DisplayBlock] = []
         self._extras: dict[str, JsonType] | None = None
+
+    @property
+    def is_full(self) -> bool:
+        """Check if output buffer is full due to character limit."""
+        return self._n_chars >= self.max_chars
+
+    @property
+    def n_chars(self) -> int:
+        """Get current character count."""
+        return self._n_chars
+
+    @property
+    def n_lines(self) -> int:
+        """Get current line count."""
+        return self._n_lines
 
     def write(self, text: str) -> int:
         """
@@ -95,6 +127,16 @@ class ToolResultBuilder:
 
         return chars_written
 
+    def display(self, *blocks: DisplayBlock) -> None:
+        """Add display blocks to the tool result."""
+        self._display.extend(blocks)
+
+    def extras(self, **extras: JsonType) -> None:
+        """Add extra data to the tool result."""
+        if self._extras is None:
+            self._extras = {}
+        self._extras.update(extras)
+
     def ok(self, message: str = "", *, brief: str = "") -> ToolReturnValue:
         """Create a ToolReturnValue with is_error=False and the current output."""
         output = "".join(self._buffer)
@@ -112,7 +154,7 @@ class ToolResultBuilder:
             is_error=False,
             output=output,
             message=final_message,
-            display=[DisplayBlock(type="brief", data=brief)] if brief else [],
+            display=([BriefDisplayBlock(text=brief)] if brief else []) + self._display,
             extras=self._extras,
         )
 
@@ -132,30 +174,9 @@ class ToolResultBuilder:
             is_error=True,
             output=output,
             message=final_message,
-            display=[DisplayBlock(type="brief", data=brief)] if brief else [],
+            display=([BriefDisplayBlock(text=brief)] if brief else []) + self._display,
             extras=self._extras,
         )
-
-    def extras(self, **extras: JsonType) -> None:
-        """Add extra data to the tool result."""
-        if self._extras is None:
-            self._extras = {}
-        self._extras.update(extras)
-
-    @property
-    def is_full(self) -> bool:
-        """Check if output buffer is full due to character limit."""
-        return self._n_chars >= self.max_chars
-
-    @property
-    def n_chars(self) -> int:
-        """Get current character count."""
-        return self._n_chars
-
-    @property
-    def n_lines(self) -> int:
-        """Get current line count."""
-        return self._n_lines
 
 
 class ToolRejectedError(ToolError):

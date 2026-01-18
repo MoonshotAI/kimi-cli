@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import tempfile
 from collections.abc import Generator
@@ -17,7 +18,7 @@ from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
 from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
-from kimi_cli.llm import LLM
+from kimi_cli.llm import ALL_MODEL_CAPABILITIES, LLM
 from kimi_cli.metadata import WorkDirMeta
 from kimi_cli.session import Session
 from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs, LaborMarket, Runtime
@@ -57,19 +58,23 @@ def llm() -> LLM:
     return LLM(
         chat_provider=MockChatProvider([]),
         max_context_size=100_000,
-        capabilities=set(),
+        capabilities=ALL_MODEL_CAPABILITIES,
     )
 
 
 @pytest.fixture
 def temp_work_dir() -> Generator[KaosPath]:
     """Create a temporary working directory for tests."""
-    token = set_current_kaos(LocalKaos())
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield KaosPath.unsafe_from_local_path(Path(tmpdir))
-    finally:
-        reset_current_kaos(token)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_cwd = Path.cwd()
+        p = Path(tmpdir).resolve()
+        os.chdir(p)
+        token = set_current_kaos(LocalKaos())
+        try:
+            yield KaosPath.unsafe_from_local_path(p)
+        finally:
+            reset_current_kaos(token)
+            os.chdir(original_cwd)
 
 
 @pytest.fixture
@@ -87,6 +92,7 @@ def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
         KIMI_WORK_DIR=temp_work_dir,
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
+        KIMI_SKILLS="No skills found.",
     )
 
 
@@ -163,6 +169,7 @@ def runtime(
         approval=approval,
         labor_market=labor_market,
         environment=environment,
+        skills={},
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",
@@ -185,9 +192,8 @@ def toolset() -> KimiToolset:
 @contextmanager
 def tool_call_context(tool_name: str) -> Generator[None]:
     """Create a tool call context."""
-    from kosong.message import ToolCall
-
     from kimi_cli.soul.toolset import current_tool_call
+    from kimi_cli.wire.types import ToolCall
 
     token = current_tool_call.set(
         ToolCall(id="test", function=ToolCall.FunctionBody(name=tool_name, arguments=None))
@@ -236,9 +242,9 @@ def shell_tool(approval: Approval, environment: Environment) -> Generator[Shell]
 
 
 @pytest.fixture
-def read_file_tool(builtin_args: BuiltinSystemPromptArgs) -> ReadFile:
+def read_file_tool(runtime: Runtime) -> ReadFile:
     """Create a ReadFile tool instance."""
-    return ReadFile(builtin_args)
+    return ReadFile(runtime)
 
 
 @pytest.fixture

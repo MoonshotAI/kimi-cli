@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
-import aiohttp
+from loguru import logger
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
@@ -16,48 +16,24 @@ from kimi_cli.config import (
     load_config,
     save_config,
 )
+from kimi_cli.platforms import (
+    PLATFORMS,
+    ModelInfo,
+    Platform,
+    get_platform_by_name,
+    list_models,
+    managed_model_key,
+    managed_provider_key,
+)
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import registry
-from kimi_cli.utils.aiohttp import new_client_session
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
 
 
-class _Platform(NamedTuple):
-    id: str
-    name: str
-    base_url: str
-    search_url: str | None = None
-    fetch_url: str | None = None
-    allowed_prefixes: list[str] | None = None
-
-
-_PLATFORMS = [
-    _Platform(
-        id="kimi-for-coding",
-        name="Kimi for Coding",
-        base_url="https://api.kimi.com/coding/v1",
-        search_url="https://api.kimi.com/coding/v1/search",
-        fetch_url="https://api.kimi.com/coding/v1/fetch",
-    ),
-    _Platform(
-        id="moonshot-cn",
-        name="Moonshot AI 开放平台 (moonshot.cn)",
-        base_url="https://api.moonshot.cn/v1",
-        allowed_prefixes=["kimi-k2-"],
-    ),
-    _Platform(
-        id="moonshot-ai",
-        name="Moonshot AI Open Platform (moonshot.ai)",
-        base_url="https://api.moonshot.ai/v1",
-        allowed_prefixes=["kimi-k2-"],
-    ),
-]
-
-
 @registry.command
-async def setup(app: Shell, args: list[str]):
+async def setup(app: Shell, args: str):
     """Setup Kimi CLI"""
     result = await _setup()
     if not result:
@@ -65,17 +41,26 @@ async def setup(app: Shell, args: list[str]):
         return
 
     config = load_config()
-    config.providers[result.platform.id] = LLMProvider(
+    provider_key = managed_provider_key(result.platform.id)
+    model_key = managed_model_key(result.platform.id, result.selected_model.id)
+    config.providers[provider_key] = LLMProvider(
         type="kimi",
         base_url=result.platform.base_url,
         api_key=result.api_key,
     )
-    config.models[result.model_id] = LLMModel(
-        provider=result.platform.id,
-        model=result.model_id,
-        max_context_size=result.max_context_size,
-    )
-    config.default_model = result.model_id
+    for key, model in list(config.models.items()):
+        if model.provider == provider_key:
+            del config.models[key]
+    for model_info in result.models:
+        capabilities = model_info.capabilities or None
+        config.models[managed_model_key(result.platform.id, model_info.id)] = LLMModel(
+            provider=provider_key,
+            model=model_info.id,
+            max_context_size=model_info.context_length,
+            capabilities=capabilities,
+        )
+    config.default_model = model_key
+    config.default_thinking = result.thinking
 
     if result.platform.search_url:
         config.services.moonshot_search = MoonshotSearchConfig(
@@ -100,23 +85,27 @@ async def setup(app: Shell, args: list[str]):
 
 
 class _SetupResult(NamedTuple):
-    platform: _Platform
+    platform: Platform
     api_key: SecretStr
-    model_id: str
-    max_context_size: int
+    selected_model: ModelInfo
+    models: list[ModelInfo]
+    thinking: bool
 
 
 async def _setup() -> _SetupResult | None:
     # select the API platform
     platform_name = await _prompt_choice(
-        header="Select the API platform",
-        choices=[platform.name for platform in _PLATFORMS],
+        header="Select a platform (↑↓ navigate, Enter select, Ctrl+C cancel):",
+        choices=[platform.name for platform in PLATFORMS],
     )
     if not platform_name:
         console.print("[red]No platform selected[/red]")
         return None
 
-    platform = next(platform for platform in _PLATFORMS if platform.name == platform_name)
+    platform = get_platform_by_name(platform_name)
+    if platform is None:
+        console.print("[red]Unknown platform[/red]")
+        return None
 
     # enter the API key
     api_key = await _prompt_text("Enter your API key", is_password=True)
@@ -124,53 +113,52 @@ async def _setup() -> _SetupResult | None:
         return None
 
     # list models
-    models_url = f"{platform.base_url}/models"
     try:
-        async with (
-            new_client_session() as session,
-            session.get(
-                models_url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                },
-                raise_for_status=True,
-            ) as response,
-        ):
-            resp_json = await response.json()
-    except aiohttp.ClientError as e:
+        models = await list_models(platform, api_key)
+    except Exception as e:
+        logger.error("Failed to get models: {error}", error=e)
         console.print(f"[red]Failed to get models: {e}[/red]")
         return None
 
-    model_dict = {model["id"]: model for model in resp_json["data"]}
-
     # select the model
-    model_ids: list[str] = [model["id"] for model in resp_json["data"]]
-    if platform.allowed_prefixes is not None:
-        model_ids = [
-            model_id
-            for model_id in model_ids
-            if model_id.startswith(tuple(platform.allowed_prefixes))
-        ]
-
-    if not model_ids:
+    if not models:
         console.print("[red]No models available for the selected platform[/red]")
         return None
 
+    model_map = {model.id: model for model in models}
     model_id = await _prompt_choice(
-        header="Select the model",
-        choices=model_ids,
+        header="Select a model (↑↓ navigate, Enter select, Ctrl+C cancel):",
+        choices=list(model_map),
     )
     if not model_id:
         console.print("[red]No model selected[/red]")
         return None
 
-    model = model_dict[model_id]
+    selected_model = model_map[model_id]
+
+    # Determine thinking mode based on model capabilities
+    capabilities = selected_model.capabilities
+    thinking: bool
+
+    if "always_thinking" in capabilities:
+        thinking = True
+    elif "thinking" in capabilities:
+        thinking_selection = await _prompt_choice(
+            header="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
+            choices=["off", "on"],
+        )
+        if not thinking_selection:
+            return None
+        thinking = thinking_selection == "on"
+    else:
+        thinking = False
 
     return _SetupResult(
         platform=platform,
         api_key=SecretStr(api_key),
-        model_id=model_id,
-        max_context_size=model["context_length"],
+        selected_model=selected_model,
+        models=models,
+        thinking=thinking,
     )
 
 
@@ -202,7 +190,7 @@ async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:
 
 
 @registry.command
-def reload(app: Shell, args: list[str]):
+def reload(app: Shell, args: str):
     """Reload configuration"""
     from kimi_cli.cli import Reload
 

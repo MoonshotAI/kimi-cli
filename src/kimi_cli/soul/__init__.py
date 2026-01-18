@@ -8,11 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from kosong.message import ContentPart
-
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import WireMessage
+from kimi_cli.wire.types import ContentPart, WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
@@ -54,6 +53,8 @@ class MaxStepsReached(Exception):
 class StatusSnapshot:
     context_usage: float
     """The usage of the context, in percentage."""
+    yolo_enabled: bool = False
+    """Whether YOLO (auto-approve) mode is enabled."""
 
 
 @runtime_checkable
@@ -65,12 +66,20 @@ class Soul(Protocol):
 
     @property
     def model_name(self) -> str:
-        """The name of the LLM model used by the soul. Empty string indicates no LLM configured."""
+        """The name of the LLM model used by the soul. Empty string if LLM is not set."""
         ...
 
     @property
     def model_capabilities(self) -> set[ModelCapability] | None:
-        """The capabilities of the LLM model used by the soul. None indicates no LLM configured."""
+        """The capabilities of the LLM model used by the soul. None if LLM is not set."""
+        ...
+
+    @property
+    def thinking(self) -> bool | None:
+        """
+        Whether thinking mode is currently enabled.
+        None if LLM is not set or thinking mode is not set explicitly.
+        """
         ...
 
     @property
@@ -164,7 +173,7 @@ async def run_soul(
         wire.shutdown()
         try:
             await asyncio.wait_for(ui_task, timeout=0.5)
-        except asyncio.QueueShutDown:
+        except QueueShutDown:
             logger.debug("UI loop shut down")
             pass
         except TimeoutError:

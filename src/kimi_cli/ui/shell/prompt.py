@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import contextlib
 import getpass
 import json
 import os
@@ -19,7 +18,6 @@ from pathlib import Path
 from typing import Any, Literal, override
 
 from kaos.path import KaosPath
-from kosong.message import ContentPart, ImageURLPart, TextPart
 from PIL import Image, ImageGrab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
@@ -29,17 +27,17 @@ from prompt_toolkit.completion import (
     CompleteEvent,
     Completer,
     Completion,
-    DummyCompleter,
     FuzzyCompleter,
     WordCompleter,
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Condition, has_completions
+from prompt_toolkit.filters import has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.styles import Style
 from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
@@ -50,6 +48,7 @@ from kimi_cli.utils.clipboard import is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
+from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
 
 PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"
@@ -407,7 +406,6 @@ class PromptMode(Enum):
 
 class UserInput(BaseModel):
     mode: PromptMode
-    thinking: bool
     command: str
     """The plain text representation of the user input."""
     content: list[ContentPart]
@@ -466,15 +464,6 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
     return queue[0]
 
 
-def _toast_thinking(thinking: bool) -> None:
-    toast(
-        f"thinking {'on' if thinking else 'off'}, tab to toggle",
-        duration=3.0,
-        topic="thinking",
-        immediate=True,
-    )
-
-
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
 )
@@ -495,8 +484,10 @@ class CustomPromptSession:
         *,
         status_provider: Callable[[], StatusSnapshot],
         model_capabilities: set[ModelCapability],
-        initial_thinking: bool,
-        available_slash_commands: Sequence[SlashCommand[Any]],
+        model_name: str | None,
+        thinking: bool,
+        agent_mode_slash_commands: Sequence[SlashCommand[Any]],
+        shell_mode_slash_commands: Sequence[SlashCommand[Any]],
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -504,9 +495,10 @@ class CustomPromptSession:
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._model_capabilities = model_capabilities
+        self._model_name = model_name
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
-        self._thinking = initial_thinking
+        self._thinking = thinking
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
 
@@ -522,16 +514,16 @@ class CustomPromptSession:
         # Build completers
         self._agent_mode_completer = merge_completers(
             [
-                SlashCommandCompleter(available_slash_commands),
+                SlashCommandCompleter(agent_mode_slash_commands),
                 # TODO(kaos): we need an async KaosFileMentionCompleter
                 LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
             deduplicate=True,
         )
+        self._shell_mode_completer = SlashCommandCompleter(shell_mode_slash_commands)
 
         # Build key bindings
         _kb = KeyBindings()
-        shortcut_hints: list[str] = []
 
         @_kb.add("enter", filter=has_completions)
         def _(event: KeyPressEvent) -> None:
@@ -552,15 +544,11 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
-        shortcut_hints.append("ctrl-x: switch mode")
-
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
-
-        shortcut_hints.append("ctrl-j: newline")
 
         if is_clipboard_available():
 
@@ -571,39 +559,27 @@ class CustomPromptSession:
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
 
-            shortcut_hints.append("ctrl-v: paste")
             clipboard = PyperclipClipboard()
         else:
             clipboard = None
 
-        @Condition
-        def is_agent_mode() -> bool:
-            return self._mode == PromptMode.AGENT
-
-        _toast_thinking(self._thinking)
-
-        @_kb.add("tab", filter=~has_completions & is_agent_mode, eager=True)
+        @_kb.add("c-_", eager=True)  # Ctrl-/ sends Ctrl-_ in most terminals
         def _(event: KeyPressEvent) -> None:
-            """Toggle thinking mode when Tab is pressed and no completions are shown."""
-            if "thinking" not in self._model_capabilities:
-                console.print(
-                    "[yellow]Thinking mode is not supported by the selected LLM model[/yellow]"
-                )
-                return
-            self._thinking = not self._thinking
-            _toast_thinking(self._thinking)
-            event.app.invalidate()
+            """Show help by submitting /help command."""
+            buff = event.current_buffer
+            buff.text = "/help"
+            buff.validate_and_handle()
 
-        self._shortcut_hints = shortcut_hints
         self._session = PromptSession[str](
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
-            complete_while_typing=Condition(lambda: self._mode == PromptMode.AGENT),
+            complete_while_typing=True,
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
+            style=Style.from_dict({"bottom-toolbar": "noreverse"}),
         )
 
         # Allow completion to be triggered when the text is changed,
@@ -629,12 +605,8 @@ class CustomPromptSession:
             buff = None
 
         if self._mode == PromptMode.SHELL:
-            # Cancel any active completion menu
-            with contextlib.suppress(Exception):
-                if buff is not None:
-                    buff.cancel_completion()
             if buff is not None:
-                buff.completer = DummyCompleter()
+                buff.completer = self._shell_mode_completer
         else:
             if buff is not None:
                 buff.completer = self._agent_mode_completer
@@ -675,7 +647,10 @@ class CustomPromptSession:
         """Try to paste an image from the clipboard. Return True if successful."""
         # Try get image from clipboard
         image = ImageGrab.grabclipboard()
-        if isinstance(image, list):
+        if image is None:
+            return False
+
+        if not isinstance(image, Image.Image):
             for item in image:
                 try:
                     with Image.open(item) as img:
@@ -684,10 +659,7 @@ class CustomPromptSession:
                 except Exception:
                     continue
             else:
-                image = None
-
-        if image is None:
-            return False
+                return False
 
         if "image_in" not in self._model_capabilities:
             console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
@@ -746,7 +718,6 @@ class CustomPromptSession:
 
         return UserInput(
             mode=self._mode,
-            thinking=self._thinking,
             content=content,
             command=command,
         )
@@ -784,12 +755,20 @@ class CustomPromptSession:
         columns -= len(now_text) + 2
 
         mode = str(self._mode).lower()
-        if self._mode == PromptMode.AGENT and self._thinking:
-            mode += " (think)"
+        if self._mode == PromptMode.AGENT:
+            mode_details: list[str] = []
+            if self._model_name:
+                mode_details.append(self._model_name)
+            if self._thinking:
+                mode_details.append("thinking")
+            if mode_details:
+                mode += f" ({', '.join(mode_details)})"
+        status = self._status_provider()
+        if status.yolo_enabled:
+            fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
+            columns -= len("yolo") + 2
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
-
-        status = self._status_provider()
         right_text = self._render_right_span(status)
 
         current_toast_left = _current_toast("left")
@@ -800,16 +779,10 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcuts = [
-                *self._shortcut_hints,
-                "ctrl-d: exit",
-            ]
-            for shortcut in shortcuts:
-                if columns - len(right_text) > len(shortcut) + 2:
-                    fragments.extend([("", shortcut), ("", " " * 2)])
-                    columns -= len(shortcut) + 2
-                else:
-                    break
+            shortcuts = "ctrl-x: toggle mode  ctrl-/: help"
+            if columns - len(right_text) > len(shortcuts) + 2:
+                fragments.extend([("", shortcuts), ("", " " * 2)])
+                columns -= len(shortcuts) + 2
 
         padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))

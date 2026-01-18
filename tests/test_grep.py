@@ -55,7 +55,6 @@ Hello world example is here.
         yield temp_dir, [test_file1, test_file2, test_file3, subfile]
 
 
-@pytest.mark.asyncio
 async def test_grep_files_with_matches(grep_tool: Grep, temp_test_files):
     """Test finding files that contain a pattern."""
     temp_dir, test_files = temp_test_files
@@ -73,7 +72,6 @@ async def test_grep_files_with_matches(grep_tool: Grep, temp_test_files):
     assert "readme.txt" in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_content_mode(grep_tool: Grep, temp_test_files):
     """Test showing matching lines with content."""
     temp_dir, test_files = temp_test_files
@@ -97,7 +95,6 @@ async def test_grep_content_mode(grep_tool: Grep, temp_test_files):
     assert ":" in result.output  # Line numbers should be present
 
 
-@pytest.mark.asyncio
 async def test_grep_case_insensitive(grep_tool: Grep, temp_test_files):
     """Test case insensitive search."""
     temp_dir, test_files = temp_test_files
@@ -119,7 +116,6 @@ async def test_grep_case_insensitive(grep_tool: Grep, temp_test_files):
     assert "test1.py" in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_with_context(grep_tool: Grep, temp_test_files):
     """Test showing context around matches."""
     temp_dir, test_files = temp_test_files
@@ -143,7 +139,6 @@ async def test_grep_with_context(grep_tool: Grep, temp_test_files):
     assert len(lines) > 2  # Should have more than just the matching line
 
 
-@pytest.mark.asyncio
 async def test_grep_count_matches(grep_tool: Grep, temp_test_files):
     """Test counting matches."""
     temp_dir, test_files = temp_test_files
@@ -166,7 +161,6 @@ async def test_grep_count_matches(grep_tool: Grep, temp_test_files):
     assert "test2.js" in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_with_glob_pattern(grep_tool: Grep, temp_test_files):
     """Test filtering files with glob pattern."""
     temp_dir, test_files = temp_test_files
@@ -192,7 +186,6 @@ async def test_grep_with_glob_pattern(grep_tool: Grep, temp_test_files):
     assert "readme.txt" not in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_with_type_filter(grep_tool: Grep, temp_test_files):
     """Test filtering by file type."""
     temp_dir, test_files = temp_test_files
@@ -218,7 +211,6 @@ async def test_grep_with_type_filter(grep_tool: Grep, temp_test_files):
     assert "readme.txt" not in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_head_limit(grep_tool: Grep, temp_test_files):
     """Test limiting number of results."""
     temp_dir, test_files = temp_test_files
@@ -245,7 +237,6 @@ async def test_grep_head_limit(grep_tool: Grep, temp_test_files):
     assert "... (results truncated to 2 lines)" in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_output_truncation(grep_tool: Grep):
     """Ensure extremely long output is truncated automatically."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -271,7 +262,6 @@ async def test_grep_output_truncation(grep_tool: Grep):
         assert len(result.output) < DEFAULT_MAX_CHARS + 100
 
 
-@pytest.mark.asyncio
 async def test_grep_multiline_mode(grep_tool: Grep):
     """Test multiline pattern matching."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -303,7 +293,6 @@ async def test_grep_multiline_mode(grep_tool: Grep):
         assert "multiline" in result.output
 
 
-@pytest.mark.asyncio
 async def test_grep_no_matches(grep_tool: Grep):
     """Test when no matches are found."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -318,7 +307,6 @@ async def test_grep_no_matches(grep_tool: Grep):
         assert "No matches found" in result.message
 
 
-@pytest.mark.asyncio
 async def test_grep_invalid_pattern(grep_tool: Grep):
     """Test with invalid regex pattern."""
     result = await grep_tool(Params(pattern="[invalid", path=".", output_mode="files_with_matches"))
@@ -326,7 +314,6 @@ async def test_grep_invalid_pattern(grep_tool: Grep):
     assert isinstance(result.output, str)  # Should have output either way
 
 
-@pytest.mark.asyncio
 async def test_grep_single_file(grep_tool: Grep):
     """Test searching in a single file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py") as f:
@@ -352,7 +339,6 @@ async def test_grep_single_file(grep_tool: Grep):
         assert len(result.output.strip()) > 0
 
 
-@pytest.mark.asyncio
 async def test_grep_before_after_context(grep_tool: Grep, temp_test_files):
     """Test before and after context separately."""
     temp_dir, test_files = temp_test_files

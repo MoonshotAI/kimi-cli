@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
+from kimi_cli.utils.aioqueue import Queue
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.types import DisplayBlock
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -16,6 +18,7 @@ class Request:
     sender: str
     action: str
     description: str
+    display: list[DisplayBlock]
 
 
 type Response = Literal["approve", "approve_for_session", "reject"]
@@ -23,7 +26,7 @@ type Response = Literal["approve", "approve_for_session", "reject"]
 
 class Approval:
     def __init__(self, yolo: bool = False):
-        self._request_queue = asyncio.Queue[Request]()
+        self._request_queue = Queue[Request]()
         self._requests: dict[str, tuple[Request, asyncio.Future[bool]]] = {}
         self._yolo = yolo
         self._auto_approve_actions: set[str] = set()  # TODO: persist across sessions
@@ -32,7 +35,16 @@ class Approval:
     def set_yolo(self, yolo: bool) -> None:
         self._yolo = yolo
 
-    async def request(self, sender: str, action: str, description: str) -> bool:
+    def is_yolo(self) -> bool:
+        return self._yolo
+
+    async def request(
+        self,
+        sender: str,
+        action: str,
+        description: str,
+        display: list[DisplayBlock] | None = None,
+    ) -> bool:
         """
         Request approval for the given action. Intended to be called by tools.
 
@@ -71,6 +83,7 @@ class Approval:
             sender=sender,
             action=action,
             description=description,
+            display=display or [],
         )
         approved_future = asyncio.Future[bool]()
         self._request_queue.put_nowait(request)

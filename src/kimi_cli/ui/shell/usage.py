@@ -33,7 +33,7 @@ class UsageRow:
 
 
 @registry.command
-async def usage(app: Shell, args: list[str]):
+async def usage(app: Shell, args: str):
     """Display API usage and quota information"""
     assert isinstance(app.soul, KimiSoul)
     if app.soul.runtime.llm is None:
@@ -47,7 +47,7 @@ async def usage(app: Shell, args: list[str]):
 
     usage_url = _usage_url(provider)
     if usage_url is None:
-        console.print("[yellow]Usage is available on Kimi for Coding platform only.[/yellow]")
+        console.print("[yellow]Usage is available on Kimi Code platform only.[/yellow]")
         return
 
     with console.status("[cyan]Fetching usage...[/cyan]"):

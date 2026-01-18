@@ -7,27 +7,28 @@ from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 import aiofiles
-from kosong.message import Message, TextPart
+from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
 from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.wire import Wire
-from kimi_cli.wire.message import (
+from kimi_cli.wire.serde import WireMessageRecord
+from kimi_cli.wire.types import (
     Event,
     StatusUpdate,
     StepBegin,
+    TextPart,
     ToolResult,
     TurnBegin,
     is_event,
 )
-from kimi_cli.wire.serde import WireMessageRecord
 
 MAX_REPLAY_TURNS = 5
 
@@ -66,7 +67,7 @@ async def replay_recent_history(
             wire.soul_side.send(event)
             await asyncio.sleep(0)  # yield to UI loop
         wire.shutdown()
-        with contextlib.suppress(asyncio.QueueShutDown):
+        with contextlib.suppress(QueueShutDown):
             await ui_task
 
 
@@ -109,10 +110,9 @@ async def _build_replay_turns_from_wire(wire_file: Path | None) -> list[_ReplayT
                     continue
 
                 current_turn = turns[-1]
-                wire_event = cast(Event, wire_msg)
-                if isinstance(wire_event, StepBegin):
-                    current_turn.n_steps = wire_event.n
-                current_turn.events.append(wire_event)
+                if isinstance(wire_msg, StepBegin):
+                    current_turn.n_steps = wire_msg.n
+                current_turn.events.append(wire_msg)
     except Exception:
         logger.exception("Failed to build replay turns from wire file {file}:", file=wire_file)
         return []

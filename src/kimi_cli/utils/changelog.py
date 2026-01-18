@@ -43,13 +43,14 @@ def parse_changelog(md_text: str) -> dict[str, ReleaseEntry]:
 
     for raw in lines:
         line = raw.rstrip()
-        if line.startswith("## ["):
-            # New version section, flush previous
+        # Format: `## 0.75 (2026-01-09)` or `## Unreleased`
+        if line.startswith("## "):
             commit()
-            # Extract version token inside brackets
-            end = line.find("]")
-            ver = line[4:end] if end != -1 else line[3:].strip()
-            current_ver = ver.strip()
+            ver = line[3:].strip()
+            # Remove trailing date in parentheses if present
+            if "(" in ver:
+                ver = ver[: ver.find("(")].strip()
+            current_ver = ver
             desc_lines = []
             bullet_lines = []
             collecting_desc = True

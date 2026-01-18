@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import acp
-from kosong.message import (
-    ContentPart,
-    ImageURLPart,
-    TextPart,
-)
-from kosong.tooling import ToolReturnValue
 
 from kimi_cli.acp.types import ACPContentBlock
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.types import (
+    ContentPart,
+    DiffDisplayBlock,
+    DisplayBlock,
+    ImageURLPart,
+    TextPart,
+    ToolReturnValue,
+)
 
 
 def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPart]:
@@ -31,6 +33,20 @@ def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPa
     return content
 
 
+def display_block_to_acp_content(
+    block: DisplayBlock,
+) -> acp.schema.FileEditToolCallContent | None:
+    if isinstance(block, DiffDisplayBlock):
+        return acp.schema.FileEditToolCallContent(
+            type="diff",
+            path=block.path,
+            old_text=block.old_text,
+            new_text=block.new_text,
+        )
+
+    return None
+
+
 def tool_result_to_acp_content(
     tool_ret: ToolReturnValue,
 ) -> list[
@@ -38,6 +54,8 @@ def tool_result_to_acp_content(
     | acp.schema.FileEditToolCallContent
     | acp.schema.TerminalToolCallContent
 ]:
+    from kimi_cli.acp.tools import HideOutputDisplayBlock
+
     def _to_acp_content(
         part: ContentPart,
     ) -> (
@@ -66,6 +84,16 @@ def tool_result_to_acp_content(
         | acp.schema.TerminalToolCallContent
     ] = []
 
+    for block in tool_ret.display:
+        if isinstance(block, HideOutputDisplayBlock):
+            # return early to indicate no output should be shown
+            return []
+
+        content = display_block_to_acp_content(block)
+        if content is not None:
+            contents.append(content)
+    # TODO: better concatenation of `display` blocks and `output`?
+
     output = tool_ret.output
     if isinstance(output, str):
         if output:
@@ -77,6 +105,7 @@ def tool_result_to_acp_content(
         contents.extend(_to_acp_content(part) for part in output)
 
     if not contents and tool_ret.message:
+        # Fallback to the `message` for LLM if there's no other content
         contents.append(_to_text_block(tool_ret.message))
 
     return contents

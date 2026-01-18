@@ -6,9 +6,9 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
-import streamingjson  # pyright: ignore[reportMissingTypeStubs]
-from kosong.message import ContentPart, TextPart, ThinkPart, ToolCall, ToolCallPart
-from kosong.tooling import ToolError, ToolOk, ToolResult, ToolReturnValue
+import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kosong.message import Message
+from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
@@ -19,18 +19,29 @@ from rich.text import Text
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.utils.aioqueue import QueueShutDown
+from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
-from kimi_cli.wire.message import (
+from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalRequestResolved,
+    BriefDisplayBlock,
     CompactionBegin,
     CompactionEnd,
+    ContentPart,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
+    TextPart,
+    ThinkPart,
+    TodoDisplayBlock,
+    ToolCall,
+    ToolCallPart,
+    ToolResult,
+    ToolReturnValue,
     TurnBegin,
     WireMessage,
 )
@@ -71,7 +82,7 @@ class _ContentBlock:
                 self.raw_text,
                 style="grey50 italic" if self.is_think else "",
             ),
-            bullet_style="grey50",
+            bullet_style="grey50" if self.is_think else None,
         )
 
     def append(self, content: str) -> None:
@@ -185,13 +196,16 @@ class _ToolCallBlock:
                 )
             )
 
-        if self._result is not None and self._result.brief:
-            lines.append(
-                Markdown(
-                    self._result.brief,
-                    style="grey50" if not self._result.is_error else "red",
-                )
-            )
+        if self._result is not None:
+            for block in self._result.display:
+                if isinstance(block, BriefDisplayBlock):
+                    style = "grey50" if not self._result.is_error else "red"
+                    if block.text:
+                        lines.append(Markdown(block.text, style=style))
+                elif isinstance(block, TodoDisplayBlock):
+                    markdown = self._render_todo_markdown(block)
+                    if markdown:
+                        lines.append(Markdown(markdown, style="grey50"))
 
         if self.finished:
             assert self._result is not None
@@ -209,6 +223,21 @@ class _ToolCallBlock:
         return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
             f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
         )
+
+    def _render_todo_markdown(self, block: TodoDisplayBlock) -> str:
+        lines: list[str] = []
+        for todo in block.items:
+            normalized = todo.status.replace("_", " ").lower()
+            match normalized:
+                case "pending":
+                    lines.append(f"- {todo.title}")
+                case "in progress":
+                    lines.append(f"- {todo.title} ←")
+                case "done":
+                    lines.append(f"- ~~{todo.title}~~")
+                case _:
+                    lines.append(f"- {todo.title}")
+        return "\n".join(lines)
 
 
 class _ApprovalRequestPanel:
@@ -265,7 +294,7 @@ class _ApprovalRequestPanel:
 
 class _StatusBlock:
     def __init__(self, initial: StatusUpdate) -> None:
-        self.text = Text("", justify="right", style="grey50")
+        self.text = Text("", justify="right")
         self.update(initial)
 
     def render(self) -> RenderableType:
@@ -331,7 +360,7 @@ class _LiveView:
                 while True:
                     try:
                         msg = await wire.receive()
-                    except asyncio.QueueShutDown:
+                    except QueueShutDown:
                         self.cleanup(is_interrupt=False)
                         live.update(self.compose())
                         break
@@ -383,7 +412,13 @@ class _LiveView:
 
         match msg:
             case TurnBegin():
-                pass
+                self.flush_content()
+                console.print(
+                    Panel(
+                        Text(message_stringify(Message(role="user", content=msg.user_input))),
+                        padding=(0, 1),
+                    )
+                )
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
