@@ -19,6 +19,7 @@ from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.utils.aioqueue import QueueShutDown
+from kimi_cli.utils.diff import format_unified_diff
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.utils.rich.syntax import KimiSyntax
@@ -31,7 +32,6 @@ from kimi_cli.wire.types import (
     CompactionEnd,
     ContentPart,
     DiffDisplayBlock,
-    DisplayBlock,
     ShellDisplayBlock,
     StatusUpdate,
     StepBegin,
@@ -52,28 +52,6 @@ MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 
 # Truncation limits for approval request display
 MAX_PREVIEW_LINES = 4
-
-
-def _truncate_text(text: str, max_lines: int) -> tuple[str, int]:
-    """
-    Truncate text to a maximum number of lines.
-
-    Returns:
-        A tuple of (truncated text, number of hidden lines).
-    """
-    lines = text.split("\n")
-    if len(lines) <= max_lines:
-        return text, 0
-    truncated = "\n".join(lines[:max_lines])
-    return truncated, len(lines) - max_lines
-
-
-def _render_more_lines_hint(hidden_lines: int) -> Text:
-    label = "line" if hidden_lines == 1 else "lines"
-    return Text(
-        f"... ({hidden_lines} more {label}, ctrl-e to expand)",
-        style="dim italic",
-    )
 
 
 async def visualize(
@@ -267,6 +245,15 @@ class _ToolCallBlock:
         return "\n".join(lines)
 
 
+class _ApprovalContentBlock(NamedTuple):
+    """A pre-rendered content block for approval request with line count."""
+
+    text: str
+    lines: int
+    style: str = ""
+    lexer: str = ""
+
+
 class _ApprovalRequestPanel:
     def __init__(self, request: ApprovalRequest):
         self.request = request
@@ -277,40 +264,59 @@ class _ApprovalRequestPanel:
         ]
         self.selected_index = 0
 
-        self._show_description = bool(request.description) and not request.display
-        self._description_preview, self._description_hidden = ("", 0)
-        if self._show_description:
-            self._description_preview, self._description_hidden = _truncate_text(
-                request.description, MAX_PREVIEW_LINES
+        # Pre-render all content blocks with line counts
+        self._content_blocks: list[_ApprovalContentBlock] = []
+        last_diff_path: str | None = None
+
+        # Handle description (only if no display blocks)
+        if request.description and not request.display:
+            text = request.description.rstrip("\n")
+            self._content_blocks.append(
+                _ApprovalContentBlock(text=text, lines=text.count("\n") + 1)
             )
 
-        # Pre-process truncation for diff blocks
-        self._diff_previews: list[tuple[DiffDisplayBlock, str, int]] = []
+        # Handle display blocks
         for block in request.display:
             if isinstance(block, DiffDisplayBlock):
-                from kimi_cli.utils.diff import format_unified_diff
-
+                # File path or ellipsis
+                if block.path != last_diff_path:
+                    self._content_blocks.append(
+                        _ApprovalContentBlock(text=block.path, lines=1, style="bold")
+                    )
+                    last_diff_path = block.path
+                else:
+                    self._content_blocks.append(
+                        _ApprovalContentBlock(text="⋮", lines=1, style="dim")
+                    )
+                # Diff content
                 diff_text = format_unified_diff(
                     block.old_text,
                     block.new_text,
                     block.path,
                     include_file_header=False,
+                ).rstrip("\n")
+                self._content_blocks.append(
+                    _ApprovalContentBlock(
+                        text=diff_text, lines=diff_text.count("\n") + 1, lexer="diff"
+                    )
                 )
-                truncated, hidden = _truncate_text(diff_text, MAX_PREVIEW_LINES)
-                self._diff_previews.append((block, truncated, hidden))
+            elif isinstance(block, ShellDisplayBlock):
+                text = block.command.rstrip("\n")
+                self._content_blocks.append(
+                    _ApprovalContentBlock(
+                        text=text, lines=text.count("\n") + 1, lexer=block.language
+                    )
+                )
+                last_diff_path = None
+            elif isinstance(block, BriefDisplayBlock) and block.text:
+                text = block.text.rstrip("\n")
+                self._content_blocks.append(
+                    _ApprovalContentBlock(text=text, lines=text.count("\n") + 1, style="grey50")
+                )
+                last_diff_path = None
 
-        self._shell_previews: list[tuple[ShellDisplayBlock, str, int]] = []
-        for block in request.display:
-            if isinstance(block, ShellDisplayBlock):
-                truncated, hidden = _truncate_text(block.command, MAX_PREVIEW_LINES)
-                self._shell_previews.append((block, truncated, hidden))
-
-        # Determine if there's expandable content
-        self.has_expandable_content = (
-            (self._description_hidden > 0 if self._show_description else False)
-            or any(hidden > 0 for _, _, hidden in self._diff_previews)
-            or any(hidden > 0 for _, _, hidden in self._shell_previews)
-        )
+        self._total_lines = sum(b.lines for b in self._content_blocks)
+        self.has_expandable_content = self._total_lines > MAX_PREVIEW_LINES
 
     def render(self) -> RenderableType:
         """Render the approval menu as a panel."""
@@ -323,18 +329,16 @@ class _ApprovalRequestPanel:
         ]
         content_lines.append(Text(""))
 
-        if self._show_description:
-            content_lines.append(self._render_description_block())
+        # Render content with line budget
+        remaining = MAX_PREVIEW_LINES
+        for block in self._content_blocks:
+            if remaining <= 0:
+                break
+            content_lines.append(self._render_block(block, remaining))
+            remaining -= min(block.lines, remaining)
 
-        # Render display blocks (DiffDisplayBlock, BriefDisplayBlock, etc.)
-        first_block = True
-        for block in self.request.display:
-            rendered = self._render_display_block(block)
-            if rendered is not None:
-                if not first_block:
-                    content_lines.append(Text(""))
-                content_lines.append(rendered)
-                first_block = False
+        if self.has_expandable_content:
+            content_lines.append(Text("... (truncated, ctrl-e to expand)", style="dim italic"))
 
         lines: list[RenderableType] = []
         if content_lines:
@@ -351,58 +355,22 @@ class _ApprovalRequestPanel:
 
         return Padding(Group(*lines), 1)
 
-    def _render_description_block(self) -> RenderableType:
-        """Render the description (truncated if needed)."""
-        content_lines: list[RenderableType] = [Text(self._description_preview)]
-        if self._description_hidden > 0:
-            content_lines.append(_render_more_lines_hint(self._description_hidden))
-        return Group(*content_lines)
+    def _render_block(
+        self, block: _ApprovalContentBlock, max_lines: int | None = None
+    ) -> RenderableType:
+        """Render a content block, optionally truncated."""
+        text = block.text
+        if max_lines is not None and block.lines > max_lines:
+            # Truncate to max_lines
+            text = "\n".join(text.split("\n")[:max_lines])
 
-    def _render_display_block(self, block: DisplayBlock) -> RenderableType | None:
-        """Render a display block from the approval request."""
-        if isinstance(block, DiffDisplayBlock):
-            return self._render_diff_block(block)
-        if isinstance(block, BriefDisplayBlock):
-            if block.text:
-                return Text(block.text, style="grey50")
-            return None
-        if isinstance(block, ShellDisplayBlock):
-            return self._render_shell_block(block)
-        # Skip TodoDisplayBlock and other unknown block types
-        return None
+        if block.lexer:
+            return KimiSyntax(text, block.lexer)
+        return Text(text, style=block.style)
 
-    def _render_diff_block(self, block: DiffDisplayBlock) -> RenderableType:
-        """Render a diff block (truncated if needed)."""
-        # Find the pre-computed truncated diff
-        truncated_diff = ""
-        hidden_lines = 0
-        for b, t, h in self._diff_previews:
-            if b is block:
-                truncated_diff = t
-                hidden_lines = h
-                break
-
-        content_lines: list[RenderableType] = [
-            Text(block.path, style="bold"),
-            KimiSyntax(truncated_diff, "diff"),
-        ]
-        if hidden_lines > 0:
-            content_lines.append(_render_more_lines_hint(hidden_lines))
-        return Group(*content_lines)
-
-    def _render_shell_block(self, block: ShellDisplayBlock) -> RenderableType:
-        """Render a shell block (truncated if needed)."""
-        truncated = block.command
-        hidden_lines = 0
-        for b, t, h in self._shell_previews:
-            if b is block:
-                truncated = t
-                hidden_lines = h
-                break
-        content_lines: list[RenderableType] = [Text(truncated)]
-        if hidden_lines > 0:
-            content_lines.append(_render_more_lines_hint(hidden_lines))
-        return Group(*content_lines)
+    def render_full(self) -> list[RenderableType]:
+        """Render full content for pager (no truncation)."""
+        return [self._render_block(block) for block in self._content_blocks]
 
     def move_up(self):
         """Move selection up."""
@@ -417,46 +385,22 @@ class _ApprovalRequestPanel:
         return self.options[self.selected_index][1]
 
 
-def _show_approval_in_pager(request: ApprovalRequest) -> None:
+def _show_approval_in_pager(panel: _ApprovalRequestPanel) -> None:
     """Show the full approval request content in a pager."""
-    from kimi_cli.utils.diff import format_unified_diff
-
     with console.screen(), console.pager(styles=True):
-        # Header: matches the style in _ApprovalRequestPanel
+        # Header: matches the style in _ApprovalRequestPanel.render()
         console.print(
             Text.from_markup(
                 "[yellow]⚠ "
-                f"{escape(request.sender)} is requesting approval to "
-                f"{escape(request.action)}:[/yellow]"
+                f"{escape(panel.request.sender)} is requesting approval to "
+                f"{escape(panel.request.action)}:[/yellow]"
             )
         )
         console.print()
 
-        rendered_any = False
-        for block in request.display:
-            if isinstance(block, DiffDisplayBlock):
-                console.print(Text(block.path, style="bold"))
-                diff_text = format_unified_diff(
-                    block.old_text,
-                    block.new_text,
-                    block.path,
-                    include_file_header=False,
-                )
-                console.print(KimiSyntax(diff_text, "diff"))
-                console.print()
-                rendered_any = True
-            elif isinstance(block, BriefDisplayBlock) and block.text:
-                console.print(block.text, style="grey50")
-                console.print()
-                rendered_any = True
-            elif isinstance(block, ShellDisplayBlock):
-                console.print(KimiSyntax(block.command, block.language, word_wrap=True))
-                console.print()
-                rendered_any = True
-
-        if request.description and not rendered_any:
-            console.print(request.description)
-            console.print()
+        # Render full content (no truncation)
+        for renderable in panel.render_full():
+            console.print(renderable)
 
 
 class _StatusBlock:
@@ -540,7 +484,7 @@ class _LiveView:
                         await listener.pause()
                         live.stop()
                         try:
-                            _show_approval_in_pager(self._current_approval_request_panel.request)
+                            _show_approval_in_pager(self._current_approval_request_panel)
                         finally:
                             # Reset live render shape so the next refresh re-anchors cleanly.
                             self._reset_live_shape(live)
