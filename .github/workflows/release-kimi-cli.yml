@@ -116,18 +116,66 @@ jobs:
 
           rm -f "$cert_path"
 
-      # Build with signing on macOS (APPLE_SIGNING_IDENTITY is read by kimi.spec)
-      - name: Build standalone binary (macOS with signing)
-        if: runner.os == 'macOS'
-        run: make build-bin
-
-      # Build without signing on other platforms
+      # Build without signing on non-macOS platforms
       - name: Build standalone binary
         if: runner.os != 'macOS'
         run: make build-bin
 
-      # macOS: Notarize the signed binary
-      - name: Notarize macOS binary
+      # macOS: Build both onefile and onedir versions
+      - name: Build standalone binary (macOS onefile)
+        if: runner.os == 'macOS'
+        run: |
+          make build-bin
+          # Move onefile binary to a separate location
+          mv dist/kimi dist/kimi-onefile
+
+      - name: Build standalone binary (macOS onedir)
+        if: runner.os == 'macOS'
+        run: |
+          make build-bin-onedir
+          # The onedir output is in dist/kimi/ directory
+
+      # macOS: Sign onefile binary
+      - name: Sign macOS onefile binary
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          echo "Signing onefile binary..."
+          codesign --deep --force --options runtime --timestamp \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --keychain "$APPLE_KEYCHAIN_PATH" \
+            dist/kimi-onefile
+          echo "✅ Onefile binary signed"
+          codesign -dv --verbose=2 dist/kimi-onefile
+
+      # macOS: Sign onedir binaries (all dylibs and executables)
+      - name: Sign macOS onedir binaries
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          echo "Signing onedir binaries..."
+          
+          # Sign all dylibs and so files first
+          find dist/kimi -type f \( -name "*.dylib" -o -name "*.so" \) | while read -r lib; do
+            echo "Signing: $lib"
+            codesign --force --options runtime --timestamp \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --keychain "$APPLE_KEYCHAIN_PATH" \
+              "$lib"
+          done
+          
+          # Sign the main executable last
+          echo "Signing main executable: dist/kimi/kimi"
+          codesign --force --options runtime --timestamp \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --keychain "$APPLE_KEYCHAIN_PATH" \
+            dist/kimi/kimi
+          
+          echo "✅ Onedir binaries signed"
+          codesign -dv --verbose=2 dist/kimi/kimi
+
+      # macOS: Notarize onefile binary
+      - name: Notarize macOS onefile binary
         if: runner.os == 'macOS'
         env:
           APPLE_NOTARIZATION_KEY_P8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
@@ -141,10 +189,10 @@ jobs:
           echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
 
           # Create zip for notarization
-          zip_path="${RUNNER_TEMP}/kimi.zip"
-          ditto -c -k --keepParent dist/kimi "$zip_path"
+          zip_path="${RUNNER_TEMP}/kimi-onefile.zip"
+          ditto -c -k --keepParent dist/kimi-onefile "$zip_path"
 
-          echo "Submitting for notarization..."
+          echo "Submitting onefile for notarization..."
           
           xcrun notarytool submit "$zip_path" \
             --key "$key_path" \
@@ -153,11 +201,49 @@ jobs:
             --wait \
             --timeout 15m
 
-          echo "✅ Notarization completed"
+          echo "✅ Onefile notarization completed"
 
           # Verify
-          echo "Verifying signature..."
-          codesign -dv --verbose=2 dist/kimi
+          echo "Verifying onefile signature..."
+          codesign -dv --verbose=2 dist/kimi-onefile
+
+          # Cleanup
+          rm -f "$zip_path"
+
+      # macOS: Notarize onedir binaries
+      - name: Notarize macOS onedir binaries
+        if: runner.os == 'macOS'
+        env:
+          APPLE_NOTARIZATION_KEY_P8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
+          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          # Save API key (might already exist from previous step)
+          key_path="${RUNNER_TEMP}/AuthKey.p8"
+          if [[ ! -f "$key_path" ]]; then
+            echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
+          fi
+
+          # Create zip for notarization (entire directory)
+          zip_path="${RUNNER_TEMP}/kimi-onedir.zip"
+          ditto -c -k --keepParent dist/kimi "$zip_path"
+
+          echo "Submitting onedir for notarization..."
+          
+          xcrun notarytool submit "$zip_path" \
+            --key "$key_path" \
+            --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+            --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
+            --wait \
+            --timeout 15m
+
+          echo "✅ Onedir notarization completed"
+
+          # Verify
+          echo "Verifying onedir signature..."
+          codesign -dv --verbose=2 dist/kimi/kimi
 
           # Cleanup
           rm -f "$key_path" "$zip_path"
@@ -170,7 +256,9 @@ jobs:
             security delete-keychain "$APPLE_KEYCHAIN_PATH" || true
           fi
 
-      - name: Package artifact
+      # Package artifact for non-macOS platforms
+      - name: Package artifact (non-macOS)
+        if: runner.os != 'macOS'
         shell: python
         env:
           TAG: ${{ github.ref_name }}
@@ -206,6 +294,49 @@ jobs:
                   archive_file.add(binary_path, arcname=binary_name)
 
           print(f"Built artifact: {archive_path}")
+
+      # Package artifacts for macOS (both onefile and onedir)
+      - name: Package artifact (macOS)
+        if: runner.os == 'macOS'
+        shell: python
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          import os
+          import pathlib
+          import tarfile
+
+          tag = os.environ["TAG"]
+          target = os.environ["TARGET"]
+
+          dist_dir = pathlib.Path("dist")
+          artifacts_dir = pathlib.Path("artifacts")
+          artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+          # Package onefile
+          onefile_path = dist_dir / "kimi-onefile"
+          if not onefile_path.exists():
+              raise SystemExit(f"Onefile binary not found at {onefile_path}")
+
+          onefile_archive_name = f"kimi-{tag}-{target}-onefile.tar.gz"
+          onefile_archive_path = artifacts_dir / onefile_archive_name
+          with tarfile.open(onefile_archive_path, "w:gz") as archive_file:
+              archive_file.add(onefile_path, arcname="kimi")
+          print(f"Built onefile artifact: {onefile_archive_path}")
+
+          # Package onedir
+          onedir_path = dist_dir / "kimi"
+          if not onedir_path.exists() or not onedir_path.is_dir():
+              raise SystemExit(f"Onedir directory not found at {onedir_path}")
+
+          onedir_archive_name = f"kimi-{tag}-{target}-onedir.tar.gz"
+          onedir_archive_path = artifacts_dir / onedir_archive_name
+          with tarfile.open(onedir_archive_path, "w:gz") as archive_file:
+              # Add the directory contents with kimi/ as the root
+              for item in onedir_path.iterdir():
+                  archive_file.add(item, arcname=f"kimi/{item.name}")
+          print(f"Built onedir artifact: {onedir_archive_path}")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
