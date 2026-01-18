@@ -4,13 +4,14 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 import kosong
-from kosong.message import ContentPart, Message, TextPart, ThinkPart
+from kosong.message import Message
 from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.types import ContentPart, TextPart, ThinkPart
 
 
 @runtime_checkable

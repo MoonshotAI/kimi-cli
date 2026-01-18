@@ -13,7 +13,6 @@ from kimi_cli.utils.path import list_directory
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific symlink tests.")
-@pytest.mark.asyncio
 async def test_list_directory_unix(temp_work_dir: KaosPath) -> None:
     # Create a regular file and a directory (use KaosPath async ops for style consistency)
     await (temp_work_dir / "regular.txt").write_text("hello")
@@ -49,7 +48,6 @@ drwxr-xr-x emptydir\
 
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific symlink tests.")
-@pytest.mark.asyncio
 async def test_list_directory_windows(temp_work_dir: KaosPath) -> None:
     # Create a regular file and a directory (use KaosPath async ops for style consistency)
     await (temp_work_dir / "regular.txt").write_text("hello")

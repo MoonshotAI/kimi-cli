@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from kosong.message import Message, TextPart
+from kosong.message import Message
+
+from kimi_cli.wire.types import TextPart
 
 
 def message_stringify(message: Message) -> str:

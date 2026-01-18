@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from inline_snapshot import snapshot
-from kosong.message import ImageURLPart, Message, TextPart
-from kosong.tooling import ToolError, ToolOk, ToolResult
+from kosong.message import Message
+from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
+from kimi_cli.wire.types import ImageURLPart, TextPart, ThinkPart, ToolResult, VideoURLPart
 
 
 def test_system_message_creation():
@@ -213,10 +214,30 @@ def test_check_message_with_image_no_image_capability():
     assert missing_capabilities == {"image_in"}
 
 
+def test_check_message_with_video_and_video_capability():
+    """Test check_message with VideoURLPart when model has video_in capability."""
+    video_part = VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4"))
+    message = Message(role="user", content=[video_part])
+    model_capabilities: set[ModelCapability] = {"video_in"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == set()
+
+
+def test_check_message_with_video_no_video_capability():
+    """Test check_message with VideoURLPart when model lacks video_in capability."""
+    video_part = VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/video.mp4"))
+    message = Message(role="user", content=[video_part])
+    model_capabilities: set[ModelCapability] = {"image_in"}
+
+    missing_capabilities = check_message(message, model_capabilities)
+
+    assert missing_capabilities == {"video_in"}
+
+
 def test_check_message_with_think_and_think_capability():
     """Test check_message with ThinkPart when model has thinking capability."""
-    from kosong.message import ThinkPart
-
     think_part = ThinkPart(think="This is a thinking process")
     message = Message(role="assistant", content=[think_part])
     model_capabilities: set[ModelCapability] = {"image_in", "thinking"}
@@ -228,8 +249,6 @@ def test_check_message_with_think_and_think_capability():
 
 def test_check_message_with_think_no_think_capability():
     """Test check_message with ThinkPart when model lacks thinking capability."""
-    from kosong.message import ThinkPart
-
     think_part = ThinkPart(think="This is a thinking process")
     message = Message(role="assistant", content=[think_part])
     model_capabilities: set[ModelCapability] = {"image_in"}
@@ -241,8 +260,6 @@ def test_check_message_with_think_no_think_capability():
 
 def test_check_message_with_mixed_parts_partial_capabilities():
     """Test check_message with both ImageURLPart and ThinkPart, model has only one capability."""
-    from kosong.message import ThinkPart
-
     image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg"))
     think_part = ThinkPart(think="Thinking...")
     message = Message(role="user", content=[image_part, think_part])

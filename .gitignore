@@ -23,4 +23,9 @@ src/kimi_cli/deps/tmp
 
 # Generated reports
 tests_ai/report.json
+
 .DS_Store
+
+# nix build result
+result
+result-*

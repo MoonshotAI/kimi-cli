@@ -7,6 +7,8 @@ import time
 from collections.abc import AsyncGenerator, Callable
 from enum import Enum, auto
 
+from kimi_cli.utils.aioqueue import Queue
+
 
 class KeyEvent(Enum):
     UP = auto()
@@ -20,7 +22,7 @@ class KeyEvent(Enum):
 
 async def listen_for_keyboard() -> AsyncGenerator[KeyEvent]:
     loop = asyncio.get_running_loop()
-    queue = asyncio.Queue[KeyEvent]()
+    queue = Queue[KeyEvent]()
     cancel_event = threading.Event()
 
     def emit(event: KeyEvent) -> None:

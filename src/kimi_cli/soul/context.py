@@ -160,7 +160,7 @@ class Context:
 
     async def append_message(self, message: Message | Sequence[Message]):
         logger.debug("Appending message(s) to context: {message}", message=message)
-        messages = message if isinstance(message, Sequence) else [message]
+        messages = [message] if isinstance(message, Message) else message
         self._history.extend(messages)
 
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:

@@ -1,5 +1,7 @@
 import asyncio
 
+from kimi_cli.utils.aioqueue import Queue
+
 
 class BroadcastQueue[T]:
     """
@@ -7,15 +9,15 @@ class BroadcastQueue[T]:
     """
 
     def __init__(self) -> None:
-        self._queues: set[asyncio.Queue[T]] = set()
+        self._queues: set[Queue[T]] = set()
 
-    def subscribe(self) -> asyncio.Queue[T]:
+    def subscribe(self) -> Queue[T]:
         """Create a new subscription queue."""
-        queue: asyncio.Queue[T] = asyncio.Queue()
+        queue: Queue[T] = Queue()
         self._queues.add(queue)
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue[T]) -> None:
+    def unsubscribe(self, queue: Queue[T]) -> None:
         """Remove a subscription queue."""
         self._queues.discard(queue)
 

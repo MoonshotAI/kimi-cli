@@ -49,10 +49,12 @@ class LLMModel(BaseModel):
 class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
-    max_steps_per_run: int = 100
-    """Maximum number of steps in one run"""
-    max_retries_per_step: int = 3
+    max_steps_per_turn: int = Field(default=100, ge=1, validation_alias="max_steps_per_run")
+    """Maximum number of steps in one turn"""
+    max_retries_per_step: int = Field(default=3, ge=1)
     """Maximum number of retries in one step"""
+    max_ralph_iterations: int = Field(default=0, ge=-1)
+    """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
 
 
 class MoonshotSearchConfig(BaseModel):
@@ -94,16 +96,38 @@ class Services(BaseModel):
     """Moonshot Fetch configuration."""
 
 
+class MCPClientConfig(BaseModel):
+    """MCP client configuration."""
+
+    tool_call_timeout_ms: int = 60000
+    """Timeout for tool calls in milliseconds."""
+
+
+class MCPConfig(BaseModel):
+    """MCP configuration."""
+
+    client: MCPClientConfig = Field(
+        default_factory=MCPClientConfig, description="MCP client configuration"
+    )
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
+    is_from_default_location: bool = Field(
+        default=False,
+        description="Whether the config was loaded from the default location",
+        exclude=True,
+    )
     default_model: str = Field(default="", description="Default model to use")
+    default_thinking: bool = Field(default=False, description="Default thinking mode")
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
+    mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -144,11 +168,12 @@ def load_config(config_file: Path | None = None) -> Config:
     Raises:
         ConfigError: If the configuration file is invalid.
     """
+    default_config_file = get_config_file()
     if config_file is None:
-        config_file = get_config_file()
-        is_default_config_file = True
-    else:
-        is_default_config_file = False
+        config_file = default_config_file
+    is_default_config_file = config_file.expanduser().resolve(
+        strict=False
+    ) == default_config_file.expanduser().resolve(strict=False)
     logger.debug("Loading config from file: {file}", file=config_file)
 
     # If the user hasn't provided an explicit config path, migrate legacy JSON config once.
@@ -159,6 +184,7 @@ def load_config(config_file: Path | None = None) -> Config:
         config = get_default_config()
         logger.debug("No config file found, creating default config: {config}", config=config)
         save_config(config, config_file)
+        config.is_from_default_location = is_default_config_file
         return config
 
     try:
@@ -167,13 +193,54 @@ def load_config(config_file: Path | None = None) -> Config:
             data = json.loads(config_text)
         else:
             data = tomlkit.loads(config_text)
-        return Config.model_validate(data)
+        config = Config.model_validate(data)
     except json.JSONDecodeError as e:
         raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
     except TOMLKitError as e:
         raise ConfigError(f"Invalid TOML in configuration file: {e}") from e
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration file: {e}") from e
+    config.is_from_default_location = is_default_config_file
+    return config
+
+
+def load_config_from_string(config_string: str) -> Config:
+    """
+    Load configuration from a TOML or JSON string.
+
+    Args:
+        config_string (str): TOML or JSON configuration text.
+
+    Returns:
+        Validated Config object.
+
+    Raises:
+        ConfigError: If the configuration text is invalid.
+    """
+    if not config_string.strip():
+        raise ConfigError("Configuration text cannot be empty")
+
+    json_error: json.JSONDecodeError | None = None
+    try:
+        data = json.loads(config_string)
+    except json.JSONDecodeError as exc:
+        json_error = exc
+        data = None
+
+    if data is None:
+        try:
+            data = tomlkit.loads(config_string)
+        except TOMLKitError as toml_error:
+            raise ConfigError(
+                f"Invalid configuration text: {json_error}; {toml_error}"
+            ) from toml_error
+
+    try:
+        config = Config.model_validate(data)
+    except ValidationError as e:
+        raise ConfigError(f"Invalid configuration text: {e}") from e
+    config.is_from_default_location = False
+    return config
 
 
 def save_config(config: Config, config_file: Path | None = None):
@@ -192,7 +259,7 @@ def save_config(config: Config, config_file: Path | None = None):
         if config_file.suffix.lower() == ".json":
             f.write(json.dumps(config_data, ensure_ascii=False, indent=2))
         else:
-            f.write(tomlkit.dumps(config_data))  # pyright: ignore[reportUnknownMemberType]
+            f.write(tomlkit.dumps(config_data))  # type: ignore[reportUnknownMemberType]
 
 
 def _migrate_json_config_to_toml() -> None:

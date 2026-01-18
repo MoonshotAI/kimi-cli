@@ -1,0 +1,15 @@
+orphan: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: make-format-kosong
+        name: make format-kosong
+        entry: make -C ../.. format-kosong
+        language: system
+        pass_filenames: false
+      - id: make-check-kosong
+        name: make check-kosong
+        entry: make -C ../.. check-kosong
+        language: system
+        pass_filenames: false

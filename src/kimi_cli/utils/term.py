@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -24,7 +25,33 @@ def ensure_new_line() -> None:
         _write_newline()
 
 
-def _cursor_column_unix() -> int | None:
+def ensure_tty_sane() -> None:
+    """Restore basic tty settings so Ctrl-C works after raw-mode operations."""
+    if sys.platform == "win32" or not sys.stdin.isatty():
+        return
+
+    try:
+        import termios
+    except Exception:
+        return
+
+    try:
+        fd = sys.stdin.fileno()
+        attrs = termios.tcgetattr(fd)
+    except Exception:
+        return
+
+    desired = termios.ISIG | termios.IEXTEN | termios.ICANON | termios.ECHO
+    if (attrs[3] & desired) == desired:
+        return
+
+    attrs[3] |= desired
+    with contextlib.suppress(OSError):
+        termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
+
+
+def _cursor_position_unix() -> tuple[int, int] | None:
+    """Get cursor position (row, column) on Unix. Both are 1-indexed."""
     assert sys.platform != "win32"
 
     import select
@@ -58,14 +85,20 @@ def _cursor_column_unix() -> int | None:
             response += chunk.decode(encoding="utf-8", errors="ignore")
             match = _CURSOR_POSITION_RE.search(response)
             if match:
-                return int(match.group(2))
+                return int(match.group(1)), int(match.group(2))
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, oldterm)
 
     return None
 
 
-def _cursor_column_windows() -> int | None:
+def _cursor_column_unix() -> int | None:
+    pos = _cursor_position_unix()
+    return pos[1] if pos else None
+
+
+def _cursor_position_windows() -> tuple[int, int] | None:
+    """Get cursor position (row, column) on Windows. Both are 1-indexed."""
     assert sys.platform == "win32"
 
     import ctypes
@@ -102,12 +135,31 @@ def _cursor_column_windows() -> int | None:
     if not kernel32.GetConsoleScreenBufferInfo(handle, ctypes.byref(csbi)):
         return None
 
-    return int(csbi.dwCursorPosition.X)
+    # Windows returns 0-indexed, convert to 1-indexed for consistency
+    return int(csbi.dwCursorPosition.Y) + 1, int(csbi.dwCursorPosition.X) + 1
+
+
+def _cursor_column_windows() -> int | None:
+    pos = _cursor_position_windows()
+    return pos[1] if pos else None
 
 
 def _write_newline() -> None:
     sys.stdout.write("\n")
     sys.stdout.flush()
+
+
+def get_cursor_row() -> int | None:
+    """Get the current cursor row (1-indexed)."""
+    if not sys.stdout.isatty() or not sys.stdin.isatty():
+        return None
+
+    if sys.platform == "win32":
+        pos = _cursor_position_windows()
+    else:
+        pos = _cursor_position_unix()
+
+    return pos[0] if pos else None
 
 
 if __name__ == "__main__":

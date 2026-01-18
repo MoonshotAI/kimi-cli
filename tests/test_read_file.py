@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.tools.file.read import MAX_BYTES, MAX_LINE_LENGTH, MAX_LINES, Params, ReadFile
+from kimi_cli.tools.file.read import (
+    MAX_BYTES,
+    MAX_LINE_LENGTH,
+    MAX_LINES,
+    Params,
+    ReadFile,
+)
+from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 
 @pytest.fixture
@@ -22,7 +31,6 @@ Line 5: End of file"""
     return file_path
 
 
-@pytest.mark.asyncio
 async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading an entire file."""
     result = await read_file_tool(Params(path=str(sample_file)))
@@ -41,7 +49,6 @@ async def test_read_entire_file(read_file_tool: ReadFile, sample_file: KaosPath)
     )
 
 
-@pytest.mark.asyncio
 async def test_read_with_line_offset(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading from a specific line offset."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=3))
@@ -58,7 +65,6 @@ async def test_read_with_line_offset(read_file_tool: ReadFile, sample_file: Kaos
     )
 
 
-@pytest.mark.asyncio
 async def test_read_with_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading a specific number of lines."""
     result = await read_file_tool(Params(path=str(sample_file), n_lines=2))
@@ -72,7 +78,6 @@ async def test_read_with_n_lines(read_file_tool: ReadFile, sample_file: KaosPath
     assert result.message == snapshot("2 lines read from file starting from line 1.")
 
 
-@pytest.mark.asyncio
 async def test_read_with_line_offset_and_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading with both line offset and n_lines."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=2, n_lines=2))
@@ -86,7 +91,6 @@ async def test_read_with_line_offset_and_n_lines(read_file_tool: ReadFile, sampl
     assert result.message == snapshot("2 lines read from file starting from line 2.")
 
 
-@pytest.mark.asyncio
 async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test reading a non-existent file."""
     nonexistent_file = temp_work_dir / "nonexistent.txt"
@@ -96,7 +100,6 @@ async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: Ka
     assert result.brief == snapshot("File not found")
 
 
-@pytest.mark.asyncio
 async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test attempting to read a directory."""
     result = await read_file_tool(Params(path=str(temp_work_dir)))
@@ -105,19 +108,38 @@ async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_wor
     assert result.brief == snapshot("Invalid path")
 
 
-@pytest.mark.asyncio
-async def test_read_with_relative_path(read_file_tool: ReadFile):
-    """Test reading with a relative path (should fail)."""
-    result = await read_file_tool(Params(path="relative/path/file.txt"))
+async def test_read_with_relative_path(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath, sample_file: KaosPath
+):
+    """Test reading with a relative path."""
+    result = await read_file_tool(Params(path=str(sample_file.relative_to(temp_work_dir))))
+    assert not result.is_error
+    assert result.message == snapshot(
+        "5 lines read from file starting from line 1. End of file reached."
+    )
+    assert result.output == snapshot("""\
+     1	Line 1: Hello World
+     2	Line 2: This is a test file
+     3	Line 3: With multiple lines
+     4	Line 4: For testing purposes
+     5	Line 5: End of file\
+""")
+
+
+async def test_read_with_relative_path_outside_work_dir(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Test reading a file outside the work directory with a relative path (should fail)."""
+    path = Path("..") / "outside_file.txt"
+    result = await read_file_tool(Params(path=str(path)))
     assert result.is_error
     assert result.message == snapshot(
-        "`relative/path/file.txt` is not an absolute path. You must provide an absolute "
-        "path to read a file."
+        f"`{path}` is not an absolute path. "
+        "You must provide an absolute path to read a file outside the working directory."
     )
-    assert result.brief == snapshot("Invalid path")
+    assert result.output == snapshot("")
 
 
-@pytest.mark.asyncio
 async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test reading an empty file."""
     empty_file = temp_work_dir / "empty.txt"
@@ -129,7 +151,54 @@ async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert result.message == snapshot("No lines read from file. End of file reached.")
 
 
-@pytest.mark.asyncio
+async def test_read_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading an image file."""
+    image_file = temp_work_dir / "sample.png"
+    data = b"\x89PNG\r\n\x1a\n" + b"pngdata"
+    await image_file.write_bytes(data)
+
+    result = await read_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    assert len(result.output) == 1
+    part = result.output[0]
+    assert isinstance(part, ImageURLPart)
+    assert part.image_url.url.startswith("data:image/png;base64,")
+
+
+async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading an extensionless image file."""
+    image_file = temp_work_dir / "sample"
+    data = b"\x89PNG\r\n\x1a\n" + b"pngdata"
+    await image_file.write_bytes(data)
+
+    result = await read_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    assert len(result.output) == 1
+    part = result.output[0]
+    assert isinstance(part, ImageURLPart)
+    assert part.image_url.url.startswith("data:image/png;base64,")
+
+
+async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading a video file."""
+    video_file = temp_work_dir / "sample.mp4"
+    data = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+    await video_file.write_bytes(data)
+
+    result = await read_file_tool(Params(path=str(video_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    assert len(result.output) == 1
+    part = result.output[0]
+    assert isinstance(part, VideoURLPart)
+    assert part.video_url.url.startswith("data:video/mp4;base64,")
+
+
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test reading with line offset beyond file length."""
     result = await read_file_tool(Params(path=str(sample_file), line_offset=10))
@@ -138,7 +207,6 @@ async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sam
     assert result.message == snapshot("No lines read from file. End of file reached.")
 
 
-@pytest.mark.asyncio
 async def test_read_unicode_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test reading a file with unicode characters."""
     unicode_file = temp_work_dir / "unicode.txt"
@@ -158,7 +226,6 @@ async def test_read_unicode_file(read_file_tool: ReadFile, temp_work_dir: KaosPa
     )
 
 
-@pytest.mark.asyncio
 async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test edge cases for line offset reading."""
     # Test reading from line 1 (should be same as default)
@@ -192,7 +259,6 @@ async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     assert result.message == snapshot("1 lines read from file starting from line 2.")
 
 
-@pytest.mark.asyncio
 async def test_line_truncation_and_messaging(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test line truncation functionality and messaging."""
 
@@ -242,7 +308,6 @@ async def test_line_truncation_and_messaging(read_file_tool: ReadFile, temp_work
     )
 
 
-@pytest.mark.asyncio
 async def test_parameter_validation_line_offset(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test that line_offset parameter validation works correctly."""
     # Test line_offset < 1 should be rejected by Pydantic validation
@@ -253,7 +318,6 @@ async def test_parameter_validation_line_offset(read_file_tool: ReadFile, sample
         Params(path=str(sample_file), line_offset=-1)
 
 
-@pytest.mark.asyncio
 async def test_parameter_validation_n_lines(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test that n_lines parameter validation works correctly."""
     # Test n_lines < 1 should be rejected by Pydantic validation
@@ -264,7 +328,6 @@ async def test_parameter_validation_n_lines(read_file_tool: ReadFile, sample_fil
         Params(path=str(sample_file), n_lines=-1)
 
 
-@pytest.mark.asyncio
 async def test_max_lines_boundary(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test that reading respects the MAX_LINES boundary."""
     # Create a file with more than MAX_LINES lines
@@ -284,7 +347,6 @@ async def test_max_lines_boundary(read_file_tool: ReadFile, temp_work_dir: KaosP
     assert len(output_lines) == MAX_LINES
 
 
-@pytest.mark.asyncio
 async def test_max_bytes_boundary(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test that reading respects the MAX_BYTES boundary."""
     # Create a file that exceeds MAX_BYTES
@@ -299,3 +361,29 @@ async def test_max_bytes_boundary(read_file_tool: ReadFile, temp_work_dir: KaosP
 
     assert not result.is_error
     assert f"Max {MAX_BYTES} bytes reached" in result.message
+
+
+async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading with ~ path expansion."""
+    # Create a test file in temp_work_dir and use ~ to reference it
+    # We simulate by creating a file and checking that ~ expands correctly
+    home = Path.home()
+    test_file = home / ".kimi_test_expanduser_temp"
+    test_content = "Test content for tilde expansion"
+
+    try:
+        # Create the test file in home directory
+        test_file.write_text(test_content)
+
+        # Read using ~ path
+        result = await read_file_tool(Params(path="~/.kimi_test_expanduser_temp"))
+
+        assert not result.is_error
+        assert "Test content for tilde expansion" in result.output
+        assert result.message == snapshot(
+            "1 lines read from file starting from line 1. End of file reached."
+        )
+    finally:
+        # Clean up
+        if test_file.exists():
+            test_file.unlink()

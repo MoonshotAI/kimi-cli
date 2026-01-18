@@ -9,11 +9,107 @@ Internal builds may append content to the Unreleased section.
 Only write entries that are worth mentioning to users.
 -->
 
-## [Unreleased]
+## Unreleased
+
+## 0.78 (2026-01-16)
+
+- CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
+
+## 0.77 (2026-01-15)
+
+- Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
+- Shell: Use `/model` to toggle thinking mode instead of Tab key
+- Config: Add `default_thinking` config option (need to run `/model` to select thinking mode after upgrade)
+- LLM: Add `always_thinking` capability for models that always use thinking mode
+- CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
+- Wire: Fix approval requests not responding properly in Wire mode
+- CLI: Add `--prompt-flow` option to load a Mermaid flowchart file as a Prompt Flow
+- Core: Add `/begin` slash command if a Prompt Flow is loaded to start the flow
+- Core: Replace Ralph Loop with Prompt Flow-based implementation
+
+## 0.76 (2026-01-12)
+
+- Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
+- Tool: Fix TypeScript files (`.ts`, `.tsx`, `.mts`, `.cts`) being misidentified as video files
+- Shell: Allow slash commands (`/help`, `/exit`, `/version`, `/changelog`, `/feedback`) in shell mode
+- Shell: Improve `/help` with fullscreen pager, showing slash commands, skills, and keyboard shortcuts
+- Shell: Improve `/changelog` and `/mcp` display with consistent bullet-style formatting
+- Shell: Show current model name in the bottom status bar
+- Shell: Add `Ctrl-/` shortcut to show help
+
+## 0.75 (2026-01-09)
+
+- Tool: Improve `ReadFile` tool description
+- Skills: Add built-in `kimi-cli-help` skill to answer Kimi CLI usage and configuration questions
+
+## 0.74 (2026-01-09)
+
+- ACP: Allow ACP clients to select and switch models (with thinking variants)
+- ACP: Add `terminal-auth` authentication method for setup flow
+- CLI: Deprecate `--acp` option in favor of `kimi acp` subcommand
+- Tool: Support reading image and video files in `ReadFile` tool
+
+## 0.73 (2026-01-09)
+
+- Skills: Add built-in skill-creator skill shipped with the package
+- Tool: Expand `~` to the home directory in `ReadFile` paths
+- MCP: Ensure MCP tools finish loading before starting the agent loop
+- Wire: Fix Wire mode failing to accept valid `cancel` requests
+- Setup: Allow `/model` to switch between all available models for the selected provider
+- Lib: Re-export all Wire message types from `kimi_cli.wire.types`, as a replacement of `kimi_cli.wire.message`
+- Loop: Add `max_ralph_iterations` loop control config to limit extra Ralph iterations
+- Config: Rename `max_steps_per_run` to `max_steps_per_turn` in loop control config (backward-compatible)
+- CLI: Add `--max-steps-per-turn`, `--max-retries-per-step` and `--max-ralph-iterations` options to override loop control config
+- SlashCmd: Make `/yolo` toggle auto-approve mode
+- UI: Show a YOLO badge in the shell prompt
+
+## 0.72 (2026-01-04)
+
+- Python: Fix installation on Python 3.14.
+
+## 0.71 (2026-01-04)
+
+- ACP: Route file reads/writes and shell commands through ACP clients for synced edits/output
+- Shell: Add `/model` slash command to switch default models and reload when using the default config
+- Skills: Add `/skill:<name>` slash commands to load `SKILL.md` instructions on demand
+- CLI: Add `kimi info` subcommand for version/protocol details (supports `--json`)
+- CLI: Add `kimi term` to launch the Toad terminal UI
+- Python: Bump the default tooling/CI version to 3.14
+
+## 0.70 (2025-12-31)
+
+- CLI: Add `--final-message-only` (and `--quiet` alias) to only output the final assistant message in print UI
+- LLM: Add `video_in` model capability and support video inputs
+
+## 0.69 (2025-12-29)
+
+- Core: Support discovering skills in `~/.kimi/skills` or `~/.claude/skills`
+- Python: Lower the minimum required Python version to 3.12
+- Nix: Add flake packaging; install with `nix profile install .#kimi-cli` or run `nix run .#kimi-cli`
+- CLI: Add `kimi-cli` script alias for invoking the CLI; can be run via `uvx kimi-cli`
+- Lib: Move LLM config validation into `create_llm` and return `None` when missing config
+
+## 0.68 (2025-12-24)
+
+- CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
+- Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
+- Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
+- Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
+- ACP: Show file diff previews in tool results and approval prompts
+- ACP: Connect to MCP servers managed by ACP clients
+- ACP: Run shell commands in ACP client terminal if supported
+- Lib: Add `KimiToolset.find` method to find tools by class or name
+- Lib: Add `ToolResultBuilder.display` method to append display blocks to tool results
+- MCP: Add `kimi mcp auth` and related subcommands to manage MCP authorization
+
+## 0.67 (2025-12-22)
 
 - ACP: Advertise slash commands in single-session ACP mode (`kimi --acp`)
+- MCP: Add `mcp.client` config section to configure MCP tool call timeout and other future options
+- Core: Improve default system prompt and `ReadFile` tool
+- UI: Fix Ctrl-C not working in some rare cases
 
-## [0.66] - 2025-12-19
+## 0.66 (2025-12-19)
 
 - Lib: Provide `token_usage` and `message_id` in `StatusUpdate` Wire message
 - Lib: Add `KimiToolset.load_tools` method to load tools with dependency injection
@@ -33,23 +129,23 @@ Only write entries that are worth mentioning to users.
 - ACP: Advertise slash commands `/init`, `/compact` and `/yolo` to ACP clients
 - SlashCmd: Add `/mcp` slash command to display MCP server and tool status
 
-## [0.65] - 2025-12-16
+## 0.65 (2025-12-16)
 
 - Lib: Support creating named sessions via `Session.create(work_dir, session_id)`
 - CLI: Automatically create new session when specified session ID is not found
 - CLI: Delete empty sessions on exit and ignore sessions whose context file is empty when listing
 - UI: Improve session replaying
 - Lib: Add `model_config: LLMModel | None` and `provider_config: LLMProvider | None` properties to `LLM` class
-- MetaCmd: Add `/usage` meta command to show API usage for Kimi for Coding users
+- MetaCmd: Add `/usage` meta command to show API usage for Kimi Code users
 
-## [0.64] - 2025-12-15
+## 0.64 (2025-12-15)
 
 - UI: Fix UTF-16 surrogate characters input on Windows
 - Core: Add `/sessions` meta command to list existing sessions and switch to a selected one
 - CLI: Add `--session/-S` option to specify session ID to resume
 - MCP: Add `kimi mcp` subcommand group to manage global MCP config file `~/.kimi/mcp.json`
 
-## [0.63] - 2025-12-12
+## 0.63 (2025-12-12)
 
 - Tool: Fix `FetchURL` tool incorrect output when fetching via service fails
 - Tool: Use `bash` instead of `sh` in `Shell` tool for better compatibility
@@ -59,7 +155,7 @@ Only write entries that are worth mentioning to users.
 - ACP: Update agent plans on the client side when `SetTodoList` tool is called
 - UI: Prevent normal messages starting with `/` from being treated as meta commands
 
-## [0.62] - 2025-12-08
+## 0.62 (2025-12-08)
 
 - ACP: Fix tool results (including Shell tool output) not being displayed in ACP clients like Zed
 - ACP: Fix compatibility with the latest version of Zed IDE (0.215.3)
@@ -69,17 +165,17 @@ Only write entries that are worth mentioning to users.
 - CLI: Add `--agent` option to specify builtin agents like `default` and `okabe`
 - Core: Improve compaction logic to better preserve relevant information
 
-## [0.61] - 2025-12-04
+## 0.61 (2025-12-04)
 
 - Lib: Fix logging when used as a library
 - Tool: Harden file path check to protect against shared-prefix escape
 - LLM: Improve compatibility with some third-party OpenAI Responses and Anthropic API providers
 
-## [0.60] - 2025-12-01
+## 0.60 (2025-12-01)
 
 - LLM: Fix interleaved thinking for Kimi and OpenAI-compatible providers
 
-## [0.59] - 2025-11-28
+## 0.59 (2025-11-28)
 
 - Core: Move context file location to `.kimi/sessions/{workdir_md5}/{session_id}/context.jsonl`
 - Lib: Move `WireMessage` type alias to `kimi_cli.wire.message`
@@ -100,15 +196,15 @@ Only write entries that are worth mentioning to users.
 - LLM: Improve compatibility with some OpenAI and Anthropic API providers
 - Core: Fix chat provider error after compaction when using Anthropic API
 
-## [0.58] - 2025-11-21
+## 0.58 (2025-11-21)
 
 - Core: Fix field inheritance of agent spec files when using `extend`
 - Core: Support using MCP tools in subagents
 - Tool: Add `CreateSubagent` tool to create subagents dynamically (not enabled in default agent)
-- Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi for Coding plan
+- Tool: Use MoonshotFetch service in `FetchURL` tool for Kimi Code plan
 - Tool: Truncate Grep tool output to avoid exceeding token limit
 
-## [0.57] - 2025-11-20
+## 0.57 (2025-11-20)
 
 - LLM: Fix Google GenAI provider when thinking toggle is not on
 - UI: Improve approval request wordings
@@ -116,11 +212,11 @@ Only write entries that are worth mentioning to users.
 - Tool: Rename `Bash`/`CMD` tool to `Shell` tool
 - Tool: Move `Task` tool to `kimi_cli.tools.multiagent` module
 
-## [0.56] - 2025-11-19
+## 0.56 (2025-11-19)
 
 - LLM: Add support for Google GenAI provider
 
-## [0.55] - 2025-11-18
+## 0.55 (2025-11-18)
 
 - Lib: Add `kimi_cli.app.enable_logging` function to enable logging when directly using `KimiCLI` class
 - Core: Fix relative path resolution in agent spec files
@@ -131,7 +227,7 @@ Only write entries that are worth mentioning to users.
 - ACP: Fix thinking content not displayed properly
 - UI: Minor UI improvements in shell mode
 
-## [0.54] - 2025-11-13
+## 0.54 (2025-11-13)
 
 - Lib: Move `WireMessage` from `kimi_cli.wire.message` to `kimi_cli.wire`
 - Print: Fix `stream-json` output format missing the last assistant message
@@ -139,7 +235,7 @@ Only write entries that are worth mentioning to users.
 - UI: Make a bell sound when there's an approval request
 - Core: Fix context compaction and clearing on Windows
 
-## [0.53] - 2025-11-12
+## 0.53 (2025-11-12)
 
 - UI: Remove unnecessary trailing spaces in console output
 - Core: Throw error when there are unsupported message parts
@@ -149,7 +245,7 @@ Only write entries that are worth mentioning to users.
 - CLI: Restore thinking mode from last time when `--thinking` is not specified
 - CLI: Fix `/reload` not working in binary packed by PyInstaller
 
-## [0.52] - 2025-11-10
+## 0.52 (2025-11-10)
 
 - CLI: Remove `--ui` option in favor of `--print`, `--acp`, and `--wire` flags (shell is still the default)
 - CLI: More intuitive session continuation behavior
@@ -158,7 +254,7 @@ Only write entries that are worth mentioning to users.
 - UI: Fix completion after backspacing
 - UI: Fix code block rendering issues on light background colors
 
-## [0.51] - 2025-11-8
+## 0.51 (2025-11-08)
 
 - Lib: Rename `Soul.model` to `Soul.model_name`
 - Lib: Rename `LLMModelCapability` to `ModelCapability` and move to `kimi_cli.llm`
@@ -173,33 +269,33 @@ Only write entries that are worth mentioning to users.
 - CLI: Add `--thinking` option to start in thinking mode
 - ACP: Support thinking content in ACP mode
 
-## [0.50] - 2025-11-07
+## 0.50 (2025-11-07)
 
 ### Changed
 
 - Improve UI look and feel
 - Improve Task tool observability
 
-## [0.49] - 2025-11-06
+## 0.49 (2025-11-06)
 
 ### Fixed
 
 - Minor UX improvements
 
-## [0.48] - 2025-11-06
+## 0.48 (2025-11-06)
 
 ### Added
 
 - Support Kimi K2 thinking mode
 
-## [0.47] - 2025-11-05
+## 0.47 (2025-11-05)
 
 ### Fixed
 
 - Fix Ctrl-W not working in some environments
 - Do not load SearchWeb tool when the search service is not configured
 
-## [0.46] - 2025-11-03
+## 0.46 (2025-11-03)
 
 ### Added
 
@@ -210,7 +306,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix binary packed by PyInstaller not working due to wrong entrypoint
 
-## [0.45] - 2025-10-31
+## 0.45 (2025-10-31)
 
 ### Added
 
@@ -222,7 +318,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix crash when continuing a session
 
-## [0.44] - 2025-10-30
+## 0.44 (2025-10-30)
 
 ### Changed
 
@@ -232,7 +328,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix potential invalid bytes in user input
 
-## [0.43] - 2025-10-30
+## 0.43 (2025-10-30)
 
 ### Added
 
@@ -245,7 +341,7 @@ Only write entries that are worth mentioning to users.
 
 - Ensure new line after executing shell commands
 
-## [0.42] - 2025-10-28
+## 0.42 (2025-10-28)
 
 ### Added
 
@@ -260,7 +356,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix ACP server `no attribute` error
 
-## [0.41] - 2025-10-26
+## 0.41 (2025-10-26)
 
 ### Fixed
 
@@ -272,7 +368,7 @@ Only write entries that are worth mentioning to users.
 - Disable reading command/query from stdin in shell mode
 - Clarify the API platform selection in `/setup` meta command
 
-## [0.40] - 2025-10-24
+## 0.40 (2025-10-24)
 
 ### Added
 
@@ -283,24 +379,24 @@ Only write entries that are worth mentioning to users.
 - Fix SSL certificate verification error in some rare cases
 - Fix possible decoding error in Bash tool
 
-## [0.39] - 2025-10-24
+## 0.39 (2025-10-24)
 
 ### Fixed
 
 - Fix context compaction threshold check
 - Fix panic when SOCKS proxy is set in the shell session
 
-## [0.38] - 2025-10-24
+## 0.38 (2025-10-24)
 
 - Minor UX improvements
 
-## [0.37] - 2025-10-24
+## 0.37 (2025-10-24)
 
 ### Fixed
 
 - Fix update checking
 
-## [0.36] - 2025-10-24
+## 0.36 (2025-10-24)
 
 ### Added
 
@@ -314,7 +410,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix "unknown error" message when interrupting a meta command
 
-## [0.35] - 2025-10-22
+## 0.35 (2025-10-22)
 
 ### Changed
 
@@ -323,7 +419,7 @@ Only write entries that are worth mentioning to users.
 - Always approve tool calls in `--print` mode
 - Add `/feedback` meta command
 
-## [0.34] - 2025-10-21
+## 0.34 (2025-10-21)
 
 ### Added
 
@@ -332,7 +428,7 @@ Only write entries that are worth mentioning to users.
 - Add `/setup` meta command to setup LLM provider and model
 - Add `/reload` meta command to reload configuration
 
-## [0.33] - 2025-10-18
+## 0.33 (2025-10-18)
 
 ### Added
 
@@ -345,7 +441,7 @@ Only write entries that are worth mentioning to users.
 - Fix logging redirection
 - Merge duplicated input histories
 
-## [0.32] - 2025-10-16
+## 0.32 (2025-10-16)
 
 ### Added
 
@@ -356,13 +452,13 @@ Only write entries that are worth mentioning to users.
 
 - Do not auto-complete meta command in the middle of user input
 
-## [0.31] - 2025-10-14
+## 0.31 (2025-10-14)
 
 ### Fixed
 
 - Fix step interrupting by Ctrl-C, for real
 
-## [0.30] - 2025-10-14
+## 0.30 (2025-10-14)
 
 ### Added
 
@@ -372,7 +468,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix `/clear` meta command when context is empty
 
-## [0.29] - 2025-10-14
+## 0.29 (2025-10-14)
 
 ### Added
 
@@ -388,7 +484,7 @@ Only write entries that are worth mentioning to users.
 
 - Disable `SendDMail` tool in Kimi Koder agent
 
-## [0.28] - 2025-10-13
+## 0.28 (2025-10-13)
 
 ### Added
 
@@ -399,7 +495,7 @@ Only write entries that are worth mentioning to users.
 
 - Fix `ReadFile` output
 
-## [0.27] - 2025-10-11
+## 0.27 (2025-10-11)
 
 ### Added
 
@@ -409,13 +505,13 @@ Only write entries that are worth mentioning to users.
 
 - Rename `--agent` option to `--agent-file`
 
-## [0.26] - 2025-10-11
+## 0.26 (2025-10-11)
 
 ### Fixed
 
 - Fix possible encoding error in `--output-format stream-json` mode
 
-## [0.25] - 2025-10-11
+## 0.25 (2025-10-11)
 
 ### Changed
 
@@ -424,13 +520,13 @@ Only write entries that are worth mentioning to users.
 - Further decouple `App` with `Soul`
 - Split `Soul` protocol and `KimiSoul` implementation for better modularity
 
-## [0.24] - 2025-10-10
+## 0.24 (2025-10-10)
 
 ### Fixed
 
 - Fix ACP `cancel` method
 
-## [0.23] - 2025-10-09
+## 0.23 (2025-10-09)
 
 ### Added
 
@@ -438,14 +534,14 @@ Only write entries that are worth mentioning to users.
 - Add `exclude_tools` field to agent file to support excluding tools
 - Add `subagents` field to agent file to support defining subagents
 
-## [0.22] - 2025-10-09
+## 0.22 (2025-10-09)
 
 ### Changed
 
 - Improve `SearchWeb` and `FetchURL` tool call visualization
 - Improve search result output format
 
-## [0.21] - 2025-10-09
+## 0.21 (2025-10-09)
 
 ### Added
 
@@ -464,13 +560,13 @@ Only write entries that are worth mentioning to users.
 - Improve tool descriptions
 - Improve tool output truncation
 
-## [0.20] - 2025-09-30
+## 0.20 (2025-09-30)
 
 ### Added
 
 - Add `--ui acp` option to start Agent Client Protocol (ACP) server
 
-## [0.19] - 2025-09-29
+## 0.19 (2025-09-29)
 
 ### Added
 
@@ -481,7 +577,7 @@ Only write entries that are worth mentioning to users.
 
 - Do not include `CHECKPOINT` messages in the context when `SendDMail` is not enabled
 
-## [0.18] - 2025-09-29
+## 0.18 (2025-09-29)
 
 ### Added
 
@@ -491,7 +587,7 @@ Only write entries that are worth mentioning to users.
 
 - Improve `ReadFile` tool description
 
-## [0.17] - 2025-09-29
+## 0.17 (2025-09-29)
 
 ### Fixed
 
@@ -504,7 +600,7 @@ Only write entries that are worth mentioning to users.
 
 - Increase default max-steps-per-run to 100
 
-## [0.16.0] - 2025-09-26
+## 0.16.0 (2025-09-26)
 
 ### Tools
 
@@ -514,11 +610,11 @@ Only write entries that are worth mentioning to users.
 
 - Session history file can be specified via `_history_file` parameter when creating a new session
 
-## [0.15.0] - 2025-09-26
+## 0.15.0 (2025-09-26)
 
 - Improve tool robustness
 
-## [0.14.0] - 2025-09-25
+## 0.14.0 (2025-09-25)
 
 ### Added
 
@@ -528,7 +624,7 @@ Only write entries that are worth mentioning to users.
 
 - Emphasize the use of the same language as the user
 
-## [0.13.0] - 2025-09-25
+## 0.13.0 (2025-09-25)
 
 ### Added
 
@@ -540,7 +636,7 @@ Only write entries that are worth mentioning to users.
 - Better system prompt and tool description
 - Better error messages for LLM
 
-## [0.12.0] - 2025-09-24
+## 0.12.0 (2025-09-24)
 
 ### Added
 
@@ -551,13 +647,13 @@ Only write entries that are worth mentioning to users.
 
 - Catch EOF error for better experience
 
-## [0.11.1] - 2025-09-22
+## 0.11.1 (2025-09-22)
 
 ### Changed
 
 - Rename `max_retry_per_step` to `max_retries_per_step`
 
-## [0.11.0] - 2025-09-22
+## 0.11.0 (2025-09-22)
 
 ### Added
 
@@ -570,12 +666,12 @@ Only write entries that are worth mentioning to users.
 - Better extreme cases handling in `read_file` tool
 - Prevent Ctrl-C from exiting the CLI, force the use of Ctrl-D or `exit` instead
 
-## [0.10.1] - 2025-09-18
+## 0.10.1 (2025-09-18)
 
 - Make slash commands look slightly better
 - Improve `glob` tool
 
-## [0.10.0] - 2025-09-17
+## 0.10.0 (2025-09-17)
 
 ### Added
 
@@ -590,15 +686,15 @@ Only write entries that are worth mentioning to users.
 - Improve session management
 - Restore context usage when `--continue` a session
 
-## [0.9.0] - 2025-09-15
+## 0.9.0 (2025-09-15)
 
 - Remove `--session` and `--continue` options
 
-## [0.8.1] - 2025-09-14
+## 0.8.1 (2025-09-14)
 
 - Fix config model dumping
 
-## [0.8.0] - 2025-09-14
+## 0.8.0 (2025-09-14)
 
 - Add `shell` tool and basic system prompt
 - Add tool call visualization

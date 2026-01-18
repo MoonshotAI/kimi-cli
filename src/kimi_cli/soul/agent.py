@@ -17,6 +17,14 @@ from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
+from kimi_cli.skill import (
+    Skill,
+    discover_skills_from_roots,
+    get_builtin_skills_dir,
+    get_claude_skills_dir,
+    get_skills_dir,
+    index_skills,
+)
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
@@ -40,6 +48,8 @@ class BuiltinSystemPromptArgs:
     """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
     """The content of AGENTS.md."""
+    KIMI_SKILLS: str
+    """Formatted information about available skills."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -55,18 +65,19 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
     return None
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True)
 class Runtime:
     """Agent runtime."""
 
     config: Config
-    llm: LLM | None
+    llm: LLM | None  # we do not freeze the `Runtime` dataclass because LLM can be changed
     session: Session
     builtin_args: BuiltinSystemPromptArgs
     denwa_renji: DenwaRenji
     approval: Approval
     labor_market: LaborMarket
     environment: Environment
+    skills: dict[str, Skill]
 
     @staticmethod
     async def create(
@@ -74,11 +85,31 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
+        skills_dir: Path | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
             Environment.detect(),
+        )
+
+        # Discover and format skills
+        builtin_skills_dir = get_builtin_skills_dir()
+        if skills_dir is None:
+            skills_dir = get_skills_dir()
+            if not skills_dir.is_dir() and (claude_skills_dir := get_claude_skills_dir()).is_dir():
+                skills_dir = claude_skills_dir
+        skills_roots = [builtin_skills_dir, skills_dir]
+        skills = discover_skills_from_roots(skills_roots)
+        skills_by_name = index_skills(skills)
+        logger.info("Discovered {count} skill(s)", count=len(skills))
+        skills_formatted = "\n".join(
+            (
+                f"- {skill.name}\n"
+                f"  - Path: {skill.skill_md_file}\n"
+                f"  - Description: {skill.description}"
+            )
+            for skill in skills
         )
 
         return Runtime(
@@ -90,11 +121,13 @@ class Runtime:
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
+                KIMI_SKILLS=skills_formatted or "No skills found.",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(yolo=yolo),
             labor_market=LaborMarket(),
             environment=environment,
+            skills=skills_by_name,
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -108,6 +141,7 @@ class Runtime:
             approval=self.approval,
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
+            skills=self.skills,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -121,6 +155,7 @@ class Runtime:
             approval=self.approval,
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
+            skills=self.skills,
         )
 
 
@@ -160,7 +195,7 @@ async def load_agent(
     agent_file: Path,
     runtime: Runtime,
     *,
-    mcp_configs: list[MCPConfig | dict[str, Any]],
+    mcp_configs: list[MCPConfig] | list[dict[str, Any]],
 ) -> Agent:
     """
     Load agent from specification file.
@@ -195,6 +230,7 @@ async def load_agent(
     tool_deps = {
         KimiToolset: toolset,
         Runtime: runtime,
+        # TODO: remove all the following dependencies and use Runtime instead
         Config: runtime.config,
         BuiltinSystemPromptArgs: runtime.builtin_args,
         Session: runtime.session,

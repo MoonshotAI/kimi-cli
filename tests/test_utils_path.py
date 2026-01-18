@@ -5,12 +5,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import pytest
-
 from kimi_cli.utils.path import next_available_rotation
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_empty_dir(tmp_path):
     """Test next_available_rotation with empty directory."""
     test_file = tmp_path / "test.txt"
@@ -19,7 +16,6 @@ async def test_next_available_rotation_empty_dir(tmp_path):
     assert result == tmp_path / "test_1.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_no_existing_rotations(tmp_path):
     """Test next_available_rotation with no existing rotation files."""
     # Create the parent directory
@@ -30,7 +26,6 @@ async def test_next_available_rotation_no_existing_rotations(tmp_path):
     assert result == tmp_path / "test_1.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_with_existing_rotations(tmp_path):
     """Test next_available_rotation with existing rotation files."""
     # Create existing rotation files
@@ -45,7 +40,6 @@ async def test_next_available_rotation_with_existing_rotations(tmp_path):
     assert result == tmp_path / "test_6.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_mixed_files(tmp_path):
     """Test next_available_rotation with mixed files in directory."""
     # Create various files, only some match the pattern
@@ -62,7 +56,6 @@ async def test_next_available_rotation_mixed_files(tmp_path):
     assert result == tmp_path / "test_4.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_different_extensions(tmp_path):
     """Test next_available_rotation with different file extensions."""
     # Create files with same base name but different extensions
@@ -77,7 +70,6 @@ async def test_next_available_rotation_different_extensions(tmp_path):
     assert result == tmp_path / "document_3.pdf"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_complex_name(tmp_path):
     """Test next_available_rotation with complex file names."""
     # Note: path.stem for "my-backup_file.tar.gz" is "my-backup_file.tar"
@@ -92,7 +84,6 @@ async def test_next_available_rotation_complex_name(tmp_path):
     assert result == tmp_path / "my-backup_file.tar_4.gz"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_parent_not_exists():
     """Test next_available_rotation when parent directory doesn't exist."""
     test_file = Path("/non/existent/directory/test.txt")
@@ -101,7 +92,6 @@ async def test_next_available_rotation_parent_not_exists():
     assert result is None
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_zero_padding(tmp_path):
     """Test next_available_rotation matches zero-padded numbers (regex \\d+ matches them)."""
     # Create files with zero-padded numbers (they will match \d+ pattern)
@@ -116,7 +106,6 @@ async def test_next_available_rotation_zero_padding(tmp_path):
     assert result == tmp_path / "test_8.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_large_numbers(tmp_path):
     """Test next_available_rotation with large numbers."""
     # Create files with large numbers
@@ -131,7 +120,6 @@ async def test_next_available_rotation_large_numbers(tmp_path):
     assert result == tmp_path / "log_1501.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_directory_with_suffix(tmp_path):
     """Test next_available_rotation with directories that have suffix-like names."""
     # Create directories with numbered suffixes
@@ -146,7 +134,6 @@ async def test_next_available_rotation_directory_with_suffix(tmp_path):
     assert result == tmp_path / "backup_6"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_directory_empty_suffix(tmp_path):
     """Test next_available_rotation with directories (empty suffix)."""
     # Create directories with numbered suffixes
@@ -160,7 +147,6 @@ async def test_next_available_rotation_directory_empty_suffix(tmp_path):
     assert result == tmp_path / "data_4"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_directory_with_extension(tmp_path):
     """Test next_available_rotation with directory names containing dots."""
     # Note: for path "config.backup", stem is "config" and suffix is ".backup"
@@ -175,7 +161,6 @@ async def test_next_available_rotation_directory_with_extension(tmp_path):
     assert result == tmp_path / "config_3.backup"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_mixed_files_and_dirs(tmp_path):
     """Test next_available_rotation with mixed files and directories."""
     # Create both files and directories with matching patterns
@@ -190,7 +175,6 @@ async def test_next_available_rotation_mixed_files_and_dirs(tmp_path):
     assert result == tmp_path / "archive_4.txt"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_directory_pattern_with_extension(tmp_path):
     """Test next_available_rotation with directory that has extension-like suffix."""
     # Note: for path "my.data", stem is "my" and suffix is ".data"
@@ -206,7 +190,6 @@ async def test_next_available_rotation_directory_pattern_with_extension(tmp_path
     assert result == tmp_path / "my_4.data"
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_creates_placeholder(tmp_path):
     """Ensure the rotation path is reserved by creating an empty file."""
 
@@ -218,7 +201,6 @@ async def test_next_available_rotation_creates_placeholder(tmp_path):
     assert reserved.exists()
 
 
-@pytest.mark.asyncio
 async def test_next_available_rotation_concurrent_calls(tmp_path):
     """Concurrent reservations must yield unique paths."""
 

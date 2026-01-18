@@ -20,10 +20,11 @@ type ProviderType = Literal[
     "google_genai",  # for backward-compatibility, equals to `gemini`
     "gemini",
     "vertexai",
+    "_echo",
     "_chaos",
 ]
 
-type ModelCapability = Literal["image_in", "thinking"]
+type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 
 
@@ -67,7 +68,7 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
                 model.capabilities = set(
                     cast(ModelCapability, cap)
                     for cap in caps_lower
-                    if cap in get_args(ModelCapability)
+                    if cap in get_args(ModelCapability.__value__)
                 )
                 applied["KIMI_MODEL_CAPABILITIES"] = capabilities
         case "openai_legacy" | "openai_responses":
@@ -85,8 +86,12 @@ def create_llm(
     provider: LLMProvider,
     model: LLMModel,
     *,
+    thinking: bool | None = None,
     session_id: str | None = None,
-) -> LLM:
+) -> LLM | None:
+    if provider.type != "_echo" and (not provider.base_url or not model.model):
+        return None
+
     match provider.type:
         case "kimi":
             from kosong.chat_provider.kimi import Kimi
@@ -100,8 +105,19 @@ def create_llm(
                     **(provider.custom_headers or {}),
                 },
             )
+
+            gen_kwargs: Kimi.GenerationKwargs = {}
             if session_id:
-                chat_provider = chat_provider.with_generation_kwargs(prompt_cache_key=session_id)
+                gen_kwargs["prompt_cache_key"] = session_id
+            if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
+                gen_kwargs["temperature"] = float(temperature)
+            if top_p := os.getenv("KIMI_MODEL_TOP_P"):
+                gen_kwargs["top_p"] = float(top_p)
+            if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
+                gen_kwargs["max_tokens"] = int(max_tokens)
+
+            if gen_kwargs:
+                chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
         case "openai_legacy":
             from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
 
@@ -145,6 +161,10 @@ def create_llm(
                 api_key=provider.api_key.get_secret_value(),
                 vertexai=True,
             )
+        case "_echo":
+            from kosong.chat_provider.echo import EchoChatProvider
+
+            chat_provider = EchoChatProvider()
         case "_chaos":
             from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
             from kosong.chat_provider.kimi import Kimi
@@ -165,20 +185,30 @@ def create_llm(
                 ),
             )
 
+    capabilities = derive_model_capabilities(model)
+
+    # Apply thinking if specified or if model always requires thinking
+    if "always_thinking" in capabilities or (thinking is True and "thinking" in capabilities):
+        chat_provider = chat_provider.with_thinking("high")
+    elif thinking is False:
+        chat_provider = chat_provider.with_thinking("off")
+    # If thinking is None and model doesn't always think, leave as-is (default behavior)
+
     return LLM(
         chat_provider=chat_provider,
         max_context_size=model.max_context_size,
-        capabilities=_derive_capabilities(provider, model),
+        capabilities=capabilities,
         model_config=model,
         provider_config=provider,
     )
 
 
-def _derive_capabilities(provider: LLMProvider, model: LLMModel) -> set[ModelCapability]:
-    capabilities = model.capabilities or set()
-    if provider.type not in {"kimi", "_chaos"}:
-        return capabilities
-
-    if model.model == "kimi-for-coding" or "thinking" in model.model:
+def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
+    capabilities = set(model.capabilities or ())
+    # Models with "thinking" in their name are always-thinking models
+    if "thinking" in model.model.lower() or "reason" in model.model.lower():
+        capabilities.update(("thinking", "always_thinking"))
+    # These models support thinking but can be toggled on/off
+    elif model.model in {"kimi-for-coding", "kimi-code"}:
         capabilities.add("thinking")
     return capabilities

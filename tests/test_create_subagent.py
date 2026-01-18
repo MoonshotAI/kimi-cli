@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import pytest
 from inline_snapshot import snapshot
 
 from kimi_cli.tools.multiagent.create import CreateSubagent, Params
 
 
-@pytest.mark.asyncio
 async def test_create_subagent(create_subagent_tool: CreateSubagent):
     """Test creating a subagent."""
     result = await create_subagent_tool(
@@ -21,7 +19,6 @@ async def test_create_subagent(create_subagent_tool: CreateSubagent):
     assert "test_agent" in create_subagent_tool._runtime.labor_market.subagents
 
 
-@pytest.mark.asyncio
 async def test_create_existing_subagent(create_subagent_tool: CreateSubagent):
     """Test creating a subagent with an existing name."""
     # First, create the subagent

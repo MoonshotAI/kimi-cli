@@ -3,7 +3,7 @@
 from kimi_cli.utils.pyinstaller import datas, hiddenimports
 
 a = Analysis(
-    ["src/kimi_cli/cli.py"],
+    ["src/kimi_cli/cli/__main__.py"],
     pathex=[],
     binaries=[],
     datas=datas,

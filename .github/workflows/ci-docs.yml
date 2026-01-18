@@ -1,0 +1,37 @@
+name: CI (docs)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci-docs.yml"
+      - ".github/workflows/docs-pages.yml"
+      - "docs/**"
+      - "CHANGELOG.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci-docs.yml"
+      - ".github/workflows/docs-pages.yml"
+      - "docs/**"
+      - "CHANGELOG.md"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm install --no-package-lock
+
+      - name: Build docs
+        working-directory: docs
+        run: npm run build
