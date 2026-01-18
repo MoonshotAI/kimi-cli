@@ -11,7 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
-- SlashCmd: Move `/clear` slash command to soul-level, making it available to ACP clients
+- Shell: Enhanced approval request preview with shell command and diff content display, use `Ctrl-E` to expand full content
+- Wire: Add `ShellDisplayBlock` type for shell command display in approval requests
 - Shell: Reorder `/help` to show keyboard shortcuts before slash commands
 - Wire: Return proper JSON-RPC 2.0 error responses for invalid requests
 

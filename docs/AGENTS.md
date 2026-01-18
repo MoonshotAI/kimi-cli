@@ -81,6 +81,7 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | 供应商 | provider | no | no |
 | Prompt Flow | Prompt Flow | yes | yes |
 | Ralph 循环 | Ralph Loop | yes | yes |
+| Diff | diff | yes | no |
 
 JetBrains IDE terminology (Chinese UI translations):
 

@@ -391,6 +391,7 @@ type DisplayBlock =
   | BriefDisplayBlock
   | DiffDisplayBlock
   | TodoDisplayBlock
+  | ShellDisplayBlock
 
 /** 无法识别的显示块类型的 fallback */
 interface UnknownDisplayBlock {
@@ -427,5 +428,13 @@ interface TodoDisplayItem {
   title: string
   /** 状态 */
   status: "pending" | "in_progress" | "done"
+}
+
+interface ShellDisplayBlock {
+  type: "shell"
+  /** 语法高亮的语言标识（如 "sh"、"powershell"） */
+  language: string
+  /** Shell 命令内容 */
+  command: string
 }
 ```

@@ -4,7 +4,8 @@
 
 ## 未发布
 
-- SlashCmd：将 `/clear` 斜杠命令移至 soul 级，使其可在 ACP 客户端中使用
+- Shell：增强审批请求预览，显示 Shell 命令和 Diff 内容，使用 `Ctrl-E` 展开完整内容
+- Wire：添加 `ShellDisplayBlock` 类型，用于在审批请求中显示 Shell 命令
 - Shell：调整 `/help` 显示顺序，将键盘快捷键移至斜杠命令之前
 - Wire：对无效请求返回符合 JSON-RPC 2.0 规范的错误响应
 
