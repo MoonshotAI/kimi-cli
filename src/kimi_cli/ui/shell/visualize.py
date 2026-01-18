@@ -422,21 +422,20 @@ def _show_approval_in_pager(request: ApprovalRequest) -> None:
     from kimi_cli.utils.diff import format_unified_diff
 
     with console.screen(), console.pager(styles=True):
-        console.print("Approval Request Details", style="bold")
-        console.print("=" * 26)
-        console.print()
-
-        console.print(f"Action: {request.action}")
-        console.print(f"Sender: {request.sender}")
+        # Header: matches the style in _ApprovalRequestPanel
+        console.print(
+            Text.from_markup(
+                "[yellow]⚠ "
+                f"{escape(request.sender)} is requesting approval to "
+                f"{escape(request.action)}:[/yellow]"
+            )
+        )
         console.print()
 
         rendered_any = False
         for block in request.display:
             if isinstance(block, DiffDisplayBlock):
-                console.print(f"File: {block.path}", style="bold")
-                console.print()
-                console.print("Diff:", style="bold")
-                console.print("─" * 5)
+                console.print(Text(block.path, style="bold"))
                 diff_text = format_unified_diff(
                     block.old_text,
                     block.new_text,
@@ -451,16 +450,11 @@ def _show_approval_in_pager(request: ApprovalRequest) -> None:
                 console.print()
                 rendered_any = True
             elif isinstance(block, ShellDisplayBlock):
-                console.print("Command:", style="bold")
-                console.print("─" * 8)
                 console.print(KimiSyntax(block.command, block.language, word_wrap=True))
                 console.print()
                 rendered_any = True
 
         if request.description and not rendered_any:
-            label = "Details:"
-            console.print(label, style="bold")
-            console.print("─" * len(label))
             console.print(request.description)
             console.print()
 
