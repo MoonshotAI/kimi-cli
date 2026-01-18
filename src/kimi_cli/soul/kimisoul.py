@@ -61,8 +61,6 @@ if TYPE_CHECKING:
         _: Soul = soul
 
 
-RESERVED_TOKENS = 50_000
-
 SKILL_COMMAND_PREFIX = "skill:"
 DEFAULT_MAX_FLOW_MOVES = 1000
 
@@ -110,10 +108,7 @@ class KimiSoul:
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
-        self._reserved_tokens = RESERVED_TOKENS
         self._flow_runner = FlowRunner(flow) if flow is not None else None
-        if self._runtime.llm is not None:
-            assert self._reserved_tokens <= self._runtime.llm.max_context_size
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -333,11 +328,13 @@ class KimiSoul:
             step_outcome: StepOutcome | None = None
             try:
                 # compact the context if needed
-                if (
-                    self._context.token_count + self._reserved_tokens
-                    >= self._runtime.llm.max_context_size
-                ):
-                    logger.info("Context too long, compacting...")
+                threshold = self._loop_control.auto_compact_threshold
+                if self._context_usage >= threshold:
+                    logger.info(
+                        "Context usage {usage:.1%} exceeds {threshold:.0%}, compacting...",
+                        usage=self._context_usage,
+                        threshold=threshold,
+                    )
                     await self.compact_context()
 
                 logger.debug("Beginning step {step_no}", step_no=step_no)
