@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- SlashCmd: Move `/clear` slash command to soul-level, making it available to ACP clients
+
 ## 0.78 (2026-01-16)
 
 - CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
