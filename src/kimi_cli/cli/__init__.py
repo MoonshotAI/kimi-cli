@@ -572,7 +572,7 @@ def term(
     ctx: typer.Context,
 ) -> None:
     """Run Toad TUI backed by Kimi CLI ACP server."""
-    from kimi_cli.toad import run_term
+    from .toad import run_term
 
     run_term(ctx)
 
