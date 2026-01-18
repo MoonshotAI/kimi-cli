@@ -10,7 +10,7 @@ Some slash commands are also available in shell mode, including `/help`, `/exit`
 
 ### `/help`
 
-Display help information. Shows all available slash commands, loaded skills, and keyboard shortcuts in a fullscreen pager. Press `q` to exit.
+Display help information. Shows keyboard shortcuts, all available slash commands, and loaded skills in a fullscreen pager. Press `q` to exit.
 
 Aliases: `/h`, `/?`
 

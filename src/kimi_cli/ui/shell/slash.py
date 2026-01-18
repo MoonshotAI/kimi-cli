@@ -106,6 +106,7 @@ def help(app: Shell, args: str):
         else:
             commands.append(cmd)
 
+    renderables.append(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
     renderables.append(
         section(
             "Slash commands",
@@ -121,7 +122,6 @@ def help(app: Shell, args: str):
                 "cyan",
             )
         )
-    renderables.append(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
 
     with console.pager(styles=True):
         console.print(Group(*renderables))
@@ -304,10 +304,9 @@ def feedback(app: Shell, args: str):
 @registry.command(aliases=["reset"])
 async def clear(app: Shell, args: str):
     """Clear the context"""
-    soul = _ensure_kimi_soul(app)
-    if soul is None:
+    if _ensure_kimi_soul(app) is None:
         return
-    await soul.context.clear()
+    await app.run_soul_command("/clear")
     raise Reload()
 
 
