@@ -13,7 +13,6 @@ from rich.live import Live
 from rich.markup import escape
 from rich.padding import Padding
 from rich.spinner import Spinner
-from rich.syntax import Syntax
 from rich.text import Text
 
 from kimi_cli.tools import extract_key_argument
@@ -22,6 +21,7 @@ from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
+from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
@@ -384,7 +384,7 @@ class _ApprovalRequestPanel:
 
         content_lines: list[RenderableType] = [
             Text(block.path, style="bold"),
-            Syntax(truncated_diff, "diff", theme="ansi_dark"),
+            KimiSyntax(truncated_diff, "diff"),
         ]
         if hidden_lines > 0:
             content_lines.append(_render_more_lines_hint(hidden_lines))
@@ -443,7 +443,7 @@ def _show_approval_in_pager(request: ApprovalRequest) -> None:
                     block.path,
                     include_file_header=False,
                 )
-                console.print(Syntax(diff_text, "diff", theme="ansi_dark"))
+                console.print(KimiSyntax(diff_text, "diff"))
                 console.print()
                 rendered_any = True
             elif isinstance(block, BriefDisplayBlock) and block.text:
@@ -453,9 +453,7 @@ def _show_approval_in_pager(request: ApprovalRequest) -> None:
             elif isinstance(block, ShellDisplayBlock):
                 console.print("Command:", style="bold")
                 console.print("─" * 8)
-                console.print(
-                    Syntax(block.command, block.language, theme="ansi_dark", word_wrap=True)
-                )
+                console.print(KimiSyntax(block.command, block.language, word_wrap=True))
                 console.print()
                 rendered_any = True
 
