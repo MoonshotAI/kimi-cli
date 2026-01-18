@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Shell: Reorder `/help` to show keyboard shortcuts before slash commands
+
 ## 0.78 (2026-01-16)
 
 - CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
