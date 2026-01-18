@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Wire: Return proper JSON-RPC 2.0 error responses for invalid requests
+
 ## 0.78 (2026-01-16)
 
 - CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
