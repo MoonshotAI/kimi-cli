@@ -9,6 +9,7 @@ from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.approval import Approval
+from kimi_cli.tools.display import ShellDisplayBlock
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
 
@@ -53,8 +54,14 @@ class Shell(CallableTool2[Params]):
 
         if not await self._approval.request(
             self.name,
-            "run shell command",
+            "run command",
             f"Run command `{params.command}`",
+            display=[
+                ShellDisplayBlock(
+                    language="powershell" if self._is_powershell else "bash",
+                    command=params.command,
+                )
+            ],
         ):
             return ToolRejectedError()
 

@@ -24,7 +24,12 @@ from kosong.tooling import (
 from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from kimi_cli.tools.display import DiffDisplayBlock, TodoDisplayBlock, TodoDisplayItem
+from kimi_cli.tools.display import (
+    DiffDisplayBlock,
+    ShellDisplayBlock,
+    TodoDisplayBlock,
+    TodoDisplayItem,
+)
 from kimi_cli.utils.typing import flatten_union
 
 
@@ -293,4 +298,5 @@ __all__ = [
     "DiffDisplayBlock",
     "TodoDisplayBlock",
     "TodoDisplayItem",
+    "ShellDisplayBlock",
 ]

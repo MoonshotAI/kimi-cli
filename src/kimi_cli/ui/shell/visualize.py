@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from typing import NamedTuple
 
@@ -11,13 +11,14 @@ from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
-from rich.panel import Panel
+from rich.padding import Padding
 from rich.spinner import Spinner
+from rich.syntax import Syntax
 from rich.text import Text
 
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.keyboard import KeyEvent, listen_for_keyboard
+from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
@@ -29,6 +30,9 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    DiffDisplayBlock,
+    DisplayBlock,
+    ShellDisplayBlock,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -45,6 +49,31 @@ from kimi_cli.wire.types import (
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
+
+# Truncation limits for approval request display
+MAX_PREVIEW_LINES = 4
+
+
+def _truncate_text(text: str, max_lines: int) -> tuple[str, int]:
+    """
+    Truncate text to a maximum number of lines.
+
+    Returns:
+        A tuple of (truncated text, number of hidden lines).
+    """
+    lines = text.split("\n")
+    if len(lines) <= max_lines:
+        return text, 0
+    truncated = "\n".join(lines[:max_lines])
+    return truncated, len(lines) - max_lines
+
+
+def _render_more_lines_hint(hidden_lines: int) -> Text:
+    label = "line" if hidden_lines == 1 else "lines"
+    return Text(
+        f"... ({hidden_lines} more {label}, ctrl-e to expand)",
+        style="dim italic",
+    )
 
 
 async def visualize(
@@ -248,34 +277,132 @@ class _ApprovalRequestPanel:
         ]
         self.selected_index = 0
 
-    def render(self) -> RenderableType:
-        """Render the approval menu as a panel."""
-        lines: list[RenderableType] = []
-
-        # Add request details
-        lines.append(
-            Text.assemble(
-                Text.from_markup(f"[blue]{self.request.sender}[/blue]"),
-                Text(f' is requesting approval to "{self.request.description}".'),
+        self._show_description = bool(request.description) and not request.display
+        self._description_preview, self._description_hidden = ("", 0)
+        if self._show_description:
+            self._description_preview, self._description_hidden = _truncate_text(
+                request.description, MAX_PREVIEW_LINES
             )
+
+        # Pre-process truncation for diff blocks
+        self._diff_previews: list[tuple[DiffDisplayBlock, str, int]] = []
+        for block in request.display:
+            if isinstance(block, DiffDisplayBlock):
+                from kimi_cli.utils.diff import format_unified_diff
+
+                diff_text = format_unified_diff(
+                    block.old_text,
+                    block.new_text,
+                    block.path,
+                    include_file_header=False,
+                )
+                truncated, hidden = _truncate_text(diff_text, MAX_PREVIEW_LINES)
+                self._diff_previews.append((block, truncated, hidden))
+
+        self._shell_previews: list[tuple[ShellDisplayBlock, str, int]] = []
+        for block in request.display:
+            if isinstance(block, ShellDisplayBlock):
+                truncated, hidden = _truncate_text(block.command, MAX_PREVIEW_LINES)
+                self._shell_previews.append((block, truncated, hidden))
+
+        # Determine if there's expandable content
+        self.has_expandable_content = (
+            (self._description_hidden > 0 if self._show_description else False)
+            or any(hidden > 0 for _, _, hidden in self._diff_previews)
+            or any(hidden > 0 for _, _, hidden in self._shell_previews)
         )
 
-        lines.append(Text(""))  # Empty line
+    def render(self) -> RenderableType:
+        """Render the approval menu as a panel."""
+        content_lines: list[RenderableType] = [
+            Text.from_markup(
+                "[yellow]⚠ "
+                f"{escape(self.request.sender)} is requesting approval to "
+                f"{escape(self.request.action)}:[/yellow]"
+            )
+        ]
+        content_lines.append(Text(""))
+
+        if self._show_description:
+            content_lines.append(self._render_description_block())
+
+        # Render display blocks (DiffDisplayBlock, BriefDisplayBlock, etc.)
+        first_block = True
+        for block in self.request.display:
+            rendered = self._render_display_block(block)
+            if rendered is not None:
+                if not first_block:
+                    content_lines.append(Text(""))
+                content_lines.append(rendered)
+                first_block = False
+
+        lines: list[RenderableType] = []
+        if content_lines:
+            lines.append(Padding(Group(*content_lines), (0, 0, 0, 2)))
 
         # Add menu options
+        if lines:
+            lines.append(Text(""))
         for i, (option_text, _) in enumerate(self.options):
             if i == self.selected_index:
                 lines.append(Text(f"→ {option_text}", style="cyan"))
             else:
                 lines.append(Text(f"  {option_text}", style="grey50"))
 
-        content = Group(*lines)
-        return Panel.fit(
-            content,
-            title="[yellow]⚠ Approval Requested[/yellow]",
-            border_style="yellow",
-            padding=(1, 2),
-        )
+        return Padding(Group(*lines), 1)
+
+    def _render_description_block(self) -> RenderableType:
+        """Render the description (truncated if needed)."""
+        content_lines: list[RenderableType] = [Text(self._description_preview)]
+        if self._description_hidden > 0:
+            content_lines.append(_render_more_lines_hint(self._description_hidden))
+        return Group(*content_lines)
+
+    def _render_display_block(self, block: DisplayBlock) -> RenderableType | None:
+        """Render a display block from the approval request."""
+        if isinstance(block, DiffDisplayBlock):
+            return self._render_diff_block(block)
+        if isinstance(block, BriefDisplayBlock):
+            if block.text:
+                return Text(block.text, style="grey50")
+            return None
+        if isinstance(block, ShellDisplayBlock):
+            return self._render_shell_block(block)
+        # Skip TodoDisplayBlock and other unknown block types
+        return None
+
+    def _render_diff_block(self, block: DiffDisplayBlock) -> RenderableType:
+        """Render a diff block (truncated if needed)."""
+        # Find the pre-computed truncated diff
+        truncated_diff = ""
+        hidden_lines = 0
+        for b, t, h in self._diff_previews:
+            if b is block:
+                truncated_diff = t
+                hidden_lines = h
+                break
+
+        content_lines: list[RenderableType] = [
+            Text(block.path, style="bold"),
+            Syntax(truncated_diff, "diff", theme="ansi_dark"),
+        ]
+        if hidden_lines > 0:
+            content_lines.append(_render_more_lines_hint(hidden_lines))
+        return Group(*content_lines)
+
+    def _render_shell_block(self, block: ShellDisplayBlock) -> RenderableType:
+        """Render a shell block (truncated if needed)."""
+        truncated = block.command
+        hidden_lines = 0
+        for b, t, h in self._shell_previews:
+            if b is block:
+                truncated = t
+                hidden_lines = h
+                break
+        content_lines: list[RenderableType] = [Text(truncated)]
+        if hidden_lines > 0:
+            content_lines.append(_render_more_lines_hint(hidden_lines))
+        return Group(*content_lines)
 
     def move_up(self):
         """Move selection up."""
@@ -288,6 +415,56 @@ class _ApprovalRequestPanel:
     def get_selected_response(self) -> ApprovalRequest.Response:
         """Get the approval response based on selected option."""
         return self.options[self.selected_index][1]
+
+
+def _show_approval_in_pager(request: ApprovalRequest) -> None:
+    """Show the full approval request content in a pager."""
+    from kimi_cli.utils.diff import format_unified_diff
+
+    with console.screen(), console.pager(styles=True):
+        console.print("Approval Request Details", style="bold")
+        console.print("=" * 26)
+        console.print()
+
+        console.print(f"Action: {request.action}")
+        console.print(f"Sender: {request.sender}")
+        console.print()
+
+        rendered_any = False
+        for block in request.display:
+            if isinstance(block, DiffDisplayBlock):
+                console.print(f"File: {block.path}", style="bold")
+                console.print()
+                console.print("Diff:", style="bold")
+                console.print("─" * 5)
+                diff_text = format_unified_diff(
+                    block.old_text,
+                    block.new_text,
+                    block.path,
+                    include_file_header=False,
+                )
+                console.print(Syntax(diff_text, "diff", theme="ansi_dark"))
+                console.print()
+                rendered_any = True
+            elif isinstance(block, BriefDisplayBlock) and block.text:
+                console.print(block.text, style="grey50")
+                console.print()
+                rendered_any = True
+            elif isinstance(block, ShellDisplayBlock):
+                console.print("Command:", style="bold")
+                console.print("─" * 8)
+                console.print(
+                    Syntax(block.command, block.language, theme="ansi_dark", word_wrap=True)
+                )
+                console.print()
+                rendered_any = True
+
+        if request.description and not rendered_any:
+            label = "Details:"
+            console.print(label, style="bold")
+            console.print("─" * len(label))
+            console.print(request.description)
+            console.print()
 
 
 class _StatusBlock:
@@ -304,10 +481,16 @@ class _StatusBlock:
 
 
 @asynccontextmanager
-async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
+async def _keyboard_listener(
+    handler: Callable[[KeyboardListener, KeyEvent], Awaitable[None]],
+):
+    listener = KeyboardListener()
+    await listener.start()
+
     async def _keyboard():
-        async for event in listen_for_keyboard():
-            handler(event)
+        while True:
+            event = await listener.get()
+            await handler(listener, event)
 
     task = asyncio.create_task(_keyboard())
     try:
@@ -316,6 +499,7 @@ async def _keyboard_listener(handler: Callable[[KeyEvent], None]):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        await listener.stop()
 
 
 class _LiveView:
@@ -339,6 +523,12 @@ class _LiveView:
 
         self._need_recompose = False
 
+    def _reset_live_shape(self, live: Live) -> None:
+        # Rich doesn't expose a public API to clear Live's cached render height.
+        # After leaving the pager, stale height causes cursor restores to jump,
+        # so we reset the private _shape to re-anchor the next refresh.
+        live._live_render._shape = None  # type: ignore[reportPrivateUsage]
+
     async def visualize_loop(self, wire: WireUISide):
         with Live(
             self.compose(),
@@ -348,10 +538,28 @@ class _LiveView:
             vertical_overflow="visible",
         ) as live:
 
-            def keyboard_handler(event: KeyEvent) -> None:
+            async def keyboard_handler(listener: KeyboardListener, event: KeyEvent) -> None:
+                # Handle Ctrl+E specially - pause Live while the pager is active
+                if event == KeyEvent.CTRL_E:
+                    if (
+                        self._current_approval_request_panel
+                        and self._current_approval_request_panel.has_expandable_content
+                    ):
+                        await listener.pause()
+                        live.stop()
+                        try:
+                            _show_approval_in_pager(self._current_approval_request_panel.request)
+                        finally:
+                            # Reset live render shape so the next refresh re-anchors cleanly.
+                            self._reset_live_shape(live)
+                            live.start()
+                            live.update(self.compose(), refresh=True)
+                            await listener.resume()
+                    return
+
                 self.dispatch_keyboard_event(event)
                 if self._need_recompose:
-                    live.update(self.compose())
+                    live.update(self.compose(), refresh=True)
                     self._need_recompose = False
 
             async with _keyboard_listener(keyboard_handler):
@@ -360,17 +568,17 @@ class _LiveView:
                         msg = await wire.receive()
                     except QueueShutDown:
                         self.cleanup(is_interrupt=False)
-                        live.update(self.compose())
+                        live.update(self.compose(), refresh=True)
                         break
 
                     if isinstance(msg, StepInterrupted):
                         self.cleanup(is_interrupt=True)
-                        live.update(self.compose())
+                        live.update(self.compose(), refresh=True)
                         break
 
                     self.dispatch_wire_message(msg)
                     if self._need_recompose:
-                        live.update(self.compose())
+                        live.update(self.compose(), refresh=True)
                         self._need_recompose = False
 
     def refresh_soon(self) -> None:
