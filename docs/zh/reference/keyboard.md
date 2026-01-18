@@ -11,6 +11,7 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
 | `Ctrl-V` | 粘贴（支持图片） |
+| `Ctrl-E` | 展开审批请求完整内容 |
 | `Ctrl-D` | 退出 Kimi CLI |
 | `Ctrl-C` | 中断当前操作 |
 
@@ -56,6 +57,14 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 ::: tip 提示
 图片粘贴需要模型支持 `image_in` 能力。
 :::
+
+## 审批请求操作
+
+### `Ctrl-E`：展开完整内容
+
+当审批请求的预览内容被截断时，按 `Ctrl-E` 可以在全屏分页器中查看完整内容。预览被截断时会显示 "... (truncated, ctrl-e to expand)" 提示。
+
+适用于查看较长的 Shell 命令或文件 Diff 内容。
 
 ## 退出与中断
 

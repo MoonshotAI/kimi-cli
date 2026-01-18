@@ -73,7 +73,7 @@ After typing `@`, start entering the filename and matching completions will appe
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi CLI will request your confirmation.
 
-The confirmation prompt will show operation details, and you can choose:
+The confirmation prompt will show operation details, including shell command and file diff previews. If the content is long and truncated, you can press `Ctrl-E` to expand and view the full content. You can choose:
 
 - **Allow**: Execute this operation
 - **Allow for this session**: Automatically approve similar operations in the current session

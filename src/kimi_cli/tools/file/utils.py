@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import mimetypes
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from pathlib import PurePath
 from typing import Literal
-
-from kimi_cli.tools.display import DiffDisplayBlock
 
 MEDIA_SNIFF_BYTES = 512
 
@@ -250,33 +247,3 @@ def detect_file_type(path: str | PurePath, header: bytes | None = None) -> FileT
     if suffix in _NON_TEXT_SUFFIXES:
         return FileType(kind="unknown", mime_type="")
     return FileType(kind="text", mime_type="text/plain")
-
-
-N_CONTEXT_LINES = 3
-
-
-def build_diff_blocks(
-    path: str,
-    old_text: str,
-    new_text: str,
-) -> list[DiffDisplayBlock]:
-    """Build diff display blocks grouped with small context windows."""
-    old_lines = old_text.splitlines()
-    new_lines = new_text.splitlines()
-    matcher = SequenceMatcher(None, old_lines, new_lines, autojunk=False)
-    blocks: list[DiffDisplayBlock] = []
-    for group in matcher.get_grouped_opcodes(n=N_CONTEXT_LINES):
-        if not group:
-            continue
-        i1 = group[0][1]
-        i2 = group[-1][2]
-        j1 = group[0][3]
-        j2 = group[-1][4]
-        blocks.append(
-            DiffDisplayBlock(
-                path=path,
-                old_text="\n".join(old_lines[i1:i2]),
-                new_text="\n".join(new_lines[j1:j2]),
-            )
-        )
-    return blocks
