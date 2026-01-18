@@ -1,0 +1,17 @@
+[project]
+name = "kimi-cli-acp-example"
+version = "1.0.0"
+description = "Example demonstrating Kimi CLI ACP integration"
+requires-python = ">=3.8"
+dependencies = [
+    "agent-client-protocol>=0.7.0",
+    "pillow>=9.0.0",
+    "asyncio",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
