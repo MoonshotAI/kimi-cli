@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Reorder `/help` to show keyboard shortcuts before slash commands
 - Wire: Return proper JSON-RPC 2.0 error responses for invalid requests
 
 ## 0.78 (2026-01-16)

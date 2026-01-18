@@ -106,6 +106,7 @@ def help(app: Shell, args: str):
         else:
             commands.append(cmd)
 
+    renderables.append(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
     renderables.append(
         section(
             "Slash commands",
@@ -121,7 +122,6 @@ def help(app: Shell, args: str):
                 "cyan",
             )
         )
-    renderables.append(section("Keyboard shortcuts", _KEYBOARD_SHORTCUTS, "yellow"))
 
     with console.pager(styles=True):
         console.print(Group(*renderables))
