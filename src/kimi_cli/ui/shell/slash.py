@@ -304,10 +304,9 @@ def feedback(app: Shell, args: str):
 @registry.command(aliases=["reset"])
 async def clear(app: Shell, args: str):
     """Clear the context"""
-    soul = _ensure_kimi_soul(app)
-    if soul is None:
+    if _ensure_kimi_soul(app) is None:
         return
-    await soul.context.clear()
+    await app.run_soul_command("/clear")
     raise Reload()
 
 

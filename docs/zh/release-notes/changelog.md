@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- SlashCmd：将 `/clear` 斜杠命令移至 soul 级，使其可在 ACP 客户端中使用
 - Shell：调整 `/help` 显示顺序，将键盘快捷键移至斜杠命令之前
 - Wire：对无效请求返回符合 JSON-RPC 2.0 规范的错误响应
 
