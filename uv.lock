@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "kimi-cli",
+    "kimi-code",
     "kimi-sdk",
     "kosong",
     "pykaos",
@@ -1104,7 +1105,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "0.78"
+version = "0.79"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -1179,6 +1180,17 @@ dev = [
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "ty", specifier = ">=0.0.9" },
 ]
+
+[[package]]
+name = "kimi-code"
+version = "0.79"
+source = { editable = "packages/kimi-code" }
+dependencies = [
+    { name = "kimi-cli" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "kimi-cli", editable = "." }]
 
 [[package]]
 name = "kimi-sdk"

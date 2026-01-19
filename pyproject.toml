@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "0.78"
+version = "0.79"
 description = "Kimi CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -51,11 +51,17 @@ module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [tool.uv.workspace]
-members = ["packages/kosong", "packages/kaos", "sdks/kimi-sdk"]
+members = [
+    "packages/kosong",
+    "packages/kaos",
+    "packages/kimi-code",
+    "sdks/kimi-sdk",
+]
 
 [tool.uv.sources]
 kosong = { workspace = true }
 pykaos = { workspace = true }
+kimi-cli = { workspace = true }
 
 [project.scripts]
 kimi = "kimi_cli.cli:cli"

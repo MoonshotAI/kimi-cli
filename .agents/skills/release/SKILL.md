@@ -7,10 +7,14 @@ description: Execute the release workflow for Kimi CLI packages. Use when user w
 
 1. 首先从 AGENTS.md 和 .github/workflows/release*.yml 中理解本项目的发版自动化流程。
 2. 检查每个 packages、sdks 和根目录的包是否在上次发版（根据 tag 确认）后有变更。
+   - 注意 `packages/kimi-code` 是薄包装包，需要与根包 `kimi-cli` 同步版本。
 3. 如果有变更，对于每个变更的包，跟我确认新的版本号（遵循语义化版本规范），并更新相应的：
    - pyproject.toml
    - CHANGELOG.md（要保留 Unreleased 标题）
    - 中英文档的 breaking-changes.md 文件中的版本号
+   - 若变更的是根包版本，同时同步更新：
+     - `packages/kimi-code/pyproject.toml` 的 `version`
+     - `packages/kimi-code/pyproject.toml` 的 `dependencies` 中 `kimi-cli==<version>`
 4. 运行 `uv sync`。
 5. 运行 gen-docs skill 中的指示以确保文档是最新的。
 6. 开一个新的分支叫 `bump-<package>-<new-version>`，提交所有更改并推送到远程仓库。
@@ -19,3 +23,4 @@ description: Execute the release workflow for Kimi CLI packages. Use when user w
 8. 持续检查这个 PR 的状态，直到被合并。
 9. 合并后，切到 main 分支，拉取最新的更改。
 10. 提示我最终发布 tag 所需的 git tag 命令，我会自行 tag + push tags。
+    - 说明：单个数字 tag 会同时发布 `kimi-cli` 与 `kimi-code`。

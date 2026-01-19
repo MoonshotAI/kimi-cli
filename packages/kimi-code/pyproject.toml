@@ -1,0 +1,18 @@
+[project]
+name = "kimi-code"
+version = "0.79"
+description = "Kimi Code is a CLI agent that lives in your terminal."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["kimi-cli==0.79"]
+
+[project.scripts]
+kimi = "kimi_cli.cli:cli"
+kimi-code = "kimi_cli.cli:cli"
+
+[build-system]
+requires = ["uv_build>=0.8.5,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["kimi_code"]
