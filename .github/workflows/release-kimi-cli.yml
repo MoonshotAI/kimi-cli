@@ -150,8 +150,8 @@ jobs:
           set -euo pipefail
           echo "Signing onedir binaries..."
           
-          # Sign all dylibs and so files first
-          find dist/onedir/kimi -type f \( -name "*.dylib" -o -name "*.so" \) | while read -r lib; do
+          # 1. Sign all dylibs and so files first (excluding those inside frameworks)
+          find dist/onedir/kimi -type f \( -name "*.dylib" -o -name "*.so" \) ! -path "*.framework/*" | while read -r lib; do
             echo "Signing: $lib"
             codesign --force --options runtime --timestamp \
               --sign "$APPLE_SIGNING_IDENTITY" \
@@ -159,7 +159,16 @@ jobs:
               "$lib"
           done
           
-          # Sign the main executable last
+          # 2. Sign all frameworks with --deep (important for Python.framework)
+          find dist/onedir/kimi -type d -name "*.framework" | while read -r framework; do
+            echo "Signing framework: $framework"
+            codesign --deep --force --options runtime --timestamp \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --keychain "$APPLE_KEYCHAIN_PATH" \
+              "$framework"
+          done
+          
+          # 3. Sign the main executable last
           echo "Signing main executable: dist/onedir/kimi/kimi"
           codesign --force --options runtime --timestamp \
             --sign "$APPLE_SIGNING_IDENTITY" \
@@ -168,6 +177,7 @@ jobs:
           
           echo "✅ Onedir binaries signed"
           codesign -dv --verbose=2 dist/onedir/kimi/kimi
+          codesign --verify --deep --strict dist/onedir/kimi/kimi && echo "✅ Deep verification passed"
 
       # macOS: Notarize onefile binary
       - name: Notarize macOS onefile binary
