@@ -46,27 +46,16 @@ class BuiltinSystemPromptArgs:
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
-    contents: list[str] = []
-    global_candidates = (KaosPath.home() / ".config" / "agents" / "AGENTS.md",)
-    for path in global_candidates:
-        if await path.is_file():
-            logger.info("Loaded agents.md: {path}", path=path)
-            contents.append((await path.read_text()).strip())
-            break
-
-    project_paths = [
+    paths = [
         work_dir / "AGENTS.md",
         work_dir / "agents.md",
     ]
-    for path in project_paths:
+    for path in paths:
         if await path.is_file():
             logger.info("Loaded agents.md: {path}", path=path)
-            contents.append((await path.read_text()).strip())
-            break
-    if not contents:
-        logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
-        return None
-    return "\n\n".join(contents).strip()
+            return (await path.read_text()).strip()
+    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
+    return None
 
 
 @dataclass(slots=True, kw_only=True)

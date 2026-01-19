@@ -4,7 +4,7 @@ Updated: 2026-01-14
 Status: Implemented
 ---
 
-# KLIP-8: Unified Skills and AGENTS.md Discovery
+# KLIP-8: Unified Skills Discovery
 
 ## Motivation
 
@@ -12,12 +12,11 @@ Status: Implemented
 
 Coding agent ecosystems are fragmented with vendor-specific layouts. Users must duplicate skills or maintain symlinks.
 
-This proposal unifies skill discovery to be compatible with existing tools. Same for AGENTS.md.
+This proposal unifies skill discovery to be compatible with existing tools.
 
 ## Scope
 
 - Skills discovery
-- AGENTS.md discovery
 - Future: `mcp.json` (not this KLIP)
 
 ## Non-goals
@@ -43,16 +42,6 @@ Two-level logic:
 Built-in skills load only when the KAOS backend is `LocalKaos` or `ACPKaos`.
 
 `--skills-dir` overrides user/project discovery; only specified directory is used (built-ins still load when supported).
-
-## AGENTS.md Discovery
-
-**User level**:
-- `~/.config/agents/AGENTS.md`
-
-**Project level**:
-- `AGENTS.md` in project root
-
-Global and project AGENTS.md are merged (global first).
 
 ## References
 
