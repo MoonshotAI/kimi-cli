@@ -276,7 +276,7 @@ class KimiSoul:
 
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
-            skill_text = read_skill_text(_skill)
+            skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
                     TextPart(text=f'Failed to load skill "/{SKILL_COMMAND_PREFIX}{_skill.name}".')

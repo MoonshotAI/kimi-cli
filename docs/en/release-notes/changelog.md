@@ -4,6 +4,9 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Skills: Add project-level skills support, discovered from `.agents/skills/` (or `.kimi/skills/`, `.claude/skills/`)
+- Skills: Unified skills discovery with layered loading (builtin → user → project); user-level skills now prefer `~/.config/agents/skills/`
+- Shell: Support fuzzy matching for slash command autocomplete
 - Shell: Enhanced approval request preview with shell command and diff content display, use `Ctrl-E` to expand full content
 - Wire: Add `ShellDisplayBlock` type for shell command display in approval requests
 - Shell: Reorder `/help` to show keyboard shortcuts before slash commands

@@ -60,7 +60,7 @@ class KimiCLI:
         # Extensions
         agent_file: Path | None = None,
         mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
-        skills_dir: Path | None = None,
+        skills_dir: KaosPath | None = None,
         # Loop control
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
@@ -80,7 +80,8 @@ class KimiCLI:
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
-            skills_dir (Path | None, optional): Path to the skills directory. Defaults to None.
+            skills_dir (KaosPath | None, optional): Override skills directory discovery. Defaults
+                to None.
             max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
                 Defaults to None.
             max_retries_per_step (int | None, optional): Maximum number of retries in one step.

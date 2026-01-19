@@ -260,7 +260,7 @@ def kimi(
             ),
         ),
     ] = None,
-    skills_dir: Annotated[
+    local_skills_dir: Annotated[
         Path | None,
         typer.Option(
             "--skills-dir",
@@ -268,7 +268,7 @@ def kimi(
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Path to the skills directory. Default: ~/.kimi/skills",
+            help="Path to the skills directory. Overrides discovery.",
         ),
     ] = None,
     # Loop control
@@ -465,6 +465,10 @@ def kimi(
         mcp_configs += [json.loads(conf) for conf in raw_mcp_config]
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
+
+    skills_dir: KaosPath | None = None
+    if local_skills_dir is not None:
+        skills_dir = KaosPath.unsafe_from_local_path(local_skills_dir)
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
