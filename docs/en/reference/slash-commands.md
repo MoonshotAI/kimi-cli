@@ -10,7 +10,7 @@ Some slash commands are also available in shell mode, including `/help`, `/exit`
 
 ### `/help`
 
-Display help information. Shows all available slash commands, loaded skills, and keyboard shortcuts in a fullscreen pager. Press `q` to exit.
+Display help information. Shows keyboard shortcuts, all available slash commands, and loaded skills in a fullscreen pager. Press `q` to exit.
 
 Aliases: `/h`, `/?`
 
@@ -133,6 +133,12 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 ::: warning Note
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
+
+### `/begin`
+
+Start Prompt Flow execution.
+
+This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
 
 ## Command completion
 

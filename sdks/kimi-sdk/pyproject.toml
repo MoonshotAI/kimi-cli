@@ -1,12 +1,10 @@
 [project]
 name = "kimi-sdk"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight Python SDK for the Kimi API."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "kosong>=0.37.0,<0.38.0",
-]
+dependencies = ["kosong>=0.37.0,<0.39.0"]
 
 [dependency-groups]
 dev = [
@@ -44,16 +42,10 @@ select = [
 [tool.pyright]
 typeCheckingMode = "strict"
 pythonVersion = "3.14"
-include = [
-    "src/**/*.py",
-    "tests/**/*.py",
-]
+include = ["src/**/*.py", "tests/**/*.py"]
 
 [tool.ty.environment]
 python-version = "3.14"
 
 [tool.ty.src]
-include = [
-    "src/**/*.py",
-    "tests/**/*.py",
-]
+include = ["src/**/*.py", "tests/**/*.py"]

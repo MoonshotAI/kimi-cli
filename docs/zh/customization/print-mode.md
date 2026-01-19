@@ -7,8 +7,8 @@ Print 模式让 Kimi CLI 以非交互方式运行，适合脚本调用和自动�
 使用 `--print` 参数启用 Print 模式：
 
 ```sh
-# 通过 -c 传入指令
-kimi --print -c "列出当前目录的所有 Python 文件"
+# 通过 -p 传入指令（或 -c）
+kimi --print -p "列出当前目录的所有 Python 文件"
 
 # 通过 stdin 传入指令
 echo "解释这段代码的作用" | kimi --print
@@ -20,15 +20,15 @@ Print 模式的特点：
 - **自动审批**：隐式启用 `--yolo` 模式，所有操作自动批准
 - **文本输出**：AI 的回复输出到 stdout
 
-<!-- TODO: 支持同时从 stdin 读取内容和 -c 读取指令后启用此示例
+<!-- TODO: 支持同时从 stdin 读取内容和 -p 读取指令后启用此示例
 **管道组合示例**
 
 ```sh
 # 分析 git diff 并生成提交信息
-git diff --staged | kimi --print -c "根据这个 diff 生成一个符合 Conventional Commits 规范的提交信息"
+git diff --staged | kimi --print -p "根据这个 diff 生成一个符合 Conventional Commits 规范的提交信息"
 
 # 读取文件并生成文档
-cat src/api.py | kimi --print -c "为这个 Python 模块生成 API 文档"
+cat src/api.py | kimi --print -p "为这个 Python 模块生成 API 文档"
 ```
 -->
 
@@ -37,13 +37,13 @@ cat src/api.py | kimi --print -c "为这个 Python 模块生成 API 文档"
 使用 `--final-message-only` 选项可以只输出最终的 assistant 消息，跳过中间的工具调用过程：
 
 ```sh
-kimi --print -c "根据当前变更给我一个 Git commit message" --final-message-only
+kimi --print -p "根据当前变更给我一个 Git commit message" --final-message-only
 ```
 
 `--quiet` 是 `--print --output-format text --final-message-only` 的快捷方式，适合只需要最终结果的场景：
 
 ```sh
-kimi --quiet -c "根据当前变更给我一个 Git commit message"
+kimi --quiet -p "根据当前变更给我一个 Git commit message"
 ```
 
 ## JSON 格式
@@ -55,7 +55,7 @@ Print 模式支持 JSON 格式的输入和输出，方便程序化处理。输�
 使用 `--output-format=stream-json` 以 JSONL（每行一个 JSON）格式输出：
 
 ```sh
-kimi --print -c "你好" --output-format=stream-json
+kimi --print -p "你好" --output-format=stream-json
 ```
 
 输出示例：
@@ -136,7 +136,7 @@ echo '{"role":"user","content":"你好"}' | kimi --print --input-format=stream-j
 在 CI 流程中自动生成代码或执行检查：
 
 ```sh
-kimi --print -c "检查 src/ 目录下是否有明显的安全问题，输出 JSON 格式的报告"
+kimi --print -p "检查 src/ 目录下是否有明显的安全问题，输出 JSON 格式的报告"
 ```
 
 **批量处理**
@@ -145,7 +145,7 @@ kimi --print -c "检查 src/ 目录下是否有明显的安全问题，输出 JS
 
 ```sh
 for file in src/*.py; do
-  kimi --print -c "为 $file 添加类型注解"
+  kimi --print -p "为 $file 添加类型注解"
 done
 ```
 

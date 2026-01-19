@@ -7,8 +7,8 @@ Print mode lets Kimi CLI run non-interactively, suitable for scripting and autom
 Use the `--print` flag to enable print mode:
 
 ```sh
-# Pass instructions via -c
-kimi --print -c "List all Python files in the current directory"
+# Pass instructions via -p (or -c)
+kimi --print -p "List all Python files in the current directory"
 
 # Pass instructions via stdin
 echo "Explain what this code does" | kimi --print
@@ -20,15 +20,15 @@ Print mode characteristics:
 - **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved
 - **Text output**: AI responses are output to stdout
 
-<!-- TODO: Enable this example after supporting reading content from stdin and instructions from -c simultaneously
+<!-- TODO: Enable this example after supporting reading content from stdin and instructions from -p simultaneously
 **Pipeline examples**
 
 ```sh
 # Analyze git diff and generate commit message
-git diff --staged | kimi --print -c "Generate a Conventional Commits compliant commit message based on this diff"
+git diff --staged | kimi --print -p "Generate a Conventional Commits compliant commit message based on this diff"
 
 # Read file and generate documentation
-cat src/api.py | kimi --print -c "Generate API documentation for this Python module"
+cat src/api.py | kimi --print -p "Generate API documentation for this Python module"
 ```
 -->
 
@@ -37,13 +37,13 @@ cat src/api.py | kimi --print -c "Generate API documentation for this Python mod
 Use the `--final-message-only` option to only output the final assistant message, skipping intermediate tool call processes:
 
 ```sh
-kimi --print -c "Give me a Git commit message based on the current changes" --final-message-only
+kimi --print -p "Give me a Git commit message based on the current changes" --final-message-only
 ```
 
 `--quiet` is a shortcut for `--print --output-format text --final-message-only`, suitable for scenarios where only the final result is needed:
 
 ```sh
-kimi --quiet -c "Give me a Git commit message based on the current changes"
+kimi --quiet -p "Give me a Git commit message based on the current changes"
 ```
 
 ## JSON format
@@ -55,7 +55,7 @@ Print mode supports JSON format for input and output, convenient for programmati
 Use `--output-format=stream-json` to output in JSONL (one JSON per line) format:
 
 ```sh
-kimi --print -c "Hello" --output-format=stream-json
+kimi --print -p "Hello" --output-format=stream-json
 ```
 
 Example output:
@@ -136,7 +136,7 @@ Assistant message with tool calls:
 Auto-generate code or perform checks in CI workflows:
 
 ```sh
-kimi --print -c "Check if there are any obvious security issues in the src/ directory, output a JSON format report"
+kimi --print -p "Check if there are any obvious security issues in the src/ directory, output a JSON format report"
 ```
 
 **Batch processing**
@@ -145,7 +145,7 @@ Combine with shell loops for batch file processing:
 
 ```sh
 for file in src/*.py; do
-  kimi --print -c "Add type annotations to $file"
+  kimi --print -p "Add type annotations to $file"
 done
 ```
 
