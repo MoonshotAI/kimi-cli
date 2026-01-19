@@ -305,9 +305,8 @@ jobs:
             security delete-keychain "$APPLE_KEYCHAIN_PATH" || true
           fi
 
-      # Package artifact for non-macOS platforms
-      - name: Package artifact (non-macOS)
-        if: runner.os != 'macOS'
+      # Package onefile artifact (all platforms)
+      - name: Package onefile artifact
         shell: python
         env:
           TAG: ${{ github.ref_name }}
@@ -326,26 +325,31 @@ jobs:
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
           is_windows = "windows" in target
+          is_macos = "apple-darwin" in target
           binary_name = "kimi.exe" if is_windows else "kimi"
           binary_path = dist_dir / "onefile" / binary_name
           if not binary_path.exists():
               raise SystemExit(f"Binary not found at {binary_path}")
 
-          archive_ext = "zip" if is_windows else "tar.gz"
-          archive_name = f"kimi-{tag}-{target}.{archive_ext}"
-          archive_path = artifacts_dir / archive_name
-
+          # Determine archive format and name
+          # - Windows: .zip
+          # - macOS: .tar.gz
+          # - Linux: .tar.gz
           if is_windows:
+              archive_name = f"kimi-{tag}-{target}.zip"
+              archive_path = artifacts_dir / archive_name
               with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
                   archive_file.write(binary_path, arcname=binary_name)
           else:
+              archive_name = f"kimi-{tag}-{target}.tar.gz"
+              archive_path = artifacts_dir / archive_name
               with tarfile.open(archive_path, "w:gz") as archive_file:
-                  archive_file.add(binary_path, arcname=binary_name)
+                  archive_file.add(binary_path, arcname="kimi")
 
-          print(f"Built artifact: {archive_path}")
+          print(f"Built onefile artifact: {archive_path}")
 
-      # Package artifacts for macOS (both onefile and onedir)
-      - name: Package artifact (macOS)
+      # Package onedir artifact (macOS only)
+      - name: Package onedir artifact
         if: runner.os == 'macOS'
         shell: python
         env:
@@ -363,29 +367,18 @@ jobs:
           artifacts_dir = pathlib.Path("artifacts")
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-          # Package onefile
-          onefile_path = dist_dir / "onefile" / "kimi"
-          if not onefile_path.exists():
-              raise SystemExit(f"Onefile binary not found at {onefile_path}")
-
-          onefile_archive_name = f"kimi-{tag}-{target}-onefile.tar.gz"
-          onefile_archive_path = artifacts_dir / onefile_archive_name
-          with tarfile.open(onefile_archive_path, "w:gz") as archive_file:
-              archive_file.add(onefile_path, arcname="kimi")
-          print(f"Built onefile artifact: {onefile_archive_path}")
-
-          # Package onedir
           onedir_path = dist_dir / "onedir" / "kimi"
           if not onedir_path.exists() or not onedir_path.is_dir():
               raise SystemExit(f"Onedir directory not found at {onedir_path}")
 
-          onedir_archive_name = f"kimi-{tag}-{target}-onedir.tar.gz"
-          onedir_archive_path = artifacts_dir / onedir_archive_name
-          with tarfile.open(onedir_archive_path, "w:gz") as archive_file:
+          archive_name = f"kimi-{tag}-{target}-onedir.tar.gz"
+          archive_path = artifacts_dir / archive_name
+          with tarfile.open(archive_path, "w:gz") as archive_file:
               # Add the directory contents with kimi/ as the root
               for item in onedir_path.iterdir():
                   archive_file.add(item, arcname=f"kimi/{item.name}")
-          print(f"Built onedir artifact: {onedir_archive_path}")
+
+          print(f"Built onedir artifact: {archive_path}")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
