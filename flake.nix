@@ -70,6 +70,11 @@
                 ripgrepy = prev.ripgrepy.overrideAttrs (old: {
                   nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.setuptools ];
                 });
+                # Build kimi-code from repo root so its README symlink resolves.
+                "kimi-code" = prev."kimi-code".overrideAttrs (old: {
+                  src = ./.;
+                  sourceRoot = "packages/kimi-code";
+                });
               };
               pythonSet = (callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
                 lib.composeManyExtensions [
