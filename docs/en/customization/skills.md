@@ -10,22 +10,17 @@ For example, you can create a "code style" skill to tell the AI your project's n
 
 ## Skill discovery
 
-Two levels of logic:
+Kimi CLI discovers skills from the following directories:
 
-1. **Layered merging**: builtin → user → project levels are loaded; same-name skills are overridden by later levels
-2. **Directory lookup**: within each level, candidates are checked by priority; stops at first existing directory
+1. Built-in skills (shipped with the package)
+2. `~/.kimi/skills` (user directory)
+3. `~/.claude/skills` (compatible with Claude's skills)
 
-**Built-in**: shipped with the package (available when running locally or via ACP)
+If a skill with the same name exists in multiple directories, later ones override earlier ones. You can also specify other directories with the `--skills-dir` flag:
 
-**User level** (by priority):
-- `~/.config/agents/skills/` — recommended
-- `~/.kimi/skills/` — legacy fallback
-- `~/.claude/skills/` — legacy fallback
-
-**Project level**:
-- `.agents/skills/`
-
-When using `--skills-dir`, discovery is skipped; only that directory is used (built-ins still load when supported).
+```sh
+kimi --skills-dir /path/to/my-skills
+```
 
 ## Built-in skills
 
@@ -43,12 +38,10 @@ Creating a skill only requires two steps:
 
 **Directory structure**
 
-Use the same layout under either the project root or the user skills root (`~/.config/agents/skills/`).
-
 A skill directory needs at least a `SKILL.md` file, and can also include auxiliary directories to organize more complex content:
 
 ```
-<project>/.agents/skills/
+~/.kimi/skills/
 └── my-skill/
     ├── SKILL.md          # Required: main file
     ├── scripts/          # Optional: script files
