@@ -260,10 +260,14 @@ def kimi(
             ),
         ),
     ] = None,
-    skills_dir: Annotated[
-        str | None,
+    local_skills_dir: Annotated[
+        Path | None,
         typer.Option(
             "--skills-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
             help="Path to the skills directory. Overrides discovery.",
         ),
     ] = None,
@@ -382,12 +386,6 @@ def kimi(
         prompt = prompt.strip()
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
-    skills_dir_path: KaosPath | None = None
-    if skills_dir is not None:
-        skills_dir = skills_dir.strip()
-        if not skills_dir:
-            raise typer.BadParameter("Skills dir cannot be empty", param_hint="--skills-dir")
-        skills_dir_path = KaosPath(skills_dir).expanduser()
 
     flow = None
     if prompt_flow is not None:
@@ -468,6 +466,10 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
+    skills_dir: KaosPath | None = None
+    if local_skills_dir is not None:
+        skills_dir = KaosPath.unsafe_from_local_path(local_skills_dir)
+
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
     async def _run(session_id: str | None) -> bool:
@@ -499,7 +501,7 @@ def kimi(
             yolo=yolo or (ui == "print"),  # print mode implies yolo
             agent_file=agent_file,
             mcp_configs=mcp_configs,
-            skills_dir=skills_dir_path,
+            skills_dir=skills_dir,
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,

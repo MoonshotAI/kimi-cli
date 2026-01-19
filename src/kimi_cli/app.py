@@ -59,8 +59,8 @@ class KimiCLI:
         yolo: bool = False,
         # Extensions
         agent_file: Path | None = None,
-        skills_dir: KaosPath | Path | None = None,
         mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
+        skills_dir: KaosPath | None = None,
         # Loop control
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
@@ -78,10 +78,10 @@ class KimiCLI:
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
-            skills_dir (KaosPath | Path | None, optional): Override skills directory discovery.
-                Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
+            skills_dir (KaosPath | None, optional): Override skills directory discovery. Defaults
+                to None.
             max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
                 Defaults to None.
             max_retries_per_step (int | None, optional): Maximum number of retries in one step.
@@ -139,12 +139,7 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             logger.info("Thinking mode: {thinking}", thinking=thinking)
 
-        skills_dir_path = (
-            KaosPath.unsafe_from_local_path(skills_dir)
-            if isinstance(skills_dir, Path)
-            else skills_dir
-        )
-        runtime = await Runtime.create(config, llm, session, yolo, skills_dir_path)
+        runtime = await Runtime.create(config, llm, session, yolo, skills_dir)
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
