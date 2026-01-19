@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Skills：添加项目级 Skills 支持，从 `.agents/skills/`（或 `.kimi/skills/`、`.claude/skills/`）发现
+- Skills：统一 Skills 发现机制，采用分层加载（内置 → 用户 → 项目）；用户级 Skills 现在优先使用 `~/.config/agents/skills/`
+- Shell：斜杠命令自动补全支持模糊匹配
 - Shell：增强审批请求预览，显示 Shell 命令和 Diff 内容，使用 `Ctrl-E` 展开完整内容
 - Wire：添加 `ShellDisplayBlock` 类型，用于在审批请求中显示 Shell 命令
 - Shell：调整 `/help` 显示顺序，将键盘快捷键移至斜杠命令之前

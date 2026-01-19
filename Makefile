@@ -110,9 +110,9 @@ ai-test: ## Run the test suite with Kimi CLI.
 .PHONY: gen-changelog gen-docs
 gen-changelog: ## Generate changelog with Kimi CLI.
 	@echo "==> Generating changelog"
-	@uv run kimi -c "$$(cat .kimi/prompts/gen-changelog.md)" --yolo
+	@uv run kimi --yolo --prompt /skill:gen-changelog
 gen-docs: ## Generate user docs with Kimi CLI.
 	@echo "==> Generating user docs"
-	@uv run kimi -c "$$(cat .kimi/prompts/gen-docs.md)" --yolo
+	@uv run kimi --yolo --prompt /skill:gen-docs
 
 include src/kimi_cli/deps/Makefile
