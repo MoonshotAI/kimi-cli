@@ -142,6 +142,6 @@ This command is only available when a flowchart has been loaded via `--prompt-fl
 
 ## Command completion
 
-After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands, press Enter to select.
+After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands with fuzzy matching support, press Enter to select.
 
-Commands support alias matching, for example typing `/h` will match `/help`.
+For example, typing `/ses` will match `/sessions`, and `/clog` will match `/changelog`. Command aliases are also supported, such as typing `/h` to match `/help`.
