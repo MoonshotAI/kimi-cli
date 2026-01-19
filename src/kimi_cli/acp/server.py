@@ -15,7 +15,7 @@ from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.app import KimiCLI
-from kimi_cli.config import LLMModel, save_config
+from kimi_cli.config import LLMModel, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
 from kimi_cli.session import Session
@@ -256,7 +256,10 @@ class ACPServer:
         config.default_model = model_id_conv.model_key
         config.default_thinking = model_id_conv.thinking
         assert config.is_from_default_location, "`kimi acp` must use the default config location"
-        save_config(cli_instance.soul.runtime.config)
+        config_for_save = load_config()
+        config_for_save.default_model = model_id_conv.model_key
+        config_for_save.default_thinking = model_id_conv.thinking
+        save_config(config_for_save)
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
         raise NotImplementedError

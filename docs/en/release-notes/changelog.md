@@ -4,10 +4,29 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Skills: Add project-level skills support, discovered from `.agents/skills/` (or `.kimi/skills/`, `.claude/skills/`)
+- Skills: Unified skills discovery with layered loading (builtin → user → project); user-level skills now prefer `~/.config/agents/skills/`
+- Shell: Support fuzzy matching for slash command autocomplete
+- Shell: Enhanced approval request preview with shell command and diff content display, use `Ctrl-E` to expand full content
+- Wire: Add `ShellDisplayBlock` type for shell command display in approval requests
+- Shell: Reorder `/help` to show keyboard shortcuts before slash commands
+- Wire: Return proper JSON-RPC 2.0 error responses for invalid requests
+
+## 0.78 (2026-01-16)
+
+- CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
+
+## 0.77 (2026-01-15)
+
+- Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
 - Shell: Use `/model` to toggle thinking mode instead of Tab key
-- Config: Add `default_thinking` config option (auto-migrated from metadata)
+- Config: Add `default_thinking` config option (need to run `/model` to select thinking mode after upgrade)
 - LLM: Add `always_thinking` capability for models that always use thinking mode
 - CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
+- Wire: Fix approval requests not responding properly in Wire mode
+- CLI: Add `--prompt-flow` option to load a Mermaid flowchart file as a Prompt Flow
+- Core: Add `/begin` slash command if a Prompt Flow is loaded to start the flow
+- Core: Replace Ralph Loop with Prompt Flow-based implementation
 
 ## 0.76 (2026-01-12)
 

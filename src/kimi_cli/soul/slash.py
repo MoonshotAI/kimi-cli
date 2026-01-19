@@ -61,6 +61,14 @@ async def compact(soul: KimiSoul, args: str):
     wire_send(TextPart(text="The context has been compacted."))
 
 
+@registry.command(aliases=["reset"])
+async def clear(soul: KimiSoul, args: str):
+    """Clear the context"""
+    logger.info("Running `/clear`")
+    await soul.context.clear()
+    wire_send(TextPart(text="The context has been cleared."))
+
+
 @registry.command
 async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
