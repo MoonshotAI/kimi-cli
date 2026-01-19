@@ -74,6 +74,15 @@ Send user input and run an agent turn. After calling, the agent starts processin
 | `-32002` | Specified LLM not supported |
 | `-32003` | LLM service error |
 
+Additionally, all requests may return standard JSON-RPC 2.0 errors:
+
+| code | Description |
+|------|-------------|
+| `-32700` | Invalid JSON format |
+| `-32600` | Invalid request (e.g., unsupported method) |
+| `-32602` | Invalid method parameters |
+| `-32603` | Internal error |
+
 ### `cancel`
 
 - **Direction**: Client → Agent
@@ -382,6 +391,7 @@ type DisplayBlock =
   | BriefDisplayBlock
   | DiffDisplayBlock
   | TodoDisplayBlock
+  | ShellDisplayBlock
 
 /** Fallback for unrecognized display block types */
 interface UnknownDisplayBlock {
@@ -418,5 +428,13 @@ interface TodoDisplayItem {
   title: string
   /** Status */
   status: "pending" | "in_progress" | "done"
+}
+
+interface ShellDisplayBlock {
+  type: "shell"
+  /** Language identifier for syntax highlighting (e.g., "sh", "powershell") */
+  language: string
+  /** Shell command content */
+  command: string
 }
 ```
