@@ -202,6 +202,16 @@ jobs:
           if ! grep -q "status: Accepted" /tmp/notarize-onefile.log; then
             echo "❌ Onefile notarization failed!"
             cat /tmp/notarize-onefile.log
+            
+            # Get detailed error log from Apple
+            submission_id=$(grep "id:" /tmp/notarize-onefile.log | head -1 | awk '{print $2}')
+            if [[ -n "$submission_id" ]]; then
+              echo "Fetching notarization log for submission: $submission_id"
+              xcrun notarytool log "$submission_id" \
+                --key "$key_path" \
+                --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+                --issuer "$APPLE_NOTARIZATION_ISSUER_ID" 2>&1 || true
+            fi
             exit 1
           fi
 
@@ -252,6 +262,16 @@ jobs:
           if ! grep -q "status: Accepted" /tmp/notarize-onedir.log; then
             echo "❌ Onedir notarization failed!"
             cat /tmp/notarize-onedir.log
+            
+            # Get detailed error log from Apple
+            submission_id=$(grep "id:" /tmp/notarize-onedir.log | head -1 | awk '{print $2}')
+            if [[ -n "$submission_id" ]]; then
+              echo "Fetching notarization log for submission: $submission_id"
+              xcrun notarytool log "$submission_id" \
+                --key "$key_path" \
+                --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+                --issuer "$APPLE_NOTARIZATION_ISSUER_ID" 2>&1 || true
+            fi
             exit 1
           fi
 
