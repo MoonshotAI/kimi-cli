@@ -23,11 +23,9 @@ class Reload(Exception):
 
 
 cli = typer.Typer(
-    epilog=(
-        "Further help:\n"
-        "  Documentation:     https://moonshotai.github.io/kimi-cli/\n"
-        "  LLM friendly doc:  https://moonshotai.github.io/kimi-cli/llms.txt"
-    ),
+    epilog="""\b\
+Documentation:        https://moonshotai.github.io/kimi-cli/\n
+LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt""",
     add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
     help="Kimi, your next CLI agent.",
