@@ -55,8 +55,9 @@ class LoopControl(BaseModel):
     """Maximum number of retries in one step"""
     max_ralph_iterations: int = Field(default=0, ge=-1)
     """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
-    auto_compact_threshold: float = Field(default=0.8, ge=0.1, le=1.0)
-    """Context usage threshold (0.1-1.0) that triggers auto-compaction. Default is 0.8 (80%)."""
+    reserved_context_size: int = Field(default=50_000, ge=1000)
+    """Reserved token count for LLM response generation. Auto-compaction triggers when
+    context_tokens + reserved_context_size >= max_context_size. Default is 50000."""
 
 
 class MoonshotSearchConfig(BaseModel):

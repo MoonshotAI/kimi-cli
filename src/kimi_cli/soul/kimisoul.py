@@ -328,13 +328,12 @@ class KimiSoul:
             step_outcome: StepOutcome | None = None
             try:
                 # compact the context if needed
-                threshold = self._loop_control.auto_compact_threshold
-                if self._context_usage >= threshold:
-                    logger.info(
-                        "Context usage {usage:.1%} exceeds {threshold:.0%}, compacting...",
-                        usage=self._context_usage,
-                        threshold=threshold,
-                    )
+                reserved = self._loop_control.reserved_context_size
+                if (
+                    self._context.token_count + reserved
+                    >= self._runtime.llm.max_context_size
+                ):
+                    logger.info("Context too long, compacting...")
                     await self.compact_context()
 
                 logger.debug("Beginning step {step_no}", step_no=step_no)
