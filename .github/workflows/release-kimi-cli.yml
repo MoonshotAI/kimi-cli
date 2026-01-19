@@ -124,16 +124,11 @@ jobs:
       # macOS: Build both onefile and onedir versions
       - name: Build standalone binary (macOS onefile)
         if: runner.os == 'macOS'
-        run: |
-          make build-bin
-          # Move onefile binary to a separate location
-          mv dist/kimi dist/kimi-onefile
+        run: make build-bin
 
       - name: Build standalone binary (macOS onedir)
         if: runner.os == 'macOS'
-        run: |
-          make build-bin-onedir
-          # The onedir output is in dist/kimi/ directory
+        run: make build-bin-onedir
 
       # macOS: Sign onefile binary
       - name: Sign macOS onefile binary
@@ -144,9 +139,9 @@ jobs:
           codesign --deep --force --options runtime --timestamp \
             --sign "$APPLE_SIGNING_IDENTITY" \
             --keychain "$APPLE_KEYCHAIN_PATH" \
-            dist/kimi-onefile
+            dist/onefile/kimi
           echo "✅ Onefile binary signed"
-          codesign -dv --verbose=2 dist/kimi-onefile
+          codesign -dv --verbose=2 dist/onefile/kimi
 
       # macOS: Sign onedir binaries (all dylibs and executables)
       - name: Sign macOS onedir binaries
@@ -156,7 +151,7 @@ jobs:
           echo "Signing onedir binaries..."
           
           # Sign all dylibs and so files first
-          find dist/kimi -type f \( -name "*.dylib" -o -name "*.so" \) | while read -r lib; do
+          find dist/onedir/kimi -type f \( -name "*.dylib" -o -name "*.so" \) | while read -r lib; do
             echo "Signing: $lib"
             codesign --force --options runtime --timestamp \
               --sign "$APPLE_SIGNING_IDENTITY" \
@@ -165,14 +160,14 @@ jobs:
           done
           
           # Sign the main executable last
-          echo "Signing main executable: dist/kimi/kimi"
+          echo "Signing main executable: dist/onedir/kimi/kimi"
           codesign --force --options runtime --timestamp \
             --sign "$APPLE_SIGNING_IDENTITY" \
             --keychain "$APPLE_KEYCHAIN_PATH" \
-            dist/kimi/kimi
+            dist/onedir/kimi/kimi
           
           echo "✅ Onedir binaries signed"
-          codesign -dv --verbose=2 dist/kimi/kimi
+          codesign -dv --verbose=2 dist/onedir/kimi/kimi
 
       # macOS: Notarize onefile binary
       - name: Notarize macOS onefile binary
@@ -190,7 +185,7 @@ jobs:
 
           # Create zip for notarization
           zip_path="${RUNNER_TEMP}/kimi-onefile.zip"
-          ditto -c -k --keepParent dist/kimi-onefile "$zip_path"
+          ditto -c -k --keepParent dist/onefile/kimi "$zip_path"
 
           echo "Submitting onefile for notarization..."
           
@@ -205,7 +200,7 @@ jobs:
 
           # Verify
           echo "Verifying onefile signature..."
-          codesign -dv --verbose=2 dist/kimi-onefile
+          codesign -dv --verbose=2 dist/onefile/kimi
 
           # Cleanup
           rm -f "$zip_path"
@@ -228,7 +223,7 @@ jobs:
 
           # Create zip for notarization (entire directory)
           zip_path="${RUNNER_TEMP}/kimi-onedir.zip"
-          ditto -c -k --keepParent dist/kimi "$zip_path"
+          ditto -c -k --keepParent dist/onedir/kimi "$zip_path"
 
           echo "Submitting onedir for notarization..."
           
@@ -243,7 +238,7 @@ jobs:
 
           # Verify
           echo "Verifying onedir signature..."
-          codesign -dv --verbose=2 dist/kimi/kimi
+          codesign -dv --verbose=2 dist/onedir/kimi/kimi
 
           # Cleanup
           rm -f "$key_path" "$zip_path"
@@ -278,7 +273,7 @@ jobs:
 
           is_windows = "windows" in target
           binary_name = "kimi.exe" if is_windows else "kimi"
-          binary_path = dist_dir / binary_name
+          binary_path = dist_dir / "onefile" / binary_name
           if not binary_path.exists():
               raise SystemExit(f"Binary not found at {binary_path}")
 
@@ -315,7 +310,7 @@ jobs:
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
           # Package onefile
-          onefile_path = dist_dir / "kimi-onefile"
+          onefile_path = dist_dir / "onefile" / "kimi"
           if not onefile_path.exists():
               raise SystemExit(f"Onefile binary not found at {onefile_path}")
 
@@ -326,7 +321,7 @@ jobs:
           print(f"Built onefile artifact: {onefile_archive_path}")
 
           # Package onedir
-          onedir_path = dist_dir / "kimi"
+          onedir_path = dist_dir / "onedir" / "kimi"
           if not onedir_path.exists() or not onedir_path.is_dir():
               raise SystemExit(f"Onedir directory not found at {onedir_path}")
 

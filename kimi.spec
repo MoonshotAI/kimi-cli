@@ -26,11 +26,12 @@ pyz = PYZ(a.pure)
 
 if onedir_mode:
     # one-dir mode: EXE contains only scripts, binaries/datas collected separately
+    # Use a different name for EXE to avoid conflict with COLLECT directory
     exe = EXE(
         pyz,
         a.scripts,
-        [],
-        name="kimi",
+        exclude_binaries=True,
+        name="kimi-exe",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
