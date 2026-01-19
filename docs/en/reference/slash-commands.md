@@ -2,11 +2,15 @@
 
 Slash commands are built-in commands for Kimi CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
+::: tip Shell mode
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+:::
+
 ## Help and info
 
 ### `/help`
 
-Display help information, listing all available slash commands.
+Display help information. Shows keyboard shortcuts, all available slash commands, and loaded skills in a fullscreen pager. Press `q` to exit.
 
 Aliases: `/h`, `/?`
 
@@ -14,9 +18,11 @@ Aliases: `/h`, `/?`
 
 Display Kimi CLI version number.
 
-### `/release-notes`
+### `/changelog`
 
-Display release notes for recent versions.
+Display the changelog for recent versions.
+
+Alias: `/release-notes`
 
 ### `/feedback`
 
@@ -37,11 +43,11 @@ After configuration, settings are automatically saved to `~/.kimi/config.toml` a
 
 ### `/model`
 
-Switch the default model.
+Switch models and thinking mode.
 
-This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface; you can also specify a model name directly, e.g., `/model kimi-k2`.
+This command first refreshes the available models list from the API platform. When called without arguments, displays an interactive selection interface where you first select a model, then choose whether to enable thinking mode (if the model supports it).
 
-After selecting a new model, Kimi CLI will automatically update the configuration file and reload.
+After selection, Kimi CLI will automatically update the configuration file and reload.
 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
@@ -128,8 +134,14 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
 
+### `/begin`
+
+Start Prompt Flow execution.
+
+This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
+
 ## Command completion
 
-After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands, press Enter to select.
+After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands with fuzzy matching support, press Enter to select.
 
-Commands support alias matching, for example typing `/h` will match `/help`.
+For example, typing `/ses` will match `/sessions`, and `/clog` will match `/changelog`. Command aliases are also supported, such as typing `/h` to match `/help`.

@@ -17,6 +17,7 @@ def test_default_config():
     assert config == snapshot(
         Config(
             default_model="",
+            default_thinking=False,
             models={},
             providers={},
             services=Services(),
@@ -29,6 +30,7 @@ def test_default_config_dump():
     assert config.model_dump() == snapshot(
         {
             "default_model": "",
+            "default_thinking": False,
             "models": {},
             "providers": {},
             "loop_control": {

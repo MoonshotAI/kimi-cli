@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
@@ -20,9 +21,11 @@ from .jsonrpc import (
     JSONRPCCancelMessage,
     JSONRPCErrorObject,
     JSONRPCErrorResponse,
+    JSONRPCErrorResponseNullableID,
     JSONRPCEventMessage,
     JSONRPCInMessage,
     JSONRPCInMessageAdapter,
+    JSONRPCMessage,
     JSONRPCOutMessage,
     JSONRPCPromptMessage,
     JSONRPCRequestMessage,
@@ -89,16 +92,101 @@ class WireOverStdio:
         assert self._reader is not None
 
         while True:
-            line = await self._reader.readline()
-            if not line:
+            raw_line = await self._reader.readline()
+            if not raw_line:
                 logger.info("stdin closed, Wire server exiting")
                 break
+            line = raw_line.decode("utf-8", errors="replace").strip()
 
             try:
-                msg = JSONRPCInMessageAdapter.validate_json(line)
+                msg_json = json.loads(line)
             except ValueError:
-                logger.error("Invalid JSONRPC line: {line}", line=line)
+                logger.error("Invalid JSON line: {line}", line=line)
+                await self._send_msg(
+                    JSONRPCErrorResponseNullableID(
+                        id=None,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.PARSE_ERROR,
+                            message="Invalid JSON format",
+                        ),
+                    )
+                )
                 continue
+
+            try:
+                generic_msg = JSONRPCMessage.model_validate(msg_json)
+            except pydantic.ValidationError as e:
+                logger.error("Invalid JSON-RPC message: {error}", error=e)
+                await self._send_msg(
+                    JSONRPCErrorResponseNullableID(
+                        id=None,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.INVALID_REQUEST,
+                            message="Invalid request",
+                        ),
+                    )
+                )
+                continue
+
+            if generic_msg.is_response():
+                # for responses, we skip the method check
+                try:
+                    msg = JSONRPCInMessageAdapter.validate_python(msg_json)
+                except pydantic.ValidationError as e:
+                    logger.error("Invalid JSON-RPC response: {error}", error=e)
+                    await self._send_msg(
+                        JSONRPCErrorResponseNullableID(
+                            id=None,
+                            error=JSONRPCErrorObject(
+                                code=ErrorCodes.INVALID_REQUEST,
+                                message="Invalid response",
+                            ),
+                        )
+                    )
+                    continue  # ignore invalid json-rpc responses
+
+                if not isinstance(msg, (JSONRPCSuccessResponse, JSONRPCErrorResponse)):
+                    logger.error(
+                        "Invalid JSON-RPC response message: {msg}",
+                        msg=msg_json,
+                    )
+                    continue  # ignore invalid response messages
+
+                task = asyncio.create_task(self._dispatch_msg(msg))
+                task.add_done_callback(self._dispatch_tasks.discard)
+                self._dispatch_tasks.add(task)
+                continue
+
+            if not generic_msg.method_is_inbound():
+                logger.error(
+                    "Unexpected JSON-RPC method received: {method}",
+                    method=generic_msg.method,
+                )
+                if generic_msg.id is not None:
+                    resp = JSONRPCErrorResponse(
+                        id=generic_msg.id,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.METHOD_NOT_FOUND,
+                            message=f"Unexpected method received: {generic_msg.method}",
+                        ),
+                    )
+                    await self._send_msg(resp)
+                continue  # ignore unexpected outbound methods
+
+            try:
+                msg = JSONRPCInMessageAdapter.validate_python(msg_json)
+            except pydantic.ValidationError as e:
+                logger.error("Invalid JSON-RPC inbound message: {error}", error=e)
+                if generic_msg.id is not None:
+                    resp = JSONRPCErrorResponse(
+                        id=generic_msg.id,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.INVALID_PARAMS,
+                            message=f"Invalid parameters for method `{generic_msg.method}`",
+                        ),
+                    )
+                    await self._send_msg(resp)
+                continue  # ignore invalid inbound messages
 
             task = asyncio.create_task(self._dispatch_msg(msg))
             task.add_done_callback(self._dispatch_tasks.discard)

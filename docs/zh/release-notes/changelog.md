@@ -4,6 +4,40 @@
 
 ## 未发布
 
+- Skills：添加项目级 Skills 支持，从 `.agents/skills/`（或 `.kimi/skills/`、`.claude/skills/`）发现
+- Skills：统一 Skills 发现机制，采用分层加载（内置 → 用户 → 项目）；用户级 Skills 现在优先使用 `~/.config/agents/skills/`
+- Shell：斜杠命令自动补全支持模糊匹配
+- Shell：增强审批请求预览，显示 Shell 命令和 Diff 内容，使用 `Ctrl-E` 展开完整内容
+- Wire：添加 `ShellDisplayBlock` 类型，用于在审批请求中显示 Shell 命令
+- Shell：调整 `/help` 显示顺序，将键盘快捷键移至斜杠命令之前
+- Wire：对无效请求返回符合 JSON-RPC 2.0 规范的错误响应
+
+## 0.78 (2026-01-16)
+
+- CLI：为 Prompt Flow 添加 D2 流程图格式支持（`.d2` 扩展名）
+
+## 0.77 (2026-01-15)
+
+- Shell：修复 `/help` 和 `/changelog` 全屏分页显示中的换行问题
+- Shell：使用 `/model` 命令切换 Thinking 模式，取代 Tab 键
+- Config：添加 `default_thinking` 配置项（升级后需运行 `/model` 选择 Thinking 模式）
+- LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
+- CLI：将 `--command`/`-c` 重命名为 `--prompt`/`-p`，保留 `--command`/`-c` 作为别名，移除 `--query`/`-q`
+- Wire：修复 Wire 模式下审批请求无法正常响应的问题
+- CLI：添加 `--prompt-flow` 选项，加载 Mermaid 流程图文件作为 Prompt Flow
+- Core：加载 Prompt Flow 后添加 `/begin` 斜杠命令以启动流程
+- Core：使用基于 Prompt Flow 的实现替换旧的 Ralph 循环
+
+## 0.76 (2026-01-12)
+
+- Tool：让 `ReadFile` 工具描述根据模型能力动态反映图片/视频支持情况
+- Tool：修复 TypeScript 文件（`.ts`、`.tsx`、`.mts`、`.cts`）被误识别为视频文件的问题
+- Shell：允许在 Shell 模式下使用部分斜杠命令（`/help`、`/exit`、`/version`、`/changelog`、`/feedback`）
+- Shell：改进 `/help` 显示，使用全屏分页器，展示斜杠命令、Skills 和键盘快捷键
+- Shell：改进 `/changelog` 和 `/mcp` 显示，采用一致的项目符号格式
+- Shell：在底部状态栏显示当前模型名称
+- Shell：添加 `Ctrl-/` 快捷键显示帮助
+
 ## 0.75 (2026-01-09)
 
 - Tool：改进 `ReadFile` 工具描述

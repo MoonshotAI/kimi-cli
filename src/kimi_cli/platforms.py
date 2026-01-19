@@ -3,10 +3,31 @@ from __future__ import annotations
 from typing import Any, NamedTuple, cast
 
 import aiohttp
+from pydantic import BaseModel
 
-from kimi_cli.config import Config, LLMModel, save_config
+from kimi_cli.config import Config, LLMModel, load_config, save_config
+from kimi_cli.llm import ModelCapability
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
+
+
+class ModelInfo(BaseModel):
+    """Model information returned from the API."""
+
+    id: str
+    context_length: int = 0
+    supports_reasoning: bool = False
+
+    @property
+    def capabilities(self) -> set[ModelCapability]:
+        """Derive capabilities from model info."""
+        caps: set[ModelCapability] = set()
+        if self.supports_reasoning:
+            caps.add("thinking")
+        # Models with "thinking" in name are always-thinking
+        if "thinking" in self.id.lower():
+            caps.update(("thinking", "always_thinking"))
+        return caps
 
 
 class Platform(NamedTuple):
@@ -28,15 +49,15 @@ PLATFORMS: list[Platform] = [
     ),
     Platform(
         id="moonshot-cn",
-        name="Moonshot AI 开放平台 (moonshot.cn)",
+        name="Moonshot AI Open Platform (moonshot.cn)",
         base_url="https://api.moonshot.cn/v1",
-        allowed_prefixes=["kimi-k2-"],
+        allowed_prefixes=["kimi-k"],
     ),
     Platform(
         id="moonshot-ai",
         name="Moonshot AI Open Platform (moonshot.ai)",
         base_url="https://api.moonshot.ai/v1",
-        allowed_prefixes=["kimi-k2-"],
+        allowed_prefixes=["kimi-k"],
     ),
 ]
 
@@ -92,6 +113,7 @@ async def refresh_managed_models(config: Config) -> bool:
         return False
 
     changed = False
+    updates: list[tuple[str, str, list[ModelInfo]]] = []
     for provider_key, provider in managed_providers.items():
         platform_id = parse_managed_provider_key(provider_key)
         if not platform_id:
@@ -111,15 +133,22 @@ async def refresh_managed_models(config: Config) -> bool:
             )
             continue
 
+        updates.append((provider_key, platform_id, models))
         if _apply_models(config, provider_key, platform_id, models):
             changed = True
 
     if changed:
-        save_config(config)
+        config_for_save = load_config()
+        save_changed = False
+        for provider_key, platform_id, models in updates:
+            if _apply_models(config_for_save, provider_key, platform_id, models):
+                save_changed = True
+        if save_changed:
+            save_config(config_for_save)
     return changed
 
 
-async def list_models(platform: Platform, api_key: str) -> list[dict[str, Any]]:
+async def list_models(platform: Platform, api_key: str) -> list[ModelInfo]:
     async with new_client_session() as session:
         models = await _list_models(
             session,
@@ -129,7 +158,7 @@ async def list_models(platform: Platform, api_key: str) -> list[dict[str, Any]]:
     if platform.allowed_prefixes is None:
         return models
     prefixes = tuple(platform.allowed_prefixes)
-    return [model for model in models if str(model.get("id", "")).startswith(prefixes)]
+    return [model for model in models if model.id.startswith(prefixes)]
 
 
 async def _list_models(
@@ -137,7 +166,7 @@ async def _list_models(
     *,
     base_url: str,
     api_key: str,
-) -> list[dict[str, Any]]:
+) -> list[ModelInfo]:
     models_url = f"{base_url.rstrip('/')}/models"
     try:
         async with session.get(
@@ -152,33 +181,44 @@ async def _list_models(
     data = resp_json.get("data")
     if not isinstance(data, list):
         raise ValueError(f"Unexpected models response for {base_url}")
-    return cast(list[dict[str, Any]], data)
+
+    result: list[ModelInfo] = []
+    for item in cast(list[dict[str, Any]], data):
+        model_id = item.get("id")
+        if not model_id:
+            continue
+        result.append(
+            ModelInfo(
+                id=str(model_id),
+                context_length=int(item.get("context_length") or 0),
+                supports_reasoning=bool(item.get("supports_reasoning")),
+            )
+        )
+    return result
 
 
 def _apply_models(
     config: Config,
     provider_key: str,
     platform_id: str,
-    models: list[dict[str, Any]],
+    models: list[ModelInfo],
 ) -> bool:
     changed = False
     model_keys: list[str] = []
 
     for model in models:
-        model_id = str(model.get("id", ""))
-        if not model_id:
-            continue
-        model_key = managed_model_key(platform_id, model_id)
+        model_key = managed_model_key(platform_id, model.id)
         model_keys.append(model_key)
 
-        max_context_size = model.get("context_length")
         existing = config.models.get(model_key)
+        capabilities = model.capabilities or None  # empty set -> None
 
         if existing is None:
             config.models[model_key] = LLMModel(
                 provider=provider_key,
-                model=model_id,
-                max_context_size=int(max_context_size or 0),
+                model=model.id,
+                max_context_size=model.context_length,
+                capabilities=capabilities,
             )
             changed = True
             continue
@@ -186,11 +226,14 @@ def _apply_models(
         if existing.provider != provider_key:
             existing.provider = provider_key
             changed = True
-        if existing.model != model_id:
-            existing.model = model_id
+        if existing.model != model.id:
+            existing.model = model.id
             changed = True
-        if max_context_size is not None and existing.max_context_size != max_context_size:
-            existing.max_context_size = int(max_context_size)
+        if existing.max_context_size != model.context_length:
+            existing.max_context_size = model.context_length
+            changed = True
+        if existing.capabilities != capabilities:
+            existing.capabilities = capabilities
             changed = True
 
     removed_default = False

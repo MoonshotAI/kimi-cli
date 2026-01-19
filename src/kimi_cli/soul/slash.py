@@ -38,7 +38,6 @@ async def init(soul: KimiSoul, args: str):
     with tempfile.TemporaryDirectory() as temp_dir:
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
         tmp_soul = KimiSoul(soul.agent, context=tmp_context)
-        tmp_soul.set_thinking(soul.thinking)
         await tmp_soul.run(prompts.INIT)
 
     agents_md = load_agents_md(soul.runtime.builtin_args.KIMI_WORK_DIR)
@@ -60,6 +59,14 @@ async def compact(soul: KimiSoul, args: str):
     logger.info("Running `/compact`")
     await soul.compact_context()
     wire_send(TextPart(text="The context has been compacted."))
+
+
+@registry.command(aliases=["reset"])
+async def clear(soul: KimiSoul, args: str):
+    """Clear the context"""
+    logger.info("Running `/clear`")
+    await soul.context.clear()
+    wire_send(TextPart(text="The context has been cleared."))
 
 
 @registry.command

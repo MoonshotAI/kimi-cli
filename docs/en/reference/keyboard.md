@@ -7,10 +7,11 @@ Kimi CLI shell mode supports the following keyboard shortcuts.
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
-| `Tab` | Toggle thinking mode |
+| `Ctrl-/` | Show help |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
+| `Ctrl-E` | Expand full approval request content |
 | `Ctrl-D` | Exit Kimi CLI |
 | `Ctrl-C` | Interrupt current operation |
 
@@ -24,19 +25,12 @@ Press `Ctrl-X` in the input box to switch between two modes:
 - **Shell mode**: Input is executed as local shell command
 
 The prompt changes based on current mode:
-- Agent mode: `✨` or `💫` (thinking mode)
+- Agent mode: `✨` (normal) or `💫` (thinking mode)
 - Shell mode: `$`
 
-### `Tab`: Toggle thinking mode
+### `Ctrl-/`: Show help
 
-In agent mode, when the input box is empty or no completion menu is displayed, press `Tab` to toggle thinking mode.
-
-- When thinking mode is enabled, the prompt changes to `💫`
-- A notification is displayed when switching
-
-::: tip
-Thinking mode requires model support.
-:::
+Press `Ctrl-/` in the input box to quickly display help information, equivalent to entering the `/help` command.
 
 ## Multi-line input
 
@@ -63,6 +57,14 @@ When pasting images, a placeholder `[image:xxx.png,WxH]` is displayed. The actua
 ::: tip
 Image pasting requires the model to support `image_in` capability.
 :::
+
+## Approval request operations
+
+### `Ctrl-E`: Expand full content
+
+When approval request preview content is truncated, press `Ctrl-E` to view the full content in a fullscreen pager. When preview is truncated, a "... (truncated, ctrl-e to expand)" hint is displayed.
+
+Useful for viewing longer shell commands or file diff content.
 
 ## Exit and interrupt
 
@@ -95,7 +97,8 @@ Completion operations:
 The bottom status bar displays:
 
 - Current time
-- Current mode (agent/agent (think)/shell)
+- Current mode (agent/shell) and model name (in agent mode)
+- YOLO badge (when enabled)
 - Shortcut hints
 - Context usage
 

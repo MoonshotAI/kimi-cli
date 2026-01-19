@@ -33,15 +33,6 @@ If you need to change working directory:
 - **Use `--work-dir` flag**: Specify working directory at startup, like `kimi --work-dir /path/to/project`.
 - **Use absolute paths in commands**: Execute commands with absolute paths directly, like `ls /path/to/dir`.
 
-### Thinking mode unavailable
-
-When pressing `Tab` to toggle thinking mode, if you see "Thinking mode requires a model with thinking capability", it means the current model doesn't support thinking mode.
-
-Solutions:
-
-- **Switch to a supported model**: Use `/setup` to select a model that supports thinking (like `kimi-k2-thinking-turbo`).
-- **Check model capability configuration**: If you're sure the model supports thinking, you can force enable it with the environment variable `KIMI_MODEL_CAPABILITIES=thinking`.
-
 ### Image paste fails
 
 When using `Ctrl-V` to paste an image, if you see "Current model does not support image input", it means the current model doesn't support image input.
@@ -121,7 +112,7 @@ Correct input format example:
 
 If there's no output in `--print` mode, it may be:
 
-- **No input provided**: You need to provide input via `--command` or stdin. For example: `kimi --print --command "Hello"`.
+- **No input provided**: You need to provide input via `--prompt` (or `--command`) or stdin. For example: `kimi --print --prompt "Hello"`.
 - **Output is buffered**: Try using `--output-format stream-json` for streaming output.
 - **Configuration incomplete**: Ensure API key and model are configured via `/setup`.
 

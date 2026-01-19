@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+## 0.38.0 (2026-01-15)
+
+- Add `thinking_effort` property to `ChatProvider` protocol to query current thinking effort level
+
 ## 0.37.0 (2026-01-08)
 
 - Change `TokenUsage` from dataclass to pydantic BaseModel.

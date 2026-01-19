@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from loguru import logger
 from prompt_toolkit import PromptSession
@@ -18,6 +18,7 @@ from kimi_cli.config import (
 )
 from kimi_cli.platforms import (
     PLATFORMS,
+    ModelInfo,
     Platform,
     get_platform_by_name,
     list_models,
@@ -41,7 +42,7 @@ async def setup(app: Shell, args: str):
 
     config = load_config()
     provider_key = managed_provider_key(result.platform.id)
-    model_key = managed_model_key(result.platform.id, result.selected_model_id)
+    model_key = managed_model_key(result.platform.id, result.selected_model.id)
     config.providers[provider_key] = LLMProvider(
         type="kimi",
         base_url=result.platform.base_url,
@@ -51,15 +52,15 @@ async def setup(app: Shell, args: str):
         if model.provider == provider_key:
             del config.models[key]
     for model_info in result.models:
-        model_id = model_info.get("id")
-        if not model_id:
-            continue
-        config.models[managed_model_key(result.platform.id, str(model_id))] = LLMModel(
+        capabilities = model_info.capabilities or None
+        config.models[managed_model_key(result.platform.id, model_info.id)] = LLMModel(
             provider=provider_key,
-            model=str(model_id),
-            max_context_size=int(model_info.get("context_length") or 0),
+            model=model_info.id,
+            max_context_size=model_info.context_length,
+            capabilities=capabilities,
         )
     config.default_model = model_key
+    config.default_thinking = result.thinking
 
     if result.platform.search_url:
         config.services.moonshot_search = MoonshotSearchConfig(
@@ -86,14 +87,15 @@ async def setup(app: Shell, args: str):
 class _SetupResult(NamedTuple):
     platform: Platform
     api_key: SecretStr
-    selected_model_id: str
-    models: list[dict[str, Any]]
+    selected_model: ModelInfo
+    models: list[ModelInfo]
+    thinking: bool
 
 
 async def _setup() -> _SetupResult | None:
     # select the API platform
     platform_name = await _prompt_choice(
-        header="Select the API platform",
+        header="Select a platform (↑↓ navigate, Enter select, Ctrl+C cancel):",
         choices=[platform.name for platform in PLATFORMS],
     )
     if not platform_name:
@@ -119,26 +121,44 @@ async def _setup() -> _SetupResult | None:
         return None
 
     # select the model
-    model_map = {model["id"]: model for model in models if model.get("id")}
-    model_ids = list(model_map)
-
-    if not model_ids:
+    if not models:
         console.print("[red]No models available for the selected platform[/red]")
         return None
 
+    model_map = {model.id: model for model in models}
     model_id = await _prompt_choice(
-        header="Select the model",
-        choices=model_ids,
+        header="Select a model (↑↓ navigate, Enter select, Ctrl+C cancel):",
+        choices=list(model_map),
     )
     if not model_id:
         console.print("[red]No model selected[/red]")
         return None
 
+    selected_model = model_map[model_id]
+
+    # Determine thinking mode based on model capabilities
+    capabilities = selected_model.capabilities
+    thinking: bool
+
+    if "always_thinking" in capabilities:
+        thinking = True
+    elif "thinking" in capabilities:
+        thinking_selection = await _prompt_choice(
+            header="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
+            choices=["off", "on"],
+        )
+        if not thinking_selection:
+            return None
+        thinking = thinking_selection == "on"
+    else:
+        thinking = False
+
     return _SetupResult(
         platform=platform,
         api_key=SecretStr(api_key),
-        selected_model_id=model_id,
-        models=list(model_map.values()),
+        selected_model=selected_model,
+        models=models,
+        thinking=thinking,
     )
 
 

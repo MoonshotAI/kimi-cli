@@ -47,6 +47,7 @@ def _version_callback(value: bool) -> None:
 @cli.callback(invoke_without_command=True)
 def kimi(
     ctx: typer.Context,
+    # Meta
     version: Annotated[
         bool,
         typer.Option(
@@ -71,24 +72,36 @@ def kimi(
             help="Log debug information. Default: no.",
         ),
     ] = False,
-    agent: Annotated[
-        Literal["default", "okabe"] | None,
-        typer.Option(
-            "--agent",
-            help="Builtin agent specification to use. Default: builtin default agent.",
-        ),
-    ] = None,
-    agent_file: Annotated[
+    # Basic configuration
+    local_work_dir: Annotated[
         Path | None,
         typer.Option(
-            "--agent-file",
+            "--work-dir",
+            "-w",
             exists=True,
-            file_okay=True,
-            dir_okay=False,
+            file_okay=False,
+            dir_okay=True,
             readable=True,
-            help="Custom agent specification file. Default: builtin default agent.",
+            writable=True,
+            help="Working directory for the agent. Default: current directory.",
         ),
     ] = None,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session",
+            "-S",
+            help="Session ID to resume for the working directory. Default: new session.",
+        ),
+    ] = None,
+    continue_: Annotated[
+        bool,
+        typer.Option(
+            "--continue",
+            "-C",
+            help="Continue the previous session for the working directory. Default: no.",
+        ),
+    ] = False,
     config_string: Annotated[
         str | None,
         typer.Option(
@@ -115,43 +128,43 @@ def kimi(
             help="LLM model to use. Default: default model set in config file.",
         ),
     ] = None,
-    local_work_dir: Annotated[
-        Path | None,
+    thinking: Annotated[
+        bool | None,
         typer.Option(
-            "--work-dir",
-            "-w",
-            exists=True,
-            file_okay=False,
-            dir_okay=True,
-            readable=True,
-            writable=True,
-            help="Working directory for the agent. Default: current directory.",
+            "--thinking/--no-thinking",
+            help="Enable thinking mode. Default: default thinking mode set in config file.",
         ),
     ] = None,
-    continue_: Annotated[
+    # Run mode
+    yolo: Annotated[
         bool,
         typer.Option(
-            "--continue",
-            "-C",
-            help="Continue the previous session for the working directory. Default: no.",
+            "--yolo",
+            "--yes",
+            "-y",
+            "--auto-approve",
+            help="Automatically approve all actions. Default: no.",
         ),
     ] = False,
-    session_id: Annotated[
+    prompt: Annotated[
         str | None,
         typer.Option(
-            "--session",
-            "-S",
-            help="Session ID to resume for the working directory. Default: new session.",
-        ),
-    ] = None,
-    command: Annotated[
-        str | None,
-        typer.Option(
+            "--prompt",
+            "-p",
             "--command",
             "-c",
-            "--query",
-            "-q",
-            help="User query to the agent. Default: prompt interactively.",
+            help="User prompt to the agent. Default: prompt interactively.",
+        ),
+    ] = None,
+    prompt_flow: Annotated[
+        Path | None,
+        typer.Option(
+            "--prompt-flow",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="D2 (.d2) or Mermaid (.mmd) flowchart file to run as a prompt flow.",
         ),
     ] = None,
     print_mode: Annotated[
@@ -195,7 +208,7 @@ def kimi(
             help="Output format to use. Must be used with `--print`. Default: text.",
         ),
     ] = None,
-    final_only: Annotated[
+    final_message_only: Annotated[
         bool,
         typer.Option(
             "--final-message-only",
@@ -209,6 +222,25 @@ def kimi(
             help="Alias for `--print --output-format text --final-message-only`.",
         ),
     ] = False,
+    # Customization
+    agent: Annotated[
+        Literal["default", "okabe"] | None,
+        typer.Option(
+            "--agent",
+            help="Builtin agent specification to use. Default: builtin default agent.",
+        ),
+    ] = None,
+    agent_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--agent-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Custom agent specification file. Default: builtin default agent.",
+        ),
+    ] = None,
     mcp_config_file: Annotated[
         list[Path] | None,
         typer.Option(
@@ -233,24 +265,7 @@ def kimi(
             ),
         ),
     ] = None,
-    yolo: Annotated[
-        bool,
-        typer.Option(
-            "--yolo",
-            "--yes",
-            "-y",
-            "--auto-approve",
-            help="Automatically approve all actions. Default: no.",
-        ),
-    ] = False,
-    thinking: Annotated[
-        bool | None,
-        typer.Option(
-            "--thinking/--no-thinking",
-            help="Enable thinking mode if supported. Default: same as last time.",
-        ),
-    ] = None,
-    skills_dir: Annotated[
+    local_skills_dir: Annotated[
         Path | None,
         typer.Option(
             "--skills-dir",
@@ -258,9 +273,10 @@ def kimi(
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Path to the skills directory. Default: ~/.kimi/skills",
+            help="Path to the skills directory. Overrides discovery.",
         ),
     ] = None,
+    # Loop control
     max_steps_per_turn: Annotated[
         int | None,
         typer.Option(
@@ -327,7 +343,7 @@ def kimi(
             )
         print_mode = True
         output_format = "text"
-        final_only = True
+        final_message_only = True
 
     conflict_option_sets = [
         {
@@ -371,10 +387,42 @@ def kimi(
     elif wire_mode:
         ui = "wire"
 
-    if command is not None:
-        command = command.strip()
-        if not command:
-            raise typer.BadParameter("Command cannot be empty", param_hint="--command")
+    if prompt is not None:
+        prompt = prompt.strip()
+        if not prompt:
+            raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
+
+    flow = None
+    if prompt_flow is not None:
+        from kimi_cli.flow import PromptFlowError
+        from kimi_cli.flow.d2 import parse_d2_flowchart
+        from kimi_cli.flow.mermaid import parse_mermaid_flowchart
+
+        if max_ralph_iterations is not None and max_ralph_iterations != 0:
+            raise typer.BadParameter(
+                "Prompt flow cannot be used with Ralph mode",
+                param_hint="--prompt-flow",
+            )
+        try:
+            flow_text = prompt_flow.read_text(encoding="utf-8")
+        except OSError as e:
+            raise typer.BadParameter(
+                f"Failed to read prompt flow file: {e}", param_hint="--prompt-flow"
+            ) from e
+        suffix = prompt_flow.suffix.lower()
+        if suffix in {".mmd", ".mermaid"}:
+            parser = parse_mermaid_flowchart
+        elif suffix == ".d2":
+            parser = parse_d2_flowchart
+        else:
+            raise typer.BadParameter(
+                "Unsupported prompt flow extension; use .mmd or .d2",
+                param_hint="--prompt-flow",
+            )
+        try:
+            flow = parser(flow_text)
+        except PromptFlowError as e:
+            raise typer.BadParameter(str(e), param_hint="--prompt-flow") from e
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
@@ -386,7 +434,7 @@ def kimi(
             "Output format is only supported for print UI",
             param_hint="--output-format",
         )
-    if final_only and ui != "print":
+    if final_message_only and ui != "print":
         raise typer.BadParameter(
             "Final-message-only output is only supported for print UI",
             param_hint="--final-message-only",
@@ -423,6 +471,10 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
+    skills_dir: KaosPath | None = None
+    if local_skills_dir is not None:
+        skills_dir = KaosPath.unsafe_from_local_path(local_skills_dir)
+
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
     async def _run(session_id: str | None) -> bool:
@@ -446,43 +498,38 @@ def kimi(
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
 
-        if thinking is None:
-            metadata = load_metadata()
-            thinking_mode = metadata.thinking
-        else:
-            thinking_mode = thinking
-
         instance = await KimiCLI.create(
             session,
-            yolo=yolo or (ui == "print"),  # print mode implies yolo
-            mcp_configs=mcp_configs,
             config=config,
             model_name=model_name,
-            thinking=thinking_mode,
+            thinking=thinking,
+            yolo=yolo or (ui == "print"),  # print mode implies yolo
             agent_file=agent_file,
+            mcp_configs=mcp_configs,
             skills_dir=skills_dir,
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
+            flow=flow,
         )
         match ui:
             case "shell":
-                succeeded = await instance.run_shell(command)
+                succeeded = await instance.run_shell(prompt)
             case "print":
                 succeeded = await instance.run_print(
                     input_format or "text",
                     output_format or "text",
-                    command,
-                    final_only=final_only,
+                    prompt,
+                    final_only=final_message_only,
                 )
             case "acp":
-                if command is not None:
-                    logger.warning("ACP server ignores command argument")
+                if prompt is not None:
+                    logger.warning("ACP server ignores prompt argument")
                 await instance.run_acp()
                 succeeded = True
             case "wire":
-                if command is not None:
-                    logger.warning("Wire server ignores command argument")
+                if prompt is not None:
+                    logger.warning("Wire server ignores prompt argument")
                 await instance.run_wire_stdio()
                 succeeded = True
 
@@ -510,9 +557,6 @@ def kimi(
             else:
                 work_dir_meta.last_session_id = session.id
 
-            # Update thinking mode
-            metadata.thinking = instance.soul.thinking
-
             save_metadata(metadata)
 
         return succeeded
@@ -537,7 +581,7 @@ def term(
     ctx: typer.Context,
 ) -> None:
     """Run Toad TUI backed by Kimi CLI ACP server."""
-    from kimi_cli.toad import run_term
+    from .toad import run_term
 
     run_term(ctx)
 

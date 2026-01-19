@@ -142,6 +142,20 @@ class Anthropic:
     def model_name(self) -> str:
         return self._model
 
+    @property
+    def thinking_effort(self) -> "ThinkingEffort | None":
+        thinking_config = self._generation_kwargs.get("thinking")
+        if thinking_config is None:
+            return None
+        if thinking_config["type"] == "disabled":
+            return "off"
+        budget = thinking_config["budget_tokens"]
+        if budget <= 1024:
+            return "low"
+        if budget <= 4096:
+            return "medium"
+        return "high"
+
     async def generate(
         self,
         system_prompt: str,

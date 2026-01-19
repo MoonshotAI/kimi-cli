@@ -7,10 +7,11 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl-X` | 切换 Agent/Shell 模式 |
-| `Tab` | 切换 thinking 模式 |
+| `Ctrl-/` | 显示帮助 |
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
 | `Ctrl-V` | 粘贴（支持图片） |
+| `Ctrl-E` | 展开审批请求完整内容 |
 | `Ctrl-D` | 退出 Kimi CLI |
 | `Ctrl-C` | 中断当前操作 |
 
@@ -24,19 +25,12 @@ Kimi CLI Shell 模式支持以下键盘快捷键。
 - **Shell 模式**：输入作为本地 Shell 命令执行
 
 提示符会根据当前模式变化：
-- Agent 模式：`✨` 或 `💫`（thinking 模式）
+- Agent 模式：`✨`（普通）或 `💫`（Thinking 模式）
 - Shell 模式：`$`
 
-### `Tab`：切换 thinking 模式
+### `Ctrl-/`：显示帮助
 
-在 Agent 模式下，当输入框为空或没有显示补全菜单时，按 `Tab` 可切换 Thinking 模式。
-
-- 启用 Thinking 模式时，提示符变为 `💫`
-- 切换时会显示提示信息
-
-::: tip 提示
-Thinking 模式需要模型支持。
-:::
+在输入框中按 `Ctrl-/` 可快速显示帮助信息，等价于输入 `/help` 命令。
 
 ## 多行输入
 
@@ -63,6 +57,14 @@ Thinking 模式需要模型支持。
 ::: tip 提示
 图片粘贴需要模型支持 `image_in` 能力。
 :::
+
+## 审批请求操作
+
+### `Ctrl-E`：展开完整内容
+
+当审批请求的预览内容被截断时，按 `Ctrl-E` 可以在全屏分页器中查看完整内容。预览被截断时会显示 "... (truncated, ctrl-e to expand)" 提示。
+
+适用于查看较长的 Shell 命令或文件 Diff 内容。
 
 ## 退出与中断
 
@@ -95,7 +97,8 @@ Thinking 模式需要模型支持。
 底部状态栏显示：
 
 - 当前时间
-- 当前模式（agent/agent (think)/shell）
+- 当前模式（agent/shell）和模型名称（Agent 模式下显示）
+- YOLO 标识（开启时显示）
 - 快捷键提示
 - 上下文使用率
 

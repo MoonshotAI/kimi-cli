@@ -36,6 +36,10 @@ class MockChatProvider(ChatProvider):
     def model_name(self) -> str:
         return "mock"
 
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
     async def generate(
         self,
         system_prompt: str,

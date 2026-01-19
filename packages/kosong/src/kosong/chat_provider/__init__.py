@@ -23,6 +23,13 @@ class ChatProvider(Protocol):
         """
         ...
 
+    @property
+    def thinking_effort(self) -> "ThinkingEffort | None":
+        """
+        The current thinking effort level. Returns None if not explicitly set.
+        """
+        ...
+
     async def generate(
         self,
         system_prompt: str,

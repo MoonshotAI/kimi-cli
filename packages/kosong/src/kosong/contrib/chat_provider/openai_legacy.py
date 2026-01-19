@@ -17,6 +17,7 @@ from typing_extensions import TypedDict
 from kosong.chat_provider import ChatProvider, StreamedMessagePart, ThinkingEffort, TokenUsage
 from kosong.chat_provider.openai_common import (
     convert_error,
+    reasoning_effort_to_thinking_effort,
     thinking_effort_to_reasoning_effort,
     tool_to_openai,
 )
@@ -91,6 +92,12 @@ class OpenAILegacy:
     @property
     def model_name(self) -> str:
         return self.model
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        if isinstance(self._reasoning_effort, Omit):
+            return None
+        return reasoning_effort_to_thinking_effort(self._reasoning_effort)
 
     async def generate(
         self,

@@ -53,7 +53,7 @@ export KIMI_MODEL_MAX_CONTEXT_SIZE="262144"
 
 ### `KIMI_MODEL_CAPABILITIES`
 
-覆盖配置文件中模型的 `capabilities` 字段。多个能力用逗号分隔，支持的值为 `thinking`、`image_in` 和 `video_in`。
+覆盖配置文件中模型的 `capabilities` 字段。多个能力用逗号分隔，支持的值为 `thinking`、`always_thinking`、`image_in` 和 `video_in`。
 
 ```sh
 export KIMI_MODEL_CAPABILITIES="thinking,image_in"

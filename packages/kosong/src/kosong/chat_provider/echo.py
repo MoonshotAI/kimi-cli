@@ -72,6 +72,10 @@ class EchoChatProvider:
     def model_name(self) -> str:
         return "echo"
 
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
     async def generate(
         self,
         system_prompt: str,

@@ -11,6 +11,11 @@ def test_detect_file_type_suffixes():
     assert detect_file_type(".env").kind == "text"
     assert detect_file_type("archive.tar.gz").kind == "unknown"
     assert detect_file_type("my file.pdf").kind == "unknown"
+    # TypeScript files should not be misidentified as MPEG Transport Stream (video/mp2t)
+    assert detect_file_type("app.ts").kind == "text"
+    assert detect_file_type("component.tsx").kind == "text"
+    assert detect_file_type("module.mts").kind == "text"
+    assert detect_file_type("common.cts").kind == "text"
 
 
 def test_detect_file_type_header_overrides():

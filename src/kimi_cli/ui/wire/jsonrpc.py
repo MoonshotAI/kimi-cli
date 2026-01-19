@@ -26,7 +26,35 @@ from kimi_cli.wire.types import (
 class _MessageBase(BaseModel):
     jsonrpc: Literal["2.0"] = "2.0"
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
+
+
+class JSONRPCErrorObject(BaseModel):
+    code: int
+    message: str
+    data: JsonType | None = None
+
+
+class JSONRPCMessage(_MessageBase):
+    """The generic JSON-RPC message format used for validation."""
+
+    method: str | None = None
+    id: str | None = None
+    params: JsonType | None = None
+    result: JsonType | None = None
+    error: JSONRPCErrorObject | None = None
+
+    def method_is_inbound(self) -> bool:
+        return self.method in JSONRPC_IN_METHODS
+
+    def is_request(self) -> bool:
+        return self.method is not None and self.id is not None
+
+    def is_notification(self) -> bool:
+        return self.method is not None and self.id is None
+
+    def is_response(self) -> bool:
+        return self.method is None and self.id is not None
 
 
 class JSONRPCEventMessage(_MessageBase):
@@ -85,21 +113,18 @@ class JSONRPCCancelMessage(_MessageBase):
         raise NotImplementedError("Cancel message serialization is not implemented.")
 
 
-class _ResponseBase(_MessageBase):
+class JSONRPCSuccessResponse(_MessageBase):
     id: str
-
-
-class JSONRPCSuccessResponse(_ResponseBase):
     result: JsonType
 
 
-class JSONRPCErrorObject(BaseModel):
-    code: int
-    message: str
-    data: JsonType | None = None
+class JSONRPCErrorResponse(_MessageBase):
+    id: str
+    error: JSONRPCErrorObject
 
 
-class JSONRPCErrorResponse(_ResponseBase):
+class JSONRPCErrorResponseNullableID(_MessageBase):
+    id: str | None
     error: JSONRPCErrorObject
 
 
@@ -116,13 +141,31 @@ type JSONRPCInMessage = (
     JSONRPCPromptMessage | JSONRPCCancelMessage | JSONRPCSuccessResponse | JSONRPCErrorResponse
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
+JSONRPC_IN_METHODS = {"prompt", "cancel"}
 
 type JSONRPCOutMessage = (
-    JSONRPCEventMessage | JSONRPCRequestMessage | JSONRPCSuccessResponse | JSONRPCErrorResponse
+    JSONRPCEventMessage
+    | JSONRPCRequestMessage
+    | JSONRPCSuccessResponse
+    | JSONRPCErrorResponse
+    | JSONRPCErrorResponseNullableID
 )
+JSONRPC_OUT_METHODS = {"event", "request"}
 
 
 class ErrorCodes:
+    # Predefined JSON-RPC 2.0 error codes
+    PARSE_ERROR = -32700
+    """Invalid JSON was received by the server."""
+    INVALID_REQUEST = -32600
+    """The JSON sent is not a valid Request object."""
+    METHOD_NOT_FOUND = -32601
+    """The method does not exist / is not available."""
+    INVALID_PARAMS = -32602
+    """Invalid method parameter(s)."""
+    INTERNAL_ERROR = -32603
+    """Internal JSON-RPC error."""
+
     INVALID_STATE = -32000
     """The server is in an invalid state to process the request."""
     LLM_NOT_SET = -32001

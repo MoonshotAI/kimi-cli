@@ -74,6 +74,15 @@ Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通�
 | `-32002` | 不支持指定的 LLM |
 | `-32003` | LLM 服务错误 |
 
+此外，所有请求都可能返回 JSON-RPC 2.0 标准错误：
+
+| code | 说明 |
+|------|------|
+| `-32700` | 无效的 JSON 格式 |
+| `-32600` | 无效的请求（如发送了不支持的方法） |
+| `-32602` | 无效的方法参数 |
+| `-32603` | 内部错误 |
+
 ### `cancel`
 
 - **方向**：Client → Agent
@@ -382,6 +391,7 @@ type DisplayBlock =
   | BriefDisplayBlock
   | DiffDisplayBlock
   | TodoDisplayBlock
+  | ShellDisplayBlock
 
 /** 无法识别的显示块类型的 fallback */
 interface UnknownDisplayBlock {
@@ -418,5 +428,13 @@ interface TodoDisplayItem {
   title: string
   /** 状态 */
   status: "pending" | "in_progress" | "done"
+}
+
+interface ShellDisplayBlock {
+  type: "shell"
+  /** 语法高亮的语言标识（如 "sh"、"powershell"） */
+  language: string
+  /** Shell 命令内容 */
+  command: string
 }
 ```

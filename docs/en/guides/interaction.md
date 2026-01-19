@@ -19,6 +19,8 @@ $ git status
 $ npm run build
 ```
 
+Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+
 ::: warning Note
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
 :::
@@ -27,14 +29,14 @@ In shell mode, each command executes independently. Commands that change the env
 
 Thinking mode allows the AI to think more deeply before responding, suitable for handling complex problems.
 
-In agent mode, press `Tab` to toggle thinking mode on or off. The status bar at the bottom will show a notification after switching. You can also enable it at startup with the `--thinking` flag:
+You can use the `/model` command to switch models and thinking mode. After selecting a model, if the model supports thinking mode, the system will ask whether to enable it. You can also enable it at startup with the `--thinking` flag:
 
 ```sh
 kimi --thinking
 ```
 
 ::: tip
-Thinking mode requires support from the current model.
+Thinking mode requires support from the current model. Some models (like `kimi-k2-thinking-turbo`) always use thinking mode and cannot be disabled.
 :::
 
 ## Multi-line input
@@ -71,7 +73,7 @@ After typing `@`, start entering the filename and matching completions will appe
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi CLI will request your confirmation.
 
-The confirmation prompt will show operation details, and you can choose:
+The confirmation prompt will show operation details, including shell command and file diff previews. If the content is long and truncated, you can press `Ctrl-E` to expand and view the full content. You can choose:
 
 - **Allow**: Execute this operation
 - **Allow for this session**: Automatically approve similar operations in the current session

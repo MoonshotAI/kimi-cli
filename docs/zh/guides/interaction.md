@@ -19,6 +19,8 @@ $ git status
 $ npm run build
 ```
 
+Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/changelog` 和 `/feedback`。
+
 ::: warning 注意
 Shell 模式中每个命令独立执行，`cd`、`export` 等改变环境的命令不会影响后续命令。
 :::
@@ -27,14 +29,14 @@ Shell 模式中每个命令独立执行，`cd`、`export` 等改变环境的命�
 
 Thinking 模式让 AI 在回答前进行更深入的思考，适合处理复杂问题。
 
-在 Agent 模式下按 `Tab` 键可以切换 Thinking 模式的开关状态，切换后底部状态栏会显示提示。也可以在启动时通过 `--thinking` 参数启用：
+你可以通过 `/model` 命令切换模型和 Thinking 模式。在选择模型后，如果模型支持 Thinking 模式，系统会询问是否开启。也可以在启动时通过 `--thinking` 参数启用：
 
 ```sh
 kimi --thinking
 ```
 
 ::: tip 提示
-Thinking 模式需要当前模型支持。
+Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-turbo`）始终使用 Thinking 模式，无法关闭。
 :::
 
 ## 多行输入
@@ -71,7 +73,7 @@ Thinking 模式需要当前模型支持。
 
 当 AI 需要执行可能有影响的操作（如修改文件、运行命令）时，Kimi CLI 会请求你的确认。
 
-确认提示会显示操作的详情，你可以选择：
+确认提示会显示操作的详情，包括 Shell 命令和文件 Diff 预览。如果内容较长被截断，可以按 `Ctrl-E` 展开查看完整内容。你可以选择：
 
 - **允许**：执行这次操作
 - **本会话允许**：在当前会话中自动批准同类操作
