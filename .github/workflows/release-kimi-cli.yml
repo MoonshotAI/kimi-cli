@@ -189,27 +189,33 @@ jobs:
 
           echo "Submitting onefile for notarization..."
           
+          # Submit and capture output for status verification
           xcrun notarytool submit "$zip_path" \
             --key "$key_path" \
             --key-id "$APPLE_NOTARIZATION_KEY_ID" \
             --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
             --wait \
-            --timeout 15m
+            --timeout 15m \
+            2>&1 | tee /tmp/notarize-onefile.log
 
-          echo "✅ Onefile notarization completed"
+          # Verify notarization was accepted
+          if ! grep -q "status: Accepted" /tmp/notarize-onefile.log; then
+            echo "❌ Onefile notarization failed!"
+            cat /tmp/notarize-onefile.log
+            exit 1
+          fi
 
-          # Staple the notarization ticket to the binary
-          echo "Stapling notarization ticket to onefile binary..."
-          xcrun stapler staple dist/onefile/kimi
-          echo "✅ Onefile stapled"
+          echo "✅ Onefile notarization completed and accepted"
 
-          # Verify
-          echo "Verifying onefile signature and notarization..."
+          # Verify signature and notarization status
+          echo "Verifying onefile signature..."
           codesign -dv --verbose=2 dist/onefile/kimi
+          
+          echo "Verifying onefile notarization (online check)..."
           spctl -a -vvv -t install dist/onefile/kimi
 
           # Cleanup
-          rm -f "$zip_path"
+          rm -f "$zip_path" /tmp/notarize-onefile.log
 
       # macOS: Notarize onedir binaries
       - name: Notarize macOS onedir binaries
@@ -233,27 +239,33 @@ jobs:
 
           echo "Submitting onedir for notarization..."
           
+          # Submit and capture output for status verification
           xcrun notarytool submit "$zip_path" \
             --key "$key_path" \
             --key-id "$APPLE_NOTARIZATION_KEY_ID" \
             --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
             --wait \
-            --timeout 15m
+            --timeout 15m \
+            2>&1 | tee /tmp/notarize-onedir.log
 
-          echo "✅ Onedir notarization completed"
+          # Verify notarization was accepted
+          if ! grep -q "status: Accepted" /tmp/notarize-onedir.log; then
+            echo "❌ Onedir notarization failed!"
+            cat /tmp/notarize-onedir.log
+            exit 1
+          fi
 
-          # Staple the notarization ticket to the main executable
-          echo "Stapling notarization ticket to onedir binary..."
-          xcrun stapler staple dist/onedir/kimi/kimi
-          echo "✅ Onedir stapled"
+          echo "✅ Onedir notarization completed and accepted"
 
-          # Verify
-          echo "Verifying onedir signature and notarization..."
+          # Verify signature and notarization status
+          echo "Verifying onedir signature..."
           codesign -dv --verbose=2 dist/onedir/kimi/kimi
+          
+          echo "Verifying onedir notarization (online check)..."
           spctl -a -vvv -t install dist/onedir/kimi/kimi
 
           # Cleanup
-          rm -f "$key_path" "$zip_path"
+          rm -f "$key_path" "$zip_path" /tmp/notarize-onedir.log
 
       # macOS: Cleanup keychain
       - name: Cleanup macOS keychain
