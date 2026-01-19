@@ -180,7 +180,7 @@ jobs:
           from pathlib import Path
 
           expected_version = "${{ steps.version.outputs.head_version }}"
-          data = tomllib.loads(Path("packages/kimi-code/pyproject.toml").read_bytes())
+          data = tomllib.loads(Path("packages/kimi-code/pyproject.toml").read_text())
           deps = data["project"]["dependencies"]
           expected = f"kimi-cli=={expected_version}"
           if expected not in deps:
