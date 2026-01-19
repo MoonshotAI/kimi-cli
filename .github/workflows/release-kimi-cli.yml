@@ -183,9 +183,9 @@ jobs:
           key_path="${RUNNER_TEMP}/AuthKey.p8"
           echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
 
-          # Create zip for notarization
+          # Create zip for notarization (use --norsrc to avoid ._ AppleDouble files)
           zip_path="${RUNNER_TEMP}/kimi-onefile.zip"
-          ditto -c -k --keepParent dist/onefile/kimi "$zip_path"
+          ditto -c -k --norsrc --keepParent dist/onefile/kimi "$zip_path"
 
           echo "Submitting onefile for notarization..."
           
@@ -243,9 +243,9 @@ jobs:
             echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
           fi
 
-          # Create zip for notarization (entire directory)
+          # Create zip for notarization (use --norsrc to avoid ._ AppleDouble files)
           zip_path="${RUNNER_TEMP}/kimi-onedir.zip"
-          ditto -c -k --keepParent dist/onedir/kimi "$zip_path"
+          ditto -c -k --norsrc --keepParent dist/onedir/kimi "$zip_path"
 
           echo "Submitting onedir for notarization..."
           
