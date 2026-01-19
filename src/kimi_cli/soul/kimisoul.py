@@ -285,7 +285,8 @@ class KimiSoul:
             extra = args.strip()
             if extra:
                 skill_text = f"{skill_text}\n\nUser request:\n{extra}"
-            await soul._turn(Message(role="user", content=skill_text))
+            with soul.runtime.approval.scoped_tool_approvals(_skill.allowed_tools):
+                await soul._turn(Message(role="user", content=skill_text))
 
         _run_skill.__doc__ = skill.description
         return _run_skill

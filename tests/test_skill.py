@@ -68,12 +68,19 @@ description: Beta description
                 Skill(
                     name="alpha-skill",
                     description="Alpha description",
+                    allowed_tools=[],
                     dir=Path("/path/to/alpha"),
                 ),
-                Skill(name="beta", description="Beta description", dir=Path("/path/to/beta")),
+                Skill(
+                    name="beta",
+                    description="Beta description",
+                    allowed_tools=[],
+                    dir=Path("/path/to/beta"),
+                ),
                 Skill(
                     name="gamma",
                     description="No description provided.",
+                    allowed_tools=[],
                     dir=Path("/path/to/gamma"),
                 ),
             ]
@@ -118,7 +125,14 @@ description: OK
         for skill in skills:
             skill.dir = Path("/path/to") / (skill.dir.relative_to(tmpdir))
         assert skills == snapshot(
-            [Skill(name="valid", description="OK", dir=Path("/path/to/valid"))]
+            [
+                Skill(
+                    name="valid",
+                    description="OK",
+                    allowed_tools=[],
+                    dir=Path("/path/to/valid"),
+                )
+            ]
         )
 
 
@@ -160,7 +174,47 @@ description: Beta description
             skill.dir = Path("/path/to") / (skill.dir.relative_to(tmpdir))
         assert skills == snapshot(
             [
-                Skill(name="beta", description="Beta description", dir=Path("/path/to/user/beta")),
-                Skill(name="shared", description="User version", dir=Path("/path/to/user/shared")),
+                Skill(
+                    name="beta",
+                    description="Beta description",
+                    allowed_tools=[],
+                    dir=Path("/path/to/user/beta"),
+                ),
+                Skill(
+                    name="shared",
+                    description="User version",
+                    allowed_tools=[],
+                    dir=Path("/path/to/user/shared"),
+                ),
+            ]
+        )
+
+
+def test_discover_skills_parses_allowed_tools():
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+
+        skill_dir = root / "tooling"
+        _write_skill(
+            skill_dir,
+            """---
+name: tooling
+description: Tooling skill
+allowed-tools: "Shell WriteFile StrReplaceFile"
+---
+""",
+        )
+
+        skills = discover_skills(root)
+        for skill in skills:
+            skill.dir = Path("/path/to") / (skill.dir.relative_to(tmpdir))
+        assert skills == snapshot(
+            [
+                Skill(
+                    name="tooling",
+                    description="Tooling skill",
+                    allowed_tools=["Shell", "WriteFile", "StrReplaceFile"],
+                    dir=Path("/path/to/tooling"),
+                )
             ]
         )

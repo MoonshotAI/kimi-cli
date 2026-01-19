@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.frontmatter import read_frontmatter
@@ -74,6 +74,7 @@ class Skill(BaseModel):
 
     name: str
     description: str
+    allowed_tools: list[str] = Field(default_factory=list)
     dir: Path
 
     @property
@@ -132,6 +133,11 @@ def parse_skill_md(skill_md_file: Path) -> Skill:
     """
     frontmatter = read_frontmatter(skill_md_file) or {}
 
+    allowed_tools_raw = frontmatter.pop("allowed-tools", None)
+    if allowed_tools_raw is None and "allowed_tools" in frontmatter:
+        allowed_tools_raw = frontmatter.pop("allowed_tools")
+    frontmatter["allowed_tools"] = _parse_allowed_tools(allowed_tools_raw)
+
     if "name" not in frontmatter:
         frontmatter["name"] = skill_md_file.parent.name
     if "description" not in frontmatter:
@@ -143,3 +149,21 @@ def parse_skill_md(skill_md_file: Path) -> Skill:
             "dir": skill_md_file.parent.absolute(),
         }
     )
+
+
+def _parse_allowed_tools(raw_value: object) -> list[str]:
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, str):
+        tokens = raw_value.split()
+    elif isinstance(raw_value, list):
+        if not all(isinstance(item, str) for item in raw_value):
+            raise ValueError("allowed-tools must be a space-delimited string or list of strings.")
+        tokens = raw_value
+    else:
+        raise ValueError("allowed-tools must be a space-delimited string or list of strings.")
+    return [_normalize_allowed_tool(token) for token in tokens if token.strip()]
+
+
+def _normalize_allowed_tool(token: str) -> str:
+    return token.split("(", 1)[0].strip()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Literal
 
@@ -31,6 +33,8 @@ class Approval:
         self._yolo = yolo
         self._auto_approve_actions: set[str] = set()  # TODO: persist across sessions
         """Set of action names that should automatically be approved."""
+        self._auto_approve_tools: set[str] = set()
+        """Set of tool names that should automatically be approved."""
 
     def set_yolo(self, yolo: bool) -> None:
         self._yolo = yolo
@@ -74,6 +78,9 @@ class Approval:
         if self._yolo:
             return True
 
+        if tool_call.function.name in self._auto_approve_tools:
+            return True
+
         if action in self._auto_approve_actions:
             return True
 
@@ -100,6 +107,12 @@ class Approval:
                 # the action is not auto-approved when the request was created, but now it should be
                 logger.debug(
                     "Auto-approving previously requested action: {action}", action=request.action
+                )
+                self.resolve_request(request.id, "approve")
+                continue
+            if request.sender in self._auto_approve_tools:
+                logger.debug(
+                    "Auto-approving previously requested tool: {tool}", tool=request.sender
                 )
                 self.resolve_request(request.id, "approve")
                 continue
@@ -135,3 +148,12 @@ class Approval:
                 future.set_result(True)
             case "reject":
                 future.set_result(False)
+
+    @contextmanager
+    def scoped_tool_approvals(self, tool_names: Iterable[str]) -> Iterator[None]:
+        previous = self._auto_approve_tools.copy()
+        self._auto_approve_tools.update(tool_names)
+        try:
+            yield
+        finally:
+            self._auto_approve_tools = previous
