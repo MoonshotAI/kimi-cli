@@ -198,9 +198,15 @@ jobs:
 
           echo "✅ Onefile notarization completed"
 
+          # Staple the notarization ticket to the binary
+          echo "Stapling notarization ticket to onefile binary..."
+          xcrun stapler staple dist/onefile/kimi
+          echo "✅ Onefile stapled"
+
           # Verify
-          echo "Verifying onefile signature..."
+          echo "Verifying onefile signature and notarization..."
           codesign -dv --verbose=2 dist/onefile/kimi
+          spctl -a -vvv -t install dist/onefile/kimi
 
           # Cleanup
           rm -f "$zip_path"
@@ -236,9 +242,15 @@ jobs:
 
           echo "✅ Onedir notarization completed"
 
+          # Staple the notarization ticket to the main executable
+          echo "Stapling notarization ticket to onedir binary..."
+          xcrun stapler staple dist/onedir/kimi/kimi
+          echo "✅ Onedir stapled"
+
           # Verify
-          echo "Verifying onedir signature..."
+          echo "Verifying onedir signature and notarization..."
           codesign -dv --verbose=2 dist/onedir/kimi/kimi
+          spctl -a -vvv -t install dist/onedir/kimi/kimi
 
           # Cleanup
           rm -f "$key_path" "$zip_path"
