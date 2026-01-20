@@ -10,7 +10,7 @@ Some slash commands are also available in shell mode, including `/help`, `/exit`
 
 ### `/help`
 
-Display help information. Shows all available slash commands, loaded skills, and keyboard shortcuts in a fullscreen pager. Press `q` to exit.
+Display help information. Shows keyboard shortcuts, all available slash commands, and loaded skills in a fullscreen pager. Press `q` to exit.
 
 Aliases: `/h`, `/?`
 
@@ -134,8 +134,14 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
 
+### `/begin`
+
+Start Prompt Flow execution.
+
+This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
+
 ## Command completion
 
-After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands, press Enter to select.
+After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands with fuzzy matching support, press Enter to select.
 
-Commands support alias matching, for example typing `/h` will match `/help`.
+For example, typing `/ses` will match `/sessions`, and `/clog` will match `/changelog`. Command aliases are also supported, such as typing `/h` to match `/help`.

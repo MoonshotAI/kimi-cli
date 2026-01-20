@@ -60,10 +60,10 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 | 选项 | 简写 | 说明 |
 |------|------|------|
-| `--command TEXT` | `-c` | 传入用户查询，不进入交互模式 |
-| `--query TEXT` | `-q` | `--command` 的别名 |
+| `--prompt TEXT` | `-p` | 传入用户提示，不进入交互模式 |
+| `--command TEXT` | `-c` | `--prompt` 的别名 |
 
-使用 `--command` 时，Kimi CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
+使用 `--prompt`（或 `--command`）时，Kimi CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
 
 ## 循环控制
 
@@ -71,13 +71,63 @@ kimi [OPTIONS] COMMAND [ARGS]
 |------|------|
 | `--max-steps-per-turn N` | 单轮最大步数，覆盖配置文件中的 `loop_control.max_steps_per_turn` |
 | `--max-retries-per-step N` | 单步最大重试次数，覆盖配置文件中的 `loop_control.max_retries_per_step` |
-| `--max-ralph-iterations N` | 每个 User 消息后额外自动迭代 `N` 次；`0` 表示关闭；`-1` 表示无限 |
+| `--max-ralph-iterations N` | Ralph 循环模式的迭代次数；`0` 表示关闭；`-1` 表示无限 |
 
 ### Ralph 循环
 
 [Ralph](https://ghuntley.com/ralph/) 是一种把 Agent 放进循环的技术：同一条提示词会被反复喂给 Agent，让它围绕一个任务持续迭代。
 
-当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会反复把相同的提示词喂给 Agent，直到 Assistant 消息包含 `<safeword>STOP</safeword>` 或达到迭代上限。
+当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会进入 Ralph 循环模式，基于内置的 Prompt Flow 自动循环执行任务，直到 Agent 输出 `<choice>STOP</choice>` 或达到迭代上限。
+
+::: info 注意
+Ralph 循环与 `--prompt-flow` 选项互斥，不能同时使用。
+:::
+
+## Prompt Flow
+
+| 选项 | 说明 |
+|------|------|
+| `--prompt-flow PATH` | 加载 D2（`.d2`）或 Mermaid（`.mmd`）流程图文件作为 Prompt Flow |
+
+Prompt Flow 是一种基于流程图的提示词工作流描述方式，每个节点对应一次对话轮次。加载后，可以通过 `/begin` 斜杠命令启动流程执行。目前支持 D2 和 Mermaid 两种流程图格式。可以在 [D2 Playground](https://play.d2lang.com) 编辑和预览 D2 流程图，在 [Mermaid Playground](https://www.mermaidchart.com/play) 编辑和预览 Mermaid 流程图。
+
+D2 流程图示例（`example.d2` 文件）：
+
+```
+BEGIN -> B -> C
+B: 分析现有代码，为 XXX 功能在 design.md 文件中编写设计文档
+C: Review 一遍 design.md，看看是否足够详细
+C -> B: 否
+C -> D: 是
+D: 开始实现
+D -> END
+```
+
+Mermaid 流程图示例（`example.mmd` 文件）：
+
+```
+flowchart TD
+A([BEGIN]) --> B[分析现有代码，为 XXX 功能在 design.md 文件中编写设计文档]
+B --> C{Review 一遍 design.md，看看是否足够详细}
+C -->|是| D[开始实现]
+C -->|否| B
+D --> F([END])
+```
+
+```mermaid
+flowchart TD
+A([BEGIN]) --> B[分析现有代码，为 XXX 功能在 design.md 文件中编写设计文档]
+B --> C{Review 一遍 design.md，看看是否足够详细}
+C -->|是| D[开始实现]
+C -->|否| B
+D --> F([END])
+```
+
+在节点处理过程中，分支节点会要求 Agent 输出 `<choice>分支名</choice>` 来选择下一个节点。
+
+::: info 注意
+`--prompt-flow` 与 Ralph 循环模式互斥，不能同时使用。
+:::
 
 ## UI 模式
 

@@ -50,7 +50,7 @@ class Shell:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self._run_soul_command(command)
+            return await self.run_soul_command(command)
 
         # Start auto-update background task if not disabled
         if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
@@ -107,7 +107,7 @@ class Shell:
                         await self._run_slash_command(slash_cmd_call)
                         continue
 
-                    await self._run_soul_command(user_input.content)
+                    await self.run_soul_command(user_input.content)
             finally:
                 ensure_tty_sane()
 
@@ -176,7 +176,7 @@ class Shell:
         command = shell_slash_registry.find_command(command_call.name)
         if command is None:
             # the input is a soul-level slash command call
-            await self._run_soul_command(command_call.raw_input)
+            await self.run_soul_command(command_call.raw_input)
             return
 
         logger.debug(
@@ -197,7 +197,7 @@ class Shell:
             console.print(f"[red]Unknown error: {e}[/red]")
             raise  # re-raise unknown error
 
-    async def _run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
+    async def run_soul_command(self, user_input: str | list[ContentPart]) -> bool:
         """
         Run the soul and handle any known exceptions.
 
@@ -312,7 +312,7 @@ class WelcomeInfoItem:
 
 
 def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
-    head = Text.from_markup("Welcome to 2026, happy new year!")
+    head = Text.from_markup("Welcome to Kimi CLI!")
     help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
 
     # Use Table for precise width control

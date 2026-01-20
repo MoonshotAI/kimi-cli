@@ -23,3 +23,11 @@ class TodoDisplayBlock(DisplayBlock):
 
     type: str = "todo"
     items: list[TodoDisplayItem]
+
+
+class ShellDisplayBlock(DisplayBlock):
+    """Display block describing a shell command."""
+
+    type: str = "shell"
+    language: str
+    command: str
