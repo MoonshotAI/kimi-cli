@@ -22,7 +22,7 @@ from kosong.tooling import (
     UnknownDisplayBlock,
 )
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, PrivateAttr, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from kimi_cli.tools.display import (
     DiffDisplayBlock,
@@ -159,11 +159,14 @@ class ApprovalRequest(BaseModel):
     # we cannot directly use that class here because we want to avoid dependency from Wire
     # to Soul.
 
-    _future: asyncio.Future[ApprovalResponse.Kind] = PrivateAttr()
-
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future = asyncio.Future[ApprovalResponse.Kind]()
+        self._future: asyncio.Future[ApprovalResponse.Kind] | None = None
+
+    def _get_future(self) -> asyncio.Future[ApprovalResponse.Kind]:
+        if self._future is None:
+            self._future = asyncio.get_event_loop().create_future()
+        return self._future
 
     async def wait(self) -> ApprovalResponse.Kind:
         """
@@ -172,20 +175,21 @@ class ApprovalRequest(BaseModel):
         Returns:
             ApprovalResponse.Kind: The response to the approval request.
         """
-        return await self._future
+        return await self._get_future()
 
     def resolve(self, response: ApprovalResponse.Kind) -> None:
         """
         Resolve the approval request with the given response.
         This will cause the `wait()` method to return the response.
         """
-        if not self._future.done():
-            self._future.set_result(response)
+        future = self._get_future()
+        if not future.done():
+            future.set_result(response)
 
     @property
     def resolved(self) -> bool:
         """Whether the request is resolved."""
-        return self._future.done()
+        return self._future is not None and self._future.done()
 
 
 class ToolCallRequest(BaseModel):
@@ -200,11 +204,14 @@ class ToolCallRequest(BaseModel):
     arguments: str | None
     """Arguments of the tool call in JSON string format."""
 
-    _future: asyncio.Future[ToolReturnValue] = PrivateAttr()
-
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future = asyncio.Future()
+        self._future: asyncio.Future[ToolReturnValue] | None = None
+
+    def _get_future(self) -> asyncio.Future[ToolReturnValue]:
+        if self._future is None:
+            self._future = asyncio.get_event_loop().create_future()
+        return self._future
 
     @staticmethod
     def from_tool_call(tool_call: ToolCall) -> ToolCallRequest:
@@ -221,20 +228,21 @@ class ToolCallRequest(BaseModel):
         Returns:
             ToolReturnValue: The tool execution result.
         """
-        return await self._future
+        return await self._get_future()
 
     def resolve(self, result: ToolReturnValue) -> None:
         """
         Resolve the tool call with the given result.
         This will cause the `wait()` method to return the result.
         """
-        if not self._future.done():
-            self._future.set_result(result)
+        future = self._get_future()
+        if not future.done():
+            future.set_result(result)
 
     @property
     def resolved(self) -> bool:
         """Whether the tool call is resolved."""
-        return self._future.done()
+        return self._future is not None and self._future.done()
 
 
 type Event = (

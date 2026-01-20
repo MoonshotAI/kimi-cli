@@ -89,7 +89,7 @@ slash command 列表。
   "method": "initialize",
   "id": "init-1",
   "params": {
-    "protocol_version": "2",
+    "protocol_version": "1.1",
       "client": {"name": "my-ui", "version": "0.3.0"},
       "external_tools": [
         {
@@ -129,7 +129,7 @@ interface ExternalTool {
   "jsonrpc": "2.0",
   "id": "init-1",
   "result": {
-    "protocol_version": "2",
+    "protocol_version": "1.1",
     "server": {"name": "kimi-cli", "version": "0.68.0"},
     "slash_commands": [
       {"name": "init", "description": "Analyze the codebase ...", "aliases": []},
@@ -290,9 +290,9 @@ Client -> Server:
 
 ## 兼容性与降级策略
 
-- 旧 client：不发 `initialize`，协议维持 v1 行为。
+- 旧 client：不发 `initialize`，协议维持 v1.0 行为。
 - 新 client + 旧 server：`initialize` 可能返回 JSON-RPC method not found（-32601），
-  client 应自动降级并继续使用 v1。
+  client 应自动降级并继续使用 v1.0。
 - 若 `external_tools` 校验失败或重名，server 在 `initialize` result 中标记为 rejected，
   并忽略该工具。
 - 旧类型名 `ApprovalRequestResolved` 在反序列化时仍可被识别。
