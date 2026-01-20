@@ -43,7 +43,7 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
 from kimi_cli.wire.types import (
     ApprovalRequest,
-    ApprovalRequestResolved,
+    ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
@@ -315,7 +315,7 @@ class KimiSoul:
                 # also send approval requests to the root wire.
                 resp = await wire_request.wait()
                 self._approval.resolve_request(request.id, resp)
-                wire_send(ApprovalRequestResolved(request_id=request.id, response=resp))
+                wire_send(ApprovalResponse(request_id=request.id, response=resp))
 
         step_no = 0
         while True:

@@ -4,6 +4,10 @@
 
 ## 未发布
 
+- Wire：添加 `initialize` 方法，用于交换客户端/服务端信息、注册外部工具和公布斜杠命令
+- Wire：支持通过 Wire 协议调用外部工具
+- Wire：将 `ApprovalRequestResolved` 重命名为 `ApprovalResponse`（向后兼容）
+
 ## 0.79 (2026-01-19)
 
 - Skills：添加项目级 Skills 支持，从 `.agents/skills/`（或 `.kimi/skills/`、`.claude/skills/`）发现
