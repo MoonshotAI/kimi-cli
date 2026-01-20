@@ -1,26 +1,25 @@
 ---
 name: release
-description: Execute the release workflow for Kimi CLI packages. Use when user wants to release a new version, bump version numbers, create release PRs, or prepare packages for publishing.
+description: Execute the release workflow for Kimi CLI packages.
+type: flow
 ---
 
-# Release Workflow
-
-1. 首先从 AGENTS.md 和 .github/workflows/release*.yml 中理解本项目的发版自动化流程。
-2. 检查每个 packages、sdks 和根目录的包是否在上次发版（根据 tag 确认）后有变更。
-   - 注意 `packages/kimi-code` 是薄包装包，需要与根包 `kimi-cli` 同步版本。
-3. 如果有变更，对于每个变更的包，跟我确认新的版本号（遵循语义化版本规范），并更新相应的：
-   - pyproject.toml
-   - CHANGELOG.md（要保留 Unreleased 标题）
-   - 中英文档的 breaking-changes.md 文件中的版本号
-   - 若变更的是根包版本，同时同步更新：
-     - `packages/kimi-code/pyproject.toml` 的 `version`
-     - `packages/kimi-code/pyproject.toml` 的 `dependencies` 中 `kimi-cli==<version>`
-4. 运行 `uv sync`。
-5. 运行 gen-docs skill 中的指示以确保文档是最新的。
-6. 开一个新的分支叫 `bump-<package>-<new-version>`，提交所有更改并推送到远程仓库。
-   - 如果一次有多个包需要发版，可以合并在一个分支升级版本号，分支名适当编写即可。
-7. 用 gh 命令开一个 Pull Request，描述所做的更改。
-8. 持续检查这个 PR 的状态，直到被合并。
-9. 合并后，切到 main 分支，拉取最新的更改。
-10. 提示我最终发布 tag 所需的 git tag 命令，我会自行 tag + push tags。
-    - 说明：单个数字 tag 会同时发布 `kimi-cli` 与 `kimi-code`。
+```mermaid
+flowchart TB
+    A(["BEGIN"]) --> B["从 AGENTS.md 和 .github/workflows/release*.yml 中理解本项目的发版自动化流程"]
+    B --> C["检查每个 packages、sdks 和根目录的包是否在上次发版（根据 tag 确认）后有变更。注意 packages/kimi-code 是薄包装包，需要与根包 kimi-cli 同步版本。"]
+    C --> D{"有变更的包？"}
+    D -- 没有 --> Z(["END"])
+    D -- 有 --> E["对于每个变更的包，跟用户确认新的版本号（遵循语义化版本规范）"]
+    E --> F["更新相应的 pyproject.toml、CHANGELOG.md（保留 Unreleased 标题）、中英文档的 breaking-changes.md 文件中的版本号"]
+    F --> G{"变更的是根包版本？"}
+    G -- 是 --> H["同步更新 packages/kimi-code/pyproject.toml 的 version 和 dependencies 中 kimi-cli==&lt;version&gt;"]
+    H --> I["运行 uv sync"]
+    G -- 否 --> I
+    I --> J["运行 gen-docs skill 中的指示以确保文档是最新的"]
+    J --> K["开一个新分支 bump-&lt;package&gt;-&lt;new-version&gt;（多个包可合并在一个分支，分支名适当编写）"]
+    K --> L["提交所有更改，推送到远程仓库，并用 gh 命令开一个 Pull Request，描述所做的更改"]
+    L --> N["持续检查这个 PR 的状态，直到被合并"]
+    N --> O["合并后，切到 main 分支，拉取最新的更改，并提示用户最终发布 tag 所需的 git tag 命令（用户会自行 tag + push tags）。说明：单个数字 tag 会同时发布 kimi-cli 与 kimi-code。"]
+    O --> Z
+```
