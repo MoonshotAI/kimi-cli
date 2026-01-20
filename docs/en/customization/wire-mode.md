@@ -506,6 +506,10 @@ interface ToolReturnValue {
 
 ### `ApprovalResponse`
 
+::: info Renamed in Wire 1.1
+Formerly `ApprovalRequestResolved`. The old name is still accepted for backwards compatibility.
+:::
+
 Approval response event, indicates an approval request has been completed.
 
 ```typescript

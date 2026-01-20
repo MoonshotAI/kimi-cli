@@ -506,6 +506,10 @@ interface ToolReturnValue {
 
 ### `ApprovalResponse`
 
+::: info 重命名于 Wire 1.1
+原名 `ApprovalRequestResolved`，旧名称仍可使用以保持向后兼容。
+:::
+
 审批响应事件，表示审批请求已完成。
 
 ```typescript
