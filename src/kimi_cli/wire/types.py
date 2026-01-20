@@ -22,7 +22,7 @@ from kosong.tooling import (
     UnknownDisplayBlock,
 )
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_serializer, field_validator
 
 from kimi_cli.tools.display import (
     DiffDisplayBlock,
@@ -129,17 +129,16 @@ class SubagentEvent(BaseModel):
         return event
 
 
-type ApprovalResponseKind = Literal["approve", "approve_for_session", "reject"]
-
-
-class ApprovalRequestResolved(BaseModel):
+class ApprovalResponse(BaseModel):
     """
     Indicates that an approval request has been resolved.
     """
 
+    type Kind = Literal["approve", "approve_for_session", "reject"]
+
     request_id: str
     """The ID of the resolved approval request."""
-    response: ApprovalResponseKind
+    response: Kind
     """The response to the approval request."""
 
 
@@ -156,35 +155,85 @@ class ApprovalRequest(BaseModel):
     display: list[DisplayBlock] = Field(default_factory=list[DisplayBlock])
     """Defaults to an empty list for backwards-compatible wire.jsonl loading."""
 
-    type Response = ApprovalResponseKind
-
     # Note that the above fields are just a copy of `kimi_cli.soul.approval.Request`, but
     # we cannot directly use that class here because we want to avoid dependency from Wire
     # to Soul.
 
+    _future: asyncio.Future[ApprovalResponse.Kind] = PrivateAttr()
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future = asyncio.Future[ApprovalRequest.Response]()
+        self._future = asyncio.Future[ApprovalResponse.Kind]()
 
-    async def wait(self) -> Response:
+    async def wait(self) -> ApprovalResponse.Kind:
         """
         Wait for the request to be resolved or cancelled.
 
         Returns:
-            ApprovalRequest.Response: The response to the approval request.
+            ApprovalResponse.Kind: The response to the approval request.
         """
         return await self._future
 
-    def resolve(self, response: ApprovalRequest.Response) -> None:
+    def resolve(self, response: ApprovalResponse.Kind) -> None:
         """
         Resolve the approval request with the given response.
         This will cause the `wait()` method to return the response.
         """
-        self._future.set_result(response)
+        if not self._future.done():
+            self._future.set_result(response)
 
     @property
     def resolved(self) -> bool:
         """Whether the request is resolved."""
+        return self._future.done()
+
+
+class ToolCallRequest(BaseModel):
+    """
+    A tool call request routed to the Wire client for execution.
+    """
+
+    id: str
+    """The ID of the tool call."""
+    name: str
+    """The name of the tool to call."""
+    arguments: str | None
+    """Arguments of the tool call in JSON string format."""
+
+    _future: asyncio.Future[ToolReturnValue] = PrivateAttr()
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._future = asyncio.Future()
+
+    @staticmethod
+    def from_tool_call(tool_call: ToolCall) -> ToolCallRequest:
+        return ToolCallRequest(
+            id=tool_call.id,
+            name=tool_call.function.name,
+            arguments=tool_call.function.arguments,
+        )
+
+    async def wait(self) -> ToolReturnValue:
+        """
+        Wait for the tool call to be resolved or cancelled.
+
+        Returns:
+            ToolReturnValue: The tool execution result.
+        """
+        return await self._future
+
+    def resolve(self, result: ToolReturnValue) -> None:
+        """
+        Resolve the tool call with the given result.
+        This will cause the `wait()` method to return the result.
+        """
+        if not self._future.done():
+            self._future.set_result(result)
+
+    @property
+    def resolved(self) -> bool:
+        """Whether the tool call is resolved."""
         return self._future.done()
 
 
@@ -199,13 +248,13 @@ type Event = (
     | ToolCall
     | ToolCallPart
     | ToolResult
+    | ApprovalResponse
     | SubagentEvent
-    | ApprovalRequestResolved
 )
 """Any event, including control flow and content/tooling events."""
 
 
-type Request = ApprovalRequest
+type Request = ApprovalRequest | ToolCallRequest
 """Any request. Request is a message that expects a response."""
 
 type WireMessage = Event | Request
@@ -235,6 +284,8 @@ def is_wire_message(msg: Any) -> TypeGuard[WireMessage]:
 _NAME_TO_WIRE_MESSAGE_TYPE: dict[str, type[WireMessage]] = {
     cls.__name__: cls for cls in _WIRE_MESSAGE_TYPES
 }
+# for backwards compatibility with Wire v1
+_NAME_TO_WIRE_MESSAGE_TYPE["ApprovalRequestResolved"] = ApprovalResponse
 
 
 class WireMessageEnvelope(BaseModel):
@@ -279,9 +330,10 @@ __all__ = [
     "ToolCall",
     "ToolCallPart",
     "ToolResult",
+    "ApprovalResponse",
     "SubagentEvent",
-    "ApprovalRequestResolved",
     "ApprovalRequest",
+    "ToolCallRequest",
     # helpers
     "WireMessageEnvelope",
     # `StatusUpdate`-related

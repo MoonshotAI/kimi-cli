@@ -10,7 +10,7 @@ Status: Draft
 
 为 Wire 模式引入 client-to-server 的 `initialize` 握手，支持 client 提交 `external_tools`
 定义、server 回传 soul-level `slash_commands` 列表，并扩展 `request` 方法以承载
-ExternalToolCall（复用 `ToolCall` 结构）。新增 `ApprovalResponse` 类型，与 `ToolResult`
+`ToolCallRequest`（外部工具调用请求）。新增 `ApprovalResponse` 类型，与 `ToolResult`
 对称，统一 `request` 的响应语义。
 
 ## 背景与动机
@@ -34,7 +34,7 @@ ExternalToolCall（复用 `ToolCall` 结构）。新增 `ApprovalResponse` 类�
 
 - 新增 `initialize` 请求，支持 client 提供 `external_tools`，server 返回 soul-level
   `slash_commands`。
-- 将 server -> client 的 tool 调用请求标准化为 `request` 方法，params 为 `ToolCall`。
+- 将 server -> client 的 tool 调用请求标准化为 `request` 方法，params 为 `ToolCallRequest`。
 - 引入 `ApprovalResponse` 类型（必要时重命名现有 Response literal），让
   `request` 的返回类型统一为 `ApprovalResponse | ToolResult`。
 - 保持向后兼容：旧 client 仍可直接 `prompt`。
@@ -62,9 +62,9 @@ slash command 列表。
 扩展 `request` 方法语义：
 
 - 现状：`request` 仅携带 `ApprovalRequest`，响应为审批结果。
-- 目标：`request` 可携带 `ApprovalRequest | ToolCall`。
+- 目标：`request` 可携带 `ApprovalRequest | ToolCallRequest`。
   - `ApprovalRequest` 表示审批。
-  - `ToolCall` 表示 ExternalToolCall（server 请求 client 执行外部工具）。
+  - `ToolCallRequest` 表示 ExternalToolCall（server 请求 client 执行外部工具）。
 
 响应类型统一为：`ApprovalResponse | ToolResult`。
 
@@ -73,7 +73,7 @@ slash command 列表。
 将审批响应抽象为 `ApprovalResponse`，与 `ToolResult` 对称：
 
 - `ApprovalResponse` 对应 `ApprovalRequest`。
-- `ToolResult` 对应 `ToolCall`。
+- `ToolResult` 对应 `ToolCall`/`ToolCallRequest`。
 
 如果需要消除命名冲突，现有 `Response` literal 可改名为 `ApprovalResponseKind`。
 
@@ -174,8 +174,14 @@ interface SlashCommand {
 ### Wire 请求类型扩展
 
 ```ts
-type Request = ApprovalRequest | ToolCall
-// ToolCall 在 request 语境下即 ExternalToolCall
+type Request = ApprovalRequest | ToolCallRequest
+// ToolCallRequest 在 request 语境下即 ExternalToolCall
+
+interface ToolCallRequest {
+  id: string
+  name: string
+  arguments?: string | null // JSON string
+}
 ```
 
 ### 请求响应类型
@@ -197,13 +203,8 @@ Server -> Client:
 
 ```json
 {"jsonrpc":"2.0","method":"request","id":"tc-1","params":{
-  "type":"ToolCall",
-  "payload":{
-    "type":"function",
-    "id":"tc-1",
-    "function":{"name":"open_in_ide","arguments":"{\"path\":\"README.md\"}"},
-    "extras":{"source":"external"}
-  }
+  "type":"ToolCallRequest",
+  "payload":{"id":"tc-1","name":"open_in_ide","arguments":"{\"path\":\"README.md\"}"}
 }}
 ```
 
@@ -248,15 +249,16 @@ Client -> Server:
 
 - `WireOverStdio` 新增 `_handle_initialize`：
   - 解析 `external_tools`。
-  - 将外部工具注册到 `KimiToolset`（新增 ExternalToolAdapter）。
+  - 将外部工具注册到 `KimiToolset`（新增 `WireExternalTool`）。
+  - 若同名外部工具已存在，则按最新 schema/描述覆盖更新。
   - 采集 `KimiSoul.available_slash_commands` 生成 `slash_commands`。
   - 返回协商结果。
 
 ### 外部工具执行
 
-- `ExternalToolAdapter` 以工具代理的形式加入 toolset。
+- `WireExternalTool` 以工具代理的形式加入 toolset。
 - 当模型触发该工具：
-  - server 通过 Wire `request` 发送 `ToolCall` 给 client。
+  - server 通过 Wire `request` 发送 `ToolCallRequest` 给 client。
   - 等待 client 返回 `ToolResult`。
   - 将 `ToolResult.return_value` 作为 tool 执行结果回传给模型。
 
@@ -282,7 +284,7 @@ Client -> Server:
 收到 `request` 时根据 params 类型分派：
 
 - `ApprovalRequest` -> 弹出审批 UI -> 返回 `ApprovalResponse`。
-- `ToolCall` -> 执行 external tool -> 返回 `ToolResult`。
+- `ToolCallRequest` -> 执行 external tool -> 返回 `ToolResult`。
 
 对未知类型返回 JSON-RPC error 并记录日志。
 
@@ -293,27 +295,26 @@ Client -> Server:
   client 应自动降级并继续使用 v1。
 - 若 `external_tools` 校验失败或重名，server 在 `initialize` result 中标记为 rejected，
   并忽略该工具。
+- 旧类型名 `ApprovalRequestResolved` 在反序列化时仍可被识别。
 
 ## 实施步骤（建议）
 
 1. 协议与类型层
    - `src/kimi_cli/wire/types.py`：
-     - `Request = ApprovalRequest | ToolCall`。
-     - 新增 `ApprovalResponse`/`ApprovalResponseKind`。
-     - `ApprovalRequestResolved` 使用新类型。
+     - `Request = ApprovalRequest | ToolCallRequest`。
+     - 新增 `ApprovalResponse`（保留旧 `ApprovalRequestResolved` 类型名兼容）。
    - `src/kimi_cli/wire/serde.py` 无需改动（由 Envelope 支持新类型）。
 2. JSON-RPC 层
    - `src/kimi_cli/ui/wire/jsonrpc.py`：
-     - 添加 `JSONRPCInitializeMessage` 与 `InitializeResult`。
+     - 添加 `JSONRPCInitializeMessage`。
      - `JSONRPCInMessage`/`OutMessage` 增加 `initialize`。
-     - `JSONRPCApprovalRequestResult` 替换为 `ApprovalResponse`。
 3. Wire 服务端
    - `src/kimi_cli/ui/wire/__init__.py`：
      - 实现 `_handle_initialize`。
-     - 增强 `_pending_requests` 以支持 ToolCall。
+     - 增强 `_pending_requests` 以支持 `ToolCallRequest`。
 4. 工具层
    - `src/kimi_cli/soul/toolset.py`：
-     - 新增 ExternalToolAdapter，内部通过 Wire 请求执行。
+     - 新增 `WireExternalTool`，内部通过 Wire 请求执行。
 5. 协议版本与文档
    - `src/kimi_cli/ui/wire/protocol.py` 提升协议版本。
    - 更新 `docs/zh/customization/wire-mode.md` 并新增 external tools 章节。

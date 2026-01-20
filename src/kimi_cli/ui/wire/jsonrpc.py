@@ -14,7 +14,6 @@ from pydantic import (
 
 from kimi_cli.wire.serde import serialize_wire_message
 from kimi_cli.wire.types import (
-    ApprovalRequestResolved,
     ContentPart,
     Event,
     Request,
@@ -57,6 +56,66 @@ class JSONRPCMessage(_MessageBase):
         return self.method is None and self.id is not None
 
 
+class JSONRPCSuccessResponse(_MessageBase):
+    id: str
+    result: JsonType
+
+
+class JSONRPCErrorResponse(_MessageBase):
+    id: str
+    error: JSONRPCErrorObject
+
+
+class JSONRPCErrorResponseNullableID(_MessageBase):
+    id: str | None
+    error: JSONRPCErrorObject
+
+
+class ClientInfo(BaseModel):
+    name: str
+    version: str | None = None
+
+
+class ExternalTool(BaseModel):
+    name: str
+    description: str
+    parameters: dict[str, JsonType]
+
+
+class JSONRPCInitializeMessage(_MessageBase):
+    class Params(BaseModel):
+        protocol_version: str
+        client: ClientInfo | None = None
+        external_tools: list[ExternalTool] | None = None
+
+    method: Literal["initialize"] = "initialize"
+    id: str
+    params: Params
+
+
+class JSONRPCPromptMessage(_MessageBase):
+    class Params(BaseModel):
+        user_input: str | list[ContentPart]
+
+    method: Literal["prompt"] = "prompt"
+    id: str
+    params: Params
+
+    @model_serializer()
+    def _serialize(self) -> dict[str, Any]:
+        raise NotImplementedError("Prompt message serialization is not implemented.")
+
+
+class JSONRPCCancelMessage(_MessageBase):
+    method: Literal["cancel"] = "cancel"
+    id: str
+    params: JsonType | None = None
+
+    @model_serializer()
+    def _serialize(self) -> dict[str, Any]:
+        raise NotImplementedError("Cancel message serialization is not implemented.")
+
+
 class JSONRPCEventMessage(_MessageBase):
     method: Literal["event"] = "event"
     params: Event
@@ -90,65 +149,22 @@ class JSONRPCRequestMessage(_MessageBase):
         raise NotImplementedError("Request message deserialization is not implemented.")
 
 
-class JSONRPCPromptMessage(_MessageBase):
-    class Params(BaseModel):
-        user_input: str | list[ContentPart]
-
-    method: Literal["prompt"] = "prompt"
-    id: str
-    params: Params
-
-    @model_serializer()
-    def _serialize(self) -> dict[str, Any]:
-        raise NotImplementedError("Prompt message serialization is not implemented.")
-
-
-class JSONRPCCancelMessage(_MessageBase):
-    method: Literal["cancel"] = "cancel"
-    id: str
-    params: JsonType | None = None
-
-    @model_serializer()
-    def _serialize(self) -> dict[str, Any]:
-        raise NotImplementedError("Cancel message serialization is not implemented.")
-
-
-class JSONRPCSuccessResponse(_MessageBase):
-    id: str
-    result: JsonType
-
-
-class JSONRPCErrorResponse(_MessageBase):
-    id: str
-    error: JSONRPCErrorObject
-
-
-class JSONRPCErrorResponseNullableID(_MessageBase):
-    id: str | None
-    error: JSONRPCErrorObject
-
-
-class JSONRPCApprovalRequestResult(ApprovalRequestResolved):
-    """
-    The `JSONRPCSuccessResponse.result` field for approval request responses should be able to
-    be parsed into this type.
-    """
-
-    pass
-
-
 type JSONRPCInMessage = (
-    JSONRPCPromptMessage | JSONRPCCancelMessage | JSONRPCSuccessResponse | JSONRPCErrorResponse
+    JSONRPCSuccessResponse
+    | JSONRPCErrorResponse
+    | JSONRPCInitializeMessage
+    | JSONRPCPromptMessage
+    | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"prompt", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "cancel"}
 
 type JSONRPCOutMessage = (
-    JSONRPCEventMessage
-    | JSONRPCRequestMessage
-    | JSONRPCSuccessResponse
+    JSONRPCSuccessResponse
     | JSONRPCErrorResponse
     | JSONRPCErrorResponseNullableID
+    | JSONRPCEventMessage
+    | JSONRPCRequestMessage
 )
 JSONRPC_OUT_METHODS = {"event", "request"}
 
