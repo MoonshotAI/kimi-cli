@@ -31,7 +31,13 @@ from loguru import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
-from kimi_cli.wire.types import ContentPart, ToolCall, ToolResult, ToolReturnValue
+from kimi_cli.wire.types import (
+    ContentPart,
+    ToolCall,
+    ToolCallRequest,
+    ToolResult,
+    ToolReturnValue,
+)
 
 if TYPE_CHECKING:
     import fastmcp
@@ -116,6 +122,27 @@ class KimiToolset:
             return asyncio.create_task(_call())
         finally:
             current_tool_call.reset(token)
+
+    def register_external_tool(
+        self,
+        name: str,
+        description: str,
+        parameters: dict[str, Any],
+    ) -> tuple[bool, str | None]:
+        if name in self._tool_dict:
+            existing = self._tool_dict[name]
+            if not isinstance(existing, WireExternalTool):
+                return False, "tool name conflicts with existing tool"
+        try:
+            tool = WireExternalTool(
+                name=name,
+                description=description,
+                parameters=parameters,
+            )
+        except Exception as e:
+            return False, str(e)
+        self.add(tool)
+        return True, None
 
     @property
     def mcp_servers(self) -> dict[str, MCPServerInfo]:
@@ -385,6 +412,48 @@ class MCPTool[T: ClientTransport](CallableTool):
                     brief="Timeout",
                 )
             raise
+
+
+class WireExternalTool(CallableTool):
+    def __init__(self, *, name: str, description: str, parameters: dict[str, Any]) -> None:
+        super().__init__(
+            name=name,
+            description=description or "No description provided.",
+            parameters=parameters,
+        )
+
+    async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
+        tool_call = get_current_tool_call_or_none()
+        if tool_call is None:
+            return ToolError(
+                message="External tool calls must be invoked from a tool call context.",
+                brief="Invalid tool call",
+            )
+
+        from kimi_cli.soul import get_wire_or_none
+
+        wire = get_wire_or_none()
+        if wire is None:
+            logger.error(
+                "Wire is not available for external tool call: {tool_name}", tool_name=self.name
+            )
+            return ToolError(
+                message="Wire is not available for external tool calls.",
+                brief="Wire unavailable",
+            )
+
+        external_tool_call = ToolCallRequest.from_tool_call(tool_call)
+        wire.soul_side.send(external_tool_call)
+        try:
+            return await external_tool_call.wait()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.exception("External tool call failed: {tool_name}:", tool_name=self.name)
+            return ToolError(
+                message=f"External tool call failed: {e}",
+                brief="External tool error",
+            )
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
