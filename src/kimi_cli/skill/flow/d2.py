@@ -5,11 +5,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from . import (
+    Flow,
     FlowEdge,
     FlowNode,
     FlowNodeKind,
-    PromptFlow,
-    PromptFlowParseError,
+    FlowParseError,
     validate_flow,
 )
 
@@ -50,7 +50,7 @@ class _NodeDef:
     explicit: bool
 
 
-def parse_d2_flowchart(text: str) -> PromptFlow:
+def parse_d2_flowchart(text: str) -> Flow:
     nodes: dict[str, _NodeDef] = {}
     outgoing: dict[str, list[FlowEdge]] = {}
 
@@ -66,7 +66,7 @@ def parse_d2_flowchart(text: str) -> PromptFlow:
 
     flow_nodes = _infer_decision_nodes(flow_nodes, outgoing)
     begin_id, end_id = validate_flow(flow_nodes, outgoing)
-    return PromptFlow(nodes=flow_nodes, outgoing=outgoing, begin_id=begin_id, end_id=end_id)
+    return Flow(nodes=flow_nodes, outgoing=outgoing, begin_id=begin_id, end_id=end_id)
 
 
 def _iter_top_level_statements(text: str) -> Iterable[tuple[int, str]]:
@@ -122,7 +122,7 @@ def _iter_top_level_statements(text: str) -> Iterable[tuple[int, str]]:
                 i += 1
                 continue
             if ch == "}" and brace_depth == 0:
-                raise PromptFlowParseError(_line_error(line_no, "Unmatched '}'"))
+                raise FlowParseError(_line_error(line_no, "Unmatched '}'"))
 
         if ch == "'" and not in_double and not escape:
             in_single = not in_single
@@ -140,9 +140,9 @@ def _iter_top_level_statements(text: str) -> Iterable[tuple[int, str]]:
         i += 1
 
     if brace_depth != 0:
-        raise PromptFlowParseError(_line_error(line_no, "Unclosed '{' block"))
+        raise FlowParseError(_line_error(line_no, "Unclosed '{' block"))
     if in_single or in_double:
-        raise PromptFlowParseError(_line_error(line_no, "Unclosed string"))
+        raise FlowParseError(_line_error(line_no, "Unclosed string"))
 
     statement = "".join(buf).strip()
     if statement:
@@ -162,7 +162,7 @@ def _parse_edge_statement(
 ) -> None:
     parts = _split_on_token(statement, "->")
     if len(parts) < 2:
-        raise PromptFlowParseError(_line_error(line_no, "Expected edge arrow"))
+        raise FlowParseError(_line_error(line_no, "Expected edge arrow"))
 
     last_part = parts[-1]
     target_text, edge_label = _split_unquoted_once(last_part, ":")
@@ -176,7 +176,7 @@ def _parse_edge_statement(
     if any(_is_property_path(node_id) for node_id in node_ids):
         return
     if len(node_ids) < 2:
-        raise PromptFlowParseError(_line_error(line_no, "Edge must have at least two nodes"))
+        raise FlowParseError(_line_error(line_no, "Edge must have at least two nodes"))
 
     label = _parse_label(edge_label, line_no) if edge_label is not None else None
     for idx in range(len(node_ids) - 1):
@@ -212,10 +212,10 @@ def _parse_node_id(text: str, line_no: int, *, allow_inline_label: bool) -> str:
     if allow_inline_label and ":" in cleaned:
         cleaned = _split_unquoted_once(cleaned, ":")[0].strip()
     if not cleaned:
-        raise PromptFlowParseError(_line_error(line_no, "Expected node id"))
+        raise FlowParseError(_line_error(line_no, "Expected node id"))
     match = _NODE_ID_RE.fullmatch(cleaned)
     if not match:
-        raise PromptFlowParseError(_line_error(line_no, f'Invalid node id "{cleaned}"'))
+        raise FlowParseError(_line_error(line_no, f'Invalid node id "{cleaned}"'))
     return match.group(0)
 
 
@@ -232,7 +232,7 @@ def _is_property_path(node_id: str) -> bool:
 def _parse_label(text: str, line_no: int) -> str:
     label = text.strip()
     if not label:
-        raise PromptFlowParseError(_line_error(line_no, "Label cannot be empty"))
+        raise FlowParseError(_line_error(line_no, "Label cannot be empty"))
     if label[0] in {"'", '"'}:
         return _parse_quoted_label(label, line_no)
     return label
@@ -257,11 +257,11 @@ def _parse_quoted_label(text: str, line_no: int) -> str:
         if ch == quote:
             trailing = text[i + 1 :].strip()
             if trailing:
-                raise PromptFlowParseError(_line_error(line_no, "Unexpected trailing content"))
+                raise FlowParseError(_line_error(line_no, "Unexpected trailing content"))
             return "".join(buf)
         buf.append(ch)
         i += 1
-    raise PromptFlowParseError(_line_error(line_no, "Unclosed quoted label"))
+    raise FlowParseError(_line_error(line_no, "Unclosed quoted label"))
 
 
 def _split_on_token(text: str, token: str) -> list[str]:
@@ -291,7 +291,7 @@ def _split_on_token(text: str, token: str) -> list[str]:
         i += 1
 
     if in_single or in_double:
-        raise PromptFlowParseError("Unclosed string in statement")
+        raise FlowParseError("Unclosed string in statement")
     parts.append("".join(buf).strip())
     return parts
 
@@ -329,7 +329,7 @@ def _add_node(
     label = label if label is not None else node_id
     label_norm = label.strip().lower()
     if not label:
-        raise PromptFlowParseError(_line_error(line_no, "Node label cannot be empty"))
+        raise FlowParseError(_line_error(line_no, "Node label cannot be empty"))
 
     kind: FlowNodeKind = "task"
     if label_norm == "begin":
@@ -353,7 +353,7 @@ def _add_node(
         nodes[node_id] = _NodeDef(node=node, explicit=True)
         return node
 
-    raise PromptFlowParseError(_line_error(line_no, f'Conflicting definition for node "{node_id}"'))
+    raise FlowParseError(_line_error(line_no, f'Conflicting definition for node "{node_id}"'))
 
 
 def _infer_decision_nodes(
