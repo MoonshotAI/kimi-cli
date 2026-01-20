@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.80 (2026-01-20)
+
 - Wire: Add `initialize` method for exchanging client/server info, external tools registration and slash commands advertisement
 - Wire: Support external tool calls via Wire protocol
 - Wire: Rename `ApprovalRequestResolved` to `ApprovalResponse` (backwards-compatible)
