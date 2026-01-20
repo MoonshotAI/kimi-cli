@@ -111,6 +111,13 @@ class MCPConfig(BaseModel):
     )
 
 
+class ShellConfig(BaseModel):
+    """Shell tool configuration."""
+
+    default_timeout: int = Field(default=60, ge=1, le=300)
+    """Default timeout in seconds for shell commands (1-300). LLM can override per-call."""
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -128,6 +135,7 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    shell: ShellConfig = Field(default_factory=ShellConfig, description="Shell tool configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

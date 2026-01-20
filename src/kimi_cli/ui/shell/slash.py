@@ -355,6 +355,62 @@ async def list_sessions(app: Shell, args: str):
 
 
 @registry.command
+async def timeout(app: Shell, args: str):
+    """Set default shell command timeout (1-300 seconds)"""
+    from kimi_cli.tools.shell import MAX_TIMEOUT
+
+    soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
+    config = soul.runtime.config
+
+    if not config.is_from_default_location:
+        console.print(
+            "[yellow]Timeout setting requires the default config file; "
+            "restart without --config/--config-file.[/yellow]"
+        )
+        return
+
+    current_timeout = config.shell.default_timeout
+    args = args.strip()
+
+    if not args:
+        # Show current value
+        console.print(f"Current default shell timeout: [cyan]{current_timeout}[/cyan] seconds")
+        console.print(f"[grey50]Usage: /timeout <seconds> (1-{MAX_TIMEOUT})[/grey50]")
+        return
+
+    # Parse the timeout value
+    try:
+        new_timeout = int(args)
+    except ValueError:
+        console.print(f"[red]Invalid timeout value: {args}. Must be an integer.[/red]")
+        return
+
+    if not 1 <= new_timeout <= MAX_TIMEOUT:
+        console.print(f"[red]Timeout must be between 1 and {MAX_TIMEOUT} seconds.[/red]")
+        return
+
+    if new_timeout == current_timeout:
+        console.print(f"[yellow]Timeout is already set to {current_timeout} seconds.[/yellow]")
+        return
+
+    # Save and reload
+    try:
+        config_for_save = load_config()
+        config_for_save.shell.default_timeout = new_timeout
+        save_config(config_for_save)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    console.print(
+        f"[green]Default shell timeout set to {new_timeout} seconds. Reloading...[/green]"
+    )
+    raise Reload(session_id=soul.runtime.session.id)
+
+
+@registry.command
 async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
     from rich.console import Group, RenderableType

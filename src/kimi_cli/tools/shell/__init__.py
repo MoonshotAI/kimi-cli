@@ -1,21 +1,44 @@
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 import kaos
 from kaos import AsyncReadable
 from kosong.tooling import CallableTool2, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
+from kimi_cli.config import Config
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import ShellDisplayBlock
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
 
 MAX_TIMEOUT = 5 * 60
+DEFAULT_TIMEOUT = 60
 
 
+def _create_params_class(default_timeout: int) -> type[BaseModel]:
+    """Create a Params class with a configurable default timeout."""
+    return create_model(
+        "Params",
+        command=(str, Field(description="The bash command to execute.")),
+        timeout=(
+            int,
+            Field(
+                description=(
+                    "The timeout in seconds for the command to execute. "
+                    "If the command takes longer than this, it will be killed."
+                ),
+                default=default_timeout,
+                ge=1,
+                le=MAX_TIMEOUT,
+            ),
+        ),
+    )
+
+
+# Default Params class for type hints and backward compatibility
 class Params(BaseModel):
     command: str = Field(description="The bash command to execute.")
     timeout: int = Field(
@@ -23,7 +46,7 @@ class Params(BaseModel):
             "The timeout in seconds for the command to execute. "
             "If the command takes longer than this, it will be killed."
         ),
-        default=60,
+        default=DEFAULT_TIMEOUT,
         ge=1,
         le=MAX_TIMEOUT,
     )
@@ -33,8 +56,11 @@ class Shell(CallableTool2[Params]):
     name: str = "Shell"
     params: type[Params] = Params
 
-    def __init__(self, approval: Approval, environment: Environment):
+    def __init__(self, approval: Approval, environment: Environment, config: Config):
         is_powershell = environment.shell_name == "Windows PowerShell"
+        # Create params class with configured default timeout
+        default_timeout = config.shell.default_timeout
+        self.params: type[Any] = _create_params_class(default_timeout)
         super().__init__(
             description=load_desc(
                 Path(__file__).parent / ("powershell.md" if is_powershell else "bash.md"),

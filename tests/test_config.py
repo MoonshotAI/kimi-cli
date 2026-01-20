@@ -39,8 +39,7 @@ def test_default_config_dump():
                 "max_ralph_iterations": 0,
             },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
-            "mcp": {"client": {"tool_call_timeout_ms": 60000}},
-        }
+            "mcp": {"client": {"tool_call_timeout_ms": 60000}}, "shell": {"default_timeout": 60}}
     )
 
 

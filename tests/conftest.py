@@ -235,10 +235,10 @@ def set_todo_list_tool() -> SetTodoList:
 
 
 @pytest.fixture
-def shell_tool(approval: Approval, environment: Environment) -> Generator[Shell]:
+def shell_tool(approval: Approval, environment: Environment, config: Config) -> Generator[Shell]:
     """Create a Shell tool instance."""
     with tool_call_context("Shell"):
-        yield Shell(approval, environment)
+        yield Shell(approval, environment, config)
 
 
 @pytest.fixture
