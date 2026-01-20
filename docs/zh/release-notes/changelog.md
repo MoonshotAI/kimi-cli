@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.80 (2026-01-20)
+
 - Wire：添加 `initialize` 方法，用于交换客户端/服务端信息、注册外部工具和公布斜杠命令
 - Wire：支持通过 Wire 协议调用外部工具
 - Wire：将 `ApprovalRequestResolved` 重命名为 `ApprovalResponse`（向后兼容）
