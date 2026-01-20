@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Skills: Add flow skill type with embedded Agent Flow (Mermaid/D2) in SKILL.md, invoked via `/flow:<skill-name>` commands
+- CLI: Remove `--prompt-flow` option; use flow skills instead
+- Core: Replace `/begin` command with `/flow:<skill-name>` commands for flow skills
+
 ## 0.80 (2026-01-20)
 
 - Wire: Add `initialize` method for exchanging client/server info, external tools registration and slash commands advertisement
