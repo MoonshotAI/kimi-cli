@@ -67,12 +67,16 @@ interface JSONRPCError {
 }
 ```
 
-### `initialize` <Badge type="tip" text="v2" />
+### `initialize`
+
+::: info Added in Wire v2
+旧版 Client 可跳过此请求，直接发送 `prompt`。
+:::
 
 - **方向**：Client → Agent
 - **类型**：Request（需要响应）
 
-可选握手请求，用于协商协议版本、提交外部工具定义并获取斜杠命令列表。旧版 Client 可跳过此请求，直接发送 `prompt`。
+可选握手请求，用于协商协议版本、提交外部工具定义并获取斜杠命令列表。
 
 ```typescript
 /** initialize 请求参数 */

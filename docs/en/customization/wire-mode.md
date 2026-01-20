@@ -67,12 +67,16 @@ interface JSONRPCError {
 }
 ```
 
-### `initialize` <Badge type="tip" text="v2" />
+### `initialize`
+
+::: info Added in Wire v2
+Legacy clients can skip this request and send `prompt` directly.
+:::
 
 - **Direction**: Client → Agent
 - **Type**: Request (requires response)
 
-Optional handshake request for negotiating protocol version, submitting external tool definitions, and retrieving the slash command list. Legacy clients can skip this request and send `prompt` directly.
+Optional handshake request for negotiating protocol version, submitting external tool definitions, and retrieving the slash command list.
 
 ```typescript
 /** initialize request parameters */
