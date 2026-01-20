@@ -69,7 +69,7 @@ interface JSONRPCError {
 
 ### `initialize`
 
-::: info Added in Wire v1.1
+::: info 新增于 Wire 1.1
 旧版 Client 可跳过此请求，直接发送 `prompt`。
 :::
 

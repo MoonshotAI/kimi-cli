@@ -69,7 +69,7 @@ interface JSONRPCError {
 
 ### `initialize`
 
-::: info Added in Wire v1.1
+::: info Added in Wire 1.1
 Legacy clients can skip this request and send `prompt` directly.
 :::
 
