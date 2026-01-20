@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.81 (2026-01-21)
+
 - Skills: Add flow skill type with embedded Agent Flow (Mermaid/D2) in SKILL.md, invoked via `/flow:<skill-name>` commands
 - CLI: Remove `--prompt-flow` option; use flow skills instead
 - Core: Replace `/begin` command with `/flow:<skill-name>` commands for flow skills
