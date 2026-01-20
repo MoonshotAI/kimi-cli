@@ -4,6 +4,10 @@
 
 ## 未发布
 
+- Skills：添加 Flow Skill 类型，在 SKILL.md 中内嵌 Agent Flow（Mermaid/D2），通过 `/flow:<skill-name>` 命令调用
+- CLI：移除 `--prompt-flow` 选项，改用 Flow Skills
+- Core：用 `/flow:<skill-name>` 命令替代原来的 `/begin` 命令
+
 ## 0.80 (2026-01-20)
 
 - Wire：添加 `initialize` 方法，用于交换客户端/服务端信息、注册外部工具和公布斜杠命令

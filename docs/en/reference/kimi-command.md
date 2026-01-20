@@ -77,57 +77,7 @@ When using `--prompt` (or `--command`), Kimi CLI exits after processing the quer
 
 [Ralph](https://ghuntley.com/ralph/) is a technique that puts an agent in a loop: the same prompt is fed again and again so the agent can keep iterating one big task.
 
-When `--max-ralph-iterations` is not `0`, Kimi CLI enters Ralph Loop mode and automatically loops through task execution based on an internal Prompt Flow, until the agent outputs `<choice>STOP</choice>` or the iteration limit is reached.
-
-::: info Note
-Ralph Loop is mutually exclusive with the `--prompt-flow` option and cannot be used together.
-:::
-
-## Prompt Flow
-
-| Option | Description |
-|--------|-------------|
-| `--prompt-flow PATH` | Load a D2 (`.d2`) or Mermaid (`.mmd`) flowchart file as a Prompt Flow |
-
-Prompt Flow is a prompt workflow description method based on flowcharts, where each node corresponds to one conversation turn. After loading, you can start the flow execution with the `/begin` slash command. Both D2 and Mermaid flowchart formats are supported. You can edit and preview D2 flowcharts at [D2 Playground](https://play.d2lang.com), and Mermaid flowcharts at [Mermaid Playground](https://www.mermaidchart.com/play).
-
-D2 flowchart example (`example.d2` file):
-
-```
-BEGIN -> B -> C
-B: Analyze existing code, write design doc for XXX feature in design.md
-C: Review design.md, is it detailed enough?
-C -> B: No
-C -> D: Yes
-D: Start implementation
-D -> END
-```
-
-Mermaid flowchart example (`example.mmd` file):
-
-```
-flowchart TD
-A([BEGIN]) --> B[Analyze existing code, write design doc for XXX feature in design.md]
-B --> C{Review design.md, is it detailed enough?}
-C -->|Yes| D[Start implementation]
-C -->|No| B
-D --> F([END])
-```
-
-```mermaid
-flowchart TD
-A([BEGIN]) --> B[Analyze existing code, write design doc for XXX feature in design.md]
-B --> C{Review design.md, is it detailed enough?}
-C -->|Yes| D[Start implementation]
-C -->|No| B
-D --> F([END])
-```
-
-During node processing, decision nodes require the agent to output `<choice>branch name</choice>` to select the next node.
-
-::: info Note
-`--prompt-flow` is mutually exclusive with Ralph Loop mode and cannot be used together.
-:::
+When `--max-ralph-iterations` is not `0`, Kimi CLI enters Ralph Loop mode and automatically loops through task execution until the agent outputs `<choice>STOP</choice>` or the iteration limit is reached.
 
 ## UI modes
 

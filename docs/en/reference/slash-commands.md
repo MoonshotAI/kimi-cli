@@ -118,6 +118,17 @@ For example:
 
 You can append additional text after the command, which will be added to the skill prompt. See [Agent Skills](../customization/skills.md) for details.
 
+### `/flow:<name>`
+
+Execute a specific flow skill. Flow skills embed an Agent Flow diagram in `SKILL.md`. After execution, the Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node.
+
+For example:
+
+- `/flow:code-review`: Execute code review workflow
+- `/flow:release`: Execute release workflow
+
+See [Agent Skills](../customization/skills.md#flow-skills) for details.
+
 ## Others
 
 ### `/init`
@@ -133,12 +144,6 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 ::: warning Note
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
-
-### `/begin`
-
-Start Prompt Flow execution.
-
-This command is only available when a flowchart has been loaded via `--prompt-flow`. After execution, the agent will start from the `BEGIN` node and process each node according to the flowchart definition until reaching the `END` node. See [`kimi` command](./kimi-command.md#prompt-flow) for details.
 
 ## Command completion
 
