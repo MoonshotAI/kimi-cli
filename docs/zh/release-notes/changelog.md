@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.81 (2026-01-21)
+
 - Skills：添加 Flow Skill 类型，在 SKILL.md 中内嵌 Agent Flow（Mermaid/D2），通过 `/flow:<skill-name>` 命令调用
 - CLI：移除 `--prompt-flow` 选项，改用 Flow Skills
 - Core：用 `/flow:<skill-name>` 命令替代原来的 `/begin` 命令
