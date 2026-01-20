@@ -1,10 +1,10 @@
 [project]
 name = "kimi-code"
-version = "0.79"
+version = "0.80"
 description = "Kimi Code is a CLI agent that lives in your terminal."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["kimi-cli==0.79"]
+dependencies = ["kimi-cli==0.80"]
 
 [project.scripts]
 kimi = "kimi_cli.cli:cli"
