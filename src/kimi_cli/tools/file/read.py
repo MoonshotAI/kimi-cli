@@ -68,12 +68,8 @@ class ReadFile(CallableTool2[Params]):
             },
         )
         super().__init__(description=description)
+        self._runtime = runtime
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
-        self._chat_provider: Kimi | None = (
-            runtime.llm.chat_provider
-            if runtime.llm and isinstance(runtime.llm.chat_provider, Kimi)
-            else None
-        )
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
@@ -118,15 +114,11 @@ class ReadFile(CallableTool2[Params]):
                 part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
             case "video":
                 data = await path.read_bytes()
-                # TODO: gate uploads by provider/base_url once we have a proper allowlist config.
-                # Assumption for now: if the provider supports video capability,
-                # it likely supports files API.
-                if self._chat_provider:
-                    ms_url = await self._chat_provider.upload_video(
+                if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
+                    part = await llm.chat_provider.files.upload_video(
                         data=data,
                         mime_type=file_type.mime_type,
                     )
-                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=ms_url))
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
                     part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
