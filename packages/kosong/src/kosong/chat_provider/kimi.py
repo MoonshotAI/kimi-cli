@@ -2,7 +2,7 @@ import copy
 import os
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, Unpack, cast
 
 import httpx
 from openai import AsyncOpenAI, AsyncStream, OpenAIError, omit
@@ -14,6 +14,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 from openai.types.completion_usage import CompletionUsage
+from typing_extensions import TypedDict
 
 from kosong.chat_provider import (
     ChatProvider,
@@ -30,6 +31,14 @@ if TYPE_CHECKING:
 
     def type_check(kimi: "Kimi"):
         _: ChatProvider = kimi
+
+
+class ThinkingConfig(TypedDict, total=True):
+    type: Literal["enabled", "disabled"]
+
+
+class ExtraBody(TypedDict, total=False, extra_items=Any):
+    thinking: ThinkingConfig
 
 
 class Kimi:
@@ -63,6 +72,8 @@ class Kimi:
         stop: str | list[str] | None
         prompt_cache_key: str | None
         reasoning_effort: str | None
+        """Legacy thinking parameter. Use `extra_body.thinking` instead."""
+        extra_body: ExtraBody | None
 
     def __init__(
         self,
@@ -159,7 +170,13 @@ class Kimi:
                 reasoning_effort = "medium"
             case "high":
                 reasoning_effort = "high"
-        return self.with_generation_kwargs(reasoning_effort=reasoning_effort)
+        return self.with_generation_kwargs(reasoning_effort=reasoning_effort).with_extra_body(
+            {
+                "thinking": {
+                    "type": "enabled" if effort != "off" else "disabled",
+                }
+            }
+        )
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """
@@ -171,6 +188,20 @@ class Kimi:
         new_self = copy.copy(self)
         new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
         new_self._generation_kwargs.update(kwargs)
+        return new_self
+
+    def with_extra_body(self, extra_body: ExtraBody) -> Self:
+        """
+        Copy the chat provider, updating the extra_body in generation kwargs.
+
+        Returns:
+            Self: A new instance of the chat provider with updated extra_body.
+        """
+        new_self = copy.copy(self)
+        new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
+        old_extra_body = new_self._generation_kwargs.get("extra_body") or {}
+        new_extra_body: ExtraBody = {**old_extra_body, **extra_body}
+        new_self._generation_kwargs["extra_body"] = new_extra_body
         return new_self
 
     @property
