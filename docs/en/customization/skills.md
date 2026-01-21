@@ -239,9 +239,15 @@ D -> END
 
 **Executing a flow skill**
 
-```sh
-# Execute in Kimi CLI
-/flow:code-review
-```
+Flow skills can be invoked in two ways:
 
-After execution, the Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node.
+- `/flow:<name>`: Execute the flow. The Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node
+- `/skill:<name>`: Like a standard skill, sends the `SKILL.md` content to the Agent as a prompt (does not automatically execute the flow)
+
+```sh
+# Execute the flow
+/flow:code-review
+
+# Load as a standard skill
+/skill:code-review
+```
