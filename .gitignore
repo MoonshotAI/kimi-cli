@@ -27,3 +27,4 @@ tests_ai/report.json
 # nix build result
 result
 result-*
+artifacts/
