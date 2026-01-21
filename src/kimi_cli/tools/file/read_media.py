@@ -15,7 +15,7 @@ from kimi_cli.tools.utils import load_desc_jinja
 from kimi_cli.utils.path import is_within_directory
 from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
-MAX_MEDIA_MEGABYTES = 80
+MAX_MEDIA_MEGABYTES = 100
 
 
 def _to_data_url(mime_type: str, data: bytes) -> str:

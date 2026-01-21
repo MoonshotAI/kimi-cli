@@ -354,7 +354,7 @@ Read media content from a file.
 - This tool is a tool that you typically want to use in parallel. Always read multiple files in one response when possible.
 - This tool can only read image or video files. To read other types of files, use the ReadFile tool. To list directories, use the Glob tool or `ls` command via the Shell tool.
 - If the file doesn't exist or path is invalid, an error will be returned.
-- The maximum size that can be read is 80MB. An error will be returned if the file is larger than this limit.
+- The maximum size that can be read is 100MB. An error will be returned if the file is larger than this limit.
 - The media content will be returned in a form that you can directly view and understand.
 
 **Capabilities**
