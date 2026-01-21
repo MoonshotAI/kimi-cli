@@ -14,7 +14,7 @@ kimi --agent okabe
 
 默认 Agent，适合通常情况使用。启用的工具：
 
-`Task`、`SetTodoList`、`Shell`、`ReadFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`
+`Task`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`
 
 ### `okabe`
 
@@ -191,13 +191,22 @@ agent:
 ### `ReadFile`
 
 - **路径**：`kimi_cli.tools.file:ReadFile`
-- **描述**：读取文件内容。支持文本、图片和视频文件。文本文件单次最多读取 1000 行，每行最多 2000 字符；图片/视频文件最大 80MB。工作目录外的文件需使用绝对路径。
+- **描述**：读取文本文件内容。单次最多读取 1000 行，每行最多 2000 字符。工作目录外的文件需使用绝对路径。
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `path` | string | 文件路径 |
-| `line_offset` | int | 起始行号，默认 1（仅适用于文本文件） |
-| `n_lines` | int | 读取行数，默认/最大 1000（仅适用于文本文件） |
+| `line_offset` | int | 起始行号，默认 1 |
+| `n_lines` | int | 读取行数，默认/最大 1000 |
+
+### `ReadMediaFile`
+
+- **路径**：`kimi_cli.tools.file:ReadMediaFile`
+- **描述**：读取图片或视频文件。文件最大 100MB。仅当模型支持图片/视频输入时可用。工作目录外的文件需使用绝对路径。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `path` | string | 文件路径 |
 
 ### `Glob`
 

@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Tool：添加 `ReadMediaFile` 工具用于读取图片/视频文件；`ReadFile` 现在仅用于读取文本文件
+
 ## 0.82 (2026-01-21)
 
 - Tool：`WriteFile` 和 `StrReplaceFile` 工具支持使用绝对路径编辑/写入工作目录外的文件
