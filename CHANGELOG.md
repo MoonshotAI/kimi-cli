@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tool: Upload videos to Kimi files API when using Kimi provider, replacing inline data URLs with `ms://` references
+
 ## 0.81 (2026-01-21)
 
 - Skills: Add flow skill type with embedded Agent Flow (Mermaid/D2) in SKILL.md, invoked via `/flow:<skill-name>` commands

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Control thinking mode via `extra_body` parameter instead of legacy `reasoning_effort`
+- Add `upload_video` method to Kimi provider for uploading videos to Kimi files API
 
 ## 0.38.0 (2026-01-15)
 
