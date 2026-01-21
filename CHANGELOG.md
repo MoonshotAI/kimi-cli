@@ -11,6 +11,11 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 0.83 (2026-01-21)
+
+- Tool: Add `ReadMediaFile` tool for reading image/video files; `ReadFile` now focuses on text files only
+- Skills: Flow skills now also register as `/skill:<skill-name>` commands (in addition to `/flow:<skill-name>`)
+
 ## 0.82 (2026-01-21)
 
 - Tool: Allow `WriteFile` and `StrReplaceFile` tools to edit/write files outside the working directory when using absolute paths

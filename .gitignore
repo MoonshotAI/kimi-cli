@@ -27,3 +27,6 @@ tests_ai/report.json
 # nix build result
 result
 result-*
+
+# macOS files
+.DS_Store

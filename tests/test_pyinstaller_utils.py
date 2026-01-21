@@ -97,6 +97,10 @@ def test_pyinstaller_datas():
                 "kimi_cli/tools/file",
             ),
             (
+                "src/kimi_cli/tools/file/read_media.md",
+                "kimi_cli/tools/file",
+            ),
+            (
                 "src/kimi_cli/tools/file/replace.md",
                 "kimi_cli/tools/file",
             ),
@@ -140,6 +144,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.glob",
             "kimi_cli.tools.file.grep_local",
             "kimi_cli.tools.file.read",
+            "kimi_cli.tools.file.read_media",
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
