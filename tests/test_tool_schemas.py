@@ -10,6 +10,7 @@ from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
+from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.multiagent.task import Task
@@ -180,6 +181,22 @@ def test_read_file_params_schema(read_file_tool: ReadFile):
     )
 
 
+def test_read_media_file_params_schema(read_media_file_tool: ReadMediaFile):
+    """Test the schema of ReadMediaFile tool parameters."""
+    assert read_media_file_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "path": {
+                    "description": "The path to the file to read. Absolute paths are required when reading files outside the working directory.",
+                    "type": "string",
+                }
+            },
+            "required": ["path"],
+            "type": "object",
+        }
+    )
+
+
 def test_glob_params_schema(glob_tool: Glob):
     """Test the schema of Glob tool parameters."""
     assert glob_tool.base.parameters == snapshot(
@@ -283,7 +300,7 @@ def test_write_file_params_schema(write_file_tool: WriteFile):
         {
             "properties": {
                 "path": {
-                    "description": "The absolute path to the file to write",
+                    "description": "The path to the file to write. Absolute paths are required when writing files outside the working directory.",
                     "type": "string",
                 },
                 "content": {
@@ -309,7 +326,7 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
         {
             "properties": {
                 "path": {
-                    "description": "The absolute path to the file to edit.",
+                    "description": "The path to the file to edit. Absolute paths are required when editing files outside the working directory.",
                     "type": "string",
                 },
                 "edit": {

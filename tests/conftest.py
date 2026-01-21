@@ -29,6 +29,7 @@ from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
+from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.multiagent.create import CreateSubagent
@@ -248,6 +249,12 @@ def read_file_tool(runtime: Runtime) -> ReadFile:
 
 
 @pytest.fixture
+def read_media_file_tool(runtime: Runtime) -> ReadMediaFile:
+    """Create a ReadMediaFile tool instance."""
+    return ReadMediaFile(runtime)
+
+
+@pytest.fixture
 def glob_tool(builtin_args: BuiltinSystemPromptArgs) -> Glob:
     """Create a Glob tool instance."""
     return Glob(builtin_args)
@@ -293,9 +300,7 @@ def fetch_url_tool(config: Config) -> FetchURL:
 
 
 @pytest.fixture
-def outside_file() -> Path:
+def outside_file() -> Generator[Path]:
     """Return a path to a file outside the working directory."""
-    if platform.system() == "Windows":
-        return Path("C:/outside_file.txt")
-    else:
-        return Path("/outside_file.txt")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir) / "outside_file.txt"

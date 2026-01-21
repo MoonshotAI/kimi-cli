@@ -59,13 +59,32 @@ class SlashCommandCompleter(Completer):
     """
     A completer that:
     - Shows one line per slash command in the form: "/name (alias1, alias2)"
-    - Matches by primary name or any alias while inserting the canonical "/name"
+    - Fuzzy-matches by primary name or any alias while inserting the canonical "/name"
     - Only activates when the current token starts with '/'
     """
 
     def __init__(self, available_commands: Sequence[SlashCommand[Any]]) -> None:
         super().__init__()
-        self._available_commands = available_commands
+        self._available_commands = list(available_commands)
+        self._command_lookup: dict[str, list[SlashCommand[Any]]] = {}
+        words: list[str] = []
+
+        for cmd in sorted(self._available_commands, key=lambda c: c.name):
+            if cmd.name not in self._command_lookup:
+                self._command_lookup[cmd.name] = []
+                words.append(cmd.name)
+            self._command_lookup[cmd.name].append(cmd)
+            for alias in cmd.aliases:
+                if alias in self._command_lookup:
+                    self._command_lookup[alias].append(cmd)
+                else:
+                    self._command_lookup[alias] = [cmd]
+                    words.append(alias)
+
+        self._word_pattern = re.compile(r"[^\s]+")
+        self._fuzzy_pattern = r"^[^\s]*"
+        self._word_completer = WordCompleter(words, WORD=False, pattern=self._word_pattern)
+        self._fuzzy = FuzzyCompleter(self._word_completer, WORD=False, pattern=self._fuzzy_pattern)
 
     @override
     def get_completions(
@@ -88,11 +107,18 @@ class SlashCommandCompleter(Completer):
             return
 
         typed = token[1:]
-        typed_lower = typed.lower()
+        mention_doc = Document(text=typed, cursor_position=len(typed))
+        candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
 
-        for cmd in sorted(self._available_commands, key=lambda c: c.name):
-            names = [cmd.name] + list(cmd.aliases)
-            if typed == "" or any(n.lower().startswith(typed_lower) for n in names):
+        seen: set[str] = set()
+        for candidate in candidates:
+            commands = self._command_lookup.get(candidate.text)
+            if not commands:
+                continue
+            for cmd in commands:
+                if cmd.name in seen:
+                    continue
+                seen.add(cmd.name)
                 yield Completion(
                     text=f"/{cmd.name}",
                     start_position=-len(token),

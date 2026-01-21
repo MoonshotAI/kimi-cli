@@ -2,6 +2,48 @@
 
 This page documents breaking changes in Kimi CLI releases and provides migration guidance.
 
+## Unreleased
+
+## 0.81 - Prompt Flow replaced by Flow Skills
+
+### `--prompt-flow` option removed
+
+The `--prompt-flow` CLI option has been removed. Use flow skills instead.
+
+- **Affected**: Scripts and automation using `--prompt-flow` to load Mermaid/D2 flowcharts
+- **Migration**: Create a flow skill with embedded Agent Flow in `SKILL.md` and invoke via `/flow:<skill-name>`
+
+### `/begin` command replaced
+
+The `/begin` slash command has been replaced with `/flow:<skill-name>` commands.
+
+- **Affected**: Users who used `/begin` to start a loaded Prompt Flow
+- **Migration**: Use `/flow:<skill-name>` to invoke flow skills directly
+
+## 0.77 - Thinking mode and CLI option changes
+
+### Thinking mode setting migration change
+
+After upgrading from `0.76`, the thinking mode setting is no longer automatically preserved. The previous `thinking` state stored in `~/.kimi/kimi.json` is no longer used; instead, thinking mode is now managed via the `default_thinking` configuration option in `~/.kimi/config.toml`, but values are not automatically migrated from legacy `metadata`.
+
+- **Affected**: Users who previously had thinking mode enabled
+- **Migration**: Reconfigure thinking mode after upgrading:
+  - Use the `/model` command to select model and set thinking mode (interactive)
+  - Or manually add to `~/.kimi/config.toml`:
+
+    ```toml
+    default_thinking = true  # Set to true if you want thinking mode enabled by default
+    ```
+
+### `--query` option removed
+
+The `--query` (`-q`) option has been removed. Use `--prompt` as the primary option, with `--command` as an alias.
+
+- **Affected**: Scripts and automation using `--query` or `-q`
+- **Migration**:
+  - `--query` / `-q` → `--prompt` / `-p`
+  - Or continue using `--command` / `-c`
+
 ## 0.74 - ACP command change
 
 ### `--acp` option deprecated

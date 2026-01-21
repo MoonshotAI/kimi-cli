@@ -11,9 +11,54 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 0.83 (2026-01-21)
+
+- Tool: Add `ReadMediaFile` tool for reading image/video files; `ReadFile` now focuses on text files only
+- Skills: Flow skills now also register as `/skill:<skill-name>` commands (in addition to `/flow:<skill-name>`)
+
+## 0.82 (2026-01-21)
+
+- Tool: Allow `WriteFile` and `StrReplaceFile` tools to edit/write files outside the working directory when using absolute paths
+- Tool: Upload videos to Kimi files API when using Kimi provider, replacing inline data URLs with `ms://` references
+- Config: Add `reserved_context_size` setting to customize auto-compaction trigger threshold (default: 50000 tokens)
+
+## 0.81 (2026-01-21)
+
+- Skills: Add flow skill type with embedded Agent Flow (Mermaid/D2) in SKILL.md, invoked via `/flow:<skill-name>` commands
+- CLI: Remove `--prompt-flow` option; use flow skills instead
+- Core: Replace `/begin` command with `/flow:<skill-name>` commands for flow skills
+
+## 0.80 (2026-01-20)
+
+- Wire: Add `initialize` method for exchanging client/server info, external tools registration and slash commands advertisement
+- Wire: Support external tool calls via Wire protocol
+- Wire: Rename `ApprovalRequestResolved` to `ApprovalResponse` (backwards-compatible)
+
+## 0.79 (2026-01-19)
+
+- Skills: Add project-level skills support, discovered from `.agents/skills/` (or `.kimi/skills/`, `.claude/skills/`)
+- Skills: Unified skills discovery with layered loading (builtin → user → project); user-level skills now prefer `~/.config/agents/skills/`
+- Shell: Support fuzzy matching for slash command autocomplete
+- Shell: Enhanced approval request preview with shell command and diff content display, use `Ctrl-E` to expand full content
+- Wire: Add `ShellDisplayBlock` type for shell command display in approval requests
+- Shell: Reorder `/help` to show keyboard shortcuts before slash commands
+- Wire: Return proper JSON-RPC 2.0 error responses for invalid requests
+
+## 0.78 (2026-01-16)
+
+- CLI: Add D2 flowchart format support for Prompt Flow (`.d2` extension)
+
+## 0.77 (2026-01-15)
+
+- Shell: Fix line breaking in `/help` and `/changelog` fullscreen pager display
 - Shell: Use `/model` to toggle thinking mode instead of Tab key
-- Config: Add `default_thinking` config option (auto-migrated from metadata)
+- Config: Add `default_thinking` config option (need to run `/model` to select thinking mode after upgrade)
 - LLM: Add `always_thinking` capability for models that always use thinking mode
+- CLI: Rename `--command`/`-c` to `--prompt`/`-p`, keep `--command`/`-c` as alias, remove `--query`/`-q`
+- Wire: Fix approval requests not responding properly in Wire mode
+- CLI: Add `--prompt-flow` option to load a Mermaid flowchart file as a Prompt Flow
+- Core: Add `/begin` slash command if a Prompt Flow is loaded to start the flow
+- Core: Replace Ralph Loop with Prompt Flow-based implementation
 
 ## 0.76 (2026-01-12)
 

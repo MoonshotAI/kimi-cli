@@ -4,9 +4,54 @@
 
 ## 未发布
 
+## 0.83 (2026-01-21)
+
+- Tool：添加 `ReadMediaFile` 工具用于读取图片/视频文件；`ReadFile` 现在仅用于读取文本文件
+- Skills：Flow Skills 现在也注册为 `/skill:<skill-name>` 命令（除了 `/flow:<skill-name>`）
+
+## 0.82 (2026-01-21)
+
+- Tool：`WriteFile` 和 `StrReplaceFile` 工具支持使用绝对路径编辑/写入工作目录外的文件
+- Tool：使用 Kimi 供应商时，视频文件上传到 Kimi Files API，使用 `ms://` 引用替代 inline data URL
+- Config：添加 `reserved_context_size` 配置项，自定义自动压缩触发阈值（默认 50000 tokens）
+
+## 0.81 (2026-01-21)
+
+- Skills：添加 Flow Skill 类型，在 SKILL.md 中内嵌 Agent Flow（Mermaid/D2），通过 `/flow:<skill-name>` 命令调用
+- CLI：移除 `--prompt-flow` 选项，改用 Flow Skills
+- Core：用 `/flow:<skill-name>` 命令替代原来的 `/begin` 命令
+
+## 0.80 (2026-01-20)
+
+- Wire：添加 `initialize` 方法，用于交换客户端/服务端信息、注册外部工具和公布斜杠命令
+- Wire：支持通过 Wire 协议调用外部工具
+- Wire：将 `ApprovalRequestResolved` 重命名为 `ApprovalResponse`（向后兼容）
+
+## 0.79 (2026-01-19)
+
+- Skills：添加项目级 Skills 支持，从 `.agents/skills/`（或 `.kimi/skills/`、`.claude/skills/`）发现
+- Skills：统一 Skills 发现机制，采用分层加载（内置 → 用户 → 项目）；用户级 Skills 现在优先使用 `~/.config/agents/skills/`
+- Shell：斜杠命令自动补全支持模糊匹配
+- Shell：增强审批请求预览，显示 Shell 命令和 Diff 内容，使用 `Ctrl-E` 展开完整内容
+- Wire：添加 `ShellDisplayBlock` 类型，用于在审批请求中显示 Shell 命令
+- Shell：调整 `/help` 显示顺序，将键盘快捷键移至斜杠命令之前
+- Wire：对无效请求返回符合 JSON-RPC 2.0 规范的错误响应
+
+## 0.78 (2026-01-16)
+
+- CLI：为 Prompt Flow 添加 D2 流程图格式支持（`.d2` 扩展名）
+
+## 0.77 (2026-01-15)
+
+- Shell：修复 `/help` 和 `/changelog` 全屏分页显示中的换行问题
 - Shell：使用 `/model` 命令切换 Thinking 模式，取代 Tab 键
-- Config：添加 `default_thinking` 配置项（从 metadata 自动迁移）
+- Config：添加 `default_thinking` 配置项（升级后需运行 `/model` 选择 Thinking 模式）
 - LLM：为始终使用 Thinking 模式的模型添加 `always_thinking` 能力
+- CLI：将 `--command`/`-c` 重命名为 `--prompt`/`-p`，保留 `--command`/`-c` 作为别名，移除 `--query`/`-q`
+- Wire：修复 Wire 模式下审批请求无法正常响应的问题
+- CLI：添加 `--prompt-flow` 选项，加载 Mermaid 流程图文件作为 Prompt Flow
+- Core：加载 Prompt Flow 后添加 `/begin` 斜杠命令以启动流程
+- Core：使用基于 Prompt Flow 的实现替换旧的 Ralph 循环
 
 ## 0.76 (2026-01-12)
 

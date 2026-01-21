@@ -10,7 +10,7 @@
 
 ### `/help`
 
-显示帮助信息。在全屏分页器中列出所有可用的斜杠命令、已加载的 Skills 以及键盘快捷键。按 `q` 退出。
+显示帮助信息。在全屏分页器中列出键盘快捷键、所有可用的斜杠命令以及已加载的 Skills。按 `q` 退出。
 
 别名：`/h`、`/?`
 
@@ -108,7 +108,7 @@
 
 ### `/skill:<name>`
 
-加载指定的 Skill，将 `SKILL.md` 内容作为提示词发送给 Agent。
+加载指定的 Skill，将 `SKILL.md` 内容作为提示词发送给 Agent。此命令适用于普通 Skill 和 Flow Skill。
 
 例如：
 
@@ -117,6 +117,25 @@
 - `/skill:git-commits 修复用户登录问题`：加载 Skill 并附带额外的任务描述
 
 命令后面可以附带额外的文本，这些内容会追加到 Skill 提示词之后。详见 [Agent Skills](../customization/skills.md)。
+
+::: tip 提示
+Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加载内容，不会自动执行流程。如需执行流程，请使用 `/flow:<name>`。
+:::
+
+### `/flow:<name>`
+
+执行指定的 Flow Skill。Flow Skill 在 `SKILL.md` 中内嵌 Agent Flow 流程图，执行后 Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点。
+
+例如：
+
+- `/flow:code-review`：执行代码审查工作流
+- `/flow:release`：执行发布工作流
+
+::: tip 提示
+Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加载内容，不会自动执行流程。
+:::
+
+详见 [Agent Skills](../customization/skills.md#flow-skills)。
 
 ## 其他
 
@@ -136,6 +155,6 @@ YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 
 ## 命令补全
 
-在输入框中输入 `/` 后，会自动显示可用命令列表。继续输入可过滤命令，按 Enter 选择。
+在输入框中输入 `/` 后，会自动显示可用命令列表。继续输入可过滤命令，支持模糊匹配，按 Enter 选择。
 
-命令支持别名匹配，例如输入 `/h` 会匹配到 `/help`。
+例如，输入 `/ses` 会匹配到 `/sessions`，输入 `/clog` 会匹配到 `/changelog`。命令的别名也支持匹配，例如输入 `/h` 会匹配到 `/help`。

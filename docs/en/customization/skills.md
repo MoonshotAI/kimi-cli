@@ -10,13 +10,29 @@ For example, you can create a "code style" skill to tell the AI your project's n
 
 ## Skill discovery
 
-Kimi CLI discovers skills from the following directories:
+Kimi CLI uses a layered loading mechanism to discover skills, loading in the following priority order (later ones override skills with the same name):
 
-1. Built-in skills (shipped with the package)
-2. `~/.kimi/skills` (user directory)
-3. `~/.claude/skills` (compatible with Claude's skills)
+**Built-in skills**
 
-If a skill with the same name exists in multiple directories, later ones override earlier ones. You can also specify other directories with the `--skills-dir` flag:
+Skills shipped with the package, providing basic capabilities.
+
+**User-level skills**
+
+Stored in the user's home directory, effective across all projects. Kimi CLI checks the following directories in priority order and uses the first one that exists:
+
+1. `~/.config/agents/skills/` (recommended)
+2. `~/.kimi/skills/` (legacy compatibility)
+3. `~/.claude/skills/` (Claude compatibility)
+
+**Project-level skills**
+
+Stored in the project directory, only effective within that project's working directory. Kimi CLI checks the following directories in priority order and uses the first one that exists:
+
+1. `.agents/skills/` (recommended)
+2. `.kimi/skills/` (legacy compatibility)
+3. `.claude/skills/` (Claude compatibility)
+
+You can also specify other directories with the `--skills-dir` flag, which skips user-level and project-level skill discovery:
 
 ```sh
 kimi --skills-dir /path/to/my-skills
@@ -41,7 +57,7 @@ Creating a skill only requires two steps:
 A skill directory needs at least a `SKILL.md` file, and can also include auxiliary directories to organize more complex content:
 
 ```
-~/.kimi/skills/
+~/.config/agents/skills/
 └── my-skill/
     ├── SKILL.md          # Required: main file
     ├── scripts/          # Optional: script files
@@ -173,3 +189,65 @@ For regular conversations, the Agent will automatically decide whether to read s
 :::
 
 Skills allow you to codify your team's best practices and project standards, ensuring the AI always follows consistent standards.
+
+## Flow skills
+
+Flow skills are a special skill type that embed an Agent Flow diagram in `SKILL.md`, used to define multi-step automated workflows. Unlike standard skills, flow skills are invoked via `/flow:<name>` commands and automatically execute multiple conversation turns following the flow diagram.
+
+**Creating a flow skill**
+
+To create a flow skill, set `type: flow` in the frontmatter and include a Mermaid or D2 code block in the content:
+
+````markdown
+---
+name: code-review
+description: Code review workflow
+type: flow
+---
+
+```mermaid
+flowchart TD
+A([BEGIN]) --> B[Analyze code changes, list all modified files and features]
+B --> C{Is code quality acceptable?}
+C -->|Yes| D[Generate code review report]
+C -->|No| E[List issues and propose improvements]
+E --> B
+D --> F([END])
+```
+````
+
+**Flow diagram format**
+
+Both Mermaid and D2 formats are supported:
+
+- **Mermaid**: Use ` ```mermaid ` code block, [Mermaid Playground](https://www.mermaidchart.com/play) can be used for editing and preview
+- **D2**: Use ` ```d2 ` code block, [D2 Playground](https://play.d2lang.com) can be used for editing and preview
+
+Flow diagrams must contain one `BEGIN` node and one `END` node. Regular node text is sent to the Agent as a prompt; decision nodes require the Agent to output `<choice>branch name</choice>` in the output to select the next step.
+
+**D2 format example**
+
+```
+BEGIN -> B -> C
+B: Analyze existing code, write design doc for XXX feature
+C: Review if design doc is detailed enough
+C -> B: No
+C -> D: Yes
+D: Start implementation
+D -> END
+```
+
+**Executing a flow skill**
+
+Flow skills can be invoked in two ways:
+
+- `/flow:<name>`: Execute the flow. The Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node
+- `/skill:<name>`: Like a standard skill, sends the `SKILL.md` content to the Agent as a prompt (does not automatically execute the flow)
+
+```sh
+# Execute the flow
+/flow:code-review
+
+# Load as a standard skill
+/skill:code-review
+```

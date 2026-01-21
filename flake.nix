@@ -70,6 +70,13 @@
                 ripgrepy = prev.ripgrepy.overrideAttrs (old: {
                   nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.setuptools ];
                 });
+                # Replace README symlink with real file for Nix builds.
+                "kimi-code" = prev."kimi-code".overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    rm -f README.md
+                    cp ${./README.md} README.md
+                  '';
+                });
               };
               pythonSet = (callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
                 lib.composeManyExtensions [

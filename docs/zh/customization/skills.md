@@ -10,13 +10,29 @@
 
 ## Skill 发现
 
-Kimi CLI 会从以下目录发现 Skills：
+Kimi CLI 采用分层加载机制发现 Skills，按以下优先级加载（后加载的会覆盖同名 Skill）：
 
-1. 内置 Skills（随软件包安装）
-2. `~/.kimi/skills`（用户目录）
-3. `~/.claude/skills`（兼容 Claude 的 Skills）
+**内置 Skills**
 
-如果同名 Skill 存在于多个目录中，后发现的会覆盖先前的。你也可以通过 `--skills-dir` 参数指定其他目录：
+随软件包安装的 Skills，提供基础能力。
+
+**用户级 Skills**
+
+存放在用户主目录中，在所有项目中生效。Kimi CLI 会按优先级检查以下目录，使用第一个存在的目录：
+
+1. `~/.config/agents/skills/`（推荐）
+2. `~/.kimi/skills/`（兼容旧版）
+3. `~/.claude/skills/`（兼容 Claude）
+
+**项目级 Skills**
+
+存放在项目目录中，仅在该项目工作目录下生效。Kimi CLI 会按优先级检查以下目录，使用第一个存在的目录：
+
+1. `.agents/skills/`（推荐）
+2. `.kimi/skills/`（兼容旧版）
+3. `.claude/skills/`（兼容 Claude）
+
+你也可以通过 `--skills-dir` 参数指定其他目录，此时会跳过用户级和项目级 Skills 的发现：
 
 ```sh
 kimi --skills-dir /path/to/my-skills
@@ -41,7 +57,7 @@ Kimi CLI 内置了以下 Skills：
 一个 Skill 目录至少需要包含 `SKILL.md` 文件，也可以包含辅助目录来组织更复杂的内容：
 
 ```
-~/.kimi/skills/
+~/.config/agents/skills/
 └── my-skill/
     ├── SKILL.md          # 必需：主文件
     ├── scripts/          # 可选：脚本文件
@@ -173,3 +189,65 @@ description: Git 提交信息规范，使用 Conventional Commits 格式
 :::
 
 Skills 让你可以将团队的最佳实践和项目规范固化下来，确保 AI 始终遵循一致的标准。
+
+## Flow Skills
+
+Flow Skill 是一种特殊的 Skill 类型，它在 `SKILL.md` 中内嵌 Agent Flow 流程图，用于定义多步骤的自动化工作流。与普通 Skill 不同，Flow Skill 通过 `/flow:<name>` 命令调用，会按照流程图自动执行多个对话轮次。
+
+**创建 Flow Skill**
+
+创建 Flow Skill 需要在 Frontmatter 中设置 `type: flow`，并在内容中包含 Mermaid 或 D2 格式的流程图代码块：
+
+````markdown
+---
+name: code-review
+description: 代码审查工作流
+type: flow
+---
+
+```mermaid
+flowchart TD
+A([BEGIN]) --> B[分析代码变更，列出所有修改的文件和功能]
+B --> C{代码质量是否达标？}
+C -->|是| D[生成代码审查报告]
+C -->|否| E[列出问题并提出改进建议]
+E --> B
+D --> F([END])
+```
+````
+
+**流程图格式**
+
+支持 Mermaid 和 D2 两种格式：
+
+- **Mermaid**：使用 ` ```mermaid ` 代码块，[Mermaid Playground](https://www.mermaidchart.com/play) 可用于编辑和预览
+- **D2**：使用 ` ```d2 ` 代码块，[D2 Playground](https://play.d2lang.com) 可用于编辑和预览
+
+流程图必须包含一个 `BEGIN` 节点和一个 `END` 节点。普通节点的文本作为提示词发送给 Agent；分支节点需要 Agent 在输出中使用 `<choice>分支名</choice>` 选择下一步。
+
+**D2 格式示例**
+
+```
+BEGIN -> B -> C
+B: 分析现有代码，为 XXX 功能编写设计文档
+C: Review 设计文档是否足够详细
+C -> B: 否
+C -> D: 是
+D: 开始实现
+D -> END
+```
+
+**执行 Flow Skill**
+
+Flow Skill 可以通过两种方式调用：
+
+- `/flow:<name>`：执行流程，Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点
+- `/skill:<name>`：与普通 Skill 一样，将 `SKILL.md` 内容作为提示词发送给 Agent（不自动执行流程）
+
+```sh
+# 执行流程
+/flow:code-review
+
+# 作为普通 Skill 加载
+/skill:code-review
+```

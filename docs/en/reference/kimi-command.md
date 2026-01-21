@@ -60,10 +60,10 @@ The working directory determines the root directory for file operations. The age
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--command TEXT` | `-c` | Pass user query, doesn't enter interactive mode |
-| `--query TEXT` | `-q` | Alias for `--command` |
+| `--prompt TEXT` | `-p` | Pass user prompt, doesn't enter interactive mode |
+| `--command TEXT` | `-c` | Alias for `--prompt` |
 
-When using `--command`, Kimi CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
+When using `--prompt` (or `--command`), Kimi CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
 
 ## Loop control
 
@@ -71,13 +71,13 @@ When using `--command`, Kimi CLI exits after processing the query (unless `--pri
 |--------|-------------|
 | `--max-steps-per-turn N` | Maximum steps per turn, overrides `loop_control.max_steps_per_turn` in config file |
 | `--max-retries-per-step N` | Maximum retries per step, overrides `loop_control.max_retries_per_step` in config file |
-| `--max-ralph-iterations N` | Extra automatic iterations after each user message; `0` disables; `-1` is unlimited |
+| `--max-ralph-iterations N` | Number of iterations for Ralph Loop mode; `0` disables; `-1` is unlimited |
 
-### Ralph loop
+### Ralph Loop
 
 [Ralph](https://ghuntley.com/ralph/) is a technique that puts an agent in a loop: the same prompt is fed again and again so the agent can keep iterating one big task.
 
-When `--max-ralph-iterations` is not `0`, Kimi CLI keeps feeding the same prompt back to the agent until an assistant message includes `<safeword>STOP</safeword>` or the iteration limit is reached.
+When `--max-ralph-iterations` is not `0`, Kimi CLI enters Ralph Loop mode and automatically loops through task execution until the agent outputs `<choice>STOP</choice>` or the iteration limit is reached.
 
 ## UI modes
 

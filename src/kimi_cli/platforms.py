@@ -5,7 +5,7 @@ from typing import Any, NamedTuple, cast
 import aiohttp
 from pydantic import BaseModel
 
-from kimi_cli.config import Config, LLMModel, save_config
+from kimi_cli.config import Config, LLMModel, load_config, save_config
 from kimi_cli.llm import ModelCapability
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
@@ -113,6 +113,7 @@ async def refresh_managed_models(config: Config) -> bool:
         return False
 
     changed = False
+    updates: list[tuple[str, str, list[ModelInfo]]] = []
     for provider_key, provider in managed_providers.items():
         platform_id = parse_managed_provider_key(provider_key)
         if not platform_id:
@@ -132,11 +133,18 @@ async def refresh_managed_models(config: Config) -> bool:
             )
             continue
 
+        updates.append((provider_key, platform_id, models))
         if _apply_models(config, provider_key, platform_id, models):
             changed = True
 
     if changed:
-        save_config(config)
+        config_for_save = load_config()
+        save_changed = False
+        for provider_key, platform_id, models in updates:
+            if _apply_models(config_for_save, provider_key, platform_id, models):
+                save_changed = True
+        if save_changed:
+            save_config(config_for_save)
     return changed
 
 

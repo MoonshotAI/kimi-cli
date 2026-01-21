@@ -10,7 +10,7 @@ Some slash commands are also available in shell mode, including `/help`, `/exit`
 
 ### `/help`
 
-Display help information. Shows all available slash commands, loaded skills, and keyboard shortcuts in a fullscreen pager. Press `q` to exit.
+Display help information. Shows keyboard shortcuts, all available slash commands, and loaded skills in a fullscreen pager. Press `q` to exit.
 
 Aliases: `/h`, `/?`
 
@@ -108,7 +108,7 @@ When the context is too long, Kimi CLI will automatically trigger compaction. Th
 
 ### `/skill:<name>`
 
-Load a specific skill, sending the `SKILL.md` content to the Agent as a prompt.
+Load a specific skill, sending the `SKILL.md` content to the Agent as a prompt. This command works for both standard skills and flow skills.
 
 For example:
 
@@ -117,6 +117,25 @@ For example:
 - `/skill:git-commits fix user login issue`: Load the skill with an additional task description
 
 You can append additional text after the command, which will be added to the skill prompt. See [Agent Skills](../customization/skills.md) for details.
+
+::: tip
+Flow skills can also be invoked via `/skill:<name>`, which loads the content as a standard skill without automatically executing the flow. To execute the flow, use `/flow:<name>` instead.
+:::
+
+### `/flow:<name>`
+
+Execute a specific flow skill. Flow skills embed an Agent Flow diagram in `SKILL.md`. After execution, the Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node.
+
+For example:
+
+- `/flow:code-review`: Execute code review workflow
+- `/flow:release`: Execute release workflow
+
+::: tip
+Flow skills can also be invoked via `/skill:<name>`, which loads the content as a standard skill without automatically executing the flow.
+:::
+
+See [Agent Skills](../customization/skills.md#flow-skills) for details.
 
 ## Others
 
@@ -136,6 +155,6 @@ YOLO mode skips all confirmations. Make sure you understand the potential risks.
 
 ## Command completion
 
-After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands, press Enter to select.
+After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands with fuzzy matching support, press Enter to select.
 
-Commands support alias matching, for example typing `/h` will match `/help`.
+For example, typing `/ses` will match `/sessions`, and `/clog` will match `/changelog`. Command aliases are also supported, such as typing `/h` to match `/help`.

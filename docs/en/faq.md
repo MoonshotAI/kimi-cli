@@ -112,7 +112,7 @@ Correct input format example:
 
 If there's no output in `--print` mode, it may be:
 
-- **No input provided**: You need to provide input via `--command` or stdin. For example: `kimi --print --command "Hello"`.
+- **No input provided**: You need to provide input via `--prompt` (or `--command`) or stdin. For example: `kimi --print --prompt "Hello"`.
 - **Output is buffered**: Try using `--output-format stream-json` for streaming output.
 - **Configuration incomplete**: Ensure API key and model are configured via `/setup`.
 
