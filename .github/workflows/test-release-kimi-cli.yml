@@ -9,41 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  validate:
-    name: Validate tag
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.14
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-          allow-prereleases: true
-
-      - name: Check version tag
-        run: |
-          python scripts/check_version_tag.py \
-            --pyproject pyproject.toml \
-            --expected-version "${GITHUB_REF_NAME}"
-
-      - name: Check kimi-code version tag
-        run: |
-          python scripts/check_version_tag.py \
-            --pyproject packages/kimi-code/pyproject.toml \
-            --expected-version "${GITHUB_REF_NAME}"
-
-      - name: Check dependency versions
-        run: |
-          python scripts/check_kimi_dependency_versions.py \
-            --root-pyproject pyproject.toml \
-            --kosong-pyproject packages/kosong/pyproject.toml \
-            --pykaos-pyproject packages/kaos/pyproject.toml
-
   build:
     name: Build binaries (${{ matrix.target }})
-    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -402,72 +369,3 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
           retention-days: 7
-
-  release:
-    name: Publish GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./downloads
-          merge-multiple: true
-
-      - name: Show downloaded files
-        run: ls -laR downloads
-
-      - name: Generate per-file SHA256 sums
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd downloads
-          shopt -s nullglob
-          for f in *.tar.gz *.zip; do
-            sha256sum "$f" > "$f.sha256"
-            echo "sha256($(basename "$f"))=$(cut -d' ' -f1 "$f.sha256")"
-          done
-          ls -la
-
-      - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            downloads/*.tar.gz
-            downloads/*.zip
-            downloads/*.tar.gz.sha256
-            downloads/*.zip.sha256
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-python:
-    name: Publish Python package
-    needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.14
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-          allow-prereleases: true
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v1
-        with:
-          version: "0.8.5"
-
-      - name: Build distributions
-        run: make build-kimi-cli
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          packages-dir: dist
