@@ -39,7 +39,7 @@ class _E2BStdin:
         self._last_task: asyncio.Task[None] | None = None
 
     def can_write_eof(self) -> bool:
-        return False
+        return True
 
     def close(self) -> None:
         self._closed = True
@@ -184,7 +184,8 @@ class E2BKaos:
         self._cwd = abs_path
 
     async def stat(self, path: StrOrKaosPath, *, follow_symlinks: bool = True) -> StatResult:
-        del follow_symlinks
+        if not follow_symlinks:
+            raise NotImplementedError("E2BKaos.stat does not support follow_symlinks=False")
         abs_path = self._abs_path(path)
         try:
             info: EntryInfo = await self._sandbox.files.get_info(
@@ -258,15 +259,8 @@ class E2BKaos:
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> str:
-        del encoding, errors
-        abs_path = self._abs_path(path)
-        result: str = await self._sandbox.files.read(
-            abs_path,
-            format="text",
-            user=self._user,
-            request_timeout=self._request_timeout,
-        )
-        return result
+        payload = await self.readbytes(path)
+        return payload.decode(encoding, errors=errors)
 
     async def readlines(
         self,
@@ -298,13 +292,13 @@ class E2BKaos:
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> int:
-        del encoding, errors
         abs_path = self._abs_path(path)
+        payload = data.encode(encoding, errors=errors)
         if mode == "a":
-            data = await self._read_for_append(abs_path) + data
+            payload = await self._read_for_append_bytes(abs_path) + payload
         await self._sandbox.files.write(  # type: ignore[reportUnknownMemberType]
             abs_path,
-            data,
+            payload,
             user=self._user,
             request_timeout=self._request_timeout,
         )
@@ -377,17 +371,17 @@ class E2BKaos:
             process.feed_stderr(chunk)
         return process
 
-    async def _read_for_append(self, path: str) -> str:
+    async def _read_for_append_bytes(self, path: str) -> bytes:
         try:
-            existing: str = await self._sandbox.files.read(
+            existing: bytes | bytearray = await self._sandbox.files.read(
                 path,
-                format="text",
+                format="bytes",
                 user=self._user,
                 request_timeout=self._request_timeout,
             )
         except NotFoundException:
-            return ""
-        return existing
+            return b""
+        return bytes(existing)
 
     async def _get_info(self, path: str) -> EntryInfo | None:
         try:
