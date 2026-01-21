@@ -3,7 +3,7 @@ name: Build Test (macOS signing)
 on:
   push:
     branches:
-      - feat/macos-code-signing
+      - fix/macos-code-notary
 
 jobs:
   build:
