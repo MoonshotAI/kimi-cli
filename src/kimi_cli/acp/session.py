@@ -21,7 +21,7 @@ from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import (
     ApprovalRequest,
-    ApprovalRequestResolved,
+    ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
@@ -34,6 +34,7 @@ from kimi_cli.wire.types import (
     TodoDisplayBlock,
     ToolCall,
     ToolCallPart,
+    ToolCallRequest,
     ToolResult,
     TurnBegin,
 )
@@ -168,12 +169,14 @@ class ACPSession:
                         await self._send_tool_call_part(msg)
                     case ToolResult():
                         await self._send_tool_result(msg)
-                    case SubagentEvent():
+                    case ApprovalResponse():
                         pass
-                    case ApprovalRequestResolved():
+                    case SubagentEvent():
                         pass
                     case ApprovalRequest():
                         await self._handle_approval_request(msg)
+                    case ToolCallRequest():
+                        logger.warning("Unexpected ToolCallRequest in ACP session: {msg}", msg=msg)
         except LLMNotSet as e:
             logger.exception("LLM not set:")
             raise acp.RequestError.auth_required() from e

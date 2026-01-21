@@ -20,9 +20,9 @@ from kosong.chat_provider import (
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
-from kimi_cli.flow import FlowEdge, FlowNode, PromptFlow, parse_choice
 from kimi_cli.llm import ModelCapability
 from kimi_cli.skill import Skill, read_skill_text
+from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -43,7 +43,7 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
 from kimi_cli.wire.types import (
     ApprovalRequest,
-    ApprovalRequestResolved,
+    ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 
 
 SKILL_COMMAND_PREFIX = "skill:"
+FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
 
 
@@ -92,7 +93,6 @@ class KimiSoul:
         agent: Agent,
         *,
         context: Context,
-        flow: PromptFlow | None = None,
     ):
         """
         Initialize the soul.
@@ -108,7 +108,6 @@ class KimiSoul:
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
-        self._flow_runner = FlowRunner(flow) if flow is not None else None
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -196,7 +195,7 @@ class KimiSoul:
                 await ret
             return
 
-        if self._loop_control.max_ralph_iterations != 0 and self._flow_runner is None:
+        if self._loop_control.max_ralph_iterations != 0:
             runner = FlowRunner.ralph_loop(
                 user_message,
                 self._loop_control.max_ralph_iterations,
@@ -226,6 +225,8 @@ class KimiSoul:
         seen_names = {cmd.name for cmd in commands}
 
         for skill in self._runtime.skills.values():
+            if skill.type != "standard":
+                continue
             name = f"{SKILL_COMMAND_PREFIX}{skill.name}"
             if name in seen_names:
                 logger.warning(
@@ -243,15 +244,29 @@ class KimiSoul:
             )
             seen_names.add(name)
 
-        if self._flow_runner is not None:
+        for skill in self._runtime.skills.values():
+            if skill.type != "flow":
+                continue
+            if skill.flow is None:
+                logger.warning("Flow skill {name} has no flow; skipping", name=skill.name)
+                continue
+            command_name = f"{FLOW_COMMAND_PREFIX}{skill.name}"
+            if command_name in seen_names:
+                logger.warning(
+                    "Skipping prompt flow slash command /{name}: name already registered",
+                    name=command_name,
+                )
+                continue
+            runner = FlowRunner(skill.flow, name=skill.name)
             commands.append(
                 SlashCommand(
-                    name="begin",
-                    func=self._flow_runner.run,
-                    description="Start the prompt flow",
+                    name=command_name,
+                    func=runner.run,
+                    description=skill.description or "",
                     aliases=[],
                 )
             )
+            seen_names.add(command_name)
 
         return commands
 
@@ -271,7 +286,7 @@ class KimiSoul:
 
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
-            skill_text = read_skill_text(_skill)
+            skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
                     TextPart(text=f'Failed to load skill "/{SKILL_COMMAND_PREFIX}{_skill.name}".')
@@ -310,7 +325,7 @@ class KimiSoul:
                 # also send approval requests to the root wire.
                 resp = await wire_request.wait()
                 self._approval.resolve_request(request.id, resp)
-                wire_send(ApprovalRequestResolved(request_id=request.id, response=resp))
+                wire_send(ApprovalResponse(request_id=request.id, response=resp))
 
         step_no = 0
         while True:
@@ -329,10 +344,7 @@ class KimiSoul:
             try:
                 # compact the context if needed
                 reserved = self._loop_control.reserved_context_size
-                if (
-                    self._context.token_count + reserved
-                    >= self._runtime.llm.max_context_size
-                ):
+                if self._context.token_count + reserved >= self._runtime.llm.max_context_size:
                     logger.info("Context too long, compacting...")
                     await self.compact_context()
 
@@ -533,8 +545,15 @@ class BackToTheFuture(Exception):
 
 
 class FlowRunner:
-    def __init__(self, flow: PromptFlow, *, max_moves: int = DEFAULT_MAX_FLOW_MOVES) -> None:
+    def __init__(
+        self,
+        flow: Flow,
+        *,
+        name: str | None = None,
+        max_moves: int = DEFAULT_MAX_FLOW_MOVES,
+    ) -> None:
         self._flow = flow
+        self._name = name
         self._max_moves = max_moves
 
     @staticmethod
@@ -573,13 +592,14 @@ class FlowRunner:
         outgoing["R2"].append(FlowEdge(src="R2", dst="R2", label="CONTINUE"))
         outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="STOP"))
 
-        flow = PromptFlow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
+        flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
         max_moves = total_runs
         return FlowRunner(flow, max_moves=max_moves)
 
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
-            logger.warning("Prompt flow /begin ignores args: {args}", args=args)
+            command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
+            logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
 
         current_id = self._flow.begin_id
@@ -590,13 +610,13 @@ class FlowRunner:
             edges = self._flow.outgoing.get(current_id, [])
 
             if node.kind == "end":
-                logger.info("Prompt flow reached END node {node_id}", node_id=current_id)
+                logger.info("Agent flow reached END node {node_id}", node_id=current_id)
                 return
 
             if node.kind == "begin":
                 if not edges:
                     logger.error(
-                        'Prompt flow BEGIN node "{node_id}" has no outgoing edges; stopping.',
+                        'Agent flow BEGIN node "{node_id}" has no outgoing edges; stopping.',
                         node_id=node.id,
                     )
                     return
@@ -620,7 +640,7 @@ class FlowRunner:
     ) -> tuple[str | None, int]:
         if not edges:
             logger.error(
-                'Prompt flow node "{node_id}" has no outgoing edges; stopping.',
+                'Agent flow node "{node_id}" has no outgoing edges; stopping.',
                 node_id=node.id,
             )
             return None, 0
@@ -632,7 +652,7 @@ class FlowRunner:
             result = await self._flow_turn(soul, prompt)
             steps_used += result.step_count
             if result.stop_reason == "tool_rejected":
-                logger.error("Prompt flow stopped after tool rejection.")
+                logger.error("Agent flow stopped after tool rejection.")
                 return None, steps_used
 
             if node.kind != "decision":
@@ -649,7 +669,7 @@ class FlowRunner:
 
             options = ", ".join(edge.label or "" for edge in edges)
             logger.warning(
-                "Prompt flow invalid choice. Got: {choice}. Available: {options}.",
+                "Agent flow invalid choice. Got: {choice}. Available: {options}.",
                 choice=choice or "<missing>",
                 options=options,
             )

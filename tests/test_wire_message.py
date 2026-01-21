@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
 from kimi_cli.wire.types import (
     ApprovalRequest,
-    ApprovalRequestResolved,
+    ApprovalResponse,
     BriefDisplayBlock,
     CompactionBegin,
     CompactionEnd,
@@ -19,6 +19,7 @@ from kimi_cli.wire.types import (
     TextPart,
     ToolCall,
     ToolCallPart,
+    ToolCallRequest,
     ToolResult,
     ToolReturnValue,
     TurnBegin,
@@ -151,6 +152,18 @@ async def test_wire_message_serde():
     )
     _test_serde(msg)
 
+    msg = ApprovalResponse(
+        request_id="request_123",
+        response="approve",
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "ApprovalResponse",
+            "payload": {"request_id": "request_123", "response": "approve"},
+        }
+    )
+    _test_serde(msg)
+
     msg = SubagentEvent(
         task_tool_call_id="task_789",
         event=StepBegin(n=2),
@@ -166,20 +179,8 @@ async def test_wire_message_serde():
     )
     _test_serde(msg)
 
-    msg = ApprovalRequestResolved(
-        request_id="request_123",
-        response="approve",
-    )
-    assert serialize_wire_message(msg) == snapshot(
-        {
-            "type": "ApprovalRequestResolved",
-            "payload": {"request_id": "request_123", "response": "approve"},
-        }
-    )
-    _test_serde(msg)
-
     with pytest.raises(ValueError):
-        ApprovalRequestResolved(request_id="request_123", response="invalid_response")  # type: ignore
+        ApprovalResponse(request_id="request_123", response="invalid_response")  # type: ignore
 
     msg = ApprovalRequest(
         id="request_123",
@@ -198,6 +199,23 @@ async def test_wire_message_serde():
                 "action": "Execute dangerous command",
                 "description": "This command will delete files",
                 "display": [],
+            },
+        }
+    )
+    _test_serde(msg)
+
+    msg = ToolCallRequest(
+        id="call_123",
+        name="bash",
+        arguments='{"command": "ls -la"}',
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "ToolCallRequest",
+            "payload": {
+                "id": "call_123",
+                "name": "bash",
+                "arguments": '{"command": "ls -la"}',
             },
         }
     )
@@ -263,6 +281,17 @@ def test_bad_wire_message_serde():
         )
 
 
+def test_approval_request_resolved_compat():
+    msg = deserialize_wire_message(
+        {
+            "type": "ApprovalRequestResolved",
+            "payload": {"request_id": "request_123", "response": "approve"},
+        }
+    )
+
+    assert msg == ApprovalResponse(request_id="request_123", response="approve")
+
+
 async def test_type_inspection():
     msg = StepBegin(n=1)
     assert is_wire_message(msg)
@@ -274,12 +303,29 @@ async def test_type_inspection():
     assert is_event(msg)
     assert not is_request(msg)
 
+    msg = ApprovalResponse(
+        request_id="request_123",
+        response="approve",
+    )
+    assert is_wire_message(msg)
+    assert is_event(msg)
+    assert not is_request(msg)
+
     msg = ApprovalRequest(
         id="request_123",
         tool_call_id="call_999",
         sender="bash",
         action="Execute dangerous command",
         description="This command will delete files",
+    )
+    assert is_wire_message(msg)
+    assert not is_event(msg)
+    assert is_request(msg)
+
+    msg = ToolCallRequest(
+        id="call_123",
+        name="bash",
+        arguments="{}",
     )
     assert is_wire_message(msg)
     assert not is_event(msg)

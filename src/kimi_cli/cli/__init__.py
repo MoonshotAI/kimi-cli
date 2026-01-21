@@ -23,6 +23,9 @@ class Reload(Exception):
 
 
 cli = typer.Typer(
+    epilog="""\b\
+Documentation:        https://moonshotai.github.io/kimi-cli/\n
+LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt""",
     add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
     help="Kimi, your next CLI agent.",
@@ -151,17 +154,6 @@ def kimi(
             help="User prompt to the agent. Default: prompt interactively.",
         ),
     ] = None,
-    prompt_flow: Annotated[
-        Path | None,
-        typer.Option(
-            "--prompt-flow",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
-            help="D2 (.d2) or Mermaid (.mmd) flowchart file to run as a prompt flow.",
-        ),
-    ] = None,
     print_mode: Annotated[
         bool,
         typer.Option(
@@ -260,7 +252,7 @@ def kimi(
             ),
         ),
     ] = None,
-    skills_dir: Annotated[
+    local_skills_dir: Annotated[
         Path | None,
         typer.Option(
             "--skills-dir",
@@ -268,7 +260,7 @@ def kimi(
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Path to the skills directory. Default: ~/.kimi/skills",
+            help="Path to the skills directory. Overrides discovery.",
         ),
     ] = None,
     # Loop control
@@ -387,38 +379,6 @@ def kimi(
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
 
-    flow = None
-    if prompt_flow is not None:
-        from kimi_cli.flow import PromptFlowError
-        from kimi_cli.flow.d2 import parse_d2_flowchart
-        from kimi_cli.flow.mermaid import parse_mermaid_flowchart
-
-        if max_ralph_iterations is not None and max_ralph_iterations != 0:
-            raise typer.BadParameter(
-                "Prompt flow cannot be used with Ralph mode",
-                param_hint="--prompt-flow",
-            )
-        try:
-            flow_text = prompt_flow.read_text(encoding="utf-8")
-        except OSError as e:
-            raise typer.BadParameter(
-                f"Failed to read prompt flow file: {e}", param_hint="--prompt-flow"
-            ) from e
-        suffix = prompt_flow.suffix.lower()
-        if suffix in {".mmd", ".mermaid"}:
-            parser = parse_mermaid_flowchart
-        elif suffix == ".d2":
-            parser = parse_d2_flowchart
-        else:
-            raise typer.BadParameter(
-                "Unsupported prompt flow extension; use .mmd or .d2",
-                param_hint="--prompt-flow",
-            )
-        try:
-            flow = parser(flow_text)
-        except PromptFlowError as e:
-            raise typer.BadParameter(str(e), param_hint="--prompt-flow") from e
-
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
             "Input format is only supported for print UI",
@@ -466,6 +426,10 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
+    skills_dir: KaosPath | None = None
+    if local_skills_dir is not None:
+        skills_dir = KaosPath.unsafe_from_local_path(local_skills_dir)
+
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
     async def _run(session_id: str | None) -> bool:
@@ -501,7 +465,6 @@ def kimi(
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
-            flow=flow,
         )
         match ui:
             case "shell":

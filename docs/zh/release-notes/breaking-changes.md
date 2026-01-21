@@ -4,6 +4,22 @@
 
 ## 未发布
 
+## 0.81 - Prompt Flow 被 Flow Skills 取代
+
+### `--prompt-flow` 选项移除
+
+`--prompt-flow` CLI 选项已移除，请改用 flow skills。
+
+- **受影响**：使用 `--prompt-flow` 加载 Mermaid/D2 流程图的脚本和自动化
+- **迁移**：创建包含嵌入式 Agent Flow 的 flow skill（在 `SKILL.md` 中），并通过 `/flow:<skill-name>` 调用
+
+### `/begin` 命令被替换
+
+`/begin` 斜杠命令已被 `/flow:<skill-name>` 命令替换。
+
+- **受影响**：使用 `/begin` 启动已加载 Prompt Flow 的用户
+- **迁移**：使用 `/flow:<skill-name>` 直接调用 flow skills
+
 ## 0.77 - Thinking 模式与 CLI 选项变更
 
 ### Thinking 模式设置迁移调整

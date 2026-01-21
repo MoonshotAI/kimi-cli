@@ -118,6 +118,17 @@
 
 命令后面可以附带额外的文本，这些内容会追加到 Skill 提示词之后。详见 [Agent Skills](../customization/skills.md)。
 
+### `/flow:<name>`
+
+执行指定的 Flow Skill。Flow Skill 在 `SKILL.md` 中内嵌 Agent Flow 流程图，执行后 Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点。
+
+例如：
+
+- `/flow:code-review`：执行代码审查工作流
+- `/flow:release`：执行发布工作流
+
+详见 [Agent Skills](../customization/skills.md#flow-skills)。
+
 ## 其他
 
 ### `/init`
@@ -134,14 +145,8 @@
 YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 :::
 
-### `/begin`
-
-启动 Prompt Flow 执行。
-
-此命令仅在通过 `--prompt-flow` 加载了流程图时可用。执行后，Agent 会从 `BEGIN` 节点开始，按照流程图的定义依次处理每个节点，直到达到 `END` 节点。详见 [`kimi` 命令](./kimi-command.md#prompt-flow)。
-
 ## 命令补全
 
-在输入框中输入 `/` 后，会自动显示可用命令列表。继续输入可过滤命令，按 Enter 选择。
+在输入框中输入 `/` 后，会自动显示可用命令列表。继续输入可过滤命令，支持模糊匹配，按 Enter 选择。
 
-命令支持别名匹配，例如输入 `/h` 会匹配到 `/help`。
+例如，输入 `/ses` 会匹配到 `/sessions`，输入 `/clog` 会匹配到 `/changelog`。命令的别名也支持匹配，例如输入 `/h` 会匹配到 `/help`。
