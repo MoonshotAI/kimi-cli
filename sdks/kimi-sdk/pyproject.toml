@@ -1,10 +1,10 @@
 [project]
 name = "kimi-sdk"
-version = "0.1.1"
+version = "0.1.2"
 description = "A lightweight Python SDK for the Kimi API."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["kosong>=0.37.0,<0.39.0"]
+dependencies = ["kosong>=0.37.0,<0.40.0"]
 
 [dependency-groups]
 dev = [
