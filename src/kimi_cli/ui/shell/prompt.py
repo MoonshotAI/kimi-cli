@@ -107,10 +107,13 @@ class SlashCommandCompleter(Completer):
             return
 
         typed = token[1:]
+        if typed and typed in self._command_lookup:
+            return
         mention_doc = Document(text=typed, cursor_position=len(typed))
         candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
 
         seen: set[str] = set()
+
         for candidate in candidates:
             commands = self._command_lookup.get(candidate.text)
             if not commands:
