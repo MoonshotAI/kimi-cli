@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 0.83 (2026-01-21)
+
 - Tool：添加 `ReadMediaFile` 工具用于读取图片/视频文件；`ReadFile` 现在仅用于读取文本文件
 - Skills：Flow Skills 现在也注册为 `/skill:<skill-name>` 命令（除了 `/flow:<skill-name>`）
 
