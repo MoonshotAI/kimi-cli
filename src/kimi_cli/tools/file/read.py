@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
+from kosong.chat_provider.kimi import Kimi
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -68,6 +69,11 @@ class ReadFile(CallableTool2[Params]):
         )
         super().__init__(description=description)
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._chat_provider: Kimi | None = (
+            runtime.llm.chat_provider
+            if runtime.llm and isinstance(runtime.llm.chat_provider, Kimi)
+            else None
+        )
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
@@ -105,13 +111,25 @@ class ReadFile(CallableTool2[Params]):
                 brief="File too large",
             )
 
-        data = await path.read_bytes()
-        data_url = _to_data_url(file_type.mime_type, data)
         match file_type.kind:
             case "image":
+                data = await path.read_bytes()
+                data_url = _to_data_url(file_type.mime_type, data)
                 part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
             case "video":
-                part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
+                data = await path.read_bytes()
+                # TODO: gate uploads by provider/base_url once we have a proper allowlist config.
+                # Assumption for now: if the provider supports video capability,
+                # it likely supports files API.
+                if self._chat_provider:
+                    ms_url = await self._chat_provider.upload_video(
+                        data=data,
+                        mime_type=file_type.mime_type,
+                    )
+                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=ms_url))
+                else:
+                    data_url = _to_data_url(file_type.mime_type, data)
+                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
         return ToolOk(
             output=part,
             message=(

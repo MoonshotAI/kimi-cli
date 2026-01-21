@@ -1,11 +1,13 @@
 import copy
+import mimetypes
 import os
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, Unpack, cast
 
 import httpx
-from openai import AsyncOpenAI, AsyncStream, OpenAIError, omit
+from openai import AsyncOpenAI, AsyncStream, BaseModel, OpenAIError, omit
+from openai._types import RequestFiles, RequestOptions
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
@@ -160,6 +162,12 @@ class Kimi:
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
 
+    async def upload_video(self, *, data: bytes, mime_type: str) -> str:
+        """Upload a video to Kimi files API and return the ms:// URL."""
+        if not mime_type.startswith("video/"):
+            raise ChatProviderError(f"Expected a video mime type, got {mime_type}")
+        return await self._upload_file(data=data, mime_type=mime_type, purpose="video")
+
     def with_thinking(self, effort: ThinkingEffort) -> Self:
         match effort:
             case "off":
@@ -215,6 +223,34 @@ class Kimi:
         model_parameters: dict[str, Any] = {"base_url": str(self.client.base_url)}
         model_parameters.update(self._generation_kwargs)
         return model_parameters
+
+    async def _upload_file(self, *, data: bytes, mime_type: str, purpose: "KimiFilePurpose") -> str:
+        filename = _guess_filename(mime_type)
+        files: RequestFiles = {"file": (filename, data, mime_type)}
+        options: RequestOptions = {"headers": {"Content-Type": "multipart/form-data"}}
+        try:
+            response: KimiFileObject = await self.client.post(
+                "/files",
+                cast_to=KimiFileObject,
+                body={"purpose": purpose},
+                files=files,
+                options=options,
+            )
+        except (OpenAIError, httpx.HTTPError) as e:
+            raise convert_error(e) from e
+        return f"ms://{response.id}"
+
+
+class KimiFileObject(BaseModel):
+    id: str
+
+
+type KimiFilePurpose = Literal["video", "image"]
+
+
+def _guess_filename(mime_type: str) -> str:
+    extension = mimetypes.guess_extension(mime_type) or ".bin"
+    return f"upload{extension}"
 
 
 def _convert_message(message: Message) -> ChatCompletionMessageParam:
