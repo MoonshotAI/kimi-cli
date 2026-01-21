@@ -5,6 +5,7 @@ This page documents the changes in each Kimi CLI release.
 ## Unreleased
 
 - Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
+- Tool: Treat SVG files as text instead of images
 
 ## 0.83 (2026-01-21)
 
