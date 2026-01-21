@@ -293,9 +293,7 @@ def fetch_url_tool(config: Config) -> FetchURL:
 
 
 @pytest.fixture
-def outside_file() -> Path:
+def outside_file() -> Generator[Path]:
     """Return a path to a file outside the working directory."""
-    if platform.system() == "Windows":
-        return Path("C:/outside_file.txt")
-    else:
-        return Path("/outside_file.txt")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir) / "outside_file.txt"

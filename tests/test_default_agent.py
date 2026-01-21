@@ -475,7 +475,7 @@ Write content to a file.
                 parameters={
                     "properties": {
                         "path": {
-                            "description": "The absolute path to the file to write",
+                            "description": "The path to the file to write. Absolute paths are required when writing files outside the working directory.",
                             "type": "string",
                         },
                         "content": {
@@ -507,7 +507,7 @@ Replace specific strings within a specified file.
                 parameters={
                     "properties": {
                         "path": {
-                            "description": "The absolute path to the file to edit.",
+                            "description": "The path to the file to edit. Absolute paths are required when editing files outside the working directory.",
                             "type": "string",
                         },
                         "edit": {
