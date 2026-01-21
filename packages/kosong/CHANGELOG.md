@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.39.1 (2026-01-21)
+
+- Fix streamed usage from choice not being read properly
+
 ## 0.39.0 (2026-01-21)
 
 - Control thinking mode via `extra_body` parameter instead of legacy `reasoning_effort`
