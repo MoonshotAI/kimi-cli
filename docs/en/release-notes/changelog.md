@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
+
 ## 0.83 (2026-01-21)
 
 - Tool: Add `ReadMediaFile` tool for reading image/video files; `ReadFile` now focuses on text files only
