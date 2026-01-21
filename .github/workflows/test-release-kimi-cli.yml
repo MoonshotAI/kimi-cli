@@ -364,8 +364,13 @@ jobs:
 
       - name: Set artifact name
         id: artifact
-        run: echo "name=kimi-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}" >> $GITHUB_OUTPUT
-        shell: bash
+        shell: python
+        run: |
+          import os
+          ref = os.environ["GITHUB_REF_NAME"].replace("/", "-")
+          target = "${{ matrix.target }}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"name=kimi-{ref}-{target}\n")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
