@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tool: Allow `WriteFile` and `StrReplaceFile` tools to edit/write files outside the working directory when using absolute paths
 - Tool: Upload videos to Kimi files API when using Kimi provider, replacing inline data URLs with `ms://` references
 - Config: Add `reserved_context_size` setting to customize auto-compaction trigger threshold (default: 50000 tokens)
 
