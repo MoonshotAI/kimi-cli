@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
+
 ## 0.83 (2026-01-21)
 
 - Tool: Add `ReadMediaFile` tool for reading image/video files; `ReadFile` now focuses on text files only
