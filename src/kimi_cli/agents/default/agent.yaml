@@ -12,6 +12,7 @@ agent:
     - "kimi_cli.tools.todo:SetTodoList"
     - "kimi_cli.tools.shell:Shell"
     - "kimi_cli.tools.file:ReadFile"
+    - "kimi_cli.tools.file:ReadMediaFile"
     - "kimi_cli.tools.file:Glob"
     - "kimi_cli.tools.file:Grep"
     - "kimi_cli.tools.file:WriteFile"

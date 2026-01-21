@@ -1,27 +1,18 @@
-import base64
 from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
-from kosong.chat_provider.kimi import Kimi
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Runtime
-from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, FileType, detect_file_type
+from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, detect_file_type
 from kimi_cli.tools.utils import load_desc_jinja, truncate_line
 from kimi_cli.utils.path import is_within_directory
-from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
 MAX_BYTES = 100 << 10  # 100KB
-MAX_MEDIA_BYTES = 80 << 20  # 80MB
-
-
-def _to_data_url(mime_type: str, data: bytes) -> str:
-    encoded = base64.b64encode(data).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
 
 
 class Params(BaseModel):
@@ -56,15 +47,12 @@ class ReadFile(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime) -> None:
-        capabilities = runtime.llm.capabilities if runtime.llm else set[str]()
         description = load_desc_jinja(
             Path(__file__).parent / "read.md",
             {
                 "MAX_LINES": MAX_LINES,
                 "MAX_LINE_LENGTH": MAX_LINE_LENGTH,
                 "MAX_BYTES": MAX_BYTES,
-                "MAX_MEDIA_BYTES": MAX_MEDIA_BYTES,
-                "capabilities": capabilities,
             },
         )
         super().__init__(description=description)
@@ -86,47 +74,6 @@ class ReadFile(CallableTool2[Params]):
                 brief="Invalid path",
             )
         return None
-
-    async def _read_media(self, path: KaosPath, file_type: FileType) -> ToolReturnValue:
-        assert file_type.kind in ("image", "video")
-
-        stat = await path.stat()
-        size = stat.st_size
-        if size == 0:
-            return ToolError(
-                message=f"`{path}` is empty.",
-                brief="Empty file",
-            )
-        if size > MAX_MEDIA_BYTES:
-            return ToolError(
-                message=(
-                    f"`{path}` is {size} bytes, which exceeds the max "
-                    f"{MAX_MEDIA_BYTES} bytes for media files."
-                ),
-                brief="File too large",
-            )
-
-        match file_type.kind:
-            case "image":
-                data = await path.read_bytes()
-                data_url = _to_data_url(file_type.mime_type, data)
-                part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
-            case "video":
-                data = await path.read_bytes()
-                if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
-                    part = await llm.chat_provider.files.upload_video(
-                        data=data,
-                        mime_type=file_type.mime_type,
-                    )
-                else:
-                    data_url = _to_data_url(file_type.mime_type, data)
-                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
-        return ToolOk(
-            output=part,
-            message=(
-                f"Loaded {file_type.kind} file `{path}` ({file_type.mime_type}, {size} bytes)."
-            ),
-        )
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -159,7 +106,13 @@ class ReadFile(CallableTool2[Params]):
             header = await p.read_bytes(MEDIA_SNIFF_BYTES)
             file_type = detect_file_type(str(p), header=header)
             if file_type.kind in ("image", "video"):
-                return await self._read_media(p, file_type)
+                return ToolError(
+                    message=(
+                        f"`{params.path}` is a {file_type.kind} file. "
+                        "Use other appropriate tools to read image or video files."
+                    ),
+                    brief="Unsupported file type",
+                )
 
             if file_type.kind == "unknown":
                 return ToolError(

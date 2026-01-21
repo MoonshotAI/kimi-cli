@@ -29,6 +29,7 @@ from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
+from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.multiagent.create import CreateSubagent
@@ -245,6 +246,12 @@ def shell_tool(approval: Approval, environment: Environment) -> Generator[Shell]
 def read_file_tool(runtime: Runtime) -> ReadFile:
     """Create a ReadFile tool instance."""
     return ReadFile(runtime)
+
+
+@pytest.fixture
+def read_media_file_tool(runtime: Runtime) -> ReadMediaFile:
+    """Create a ReadMediaFile tool instance."""
+    return ReadMediaFile(runtime)
 
 
 @pytest.fixture
