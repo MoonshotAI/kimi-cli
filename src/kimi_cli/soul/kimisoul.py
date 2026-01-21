@@ -225,7 +225,7 @@ class KimiSoul:
         seen_names = {cmd.name for cmd in commands}
 
         for skill in self._runtime.skills.values():
-            if skill.type != "standard":
+            if skill.type not in ("standard", "flow"):
                 continue
             name = f"{SKILL_COMMAND_PREFIX}{skill.name}"
             if name in seen_names:
