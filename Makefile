@@ -107,6 +107,7 @@ build-bin: ## Build the standalone executable with PyInstaller (one-file mode).
 	@if [ -f dist/kimi.exe ]; then mv dist/kimi.exe dist/onefile/; elif [ -f dist/kimi ]; then mv dist/kimi dist/onefile/; fi
 build-bin-onedir: ## Build the standalone executable with PyInstaller (one-dir mode).
 	@echo "==> Building PyInstaller binary (one-dir)"
+	@rm -rf dist/onedir dist/kimi
 	@uv run pyinstaller kimi.spec
 	@if [ -f dist/kimi/kimi-exe.exe ]; then mv dist/kimi/kimi-exe.exe dist/kimi/kimi.exe; elif [ -f dist/kimi/kimi-exe ]; then mv dist/kimi/kimi-exe dist/kimi/kimi; fi
 	@mkdir -p dist/onedir && mv dist/kimi dist/onedir/
