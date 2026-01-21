@@ -1,9 +1,7 @@
 ---
 name: gen-docs
-description: Update Kimi CLI user documentation. Use when user wants to update docs, sync documentation with code changes, or ensure docs reflect recent commits and changelog updates.
+description: Update Kimi CLI user documentation.
 ---
-
-# Generate/Update Documentation
 
 现在我们正在为当前项目 Kimi CLI 编写和维护用户文档，文档内容在 docs 目录下，docs/AGENTS.md 中有对文档的说明。
 

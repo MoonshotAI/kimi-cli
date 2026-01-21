@@ -189,3 +189,59 @@ For regular conversations, the Agent will automatically decide whether to read s
 :::
 
 Skills allow you to codify your team's best practices and project standards, ensuring the AI always follows consistent standards.
+
+## Flow skills
+
+Flow skills are a special skill type that embed an Agent Flow diagram in `SKILL.md`, used to define multi-step automated workflows. Unlike standard skills, flow skills are invoked via `/flow:<name>` commands and automatically execute multiple conversation turns following the flow diagram.
+
+**Creating a flow skill**
+
+To create a flow skill, set `type: flow` in the frontmatter and include a Mermaid or D2 code block in the content:
+
+````markdown
+---
+name: code-review
+description: Code review workflow
+type: flow
+---
+
+```mermaid
+flowchart TD
+A([BEGIN]) --> B[Analyze code changes, list all modified files and features]
+B --> C{Is code quality acceptable?}
+C -->|Yes| D[Generate code review report]
+C -->|No| E[List issues and propose improvements]
+E --> B
+D --> F([END])
+```
+````
+
+**Flow diagram format**
+
+Both Mermaid and D2 formats are supported:
+
+- **Mermaid**: Use ` ```mermaid ` code block, [Mermaid Playground](https://www.mermaidchart.com/play) can be used for editing and preview
+- **D2**: Use ` ```d2 ` code block, [D2 Playground](https://play.d2lang.com) can be used for editing and preview
+
+Flow diagrams must contain one `BEGIN` node and one `END` node. Regular node text is sent to the Agent as a prompt; decision nodes require the Agent to output `<choice>branch name</choice>` in the output to select the next step.
+
+**D2 format example**
+
+```
+BEGIN -> B -> C
+B: Analyze existing code, write design doc for XXX feature
+C: Review if design doc is detailed enough
+C -> B: No
+C -> D: Yes
+D: Start implementation
+D -> END
+```
+
+**Executing a flow skill**
+
+```sh
+# Execute in Kimi CLI
+/flow:code-review
+```
+
+After execution, the Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node.

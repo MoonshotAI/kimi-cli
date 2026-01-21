@@ -28,6 +28,12 @@ jobs:
             --pyproject pyproject.toml \
             --expected-version "${GITHUB_REF_NAME}"
 
+      - name: Check kimi-code version tag
+        run: |
+          python scripts/check_version_tag.py \
+            --pyproject packages/kimi-code/pyproject.toml \
+            --expected-version "${GITHUB_REF_NAME}"
+
       - name: Check dependency versions
         run: |
           python scripts/check_kimi_dependency_versions.py \

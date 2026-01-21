@@ -189,3 +189,59 @@ description: Git 提交信息规范，使用 Conventional Commits 格式
 :::
 
 Skills 让你可以将团队的最佳实践和项目规范固化下来，确保 AI 始终遵循一致的标准。
+
+## Flow Skills
+
+Flow Skill 是一种特殊的 Skill 类型，它在 `SKILL.md` 中内嵌 Agent Flow 流程图，用于定义多步骤的自动化工作流。与普通 Skill 不同，Flow Skill 通过 `/flow:<name>` 命令调用，会按照流程图自动执行多个对话轮次。
+
+**创建 Flow Skill**
+
+创建 Flow Skill 需要在 Frontmatter 中设置 `type: flow`，并在内容中包含 Mermaid 或 D2 格式的流程图代码块：
+
+````markdown
+---
+name: code-review
+description: 代码审查工作流
+type: flow
+---
+
+```mermaid
+flowchart TD
+A([BEGIN]) --> B[分析代码变更，列出所有修改的文件和功能]
+B --> C{代码质量是否达标？}
+C -->|是| D[生成代码审查报告]
+C -->|否| E[列出问题并提出改进建议]
+E --> B
+D --> F([END])
+```
+````
+
+**流程图格式**
+
+支持 Mermaid 和 D2 两种格式：
+
+- **Mermaid**：使用 ` ```mermaid ` 代码块，[Mermaid Playground](https://www.mermaidchart.com/play) 可用于编辑和预览
+- **D2**：使用 ` ```d2 ` 代码块，[D2 Playground](https://play.d2lang.com) 可用于编辑和预览
+
+流程图必须包含一个 `BEGIN` 节点和一个 `END` 节点。普通节点的文本作为提示词发送给 Agent；分支节点需要 Agent 在输出中使用 `<choice>分支名</choice>` 选择下一步。
+
+**D2 格式示例**
+
+```
+BEGIN -> B -> C
+B: 分析现有代码，为 XXX 功能编写设计文档
+C: Review 设计文档是否足够详细
+C -> B: 否
+C -> D: 是
+D: 开始实现
+D -> END
+```
+
+**执行 Flow Skill**
+
+```sh
+# 在 Kimi CLI 中执行
+/flow:code-review
+```
+
+执行后，Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点。

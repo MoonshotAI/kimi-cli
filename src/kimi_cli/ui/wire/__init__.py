@@ -3,26 +3,30 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from typing import cast
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
 from kosong.chat_provider import ChatProviderError
+from kosong.tooling import ToolError, ToolResult
+from kosong.utils.typing import JsonType
 
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset, WireExternalTool
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
-from kimi_cli.wire.types import ApprovalRequest, Request
+from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, Request, ToolCallRequest
 
 from .jsonrpc import (
     ErrorCodes,
-    JSONRPCApprovalRequestResult,
     JSONRPCCancelMessage,
     JSONRPCErrorObject,
     JSONRPCErrorResponse,
     JSONRPCErrorResponseNullableID,
     JSONRPCEventMessage,
+    JSONRPCInitializeMessage,
     JSONRPCInMessage,
     JSONRPCInMessageAdapter,
     JSONRPCMessage,
@@ -194,8 +198,18 @@ class WireOverStdio:
 
     async def _shutdown(self) -> None:
         for request in self._pending_requests.values():
-            if not request.resolved:
-                request.resolve("reject")
+            if request.resolved:
+                continue
+            match request:
+                case ApprovalRequest():
+                    request.resolve("reject")
+                case ToolCallRequest():
+                    request.resolve(
+                        ToolError(
+                            message="Wire connection closed before tool result was received.",
+                            brief="Wire closed",
+                        )
+                    )
         self._pending_requests.clear()
 
         if self._cancel_event is not None:
@@ -222,6 +236,8 @@ class WireOverStdio:
         resp: JSONRPCSuccessResponse | JSONRPCErrorResponse | None = None
         try:
             match msg:
+                case JSONRPCInitializeMessage():
+                    resp = await self._handle_initialize(msg)
                 case JSONRPCPromptMessage():
                     resp = await self._handle_prompt(msg)
                 case JSONRPCCancelMessage():
@@ -244,6 +260,71 @@ class WireOverStdio:
     @property
     def _soul_is_running(self) -> bool:
         return self._cancel_event is not None
+
+    async def _handle_initialize(
+        self, msg: JSONRPCInitializeMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if self._soul_is_running:
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="An agent turn is already in progress",
+                ),
+            )
+
+        accepted: list[str] = []
+        rejected: list[dict[str, str]] = []
+        toolset = None
+        if isinstance(self._soul, KimiSoul) and isinstance(self._soul.agent.toolset, KimiToolset):
+            toolset = self._soul.agent.toolset
+
+        if toolset and msg.params.external_tools:
+            for tool in msg.params.external_tools:
+                existing = toolset.find(tool.name)
+                if existing is not None and not isinstance(existing, WireExternalTool):
+                    rejected.append({"name": tool.name, "reason": "conflicts with builtin tool"})
+                    continue
+                ok, reason = toolset.register_external_tool(
+                    tool.name,
+                    tool.description,
+                    tool.parameters,
+                )
+                if ok:
+                    accepted.append(tool.name)
+                else:
+                    rejected.append({"name": tool.name, "reason": reason or "invalid schema"})
+
+        slash_commands: list[JsonType] = []
+        for cmd in self._soul.available_slash_commands:
+            slash_commands.append(
+                cast(
+                    JsonType,
+                    {"name": cmd.name, "description": cmd.description, "aliases": cmd.aliases},
+                )
+            )
+
+        from kimi_cli.constant import NAME, VERSION
+        from kimi_cli.ui.wire.protocol import WIRE_PROTOCOL_VERSION
+
+        result: dict[str, JsonType] = {
+            "protocol_version": WIRE_PROTOCOL_VERSION,
+            "server": cast(JsonType, {"name": NAME, "version": VERSION}),
+            "slash_commands": cast(JsonType, slash_commands),
+        }
+        if accepted or rejected:
+            result["external_tools"] = cast(
+                JsonType,
+                {
+                    "accepted": accepted,
+                    "rejected": rejected,
+                },
+            )
+
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result=result,
+        )
 
     async def _handle_prompt(
         self, msg: JSONRPCPromptMessage
@@ -326,17 +407,60 @@ class WireOverStdio:
             case ApprovalRequest():
                 if isinstance(msg, JSONRPCErrorResponse):
                     request.resolve("reject")
-                else:
-                    try:
-                        result = JSONRPCApprovalRequestResult.model_validate(msg.result)
-                        request.resolve(result.response)
-                    except pydantic.ValidationError as e:
-                        logger.error(
-                            "Invalid response result for request id={id}: {error}",
-                            id=msg.id,
-                            error=e,
+                    return
+
+                try:
+                    result = ApprovalResponse.model_validate(msg.result)
+                except pydantic.ValidationError as e:
+                    logger.error(
+                        "Invalid response result for request id={id}: {error}",
+                        id=msg.id,
+                        error=e,
+                    )
+                    request.resolve("reject")
+                    return
+
+                if result.request_id != request.id:
+                    logger.warning(
+                        "Approval response id mismatch: request={request_id}, "
+                        "response={response_id}",
+                        request_id=request.id,
+                        response_id=result.request_id,
+                    )
+                request.resolve(result.response)
+            case ToolCallRequest():
+                if isinstance(msg, JSONRPCErrorResponse):
+                    error = msg.error.message
+                    request.resolve(
+                        ToolError(
+                            message=error,
+                            brief="External tool error",
                         )
-                        request.resolve("reject")
+                    )
+                    return
+
+                try:
+                    tool_result = ToolResult.model_validate(msg.result)
+                except pydantic.ValidationError as e:
+                    logger.error(
+                        "Invalid tool result for request id={id}: {error}",
+                        id=msg.id,
+                        error=e,
+                    )
+                    request.resolve(
+                        ToolError(
+                            message="Invalid tool result payload from client.",
+                            brief="Invalid tool result",
+                        )
+                    )
+                    return
+                if tool_result.tool_call_id != request.id:
+                    logger.warning(
+                        "Tool result id mismatch: request={request_id}, result={result_id}",
+                        request_id=request.id,
+                        result_id=tool_result.tool_call_id,
+                    )
+                request.resolve(tool_result.return_value)
 
     async def _stream_wire_messages(self, wire: Wire) -> None:
         wire_ui = wire.ui_side(merge=False)
@@ -345,11 +469,19 @@ class WireOverStdio:
             match msg:
                 case ApprovalRequest():
                     await self._request_approval(msg)
+                case ToolCallRequest():
+                    await self._request_external_tool(msg)
                 case _:
                     await self._send_msg(JSONRPCEventMessage(method="event", params=msg))
 
     async def _request_approval(self, request: ApprovalRequest) -> None:
         msg_id = request.id  # just use the approval request id as message id
+        self._pending_requests[msg_id] = request
+        await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
+        await request.wait()
+
+    async def _request_external_tool(self, request: ToolCallRequest) -> None:
+        msg_id = request.id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
         await request.wait()

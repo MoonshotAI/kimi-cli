@@ -1,11 +1,13 @@
 import copy
+import mimetypes
 import os
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, Unpack, cast
 
 import httpx
-from openai import AsyncOpenAI, AsyncStream, OpenAIError, omit
+from openai import AsyncOpenAI, AsyncStream, BaseModel, OpenAIError, omit
+from openai._types import RequestFiles, RequestOptions
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
@@ -14,6 +16,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 from openai.types.completion_usage import CompletionUsage
+from typing_extensions import TypedDict
 
 from kosong.chat_provider import (
     ChatProvider,
@@ -23,13 +26,29 @@ from kosong.chat_provider import (
     TokenUsage,
 )
 from kosong.chat_provider.openai_common import convert_error, tool_to_openai
-from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.message import (
+    ContentPart,
+    Message,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    ToolCallPart,
+    VideoURLPart,
+)
 from kosong.tooling import Tool
 
 if TYPE_CHECKING:
 
     def type_check(kimi: "Kimi"):
         _: ChatProvider = kimi
+
+
+class ThinkingConfig(TypedDict, total=True):
+    type: Literal["enabled", "disabled"]
+
+
+class ExtraBody(TypedDict, total=False, extra_items=Any):
+    thinking: ThinkingConfig
 
 
 class Kimi:
@@ -63,6 +82,8 @@ class Kimi:
         stop: str | list[str] | None
         prompt_cache_key: str | None
         reasoning_effort: str | None
+        """Legacy thinking parameter. Use `extra_body.thinking` instead."""
+        extra_body: ExtraBody | None
 
     def __init__(
         self,
@@ -159,7 +180,13 @@ class Kimi:
                 reasoning_effort = "medium"
             case "high":
                 reasoning_effort = "high"
-        return self.with_generation_kwargs(reasoning_effort=reasoning_effort)
+        return self.with_generation_kwargs(reasoning_effort=reasoning_effort).with_extra_body(
+            {
+                "thinking": {
+                    "type": "enabled" if effort != "off" else "disabled",
+                }
+            }
+        )
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """
@@ -173,6 +200,20 @@ class Kimi:
         new_self._generation_kwargs.update(kwargs)
         return new_self
 
+    def with_extra_body(self, extra_body: ExtraBody) -> Self:
+        """
+        Copy the chat provider, updating the extra_body in generation kwargs.
+
+        Returns:
+            Self: A new instance of the chat provider with updated extra_body.
+        """
+        new_self = copy.copy(self)
+        new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
+        old_extra_body = new_self._generation_kwargs.get("extra_body") or {}
+        new_extra_body: ExtraBody = {**old_extra_body, **extra_body}
+        new_self._generation_kwargs["extra_body"] = new_extra_body
+        return new_self
+
     @property
     def model_parameters(self) -> dict[str, Any]:
         """
@@ -184,6 +225,50 @@ class Kimi:
         model_parameters: dict[str, Any] = {"base_url": str(self.client.base_url)}
         model_parameters.update(self._generation_kwargs)
         return model_parameters
+
+    @property
+    def files(self) -> "KimiFiles":
+        return KimiFiles(self.client)
+
+
+class KimiFiles:
+    def __init__(self, client: AsyncOpenAI) -> None:
+        self._client = client
+
+    async def upload_video(self, *, data: bytes, mime_type: str) -> VideoURLPart:
+        """Upload a video to Kimi files API and return a video URL content part."""
+        if not mime_type.startswith("video/"):
+            raise ChatProviderError(f"Expected a video mime type, got {mime_type}")
+        url = await self._upload_file(data=data, mime_type=mime_type, purpose="video")
+        return VideoURLPart(video_url=VideoURLPart.VideoURL(url=url))
+
+    async def _upload_file(self, *, data: bytes, mime_type: str, purpose: "KimiFilePurpose") -> str:
+        filename = _guess_filename(mime_type)
+        files: RequestFiles = {"file": (filename, data, mime_type)}
+        options: RequestOptions = {"headers": {"Content-Type": "multipart/form-data"}}
+        try:
+            response: KimiFileObject = await self._client.post(
+                "/files",
+                cast_to=KimiFileObject,
+                body={"purpose": purpose},
+                files=files,
+                options=options,
+            )
+        except (OpenAIError, httpx.HTTPError) as e:
+            raise convert_error(e) from e
+        return f"ms://{response.id}"
+
+
+class KimiFileObject(BaseModel):
+    id: str
+
+
+type KimiFilePurpose = Literal["video", "image"]
+
+
+def _guess_filename(mime_type: str) -> str:
+    extension = mimetypes.guess_extension(mime_type) or ".bin"
+    return f"upload{extension}"
 
 
 def _convert_message(message: Message) -> ChatCompletionMessageParam:

@@ -4,6 +4,22 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Config: Add `reserved_context_size` setting to customize auto-compaction trigger threshold (default: 50000 tokens)
+
+## 0.81 (2026-01-21)
+
+- Skills: Add flow skill type with embedded Agent Flow (Mermaid/D2) in SKILL.md, invoked via `/flow:<skill-name>` commands
+- CLI: Remove `--prompt-flow` option; use flow skills instead
+- Core: Replace `/begin` command with `/flow:<skill-name>` commands for flow skills
+
+## 0.80 (2026-01-20)
+
+- Wire: Add `initialize` method for exchanging client/server info, external tools registration and slash commands advertisement
+- Wire: Support external tool calls via Wire protocol
+- Wire: Rename `ApprovalRequestResolved` to `ApprovalResponse` (backwards-compatible)
+
+## 0.79 (2026-01-19)
+
 - Skills: Add project-level skills support, discovered from `.agents/skills/` (or `.kimi/skills/`, `.claude/skills/`)
 - Skills: Unified skills discovery with layered loading (builtin → user → project); user-level skills now prefer `~/.config/agents/skills/`
 - Shell: Support fuzzy matching for slash command autocomplete

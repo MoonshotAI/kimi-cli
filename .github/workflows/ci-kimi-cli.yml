@@ -107,6 +107,88 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  release-validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: Detect version bump
+        id: version
+        shell: python
+        run: |
+          import os
+          import subprocess
+          import tomllib
+
+          output_path = os.environ["GITHUB_OUTPUT"]
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          base_ref = os.environ.get("GITHUB_BASE_REF")
+          if event_name != "pull_request" or not base_ref:
+              with open(output_path, "a", encoding="utf-8") as output:
+                  output.write("bump=false\n")
+              raise SystemExit(0)
+
+          subprocess.run(["git", "fetch", "origin", base_ref, "--depth=1"], check=True)
+          base_blob = subprocess.check_output(
+              ["git", "show", f"origin/{base_ref}:pyproject.toml"],
+          )
+          base_version = tomllib.loads(base_blob.decode())["project"]["version"]
+          with open("pyproject.toml", "rb") as handle:
+              head_version = tomllib.load(handle)["project"]["version"]
+          bumped = base_version != head_version
+
+          with open(output_path, "a", encoding="utf-8") as output:
+              output.write(f"bump={'true' if bumped else 'false'}\n")
+              output.write(f"base_version={base_version}\n")
+              output.write(f"head_version={head_version}\n")
+
+      - name: Show version bump info
+        if: steps.version.outputs.bump == 'true'
+        run: |
+          echo "version bump: ${{ steps.version.outputs.base_version }} -> ${{ steps.version.outputs.head_version }}"
+
+      - name: Check dependency versions
+        if: steps.version.outputs.bump == 'true'
+        run: |
+          python scripts/check_kimi_dependency_versions.py \
+            --root-pyproject pyproject.toml \
+            --kosong-pyproject packages/kosong/pyproject.toml \
+            --pykaos-pyproject packages/kaos/pyproject.toml
+
+      - name: Check kimi-code version alignment
+        if: steps.version.outputs.bump == 'true'
+        run: |
+          python scripts/check_version_tag.py \
+            --pyproject packages/kimi-code/pyproject.toml \
+            --expected-version "${{ steps.version.outputs.head_version }}"
+
+      - name: Check kimi-code dependency pin
+        if: steps.version.outputs.bump == 'true'
+        shell: python
+        run: |
+          import tomllib
+          from pathlib import Path
+
+          expected_version = "${{ steps.version.outputs.head_version }}"
+          data = tomllib.loads(Path("packages/kimi-code/pyproject.toml").read_text())
+          deps = data["project"]["dependencies"]
+          expected = f"kimi-cli=={expected_version}"
+          if expected not in deps:
+              raise SystemExit(
+                  "kimi-code must depend on "
+                  f"{expected}, got: {deps}"
+              )
+
   nix-test:
     strategy:
       fail-fast: true

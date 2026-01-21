@@ -4,6 +4,22 @@
 
 ## 未发布
 
+- Config：添加 `reserved_context_size` 配置项，自定义自动压缩触发阈值（默认 50000 tokens）
+
+## 0.81 (2026-01-21)
+
+- Skills：添加 Flow Skill 类型，在 SKILL.md 中内嵌 Agent Flow（Mermaid/D2），通过 `/flow:<skill-name>` 命令调用
+- CLI：移除 `--prompt-flow` 选项，改用 Flow Skills
+- Core：用 `/flow:<skill-name>` 命令替代原来的 `/begin` 命令
+
+## 0.80 (2026-01-20)
+
+- Wire：添加 `initialize` 方法，用于交换客户端/服务端信息、注册外部工具和公布斜杠命令
+- Wire：支持通过 Wire 协议调用外部工具
+- Wire：将 `ApprovalRequestResolved` 重命名为 `ApprovalResponse`（向后兼容）
+
+## 0.79 (2026-01-19)
+
 - Skills：添加项目级 Skills 支持，从 `.agents/skills/`（或 `.kimi/skills/`、`.claude/skills/`）发现
 - Skills：统一 Skills 发现机制，采用分层加载（内置 → 用户 → 项目）；用户级 Skills 现在优先使用 `~/.config/agents/skills/`
 - Shell：斜杠命令自动补全支持模糊匹配
