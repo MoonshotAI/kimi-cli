@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Config: Add `reserved_context_size` setting to customize auto-compaction trigger threshold (default: 50000 tokens)
+
 ## 0.81 (2026-01-21)
 
 - Skills: Add flow skill type with embedded Agent Flow (Mermaid/D2) in SKILL.md, invoked via `/flow:<skill-name>` commands
