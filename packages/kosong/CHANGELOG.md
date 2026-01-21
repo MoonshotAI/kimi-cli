@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Control thinking mode via `extra_body` parameter instead of legacy `reasoning_effort`
+- Add `files` property to `Kimi` provider that returns a `KimiFiles` object
+- Add `KimiFiles.upload_video()` method for uploading videos to Kimi files API, returning `VideoURLPart`
 
 ## 0.38.0 (2026-01-15)
 
