@@ -202,19 +202,54 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "========================================"
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting onedir notarization"
+          echo "========================================"
+
           # Save API key (might already exist from previous step)
           key_path="${RUNNER_TEMP}/AuthKey.p8"
           if [[ ! -f "$key_path" ]]; then
             echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
           fi
 
-          # Create zip for notarization (use --norsrc to avoid ._ AppleDouble files)
-          zip_path="${RUNNER_TEMP}/kimi-onedir.zip"
-          ditto -c -k --norsrc --keepParent dist/onedir/kimi "$zip_path"
+          # Analyze onedir contents before zipping
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Analyzing onedir contents..."
+          echo "--- File count by type ---"
+          find dist/onedir/kimi -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
+          echo ""
+          echo "--- Total file count ---"
+          find dist/onedir/kimi -type f | wc -l
+          echo ""
+          echo "--- Total directory size ---"
+          du -sh dist/onedir/kimi
+          echo ""
+          echo "--- Largest files (top 20) ---"
+          find dist/onedir/kimi -type f -exec du -h {} + | sort -rh | head -20
+          echo ""
+          echo "--- Signed binaries count ---"
+          find dist/onedir/kimi -type f \( -name "*.dylib" -o -name "*.so" -o -name "kimi" \) | wc -l
 
-          echo "Submitting onedir for notarization..."
+          # Create zip for notarization (use --norsrc to avoid ._ AppleDouble files)
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Creating zip archive..."
+          zip_path="${RUNNER_TEMP}/kimi-onedir.zip"
+          time ditto -c -k --norsrc --keepParent dist/onedir/kimi "$zip_path"
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Zip created"
+          echo "--- Zip file size ---"
+          ls -lh "$zip_path"
+          du -h "$zip_path"
+
+          echo ""
+          echo "========================================"
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Submitting onedir for notarization..."
+          echo "========================================"
           
           # Submit and capture output for status verification
+          # Use timeout command to get more info if it hangs
+          start_time=$(date +%s)
+          
           xcrun notarytool submit "$zip_path" \
             --key "$key_path" \
             --key-id "$APPLE_NOTARIZATION_KEY_ID" \
@@ -222,35 +257,72 @@ jobs:
             --wait \
             --timeout 15m \
             2>&1 | tee /tmp/notarize-onedir.log
+          
+          exit_code=${PIPESTATUS[0]}
+          end_time=$(date +%s)
+          duration=$((end_time - start_time))
+          
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Notarization command completed"
+          echo "--- Duration: ${duration} seconds ---"
+          echo "--- Exit code: ${exit_code} ---"
+
+          # Check for timeout
+          if [[ $duration -ge 900 ]]; then
+            echo "⚠️ WARNING: Notarization took ${duration}s (>= 900s timeout threshold)"
+          fi
 
           # Verify notarization was accepted
           if ! grep -q "status: Accepted" /tmp/notarize-onedir.log; then
+            echo ""
+            echo "========================================"
             echo "❌ Onedir notarization failed!"
+            echo "========================================"
+            echo ""
+            echo "--- Full notarization log ---"
             cat /tmp/notarize-onedir.log
             
             # Get detailed error log from Apple
             submission_id=$(grep "id:" /tmp/notarize-onedir.log | head -1 | awk '{print $2}')
             if [[ -n "$submission_id" ]]; then
-              echo "Fetching notarization log for submission: $submission_id"
+              echo ""
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching detailed notarization log for submission: $submission_id"
               xcrun notarytool log "$submission_id" \
                 --key "$key_path" \
                 --key-id "$APPLE_NOTARIZATION_KEY_ID" \
                 --issuer "$APPLE_NOTARIZATION_ISSUER_ID" 2>&1 || true
+              
+              echo ""
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching submission info..."
+              xcrun notarytool info "$submission_id" \
+                --key "$key_path" \
+                --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+                --issuer "$APPLE_NOTARIZATION_ISSUER_ID" 2>&1 || true
+            else
+              echo "⚠️ Could not extract submission ID from log"
             fi
             exit 1
           fi
 
+          echo ""
+          echo "========================================"
           echo "✅ Onedir notarization completed and accepted"
+          echo "   Total time: ${duration} seconds"
+          echo "========================================"
 
           # Verify signature and notarization status
-          echo "Verifying onedir signature..."
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Verifying onedir signature..."
           codesign -dv --verbose=2 dist/onedir/kimi/kimi
           
-          echo "Verifying onedir notarization (online check)..."
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Verifying onedir notarization (online check)..."
           spctl -a -vvv -t install dist/onedir/kimi/kimi
 
           # Cleanup
           rm -f "$key_path" "$zip_path" /tmp/notarize-onedir.log
+          echo ""
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] Onedir notarization step completed"
 
       # macOS: Cleanup keychain
       - name: Cleanup macOS keychain
