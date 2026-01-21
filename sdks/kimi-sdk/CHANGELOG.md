@@ -1,9 +1,8 @@
 # Changelog
 
-## 0.1.3 (2026-01-21)
+## Unreleased
 
 - Export `KimiFiles` class to support video file uploads
-- Add video upload usage examples to README
 
 ## 0.1.2 (2026-01-21)
 
