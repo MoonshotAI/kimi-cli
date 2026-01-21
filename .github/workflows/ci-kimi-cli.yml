@@ -31,16 +31,16 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            binary_path: dist/kimi
+            binary_path: dist/onefile/kimi
           - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
-            binary_path: dist/kimi
+            binary_path: dist/onefile/kimi
           - runner: macos-14
             target: aarch64-apple-darwin
-            binary_path: dist/kimi
+            binary_path: dist/onefile/kimi
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
-            binary_path: dist/kimi.exe
+            binary_path: dist/onefile/kimi.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
