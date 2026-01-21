@@ -233,7 +233,7 @@ The following are all built-in tools in Kimi CLI.
 ### `WriteFile`
 
 - **Path**: `kimi_cli.tools.file:WriteFile`
-- **Description**: Write files. Can only write to files within working directory, must use absolute paths, requires user approval.
+- **Description**: Write files. Requires user approval. Absolute paths are required when writing files outside the working directory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -244,7 +244,7 @@ The following are all built-in tools in Kimi CLI.
 ### `StrReplaceFile`
 
 - **Path**: `kimi_cli.tools.file:StrReplaceFile`
-- **Description**: Edit files using string replacement. Can only edit files within working directory, must use absolute paths, requires user approval.
+- **Description**: Edit files using string replacement. Requires user approval. Absolute paths are required when editing files outside the working directory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -307,8 +307,9 @@ The following are all built-in tools in Kimi CLI.
 
 **Working directory restrictions**
 
-- File writing and editing can only be done within the working directory
-- Files outside working directory can be read, but require absolute paths
+- File reading and writing are typically done within the working directory
+- Absolute paths are required when reading files outside the working directory
+- Write and edit operations require user approval; absolute paths are required when operating on files outside the working directory
 
 **Approval mechanism**
 

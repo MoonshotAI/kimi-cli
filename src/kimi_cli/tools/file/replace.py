@@ -21,7 +21,12 @@ class Edit(BaseModel):
 
 
 class Params(BaseModel):
-    path: str = Field(description="The absolute path to the file to edit.")
+    path: str = Field(
+        description=(
+            "The path to the file to edit. Absolute paths are required when editing files "
+            "outside the working directory."
+        )
+    )
     edit: Edit | list[Edit] = Field(
         description=(
             "The edit(s) to apply to the file. "
@@ -42,17 +47,16 @@ class StrReplaceFile(CallableTool2[Params]):
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to edit."""
-        # Check for path traversal attempts
         resolved_path = path.canonical()
 
-        # Ensure the path is within work directory
-        if not is_within_directory(resolved_path, self._work_dir):
+        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
             return ToolError(
                 message=(
-                    f"`{path}` is outside the working directory. "
-                    "You can only edit files within the working directory."
+                    f"`{path}` is not an absolute path. "
+                    "You must provide an absolute path to edit a file "
+                    "outside the working directory."
                 ),
-                brief="Path outside working directory",
+                brief="Invalid path",
             )
         return None
 
@@ -65,22 +69,17 @@ class StrReplaceFile(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
+        if not params.path:
+            return ToolError(
+                message="File path cannot be empty.",
+                brief="Empty file path",
+            )
+
         try:
-            p = KaosPath(params.path)
-
-            if not p.is_absolute():
-                return ToolError(
-                    message=(
-                        f"`{params.path}` is not an absolute path. "
-                        "You must provide an absolute path to edit a file."
-                    ),
-                    brief="Invalid path",
-                )
-
-            # Validate path safety
-            path_error = await self._validate_path(p)
-            if path_error:
-                return path_error
+            p = KaosPath(params.path).expanduser()
+            if err := await self._validate_path(p):
+                return err
+            p = p.canonical()
 
             if not await p.exists():
                 return ToolError(
@@ -111,14 +110,20 @@ class StrReplaceFile(CallableTool2[Params]):
                 )
 
             diff_blocks: list[DisplayBlock] = list(
-                build_diff_blocks(params.path, original_content, content)
+                build_diff_blocks(str(p), original_content, content)
+            )
+
+            action = (
+                FileActions.EDIT
+                if is_within_directory(p, self._work_dir)
+                else FileActions.EDIT_OUTSIDE
             )
 
             # Request approval
             if not await self._approval.request(
                 self.name,
-                FileActions.EDIT,
-                f"Edit file `{params.path}`",
+                action,
+                f"Edit file `{p}`",
                 display=diff_blocks,
             ):
                 return ToolRejectedError()

@@ -10,6 +10,7 @@ class FileOpsWindow:
 class FileActions(str, Enum):
     READ = "read file"
     EDIT = "edit file"
+    EDIT_OUTSIDE = "edit file outside of working directory"
 
 
 from .glob import Glob  # noqa: E402

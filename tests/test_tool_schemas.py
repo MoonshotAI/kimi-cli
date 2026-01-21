@@ -283,7 +283,7 @@ def test_write_file_params_schema(write_file_tool: WriteFile):
         {
             "properties": {
                 "path": {
-                    "description": "The absolute path to the file to write",
+                    "description": "The path to the file to write. Absolute paths are required when writing files outside the working directory.",
                     "type": "string",
                 },
                 "content": {
@@ -309,7 +309,7 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
         {
             "properties": {
                 "path": {
-                    "description": "The absolute path to the file to edit.",
+                    "description": "The path to the file to edit. Absolute paths are required when editing files outside the working directory.",
                     "type": "string",
                 },
                 "edit": {

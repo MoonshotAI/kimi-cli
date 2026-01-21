@@ -73,7 +73,6 @@ class ReadFile(CallableTool2[Params]):
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
-        # Check for path traversal attempts
         resolved_path = path.canonical()
 
         if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
@@ -142,9 +141,9 @@ class ReadFile(CallableTool2[Params]):
 
         try:
             p = KaosPath(params.path).expanduser()
-
             if err := await self._validate_path(p):
                 return err
+            p = p.canonical()
 
             if not await p.exists():
                 return ToolError(
