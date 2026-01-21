@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Config：添加 `reserved_context_size` 配置项，自定义自动压缩触发阈值（默认 50000 tokens）
+
 ## 0.81 (2026-01-21)
 
 - Skills：添加 Flow Skill 类型，在 SKILL.md 中内嵌 Agent Flow（Mermaid/D2），通过 `/flow:<skill-name>` 命令调用
