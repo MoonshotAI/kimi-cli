@@ -362,10 +362,15 @@ jobs:
 
           print(f"Built onedir artifact: {archive_path}")
 
+      - name: Set artifact name
+        id: artifact
+        run: echo "name=kimi-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kimi-${{ github.ref_name }}-${{ matrix.target }}
+          name: ${{ steps.artifact.outputs.name }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 7
