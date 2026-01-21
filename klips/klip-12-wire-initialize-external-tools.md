@@ -1,7 +1,7 @@
 ---
 Author: "@stdrc"
 Updated: 2026-01-14
-Status: Draft
+Status: Implemented
 ---
 
 # KLIP-12: Wire 初始化协商与外部工具调用

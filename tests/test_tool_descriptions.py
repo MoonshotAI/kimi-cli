@@ -12,6 +12,7 @@ from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
+from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.multiagent.task import Task
@@ -172,24 +173,42 @@ def test_read_file_description(read_file_tool: ReadFile):
     """Test the description of ReadFile tool."""
     assert read_file_tool.base.description == snapshot(
         """\
-Read content from a file.
+Read text content from a file.
 
 **Tips:**
 - Make sure you follow the description of each tool parameter.
 - A `<system>` tag will be given before the read file content.
 - The system will notify you when there is anything wrong when reading the file.
 - This tool is a tool that you typically want to use in parallel. Always read multiple files in one response when possible.
-- This tool can only read text, image and video files. To list directories, you must use the Glob tool or `ls` command via the Shell tool. To read other file types, use appropriate commands via the Shell tool.
+- This tool can only read text files. To read images or videos, use other appropriate tools. To list directories, use the Glob tool or `ls` command via the Shell tool. To read other file types, use appropriate commands via the Shell tool.
 - If the file doesn't exist or path is invalid, an error will be returned.
 - If you want to search for a certain content/pattern, prefer Grep tool over ReadFile.
-- For text files:
-  - Content will be returned with a line number before each line like `cat -n` format.
-  - Use `line_offset` and `n_lines` parameters when you only need to read a part of the file.
-  - The maximum number of lines that can be read at once is 1000.
-  - Any lines longer than 2000 characters will be truncated, ending with "...".
-- For image and video files:
-  - Content will be returned in a form that you can view and understand. Feel confident to read image/video files with this tool.
-  - The maximum size that can be read is 83886080 bytes. An error will be returned if the file is larger than this limit.
+- Content will be returned with a line number before each line like `cat -n` format.
+- Use `line_offset` and `n_lines` parameters when you only need to read a part of the file.
+- The maximum number of lines that can be read at once is 1000.
+- Any lines longer than 2000 characters will be truncated, ending with "...".
+"""
+    )
+
+
+def test_read_media_file_description(read_media_file_tool: ReadMediaFile):
+    """Test the description of ReadMediaFile tool."""
+    assert read_media_file_tool.base.description == snapshot(
+        """\
+Read media content from a file.
+
+**Tips:**
+- Make sure you follow the description of each tool parameter.
+- A `<system>` tag will be given before the read file content.
+- The system will notify you when there is anything wrong when reading the file.
+- This tool is a tool that you typically want to use in parallel. Always read multiple files in one response when possible.
+- This tool can only read image or video files. To read other types of files, use the ReadFile tool. To list directories, use the Glob tool or `ls` command via the Shell tool.
+- If the file doesn't exist or path is invalid, an error will be returned.
+- The maximum size that can be read is 100MB. An error will be returned if the file is larger than this limit.
+- The media content will be returned in a form that you can directly view and understand.
+
+**Capabilities**
+- This tool supports image and video files for the current model.
 """
     )
 

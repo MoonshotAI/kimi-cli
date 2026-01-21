@@ -10,6 +10,7 @@ from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
+from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.multiagent.task import Task
@@ -173,6 +174,22 @@ def test_read_file_params_schema(read_file_tool: ReadFile):
                     "minimum": 1,
                     "type": "integer",
                 },
+            },
+            "required": ["path"],
+            "type": "object",
+        }
+    )
+
+
+def test_read_media_file_params_schema(read_media_file_tool: ReadMediaFile):
+    """Test the schema of ReadMediaFile tool parameters."""
+    assert read_media_file_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "path": {
+                    "description": "The path to the file to read. Absolute paths are required when reading files outside the working directory.",
+                    "type": "string",
+                }
             },
             "required": ["path"],
             "type": "object",
