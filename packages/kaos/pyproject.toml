@@ -9,6 +9,11 @@ dependencies = [
     "asyncssh==2.21.1",
 ]
 
+[project.optional-dependencies]
+contrib = [
+    "e2b>=2.10.2,<3.0.0",
+]
+
 [dependency-groups]
 dev = [
     "inline-snapshot[black]>=0.31.1",
