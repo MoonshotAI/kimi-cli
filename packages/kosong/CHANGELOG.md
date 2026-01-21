@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Control thinking mode via `extra_body` parameter instead of legacy `reasoning_effort`
+
 ## 0.38.0 (2026-01-15)
 
 - Add `thinking_effort` property to `ChatProvider` protocol to query current thinking effort level
