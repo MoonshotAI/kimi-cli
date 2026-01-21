@@ -225,7 +225,7 @@ jobs:
           du -sh dist/onedir/kimi
           echo ""
           echo "--- Largest files (top 20) ---"
-          find dist/onedir/kimi -type f -exec du -h {} + | sort -rh | head -20
+          find dist/onedir/kimi -type f -exec du -h {} + 2>/dev/null | sort -rh 2>/dev/null | head -20 || true
           echo ""
           echo "--- Signed binaries count ---"
           find dist/onedir/kimi -type f \( -name "*.dylib" -o -name "*.so" -o -name "kimi" \) | wc -l
