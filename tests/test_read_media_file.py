@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import cast
 
+import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
@@ -28,7 +30,11 @@ async def test_read_image_file(read_media_file_tool: ReadMediaFile, temp_work_di
     assert isinstance(part, ImageURLPart)
     assert part.image_url.url.startswith("data:image/png;base64,")
     assert result.message == snapshot(
-        f"Loaded image file `{image_file}` (image/png, {len(data)} bytes)."
+        f"Loaded image file `{image_file}` (image/png, {len(data)} bytes). "
+        "If you need to output coordinates, output relative coordinates first and "
+        "compute absolute coordinates using the original image size; if you generate or "
+        "edit images/videos via commands or scripts, read the result back immediately "
+        "before continuing."
     )
 
 
@@ -49,7 +55,35 @@ async def test_read_extensionless_image_file(
     assert isinstance(part, ImageURLPart)
     assert part.image_url.url.startswith("data:image/png;base64,")
     assert result.message == snapshot(
-        f"Loaded image file `{image_file}` (image/png, {len(data)} bytes)."
+        f"Loaded image file `{image_file}` (image/png, {len(data)} bytes). "
+        "If you need to output coordinates, output relative coordinates first and "
+        "compute absolute coordinates using the original image size; if you generate or "
+        "edit images/videos via commands or scripts, read the result back immediately "
+        "before continuing."
+    )
+
+
+async def test_read_image_file_with_size(
+    read_media_file_tool: ReadMediaFile, temp_work_dir: KaosPath
+):
+    """Test reading an image file with detectable dimensions."""
+    Image = pytest.importorskip("PIL.Image")
+    image_file = temp_work_dir / "valid.png"
+    image = Image.new("RGB", (3, 4), color=(0, 0, 0))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    data = buffer.getvalue()
+    await image_file.write_bytes(data)
+
+    result = await read_media_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert result.message == snapshot(
+        f"Loaded image file `{image_file}` (image/png, {len(data)} bytes, original size 3x4px). "
+        "If you need to output coordinates, output relative coordinates first and "
+        "compute absolute coordinates using the original image size; if you generate or "
+        "edit images/videos via commands or scripts, read the result back immediately "
+        "before continuing."
     )
 
 
@@ -68,7 +102,11 @@ async def test_read_video_file(read_media_file_tool: ReadMediaFile, temp_work_di
     assert isinstance(part, VideoURLPart)
     assert part.video_url.url.startswith("data:video/mp4;base64,")
     assert result.message == snapshot(
-        f"Loaded video file `{video_file}` (video/mp4, {len(data)} bytes)."
+        f"Loaded video file `{video_file}` (video/mp4, {len(data)} bytes). "
+        "If you need to output coordinates, output relative coordinates first and "
+        "compute absolute coordinates using the original image size; if you generate or "
+        "edit images/videos via commands or scripts, read the result back immediately "
+        "before continuing."
     )
 
 

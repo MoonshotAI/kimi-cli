@@ -1,4 +1,5 @@
 import base64
+from io import BytesIO
 from pathlib import Path
 from typing import override
 
@@ -20,6 +21,19 @@ MAX_MEDIA_MEGABYTES = 80
 def _to_data_url(mime_type: str, data: bytes) -> str:
     encoded = base64.b64encode(data).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def _extract_image_size(data: bytes) -> tuple[int, int] | None:
+    try:
+        from PIL import Image
+    except Exception:
+        return None
+    try:
+        with Image.open(BytesIO(data)) as image:
+            image.load()
+            return image.size
+    except Exception:
+        return None
 
 
 class Params(BaseModel):
@@ -93,6 +107,7 @@ class ReadMediaFile(CallableTool2[Params]):
                 data = await path.read_bytes()
                 data_url = _to_data_url(file_type.mime_type, data)
                 part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
+                image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
                 if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
@@ -103,10 +118,22 @@ class ReadMediaFile(CallableTool2[Params]):
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
                     part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
+                image_size = None
+
+        size_hint = ""
+        if image_size:
+            size_hint = f", original size {image_size[0]}x{image_size[1]}px"
+        note = (
+            " If you need to output coordinates, output relative coordinates first and "
+            "compute absolute coordinates using the original image size; if you generate or "
+            "edit images/videos via commands or scripts, read the result back immediately "
+            "before continuing."
+        )
         return ToolOk(
             output=part,
             message=(
-                f"Loaded {file_type.kind} file `{path}` ({file_type.mime_type}, {size} bytes)."
+                f"Loaded {file_type.kind} file `{path}` "
+                f"({file_type.mime_type}, {size} bytes{size_hint}).{note}"
             ),
         )
 
