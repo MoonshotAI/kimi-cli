@@ -33,7 +33,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pyinstaller==6.17.0",
+    "pyinstaller==6.18.0",
     "inline-snapshot[black]>=0.31.1",
     "pyright>=1.1.407",
     "ty>=0.0.9",
