@@ -15,7 +15,12 @@ from kimi_cli.utils.path import is_within_directory
 
 
 class Params(BaseModel):
-    path: str = Field(description="The absolute path to the file to write")
+    path: str = Field(
+        description=(
+            "The path to the file to write. Absolute paths are required when writing files "
+            "outside the working directory."
+        )
+    )
     content: str = Field(description="The content to write to the file")
     mode: Literal["overwrite", "append"] = Field(
         description=(
@@ -39,17 +44,16 @@ class WriteFile(CallableTool2[Params]):
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to write."""
-        # Check for path traversal attempts
         resolved_path = path.canonical()
 
-        # Ensure the path is within work directory
-        if not is_within_directory(resolved_path, self._work_dir):
+        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
             return ToolError(
                 message=(
-                    f"`{path}` is outside the working directory. "
-                    "You can only write files within the working directory."
+                    f"`{path}` is not an absolute path. "
+                    "You must provide an absolute path to write a file "
+                    "outside the working directory."
                 ),
-                brief="Path outside working directory",
+                brief="Invalid path",
             )
         return None
 
@@ -57,23 +61,18 @@ class WriteFile(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         # TODO: checks:
         # - check if the path may contain secrets
-        # - check if the file format is writable
+        if not params.path:
+            return ToolError(
+                message="File path cannot be empty.",
+                brief="Empty file path",
+            )
+
         try:
-            p = KaosPath(params.path)
+            p = KaosPath(params.path).expanduser()
 
-            if not p.is_absolute():
-                return ToolError(
-                    message=(
-                        f"`{params.path}` is not an absolute path. "
-                        "You must provide an absolute path to write a file."
-                    ),
-                    brief="Invalid path",
-                )
-
-            # Validate path safety
-            path_error = await self._validate_path(p)
-            if path_error:
-                return path_error
+            if err := await self._validate_path(p):
+                return err
+            p = p.canonical()
 
             if not await p.parent.exists():
                 return ToolError(
@@ -101,17 +100,23 @@ class WriteFile(CallableTool2[Params]):
             )
             diff_blocks: list[DisplayBlock] = list(
                 build_diff_blocks(
-                    params.path,
+                    str(p),
                     old_text or "",
                     new_text,
                 )
             )
 
+            action = (
+                FileActions.EDIT
+                if is_within_directory(p, self._work_dir)
+                else FileActions.EDIT_OUTSIDE
+            )
+
             # Request approval
             if not await self._approval.request(
                 self.name,
-                FileActions.EDIT,
-                f"Write file `{params.path}`",
+                action,
+                f"Write file `{p}`",
                 display=diff_blocks,
             ):
                 return ToolRejectedError()

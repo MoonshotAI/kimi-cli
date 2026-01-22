@@ -96,26 +96,29 @@ async def test_write_multiline_content(write_file_tool: WriteFile, temp_work_dir
     assert await file_path.read_text() == content
 
 
-async def test_write_with_relative_path(write_file_tool: WriteFile):
-    """Test writing with a relative path (should fail)."""
+async def test_write_with_relative_path(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing with a relative path inside the work directory."""
+    relative_dir = temp_work_dir / "relative" / "path"
+    await relative_dir.mkdir(parents=True, exist_ok=True)
+
     result = await write_file_tool(Params(path="relative/path/file.txt", content="content"))
 
-    assert result.is_error
-    assert "not an absolute path" in result.message
+    assert not result.is_error
+    assert await (temp_work_dir / "relative" / "path" / "file.txt").read_text() == "content"
 
 
 async def test_write_outside_work_directory(write_file_tool: WriteFile, outside_file: Path):
-    """Test writing outside the working directory (should fail)."""
+    """Test writing outside the working directory with an absolute path."""
     result = await write_file_tool(Params(path=str(outside_file), content="content"))
 
-    assert result.is_error
-    assert "outside the working directory" in result.message
+    assert not result.is_error
+    assert outside_file.read_text() == "content"
 
 
 async def test_write_outside_work_directory_with_prefix(
     write_file_tool: WriteFile, temp_work_dir: KaosPath
 ):
-    """Paths sharing the same prefix as work dir should still be rejected."""
+    """Paths sharing the same prefix as work dir should still be writable with absolute paths."""
     base = Path(str(temp_work_dir))
     sneaky_dir = base.parent / f"{base.name}-sneaky"
     sneaky_dir.mkdir(parents=True, exist_ok=True)
@@ -123,8 +126,8 @@ async def test_write_outside_work_directory_with_prefix(
 
     result = await write_file_tool(Params(path=str(sneaky_file), content="content"))
 
-    assert result.is_error
-    assert "outside the working directory" in result.message
+    assert not result.is_error
+    assert sneaky_file.read_text() == "content"
 
 
 async def test_write_to_nonexistent_directory(write_file_tool: WriteFile, temp_work_dir: KaosPath):

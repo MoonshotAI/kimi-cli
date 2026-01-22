@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
+from typing import Literal
 
 from kaos import get_current_kaos
 from kaos.local import local_kaos
@@ -11,7 +12,12 @@ from kaos.path import KaosPath
 from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
+from kimi_cli.skill.flow import Flow, FlowError
+from kimi_cli.skill.flow.d2 import parse_d2_flowchart
+from kimi_cli.skill.flow.mermaid import parse_mermaid_flowchart
 from kimi_cli.utils.frontmatter import parse_frontmatter
+
+SkillType = Literal["standard", "flow"]
 
 
 def get_skills_dir() -> KaosPath:
@@ -25,7 +31,7 @@ def get_builtin_skills_dir() -> Path:
     """
     Get the built-in skills directory path.
     """
-    return Path(__file__).parent / "skills"
+    return Path(__file__).parent.parent / "skills"
 
 
 def get_kimi_skills_dir() -> KaosPath:
@@ -159,7 +165,9 @@ class Skill(BaseModel):
 
     name: str
     description: str
+    type: SkillType = "standard"
     dir: KaosPath
+    flow: Flow | None = None
 
     @property
     def skill_md_file(self) -> KaosPath:
@@ -206,14 +214,109 @@ def parse_skill_text(content: str, *, dir_path: KaosPath) -> Skill:
     """
     frontmatter = parse_frontmatter(content) or {}
 
-    if "name" not in frontmatter:
-        frontmatter["name"] = dir_path.name
-    if "description" not in frontmatter:
-        frontmatter["description"] = "No description provided."
+    name = frontmatter.get("name") or dir_path.name
+    description = frontmatter.get("description") or "No description provided."
+    skill_type = frontmatter.get("type") or "standard"
+    if skill_type not in ("standard", "flow"):
+        raise ValueError(f'Invalid skill type "{skill_type}"')
+    flow = None
+    if skill_type == "flow":
+        try:
+            flow = _parse_flow_from_skill(content)
+        except ValueError as exc:
+            logger.error("Failed to parse flow skill {name}: {error}", name=name, error=exc)
+            skill_type = "standard"
+            flow = None
 
-    return Skill.model_validate(
-        {
-            **frontmatter,
-            "dir": dir_path,
-        }
+    return Skill(
+        name=name,
+        description=description,
+        type=skill_type,
+        dir=dir_path,
+        flow=flow,
     )
+
+
+def _parse_flow_from_skill(content: str) -> Flow:
+    for lang, code in _iter_fenced_codeblocks(content):
+        if lang == "mermaid":
+            return _parse_flow_block(parse_mermaid_flowchart, code)
+        if lang == "d2":
+            return _parse_flow_block(parse_d2_flowchart, code)
+    raise ValueError("Flow skills require a mermaid or d2 code block in SKILL.md.")
+
+
+def _parse_flow_block(parser: Callable[[str], Flow], code: str) -> Flow:
+    try:
+        return parser(code)
+    except FlowError as exc:
+        raise ValueError(f"Invalid flow diagram: {exc}") from exc
+
+
+def _iter_fenced_codeblocks(content: str) -> Iterator[tuple[str, str]]:
+    fence = ""
+    fence_char = ""
+    lang = ""
+    buf: list[str] = []
+    in_block = False
+
+    for line in content.splitlines():
+        stripped = line.lstrip()
+        if not in_block:
+            if match := _parse_fence_open(stripped):
+                fence, fence_char, info = match
+                lang = _normalize_code_lang(info)
+                in_block = True
+                buf = []
+            continue
+
+        if _is_fence_close(stripped, fence_char, len(fence)):
+            yield lang, "\n".join(buf).strip("\n")
+            in_block = False
+            fence = ""
+            fence_char = ""
+            lang = ""
+            buf = []
+            continue
+
+        buf.append(line)
+
+
+def _normalize_code_lang(info: str) -> str:
+    if not info:
+        return ""
+    lang = info.split()[0].strip().lower()
+    if lang.startswith("{") and lang.endswith("}"):
+        lang = lang[1:-1].strip()
+    return lang
+
+
+def _parse_fence_open(line: str) -> tuple[str, str, str] | None:
+    if not line or line[0] not in ("`", "~"):
+        return None
+    fence_char = line[0]
+    count = 0
+    for ch in line:
+        if ch == fence_char:
+            count += 1
+        else:
+            break
+    if count < 3:
+        return None
+    fence = fence_char * count
+    info = line[count:].strip()
+    return fence, fence_char, info
+
+
+def _is_fence_close(line: str, fence_char: str, fence_len: int) -> bool:
+    if not fence_char or not line or line[0] != fence_char:
+        return False
+    count = 0
+    for ch in line:
+        if ch == fence_char:
+            count += 1
+        else:
+            break
+    if count < fence_len:
+        return False
+    return not line[count:].strip()

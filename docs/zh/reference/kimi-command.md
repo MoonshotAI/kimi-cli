@@ -77,57 +77,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 [Ralph](https://ghuntley.com/ralph/) 是一种把 Agent 放进循环的技术：同一条提示词会被反复喂给 Agent，让它围绕一个任务持续迭代。
 
-当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会进入 Ralph 循环模式，基于内置的 Prompt Flow 自动循环执行任务，直到 Agent 输出 `<choice>STOP</choice>` 或达到迭代上限。
-
-::: info 注意
-Ralph 循环与 `--prompt-flow` 选项互斥，不能同时使用。
-:::
-
-## Prompt Flow
-
-| 选项 | 说明 |
-|------|------|
-| `--prompt-flow PATH` | 加载 D2（`.d2`）或 Mermaid（`.mmd`）流程图文件作为 Prompt Flow |
-
-Prompt Flow 是一种基于流程图的提示词工作流描述方式，每个节点对应一次对话轮次。加载后，可以通过 `/begin` 斜杠命令启动流程执行。目前支持 D2 和 Mermaid 两种流程图格式。可以在 [D2 Playground](https://play.d2lang.com) 编辑和预览 D2 流程图，在 [Mermaid Playground](https://www.mermaidchart.com/play) 编辑和预览 Mermaid 流程图。
-
-D2 流程图示例（`example.d2` 文件）：
-
-```
-BEGIN -> B -> C
-B: 分析现有代码，为 XXX 功能在 design.md 文件中编写设计文档
-C: Review 一遍 design.md，看看是否足够详细
-C -> B: 否
-C -> D: 是
-D: 开始实现
-D -> END
-```
-
-Mermaid 流程图示例（`example.mmd` 文件）：
-
-```
-flowchart TD
-A([BEGIN]) --> B[分析现有代码，为 XXX 功能在 design.md 文件中编写设计文档]
-B --> C{Review 一遍 design.md，看看是否足够详细}
-C -->|是| D[开始实现]
-C -->|否| B
-D --> F([END])
-```
-
-```mermaid
-flowchart TD
-A([BEGIN]) --> B[分析现有代码，为 XXX 功能在 design.md 文件中编写设计文档]
-B --> C{Review 一遍 design.md，看看是否足够详细}
-C -->|是| D[开始实现]
-C -->|否| B
-D --> F([END])
-```
-
-在节点处理过程中，分支节点会要求 Agent 输出 `<choice>分支名</choice>` 来选择下一个节点。
-
-::: info 注意
-`--prompt-flow` 与 Ralph 循环模式互斥，不能同时使用。
-:::
+当 `--max-ralph-iterations` 非 `0` 时，Kimi CLI 会进入 Ralph 循环模式，自动循环执行任务，直到 Agent 输出 `<choice>STOP</choice>` 或达到迭代上限。
 
 ## UI 模式
 

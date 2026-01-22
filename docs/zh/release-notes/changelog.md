@@ -4,6 +4,33 @@
 
 ## 未发布
 
+- Shell：修复斜杠命令自动补全在输入完整命令/别名时仍显示建议的问题
+
+## 0.83 (2026-01-21)
+
+- Tool：添加 `ReadMediaFile` 工具用于读取图片/视频文件；`ReadFile` 现在仅用于读取文本文件
+- Skills：Flow Skills 现在也注册为 `/skill:<skill-name>` 命令（除了 `/flow:<skill-name>`）
+
+## 0.82 (2026-01-21)
+
+- Tool：`WriteFile` 和 `StrReplaceFile` 工具支持使用绝对路径编辑/写入工作目录外的文件
+- Tool：使用 Kimi 供应商时，视频文件上传到 Kimi Files API，使用 `ms://` 引用替代 inline data URL
+- Config：添加 `reserved_context_size` 配置项，自定义自动压缩触发阈值（默认 50000 tokens）
+
+## 0.81 (2026-01-21)
+
+- Skills：添加 Flow Skill 类型，在 SKILL.md 中内嵌 Agent Flow（Mermaid/D2），通过 `/flow:<skill-name>` 命令调用
+- CLI：移除 `--prompt-flow` 选项，改用 Flow Skills
+- Core：用 `/flow:<skill-name>` 命令替代原来的 `/begin` 命令
+
+## 0.80 (2026-01-20)
+
+- Wire：添加 `initialize` 方法，用于交换客户端/服务端信息、注册外部工具和公布斜杠命令
+- Wire：支持通过 Wire 协议调用外部工具
+- Wire：将 `ApprovalRequestResolved` 重命名为 `ApprovalResponse`（向后兼容）
+
+## 0.79 (2026-01-19)
+
 - Skills：添加项目级 Skills 支持，从 `.agents/skills/`（或 `.kimi/skills/`、`.claude/skills/`）发现
 - Skills：统一 Skills 发现机制，采用分层加载（内置 → 用户 → 项目）；用户级 Skills 现在优先使用 `~/.config/agents/skills/`
 - Shell：斜杠命令自动补全支持模糊匹配

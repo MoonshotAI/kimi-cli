@@ -127,32 +127,42 @@ async def test_replace_no_match(str_replace_file_tool: StrReplaceFile, temp_work
     assert await file_path.read_text() == original_content  # Content unchanged
 
 
-async def test_replace_with_relative_path(str_replace_file_tool: StrReplaceFile):
-    """Test replacing with a relative path (should fail)."""
+async def test_replace_with_relative_path(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Test replacing with a relative path inside the work directory."""
+    relative_dir = temp_work_dir / "relative" / "path"
+    await relative_dir.mkdir(parents=True, exist_ok=True)
+    file_path = relative_dir / "file.txt"
+    await file_path.write_text("old content")
+
     result = await str_replace_file_tool(
         Params(path="relative/path/file.txt", edit=Edit(old="old", new="new"))
     )
 
-    assert result.is_error
-    assert "not an absolute path" in result.message
+    assert not result.is_error
+    assert await file_path.read_text() == "new content"
 
 
 async def test_replace_outside_work_directory(
     str_replace_file_tool: StrReplaceFile, outside_file: Path
 ):
-    """Test replacing outside the working directory (should fail)."""
+    """Test replacing outside the working directory with an absolute path."""
+    outside_file.write_text("old content", encoding="utf-8")
+
     result = await str_replace_file_tool(
         Params(path=str(outside_file), edit=Edit(old="old", new="new"))
     )
 
-    assert result.is_error
-    assert "outside the working directory" in result.message
+    assert not result.is_error
+    assert outside_file.read_text(encoding="utf-8") == "new content"
 
 
 async def test_replace_outside_work_directory_with_prefix(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):
-    """Paths sharing the work dir prefix but outside should be blocked."""
+    """Paths sharing the work dir prefix but outside should still be editable
+    with absolute paths."""
     base = Path(str(temp_work_dir))
     sneaky_dir = base.parent / f"{base.name}-sneaky"
     sneaky_dir.mkdir(parents=True, exist_ok=True)
@@ -163,8 +173,8 @@ async def test_replace_outside_work_directory_with_prefix(
         Params(path=str(sneaky_file), edit=Edit(old="content", new="new"))
     )
 
-    assert result.is_error
-    assert "outside the working directory" in result.message
+    assert not result.is_error
+    assert sneaky_file.read_text() == "new"
 
 
 async def test_replace_nonexistent_file(

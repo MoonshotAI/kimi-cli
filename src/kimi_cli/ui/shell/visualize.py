@@ -22,6 +22,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.diff import format_unified_diff
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
@@ -29,7 +30,7 @@ from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
-    ApprovalRequestResolved,
+    ApprovalResponse,
     BriefDisplayBlock,
     CompactionBegin,
     CompactionEnd,
@@ -45,6 +46,7 @@ from kimi_cli.wire.types import (
     TodoDisplayBlock,
     ToolCall,
     ToolCallPart,
+    ToolCallRequest,
     ToolResult,
     ToolReturnValue,
     TurnBegin,
@@ -260,7 +262,7 @@ class _ApprovalContentBlock(NamedTuple):
 class _ApprovalRequestPanel:
     def __init__(self, request: ApprovalRequest):
         self.request = request
-        self.options: list[tuple[str, ApprovalRequest.Response]] = [
+        self.options: list[tuple[str, ApprovalResponse.Kind]] = [
             ("Approve once", "approve"),
             ("Approve for this session", "approve_for_session"),
             ("Reject, tell Kimi CLI what to do instead", "reject"),
@@ -383,7 +385,7 @@ class _ApprovalRequestPanel:
         """Move selection down."""
         self.selected_index = (self.selected_index + 1) % len(self.options)
 
-    def get_selected_response(self) -> ApprovalRequest.Response:
+    def get_selected_response(self) -> ApprovalResponse.Kind:
         """Get the approval response based on selected option."""
         return self.options[self.selected_index][1]
 
@@ -580,13 +582,15 @@ class _LiveView:
                 self.append_tool_call_part(msg)
             case ToolResult():
                 self.append_tool_result(msg)
-            case SubagentEvent():
-                self.handle_subagent_event(msg)
-            case ApprovalRequestResolved():
+            case ApprovalResponse():
                 # we don't need to handle this because the request is resolved on UI
                 pass
+            case SubagentEvent():
+                self.handle_subagent_event(msg)
             case ApprovalRequest():
                 self.request_approval(msg)
+            case ToolCallRequest():
+                logger.warning("Unexpected ToolCallRequest in shell UI: {msg}", msg=msg)
 
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
         # handle ESC key to cancel the run

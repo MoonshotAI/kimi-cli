@@ -14,7 +14,7 @@ kimi --agent okabe
 
 The default agent, suitable for general use. Enabled tools:
 
-`Task`, `SetTodoList`, `Shell`, `ReadFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`
+`Task`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`
 
 ### `okabe`
 
@@ -191,13 +191,22 @@ The following are all built-in tools in Kimi CLI.
 ### `ReadFile`
 
 - **Path**: `kimi_cli.tools.file:ReadFile`
-- **Description**: Read file content. Supports text, image, and video files. For text files, max 1000 lines per read, max 2000 characters per line; for image/video files, max 80MB. Files outside working directory require absolute paths.
+- **Description**: Read text file content. Max 1000 lines per read, max 2000 characters per line. Files outside working directory require absolute paths.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `path` | string | File path |
-| `line_offset` | int | Starting line number, default 1 (text files only) |
-| `n_lines` | int | Number of lines to read, default/max 1000 (text files only) |
+| `line_offset` | int | Starting line number, default 1 |
+| `n_lines` | int | Number of lines to read, default/max 1000 |
+
+### `ReadMediaFile`
+
+- **Path**: `kimi_cli.tools.file:ReadMediaFile`
+- **Description**: Read image or video files. Max file size 100MB. Only available when the model supports image/video input. Files outside working directory require absolute paths.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | string | File path |
 
 ### `Glob`
 
@@ -233,7 +242,7 @@ The following are all built-in tools in Kimi CLI.
 ### `WriteFile`
 
 - **Path**: `kimi_cli.tools.file:WriteFile`
-- **Description**: Write files. Can only write to files within working directory, must use absolute paths, requires user approval.
+- **Description**: Write files. Requires user approval. Absolute paths are required when writing files outside the working directory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -244,7 +253,7 @@ The following are all built-in tools in Kimi CLI.
 ### `StrReplaceFile`
 
 - **Path**: `kimi_cli.tools.file:StrReplaceFile`
-- **Description**: Edit files using string replacement. Can only edit files within working directory, must use absolute paths, requires user approval.
+- **Description**: Edit files using string replacement. Requires user approval. Absolute paths are required when editing files outside the working directory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -307,8 +316,9 @@ The following are all built-in tools in Kimi CLI.
 
 **Working directory restrictions**
 
-- File writing and editing can only be done within the working directory
-- Files outside working directory can be read, but require absolute paths
+- File reading and writing are typically done within the working directory
+- Absolute paths are required when reading files outside the working directory
+- Write and edit operations require user approval; absolute paths are required when operating on files outside the working directory
 
 **Approval mechanism**
 

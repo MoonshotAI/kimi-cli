@@ -26,45 +26,167 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.1`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
-**消息格式**
+### 协议类型定义
 
-每条消息是一行 JSON，符合 JSON-RPC 2.0 规范：
+```typescript
+/** JSON-RPC 2.0 请求消息基础结构 */
+interface JSONRPCRequest<Method extends string, Params> {
+  jsonrpc: "2.0"
+  method: Method
+  id: string
+  params: Params
+}
+
+/** JSON-RPC 2.0 通知消息（无 id，无需响应） */
+interface JSONRPCNotification<Method extends string, Params> {
+  jsonrpc: "2.0"
+  method: Method
+  params: Params
+}
+
+/** JSON-RPC 2.0 成功响应 */
+interface JSONRPCSuccessResponse<Result> {
+  jsonrpc: "2.0"
+  id: string
+  result: Result
+}
+
+/** JSON-RPC 2.0 错误响应 */
+interface JSONRPCErrorResponse {
+  jsonrpc: "2.0"
+  id: string
+  error: JSONRPCError
+}
+
+interface JSONRPCError {
+  code: number
+  message: string
+  data?: unknown
+}
+```
+
+### `initialize`
+
+::: info 新增于 Wire 1.1
+旧版 Client 可跳过此请求，直接发送 `prompt`。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+可选握手请求，用于协商协议版本、提交外部工具定义并获取斜杠命令列表。
+
+```typescript
+/** initialize 请求参数 */
+interface InitializeParams {
+  /** 协议版本 */
+  protocol_version: string
+  /** Client 信息，可选 */
+  client?: ClientInfo
+  /** 外部工具定义列表，可选 */
+  external_tools?: ExternalTool[]
+}
+
+interface ClientInfo {
+  name: string
+  version?: string
+}
+
+interface ExternalTool {
+  /** 工具名称，不可与内置工具冲突 */
+  name: string
+  /** 工具描述 */
+  description: string
+  /** JSON Schema 格式的参数定义 */
+  parameters: JSONSchema
+}
+
+/** initialize 响应结果 */
+interface InitializeResult {
+  /** 协议版本 */
+  protocol_version: string
+  /** Server 信息 */
+  server: ServerInfo
+  /** 可用的斜杠命令列表 */
+  slash_commands: SlashCommandInfo[]
+  /** 外部工具注册结果，仅当请求中包含 external_tools 时返回 */
+  external_tools?: ExternalToolsResult
+}
+
+interface ServerInfo {
+  name: string
+  version: string
+}
+
+interface SlashCommandInfo {
+  name: string
+  description: string
+  aliases: string[]
+}
+
+interface ExternalToolsResult {
+  /** 成功注册的工具名称列表 */
+  accepted: string[]
+  /** 注册失败的工具及原因 */
+  rejected: Array<{ name: string; reason: string }>
+}
+```
+
+**请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "...", "params": {...}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.1", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+```
+
+若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。
 
 ### `prompt`
 
 - **方向**：Client → Agent
 - **类型**：Request（需要响应）
 
-发送用户输入并运行 Agent 轮次。调用后 Agent 开始处理，直到轮次完成才返回响应。
+发送用户输入并运行 Agent 轮次。调用后 Agent 开始处理，期间会发送 `event` 通知和 `request` 请求，直到轮次完成才返回响应。
 
-```json
-{"jsonrpc": "2.0", "method": "prompt", "id": "1", "params": {"user_input": "你好"}}
+```typescript
+/** prompt 请求参数 */
+interface PromptParams {
+  /** 用户输入，可以是纯文本或内容片段数组 */
+  user_input: string | ContentPart[]
+}
+
+/** prompt 响应结果 */
+interface PromptResult {
+  /** 轮次结束状态 */
+  status: "finished" | "cancelled" | "max_steps_reached"
+  /** 当 status 为 max_steps_reached 时，包含已执行的步数 */
+  steps?: number
+}
 ```
 
-`user_input` 可以是字符串或 `ContentPart` 数组。
-
-**成功响应**
+**请求示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "1", "result": {"status": "finished"}}
+{"jsonrpc": "2.0", "method": "prompt", "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "params": {"user_input": "你好"}}
 ```
 
-| status | 说明 |
-|--------|------|
-| `finished` | 轮次正常完成 |
-| `cancelled` | 轮次被 `cancel` 取消 |
-| `max_steps_reached` | 达到最大步数限制，响应中额外包含 `steps` 字段 |
-
-**错误响应**
+**成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "1", "error": {"code": -32001, "message": "LLM is not set"}}
+{"jsonrpc": "2.0", "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished"}}
+```
+
+**错误响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32001, "message": "LLM is not set"}}
 ```
 
 | code | 说明 |
@@ -74,15 +196,6 @@ Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通�
 | `-32002` | 不支持指定的 LLM |
 | `-32003` | LLM 服务错误 |
 
-此外，所有请求都可能返回 JSON-RPC 2.0 标准错误：
-
-| code | 说明 |
-|------|------|
-| `-32700` | 无效的 JSON 格式 |
-| `-32600` | 无效的请求（如发送了不支持的方法） |
-| `-32602` | 无效的方法参数 |
-| `-32603` | 内部错误 |
-
 ### `cancel`
 
 - **方向**：Client → Agent
@@ -90,22 +203,32 @@ Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通�
 
 取消当前正在进行的 Agent 轮次。调用后，正在进行的 `prompt` 请求会返回 `{"status": "cancelled"}`。
 
-```json
-{"jsonrpc": "2.0", "method": "cancel", "id": "2"}
+```typescript
+/** cancel 请求无参数，params 可以是空对象或省略 */
+type CancelParams = Record<string, never>
+
+/** cancel 响应结果为空对象 */
+type CancelResult = Record<string, never>
 ```
 
-**成功响应**
+**请求示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "2", "result": {}}
+{"jsonrpc": "2.0", "method": "cancel", "id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8"}
 ```
 
-**错误响应**
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8", "result": {}}
+```
+
+**错误响应示例**
 
 如果当前没有轮次在进行：
 
 ```json
-{"jsonrpc": "2.0", "id": "2", "error": {"code": -32000, "message": "No agent turn is in progress"}}
+{"jsonrpc": "2.0", "id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
 ### `event`
@@ -113,7 +236,17 @@ Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通�
 - **方向**：Agent → Client
 - **类型**：Notification（无需响应）
 
-Agent 在轮次进行过程中发出的事件。没有 `id` 字段，Client 无需响应。
+Agent 在轮次进行过程中发出的事件通知。没有 `id` 字段，Client 无需响应。
+
+```typescript
+/** event 通知参数，包含序列化后的 Wire 消息 */
+interface EventParams {
+  type: string
+  payload: object
+}
+```
+
+**示例**
 
 ```json
 {"jsonrpc": "2.0", "method": "event", "params": {"type": "ContentPart", "payload": {"type": "text", "text": "Hello"}}}
@@ -124,45 +257,77 @@ Agent 在轮次进行过程中发出的事件。没有 `id` 字段，Client 无�
 - **方向**：Agent → Client
 - **类型**：Request（需要响应）
 
-Agent 向 Client 发出的请求，目前仅用于审批请求。Client 必须响应后 Agent 才能继续执行。
+Agent 向 Client 发出的请求，用于审批确认或外部工具调用。Client 必须响应后 Agent 才能继续执行。
 
-```json
-{"jsonrpc": "2.0", "method": "request", "id": "req-1", "params": {"type": "ApprovalRequest", "payload": {"id": "req-1", "tool_call_id": "tc-1", "sender": "Shell", "action": "run shell command", "description": "Run command `ls`", "display": []}}}
+```typescript
+/** request 请求参数，包含序列化后的 Wire 消息 */
+interface RequestParams {
+  type: "ApprovalRequest" | "ToolCallRequest"
+  payload: ApprovalRequest | ToolCallRequest
+}
 ```
 
-**响应**
-
-Client 需要返回审批结果：
+**审批请求示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "req-1", "result": {"request_id": "req-1", "response": "approve"}}
+{"jsonrpc": "2.0", "method": "request", "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479", "params": {"type": "ApprovalRequest", "payload": {"id": "approval-1", "tool_call_id": "tc-1", "sender": "Shell", "action": "run shell command", "description": "Run command `ls`", "display": []}}}
 ```
 
-`response` 可选值：
+**审批响应示例**
 
-| response | 说明 |
-|----------|------|
-| `approve` | 批准本次操作 |
-| `approve_for_session` | 批准本会话中的同类操作 |
-| `reject` | 拒绝操作 |
+```json
+{"jsonrpc": "2.0", "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479", "result": {"request_id": "approval-1", "response": "approve"}}
+```
+
+**外部工具调用请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "request", "id": "a3bb189e-8bf9-3888-9912-ace4e6543002", "params": {"type": "ToolCallRequest", "payload": {"id": "tc-1", "name": "open_in_ide", "arguments": "{\"path\":\"README.md\"}"}}}
+```
+
+**外部工具调用响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "a3bb189e-8bf9-3888-9912-ace4e6543002", "result": {"tool_call_id": "tc-1", "return_value": {"is_error": false, "output": "Opened", "message": "Opened README.md in IDE", "display": []}}}
+```
+
+### 标准错误码
+
+所有请求都可能返回 JSON-RPC 2.0 标准错误：
+
+| code | 说明 |
+|------|------|
+| `-32700` | 无效的 JSON 格式 |
+| `-32600` | 无效的请求（如缺少必要字段） |
+| `-32601` | 方法不存在 |
+| `-32602` | 无效的方法参数 |
+| `-32603` | 内部错误 |
 
 ## Wire 消息类型
 
 Wire 消息通过 `event` 和 `request` 方法传递，格式为 `{"type": "...", "payload": {...}}`。以下使用 TypeScript 风格的类型定义描述所有消息类型。
 
 ```typescript
-// 所有 Wire 消息的联合类型
+/** 所有 Wire 消息的联合类型 */
 type WireMessage = Event | Request
 
-// 事件：通过 event 方法发送，无需响应
+/** 事件：通过 event 方法发送，无需响应 */
 type Event =
-  | TurnBegin | StepBegin | StepInterrupted
-  | CompactionBegin | CompactionEnd | StatusUpdate
-  | ContentPart | ToolCall | ToolCallPart | ToolResult
-  | SubagentEvent | ApprovalRequestResolved
+  | TurnBegin
+  | StepBegin
+  | StepInterrupted
+  | CompactionBegin
+  | CompactionEnd
+  | StatusUpdate
+  | ContentPart
+  | ToolCall
+  | ToolCallPart
+  | ToolResult
+  | ApprovalResponse
+  | SubagentEvent
 
-// 请求：通过 request 方法发送，需要响应
-type Request = ApprovalRequest
+/** 请求：通过 request 方法发送，需要响应 */
+type Request = ApprovalRequest | ToolCallRequest
 ```
 
 ### `TurnBegin`
@@ -214,13 +379,13 @@ interface StatusUpdate {
 }
 
 interface TokenUsage {
-  /** 不包括 `input_cache_read` 和 `input_cache_creation` 的输入 token 数。 */
+  /** 不包括 input_cache_read 和 input_cache_creation 的输入 token 数 */
   input_other: number
-  /** 总输出 token 数。 */
+  /** 总输出 token 数 */
   output: number
   /** 缓存的输入 token 数 */
   input_cache_read: number
-  /** 用于缓存创建的输入 token 数。目前仅 Anthropic API 支持此字段。 */
+  /** 用于缓存创建的输入 token 数，目前仅 Anthropic API 支持此字段 */
   input_cache_creation: number
 }
 ```
@@ -230,7 +395,12 @@ interface TokenUsage {
 消息内容片段。序列化时 `type` 为 `"ContentPart"`，具体类型由 `payload.type` 区分。
 
 ```typescript
-type ContentPart = TextPart | ThinkPart | ImageURLPart | AudioURLPart | VideoURLPart
+type ContentPart =
+  | TextPart
+  | ThinkPart
+  | ImageURLPart
+  | AudioURLPart
+  | VideoURLPart
 
 interface TextPart {
   type: "text"
@@ -334,6 +504,23 @@ interface ToolReturnValue {
 }
 ```
 
+### `ApprovalResponse`
+
+::: info 重命名于 Wire 1.1
+原名 `ApprovalRequestResolved`，旧名称仍可使用以保持向后兼容。
+:::
+
+审批响应事件，表示审批请求已完成。
+
+```typescript
+interface ApprovalResponse {
+  /** 审批请求 ID */
+  request_id: string
+  /** 审批结果 */
+  response: "approve" | "approve_for_session" | "reject"
+}
+```
+
 ### `SubagentEvent`
 
 子 Agent 事件。
@@ -344,19 +531,6 @@ interface SubagentEvent {
   task_tool_call_id: string
   /** 子 Agent 产生的事件，嵌套的 Wire 消息格式 */
   event: { type: string; payload: object }
-}
-```
-
-### `ApprovalRequestResolved`
-
-审批请求已解决。
-
-```typescript
-interface ApprovalRequestResolved {
-  /** 已解决的审批请求 ID */
-  request_id: string
-  /** 审批结果 */
-  response: "approve" | "approve_for_session" | "reject"
 }
 ```
 
@@ -381,13 +555,56 @@ interface ApprovalRequest {
 }
 ```
 
+**响应格式**
+
+Client 需要返回 `ApprovalResponse` 作为响应结果：
+
+```typescript
+interface ApprovalResponse {
+  request_id: string
+  response: "approve" | "approve_for_session" | "reject"
+}
+```
+
+| response | 说明 |
+|----------|------|
+| `approve` | 批准本次操作 |
+| `approve_for_session` | 批准本会话中的同类操作 |
+| `reject` | 拒绝操作 |
+
+### `ToolCallRequest`
+
+外部工具调用请求，通过 `request` 方法发送。当 Agent 调用 `initialize` 时注册的外部工具时，会发送此请求。Client 必须执行工具并返回 `ToolResult`。
+
+```typescript
+interface ToolCallRequest {
+  /** 工具调用 ID */
+  id: string
+  /** 工具名称 */
+  name: string
+  /** JSON 格式的参数字符串，JSON 中可能不存在 */
+  arguments?: string | null
+}
+```
+
+**响应格式**
+
+Client 需要返回 `ToolResult` 作为响应结果：
+
+```typescript
+interface ToolResult {
+  tool_call_id: string
+  return_value: ToolReturnValue
+}
+```
+
 ### `DisplayBlock`
 
 `ToolResult` 和 `ApprovalRequest` 的 `display` 字段使用的显示块类型。
 
 ```typescript
 type DisplayBlock =
-  UnknownDisplayBlock
+  | UnknownDisplayBlock
   | BriefDisplayBlock
   | DiffDisplayBlock
   | TodoDisplayBlock
