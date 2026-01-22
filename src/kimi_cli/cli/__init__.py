@@ -432,7 +432,13 @@ def kimi(
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
-    async def _run(session_id: str | None) -> bool:
+    async def _run(session_id: str | None) -> tuple[Session, bool]:
+        """
+        Create/load session and run the CLI instance.
+
+        Returns:
+            The session and whether the run succeeded.
+        """
         if session_id is not None:
             session = await Session.find(work_dir, session_id)
             if session is None:
@@ -487,44 +493,48 @@ def kimi(
                 await instance.run_wire_stdio()
                 succeeded = True
 
-        if succeeded:
-            metadata = load_metadata()
+        return session, succeeded
 
-            # Update work_dir metadata with last session
-            work_dir_meta = metadata.get_work_dir_meta(session.work_dir)
+    async def _post_run(last_session: Session, succeeded: bool) -> None:
+        if not succeeded:
+            return
 
-            if work_dir_meta is None:
-                logger.warning(
-                    "Work dir metadata missing when marking last session, recreating: {work_dir}",
-                    work_dir=session.work_dir,
-                )
-                work_dir_meta = metadata.new_work_dir_meta(session.work_dir)
+        metadata = load_metadata()
 
-            if session.is_empty():
-                logger.info(
-                    "Session {session_id} has empty context, removing it",
-                    session_id=session.id,
-                )
-                await session.delete()
-                if work_dir_meta.last_session_id == session.id:
-                    work_dir_meta.last_session_id = None
-            else:
-                work_dir_meta.last_session_id = session.id
+        # Update work_dir metadata with last session
+        work_dir_meta = metadata.get_work_dir_meta(last_session.work_dir)
 
-            save_metadata(metadata)
+        if work_dir_meta is None:
+            logger.warning(
+                "Work dir metadata missing when marking last session, recreating: {work_dir}",
+                work_dir=last_session.work_dir,
+            )
+            work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
 
-        return succeeded
+        if last_session.is_empty():
+            logger.info(
+                "Session {session_id} has empty context, removing it",
+                session_id=last_session.id,
+            )
+            await last_session.delete()
+            if work_dir_meta.last_session_id == last_session.id:
+                work_dir_meta.last_session_id = None
+        else:
+            work_dir_meta.last_session_id = last_session.id
 
-    while True:
-        try:
-            succeeded = asyncio.run(_run(session_id))
-            session_id = None
-            if not succeeded:
-                raise typer.Exit(code=1)
-            break
-        except Reload as e:
-            session_id = e.session_id
-            continue
+        save_metadata(metadata)
+
+    async def _reload_loop(session_id: str | None):
+        while True:
+            try:
+                last_session, succeeded = await _run(session_id)
+                break
+            except Reload as e:
+                session_id = e.session_id
+                continue
+        await _post_run(last_session, succeeded)
+
+    asyncio.run(_reload_loop(session_id))
 
 
 cli.add_typer(info_cli, name="info")

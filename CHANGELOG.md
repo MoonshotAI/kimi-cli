@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 - Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
 - Tool: Treat SVG files as text instead of images
 - Flow: Support D2 markdown block strings (`|md` syntax) for multiline node labels in flow skills
+- Core: Fix possible "event loop is closed" error after running `/reload`, `/setup`, or `/clear`
+- Core: Fix panic when `/clear` is used in a continued session
 
 ## 0.83 (2026-01-21)
 

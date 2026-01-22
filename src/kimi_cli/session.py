@@ -52,6 +52,8 @@ class Session:
 
     def is_empty(self) -> bool:
         """Whether the session has any context history."""
+        if self.wire_file.exists() and self.wire_file.stat().st_size > 0:
+            return False
         try:
             return self.context_file.stat().st_size == 0
         except FileNotFoundError:

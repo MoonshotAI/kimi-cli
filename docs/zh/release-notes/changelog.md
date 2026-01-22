@@ -8,6 +8,8 @@
 - Shell：修复斜杠命令自动补全在输入完整命令/别名时仍显示建议的问题
 - Tool：将 SVG 文件作为文本而非图片处理
 - Flow：支持 D2 markdown 块字符串（`|md` 语法），用于 Flow Skill 中的多行节点标签
+- Core：修复运行 `/reload`、`/setup` 或 `/clear` 后可能出现的 "event loop is closed" 错误
+- Core：修复在续接会话中使用 `/clear` 时的崩溃问题
 
 ## 0.83 (2026-01-21)
 
