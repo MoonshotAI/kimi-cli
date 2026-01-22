@@ -6,6 +6,7 @@ This page documents the changes in each Kimi CLI release.
 
 - Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
 - Tool: Treat SVG files as text instead of images
+- Flow: Support D2 markdown block strings (`|md` syntax) for multiline node labels in flow skills
 
 ## 0.83 (2026-01-21)
 
