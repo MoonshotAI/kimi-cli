@@ -55,7 +55,6 @@ PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
 
 # Prompt stashing constants
-_MAX_STASH_SIZE = 10
 _MAX_STASH_ENTRY_BYTES = 10 * 1024  # 10KB limit per entry
 
 
@@ -534,8 +533,8 @@ class CustomPromptSession:
         self._thinking = thinking
         self._attachment_parts: dict[str, ContentPart] = {}
         """Mapping from attachment id to ContentPart."""
-        self._stash: deque[str] = deque(maxlen=_MAX_STASH_SIZE)
-        """Stack for stashing prompts temporarily."""
+        self._stash: str | None = None
+        """Single-slot stash for temporarily saved prompts."""
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -605,36 +604,28 @@ class CustomPromptSession:
             buff.text = "/help"
             buff.validate_and_handle()
 
-        @_kb.add("c-s", eager=True)
+        @_kb.add("c-q", eager=True)
         def _(event: KeyPressEvent) -> None:
-            """Stash the current input buffer."""
+            """Toggle prompt stashing (stash when text exists, restore when empty)."""
             text = event.current_buffer.text.strip()
-            if not text:
-                toast("Nothing to stash")
-            elif len(text.encode("utf-8")) > _MAX_STASH_ENTRY_BYTES:
-                toast("Input too large to stash (max 10KB)")
-            else:
-                self._stash.append(text)
-                event.current_buffer.reset()
-                toast(f"Stashed ({len(self._stash)}/{_MAX_STASH_SIZE})")
-            event.app.invalidate()
-
-        shortcut_hints.append("ctrl-s: stash")
-
-        @_kb.add("c-r", eager=True)
-        def _(event: KeyPressEvent) -> None:
-            """Restore the most recently stashed input."""
-            if self._stash:
-                stashed = self._stash.pop()
+            if text:
+                if len(text.encode("utf-8")) > _MAX_STASH_ENTRY_BYTES:
+                    toast("Input too large to stash (max 10KB)")
+                else:
+                    self._stash = text
+                    event.current_buffer.reset()
+                    toast("Stashed - auto-restores after submit")
+            elif self._stash:
+                stashed = self._stash
+                self._stash = None
                 event.current_buffer.text = stashed
                 event.current_buffer.cursor_position = len(stashed)
-                remaining = len(self._stash)
-                toast(f"Restored ({remaining} remaining)" if remaining else "Restored (stash empty)")
+                toast("Restored")
             else:
-                toast("No stashed prompts")
+                toast("No stashed prompt")
             event.app.invalidate()
 
-        shortcut_hints.append("ctrl-r: restore")
+        shortcut_hints.append("ctrl-q: stash/pop")
 
         self._shortcut_hints = shortcut_hints
         self._session = PromptSession[str](
@@ -662,7 +653,10 @@ class CustomPromptSession:
         symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
         if self._mode == PromptMode.AGENT and self._thinking:
             symbol = PROMPT_SYMBOL_THINKING
-        return FormattedText([("bold", f"{getpass.getuser()}@{KaosPath.cwd().name}{symbol} ")])
+        stash_indicator = "📌" if self._stash else ""
+        return FormattedText(
+            [("bold", f"{getpass.getuser()}@{KaosPath.cwd().name}{stash_indicator}{symbol} ")]
+        )
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
@@ -709,7 +703,7 @@ class CustomPromptSession:
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
         self._attachment_parts.clear()
-        self._stash.clear()
+        self._stash = None
 
     def _try_paste_image(self, event: KeyPressEvent) -> bool:
         """Try to paste an image from the clipboard. Return True if successful."""
@@ -783,6 +777,15 @@ class CustomPromptSession:
 
         if remaining_command.strip():
             content.append(TextPart(text=remaining_command.strip()))
+
+        if self._stash:
+            stashed = self._stash
+            self._stash = None
+            self._session.default_buffer.text = stashed
+            self._session.default_buffer.cursor_position = len(stashed)
+            app = get_app_or_none()
+            if app is not None:
+                app.invalidate()
 
         return UserInput(
             mode=self._mode,
