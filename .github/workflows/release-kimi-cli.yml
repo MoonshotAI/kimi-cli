@@ -318,7 +318,7 @@ jobs:
           import tarfile
           import zipfile
 
-          tag = os.environ["TAG"].replace("/", "-")
+          tag = os.environ["TAG"]
           target = os.environ["TARGET"]
 
           dist_dir = pathlib.Path("dist")
@@ -361,7 +361,7 @@ jobs:
           import tarfile
           import zipfile
 
-          tag = os.environ["TAG"].replace("/", "-")
+          tag = os.environ["TAG"]
           target = os.environ["TARGET"]
 
           dist_dir = pathlib.Path("dist")
