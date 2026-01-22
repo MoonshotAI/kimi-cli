@@ -307,7 +307,8 @@ async def clear(app: Shell, args: str):
     if _ensure_kimi_soul(app) is None:
         return
     await app.run_soul_command("/clear")
-    raise Reload()
+    # Force creating a new session, ignoring --continue flag
+    raise Reload(session_id=None, force_new_session=True)
 
 
 @registry.command(name="sessions", aliases=["resume"])

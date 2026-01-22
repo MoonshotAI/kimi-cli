@@ -17,9 +17,10 @@ from .mcp import cli as mcp_cli
 class Reload(Exception):
     """Reload configuration."""
 
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None, *, force_new_session: bool = False):
         super().__init__("reload")
         self.session_id = session_id
+        self.force_new_session = force_new_session
 
 
 cli = typer.Typer(
@@ -432,7 +433,7 @@ def kimi(
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
-    async def _run(session_id: str | None) -> bool:
+    async def _run(session_id: str | None, force_new_session: bool = False) -> bool:
         if session_id is not None:
             session = await Session.find(work_dir, session_id)
             if session is None:
@@ -441,7 +442,7 @@ def kimi(
                 )
                 session = await Session.create(work_dir, session_id)
             logger.info("Switching to session: {session_id}", session_id=session.id)
-        elif continue_:
+        elif continue_ and not force_new_session:
             session = await Session.continue_(work_dir)
             if session is None:
                 raise typer.BadParameter(
@@ -515,15 +516,18 @@ def kimi(
 
         return succeeded
 
+    force_new_session = False
     while True:
         try:
-            succeeded = asyncio.run(_run(session_id))
+            succeeded = asyncio.run(_run(session_id, force_new_session=force_new_session))
             session_id = None
+            force_new_session = False
             if not succeeded:
                 raise typer.Exit(code=1)
             break
         except Reload as e:
             session_id = e.session_id
+            force_new_session = e.force_new_session
             continue
 
 
