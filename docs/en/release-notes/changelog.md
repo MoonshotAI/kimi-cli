@@ -4,6 +4,9 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Kosong: Add `ScriptedEchoChatProvider` for scripted conversation simulation in end-to-end testing
+- Kosong: Refactor Echo DSL logic into separate `echo_dsl.py` module
+- Test: Add end-to-end tests using scripted echo provider for basic interactions and media processing
 - Build: Add cross-platform standalone binary builds for Windows, macOS (with code signing and notarization), and Linux (x86_64 and ARM64)
 - Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
 - Tool: Treat SVG files as text instead of images
