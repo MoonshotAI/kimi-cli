@@ -237,11 +237,30 @@ D: Start implementation
 D -> END
 ```
 
-**Executing a flow skill**
+For multiline labels, you can use D2's block string syntax (`|md`):
 
-```sh
-# Execute in Kimi CLI
-/flow:code-review
+```
+BEGIN -> step -> END
+step: |md
+  # Detailed instructions
+
+  1. Analyze code structure
+  2. Check for potential issues
+  3. Generate report
+|
 ```
 
-After execution, the Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node.
+**Executing a flow skill**
+
+Flow skills can be invoked in two ways:
+
+- `/flow:<name>`: Execute the flow. The Agent will start from the `BEGIN` node and process each node according to the flow diagram definition until reaching the `END` node
+- `/skill:<name>`: Like a standard skill, sends the `SKILL.md` content to the Agent as a prompt (does not automatically execute the flow)
+
+```sh
+# Execute the flow
+/flow:code-review
+
+# Load as a standard skill
+/skill:code-review
+```

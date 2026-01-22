@@ -4,6 +4,16 @@
 
 ## 未发布
 
+- Build：添加跨平台独立二进制构建，支持 Windows、macOS（含代码签名和公证）和 Linux（x86_64 和 ARM64）
+- Shell：修复斜杠命令自动补全在输入完整命令/别名时仍显示建议的问题
+- Tool：将 SVG 文件作为文本而非图片处理
+- Flow：支持 D2 markdown 块字符串（`|md` 语法），用于 Flow Skill 中的多行节点标签
+
+## 0.83 (2026-01-21)
+
+- Tool：添加 `ReadMediaFile` 工具用于读取图片/视频文件；`ReadFile` 现在仅用于读取文本文件
+- Skills：Flow Skills 现在也注册为 `/skill:<skill-name>` 命令（除了 `/flow:<skill-name>`）
+
 ## 0.82 (2026-01-21)
 
 - Tool：`WriteFile` 和 `StrReplaceFile` 工具支持使用绝对路径编辑/写入工作目录外的文件

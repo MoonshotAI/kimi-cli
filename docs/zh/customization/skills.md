@@ -237,11 +237,30 @@ D: 开始实现
 D -> END
 ```
 
-**执行 Flow Skill**
+对于多行标签，可以使用 D2 的块字符串语法（`|md`）：
 
-```sh
-# 在 Kimi CLI 中执行
-/flow:code-review
+```
+BEGIN -> step -> END
+step: |md
+  # 详细指引
+
+  1. 分析代码结构
+  2. 检查潜在问题
+  3. 生成报告
+|
 ```
 
-执行后，Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点。
+**执行 Flow Skill**
+
+Flow Skill 可以通过两种方式调用：
+
+- `/flow:<name>`：执行流程，Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点
+- `/skill:<name>`：与普通 Skill 一样，将 `SKILL.md` 内容作为提示词发送给 Agent（不自动执行流程）
+
+```sh
+# 执行流程
+/flow:code-review
+
+# 作为普通 Skill 加载
+/skill:code-review
+```

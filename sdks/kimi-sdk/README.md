@@ -86,6 +86,50 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+### Upload video
+
+```python
+import asyncio
+from pathlib import Path
+from kimi_sdk import Kimi, Message, TextPart, generate
+
+
+async def main() -> None:
+    kimi = Kimi(
+        base_url="https://api.moonshot.ai/v1",
+        api_key="your_kimi_api_key_here",
+        model="kimi-k2-turbo-preview",
+    )
+
+    video_path = Path("demo.mp4")
+    video_part = await kimi.files.upload_video(
+        data=video_path.read_bytes(),
+        mime_type="video/mp4",
+    )
+
+    history = [
+        Message(
+            role="user",
+            content=[
+                TextPart(text="Please describe this video."),
+                video_part,
+            ],
+        ),
+    ]
+
+    result = await generate(
+        chat_provider=kimi,
+        system_prompt="You are a helpful assistant.",
+        tools=[],
+        history=history,
+    )
+    print(result.message)
+    print(result.usage)
+
+
+asyncio.run(main())
+```
+
 ### Tool calling with `step`
 
 ```python
