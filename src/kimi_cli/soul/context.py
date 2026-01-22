@@ -150,6 +150,7 @@ class Context:
             logger.error("No available rotation path found")
             raise RuntimeError("No available rotation path found")
         await aiofiles.os.replace(self._file_backend, rotated_file_path)
+        self._file_backend.touch()
         logger.debug(
             "Rotated context file: {rotated_file_path}", rotated_file_path=rotated_file_path
         )
