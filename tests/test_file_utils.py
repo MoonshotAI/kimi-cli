@@ -9,6 +9,7 @@ def test_detect_file_type_suffixes():
     assert detect_file_type("notes.txt").kind == "text"
     assert detect_file_type("Makefile").kind == "text"
     assert detect_file_type(".env").kind == "text"
+    assert detect_file_type("icon.svg").kind == "text"
     assert detect_file_type("archive.tar.gz").kind == "unknown"
     assert detect_file_type("my file.pdf").kind == "unknown"
     # TypeScript files should not be misidentified as MPEG Transport Stream (video/mp2t)

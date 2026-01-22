@@ -38,7 +38,6 @@ _IMAGE_MIME_BY_SUFFIX = {
     ".heic": "image/heic",
     ".heif": "image/heif",
     ".avif": "image/avif",
-    ".svg": "image/svg+xml",
     ".svgz": "image/svg+xml",
 }
 _VIDEO_MIME_BY_SUFFIX = {
@@ -52,6 +51,9 @@ _VIDEO_MIME_BY_SUFFIX = {
     ".flv": "video/x-flv",
     ".3gp": "video/3gpp",
     ".3g2": "video/3gpp2",
+}
+_TEXT_MIME_BY_SUFFIX = {
+    ".svg": "image/svg+xml",
 }
 
 _ASF_HEADER = b"\x30\x26\xb2\x75\x8e\x66\xcf\x11\xa6\xd9\x00\xaa\x00\x62\xce\x6c"
@@ -220,7 +222,9 @@ def sniff_media_from_magic(data: bytes) -> FileType | None:
 def detect_file_type(path: str | PurePath, header: bytes | None = None) -> FileType:
     suffix = PurePath(str(path)).suffix.lower()
     media_hint: FileType | None = None
-    if suffix in _IMAGE_MIME_BY_SUFFIX:
+    if suffix in _TEXT_MIME_BY_SUFFIX:
+        media_hint = FileType(kind="text", mime_type=_TEXT_MIME_BY_SUFFIX[suffix])
+    elif suffix in _IMAGE_MIME_BY_SUFFIX:
         media_hint = FileType(kind="image", mime_type=_IMAGE_MIME_BY_SUFFIX[suffix])
     elif suffix in _VIDEO_MIME_BY_SUFFIX:
         media_hint = FileType(kind="video", mime_type=_VIDEO_MIME_BY_SUFFIX[suffix])

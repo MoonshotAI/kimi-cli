@@ -4,7 +4,13 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
+- Tool: Treat SVG files as text instead of images
+
+## 0.83 (2026-01-21)
+
 - Tool: Add `ReadMediaFile` tool for reading image/video files; `ReadFile` now focuses on text files only
+- Skills: Flow skills now also register as `/skill:<skill-name>` commands (in addition to `/flow:<skill-name>`)
 
 ## 0.82 (2026-01-21)
 

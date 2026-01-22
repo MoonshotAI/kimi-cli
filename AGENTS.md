@@ -84,7 +84,14 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - `src/kimi_cli/ui/`: UI frontends (shell/print/acp/wire)
 - `src/kimi_cli/acp/`: ACP server components
 - `packages/kosong/`, `packages/kaos/`: workspace deps
+  + Kosong is an LLM abstraction layer designed for modern AI agent applications.
+    It unifies message structures, asynchronous tool orchestration, and pluggable
+    chat providers so you can build agents with ease and avoid vendor lock-in.
+  + PyKAOS is a lightweight Python library providing an abstraction layer for agents
+    to interact with operating systems. File operations and command executions via KAOS
+    can be easily switched between local environment and remote systems over SSH.
 - `tests/`, `tests_ai/`: test suites
+- `klips`: Kimi CLI Improvement Proposals
 
 ## Conventions and quality
 

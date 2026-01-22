@@ -379,8 +379,8 @@ class KimiStreamedMessage:
             async for chunk in response:
                 if chunk.id:
                     self._id = chunk.id
-                if chunk.usage:
-                    self._usage = chunk.usage
+                if usage := extract_usage_from_chunk(chunk):
+                    self._usage = usage
 
                 if not chunk.choices:
                     continue
@@ -418,6 +418,20 @@ class KimiStreamedMessage:
                         pass
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+
+def extract_usage_from_chunk(chunk: ChatCompletionChunk) -> CompletionUsage | None:
+    if chunk.usage:
+        return chunk.usage
+    if not chunk.choices:
+        return None
+    choice_dump: dict[str, object] = chunk.choices[0].model_dump()
+    raw_usage = choice_dump.get("usage")
+    if isinstance(raw_usage, CompletionUsage):
+        return raw_usage
+    if isinstance(raw_usage, dict):
+        return CompletionUsage.model_validate(raw_usage)
+    return None
 
 
 if __name__ == "__main__":
