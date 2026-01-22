@@ -15,7 +15,6 @@ from kimi_cli.tools.file.read import (
     Params,
     ReadFile,
 )
-from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 
 @pytest.fixture
@@ -159,12 +158,11 @@ async def test_read_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
 
     result = await read_file_tool(Params(path=str(image_file)))
 
-    assert not result.is_error
-    assert isinstance(result.output, list)
-    assert len(result.output) == 1
-    part = result.output[0]
-    assert isinstance(part, ImageURLPart)
-    assert part.image_url.url.startswith("data:image/png;base64,")
+    assert result.is_error
+    assert result.message == snapshot(
+        f"`{image_file}` is a image file. Use other appropriate tools to read image or video files."
+    )
+    assert result.brief == snapshot("Unsupported file type")
 
 
 async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -175,12 +173,11 @@ async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work
 
     result = await read_file_tool(Params(path=str(image_file)))
 
-    assert not result.is_error
-    assert isinstance(result.output, list)
-    assert len(result.output) == 1
-    part = result.output[0]
-    assert isinstance(part, ImageURLPart)
-    assert part.image_url.url.startswith("data:image/png;base64,")
+    assert result.is_error
+    assert result.message == snapshot(
+        f"`{image_file}` is a image file. Use other appropriate tools to read image or video files."
+    )
+    assert result.brief == snapshot("Unsupported file type")
 
 
 async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -191,12 +188,11 @@ async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
 
     result = await read_file_tool(Params(path=str(video_file)))
 
-    assert not result.is_error
-    assert isinstance(result.output, list)
-    assert len(result.output) == 1
-    part = result.output[0]
-    assert isinstance(part, VideoURLPart)
-    assert part.video_url.url.startswith("data:video/mp4;base64,")
+    assert result.is_error
+    assert result.message == snapshot(
+        f"`{video_file}` is a video file. Use other appropriate tools to read image or video files."
+    )
+    assert result.brief == snapshot("Unsupported file type")
 
 
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):

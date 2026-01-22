@@ -239,9 +239,15 @@ D -> END
 
 **执行 Flow Skill**
 
-```sh
-# 在 Kimi CLI 中执行
-/flow:code-review
-```
+Flow Skill 可以通过两种方式调用：
 
-执行后，Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点。
+- `/flow:<name>`：执行流程，Agent 会从 `BEGIN` 节点开始，按照流程图定义依次处理每个节点，直到到达 `END` 节点
+- `/skill:<name>`：与普通 Skill 一样，将 `SKILL.md` 内容作为提示词发送给 Agent（不自动执行流程）
+
+```sh
+# 执行流程
+/flow:code-review
+
+# 作为普通 Skill 加载
+/skill:code-review
+```

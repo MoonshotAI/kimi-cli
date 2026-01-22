@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+## 0.2.0 (2026-01-21)
+
+- Export `KimiFiles` class to support video file uploads
+
 ## 0.1.2 (2026-01-21)
 
 - Update kosong dependency upper bound to support kosong 0.39.x
