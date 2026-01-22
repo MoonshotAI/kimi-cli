@@ -122,18 +122,13 @@ jobs:
 
           rm -f "$cert_path"
 
-      # Build without signing on non-macOS platforms
-      - name: Build standalone binary
-        if: runner.os != 'macOS'
+      # Build onefile and onedir versions (all platforms)
+      - name: Build standalone binary (onefile)
         run: make build-bin
 
-      # macOS: Build both onefile and onedir versions
-      - name: Build standalone binary (macOS onefile)
-        if: runner.os == 'macOS'
-        run: make build-bin
-
-      - name: Build standalone binary (macOS onedir)
-        if: runner.os == 'macOS'
+      - name: Build standalone binary (onedir)
+        env:
+          PYINSTALLER_ONEDIR: "1"
         run: make build-bin-onedir
 
       # macOS: Sign onefile binary
@@ -354,9 +349,8 @@ jobs:
 
           print(f"Built onefile artifact: {archive_path}")
 
-      # Package onedir artifact (macOS only)
+      # Package onedir artifact (all platforms)
       - name: Package onedir artifact
-        if: runner.os == 'macOS'
         shell: python
         env:
           TAG: ${{ github.ref_name }}
@@ -365,6 +359,7 @@ jobs:
           import os
           import pathlib
           import tarfile
+          import zipfile
 
           tag = os.environ["TAG"]
           target = os.environ["TARGET"]
@@ -373,23 +368,47 @@ jobs:
           artifacts_dir = pathlib.Path("artifacts")
           artifacts_dir.mkdir(parents=True, exist_ok=True)
 
+          is_windows = "windows" in target
+
+          # Windows: onedir is dist/onedir/kimi with kimi.exe inside
+          # Others: onedir is dist/onedir/kimi with kimi inside
           onedir_path = dist_dir / "onedir" / "kimi"
           if not onedir_path.exists() or not onedir_path.is_dir():
               raise SystemExit(f"Onedir directory not found at {onedir_path}")
 
-          archive_name = f"kimi-{tag}-{target}-onedir.tar.gz"
-          archive_path = artifacts_dir / archive_name
-          with tarfile.open(archive_path, "w:gz") as archive_file:
-              # Add the directory contents with kimi/ as the root
-              for item in onedir_path.iterdir():
-                  archive_file.add(item, arcname=f"kimi/{item.name}")
+          if is_windows:
+              archive_name = f"kimi-{tag}-{target}-onedir.zip"
+              archive_path = artifacts_dir / archive_name
+              with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+                  # Add the directory contents with kimi/ as the root
+                  for item in onedir_path.rglob("*"):
+                      if item.is_file():
+                          arcname = f"kimi/{item.relative_to(onedir_path)}"
+                          archive_file.write(item, arcname=arcname)
+          else:
+              archive_name = f"kimi-{tag}-{target}-onedir.tar.gz"
+              archive_path = artifacts_dir / archive_name
+              with tarfile.open(archive_path, "w:gz") as archive_file:
+                  # Add the directory contents with kimi/ as the root
+                  for item in onedir_path.iterdir():
+                      archive_file.add(item, arcname=f"kimi/{item.name}")
 
           print(f"Built onedir artifact: {archive_path}")
+
+      - name: Set artifact name
+        id: artifact
+        shell: python
+        run: |
+          import os
+          ref = os.environ["GITHUB_REF_NAME"].replace("/", "-")
+          target = "${{ matrix.target }}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"name=kimi-{ref}-{target}\n")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kimi-${{ github.ref_name }}-${{ matrix.target }}
+          name: ${{ steps.artifact.outputs.name }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 7
