@@ -1,60 +1,22 @@
-import asyncio
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from kaos.path import KaosPath
-from kosong.chat_provider.scripted_echo import ScriptedEchoChatProvider
-
-from kimi_cli.llm import LLM
-from kimi_cli.soul import run_soul
-from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.context import Context
-from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.soul.toolset import KimiToolset
-from kimi_cli.tools.file.read import ReadFile
-from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.wire import Wire
-from kimi_cli.wire.serde import serialize_wire_message
-from kimi_cli.wire.types import TextPart, WireMessage
 
 
-def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
-    return Runtime(
-        config=runtime.config,
-        llm=llm,
-        session=runtime.session,
-        builtin_args=runtime.builtin_args,
-        denwa_renji=runtime.denwa_renji,
-        approval=runtime.approval,
-        labor_market=runtime.labor_market,
-        environment=runtime.environment,
-        skills=runtime.skills,
-    )
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
 
-def _trace(msg: str) -> None:
-    if os.getenv("KIMI_TEST_TRACE") == "1":
+def _print_trace(label: str, text: str) -> None:
+    if os.getenv("KIMI_SCRIPTED_ECHO_TRACE") == "1":
         print("-----")
-        print(msg)
+        print(f"{label}: {text}")
 
 
-def _wire_message_to_text(msg: WireMessage) -> str:
-    payload = serialize_wire_message(msg)
-    return f"{type(msg).__name__}: {payload}"
-
-
-class TracingScriptedEchoChatProvider(ScriptedEchoChatProvider):
-    async def generate(self, system_prompt: str, tools, history):
-        script_text = self._scripts[0] if self._scripts else ""
-        _trace(f"PROVIDER SCRIPT:\n{script_text}")
-        return await super().generate(system_prompt, tools, history)
-
-
-async def test_scripted_echo_kimi_cli_agent_e2e(
-    runtime: Runtime, temp_work_dir: KaosPath, tmp_path: Path
-) -> None:
+async def test_scripted_echo_kimi_cli_agent_e2e(temp_work_dir: KaosPath, tmp_path: Path) -> None:
     sample_js = "\n".join(
         [
             "function add(a, b) {",
@@ -95,7 +57,6 @@ async def test_scripted_echo_kimi_cli_agent_e2e(
             "mode": "overwrite",
         }
     )
-
     read_call = {"id": "ReadFile:0", "name": "ReadFile", "arguments": read_args}
     write_call = {"id": "WriteFile:1", "name": "WriteFile", "arguments": write_args}
 
@@ -123,25 +84,33 @@ async def test_scripted_echo_kimi_cli_agent_e2e(
         ),
     ]
 
-    llm = LLM(
-        chat_provider=TracingScriptedEchoChatProvider(scripts),
-        max_context_size=100_000,
-        capabilities=set(),
-    )
-    runtime_with_llm = _runtime_with_llm(runtime, llm)
+    scripts_path = tmp_path / "scripts.json"
+    scripts_path.write_text(json.dumps(scripts), encoding="utf-8")
 
-    toolset = KimiToolset()
-    toolset.add(ReadFile(runtime_with_llm))
-    toolset.add(WriteFile(runtime_with_llm.builtin_args, runtime_with_llm.approval))
-
-    agent = Agent(
-        name="Scripted Echo Agent",
-        system_prompt="You are a code translation assistant.",
-        toolset=toolset,
-        runtime=runtime_with_llm,
-    )
-    context = Context(file_backend=tmp_path / "history.jsonl")
-    soul = KimiSoul(agent, context=context)
+    config_path = tmp_path / "config.json"
+    trace_env = os.getenv("KIMI_SCRIPTED_ECHO_TRACE", "0")
+    config_data = {
+        "default_model": "scripted",
+        "models": {
+            "scripted": {
+                "provider": "scripted_provider",
+                "model": "scripted_echo",
+                "max_context_size": 100000,
+            }
+        },
+        "providers": {
+            "scripted_provider": {
+                "type": "_scripted_echo",
+                "base_url": "",
+                "api_key": "",
+                "env": {
+                    "KIMI_SCRIPTED_ECHO_SCRIPTS": str(scripts_path),
+                    "KIMI_SCRIPTED_ECHO_TRACE": trace_env,
+                },
+            }
+        },
+    }
+    config_path.write_text(json.dumps(config_data), encoding="utf-8")
 
     user_prompt = (
         "You are a code translation assistant.\n\n"
@@ -149,24 +118,56 @@ async def test_scripted_echo_kimi_cli_agent_e2e(
         "- Read the file `sample.js` in the current working directory.\n"
         "- Translate it into idiomatic Python 3.\n"
         "- Write the translated code to `translated.py` in the current working directory.\n\n"
+        "Rules:\n"
+        "- You must read the file from disk; do not guess its contents.\n"
+        "- Preserve behavior and output.\n"
+        "- Write only Python code in translated.py (no Markdown).\n"
+        "- Overwrite translated.py if it already exists.\n"
+        "- After writing, reply with a single short ASCII confirmation sentence.\n"
     )
-    _trace(f"USER INPUT:\n{user_prompt}")
 
-    streamed_text: list[str] = []
+    _print_trace("USER INPUT", json.dumps(user_prompt))
 
-    async def _ui_loop(wire: Wire) -> None:
-        wire_ui = wire.ui_side(merge=True)
-        while True:
-            try:
-                msg = await wire_ui.receive()
-            except QueueShutDown:
-                return
-            _trace(f"WIRE MESSAGE:\n{_wire_message_to_text(msg)}")
-            if isinstance(msg, TextPart):
-                streamed_text.append(msg.text)
+    work_dir = temp_work_dir.unsafe_to_local_path()
+    cmd = [
+        "uv",
+        "run",
+        "kimi",
+        "--print",
+        "--input-format",
+        "text",
+        "--output-format",
+        "stream-json",
+        "--config-file",
+        str(config_path),
+        "--work-dir",
+        str(work_dir),
+    ]
+    env = os.environ.copy()
 
-    await run_soul(soul, user_prompt, _ui_loop, asyncio.Event())
+    process = subprocess.Popen(
+        cmd,
+        cwd=_repo_root(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+    process.stdin.write(user_prompt)
+    process.stdin.close()
 
-    translated_path = temp_work_dir / "translated.py"
-    assert await translated_path.read_text() == translated_py
-    assert streamed_text[-1] == "Translation completed successfully."
+    stdout_lines: list[str] = []
+    for line in process.stdout:
+        line = line.rstrip("\n")
+        _print_trace("STDOUT", line)
+        stdout_lines.append(line)
+
+    return_code = process.wait()
+    assert return_code == 0
+
+    translated_path = work_dir / "translated.py"
+    assert translated_path.read_text(encoding="utf-8") == translated_py
+    assert any("Translation completed successfully." in line for line in stdout_lines)

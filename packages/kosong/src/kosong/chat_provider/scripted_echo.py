@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from collections import deque
 from collections.abc import AsyncIterator, Iterable, Sequence
 from typing import TYPE_CHECKING, Self
@@ -30,9 +31,10 @@ class ScriptedEchoChatProvider:
 
     name = "scripted_echo"
 
-    def __init__(self, scripts: Iterable[str]):
+    def __init__(self, scripts: Iterable[str], *, trace: bool = False):
         self._scripts = deque(scripts)
         self._turn = 0
+        self._trace = trace
 
     @property
     def model_name(self) -> str:
@@ -51,6 +53,9 @@ class ScriptedEchoChatProvider:
         if not self._scripts:
             raise ChatProviderError(f"ScriptedEchoChatProvider exhausted at turn {self._turn + 1}.")
         script_text = self._scripts.popleft()
+        if self._trace:
+            script_json = json.dumps(script_text)
+            print(f"SCRIPTED_ECHO TURN {self._turn + 1}: {script_json}")
         self._turn += 1
         parts, message_id, usage = parse_echo_script(script_text)
         if not parts:
