@@ -29,6 +29,7 @@ dependencies = [
     "batrachian-toad==0.5.23; python_version >= \"3.14\"",
     "tomlkit==0.13.3",
     "jinja2==3.1.4",
+    "keyring>=25.7.0",
 ]
 
 [dependency-groups]
