@@ -4,9 +4,6 @@
 
 ## 未发布
 
-- Kosong：添加 `ScriptedEchoChatProvider`，用于端到端测试中的脚本化对话模拟
-- Kosong：将 Echo DSL 逻辑重构到独立的 `echo_dsl.py` 模块
-- Test：添加使用脚本化 Echo Provider 的端到端测试，覆盖基本交互和媒体处理
 - Build：添加跨平台独立二进制构建，支持 Windows、macOS（含代码签名和公证）和 Linux（x86_64 和 ARM64）
 - Shell：修复斜杠命令自动补全在输入完整命令/别名时仍显示建议的问题
 - Tool：将 SVG 文件作为文本而非图片处理
