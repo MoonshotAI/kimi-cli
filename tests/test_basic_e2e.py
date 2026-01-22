@@ -2,7 +2,9 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from typing import cast
 
+import pytest
 from kaos.path import KaosPath
 
 
@@ -11,12 +13,188 @@ def _repo_root() -> Path:
 
 
 def _print_trace(label: str, text: str) -> None:
-    if os.getenv("KIMI_SCRIPTED_ECHO_TRACE") == "1":
+    if os.getenv("KIMI_TEST_TRACE") == "1":
         print("-----")
         print(f"{label}: {text}")
 
 
-async def test_scripted_echo_kimi_cli_agent_e2e(temp_work_dir: KaosPath, tmp_path: Path) -> None:
+def _collect_stdout(process: subprocess.Popen[str]) -> list[str]:
+    assert process.stdout is not None
+    lines: list[str] = []
+    for line in process.stdout:
+        line = line.rstrip("\n")
+        _print_trace("STDOUT", line)
+        lines.append(line)
+    return lines
+
+
+def _run_print_mode(config_path: Path, work_dir: Path, user_prompt: str) -> tuple[int, list[str]]:
+    cmd = [
+        "uv",
+        "run",
+        "kimi",
+        "--print",
+        "--yolo",
+        "--input-format",
+        "text",
+        "--output-format",
+        "stream-json",
+        "--config-file",
+        str(config_path),
+        "--work-dir",
+        str(work_dir),
+    ]
+    process = subprocess.Popen(
+        cmd,
+        cwd=_repo_root(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=os.environ.copy(),
+    )
+    assert process.stdin is not None
+    process.stdin.write(user_prompt)
+    process.stdin.close()
+    stdout_lines = _collect_stdout(process)
+    return process.wait(), stdout_lines
+
+
+def _run_shell_mode(config_path: Path, work_dir: Path, user_prompt: str) -> tuple[int, list[str]]:
+    cmd = [
+        "uv",
+        "run",
+        "kimi",
+        "--yolo",
+        "--prompt",
+        user_prompt,
+        "--config-file",
+        str(config_path),
+        "--work-dir",
+        str(work_dir),
+    ]
+    process = subprocess.Popen(
+        cmd,
+        cwd=_repo_root(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=os.environ.copy(),
+    )
+    if process.stdin is not None:
+        process.stdin.close()
+    stdout_lines = _collect_stdout(process)
+    return process.wait(), stdout_lines
+
+
+def _send_json(process: subprocess.Popen[str], payload: dict[str, object]) -> None:
+    assert process.stdin is not None
+    line = json.dumps(payload)
+    _print_trace("STDIN", line)
+    process.stdin.write(line + "\n")
+    process.stdin.flush()
+
+
+def _collect_until_response(
+    process: subprocess.Popen[str], response_id: str
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    assert process.stdout is not None
+    events: list[dict[str, object]] = []
+    while True:
+        line = process.stdout.readline()
+        if not line:
+            break
+        line = line.strip()
+        if not line:
+            continue
+        _print_trace("STDOUT", line)
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(msg, dict):
+            continue
+        msg = cast(dict[str, object], msg)
+        msg_id = msg.get("id")
+        if msg_id == response_id:
+            return msg, events
+        if msg.get("method") == "event":
+            params = msg.get("params")
+            if isinstance(params, dict):
+                events.append(params)
+    raise AssertionError(f"Missing response for id {response_id!r}")
+
+
+def _wire_has_text(events: list[dict[str, object]], text: str) -> bool:
+    for event in events:
+        if event.get("type") != "ContentPart":
+            continue
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("type") == "text" and text in str(payload.get("text", "")):
+            return True
+    return False
+
+
+def _run_wire_mode(
+    config_path: Path, work_dir: Path, user_prompt: str
+) -> tuple[int, dict[str, object], list[dict[str, object]]]:
+    cmd = [
+        "uv",
+        "run",
+        "kimi",
+        "--wire",
+        "--yolo",
+        "--config-file",
+        str(config_path),
+        "--work-dir",
+        str(work_dir),
+    ]
+    process = subprocess.Popen(
+        cmd,
+        cwd=_repo_root(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    _send_json(
+        process,
+        {
+            "jsonrpc": "2.0",
+            "id": "init",
+            "method": "initialize",
+            "params": {"protocol_version": "1.1"},
+        },
+    )
+    init_resp, _ = _collect_until_response(process, "init")
+    assert "result" in init_resp
+
+    _send_json(
+        process,
+        {
+            "jsonrpc": "2.0",
+            "id": "prompt-1",
+            "method": "prompt",
+            "params": {"user_input": user_prompt},
+        },
+    )
+    resp, events = _collect_until_response(process, "prompt-1")
+
+    if process.stdin is not None:
+        process.stdin.close()
+    _collect_stdout(process)
+    return process.wait(), resp, events
+
+
+@pytest.mark.parametrize("mode", ["print", "wire", "shell"])
+async def test_scripted_echo_kimi_cli_agent_e2e(
+    temp_work_dir: KaosPath, tmp_path: Path, mode: str
+) -> None:
     sample_js = "\n".join(
         [
             "function add(a, b) {",
@@ -126,48 +304,26 @@ async def test_scripted_echo_kimi_cli_agent_e2e(temp_work_dir: KaosPath, tmp_pat
         "- After writing, reply with a single short ASCII confirmation sentence.\n"
     )
 
+    work_dir = temp_work_dir.unsafe_to_local_path()
     _print_trace("USER INPUT", json.dumps(user_prompt))
 
-    work_dir = temp_work_dir.unsafe_to_local_path()
-    cmd = [
-        "uv",
-        "run",
-        "kimi",
-        "--print",
-        "--input-format",
-        "text",
-        "--output-format",
-        "stream-json",
-        "--config-file",
-        str(config_path),
-        "--work-dir",
-        str(work_dir),
-    ]
-    env = os.environ.copy()
-
-    process = subprocess.Popen(
-        cmd,
-        cwd=_repo_root(),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=env,
-    )
-    assert process.stdin is not None
-    assert process.stdout is not None
-    process.stdin.write(user_prompt)
-    process.stdin.close()
-
-    stdout_lines: list[str] = []
-    for line in process.stdout:
-        line = line.rstrip("\n")
-        _print_trace("STDOUT", line)
-        stdout_lines.append(line)
-
-    return_code = process.wait()
-    assert return_code == 0
+    if mode == "print":
+        return_code, stdout_lines = _run_print_mode(config_path, work_dir, user_prompt)
+        assert return_code == 0
+        assert any("Translation completed successfully." in line for line in stdout_lines)
+    elif mode == "wire":
+        return_code, resp, events = _run_wire_mode(config_path, work_dir, user_prompt)
+        assert return_code == 0
+        result = resp.get("result")
+        assert isinstance(result, dict)
+        assert result.get("status") == "finished"
+        assert _wire_has_text(events, "Translation completed successfully.")
+    elif mode == "shell":
+        return_code, stdout_lines = _run_shell_mode(config_path, work_dir, user_prompt)
+        assert return_code == 0
+        assert any("Translation completed successfully." in line for line in stdout_lines)
+    else:
+        raise AssertionError(f"Unknown mode: {mode}")
 
     translated_path = work_dir / "translated.py"
     assert translated_path.read_text(encoding="utf-8") == translated_py
-    assert any("Translation completed successfully." in line for line in stdout_lines)
