@@ -237,6 +237,19 @@ D: Start implementation
 D -> END
 ```
 
+For multiline labels, you can use D2's block string syntax (`|md`):
+
+```
+BEGIN -> step -> END
+step: |md
+  # Detailed instructions
+
+  1. Analyze code structure
+  2. Check for potential issues
+  3. Generate report
+|
+```
+
 **Executing a flow skill**
 
 Flow skills can be invoked in two ways:

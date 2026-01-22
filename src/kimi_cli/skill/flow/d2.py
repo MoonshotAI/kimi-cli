@@ -14,6 +14,7 @@ from . import (
 )
 
 _NODE_ID_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]*")
+_BLOCK_TAG_RE = re.compile(r"^\|md$")
 _PROPERTY_SEGMENTS = {
     "shape",
     "style",
@@ -51,6 +52,8 @@ class _NodeDef:
 
 
 def parse_d2_flowchart(text: str) -> Flow:
+    # Normalize D2 markdown blocks into quoted labels so the parser can stay line-based.
+    text = _normalize_markdown_blocks(text)
     nodes: dict[str, _NodeDef] = {}
     outgoing: dict[str, list[FlowEdge]] = {}
 
@@ -67,6 +70,103 @@ def parse_d2_flowchart(text: str) -> Flow:
     flow_nodes = _infer_decision_nodes(flow_nodes, outgoing)
     begin_id, end_id = validate_flow(flow_nodes, outgoing)
     return Flow(nodes=flow_nodes, outgoing=outgoing, begin_id=begin_id, end_id=end_id)
+
+
+def _normalize_markdown_blocks(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    out_lines: list[str] = []
+    i = 0
+    line_no = 1
+
+    while i < len(lines):
+        line = lines[i]
+        prefix, suffix = _split_unquoted_once(line, ":")
+        if suffix is None:
+            out_lines.append(line)
+            i += 1
+            line_no += 1
+            continue
+
+        suffix_clean = _strip_unquoted_comment(suffix).strip()
+        # Only treat `: |md` as a markdown block starter.
+        if not _BLOCK_TAG_RE.fullmatch(suffix_clean):
+            out_lines.append(line)
+            i += 1
+            line_no += 1
+            continue
+
+        start_line = line_no
+        block_lines: list[str] = []
+        i += 1
+        line_no += 1
+        while i < len(lines):
+            block_line = lines[i]
+            if block_line.strip() == "|":
+                break
+            block_lines.append(block_line)
+            i += 1
+            line_no += 1
+        if i >= len(lines):
+            raise FlowParseError(_line_error(start_line, "Unclosed markdown block"))
+
+        # Convert the block into a multiline quoted string label.
+        dedented = _dedent_block(block_lines)
+        if dedented:
+            escaped = [_escape_quoted_line(line) for line in dedented]
+            out_lines.append(f'{prefix}: "{escaped[0]}')
+            for line in escaped[1:]:
+                out_lines.append(line)
+            out_lines[-1] = f'{out_lines[-1]}"'
+            out_lines.extend(["", ""])
+        else:
+            out_lines.append(f'{prefix}: ""')
+            out_lines.append("")
+
+        i += 1
+        line_no += 1
+
+    return "\n".join(out_lines)
+
+
+def _strip_unquoted_comment(text: str) -> str:
+    in_single = False
+    in_double = False
+    escape = False
+    for idx, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and (in_single or in_double):
+            escape = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if ch == "#" and not in_single and not in_double:
+            return text[:idx]
+    return text
+
+
+def _dedent_block(lines: list[str]) -> list[str]:
+    indent: int | None = None
+    for line in lines:
+        if not line.strip():
+            continue
+        stripped = line.lstrip(" \t")
+        lead = len(line) - len(stripped)
+        if indent is None or lead < indent:
+            indent = lead
+    if indent is None:
+        return ["" for _ in lines]
+    return [line[indent:] if len(line) >= indent else "" for line in lines]
+
+
+def _escape_quoted_line(line: str) -> str:
+    return line.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _iter_top_level_statements(text: str) -> Iterable[tuple[int, str]]:
@@ -91,6 +191,12 @@ def _iter_top_level_statements(text: str) -> Iterable[tuple[int, str]]:
             continue
 
         if ch == "\n":
+            # Preserve newlines inside quoted strings (used for markdown block labels).
+            if (in_single or in_double) and brace_depth == 0 and not drop_line:
+                buf.append("\n")
+                line_no += 1
+                i += 1
+                continue
             if brace_depth == 0 and not in_single and not in_double and not drop_line:
                 statement = "".join(buf).strip()
                 if statement:

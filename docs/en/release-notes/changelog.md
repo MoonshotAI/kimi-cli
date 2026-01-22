@@ -7,6 +7,7 @@ This page documents the changes in each Kimi CLI release.
 - Build: Add cross-platform standalone binary builds for Windows, macOS (with code signing and notarization), and Linux (x86_64 and ARM64)
 - Shell: Fix slash command autocomplete showing suggestions for exact command/alias matches
 - Tool: Treat SVG files as text instead of images
+- Flow: Support D2 markdown block strings (`|md` syntax) for multiline node labels in flow skills
 
 ## 0.83 (2026-01-21)
 
