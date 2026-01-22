@@ -63,7 +63,9 @@ class ScriptedEchoChatProvider:
         return ScriptedEchoStreamedMessage(parts=parts, message_id=message_id, usage=usage)
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
-        return copy.copy(self)
+        copied = copy.copy(self)
+        copied._scripts = deque(self._scripts)
+        return copied
 
 
 class ScriptedEchoStreamedMessage(StreamedMessage):
