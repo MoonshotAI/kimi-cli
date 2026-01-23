@@ -149,7 +149,7 @@ async def model(app: Shell, args: str):
     await refresh_managed_models(config)
 
     if not config.models:
-        console.print('[yellow]No models configured, send "/setup" to configure.[/yellow]')
+        console.print('[yellow]No models configured, send "/login" to login.[/yellow]')
         return
 
     if not config.is_from_default_location:

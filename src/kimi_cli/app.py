@@ -268,7 +268,7 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value="not set, send /setup to configure",
+                    value="not set, send /login to login",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )
