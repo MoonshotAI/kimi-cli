@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import socket
+import sys
 import time
 import uuid
 import webbrowser
@@ -154,6 +155,40 @@ def _ensure_private_file(path: Path) -> None:
         os.chmod(path, 0o600)
 
 
+def _device_model() -> str:
+    system = platform.system()
+    arch = platform.machine() or ""
+    if system == "Darwin":
+        version = platform.mac_ver()[0] or platform.release()
+        if version and arch:
+            return f"macOS {version} {arch}"
+        if version:
+            return f"macOS {version}"
+        return f"macOS {arch}".strip()
+    if system == "Windows":
+        release = platform.release()
+        if release == "10":
+            try:
+                build = sys.getwindowsversion().build  # type: ignore[attr-defined]
+            except Exception:
+                build = None
+            if build and build >= 22000:
+                release = "11"
+        if release and arch:
+            return f"Windows {release} {arch}"
+        if release:
+            return f"Windows {release}"
+        return f"Windows {arch}".strip()
+    if system:
+        version = platform.release()
+        if version and arch:
+            return f"{system} {version} {arch}"
+        if version:
+            return f"{system} {version}"
+        return f"{system} {arch}".strip()
+    return "Unknown"
+
+
 def get_device_id() -> str:
     path = _device_id_path()
     if path.exists():
@@ -165,10 +200,12 @@ def get_device_id() -> str:
 
 
 def _common_headers() -> dict[str, str]:
-    device_model = platform.node() or socket.gethostname()
+    device_name = platform.node() or socket.gethostname()
+    device_model = _device_model()
     return {
         "X-Msh-Platform": "kimi_cli",
         "X-Msh-Version": VERSION,
+        "X-Msh-Device-Name": device_name,
         "X-Msh-Device-Model": device_model,
         "X-Msh-Os-Version": platform.version(),
         "X-Msh-Device-Id": get_device_id(),
