@@ -314,15 +314,6 @@ class KimiToolset:
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
                     oauth_servers[server_name] = server_config.url
 
-                # Add mcp-session-id header for HTTP transports (skip OAuth servers)
-                if (
-                    isinstance(server_config, RemoteMCPServer)
-                    and server_config.auth != "oauth"
-                    and not any(key.lower() == "mcp-session-id" for key in server_config.headers)
-                ):
-                    server_config = server_config.model_copy(deep=True)
-                    server_config.headers["Mcp-Session-Id"] = runtime.session.id
-
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
