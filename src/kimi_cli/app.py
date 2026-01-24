@@ -22,7 +22,7 @@ from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.utils.logging import StreamToLogger, logger
+from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.types import ContentPart, WireMessage
@@ -43,6 +43,7 @@ def enable_logging(debug: bool = False) -> None:
         rotation="06:00",
         retention="10 days",
     )
+    redirect_stderr_to_logger()
 
 
 class KimiCLI:
@@ -175,8 +176,7 @@ class KimiCLI:
         try:
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            with contextlib.redirect_stderr(StreamToLogger()):
-                yield
+            yield
         finally:
             await kaos.chdir(original_cwd)
 
