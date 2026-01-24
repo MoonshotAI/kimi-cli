@@ -5,12 +5,12 @@ import contextlib
 from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
+from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import ContentPart, WireMessage
 
 if TYPE_CHECKING:
@@ -123,7 +123,7 @@ async def run_soul(
     user_input: str | list[ContentPart],
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,
-    wire_file: Path | None = None,
+    wire_file: WireFile | None = None,
 ) -> None:
     """
     Run the soul with the given user input, connecting it to the UI loop with a `Wire`.

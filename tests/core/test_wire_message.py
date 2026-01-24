@@ -4,7 +4,8 @@ import pytest
 from inline_snapshot import snapshot
 from pydantic import BaseModel
 
-from kimi_cli.wire.serde import WireMessageRecord, deserialize_wire_message, serialize_wire_message
+from kimi_cli.wire.file import WireMessageRecord
+from kimi_cli.wire.serde import deserialize_wire_message, serialize_wire_message
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
