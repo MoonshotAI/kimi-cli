@@ -10,7 +10,7 @@ from inline_snapshot import snapshot
 def test_pyinstaller_datas():
     from kimi_cli.utils.pyinstaller import datas
 
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     site_packages = f".venv/lib/python{python_version}/site-packages"
     datas = [
