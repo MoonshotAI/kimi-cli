@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.85 (2026-01-24)
+
 - Shell: Cache pasted images to disk for persistence across sessions
 - Shell: Deduplicate cached attachments based on content hash
 - Shell: Fix display of image/audio/video attachments in message history
