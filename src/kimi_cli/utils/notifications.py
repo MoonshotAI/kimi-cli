@@ -3,7 +3,7 @@
 This module provides desktop notifications using OSC 9 escape sequences
 (for modern terminals like Ghostty, iTerm2, Kitty, Windows Terminal).
 
-Reference: https://gitlab.com/gnachman/iterm2/-/wikis/Operating-System-Command-9
+Reference: https://iterm2.com/documentation-escape-codes.html
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def notify(title: str, message: str) -> bool:
 
     Format: \x1b]9;{message}\x07
 
-    Reference: https://gitlab.com/gnachman/iterm2/-/wikis/Operating-System-Command-9
+    Reference: https://iterm2.com/documentation-escape-codes.html
 
     Args:
         title: The notification title.
