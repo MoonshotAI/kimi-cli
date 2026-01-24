@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import json
-import time
-from pathlib import Path
 
-import aiofiles
 from kosong.message import MergeableMixin
 
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.broadcast import BroadcastQueue
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.serde import WireMessageRecord
+from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import ContentPart, ToolCallPart, WireMessage, is_wire_message
 
 WireMessageQueue = BroadcastQueue[WireMessage]
@@ -23,7 +19,7 @@ class Wire:
     A spmc channel for communication between the soul and the UI during a soul run.
     """
 
-    def __init__(self, *, file_backend: Path | None = None):
+    def __init__(self, *, file_backend: WireFile | None = None):
         self._raw_queue = WireMessageQueue()
         self._merged_queue = WireMessageQueue()
 
@@ -123,8 +119,8 @@ class WireUISide:
 
 
 class _WireRecorder:
-    def __init__(self, file_backend: Path, queue: Queue[WireMessage]) -> None:
-        self._file_backend = file_backend
+    def __init__(self, wire_file: WireFile, queue: Queue[WireMessage]) -> None:
+        self._wire_file = wire_file
         self._task = asyncio.create_task(self._consume_loop(queue))
 
     async def _consume_loop(self, queue: Queue[WireMessage]) -> None:
@@ -136,6 +132,4 @@ class _WireRecorder:
                 break
 
     async def _record(self, msg: WireMessage) -> None:
-        record = WireMessageRecord.from_wire_message(msg, timestamp=time.time())
-        async with aiofiles.open(self._file_backend, mode="a", encoding="utf-8") as f:
-            await f.write(json.dumps(record.model_dump(mode="json"), ensure_ascii=False) + "\n")
+        await self._wire_file.append_message(msg)

@@ -40,6 +40,7 @@ from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
 from kimi_cli.utils.environment import Environment
+from kimi_cli.wire.file import WireFile
 
 
 @pytest.fixture
@@ -110,7 +111,8 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
         id="test",
         work_dir=temp_work_dir,
         work_dir_meta=WorkDirMeta(path=str(temp_work_dir), kaos=get_current_kaos().name),
-        context_file=temp_share_dir / "history.jsonl",
+        context_file=temp_share_dir / "context.jsonl",
+        wire_file=WireFile(path=temp_share_dir / "wire.jsonl"),
         title="Test Session",
         updated_at=0.0,
     )

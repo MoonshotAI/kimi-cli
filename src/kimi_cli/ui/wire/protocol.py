@@ -1,1 +1,0 @@
-WIRE_PROTOCOL_VERSION: str = "1.1"
