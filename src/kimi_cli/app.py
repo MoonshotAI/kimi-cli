@@ -314,8 +314,8 @@ class KimiCLI:
 
     async def run_wire_stdio(self) -> None:
         """Run the Kimi CLI instance as Wire server over stdio."""
-        from kimi_cli.ui.wire import WireOverStdio
+        from kimi_cli.wire.server import WireServer
 
         async with self._env():
-            server = WireOverStdio(self._soul)
+            server = WireServer(self._soul)
             await server.serve()

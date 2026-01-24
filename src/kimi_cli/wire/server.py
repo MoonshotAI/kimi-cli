@@ -46,7 +46,7 @@ from .jsonrpc import (
 STDIO_BUFFER_LIMIT = 100 * 1024 * 1024
 
 
-class WireOverStdio:
+class WireServer:
     def __init__(self, soul: Soul):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
