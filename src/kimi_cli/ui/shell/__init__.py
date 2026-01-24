@@ -24,6 +24,7 @@ from kimi_cli.ui.shell.slash import shell_mode_registry
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.envvar import get_env_bool
+from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
@@ -158,8 +159,12 @@ class Shell:
         try:
             # TODO: For the sake of simplicity, we now use `create_subprocess_shell`.
             # Later we should consider making this behave like a real shell.
-            proc = await asyncio.create_subprocess_shell(command)
-            await proc.wait()
+            with open_original_stderr() as stderr:
+                kwargs: dict[str, Any] = {}
+                if stderr is not None:
+                    kwargs["stderr"] = stderr
+                proc = await asyncio.create_subprocess_shell(command, **kwargs)
+                await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
             console.print(f"[red]Failed to run shell command: {e}[/red]")
