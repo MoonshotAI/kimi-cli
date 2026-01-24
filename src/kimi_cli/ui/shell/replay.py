@@ -48,6 +48,11 @@ async def replay_recent_history(
     """
     Replay the most recent user-initiated turns from the provided message history or wire file.
     """
+    if not history:
+        # if the context history is empty,either this is a new session
+        # or the context has been cleared
+        return
+
     turns = await _build_replay_turns_from_wire(wire_file)
     if not turns:
         start_idx = _find_replay_start(history)
