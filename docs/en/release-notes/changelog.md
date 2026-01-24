@@ -4,6 +4,10 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+## 0.86 (2026-01-24)
+
+- Build: Fix binary builds
+
 ## 0.85 (2026-01-24)
 
 - Shell: Cache pasted images to disk for persistence across sessions

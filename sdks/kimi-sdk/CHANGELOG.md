@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-01-24)
+
+- Relax kosong dependency to support kosong 0.40.x
+
 ## 0.2.0 (2026-01-21)
 
 - Export `KimiFiles` class to support video file uploads
