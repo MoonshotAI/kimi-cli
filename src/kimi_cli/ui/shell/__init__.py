@@ -192,6 +192,10 @@ class Shell:
         except Reload:
             # just propagate
             raise
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # Handle Ctrl-C during slash command execution, return to shell prompt
+            logger.debug("Slash command interrupted by KeyboardInterrupt")
+            console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unknown error:")
             console.print(f"[red]Unknown error: {e}[/red]")
