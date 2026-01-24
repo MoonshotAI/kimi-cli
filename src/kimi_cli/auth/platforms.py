@@ -44,9 +44,9 @@ PLATFORMS: list[Platform] = [
     Platform(
         id=KIMI_CODE_PLATFORM_ID,
         name="Kimi Code",
-        base_url="https://coding.deva.msh.team/coding/v1",  # TODO(login): temp base URL
-        search_url="https://coding.deva.msh.team/coding/v1/search",  # TODO(login)
-        fetch_url="https://coding.deva.msh.team/coding/v1/fetch",  # TODO(login)
+        base_url="https://api.kimi.com/coding/v1",
+        search_url="https://api.kimi.com/coding/v1/search",
+        fetch_url="https://api.kimi.com/coding/v1/fetch",
     ),
     Platform(
         id="moonshot-cn",

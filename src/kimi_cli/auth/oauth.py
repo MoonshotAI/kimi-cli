@@ -703,3 +703,9 @@ class OAuthManager:
 
         assert isinstance(runtime.llm.chat_provider, Kimi), "Expected Kimi chat provider"
         runtime.llm.chat_provider.client.api_key = access_token
+
+
+if __name__ == "__main__":
+    from rich import print
+
+    print(_common_headers())
