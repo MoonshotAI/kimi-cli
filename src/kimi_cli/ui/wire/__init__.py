@@ -305,7 +305,7 @@ class WireOverStdio:
             )
 
         from kimi_cli.constant import NAME, VERSION
-        from kimi_cli.ui.wire.protocol import WIRE_PROTOCOL_VERSION
+        from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
 
         result: dict[str, JsonType] = {
             "protocol_version": WIRE_PROTOCOL_VERSION,
