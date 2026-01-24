@@ -853,8 +853,8 @@ class CustomPromptSession:
                 content.append(TextPart(text=match.group(0)))
             remaining_command = remaining_command[end:]
 
-        if remaining_command.strip():
-            content.append(TextPart(text=remaining_command.strip()))
+        if remaining_command:
+            content.append(TextPart(text=remaining_command))
 
         return UserInput(
             mode=self._mode,
