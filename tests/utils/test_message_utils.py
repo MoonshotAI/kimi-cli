@@ -64,7 +64,7 @@ def test_stringify_mixed_parts():
     message = Message(role="user", content=[text_part1, image_part, text_part2])
     result = message_stringify(message)
 
-    assert result == "Hello[image_url]World"
+    assert result == "Hello[image]World"
 
 
 def test_stringify_only_image_parts():
@@ -79,7 +79,7 @@ def test_stringify_only_image_parts():
     message = Message(role="user", content=[image_part1, image_part2])
     result = message_stringify(message)
 
-    assert result == "[image_url][image_url]"
+    assert result == "[image][image]"
 
 
 def test_stringify_empty_string():
