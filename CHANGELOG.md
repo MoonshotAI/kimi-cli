@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Cache pasted images to disk for persistence across sessions
+- Shell: Fix display of image/audio/video attachments in message history
 - Shell: Handle Ctrl-C during slash command execution
 - Shell: Fix shlex parsing error in shell mode when input contains invalid shell syntax
 - Shell: Fix stderr output from MCP servers and third-party libraries polluting shell UI
