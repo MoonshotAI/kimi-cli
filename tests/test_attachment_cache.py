@@ -23,7 +23,7 @@ def test_attachment_cache_roundtrip(tmp_path) -> None:
 
     part = cache.load_content_part("image", cached.attachment_id)
     assert isinstance(part, ImageURLPart)
-    assert part.image_url.id == cached.attachment_id
+    assert part.image_url.id == str(cached.path)
     assert part.image_url.url.startswith("data:image/png;base64,")
 
     encoded = part.image_url.url.split(",", 1)[1]
@@ -33,3 +33,18 @@ def test_attachment_cache_roundtrip(tmp_path) -> None:
 def test_parse_attachment_kind() -> None:
     assert _parse_attachment_kind("image") == "image"
     assert _parse_attachment_kind("text") is None
+
+
+def test_attachment_cache_dedupes_bytes(tmp_path) -> None:
+    cache = AttachmentCache(root=tmp_path)
+    payload = b"same-bytes"
+
+    cached_first = cache.store_bytes("image", ".png", payload)
+    cached_second = cache.store_bytes("image", ".png", payload)
+
+    assert cached_first is not None
+    assert cached_second is not None
+    assert cached_first.attachment_id == cached_second.attachment_id
+    assert cached_first.path == cached_second.path
+    assert cached_first.path.read_bytes() == payload
+    assert len(list((tmp_path / "images").iterdir())) == 1

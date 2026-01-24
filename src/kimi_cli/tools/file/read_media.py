@@ -86,6 +86,7 @@ class ReadMediaFile(CallableTool2[Params]):
     async def _read_media(self, path: KaosPath, file_type: FileType) -> ToolReturnValue:
         assert file_type.kind in ("image", "video")
 
+        media_id = str(path)
         stat = await path.stat()
         size = stat.st_size
         if size == 0:
@@ -106,7 +107,7 @@ class ReadMediaFile(CallableTool2[Params]):
             case "image":
                 data = await path.read_bytes()
                 data_url = _to_data_url(file_type.mime_type, data)
-                part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
+                part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url, id=media_id))
                 image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
@@ -115,9 +116,10 @@ class ReadMediaFile(CallableTool2[Params]):
                         data=data,
                         mime_type=file_type.mime_type,
                     )
+                    part.video_url.id = media_id
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
-                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
+                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url, id=media_id))
                 image_size = None
 
         size_hint = ""

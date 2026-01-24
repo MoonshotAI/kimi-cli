@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from hashlib import md5
+from hashlib import md5, sha256
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Literal, override
@@ -508,12 +508,12 @@ def _guess_image_mime(path: Path) -> str:
     return "image/png"
 
 
-def _build_image_part(image_bytes: bytes, attachment_id: str, mime_type: str) -> ImageURLPart:
+def _build_image_part(image_bytes: bytes, image_id: str, mime_type: str) -> ImageURLPart:
     image_base64 = base64.b64encode(image_bytes).decode("ascii")
     return ImageURLPart(
         image_url=ImageURLPart.ImageURL(
             url=f"data:{mime_type};base64,{image_base64}",
-            id=attachment_id,
+            id=image_id,
         )
     )
 
@@ -532,6 +532,7 @@ class AttachmentCache:
     def __init__(self, root: Path | None = None) -> None:
         self._root = root or Path("/tmp/kimi")
         self._dir_map: dict[CachedAttachmentKind, str] = {"image": "images"}
+        self._payload_map: dict[tuple[CachedAttachmentKind, str, str], CachedAttachment] = {}
 
     def _dir_for(self, kind: CachedAttachmentKind) -> Path:
         return self._root / self._dir_map[kind]
@@ -562,6 +563,14 @@ class AttachmentCache:
         dir_path = self._ensure_dir(kind)
         if dir_path is None:
             return None
+        payload_hash = sha256(payload).hexdigest()
+        cache_key = (kind, suffix, payload_hash)
+        cached = self._payload_map.get(cache_key)
+        if cached is not None:
+            if cached.path.exists():
+                return cached
+            self._payload_map.pop(cache_key, None)
+
         attachment_id = self._reserve_id(dir_path, suffix)
         path = dir_path / attachment_id
         try:
@@ -573,7 +582,9 @@ class AttachmentCache:
                 error=exc,
             )
             return None
-        return CachedAttachment(kind=kind, attachment_id=attachment_id, path=path)
+        cached = CachedAttachment(kind=kind, attachment_id=attachment_id, path=path)
+        self._payload_map[cache_key] = cached
+        return cached
 
     def store_image(self, image: Image.Image) -> CachedAttachment | None:
         png_bytes = BytesIO()
@@ -605,7 +616,7 @@ class AttachmentCache:
                 return None
             path, image_bytes = payload
             mime_type = _guess_image_mime(path)
-            return _build_image_part(image_bytes, attachment_id, mime_type)
+            return _build_image_part(image_bytes, str(path), mime_type)
         return None
 
 
