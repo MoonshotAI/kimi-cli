@@ -60,6 +60,15 @@ class LoopControl(BaseModel):
     context_tokens + reserved_context_size >= max_context_size. Default is 50000."""
 
 
+class NotificationsConfig(BaseModel):
+    """Notification configuration for desktop alerts."""
+
+    enabled: bool = Field(default=True, description="Whether desktop notifications are enabled")
+    approvals: bool = Field(
+        default=True, description="Whether to show notifications for approval requests"
+    )
+
+
 class MoonshotSearchConfig(BaseModel):
     """Moonshot Search configuration."""
 
@@ -131,6 +140,9 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    notifications: NotificationsConfig = Field(
+        default_factory=NotificationsConfig, description="Notification settings"
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
