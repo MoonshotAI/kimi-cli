@@ -12,7 +12,7 @@ from kosong.chat_provider import (
     ThinkingEffort,
     TokenUsage,
 )
-from kosong.chat_provider.echo_dsl import parse_echo_script
+from kosong.chat_provider.echo.dsl import parse_echo_script
 from kosong.message import Message
 from kosong.tooling import Tool
 

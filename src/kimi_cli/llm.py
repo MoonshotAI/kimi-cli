@@ -85,31 +85,6 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
     return applied
 
 
-def _load_scripted_echo_scripts() -> list[str]:
-    script_path = os.getenv("KIMI_SCRIPTED_ECHO_SCRIPTS")
-    if not script_path:
-        raise ValueError("KIMI_SCRIPTED_ECHO_SCRIPTS is required for _scripted_echo.")
-    path = Path(script_path).expanduser()
-    if not path.exists():
-        raise ValueError(f"Scripted echo file not found: {path}")
-    text = path.read_text(encoding="utf-8")
-    try:
-        data: object = json.loads(text)
-    except json.JSONDecodeError:
-        scripts = [chunk.strip() for chunk in text.split("\n---\n") if chunk.strip()]
-        if scripts:
-            return scripts
-        raise ValueError(
-            "Scripted echo file must be a JSON array of strings or a text file "
-            "split by '\\n---\\n'."
-        ) from None
-    if isinstance(data, list):
-        data_list = cast(list[object], data)
-        if all(isinstance(item, str) for item in data_list):
-            return cast(list[str], data_list)
-    raise ValueError("Scripted echo JSON must be an array of strings.")
-
-
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
@@ -196,7 +171,7 @@ def create_llm(
 
             chat_provider = EchoChatProvider()
         case "_scripted_echo":
-            from kosong.chat_provider.scripted_echo import ScriptedEchoChatProvider
+            from kosong.chat_provider.echo import ScriptedEchoChatProvider
 
             if provider.env:
                 os.environ.update(provider.env)
@@ -251,3 +226,28 @@ def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
     elif model.model in {"kimi-for-coding", "kimi-code"}:
         capabilities.add("thinking")
     return capabilities
+
+
+def _load_scripted_echo_scripts() -> list[str]:
+    script_path = os.getenv("KIMI_SCRIPTED_ECHO_SCRIPTS")
+    if not script_path:
+        raise ValueError("KIMI_SCRIPTED_ECHO_SCRIPTS is required for _scripted_echo.")
+    path = Path(script_path).expanduser()
+    if not path.exists():
+        raise ValueError(f"Scripted echo file not found: {path}")
+    text = path.read_text(encoding="utf-8")
+    try:
+        data: object = json.loads(text)
+    except json.JSONDecodeError:
+        scripts = [chunk.strip() for chunk in text.split("\n---\n") if chunk.strip()]
+        if scripts:
+            return scripts
+        raise ValueError(
+            "Scripted echo file must be a JSON array of strings or a text file "
+            "split by '\\n---\\n'."
+        ) from None
+    if isinstance(data, list):
+        data_list = cast(list[object], data)
+        if all(isinstance(item, str) for item in data_list):
+            return cast(list[str], data_list)
+    raise ValueError("Scripted echo JSON must be an array of strings.")

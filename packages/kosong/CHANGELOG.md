@@ -2,8 +2,7 @@
 
 ## Unreleased
 
-- Kosong: Add `ScriptedEchoChatProvider` for scripted conversation simulation in end-to-end testing
-- Kosong: Refactor Echo DSL logic into separate `echo_dsl.py` module
+- Add `ScriptedEchoChatProvider` for scripted conversation simulation in end-to-end testing
 
 ## 0.39.1 (2026-01-21)
 

@@ -2,7 +2,7 @@ import pytest
 
 from kosong import generate
 from kosong.chat_provider import ChatProviderError, StreamedMessagePart, TokenUsage
-from kosong.chat_provider.scripted_echo import ScriptedEchoChatProvider
+from kosong.chat_provider.echo import ScriptedEchoChatProvider
 from kosong.message import (
     AudioURLPart,
     ImageURLPart,
