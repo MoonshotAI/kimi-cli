@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Shell: Deduplicate cached attachments based on content hash
 - Shell: Fix display of image/audio/video attachments in message history
 - Tool: Use file path as media identifier in `ReadMediaFile` for better traceability
+- Tool: Fix some MP4 files not being recognized as videos
 - Shell: Handle Ctrl-C during slash command execution
 - Shell: Fix shlex parsing error in shell mode when input contains invalid shell syntax
 - Shell: Fix stderr output from MCP servers and third-party libraries polluting shell UI

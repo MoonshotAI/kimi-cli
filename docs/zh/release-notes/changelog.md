@@ -8,6 +8,7 @@
 - Shell：基于内容哈希去重缓存的附件
 - Shell：修复消息历史中图片/音频/视频附件的显示
 - Tool：使用文件路径作为 `ReadMediaFile` 中的媒体标识符，提高可追溯性
+- Tool：修复部分 MP4 文件无法识别为视频的问题
 - Shell：执行斜杠命令时支持 Ctrl-C 中断
 - Shell：修复 Shell 模式下输入不符合 Shell 语法的内容时的解析错误
 - Shell：修复 MCP 服务器和第三方库的 stderr 输出污染 Shell UI 的问题
