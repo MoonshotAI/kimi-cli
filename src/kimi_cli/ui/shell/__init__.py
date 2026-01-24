@@ -132,8 +132,12 @@ class Shell:
 
         # Check if user is trying to use 'cd' command
         stripped_cmd = command.strip()
-        split_cmd = shlex.split(stripped_cmd)
-        if len(split_cmd) == 2 and split_cmd[0] == "cd":
+        split_cmd: list[str] | None = None
+        try:
+            split_cmd = shlex.split(stripped_cmd)
+        except ValueError as exc:
+            logger.debug("Failed to parse shell command for cd check: {error}", error=exc)
+        if split_cmd and len(split_cmd) == 2 and split_cmd[0] == "cd":
             console.print(
                 "[yellow]Warning: Directory changes are not preserved across command executions."
                 "[/yellow]"
@@ -192,6 +196,10 @@ class Shell:
         except Reload:
             # just propagate
             raise
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # Handle Ctrl-C during slash command execution, return to shell prompt
+            logger.debug("Slash command interrupted by KeyboardInterrupt")
+            console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unknown error:")
             console.print(f"[red]Unknown error: {e}[/red]")

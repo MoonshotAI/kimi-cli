@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Shell：执行斜杠命令时支持 Ctrl-C 中断
+- Shell：修复 Shell 模式下输入不符合 Shell 语法的内容时的解析错误
+
 ## 0.84 (2026-01-22)
 
 - Build：添加跨平台独立二进制构建，支持 Windows、macOS（含代码签名和公证）和 Linux（x86_64 和 ARM64）

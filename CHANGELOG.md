@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Handle Ctrl-C during slash command execution
+- Shell: Fix shlex parsing error in shell mode when input contains invalid shell syntax
+
 ## 0.84 (2026-01-22)
 
 - Build: Add cross-platform standalone binary builds for Windows, macOS (with code signing and notarization), and Linux (x86_64 and ARM64)
