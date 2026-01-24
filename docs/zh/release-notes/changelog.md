@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：粘贴的图片缓存到磁盘，支持跨会话持久化
+- Shell：修复消息历史中图片/音频/视频附件的显示
 - Shell：执行斜杠命令时支持 Ctrl-C 中断
 - Shell：修复 Shell 模式下输入不符合 Shell 语法的内容时的解析错误
 - Shell：修复 MCP 服务器和第三方库的 stderr 输出污染 Shell UI 的问题

@@ -4,6 +4,7 @@ import asyncio
 import base64
 import getpass
 import json
+import mimetypes
 import os
 import re
 import time
@@ -494,8 +495,124 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
 
 
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
-    r"\[(?P<type>image):(?P<id>[a-zA-Z0-9_\-\.]+)(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
+    r"\[(?P<type>[a-zA-Z0-9_\-]+):(?P<id>[a-zA-Z0-9_\-\.]+)"
+    r"(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
 )
+
+
+def _guess_image_mime(path: Path) -> str:
+    mime, _ = mimetypes.guess_type(path.name)
+    if mime:
+        return mime
+    # fallback to PNG
+    return "image/png"
+
+
+def _build_image_part(image_bytes: bytes, attachment_id: str, mime_type: str) -> ImageURLPart:
+    image_base64 = base64.b64encode(image_bytes).decode("ascii")
+    return ImageURLPart(
+        image_url=ImageURLPart.ImageURL(
+            url=f"data:{mime_type};base64,{image_base64}",
+            id=attachment_id,
+        )
+    )
+
+
+type CachedAttachmentKind = Literal["image"]
+
+
+@dataclass(slots=True)
+class CachedAttachment:
+    kind: CachedAttachmentKind
+    attachment_id: str
+    path: Path
+
+
+class AttachmentCache:
+    def __init__(self, root: Path | None = None) -> None:
+        self._root = root or Path("/tmp/kimi")
+        self._dir_map: dict[CachedAttachmentKind, str] = {"image": "images"}
+
+    def _dir_for(self, kind: CachedAttachmentKind) -> Path:
+        return self._root / self._dir_map[kind]
+
+    def _ensure_dir(self, kind: CachedAttachmentKind) -> Path | None:
+        path = self._dir_for(kind)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Failed to create attachment cache dir: {dir} ({error})",
+                dir=path,
+                error=exc,
+            )
+            return None
+        return path
+
+    def _reserve_id(self, dir_path: Path, suffix: str) -> str:
+        for _ in range(5):
+            candidate = f"{random_string(8)}{suffix}"
+            if not (dir_path / candidate).exists():
+                return candidate
+        return f"{random_string(12)}{suffix}"
+
+    def store_bytes(
+        self, kind: CachedAttachmentKind, suffix: str, payload: bytes
+    ) -> CachedAttachment | None:
+        dir_path = self._ensure_dir(kind)
+        if dir_path is None:
+            return None
+        attachment_id = self._reserve_id(dir_path, suffix)
+        path = dir_path / attachment_id
+        try:
+            path.write_bytes(payload)
+        except OSError as exc:
+            logger.warning(
+                "Failed to write cached attachment: {file} ({error})",
+                file=path,
+                error=exc,
+            )
+            return None
+        return CachedAttachment(kind=kind, attachment_id=attachment_id, path=path)
+
+    def store_image(self, image: Image.Image) -> CachedAttachment | None:
+        png_bytes = BytesIO()
+        image.save(png_bytes, format="PNG")
+        return self.store_bytes("image", ".png", png_bytes.getvalue())
+
+    def load_bytes(
+        self, kind: CachedAttachmentKind, attachment_id: str
+    ) -> tuple[Path, bytes] | None:
+        path = self._dir_for(kind) / attachment_id
+        if not path.exists():
+            return None
+        try:
+            return path, path.read_bytes()
+        except OSError as exc:
+            logger.warning(
+                "Failed to read cached attachment: {file} ({error})",
+                file=path,
+                error=exc,
+            )
+            return None
+
+    def load_content_part(
+        self, kind: CachedAttachmentKind, attachment_id: str
+    ) -> ContentPart | None:
+        if kind == "image":
+            payload = self.load_bytes(kind, attachment_id)
+            if payload is None:
+                return None
+            path, image_bytes = payload
+            mime_type = _guess_image_mime(path)
+            return _build_image_part(image_bytes, attachment_id, mime_type)
+        return None
+
+
+def _parse_attachment_kind(raw_kind: str) -> CachedAttachmentKind | None:
+    if raw_kind == "image":
+        return "image"
+    return None
 
 
 def _sanitize_surrogates(text: str) -> str:
@@ -528,8 +645,7 @@ class CustomPromptSession:
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = thinking
-        self._attachment_parts: dict[str, ContentPart] = {}
-        """Mapping from attachment id to ContentPart."""
+        self._attachment_cache = AttachmentCache()
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -670,7 +786,6 @@ class CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
-        self._attachment_parts.clear()
 
     def _try_paste_image(self, event: KeyPressEvent) -> bool:
         """Try to paste an image from the clipboard. Return True if successful."""
@@ -694,23 +809,16 @@ class CustomPromptSession:
             console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
             return False
 
-        attachment_id = f"{random_string(8)}.png"
-        png_bytes = BytesIO()
-        image.save(png_bytes, format="PNG")
-        png_base64 = base64.b64encode(png_bytes.getvalue()).decode("ascii")
-        image_part = ImageURLPart(
-            image_url=ImageURLPart.ImageURL(
-                url=f"data:image/png;base64,{png_base64}", id=attachment_id
-            )
-        )
-        self._attachment_parts[attachment_id] = image_part
+        cached = self._attachment_cache.store_image(image)
+        if cached is None:
+            return False
         logger.debug(
             "Pasted image from clipboard: {attachment_id}, {image_size}",
-            attachment_id=attachment_id,
+            attachment_id=cached.attachment_id,
             image_size=image.size,
         )
 
-        placeholder = f"[image:{attachment_id},{image.width}x{image.height}]"
+        placeholder = f"[image:{cached.attachment_id},{image.width}x{image.height}]"
         event.current_buffer.insert_text(placeholder)
         event.app.invalidate()
         return True
@@ -731,7 +839,10 @@ class CustomPromptSession:
             if start > 0:
                 content.append(TextPart(text=remaining_command[:start]))
             attachment_id = match.group("id")
-            part = self._attachment_parts.get(attachment_id)
+            attachment_kind = _parse_attachment_kind(match.group("type"))
+            part = None
+            if attachment_kind is not None:
+                part = self._attachment_cache.load_content_part(attachment_kind, attachment_id)
             if part is not None:
                 content.append(part)
             else:
@@ -742,8 +853,8 @@ class CustomPromptSession:
                 content.append(TextPart(text=match.group(0)))
             remaining_command = remaining_command[end:]
 
-        if remaining_command.strip():
-            content.append(TextPart(text=remaining_command.strip()))
+        if remaining_command:
+            content.append(TextPart(text=remaining_command))
 
         return UserInput(
             mode=self._mode,
