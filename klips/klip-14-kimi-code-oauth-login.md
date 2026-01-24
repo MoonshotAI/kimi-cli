@@ -1,7 +1,7 @@
 ---
 Author: "@stdrc"
-Updated: 2026-01-21
-Status: Draft
+Updated: 2026-01-24
+Status: Implemented
 ---
 
 # KLIP-14: Kimi Code OAuth /login
@@ -37,16 +37,17 @@ Status: Draft
 
 后端当前提供 Device Authorization Grant（RFC 8628），CLI 需要对接实际端点：
 
-* OAuth host（需可配置，示例为 dev）：
-  * `https://account-gw.dev.kimi.team`
+* OAuth host（可配置）：
+  * 默认：`https://auth.kimi.com`
+  * 可用环境变量覆盖：`KIMI_CODE_OAUTH_HOST` 或 `KIMI_OAUTH_HOST`
 * Public client：
   * `client_id`: `17e5f671-d194-4dfb-9706-5516cb48c098`
   * 不需要 client secret
 * 端点：
-  * `POST /oauth/device_authorization`
-  * `POST /oauth/token`（device_code + refresh_token）
+  * `POST /api/oauth/device_authorization`
+  * `POST /api/oauth/token`（device_code + refresh_token）
 * Scope（若后端要求）：
-  * `coding offline_access`
+  * 当前实现仅发送 `client_id`，未携带 scope
 * 典型返回字段：
   * `user_code` / `device_code`
   * `verification_uri` / `verification_uri_complete`
@@ -64,7 +65,8 @@ import socket
 COMMON_HEADERS = {
     "X-Msh-Platform": "kimi_cli",
     "X-Msh-Version": VERSION,
-    "X-Msh-Device-Model": platform.node() or socket.gethostname(),
+    "X-Msh-Device-Name": platform.node() or socket.gethostname(),
+    "X-Msh-Device-Model": "<os-name + version + arch>",
     "X-Msh-Os-Version": platform.version(),
     "X-Msh-Device-Id": "<stable-uuid>",
 }
@@ -72,7 +74,9 @@ COMMON_HEADERS = {
 
 * `X-Msh-Platform` 固定为 `kimi_cli`。
 * `X-Msh-Version` 使用 `kimi_cli.constant.VERSION`（实际版本号）。
-* `X-Msh-Device-Model` 使用设备名（`platform.node()` / `socket.gethostname()`）。
+* `X-Msh-Device-Name` 使用设备名（`platform.node()` / `socket.gethostname()`）。
+* `X-Msh-Device-Model` 使用系统名 + 版本号 + 架构（如 `Windows 11 AMD64`、
+  `macOS 15.1.1 arm64`）。
 * `X-Msh-Os-Version` 使用 `platform.version()`（与 `Environment.os_version` 一致）。
 * `X-Msh-Device-Id` 为稳定 UUID，首次生成后持久化，建议存放于 `~/.kimi/device_id`
   并设置权限 `0600`。
@@ -80,15 +84,16 @@ COMMON_HEADERS = {
 ### 2) /login UX 流程
 
 1. `/login` 与 `kimi login` 仅支持 Kimi Code 平台；若不是默认 config location 则直接拒绝。
-2. `POST /oauth/device_authorization` 获取 `verification_uri_complete` 与 `user_code`。
-3. 直接 `webbrowser.open(verification_uri_complete)`，同时打印 URL + user_code（不互斥）。
-4. 按 `interval` 轮询 `POST /oauth/token`，`grant_type=urn:ietf:params:oauth:grant-type:device_code`。
-   * `authorization_pending` -> 继续等待
-   * `slow_down` -> interval += 5
-   * `expired_token` -> 重新发起 `/login`
+2. `POST /api/oauth/device_authorization` 获取 `verification_uri_complete` 与 `user_code`。
+3. 直接 `webbrowser.open(verification_uri_complete)`，同时打印 Verification URL
+   （`verification_uri_complete` 通常已包含 user_code）。
+4. 按 `interval` 轮询 `POST /api/oauth/token`，
+   `grant_type=urn:ietf:params:oauth:grant-type:device_code`。
+   * 仅特判 `expired_token` -> 重新发起 `/login`
+   * 其他错误 -> 继续按 interval 等待（不特殊处理 `slow_down`）
 5. 交换成功 -> 保存 tokens，拉取模型，写入托管 provider/model，设置默认模型和
    search/fetch 服务（流程同 `/setup`），access_token 同时用于 LLM/search/fetch。
-6. 触发 `Reload` 以重建 LLM。
+6. Shell `/login` 成功后触发 `Reload`；`kimi login` 仅执行登录流程并退出。
 
 ### 3) 用户授权提示
 
@@ -97,7 +102,6 @@ CLI 提示用户打开浏览器并输入 user code，不再需要本地回调或
 ```
 Please visit the following URL and enter the user code to authorize:
 Verification URL: {verification_uri_complete}
-User Code: {user_code}
 ```
 
 注意：`ApproveDeviceGrant` 是 Web 侧的审批接口，仅用于测试，CLI 不应调用。
@@ -106,22 +110,22 @@ User Code: {user_code}
 
 1. `/logout` 与 `kimi logout` 仅支持 Kimi Code 平台；若不是默认 config location 则直接拒绝。
 2. 清理凭据存储：
-   * keychain：删除 `service=kimi-cli` + `key=oauth/kimi-code`
+   * keychain：删除 `service=kimi-code` + `key=oauth/kimi-code`
    * 文件：删除 `~/.kimi/credentials/kimi-code.json`
 3. 更新 `config.toml`（仅默认位置）：
    * 删除 `providers."managed:kimi-code"` 整体配置
    * 删除 `models` 中所有 `provider = "managed:kimi-code"` 的条目
    * 若 `default_model` 指向被删除的模型，则清空 `default_model`
-   * `services.moonshot_search.api_key = ""`
-   * `services.moonshot_fetch.api_key = ""`
-4. 触发 `Reload` 以重建 LLM。
+   * `services.moonshot_search = None`
+   * `services.moonshot_fetch = None`
+4. Shell `/logout` 成功后触发 `Reload`；`kimi logout` 仅执行退出流程并退出。
 
 ### 5) Token 与凭据存储（最佳实践）
 
 优先使用系统凭据存储，避免将 access_token / refresh_token 明文落盘：
 
-* 首选：OS keychain（建议引入 `keyring`）
-  * service: `kimi-cli`
+* 首选：OS keychain（`keyring`）
+  * service: `kimi-code`
   * key: `oauth/kimi-code`
   * value: JSON（access_token、refresh_token、expires_at、scope、token_type）
 * 兜底：`~/.kimi/credentials/kimi-code.json`，权限 `0600`
@@ -136,17 +140,17 @@ User Code: {user_code}
 type = "kimi"
 base_url = "https://api.kimi.com/coding/v1"
 api_key = ""
-oauth = { storage = "keyring", key = "oauth/kimi-code" }
+oauth = { storage = "keyring", key = "oauth/kimi-code" } # keyring 不可用时为 file
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
 api_key = ""
-oauth = { storage = "keyring", key = "oauth/kimi-code" }
+oauth = { storage = "keyring", key = "oauth/kimi-code" } # keyring 不可用时为 file
 
 [services.moonshot_fetch]
 base_url = "https://api.kimi.com/coding/v1/fetch"
 api_key = ""
-oauth = { storage = "keyring", key = "oauth/kimi-code" }
+oauth = { storage = "keyring", key = "oauth/kimi-code" } # keyring 不可用时为 file
 ```
 
 `api_key` 为空字符串仅作为占位，运行时注入 access_token。
@@ -155,29 +159,25 @@ oauth = { storage = "keyring", key = "oauth/kimi-code" }
 ### 6) Token 刷新策略
 
 * 每次用户 prompt 触发时，在后台读取凭据存储中的 `expires_at` 并尽量刷新：
-  * 若剩余时间 < 5 分钟，先刷新（不阻塞 UI）
-  * 推荐挂载点：`KimiSoul.run(...)` 接收用户输入后、创建 LLM 调用前启动刷新任务
+  * 若已过期则强制刷新；若剩余时间 < 5 分钟则后台刷新
+  * 挂载点：`KimiSoul.run(...)` 开始时触发 `ensure_fresh`
 * 刷新流程（带上上面的设备信息 headers）：
   * `grant_type=refresh_token`
   * `refresh_token`, `client_id`
 * 刷新成功：
   * 更新凭据存储中的 access_token / refresh_token / expires_at
-  * 更新内存中的 `api_key` 与 `oauth.expires_at`
-  * 同步更新 search/fetch 的 `api_key`
-  * 先尝试热更新 LLM；若不支持则触发 `Reload` 以重建 LLM
+  * 更新内存中的 `api_key`（仅对 `Kimi` provider 生效）
 * 刷新失败：
-  * 在 bottom status 弹通知并提示重新 `/login`
+  * 仅记录日志警告，不触发 UI 提示或 `Reload`
 
 ### 7) LLM 与工具的热更新策略
 
 * 目标：刷新 token 后不打断用户输入与对话。
-* LLM 热更新优先级：
-  1. 优先在 `kosong` 的 `Kimi` chat provider 增加 `update_api_key(...)`（或等价）能力，
-     并在刷新后通过 `isinstance(chat_provider, Kimi)` 调用以热更新。
-  2. 若 provider 不支持热更新，则 fallback 为重建 `LLM` 实例并替换 `runtime.llm`。
+* LLM 热更新：
+  * 当前实现直接更新 `Kimi` chat provider 的 `client.api_key`，不触发重建或 Reload。
 * 搜索/抓取：
-  * `SearchWeb` / `FetchURL` 不直接缓存 api_key，从 `runtime.oauth` 动态取
-    access_token（以 config 的 `oauth` 引用为指引），保证刷新立即生效。
+  * `SearchWeb` / `FetchURL` 每次调用从 `runtime.oauth.resolve_api_key(...)` 获取 token，
+    不缓存 api_key，刷新后立即生效。
 
 ### 8) 与 /setup 的关系
 
@@ -190,15 +190,12 @@ oauth = { storage = "keyring", key = "oauth/kimi-code" }
 ## 边界与兼容性
 
 * 如果用户使用 `--config` / `--config-file`，直接拒绝 `/login`（避免凭据落在非默认路径）。
-* 仅当 access_token 可用于 `base_url`、`search_url`、`fetch_url` 时才自动开启服务；
-  否则只写 LLM provider，不写 `services`。
+* 只要平台提供 `search_url` / `fetch_url` 就会写入 `services` 配置。
 * OAuth 模型和 API 兼容性与当前 Bearer key 完全一致。
 
 ## 待确认事项
 
-* OAuth host 的生产环境域名与配置方式（dev/prod 切换策略）。
-* Device Authorization 是否强制要求 `scope`，以及 scope 的最终命名。
-* `/oauth/device_authorization` 是否需要相同的设备信息 headers。
+* Device Authorization 是否强制要求 `scope`，以及 scope 的最终命名（当前实现未发送）。
 
 ## 关键参考位置
 
