@@ -56,6 +56,10 @@ class OAuthError(RuntimeError):
     """OAuth flow error."""
 
 
+class OAuthUnauthorized(OAuthError):
+    """OAuth credentials rejected."""
+
+
 class OAuthDeviceExpired(OAuthError):
     """Device authorization expired."""
 
@@ -83,33 +87,20 @@ class OAuthEvent:
 @dataclass(slots=True)
 class OAuthToken:
     access_token: str
-    refresh_token: str | None
-    expires_at: float | None
-    scope: str | None
-    token_type: str | None
+    refresh_token: str
+    expires_at: float
+    scope: str
+    token_type: str
 
     @classmethod
-    def from_response(
-        cls, payload: dict[str, Any], *, previous: OAuthToken | None = None
-    ) -> OAuthToken:
-        access_token = str(payload["access_token"])
-        refresh_token = payload.get("refresh_token") or (
-            previous.refresh_token if previous else None
-        )
-        expires_in = payload.get("expires_in")
-        expires_at = None
-        if expires_in is not None:
-            expires_at = time.time() + float(expires_in)
-        elif previous:
-            expires_at = previous.expires_at
-        scope = payload.get("scope") or (previous.scope if previous else None)
-        token_type = payload.get("token_type") or (previous.token_type if previous else None)
+    def from_response(cls, payload: dict[str, Any]) -> OAuthToken:
+        expires_in = float(payload["expires_in"])
         return cls(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=expires_at,
-            scope=scope,
-            token_type=token_type,
+            access_token=str(payload["access_token"]),
+            refresh_token=str(payload["refresh_token"]),
+            expires_at=time.time() + expires_in,
+            scope=str(payload["scope"]),
+            token_type=str(payload["token_type"]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -123,12 +114,13 @@ class OAuthToken:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> OAuthToken:
+        expires_at_value = payload.get("expires_at")
         return cls(
             access_token=str(payload.get("access_token") or ""),
-            refresh_token=payload.get("refresh_token"),
-            expires_at=payload.get("expires_at"),
-            scope=payload.get("scope"),
-            token_type=payload.get("token_type"),
+            refresh_token=str(payload.get("refresh_token") or ""),
+            expires_at=float(expires_at_value) if expires_at_value is not None else 0.0,
+            scope=str(payload.get("scope") or ""),
+            token_type=str(payload.get("token_type") or ""),
         )
 
 
@@ -356,7 +348,7 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
     return status, data
 
 
-async def refresh_token(refresh_token: str, *, previous: OAuthToken | None = None) -> OAuthToken:
+async def refresh_token(refresh_token: str) -> OAuthToken:
     async with (
         new_client_session() as session,
         session.post(
@@ -371,9 +363,11 @@ async def refresh_token(refresh_token: str, *, previous: OAuthToken | None = Non
     ):
         data = await response.json(content_type=None)
         status = response.status
-    if status != 200 or "access_token" not in data:
+    if status in (401, 403):
+        raise OAuthUnauthorized(data.get("error_description") or "Token refresh unauthorized.")
+    if status != 200:
         raise OAuthError(data.get("error_description") or "Token refresh failed.")
-    return OAuthToken.from_response(data, previous=previous)
+    return OAuthToken.from_response(data)
 
 
 def _select_default_model_and_thinking(models: list[ModelInfo]) -> tuple[ModelInfo, bool] | None:
@@ -638,14 +632,7 @@ class OAuthManager:
         if token is None:
             return
         self._tokens[ref.key] = token
-        if token.expires_at is None:
-            return
-        remaining = token.expires_at - time.time()
-        if remaining <= 0:
-            await self._refresh_tokens(ref, token, runtime, force=True)
-            return
-        if remaining < REFRESH_THRESHOLD_SECONDS:
-            self._schedule_refresh(ref, token, runtime)
+        await self._refresh_tokens(ref, token, runtime, force=True)
 
     def _schedule_refresh(self, ref: OAuthRef, token: OAuthToken, runtime: Runtime) -> None:
         if self._refresh_task and not self._refresh_task.done():
@@ -685,7 +672,16 @@ class OAuthManager:
                     logger.warning("No refresh token available for OAuth refresh.")
                 return
             try:
-                refreshed = await refresh_token(refresh_token_value, previous=current)
+                refreshed = await refresh_token(refresh_token_value)
+            except OAuthUnauthorized as exc:
+                logger.warning(
+                    "OAuth credentials rejected, deleting stored tokens: {error}",
+                    error=exc,
+                )
+                self._tokens.pop(ref.key, None)
+                delete_tokens(ref)
+                self._apply_access_token(runtime, "")
+                return
             except Exception as exc:
                 logger.warning("Failed to refresh OAuth token: {error}", error=exc)
                 return
