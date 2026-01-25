@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, NamedTuple, cast
 
 import aiohttp
@@ -40,13 +41,19 @@ class Platform(NamedTuple):
     allowed_prefixes: list[str] | None = None
 
 
+def _kimi_code_base_url() -> str:
+    if base_url := os.getenv("KIMI_CODE_BASE_URL"):
+        return base_url
+    return "https://api.kimi.com/coding/v1"
+
+
 PLATFORMS: list[Platform] = [
     Platform(
         id=KIMI_CODE_PLATFORM_ID,
         name="Kimi Code",
-        base_url="https://api.kimi.com/coding/v1",
-        search_url="https://api.kimi.com/coding/v1/search",
-        fetch_url="https://api.kimi.com/coding/v1/fetch",
+        base_url=_kimi_code_base_url(),
+        search_url=f"{_kimi_code_base_url()}/search",
+        fetch_url=f"{_kimi_code_base_url()}/fetch",
     ),
     Platform(
         id="moonshot-cn",
