@@ -4,6 +4,8 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Shell: Fix image pasting from clipboard on macOS
+
 ## 0.86 (2026-01-24)
 
 - Build: Fix binary builds
