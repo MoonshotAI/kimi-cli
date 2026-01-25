@@ -4,6 +4,7 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Shell: Fix Markdown rendering error when HTML blocks appear outside any element
 - Skills: Add more user-level and project-level skills directory candidates
 - Core: Improve system prompt guidance for media file generation and processing tasks
 - Shell: Fix image pasting from clipboard on macOS
