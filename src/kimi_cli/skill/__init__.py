@@ -20,13 +20,6 @@ from kimi_cli.utils.frontmatter import parse_frontmatter
 SkillType = Literal["standard", "flow"]
 
 
-def get_skills_dir() -> KaosPath:
-    """
-    Get the canonical user skills directory path.
-    """
-    return KaosPath.home() / ".config" / "agents" / "skills"
-
-
 def get_builtin_skills_dir() -> Path:
     """
     Get the built-in skills directory path.
@@ -34,28 +27,16 @@ def get_builtin_skills_dir() -> Path:
     return Path(__file__).parent.parent / "skills"
 
 
-def get_kimi_skills_dir() -> KaosPath:
-    """
-    Get the legacy Kimi CLI skills directory path.
-    """
-    return KaosPath.home() / ".kimi" / "skills"
-
-
-def get_claude_skills_dir() -> KaosPath:
-    """
-    Get the legacy Claude skills directory path.
-    """
-    return KaosPath.home() / ".claude" / "skills"
-
-
 def get_user_skills_dir_candidates() -> tuple[KaosPath, ...]:
     """
     Get user-level skills directory candidates in priority order.
     """
     return (
-        get_skills_dir(),
-        get_kimi_skills_dir(),
-        get_claude_skills_dir(),
+        KaosPath.home() / ".config" / "agents" / "skills",
+        KaosPath.home() / ".agents" / "skills",
+        KaosPath.home() / ".kimi" / "skills",
+        KaosPath.home() / ".claude" / "skills",
+        KaosPath.home() / ".codex" / "skills",
     )
 
 
@@ -67,6 +48,7 @@ def get_project_skills_dir_candidates(work_dir: KaosPath) -> tuple[KaosPath, ...
         work_dir / ".agents" / "skills",
         work_dir / ".kimi" / "skills",
         work_dir / ".claude" / "skills",
+        work_dir / ".codex" / "skills",
     )
 
 

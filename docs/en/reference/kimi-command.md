@@ -136,9 +136,9 @@ Thinking mode requires model support. If not specified, uses the last session's 
 
 | Option | Description |
 |--------|-------------|
-| `--skills-dir PATH` | Specify skills directory (default `~/.kimi/skills`) |
+| `--skills-dir PATH` | Specify skills directory, skipping auto-discovery |
 
-See [Agent Skills](../customization/skills.md) for details.
+When not specified, Kimi CLI automatically discovers user-level and project-level skills directories in priority order. See [Agent Skills](../customization/skills.md) for details.
 
 ## Subcommands
 
