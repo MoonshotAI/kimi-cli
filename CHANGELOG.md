@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Skills: Add more user-level and project-level skills directory candidates
 - Core: Improve system prompt guidance for media file generation and processing tasks
 - Shell: Fix image pasting from clipboard on macOS
 
