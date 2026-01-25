@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal, override
 
 from kaos.path import KaosPath
-from PIL import Image, ImageGrab
+from PIL import Image
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.buffer import Buffer
@@ -45,7 +45,7 @@ from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.clipboard import is_clipboard_available
+from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
@@ -800,21 +800,9 @@ class CustomPromptSession:
 
     def _try_paste_image(self, event: KeyPressEvent) -> bool:
         """Try to paste an image from the clipboard. Return True if successful."""
-        # Try get image from clipboard
-        image = ImageGrab.grabclipboard()
+        image = grab_image_from_clipboard()
         if image is None:
             return False
-
-        if not isinstance(image, Image.Image):
-            for item in image:
-                try:
-                    with Image.open(item) as img:
-                        image = img.copy()
-                    break
-                except Exception:
-                    continue
-            else:
-                return False
 
         if "image_in" not in self._model_capabilities:
             console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
