@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Improve system prompt guidance for media file generation and processing tasks
 - Shell: Fix image pasting from clipboard on macOS
 
 ## 0.86 (2026-01-24)

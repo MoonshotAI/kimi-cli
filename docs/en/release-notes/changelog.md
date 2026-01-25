@@ -4,6 +4,7 @@ This page documents the changes in each Kimi CLI release.
 
 ## Unreleased
 
+- Core: Improve system prompt guidance for media file generation and processing tasks
 - Shell: Fix image pasting from clipboard on macOS
 
 ## 0.86 (2026-01-24)
