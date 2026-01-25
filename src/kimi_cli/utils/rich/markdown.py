@@ -702,7 +702,21 @@ class Markdown(JupyterMixin):
 
             if node_type in {"text", "html_inline", "html_block"}:
                 # Render HTML tokens as plain text so safeword markup stays visible.
-                context.on_text(token.content, node_type)
+                if context.stack:
+                    context.on_text(token.content, node_type)
+                else:
+                    # Orphan text/html blocks can appear outside any element (e.g. <analysis>).
+                    paragraph = Paragraph(justify=self.justify or "left")
+                    paragraph.on_enter(context)
+                    paragraph.on_text(context, token.content)
+                    paragraph.on_leave(context)
+                    if new_line and render_started:
+                        yield _new_line_segment
+                    rendered = console.render(paragraph, context.options)
+                    for segment in rendered:
+                        render_started = True
+                        yield segment
+                    new_line = paragraph.new_line
             elif node_type == "hardbreak":
                 context.on_text("\n", node_type)
             elif node_type == "softbreak":
