@@ -22,10 +22,12 @@ def test_detect_file_type_suffixes():
 def test_detect_file_type_header_overrides():
     png_header = b"\x89PNG\r\n\x1a\n" + b"pngdata"
     mp4_header = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+    iso5_header = b"\x00\x00\x00\x18ftypiso5\x00\x00\x00\x00iso5isom"
     binary_header = b"\x00\x00binary"
 
     assert detect_file_type("sample", header=png_header).kind == "image"
     assert detect_file_type("sample.bin", header=png_header).mime_type == "image/png"
     assert detect_file_type("sample", header=mp4_header).kind == "video"
-    assert detect_file_type("sample.png", header=mp4_header).kind == "unknown"
+    assert detect_file_type("sample", header=iso5_header).kind == "video"
+    assert detect_file_type("sample.png", header=mp4_header).kind == "image"
     assert detect_file_type("notes.txt", header=binary_header).kind == "unknown"

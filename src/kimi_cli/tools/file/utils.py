@@ -70,6 +70,7 @@ _FTYP_IMAGE_BRANDS = {
 _FTYP_VIDEO_BRANDS = {
     "isom": "video/mp4",
     "iso2": "video/mp4",
+    "iso5": "video/mp4",
     "mp41": "video/mp4",
     "mp42": "video/mp4",
     "avc1": "video/mp4",
@@ -235,6 +236,9 @@ def detect_file_type(path: str | PurePath, header: bytes | None = None) -> FileT
                 media_hint = FileType(kind="image", mime_type=mime_type)
             elif mime_type.startswith("video/"):
                 media_hint = FileType(kind="video", mime_type=mime_type)
+
+    if media_hint and media_hint.kind in ("image", "video"):
+        return media_hint
 
     if header is not None:
         sniffed = sniff_media_from_magic(header)

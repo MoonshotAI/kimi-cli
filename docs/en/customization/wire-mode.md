@@ -228,7 +228,7 @@ type CancelResult = Record<string, never>
 If no turn is in progress:
 
 ```json
-{"jsonrpc": "2.0", "id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000", "message": "No agent turn is in progress"}}
+{"jsonrpc": "2.0", "id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
 ### `event`
