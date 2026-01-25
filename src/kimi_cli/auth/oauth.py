@@ -457,7 +457,7 @@ async def login_kimi_code(
 
         yield OAuthEvent(
             "info",
-            "Please visit the following URL and enter the user code to authorize:",
+            "Please visit the following URL to finish authorization.",
         )
         yield OAuthEvent(
             "verification_url",
