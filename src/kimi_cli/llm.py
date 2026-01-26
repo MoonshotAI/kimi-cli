@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from kimi_cli.constant import USER_AGENT
 
 if TYPE_CHECKING:
+    from kimi_cli.auth.oauth import OAuthManager
     from kimi_cli.config import LLMModel, LLMProvider
 
 type ProviderType = Literal[
@@ -85,17 +86,33 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
     return applied
 
 
+def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> dict[str, str]:
+    headers = {"User-Agent": USER_AGENT}
+    if oauth:
+        headers.update(oauth.common_headers())
+    if provider.custom_headers:
+        headers.update(provider.custom_headers)
+    return headers
+
+
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
     *,
     thinking: bool | None = None,
     session_id: str | None = None,
+    oauth: OAuthManager | None = None,
 ) -> LLM | None:
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
     ):
         return None
+
+    resolved_api_key = (
+        oauth.resolve_api_key(provider.api_key, provider.oauth)
+        if oauth and provider.oauth
+        else provider.api_key.get_secret_value()
+    )
 
     match provider.type:
         case "kimi":
@@ -104,11 +121,8 @@ def create_llm(
             chat_provider = Kimi(
                 model=model.model,
                 base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
-                default_headers={
-                    "User-Agent": USER_AGENT,
-                    **(provider.custom_headers or {}),
-                },
+                api_key=resolved_api_key,
+                default_headers=_kimi_default_headers(provider, oauth),
             )
 
             gen_kwargs: Kimi.GenerationKwargs = {}
@@ -129,7 +143,7 @@ def create_llm(
             chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
+                api_key=resolved_api_key,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -137,7 +151,7 @@ def create_llm(
             chat_provider = OpenAIResponses(
                 model=model.model,
                 base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
+                api_key=resolved_api_key,
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
@@ -145,7 +159,7 @@ def create_llm(
             chat_provider = Anthropic(
                 model=model.model,
                 base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
+                api_key=resolved_api_key,
                 default_max_tokens=50000,
             )
         case "google_genai" | "gemini":
@@ -154,7 +168,7 @@ def create_llm(
             chat_provider = GoogleGenAI(
                 model=model.model,
                 base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
+                api_key=resolved_api_key,
             )
         case "vertexai":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
@@ -163,7 +177,7 @@ def create_llm(
             chat_provider = GoogleGenAI(
                 model=model.model,
                 base_url=provider.base_url,
-                api_key=provider.api_key.get_secret_value(),
+                api_key=resolved_api_key,
                 vertexai=True,
             )
         case "_echo":
@@ -187,11 +201,8 @@ def create_llm(
                 provider=Kimi(
                     model=model.model,
                     base_url=provider.base_url,
-                    api_key=provider.api_key.get_secret_value(),
-                    default_headers={
-                        "User-Agent": USER_AGENT,
-                        **(provider.custom_headers or {}),
-                    },
+                    api_key=resolved_api_key,
+                    default_headers=_kimi_default_headers(provider, oauth),
                 ),
                 chaos_config=ChaosConfig(
                     error_probability=0.8,

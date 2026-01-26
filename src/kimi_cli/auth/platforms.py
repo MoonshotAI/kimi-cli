@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from typing import Any, NamedTuple, cast
 
 import aiohttp
 from pydantic import BaseModel
 
+from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
 from kimi_cli.config import Config, LLMModel, load_config, save_config
 from kimi_cli.llm import ModelCapability
 from kimi_cli.utils.aiohttp import new_client_session
@@ -39,13 +41,19 @@ class Platform(NamedTuple):
     allowed_prefixes: list[str] | None = None
 
 
+def _kimi_code_base_url() -> str:
+    if base_url := os.getenv("KIMI_CODE_BASE_URL"):
+        return base_url
+    return "https://api.kimi.com/coding/v1"
+
+
 PLATFORMS: list[Platform] = [
     Platform(
-        id="kimi-code",
+        id=KIMI_CODE_PLATFORM_ID,
         name="Kimi Code",
-        base_url="https://api.kimi.com/coding/v1",
-        search_url="https://api.kimi.com/coding/v1/search",
-        fetch_url="https://api.kimi.com/coding/v1/fetch",
+        base_url=_kimi_code_base_url(),
+        search_url=f"{_kimi_code_base_url()}/search",
+        fetch_url=f"{_kimi_code_base_url()}/fetch",
     ),
     Platform(
         id="moonshot-cn",
@@ -123,8 +131,21 @@ async def refresh_managed_models(config: Config) -> bool:
             logger.warning("Managed platform not found: {platform}", platform=platform_id)
             continue
 
+        api_key = provider.api_key.get_secret_value()
+        if not api_key and provider.oauth:
+            from kimi_cli.auth.oauth import load_tokens
+
+            token = load_tokens(provider.oauth)
+            if token:
+                api_key = token.access_token
+        if not api_key:
+            logger.warning(
+                "Missing API key for managed provider: {provider}",
+                provider=provider_key,
+            )
+            continue
         try:
-            models = await list_models(platform, provider.api_key.get_secret_value())
+            models = await list_models(platform, api_key)
         except Exception as exc:
             logger.error(
                 "Failed to refresh models for {platform}: {error}",

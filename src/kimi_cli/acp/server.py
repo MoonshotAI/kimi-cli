@@ -85,7 +85,22 @@ class ACPServer:
                             "label": "Kimi Code CLI Setup",
                         }
                     },
-                )
+                ),
+                # acp.schema.AuthMethod(
+                #     id="login",
+                #     name="Login",
+                #     description=(
+                #         "Run `kimi login` command in the terminal, "
+                #         "then follow the instructions to finish login."
+                #     ),
+                #     field_meta={
+                #         "terminal-auth": {
+                #             "command": command,
+                #             "args": args + ["login"],
+                #             "label": "Kimi Code Login",
+                #         }
+                #     },
+                # ),
             ],
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
@@ -250,6 +265,7 @@ class ACPServer:
             new_model,
             session_id=acp_session.id,
             thinking=model_id_conv.thinking,
+            oauth=cli_instance.soul.runtime.oauth,
         )
         cli_instance.soul.runtime.llm = new_llm
 

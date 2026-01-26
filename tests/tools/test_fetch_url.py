@@ -199,7 +199,7 @@ This is a markdown document.
     assert result.message == "The returned content is the full content of the page."
 
 
-async def test_fetch_url_with_service() -> None:
+async def test_fetch_url_with_service(runtime) -> None:
     """Test fetching using the moonshot_fetch service."""
     from kimi_cli.config import Config, MoonshotFetchConfig, Services
     from pydantic import SecretStr
@@ -241,7 +241,7 @@ async def test_fetch_url_with_service() -> None:
             )
         )
 
-        fetch_tool = FetchURL(config=config)
+        fetch_tool = FetchURL(config=config, runtime=runtime)
 
         # Execute fetch with tool call context
         from kimi_cli.wire.types import ToolCall

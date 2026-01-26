@@ -13,7 +13,9 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
-from kimi_cli.config import LLMProvider
+from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
+from kimi_cli.auth.platforms import get_platform_by_id, parse_managed_provider_key
+from kimi_cli.config import LLMModel
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import registry
@@ -37,7 +39,7 @@ async def usage(app: Shell, args: str):
     """Display API usage and quota information"""
     assert isinstance(app.soul, KimiSoul)
     if app.soul.runtime.llm is None:
-        console.print("[red]LLM not set. Please run /setup first.[/red]")
+        console.print("[red]LLM not set. Please run /login first.[/red]")
         return
 
     provider = app.soul.runtime.llm.provider_config
@@ -45,14 +47,15 @@ async def usage(app: Shell, args: str):
         console.print("[red]LLM provider configuration not found.[/red]")
         return
 
-    usage_url = _usage_url(provider)
+    usage_url = _usage_url(app.soul.runtime.llm.model_config)
     if usage_url is None:
         console.print("[yellow]Usage is available on Kimi Code platform only.[/yellow]")
         return
 
     with console.status("[cyan]Fetching usage...[/cyan]"):
+        api_key = app.soul.runtime.oauth.resolve_api_key(provider.api_key, provider.oauth)
         try:
-            payload = await _fetch_usage(usage_url, provider.api_key.get_secret_value())
+            payload = await _fetch_usage(usage_url, api_key)
         except aiohttp.ClientResponseError as e:
             message = "Failed to fetch usage."
             if e.status == 401:
@@ -73,11 +76,16 @@ async def usage(app: Shell, args: str):
     console.print(_build_usage_panel(summary, limits))
 
 
-def _usage_url(provider: LLMProvider) -> str | None:
-    base_url = (provider.base_url or "").rstrip("/")
-    coding_base_url = "https://api.kimi.com/coding/v1"
-    if base_url != coding_base_url:
+def _usage_url(model: LLMModel | None) -> str | None:
+    if model is None:
         return None
+    platform_id = parse_managed_provider_key(model.provider)
+    if platform_id is None:
+        return None
+    platform = get_platform_by_id(platform_id)
+    if platform is None or platform.id != KIMI_CODE_PLATFORM_ID:
+        return None
+    base_url = platform.base_url.rstrip("/")
     return f"{base_url}/usages"
 
 

@@ -540,6 +540,114 @@ def kimi(
 cli.add_typer(info_cli, name="info")
 
 
+def login(
+    json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit OAuth events as JSON lines.",
+    ),
+) -> None:
+    """Login to your Kimi account."""
+    from rich.console import Console
+    from rich.status import Status
+
+    from kimi_cli.auth.oauth import login_kimi_code
+    from kimi_cli.config import load_config
+
+    async def _run() -> bool:
+        if json:
+            ok = True
+            async for event in login_kimi_code(load_config()):
+                typer.echo(event.json)
+                if event.type == "error":
+                    ok = False
+            return ok
+
+        console = Console()
+        ok = True
+        status: Status | None = None
+        try:
+            async for event in login_kimi_code(load_config()):
+                if event.type == "waiting":
+                    if status is None:
+                        status = console.status("Waiting for user authorization...")
+                        status.start()
+                    continue
+                if status is not None:
+                    status.stop()
+                    status = None
+                match event.type:
+                    case "error":
+                        style = "red"
+                    case "success":
+                        style = "green"
+                    case _:
+                        style = None
+                console.print(event.message, markup=False, style=style)
+                if event.type == "error":
+                    ok = False
+        finally:
+            if status is not None:
+                status.stop()
+        return ok
+
+    ok = asyncio.run(_run())
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+def logout(
+    json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit OAuth events as JSON lines.",
+    ),
+) -> None:
+    """Logout from your Kimi account."""
+    from rich.console import Console
+
+    from kimi_cli.auth.oauth import logout_kimi_code
+    from kimi_cli.config import load_config
+
+    async def _run() -> bool:
+        ok = True
+        if json:
+            async for event in logout_kimi_code(load_config()):
+                typer.echo(event.json)
+                if event.type == "error":
+                    ok = False
+            return ok
+
+        console = Console()
+        async for event in logout_kimi_code(load_config()):
+            match event.type:
+                case "error":
+                    style = "red"
+                case "success":
+                    style = "green"
+                case _:
+                    style = None
+            console.print(event.message, markup=False, style=style)
+            if event.type == "error":
+                ok = False
+        return ok
+
+    ok = asyncio.run(_run())
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+def _oauth_enabled() -> bool:
+    from kimi_cli.utils.envvar import get_env_bool
+
+    return get_env_bool("KIMI_ENABLE_OAUTH")
+
+
+if _oauth_enabled():
+    cli.command()(login)
+    cli.command()(logout)
+
+
 @cli.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def term(
     ctx: typer.Context,

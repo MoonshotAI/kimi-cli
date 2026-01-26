@@ -12,6 +12,7 @@ from kaos.path import KaosPath
 from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
@@ -106,6 +107,8 @@ class KimiCLI:
             config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
+        oauth = OAuthManager(config)
+
         model: LLMModel | None = None
         provider: LLMProvider | None = None
 
@@ -131,13 +134,19 @@ class KimiCLI:
         # determine thinking mode
         thinking = config.default_thinking if thinking is None else thinking
 
-        llm = create_llm(provider, model, thinking=thinking, session_id=session.id)
+        llm = create_llm(
+            provider,
+            model,
+            thinking=thinking,
+            session_id=session.id,
+            oauth=oauth,
+        )
         if llm is not None:
             logger.info("Using LLM provider: {provider}", provider=provider)
             logger.info("Using LLM model: {model}", model=model)
             logger.info("Thinking mode: {thinking}", thinking=thinking)
 
-        runtime = await Runtime.create(config, llm, session, yolo, skills_dir)
+        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir)
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
@@ -259,7 +268,7 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value="not set, send /setup to configure",
+                    value="not set, send /login to login",
                     level=WelcomeInfoItem.Level.WARN,
                 )
             )

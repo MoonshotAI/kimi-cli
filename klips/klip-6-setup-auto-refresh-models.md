@@ -51,7 +51,7 @@ max_context_size = 262144
 
 ### 2) 识别“/setup 平台”的最小信息源
 
-将 `/setup` 平台清单抽到公共模块（例如 `src/kimi_cli/platforms.py`），提供：
+将 `/setup` 平台清单抽到公共模块（例如 `src/kimi_cli/auth/platforms.py`），提供：
 
 * `id`、`name`、`base_url`
 * `search_url`、`fetch_url`（可选）
@@ -119,5 +119,5 @@ max_context_size = 262144
 
 * `/setup`：`src/kimi_cli/ui/shell/setup.py`
 * 配置结构：`src/kimi_cli/config.py`
-* 平台与模型刷新：`src/kimi_cli/platforms.py`
+* 平台与模型刷新：`src/kimi_cli/auth/platforms.py`
 * `/model`：`src/kimi_cli/ui/shell/slash.py`

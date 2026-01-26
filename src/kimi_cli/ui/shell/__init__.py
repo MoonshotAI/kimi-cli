@@ -243,7 +243,7 @@ class Shell:
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
-            console.print('[red]LLM not set, send "/setup" to configure[/red]')
+            console.print('[red]LLM not set, send "/login" to login[/red]')
         except LLMNotSupported as e:
             # actually unsupported input/mode should already be blocked by prompt session
             logger.exception("LLM not supported:")
@@ -251,7 +251,7 @@ class Shell:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print("[red]Authorization failed, please check your API key[/red]")
+                console.print("[red]Authorization failed, please check your login status[/red]")
             elif isinstance(e, APIStatusError) and e.status_code == 402:
                 console.print("[red]Membership expired, please renew your plan[/red]")
             elif isinstance(e, APIStatusError) and e.status_code == 403:

@@ -17,6 +17,7 @@ from kosong.chat_provider.mock import MockChatProvider
 from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
+from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
 from kimi_cli.llm import ALL_MODEL_CAPABILITIES, LLM
 from kimi_cli.metadata import WorkDirMeta
@@ -173,6 +174,7 @@ def runtime(
         labor_market=labor_market,
         environment=environment,
         skills={},
+        oauth=OAuthManager(config),
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",
@@ -287,15 +289,15 @@ def str_replace_file_tool(
 
 
 @pytest.fixture
-def search_web_tool(config: Config) -> SearchWeb:
+def search_web_tool(config: Config, runtime: Runtime) -> SearchWeb:
     """Create a SearchWeb tool instance."""
-    return SearchWeb(config)
+    return SearchWeb(config, runtime)
 
 
 @pytest.fixture
-def fetch_url_tool(config: Config) -> FetchURL:
+def fetch_url_tool(config: Config, runtime: Runtime) -> FetchURL:
     """Create a FetchURL tool instance."""
-    return FetchURL(config)
+    return FetchURL(config, runtime)
 
 
 # misc fixtures
