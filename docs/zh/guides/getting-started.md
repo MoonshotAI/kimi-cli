@@ -45,8 +45,12 @@ kimi --version
 如果你已经安装了 uv，也可以直接运行：
 
 ```sh
-uv tool install --python 3.14 kimi-cli
+uv tool install --python 3.13 kimi-cli
 ```
+
+::: tip 提示
+Kimi Code CLI 支持 Python 3.12-3.14，但建议使用 3.13 以获得最佳兼容性。
+:::
 
 ## 升级与卸载
 

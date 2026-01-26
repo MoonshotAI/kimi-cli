@@ -16,4 +16,4 @@ if (-not (Get-Command $uvBin -ErrorAction SilentlyContinue)) {
   exit 1
 }
 
-& $uvBin tool install --python 3.14 kimi-cli
+& $uvBin tool install --python 3.13 kimi-cli
