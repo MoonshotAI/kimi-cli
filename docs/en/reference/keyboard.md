@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-Kimi CLI shell mode supports the following keyboard shortcuts.
+Kimi Code CLI shell mode supports the following keyboard shortcuts.
 
 ## Shortcuts list
 
@@ -12,7 +12,7 @@ Kimi CLI shell mode supports the following keyboard shortcuts.
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
 | `Ctrl-E` | Expand full approval request content |
-| `Ctrl-D` | Exit Kimi CLI |
+| `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
 
 ## Mode switching
@@ -70,7 +70,7 @@ Useful for viewing longer shell commands or file diff content.
 
 ### `Ctrl-D`: Exit
 
-Press `Ctrl-D` when the input box is empty to exit Kimi CLI.
+Press `Ctrl-D` when the input box is empty to exit Kimi Code CLI.
 
 ### `Ctrl-C`: Interrupt
 

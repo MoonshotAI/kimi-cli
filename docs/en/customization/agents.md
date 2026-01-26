@@ -4,7 +4,7 @@ An agent defines the AI's behavior, including system prompts, available tools, a
 
 ## Built-in agents
 
-Kimi CLI provides two built-in agents. You can select one at startup with the `--agent` flag:
+Kimi Code CLI provides two built-in agents. You can select one at startup with the `--agent` flag:
 
 ```sh
 kimi --agent okabe
@@ -154,7 +154,7 @@ agent:
 
 ## Built-in tools list
 
-The following are all built-in tools in Kimi CLI.
+The following are all built-in tools in Kimi Code CLI.
 
 ### `Task`
 

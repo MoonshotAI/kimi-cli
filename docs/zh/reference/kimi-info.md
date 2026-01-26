@@ -1,6 +1,6 @@
 # `kimi info` 子命令
 
-`kimi info` 显示 Kimi CLI 的版本和协议信息。
+`kimi info` 显示 Kimi Code CLI 的版本和协议信息。
 
 ```sh
 kimi info [--json]
@@ -16,7 +16,7 @@ kimi info [--json]
 
 | 字段 | 说明 |
 |------|------|
-| `kimi_cli_version` | Kimi CLI 版本号 |
+| `kimi_cli_version` | Kimi Code CLI 版本号 |
 | `agent_spec_versions` | 支持的 Agent 规格版本列表 |
 | `wire_protocol_version` | Wire 协议版本 |
 | `python_version` | Python 运行时版本 |

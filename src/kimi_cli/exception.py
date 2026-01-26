@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 class KimiCLIException(Exception):
-    """Base exception class for Kimi CLI."""
+    """Base exception class for Kimi Code CLI."""
 
     pass
 

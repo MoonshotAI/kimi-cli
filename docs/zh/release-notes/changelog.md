@@ -1,6 +1,6 @@
 # 变更记录
 
-本页面记录 Kimi CLI 各版本的变更内容。
+本页面记录 Kimi Code CLI 各版本的变更内容。
 
 ## 未发布
 
@@ -100,7 +100,7 @@
 ## 0.75 (2026-01-09)
 
 - Tool：改进 `ReadFile` 工具描述
-- Skills：添加内置 `kimi-cli-help` Skill，解答 Kimi CLI 使用和配置问题
+- Skills：添加内置 `kimi-cli-help` Skill，解答 Kimi Code CLI 使用和配置问题
 
 ## 0.74 (2026-01-09)
 
@@ -176,7 +176,7 @@
 - Lib：添加 `KimiToolset.load_mcp_tools` 方法，加载 MCP 工具
 - Lib：将 `MCPTool` 从 `kimi_cli.tools.mcp` 移至 `kimi_cli.soul.toolset`
 - Lib：添加 `InvalidToolError`、`MCPConfigError` 和 `MCPRuntimeError` 异常类
-- Lib：使 Kimi CLI 详细异常类扩展 `ValueError` 或 `RuntimeError`
+- Lib：使 Kimi Code CLI 详细异常类扩展 `ValueError` 或 `RuntimeError`
 - Lib：`KimiCLI.create` 和 `load_agent` 的 `mcp_configs` 参数支持传入验证后的 `list[fastmcp.mcp_config.MCPConfig]`
 - Lib：修复 `KimiCLI.create`、`load_agent`、`KimiToolset.load_tools` 和 `KimiToolset.load_mcp_tools` 的异常抛出
 - LLM：添加 `vertexai` 供应商类型，支持 Vertex AI

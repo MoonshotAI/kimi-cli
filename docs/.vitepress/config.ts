@@ -11,16 +11,16 @@ const base = rawBase
 
 export default withMermaid(defineConfig({
   base,
-  title: 'Kimi CLI Docs',
-  description: 'Kimi CLI Documentation',
+  title: 'Kimi Code CLI Docs',
+  description: 'Kimi Code CLI Documentation',
 
   locales: {
     zh: {
       label: '简体中文',
       lang: 'zh-CN',
       link: '/zh/',
-      title: 'Kimi CLI 文档',
-      description: 'Kimi CLI 用户文档',
+      title: 'Kimi Code CLI 文档',
+      description: 'Kimi Code CLI 用户文档',
       themeConfig: {
         nav: [
           { text: '指南', link: '/zh/guides/getting-started', activeMatch: '/zh/guides/' },
@@ -98,8 +98,8 @@ export default withMermaid(defineConfig({
       label: 'English',
       lang: 'en-US',
       link: '/en/',
-      title: 'Kimi CLI Docs',
-      description: 'Kimi CLI User Documentation',
+      title: 'Kimi Code CLI Docs',
+      description: 'Kimi Code CLI User Documentation',
       themeConfig: {
         nav: [
           { text: 'Guides', link: '/en/guides/getting-started', activeMatch: '/en/guides/' },

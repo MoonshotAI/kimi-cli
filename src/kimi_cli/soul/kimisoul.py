@@ -86,7 +86,7 @@ class TurnOutcome:
 
 
 class KimiSoul:
-    """The soul of Kimi CLI."""
+    """The soul of Kimi Code CLI."""
 
     def __init__(
         self,

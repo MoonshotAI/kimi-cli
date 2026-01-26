@@ -1,6 +1,6 @@
 # 破坏性变更与迁移说明
 
-本页面记录 Kimi CLI 各版本中的破坏性变更及对应的迁移指引。
+本页面记录 Kimi Code CLI 各版本中的破坏性变更及对应的迁移指引。
 
 ## 未发布
 
@@ -60,7 +60,7 @@
 配置文件格式从 JSON 迁移至 TOML。
 
 - **受影响**：使用 `~/.kimi/config.json` 的用户
-- **迁移**：Kimi CLI 会自动读取旧的 JSON 配置，但建议手动迁移到 TOML 格式
+- **迁移**：Kimi Code CLI 会自动读取旧的 JSON 配置，但建议手动迁移到 TOML 格式
 - **新位置**：`~/.kimi/config.toml`
 
 JSON 配置示例：

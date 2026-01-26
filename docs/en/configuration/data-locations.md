@@ -1,6 +1,6 @@
 # Data Locations
 
-Kimi CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
+Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
 ## Directory structure
 
@@ -30,12 +30,12 @@ You can specify a configuration file at a different location with the `--config-
 
 ### `kimi.json`
 
-Metadata file, stores Kimi CLI's runtime state, including:
+Metadata file, stores Kimi Code CLI's runtime state, including:
 
 - `work_dirs`: List of working directories and their last used session IDs
 - `thinking`: Whether thinking mode was enabled in the last session
 
-This file is automatically managed by Kimi CLI and typically doesn't need manual editing.
+This file is automatically managed by Kimi Code CLI and typically doesn't need manual editing.
 
 ### `mcp.json`
 
@@ -65,7 +65,7 @@ Session data is grouped by working directory and stored under `~/.kimi/sessions/
 
 Context history file, stores the session's message history in JSONL format. Each line is a message (user input, model response, tool calls, etc.).
 
-Kimi CLI uses this file to restore session context when using `--continue` or `--session`.
+Kimi Code CLI uses this file to restore session context when using `--continue` or `--session`.
 
 ### `wire.jsonl`
 
@@ -85,7 +85,7 @@ Log files are used for troubleshooting. When reporting bugs, please include rele
 
 ## Cleaning data
 
-Deleting the `~/.kimi/` directory completely clears all Kimi CLI data, including configuration, sessions, and history.
+Deleting the `~/.kimi/` directory completely clears all Kimi Code CLI data, including configuration, sessions, and history.
 
 To clean only specific data:
 

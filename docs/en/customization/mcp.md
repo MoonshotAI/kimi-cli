@@ -1,12 +1,12 @@
 # Model Context Protocol
 
-[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) is an open protocol that allows AI models to safely interact with external tools and data sources. Kimi CLI supports connecting to MCP servers to extend AI capabilities.
+[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) is an open protocol that allows AI models to safely interact with external tools and data sources. Kimi Code CLI supports connecting to MCP servers to extend AI capabilities.
 
 ## What is MCP
 
 MCP servers provide "tools" for AI to use. For example, a database MCP server can provide query tools that allow AI to execute SQL queries; a browser MCP server can let AI control browsers for automation tasks.
 
-Kimi CLI has built-in tools (file read/write, shell commands, web fetching, etc.). Through MCP, you can add more tools, such as:
+Kimi Code CLI has built-in tools (file read/write, shell commands, web fetching, etc.). Through MCP, you can add more tools, such as:
 
 - Accessing specific APIs or databases
 - Controlling browsers or other applications
@@ -44,7 +44,7 @@ kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
 kimi mcp list
 ```
 
-While Kimi CLI is running, you can also enter `/mcp` to view connected servers and loaded tools.
+While Kimi Code CLI is running, you can also enter `/mcp` to view connected servers and loaded tools.
 
 **Remove a server**
 
@@ -60,7 +60,7 @@ For servers using OAuth, you need to complete authorization first:
 kimi mcp auth linear
 ```
 
-This will open a browser to complete the OAuth flow. After successful authorization, Kimi CLI will save the token for future use.
+This will open a browser to complete the OAuth flow. After successful authorization, Kimi Code CLI will save the token for future use.
 
 **Test a server**
 
@@ -112,11 +112,11 @@ MCP tools may access and operate external systems. Be aware of security risks.
 
 **Approval mechanism**
 
-Kimi CLI requests user confirmation for sensitive operations (such as file modifications and command execution). MCP tools follow the same approval mechanism, with all MCP tool calls prompting for confirmation.
+Kimi Code CLI requests user confirmation for sensitive operations (such as file modifications and command execution). MCP tools follow the same approval mechanism, with all MCP tool calls prompting for confirmation.
 
 **Prompt injection risks**
 
-Content returned by MCP tools may contain malicious instructions attempting to trick the AI into performing dangerous operations. Kimi CLI marks tool return content to help the AI distinguish between tool output and user instructions, but you should still:
+Content returned by MCP tools may contain malicious instructions attempting to trick the AI into performing dangerous operations. Kimi Code CLI marks tool return content to help the AI distinguish between tool output and user instructions, but you should still:
 
 - Only use MCP servers from trusted sources
 - Check whether AI-proposed operations are reasonable

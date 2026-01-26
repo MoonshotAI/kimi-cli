@@ -82,7 +82,7 @@ class ACPServer:
                         "terminal-auth": {
                             "command": command,
                             "args": args,
-                            "label": "Kimi CLI Setup",
+                            "label": "Kimi Code CLI Setup",
                         }
                     },
                 )

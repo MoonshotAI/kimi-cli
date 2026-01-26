@@ -7,18 +7,18 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for submitting a bug report! It helps make Kimi CLI better for everyone.
+        Thank you for submitting a bug report! It helps make Kimi Code CLI better for everyone.
 
-        If you need help or support using Kimi CLI, and are not reporting a bug, please post on [kimi-cli/discussions](https://github.com/MoonshotAI/kimi-cli/discussions), where you can ask questions or engage with others on ideas for how to improve Kimi CLI.
+        If you need help or support using Kimi Code CLI, and are not reporting a bug, please post on [kimi-cli/discussions](https://github.com/MoonshotAI/kimi-cli/discussions), where you can ask questions or engage with others on ideas for how to improve Kimi Code CLI.
 
-        Make sure you are running the latest version of Kimi CLI (`uv tool upgrade kimi-cli` to upgrade). The bug you are experiencing may already have been fixed.
+        Make sure you are running the latest version of Kimi Code CLI (`uv tool upgrade kimi-cli` to upgrade). The bug you are experiencing may already have been fixed.
 
         Please try to include as much information as possible.
 
   - type: input
     id: version
     attributes:
-      label: What version of Kimi CLI is running?
+      label: What version of Kimi Code CLI is running?
       description: Copy the output of `kimi --version` or `/version`
     validations:
       required: true

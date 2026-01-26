@@ -92,7 +92,7 @@ def help(app: Shell, args: str):
     renderables.append(
         BulletColumns(
             Text(
-                "Sure, Kimi CLI is ready to help! "
+                "Sure, Kimi is ready to help! "
                 "Just send me messages and I will help you get things done!"
             ),
         )
@@ -292,7 +292,7 @@ def changelog(app: Shell, args: str):
 @registry.command
 @shell_mode_registry.command
 def feedback(app: Shell, args: str):
-    """Submit feedback to make Kimi CLI better"""
+    """Submit feedback to make Kimi Code CLI better"""
     import webbrowser
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"

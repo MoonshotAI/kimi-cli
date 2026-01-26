@@ -1,4 +1,4 @@
-# Kimi CLI
+# Kimi Code CLI
 
 [![Commit Activity](https://img.shields.io/github/commit-activity/w/MoonshotAI/kimi-cli)](https://github.com/MoonshotAI/kimi-cli/graphs/commit-activity)
 [![Checks](https://img.shields.io/github/check-runs/MoonshotAI/kimi-cli/main)](https://github.com/MoonshotAI/kimi-cli/actions)
@@ -8,20 +8,20 @@
 
 [Kimi Code](https://www.kimi.com/code/) | [Documentation](https://moonshotai.github.io/kimi-cli/en/) | [文档](https://moonshotai.github.io/kimi-cli/zh/)
 
-Kimi CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
+Kimi Code CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
 > [!IMPORTANT]
-> Kimi CLI is currently in technical preview.
+> Kimi Code CLI is currently in technical preview.
 
 ## Getting Started
 
-See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi CLI.
+See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi Code CLI.
 
 ## Key Features
 
 ### Shell command mode
 
-Kimi CLI is not only a coding agent, but also a shell. You can switch the shell command mode by pressing `Ctrl-X`. In this mode, you can directly run shell commands without leaving Kimi CLI.
+Kimi Code CLI is not only a coding agent, but also a shell. You can switch the shell command mode by pressing `Ctrl-X`. In this mode, you can directly run shell commands without leaving Kimi Code CLI.
 
 ![](./docs/media/shell-mode.gif)
 
@@ -30,18 +30,18 @@ Kimi CLI is not only a coding agent, but also a shell. You can switch the shell 
 
 ### IDE integration via ACP
 
-Kimi CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
+Kimi Code CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
 [Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
 
-To use Kimi CLI with ACP clients, make sure to run Kimi CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi CLI as an ACP agent server with command `kimi acp`.
+To use Kimi Code CLI with ACP clients, make sure to run Kimi Code CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi Code CLI as an ACP agent server with command `kimi acp`.
 
-For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
+For example, to use Kimi Code CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
 ```json
 {
   "agent_servers": {
-    "Kimi CLI": {
+    "Kimi Code CLI": {
       "command": "kimi",
       "args": ["acp"],
       "env": {}
@@ -50,13 +50,13 @@ For example, to use Kimi CLI with [Zed](https://zed.dev/) or [JetBrains](https:/
 }
 ```
 
-Then you can create Kimi CLI threads in IDE's agent panel.
+Then you can create Kimi Code CLI threads in IDE's agent panel.
 
 ![](./docs/media/acp-integration.gif)
 
 ### Zsh integration
 
-You can use Kimi CLI together with Zsh, to empower your shell experience with AI agent capabilities.
+You can use Kimi Code CLI together with Zsh, to empower your shell experience with AI agent capabilities.
 
 Install the [zsh-kimi-cli](https://github.com/MoonshotAI/zsh-kimi-cli) plugin via:
 
@@ -78,7 +78,7 @@ After restarting Zsh, you can switch to agent mode by pressing `Ctrl-X`.
 
 ### MCP support
 
-Kimi CLI supports MCP (Model Context Protocol) tools.
+Kimi Code CLI supports MCP (Model Context Protocol) tools.
 
 **`kimi mcp` sub-command group**
 
@@ -106,7 +106,7 @@ kimi mcp auth linear
 
 **Ad-hoc MCP configuration**
 
-Kimi CLI also supports ad-hoc MCP server configuration via CLI option.
+Kimi Code CLI also supports ad-hoc MCP server configuration via CLI option.
 
 Given an MCP config file in the well-known MCP config format like the following:
 
@@ -139,7 +139,7 @@ See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/e
 
 ## Development
 
-To develop Kimi CLI, run:
+To develop Kimi Code CLI, run:
 
 ```sh
 git clone https://github.com/MoonshotAI/kimi-cli.git
@@ -148,17 +148,17 @@ cd kimi-cli
 make prepare  # prepare the development environment
 ```
 
-Then you can start working on Kimi CLI.
+Then you can start working on Kimi Code CLI.
 
 Refer to the following commands after you make changes:
 
 ```sh
-uv run kimi  # run Kimi CLI
+uv run kimi  # run Kimi Code CLI
 
 make format  # format code
 make check  # run linting and type checking
 make test  # run tests
-make test-kimi-cli  # run Kimi CLI tests only
+make test-kimi-cli  # run Kimi Code CLI tests only
 make test-kosong  # run kosong tests only
 make test-pykaos  # run pykaos tests only
 make build  # build python packages
@@ -168,4 +168,4 @@ make help  # show all make targets
 
 ## Contributing
 
-We welcome contributions to Kimi CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.
+We welcome contributions to Kimi Code CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.

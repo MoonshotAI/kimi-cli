@@ -1,6 +1,6 @@
 # 数据路径
 
-Kimi CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中。本页介绍各类数据文件的位置和用途。
+Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中。本页介绍各类数据文件的位置和用途。
 
 ## 目录结构
 
@@ -30,12 +30,12 @@ Kimi CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中。�
 
 ### `kimi.json`
 
-元数据文件，存储 Kimi CLI 的运行状态，包括：
+元数据文件，存储 Kimi Code CLI 的运行状态，包括：
 
 - `work_dirs`: 工作目录列表及其最后使用的会话 ID
 - `thinking`: 上次会话是否启用 thinking 模式
 
-此文件由 Kimi CLI 自动管理，通常不需要手动编辑。
+此文件由 Kimi Code CLI 自动管理，通常不需要手动编辑。
 
 ### `mcp.json`
 
@@ -65,7 +65,7 @@ MCP 服务器配置文件，存储通过 `kimi mcp add` 命令添加的 MCP 服�
 
 上下文历史文件，以 JSONL 格式存储会话的消息历史。每行是一条消息（用户输入、模型回复、工具调用等）。
 
-Kimi CLI 使用此文件在 `--continue` 或 `--session` 时恢复会话上下文。
+Kimi Code CLI 使用此文件在 `--continue` 或 `--session` 时恢复会话上下文。
 
 ### `wire.jsonl`
 
@@ -85,7 +85,7 @@ Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用�
 
 ## 清理数据
 
-删除 `~/.kimi/` 目录可以完全清理 Kimi CLI 的所有数据，包括配置、会话和历史。
+删除 `~/.kimi/` 目录可以完全清理 Kimi Code CLI 的所有数据，包括配置、会话和历史。
 
 如只需清理部分数据：
 
