@@ -11,6 +11,13 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- MCP: Remove `Mcp-Session-Id` header when connecting to MCP servers to fix compatibility
+
+## 0.87 (2026-01-25)
+
+- Shell: Fix Markdown rendering error when HTML blocks appear outside any element
+- Skills: Add more user-level and project-level skills directory candidates
+- Core: Improve system prompt guidance for media file generation and processing tasks
 - Shell: Fix image pasting from clipboard on macOS
 
 ## 0.86 (2026-01-24)
