@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix subagent approval request handling
+
 ## 0.88 (2026-01-26)
 
 - MCP: Remove `Mcp-Session-Id` header when connecting to MCP servers to fix compatibility
