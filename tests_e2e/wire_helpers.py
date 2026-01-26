@@ -3,14 +3,15 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import selectors
+import queue
 import subprocess
+import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 TRACE_ENV = "KIMI_TEST_TRACE"
 DEFAULT_TIMEOUT = 5.0
@@ -129,10 +130,36 @@ def build_set_todo_call(tool_call_id: str, todos: list[dict[str, str]]) -> str:
     return f"tool_call: {json.dumps(payload)}"
 
 
+class LineReader:
+    def __init__(self, stream: IO[str]) -> None:
+        # Use a background reader so Windows pipes don't rely on select().
+        self._stream = stream
+        self._queue: queue.Queue[str | None] = queue.Queue()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        try:
+            for line in self._stream:
+                self._queue.put(line)
+        except Exception:
+            self._queue.put(None)
+            return
+        self._queue.put(None)
+
+    def read_line(self, timeout: float) -> str | None:
+        return self._queue.get(timeout=timeout)
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self._stream.close()
+        self._thread.join(timeout=0.5)
+
+
 @dataclass
 class WireProcess:
     process: subprocess.Popen[str]
-    selector: selectors.BaseSelector
+    reader: LineReader
 
     def send_json(self, payload: dict[str, Any]) -> None:
         assert self.process.stdin is not None
@@ -149,15 +176,15 @@ class WireProcess:
 
     def read_json(self, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
-        assert self.process.stdout is not None
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("Timed out waiting for wire output")
-            if not self.selector.select(timeout=remaining):
+            try:
+                line = self.reader.read_line(timeout=remaining)
+            except queue.Empty:
                 continue
-            line = self.process.stdout.readline()
-            if not line:
+            if line is None:
                 raise EOFError("Wire process closed output stream")
             line = line.strip()
             if not line:
@@ -174,6 +201,7 @@ class WireProcess:
         if self.process.stdin is not None:
             with contextlib.suppress(Exception):
                 self.process.stdin.close()
+        self.reader.close()
         if self.process.stdout is not None:
             with contextlib.suppress(Exception):
                 self.process.stdout.close()
@@ -226,10 +254,9 @@ def start_wire(
         text=True,
         env=make_env(home_dir),
     )
-    selector = selectors.DefaultSelector()
     assert process.stdout is not None
-    selector.register(process.stdout, selectors.EVENT_READ)
-    return WireProcess(process=process, selector=selector)
+    reader = LineReader(process.stdout)
+    return WireProcess(process=process, reader=reader)
 
 
 def send_initialize(

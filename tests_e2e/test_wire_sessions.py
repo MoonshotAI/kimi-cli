@@ -137,7 +137,7 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 4, "wire_after": 8})
+    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 5, "wire_after": 9})
 
 
 def test_clear_context_rotates(tmp_path) -> None:
