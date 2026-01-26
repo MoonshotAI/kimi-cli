@@ -45,8 +45,12 @@ Due to macOS security checks, the first run of the `kimi` command may take longe
 If you already have uv installed, you can also run:
 
 ```sh
-uv tool install --python 3.14 kimi-cli
+uv tool install --python 3.13 kimi-cli
 ```
+
+::: tip
+Kimi Code CLI supports Python 3.12–3.14, with Python 3.13 recommended.
+:::
 
 ## Upgrade and uninstall
 
