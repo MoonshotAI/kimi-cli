@@ -1,6 +1,6 @@
 ---
 name: release
-description: Execute the release workflow for Kimi CLI packages.
+description: Execute the release workflow for Kimi Code CLI packages.
 type: flow
 ---
 

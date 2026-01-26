@@ -1,6 +1,6 @@
 # Providers and Models
 
-Kimi CLI supports multiple LLM platforms, which can be configured via configuration files or the `/setup` command.
+Kimi Code CLI supports multiple LLM platforms, which can be configured via configuration files or the `/setup` command.
 
 ## Platform selection
 
@@ -10,7 +10,7 @@ The easiest way to configure is to run the `/setup` command in shell mode and fo
 2. Enter your API key
 3. Select a model from the available list
 
-After configuration, Kimi CLI will automatically save settings to `~/.kimi/config.toml` and reload.
+After configuration, Kimi Code CLI will automatically save settings to `~/.kimi/config.toml` and reload.
 
 `/setup` currently supports the following platforms:
 
@@ -104,7 +104,7 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 ## Model capabilities
 
-The `capabilities` field in model configuration declares the capabilities supported by the model. This affects feature availability in Kimi CLI.
+The `capabilities` field in model configuration declares the capabilities supported by the model. This affects feature availability in Kimi Code CLI.
 
 | Capability | Description |
 | --- | --- |

@@ -1,6 +1,6 @@
 # Changelog
 
-This page documents the changes in each Kimi CLI release.
+This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
@@ -100,7 +100,7 @@ This page documents the changes in each Kimi CLI release.
 ## 0.75 (2026-01-09)
 
 - Tool: Improve `ReadFile` tool description
-- Skills: Add built-in `kimi-cli-help` skill to answer Kimi CLI usage and configuration questions
+- Skills: Add built-in `kimi-cli-help` skill to answer Kimi Code CLI usage and configuration questions
 
 ## 0.74 (2026-01-09)
 
@@ -176,7 +176,7 @@ This page documents the changes in each Kimi CLI release.
 - Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
 - Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
 - Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
-- Lib: Make the detailed Kimi CLI exception classes extend `ValueError` or `RuntimeError`
+- Lib: Make the detailed Kimi Code CLI exception classes extend `ValueError` or `RuntimeError`
 - Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
 - Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
 - LLM: Add provider type `vertexai` to support Vertex AI

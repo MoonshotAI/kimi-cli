@@ -1,6 +1,6 @@
 # Print 模式
 
-Print 模式让 Kimi CLI 以非交互方式运行，适合脚本调用和自动化场景。
+Print 模式让 Kimi Code CLI 以非交互方式运行，适合脚本调用和自动化场景。
 
 ## 基本用法
 
@@ -80,7 +80,7 @@ kimi --print -p "你好" --output-format=stream-json
 echo '{"role":"user","content":"你好"}' | kimi --print --input-format=stream-json --output-format=stream-json
 ```
 
-这种模式下，Kimi CLI 会持续读取 stdin，每收到一条用户消息就处理并输出响应，直到 stdin 关闭。
+这种模式下，Kimi Code CLI 会持续读取 stdin，每收到一条用户消息就处理并输出响应，直到 stdin 关闭。
 
 ## Message 格式
 

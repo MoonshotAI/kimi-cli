@@ -1,9 +1,9 @@
 ---
 name: gen-docs
-description: Update Kimi CLI user documentation.
+description: Update Kimi Code CLI user documentation.
 ---
 
-现在我们正在为当前项目 Kimi CLI 编写和维护用户文档，文档内容在 docs 目录下，docs/AGENTS.md 中有对文档的说明。
+现在我们正在为当前项目 Kimi Code CLI 编写和维护用户文档，文档内容在 docs 目录下，docs/AGENTS.md 中有对文档的说明。
 
 我们现在对代码库有了一些修改，请你参考最近的 git commit、staged changes、changelog.md 等的内容，根据 AGENTS.md 中的信息，必要时找到实际的代码全文，确保理解了所有变更对产品用户体验的真实改变，然后逐页、逐段地检查和更新文档内容。
 

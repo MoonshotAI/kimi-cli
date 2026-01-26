@@ -1,6 +1,6 @@
 # Print Mode
 
-Print mode lets Kimi CLI run non-interactively, suitable for scripting and automation scenarios.
+Print mode lets Kimi Code CLI run non-interactively, suitable for scripting and automation scenarios.
 
 ## Basic usage
 
@@ -80,7 +80,7 @@ Use `--input-format=stream-json` to receive JSONL format input:
 echo '{"role":"user","content":"Hello"}' | kimi --print --input-format=stream-json --output-format=stream-json
 ```
 
-In this mode, Kimi CLI continuously reads from stdin, processing and outputting responses for each user message received until stdin is closed.
+In this mode, Kimi Code CLI continuously reads from stdin, processing and outputting responses for each user message received until stdin is closed.
 
 ## Message format
 

@@ -1,7 +1,7 @@
 ---
 layout: home
 hero:
-  name: Kimi CLI
+  name: Kimi Code CLI
   text: 你的终端智能助手
   tagline: 技术预览版
   actions:

@@ -1,6 +1,6 @@
 # `kimi` Command
 
-`kimi` is the main command for Kimi CLI, used to start interactive sessions or execute single queries.
+`kimi` is the main command for Kimi Code CLI, used to start interactive sessions or execute single queries.
 
 ```sh
 kimi [OPTIONS] COMMAND [ARGS]
@@ -63,7 +63,7 @@ The working directory determines the root directory for file operations. Relativ
 | `--prompt TEXT` | `-p` | Pass user prompt, doesn't enter interactive mode |
 | `--command TEXT` | `-c` | Alias for `--prompt` |
 
-When using `--prompt` (or `--command`), Kimi CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
+When using `--prompt` (or `--command`), Kimi Code CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
 
 ## Loop control
 
@@ -77,7 +77,7 @@ When using `--prompt` (or `--command`), Kimi CLI exits after processing the quer
 
 [Ralph](https://ghuntley.com/ralph/) is a technique that puts an agent in a loop: the same prompt is fed again and again so the agent can keep iterating one big task.
 
-When `--max-ralph-iterations` is not `0`, Kimi CLI enters Ralph Loop mode and automatically loops through task execution until the agent outputs `<choice>STOP</choice>` or the iteration limit is reached.
+When `--max-ralph-iterations` is not `0`, Kimi Code CLI enters Ralph Loop mode and automatically loops through task execution until the agent outputs `<choice>STOP</choice>` or the iteration limit is reached.
 
 ## UI modes
 
@@ -138,7 +138,7 @@ Thinking mode requires model support. If not specified, uses the last session's 
 |--------|-------------|
 | `--skills-dir PATH` | Specify skills directory, skipping auto-discovery |
 
-When not specified, Kimi CLI automatically discovers user-level and project-level skills directories in priority order. See [Agent Skills](../customization/skills.md) for details.
+When not specified, Kimi Code CLI automatically discovers user-level and project-level skills directories in priority order. See [Agent Skills](../customization/skills.md) for details.
 
 ## Subcommands
 

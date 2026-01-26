@@ -59,7 +59,7 @@ class Shell:
         else:
             self._start_background_task(self._auto_update())
 
-        _print_welcome_info(self.soul.name or "Kimi CLI", self._welcome_info)
+        _print_welcome_info(self.soul.name or "Kimi Code CLI", self._welcome_info)
 
         if isinstance(self.soul, KimiSoul):
             await replay_recent_history(
@@ -325,7 +325,7 @@ class WelcomeInfoItem:
 
 
 def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
-    head = Text.from_markup("Welcome to Kimi CLI!")
+    head = Text.from_markup("Welcome to Kimi Code CLI!")
     help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
 
     # Use Table for precise width control

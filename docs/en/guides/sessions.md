@@ -1,10 +1,10 @@
 # Sessions and Context
 
-Kimi CLI automatically saves your conversation history, allowing you to continue previous work at any time.
+Kimi Code CLI automatically saves your conversation history, allowing you to continue previous work at any time.
 
 ## Session resuming
 
-Each time you start Kimi CLI, a new session is created. If you want to continue a previous conversation, there are several ways:
+Each time you start Kimi Code CLI, a new session is created. If you want to continue a previous conversation, there are several ways:
 
 **Continue the most recent session**
 
@@ -34,11 +34,11 @@ The list shows each session's title and last update time, helping you find the c
 
 **Startup replay**
 
-When you continue an existing session, Kimi CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
+When you continue an existing session, Kimi Code CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
 
 ## Clear and compact
 
-As the conversation progresses, the context grows longer. Kimi CLI will automatically compress the context when needed to ensure the conversation can continue.
+As the conversation progresses, the context grows longer. Kimi Code CLI will automatically compress the context when needed to ensure the conversation can continue.
 
 You can also manually manage the context using slash commands:
 

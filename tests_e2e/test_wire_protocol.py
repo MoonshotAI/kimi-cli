@@ -42,7 +42,7 @@ def test_initialize_handshake(tmp_path) -> None:
             {
                 "result": {
                     "protocol_version": "1.1",
-                    "server": {"name": "Kimi CLI", "version": "0.87"},
+                    "server": {"name": "Kimi Code CLI", "version": "0.87"},
                     "slash_commands": [
                         {
                             "name": "init",
@@ -58,7 +58,7 @@ def test_initialize_handshake(tmp_path) -> None:
                         },
                         {
                             "name": "skill:kimi-cli-help",
-                            "description": "Answer Kimi CLI usage, configuration, and troubleshooting questions. Use when user asks about Kimi CLI installation, setup, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, how something works internally, or any questions about Kimi CLI itself.",
+                            "description": "Answer Kimi Code CLI usage, configuration, and troubleshooting questions. Use when user asks about Kimi Code CLI installation, setup, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, how something works internally, or any questions about Kimi Code CLI itself.",
                             "aliases": [],
                         },
                         {
@@ -104,7 +104,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
             {
                 "result": {
                     "protocol_version": "1.1",
-                    "server": {"name": "Kimi CLI", "version": "0.87"},
+                    "server": {"name": "Kimi Code CLI", "version": "0.87"},
                     "slash_commands": [
                         {
                             "name": "init",
@@ -120,7 +120,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         },
                         {
                             "name": "skill:kimi-cli-help",
-                            "description": "Answer Kimi CLI usage, configuration, and troubleshooting questions. Use when user asks about Kimi CLI installation, setup, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, how something works internally, or any questions about Kimi CLI itself.",
+                            "description": "Answer Kimi Code CLI usage, configuration, and troubleshooting questions. Use when user asks about Kimi Code CLI installation, setup, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, how something works internally, or any questions about Kimi Code CLI itself.",
                             "aliases": [],
                         },
                         {

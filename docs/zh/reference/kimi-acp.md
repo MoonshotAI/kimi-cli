@@ -16,4 +16,4 @@ ACP 是一种标准化协议，允许 IDE 和其他客户端与 AI Agent 进行�
 - 自定义 ACP 客户端开发
 - 多会话并发处理
 
-如需在 IDE 中使用 Kimi CLI，请参阅 [在 IDE 中使用](../guides/ides.md)。
+如需在 IDE 中使用 Kimi Code CLI，请参阅 [在 IDE 中使用](../guides/ides.md)。

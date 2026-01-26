@@ -1,6 +1,6 @@
 # Breaking Changes and Migration
 
-This page documents breaking changes in Kimi CLI releases and provides migration guidance.
+This page documents breaking changes in Kimi Code CLI releases and provides migration guidance.
 
 ## Unreleased
 
@@ -60,7 +60,7 @@ The `--acp` option has been deprecated. Use the `kimi acp` subcommand instead.
 The config file format has been migrated from JSON to TOML.
 
 - **Affected**: Users with `~/.kimi/config.json`
-- **Migration**: Kimi CLI will automatically read the old JSON config, but manual migration to TOML is recommended
+- **Migration**: Kimi Code CLI will automatically read the old JSON config, but manual migration to TOML is recommended
 - **New location**: `~/.kimi/config.toml`
 
 JSON config example:

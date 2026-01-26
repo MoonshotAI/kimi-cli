@@ -265,7 +265,7 @@ class _ApprovalRequestPanel:
         self.options: list[tuple[str, ApprovalResponse.Kind]] = [
             ("Approve once", "approve"),
             ("Approve for this session", "approve_for_session"),
-            ("Reject, tell Kimi CLI what to do instead", "reject"),
+            ("Reject, tell Kimi what to do instead", "reject"),
         ]
         self.selected_index = 0
 

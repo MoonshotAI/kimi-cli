@@ -544,7 +544,7 @@ cli.add_typer(info_cli, name="info")
 def term(
     ctx: typer.Context,
 ) -> None:
-    """Run Toad TUI backed by Kimi CLI ACP server."""
+    """Run Toad TUI backed by Kimi Code CLI ACP server."""
     from .toad import run_term
 
     run_term(ctx)
@@ -552,7 +552,7 @@ def term(
 
 @cli.command()
 def acp():
-    """Run Kimi CLI ACP server."""
+    """Run Kimi Code CLI ACP server."""
     from kimi_cli.acp import acp_main
 
     acp_main()

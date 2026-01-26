@@ -196,7 +196,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
                 return UpdateResult.FAILED
 
     _print("[green]Updated successfully![/green]")
-    _print("[yellow]Restart Kimi CLI to use the new version.[/yellow]")
+    _print("[yellow]Restart Kimi Code CLI to use the new version.[/yellow]")
     return UpdateResult.UPDATED
 
 

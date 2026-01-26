@@ -24,8 +24,8 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 
 .PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk
 format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk ## Auto-format all workspace packages with ruff.
-format-kimi-cli: ## Auto-format Kimi CLI sources with ruff.
-	@echo "==> Formatting Kimi CLI sources"
+format-kimi-cli: ## Auto-format Kimi Code CLI sources with ruff.
+	@echo "==> Formatting Kimi Code CLI sources"
 	@uv run ruff check --fix
 	@uv run ruff format
 format-kosong: ## Auto-format kosong sources with ruff.
@@ -43,8 +43,8 @@ format-kimi-sdk: ## Auto-format kimi-sdk sources with ruff.
 
 .PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk
 check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk ## Run linting and type checks for all packages.
-check-kimi-cli: ## Run linting and type checks for Kimi CLI.
-	@echo "==> Checking Kimi CLI (ruff + pyright + ty; ty is non-blocking)"
+check-kimi-cli: ## Run linting and type checks for Kimi Code CLI.
+	@echo "==> Checking Kimi Code CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
 	@uv run ruff format --check
 	@uv run pyright
@@ -71,8 +71,8 @@ check-kimi-sdk: ## Run linting and type checks for kimi-sdk.
 
 .PHONY: test test-kimi-cli test-kosong test-pykaos test-kimi-sdk
 test: test-kimi-cli test-kosong test-pykaos test-kimi-sdk ## Run all test suites.
-test-kimi-cli: ## Run Kimi CLI tests.
-	@echo "==> Running Kimi CLI tests"
+test-kimi-cli: ## Run Kimi Code CLI tests.
+	@echo "==> Running Kimi Code CLI tests"
 	@uv run pytest tests -vv
 	@uv run pytest tests_e2e -vv
 test-kosong: ## Run kosong tests (including doctests).
@@ -114,15 +114,15 @@ build-bin-onedir: ## Build the standalone executable with PyInstaller (one-dir m
 	@mkdir -p dist/onedir && mv dist/kimi dist/onedir/
 
 .PHONY: ai-test
-ai-test: ## Run the test suite with Kimi CLI.
+ai-test: ## Run the test suite with Kimi Code CLI.
 	@echo "==> Running AI test suite"
 	@uv run tests_ai/scripts/run.py tests_ai
 
 .PHONY: gen-changelog gen-docs
-gen-changelog: ## Generate changelog with Kimi CLI.
+gen-changelog: ## Generate changelog with Kimi Code CLI.
 	@echo "==> Generating changelog"
 	@uv run kimi --yolo --prompt /skill:gen-changelog
-gen-docs: ## Generate user docs with Kimi CLI.
+gen-docs: ## Generate user docs with Kimi Code CLI.
 	@echo "==> Generating user docs"
 	@uv run kimi --yolo --prompt /skill:gen-docs
 

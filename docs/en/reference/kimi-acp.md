@@ -16,4 +16,4 @@ ACP is a standardized protocol that allows IDEs and other clients to interact wi
 - Custom ACP client development
 - Multi-session concurrent processing
 
-For using Kimi CLI in IDEs, see [Using in IDEs](../guides/ides.md).
+For using Kimi Code CLI in IDEs, see [Using in IDEs](../guides/ides.md).

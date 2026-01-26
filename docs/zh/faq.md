@@ -25,7 +25,7 @@ API 密钥无效可能的原因：
 
 ### Shell 模式中 `cd` 命令无效
 
-在 Shell 模式中执行 `cd` 命令不会改变 Kimi CLI 的工作目录。这是因为每次 Shell 命令在独立的子进程中执行，目录切换只在该进程内生效。
+在 Shell 模式中执行 `cd` 命令不会改变 Kimi Code CLI 的工作目录。这是因为每次 Shell 命令在独立的子进程中执行，目录切换只在该进程内生效。
 
 如果需要切换工作目录：
 
@@ -44,12 +44,12 @@ API 密钥无效可能的原因：
 
 ## ACP 问题
 
-### IDE 无法连接到 Kimi CLI
+### IDE 无法连接到 Kimi Code CLI
 
-如果 IDE（如 Zed 或 JetBrains IDE）无法连接到 Kimi CLI，请检查以下几点：
+如果 IDE（如 Zed 或 JetBrains IDE）无法连接到 Kimi Code CLI，请检查以下几点：
 
-- **确认 Kimi CLI 已安装**：运行 `kimi --version` 确认安装成功。
-- **检查配置路径**：确保 IDE 配置中的 Kimi CLI 路径正确。通常可以使用 `kimi acp` 作为命令。
+- **确认 Kimi Code CLI 已安装**：运行 `kimi --version` 确认安装成功。
+- **检查配置路径**：确保 IDE 配置中的 Kimi Code CLI 路径正确。通常可以使用 `kimi acp` 作为命令。
 - **检查 uv 路径**：如果使用 uv 安装，确保 `~/.local/bin` 在 PATH 中。可以使用绝对路径，如 `/Users/yourname/.local/bin/kimi acp`。
 - **查看日志**：检查 `~/.kimi/logs/kimi.log` 中的错误信息。
 
@@ -125,7 +125,7 @@ macOS 的 Gatekeeper 安全机制会在首次运行新程序时进行检查，�
 - **等待检查完成**：首次运行时耐心等待，后续启动会恢复正常。
 - **添加到开发者工具**：在「系统设置 → 隐私与安全性 → 开发者工具」中添加你的终端应用。
 
-### 如何升级 Kimi CLI
+### 如何升级 Kimi Code CLI
 
 使用 uv 升级到最新版本：
 
@@ -137,7 +137,7 @@ uv tool upgrade kimi-cli --no-cache
 
 ### 如何禁用自动更新检查
 
-如果不希望 Kimi CLI 在后台检查更新，可以设置环境变量：
+如果不希望 Kimi Code CLI 在后台检查更新，可以设置环境变量：
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE=1
