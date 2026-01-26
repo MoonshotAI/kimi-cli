@@ -1,4 +1,4 @@
-# Kimi CLI Tools
+# Kimi Code CLI Tools
 
 ## Guidelines
 

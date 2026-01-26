@@ -1,12 +1,12 @@
 # Wire 模式
 
-Wire 模式是 Kimi CLI 的底层通信协议，用于与外部程序进行结构化的双向通信。
+Wire 模式是 Kimi Code CLI 的底层通信协议，用于与外部程序进行结构化的双向通信。
 
 ## Wire 是什么
 
-Wire 是 Kimi CLI 内部使用的消息传递层。当你使用终端交互时，Shell UI 通过 Wire 接收 AI 的输出并显示；当你使用 ACP 集成到 IDE 时，ACP 服务器也通过 Wire 与 Agent 核心通信。
+Wire 是 Kimi Code CLI 内部使用的消息传递层。当你使用终端交互时，Shell UI 通过 Wire 接收 AI 的输出并显示；当你使用 ACP 集成到 IDE 时，ACP 服务器也通过 Wire 与 Agent 核心通信。
 
-Wire 模式（`--wire`）将这个通信协议暴露出来，允许外部程序直接与 Kimi CLI 交互。这适用于构建自定义 UI 或将 Kimi CLI 嵌入到其他应用中。
+Wire 模式（`--wire`）将这个通信协议暴露出来，允许外部程序直接与 Kimi Code CLI 交互。这适用于构建自定义 UI 或将 Kimi Code CLI 嵌入到其他应用中。
 
 ```sh
 kimi --wire
@@ -16,8 +16,8 @@ kimi --wire
 
 Wire 模式主要用于：
 
-- **自定义 UI**：构建 Web、桌面或移动端的 Kimi CLI 前端
-- **应用集成**：将 Kimi CLI 嵌入到其他应用程序中
+- **自定义 UI**：构建 Web、桌面或移动端的 Kimi Code CLI 前端
+- **应用集成**：将 Kimi Code CLI 嵌入到其他应用程序中
 - **自动化测试**：对 Agent 行为进行程序化测试
 
 ::: tip 提示
@@ -143,7 +143,7 @@ interface ExternalToolsResult {
 **成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。

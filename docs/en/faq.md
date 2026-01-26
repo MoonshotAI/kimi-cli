@@ -25,7 +25,7 @@ If you're using the Kimi Code platform, you can check your current quota and mem
 
 ### `cd` command doesn't work in shell mode
 
-Executing the `cd` command in shell mode won't change Kimi CLI's working directory. This is because each shell command executes in an independent subprocess, and directory changes only take effect within that process.
+Executing the `cd` command in shell mode won't change Kimi Code CLI's working directory. This is because each shell command executes in an independent subprocess, and directory changes only take effect within that process.
 
 If you need to change working directory:
 
@@ -44,12 +44,12 @@ Solutions:
 
 ## ACP Issues
 
-### IDE cannot connect to Kimi CLI
+### IDE cannot connect to Kimi Code CLI
 
-If your IDE (like Zed or JetBrains IDEs) cannot connect to Kimi CLI, check the following:
+If your IDE (like Zed or JetBrains IDEs) cannot connect to Kimi Code CLI, check the following:
 
-- **Confirm Kimi CLI is installed**: Run `kimi --version` to confirm successful installation.
-- **Check configuration path**: Ensure the Kimi CLI path in IDE configuration is correct. You can typically use `kimi acp` as the command.
+- **Confirm Kimi Code CLI is installed**: Run `kimi --version` to confirm successful installation.
+- **Check configuration path**: Ensure the Kimi Code CLI path in IDE configuration is correct. You can typically use `kimi acp` as the command.
 - **Check uv path**: If installed via uv, ensure `~/.local/bin` is in PATH. You can use an absolute path like `/Users/yourname/.local/bin/kimi acp`.
 - **Check logs**: Examine error messages in `~/.kimi/logs/kimi.log`.
 
@@ -125,7 +125,7 @@ macOS's Gatekeeper security mechanism checks new programs on first run, causing 
 - **Wait for check to complete**: Be patient on first run; subsequent launches will return to normal.
 - **Add to Developer Tools**: Add your terminal application in "System Settings → Privacy & Security → Developer Tools".
 
-### How to upgrade Kimi CLI
+### How to upgrade Kimi Code CLI
 
 Use uv to upgrade to the latest version:
 
@@ -137,7 +137,7 @@ Adding `--no-cache` ensures you get the latest version.
 
 ### How to disable auto-update check
 
-If you don't want Kimi CLI to check for updates in the background, set the environment variable:
+If you don't want Kimi Code CLI to check for updates in the background, set the environment variable:
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE=1

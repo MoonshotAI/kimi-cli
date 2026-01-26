@@ -8,7 +8,7 @@ kimi term [OPTIONS]
 
 ## Description
 
-[Toad](https://github.com/batrachianai/toad) is a graphical terminal interface for Kimi CLI that communicates with the Kimi CLI backend via the ACP protocol. It provides a richer interactive experience with better output rendering and layout.
+[Toad](https://github.com/batrachianai/toad) is a graphical terminal interface for Kimi Code CLI that communicates with the Kimi Code CLI backend via the ACP protocol. It provides a richer interactive experience with better output rendering and layout.
 
 When you run `kimi term`, it automatically starts a `kimi acp` server in the background, and Toad connects to it as an ACP client.
 
@@ -33,7 +33,7 @@ For the full list of options, see [`kimi` command](./kimi-command.md).
 ## System requirements
 
 ::: warning Note
-`kimi term` requires Python 3.14+. If you installed Kimi CLI with an older Python version, you need to reinstall with Python 3.14:
+`kimi term` requires Python 3.14+. If you installed Kimi Code CLI with an older Python version, you need to reinstall with Python 3.14:
 
 ```sh
 uv tool install --python 3.14 kimi-cli

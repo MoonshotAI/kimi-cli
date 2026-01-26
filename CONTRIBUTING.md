@@ -1,6 +1,6 @@
-# Contributing to Kimi CLI
+# Contributing to Kimi Code CLI
 
-Thank you for being interested in contributing to Kimi CLI!
+Thank you for being interested in contributing to Kimi Code CLI!
 
 We welcome all kinds of contributions, including bug fixes, features, document improvements, typo fixes, etc. To maintain a high-quality codebase and user experience, we provide the following guidelines for contributions:
 

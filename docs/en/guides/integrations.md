@@ -1,10 +1,10 @@
 # Integrations with Tools
 
-Besides using in the terminal and IDEs, Kimi CLI can also be integrated with other tools.
+Besides using in the terminal and IDEs, Kimi Code CLI can also be integrated with other tools.
 
 ## Zsh plugin
 
-[zsh-kimi-cli](https://github.com/MoonshotAI/zsh-kimi-cli) is a Zsh plugin that lets you quickly switch to Kimi CLI in Zsh.
+[zsh-kimi-cli](https://github.com/MoonshotAI/zsh-kimi-cli) is a Zsh plugin that lets you quickly switch to Kimi Code CLI in Zsh.
 
 **Installation**
 
@@ -29,7 +29,7 @@ source ~/.zshrc
 
 **Usage**
 
-After installation, press `Ctrl-X` in Zsh to quickly switch to Kimi CLI without manually typing the `kimi` command.
+After installation, press `Ctrl-X` in Zsh to quickly switch to Kimi Code CLI without manually typing the `kimi` command.
 
 ::: tip
 If you use other Zsh plugin managers (like zinit, zplug, etc.), please refer to the [zsh-kimi-cli repository](https://github.com/MoonshotAI/zsh-kimi-cli) README for installation instructions.

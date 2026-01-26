@@ -196,7 +196,7 @@ class KimiCLI:
         merge_wire_messages: bool = False,
     ) -> AsyncGenerator[WireMessage]:
         """
-        Run the Kimi CLI instance without any UI and yield Wire messages directly.
+        Run the Kimi Code CLI instance without any UI and yield Wire messages directly.
 
         Args:
             user_input (str | list[ContentPart]): The user input to the agent.
@@ -239,7 +239,7 @@ class KimiCLI:
                 await soul_task
 
     async def run_shell(self, command: str | None = None) -> bool:
-        """Run the Kimi CLI instance with shell UI."""
+        """Run the Kimi Code CLI instance with shell UI."""
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
         welcome_info = [
@@ -300,7 +300,7 @@ class KimiCLI:
         *,
         final_only: bool = False,
     ) -> bool:
-        """Run the Kimi CLI instance with print UI."""
+        """Run the Kimi Code CLI instance with print UI."""
         from kimi_cli.ui.print import Print
 
         async with self._env():
@@ -314,7 +314,7 @@ class KimiCLI:
             return await print_.run(command)
 
     async def run_acp(self) -> None:
-        """Run the Kimi CLI instance as ACP server."""
+        """Run the Kimi Code CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
 
         async with self._env():
@@ -322,7 +322,7 @@ class KimiCLI:
             await acp.run()
 
     async def run_wire_stdio(self) -> None:
-        """Run the Kimi CLI instance as Wire server over stdio."""
+        """Run the Kimi Code CLI instance as Wire server over stdio."""
         from kimi_cli.wire.server import WireServer
 
         async with self._env():

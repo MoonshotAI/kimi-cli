@@ -114,7 +114,7 @@
               doInstallCheck = true;
 
               meta = {
-                description = "Kimi CLI is a new CLI agent that can help you with your software development tasks and terminal operations";
+                description = "Kimi Code CLI is a new CLI agent that can help you with your software development tasks and terminal operations";
                 license = lib.licenses.asl20;
                 sourceProvenance = with lib.sourceTypes; [ fromSource ];
                 maintainers = with lib.maintainers; [

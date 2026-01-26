@@ -1,6 +1,6 @@
 # `kimi info` Subcommand
 
-`kimi info` displays version and protocol information for Kimi CLI.
+`kimi info` displays version and protocol information for Kimi Code CLI.
 
 ```sh
 kimi info [--json]
@@ -16,7 +16,7 @@ kimi info [--json]
 
 | Field | Description |
 |-------|-------------|
-| `kimi_cli_version` | Kimi CLI version number |
+| `kimi_cli_version` | Kimi Code CLI version number |
 | `agent_spec_versions` | List of supported agent spec versions |
 | `wire_protocol_version` | Wire protocol version |
 | `python_version` | Python runtime version |

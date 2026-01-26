@@ -1,6 +1,6 @@
 # 平台与模型
 
-Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令进行配置。
+Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令进行配置。
 
 ## 平台选择
 
@@ -10,7 +10,7 @@ Kimi CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令�
 2. 输入 API 密钥
 3. 从可用模型列表中选择模型
 
-配置完成后，Kimi CLI 会自动保存设置到 `~/.kimi/config.toml` 并重新加载。
+配置完成后，Kimi Code CLI 会自动保存设置到 `~/.kimi/config.toml` 并重新加载。
 
 `/setup` 目前支持以下平台：
 
@@ -104,7 +104,7 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 ## 模型能力
 
-模型配置中的 `capabilities` 字段声明模型支持的能力。这会影响 Kimi CLI 的功能可用性。
+模型配置中的 `capabilities` 字段声明模型支持的能力。这会影响 Kimi Code CLI 的功能可用性。
 
 | 能力 | 说明 |
 | --- | --- |

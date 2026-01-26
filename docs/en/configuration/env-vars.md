@@ -1,6 +1,6 @@
 # Environment Variables
 
-Kimi CLI supports overriding configuration or controlling runtime behavior through environment variables. This page lists all supported environment variables.
+Kimi Code CLI supports overriding configuration or controlling runtime behavior through environment variables. This page lists all supported environment variables.
 
 For detailed information on how environment variables override configuration files, see [Config Overrides](./overrides.md).
 
@@ -123,5 +123,5 @@ export KIMI_CLI_NO_AUTO_UPDATE="1"
 ```
 
 ::: tip
-If you installed Kimi CLI via Nix or other package managers, this environment variable is typically set automatically since updates are handled by the package manager.
+If you installed Kimi Code CLI via Nix or other package managers, this environment variable is typically set automatically since updates are handled by the package manager.
 :::

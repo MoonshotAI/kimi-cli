@@ -1,4 +1,4 @@
-# Kimi CLI
+# Kimi Code CLI
 
 ## Quick commands (use uv)
 
@@ -13,7 +13,7 @@ If running tools directly, use `uv run ...`.
 
 ## Project overview
 
-Kimi CLI is a Python CLI agent for software engineering workflows. It supports an interactive
+Kimi Code CLI is a Python CLI agent for software engineering workflows. It supports an interactive
 shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 
 ## Tech stack
@@ -91,7 +91,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
     to interact with operating systems. File operations and command executions via KAOS
     can be easily switched between local environment and remote systems over SSH.
 - `tests/`, `tests_ai/`: test suites
-- `klips`: Kimi CLI Improvement Proposals
+- `klips`: Kimi Code CLI Improvement Proposals
 
 ## Conventions and quality
 

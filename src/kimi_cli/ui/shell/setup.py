@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 @registry.command
 async def setup(app: Shell, args: str):
-    """Setup Kimi CLI"""
+    """Setup Kimi Code CLI"""
     result = await _setup()
     if not result:
         # error message already printed
@@ -75,7 +75,7 @@ async def setup(app: Shell, args: str):
         )
 
     save_config(config)
-    console.print("[green]✓[/green] Kimi CLI has been setup! Reloading...")
+    console.print("[green]✓[/green] Kimi Code CLI has been setup! Reloading...")
     await asyncio.sleep(1)
     console.clear()
 
