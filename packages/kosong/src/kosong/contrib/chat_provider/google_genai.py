@@ -354,6 +354,9 @@ def tool_to_google_genai(tool: KosongTool) -> Tool:
     """Convert a Kosong tool to GoogleGenAI tool format."""
     # Kosong already validates parameters as JSON Schema format via jsonschema
     # The google-genai SDK accepts dict format and internally converts to Schema
+    # Here we filter the `$schema` field in parameters since FunctionParameters is a BaseModel with `extra=forbid`
+    if '$schema' in tool.parameters:
+        del tool.parameters['$schema']
     return Tool(
         function_declarations=[
             FunctionDeclaration(
