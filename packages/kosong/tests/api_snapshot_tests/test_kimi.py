@@ -316,4 +316,4 @@ async def test_kimi_with_thinking():
         async for _ in stream:
             pass
         body = json.loads(mock.calls.last.request.content.decode())
-        assert (body["reasoning_effort"], body["temperature"]) == snapshot(("high", 1.0))
+        assert body["reasoning_effort"] == snapshot("high")

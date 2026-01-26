@@ -150,12 +150,6 @@ class Kimi:
             "max_tokens": 32000,
         }
         generation_kwargs.update(self._generation_kwargs)
-        if "temperature" not in generation_kwargs:
-            # set default temperature based on model name
-            if "kimi-k2-thinking" in self.model or self._generation_kwargs.get("reasoning_effort"):
-                generation_kwargs["temperature"] = 1.0
-            elif "kimi-k2-" in self.model:
-                generation_kwargs["temperature"] = 0.6
 
         try:
             response = await self.client.chat.completions.create(
