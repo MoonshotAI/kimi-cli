@@ -362,7 +362,6 @@ async def refresh_token(refresh_token: str) -> OAuthToken:
         ) as response,
     ):
         data = await response.json(content_type=None)
-        print("/api/oauth/token response:", data)  # TODO(login)
         status = response.status
     if status in (401, 403):
         raise OAuthUnauthorized(data.get("error_description") or "Token refresh unauthorized.")
@@ -630,7 +629,6 @@ class OAuthManager:
         if ref is None:
             return
         token = self._tokens.get(ref.key) or load_tokens(ref)
-        print("current saved token:", token)  # TODO(login)
         if token is None:
             return
         self._tokens[ref.key] = token
