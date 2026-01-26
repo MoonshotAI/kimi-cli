@@ -111,6 +111,7 @@ def test_skill_prompt_injects_skill_text(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -196,6 +197,8 @@ def test_flow_skill(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -350,6 +353,7 @@ def test_mcp_tool_call(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

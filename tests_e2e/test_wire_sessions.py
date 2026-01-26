@@ -137,7 +137,7 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 5, "wire_after": 9})
+    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 6, "wire_after": 11})
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -183,6 +183,7 @@ def test_clear_context_rotates(tmp_path) -> None:
                     "type": "ContentPart",
                     "payload": {"type": "text", "text": "The context has been cleared."},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -247,6 +248,7 @@ def test_manual_compact(tmp_path) -> None:
                     "type": "ContentPart",
                     "payload": {"type": "text", "text": "The context has been compacted."},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

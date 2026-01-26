@@ -89,6 +89,7 @@ def test_basic_prompt_events(tmp_path) -> None:
                         "message_id": "scripted-1",
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -501,6 +502,7 @@ def test_concurrent_prompt_error(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
