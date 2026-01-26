@@ -8,13 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import shorten
 
-import aiofiles
 from kaos.path import KaosPath
 from kosong.message import Message
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.serde import WireMessageRecord
+from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import TurnBegin
 
 
@@ -31,6 +30,8 @@ class Session:
     """The metadata of the work directory."""
     context_file: Path
     """The absolute path to the file storing the message history."""
+    wire_file: WireFile
+    """The wire message log file wrapper."""
 
     # refreshable metadata
     title: str
@@ -45,14 +46,9 @@ class Session:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    @property
-    def wire_file(self) -> Path:
-        """The file backend for persisting Wire messages."""
-        return self.dir / "wire.jsonl"
-
     def is_empty(self) -> bool:
         """Whether the session has any context history."""
-        if self.wire_file.exists() and self.wire_file.stat().st_size > 0:
+        if not self.wire_file.is_empty():
             return False
         try:
             return self.context_file.stat().st_size == 0
@@ -70,32 +66,20 @@ class Session:
         self.title = f"Untitled ({self.id})"
         self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
 
-        if not self.wire_file.exists():
-            return
-
         try:
-            async with aiofiles.open(self.wire_file, encoding="utf-8") as f:
-                async for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        record = WireMessageRecord.model_validate_json(line)
-                        wire_msg = record.to_wire_message()
-                    except Exception:
-                        logger.exception(
-                            "Failed to parse line in wire file {file}:", file=self.wire_file
-                        )
-                        continue
-                    if isinstance(wire_msg, TurnBegin):
-                        title = shorten(
-                            Message(role="user", content=wire_msg.user_input).extract_text(" "),
-                            width=50,
-                        )
-                        self.title = f"{title} ({self.id})"
-                        return
+            async for record in self.wire_file.iter_records():
+                wire_msg = record.to_wire_message()
+                if isinstance(wire_msg, TurnBegin):
+                    title = shorten(
+                        Message(role="user", content=wire_msg.user_input).extract_text(" "),
+                        width=50,
+                    )
+                    self.title = f"{title} ({self.id})"
+                    return
         except Exception:
             logger.exception(
-                "Failed to derive session title from wire file {file}:", file=self.wire_file
+                "Failed to derive session title from wire file {file}:",
+                file=self.wire_file.path,
             )
 
     @staticmethod
@@ -144,6 +128,7 @@ class Session:
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
+            wire_file=WireFile(path=session_dir / "wire.jsonl"),
             title="",
             updated_at=0.0,
         )
@@ -185,6 +170,7 @@ class Session:
             work_dir=work_dir,
             work_dir_meta=work_dir_meta,
             context_file=context_file,
+            wire_file=WireFile(path=session_dir / "wire.jsonl"),
             title="",
             updated_at=0.0,
         )
@@ -227,6 +213,7 @@ class Session:
                 work_dir=work_dir,
                 work_dir_meta=work_dir_meta,
                 context_file=context_file,
+                wire_file=WireFile(path=session_dir / "wire.jsonl"),
                 title="",
                 updated_at=0.0,
             )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from typing import cast
+from typing import Any, cast
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
@@ -16,6 +16,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset, WireExternalTool
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, Request, ToolCallRequest
 
@@ -46,7 +47,7 @@ from .jsonrpc import (
 STDIO_BUFFER_LIMIT = 100 * 1024 * 1024
 
 
-class WireOverStdio:
+class WireServer:
     def __init__(self, soul: Soul):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -69,9 +70,38 @@ class WireOverStdio:
 
         self._reader, self._writer = await acp.stdio_streams(limit=STDIO_BUFFER_LIMIT)
         self._write_task = asyncio.create_task(self._write_loop())
+        stop_event = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        remove_sigint = install_sigint_handler(loop, stop_event.set)
+        read_task = asyncio.create_task(self._read_loop())
+        stop_task = asyncio.create_task(stop_event.wait())
+        tasks: set[asyncio.Task[Any]] = {read_task, stop_task}
+        pending = tasks
         try:
-            await self._read_loop()
+            done, pending = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if stop_event.is_set():
+                logger.info("Wire server interrupted, shutting down")
+                if self._cancel_event is not None:
+                    self._cancel_event.set()
+                if not read_task.done():
+                    read_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await read_task
+            elif read_task in done:
+                read_task.result()
+        except KeyboardInterrupt:
+            logger.info("Wire server interrupted, shutting down")
+            if self._cancel_event is not None:
+                self._cancel_event.set()
         finally:
+            remove_sigint()
+            for task in pending:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             await self._shutdown()
 
     async def _write_loop(self) -> None:
@@ -305,7 +335,7 @@ class WireOverStdio:
             )
 
         from kimi_cli.constant import NAME, VERSION
-        from kimi_cli.ui.wire.protocol import WIRE_PROTOCOL_VERSION
+        from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
 
         result: dict[str, JsonType] = {
             "protocol_version": WIRE_PROTOCOL_VERSION,

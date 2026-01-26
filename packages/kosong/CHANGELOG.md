@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.40.0 (2026-01-24)
+
+- Add `ScriptedEchoChatProvider` for scripted conversation simulation in end-to-end testing
+
 ## 0.39.1 (2026-01-21)
 
 - Fix streamed usage from choice not being read properly

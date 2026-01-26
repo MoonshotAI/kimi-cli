@@ -18,7 +18,7 @@ class InfoData(TypedDict):
 
 def _collect_info() -> InfoData:
     from kimi_cli.agentspec import SUPPORTED_AGENT_SPEC_VERSIONS
-    from kimi_cli.ui.wire.protocol import WIRE_PROTOCOL_VERSION
+    from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
 
     return {
         "kimi_cli_version": VERSION,

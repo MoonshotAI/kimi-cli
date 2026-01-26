@@ -76,6 +76,7 @@ Press `Ctrl-D` when the input box is empty to exit Kimi CLI.
 
 - In input box: Clear current input
 - During agent execution: Interrupt current operation
+- During slash command execution: Interrupt command
 
 ## Completion operations
 
