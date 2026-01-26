@@ -540,7 +540,6 @@ def kimi(
 cli.add_typer(info_cli, name="info")
 
 
-@cli.command()
 def login(
     json: bool = typer.Option(
         False,
@@ -597,7 +596,6 @@ def login(
         raise typer.Exit(code=1)
 
 
-@cli.command()
 def logout(
     json: bool = typer.Option(
         False,
@@ -637,6 +635,17 @@ def logout(
     ok = asyncio.run(_run())
     if not ok:
         raise typer.Exit(code=1)
+
+
+def _oauth_enabled() -> bool:
+    from kimi_cli.utils.envvar import get_env_bool
+
+    return get_env_bool("KIMI_ENABLE_OAUTH")
+
+
+if _oauth_enabled():
+    cli.command()(login)
+    cli.command()(logout)
 
 
 @cli.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
