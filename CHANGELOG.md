@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- MCP: Remove `Mcp-Session-Id` header when connecting to MCP servers to fix compatibility
+
 ## 0.87 (2026-01-25)
 
 - Shell: Fix Markdown rendering error when HTML blocks appear outside any element
