@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- MCP：移除连接 MCP 服务器时的 `Mcp-Session-Id` header 以修复兼容性问题
+
 ## 0.87 (2026-01-25)
 
 - Shell：修复 HTML 块出现在元素外时的 Markdown 渲染错误
