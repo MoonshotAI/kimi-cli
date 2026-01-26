@@ -42,7 +42,7 @@ def test_initialize_handshake(tmp_path) -> None:
             {
                 "result": {
                     "protocol_version": "1.1",
-                    "server": {"name": "Kimi Code CLI", "version": "0.87"},
+                    "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
                             "name": "init",
@@ -104,7 +104,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
             {
                 "result": {
                     "protocol_version": "1.1",
-                    "server": {"name": "Kimi Code CLI", "version": "0.87"},
+                    "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
                             "name": "init",
