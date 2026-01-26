@@ -171,6 +171,7 @@ async def run_soul(
         logger.debug("Shutting down the UI loop")
         # shutting down the wire should break the UI loop
         wire.shutdown()
+        await wire.join()
         try:
             await asyncio.wait_for(ui_task, timeout=0.5)
         except QueueShutDown:

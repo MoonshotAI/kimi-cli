@@ -342,18 +342,47 @@ def build_tool_result_response(
 def normalize_value(value: Any, *, replacements: Mapping[str, str] | None = None) -> Any:
     active_replacements = _PATH_REPLACEMENTS if replacements is None else replacements
     if isinstance(value, dict):
-        return {k: normalize_value(v, replacements=active_replacements) for k, v in value.items()}
+        normalized = {
+            k: normalize_value(v, replacements=active_replacements) for k, v in value.items()
+        }
+        return _normalize_shell_display(normalized)
     if isinstance(value, list):
         return [normalize_value(v, replacements=active_replacements) for v in value]
     if isinstance(value, float):
         return round(value, 6)
     if isinstance(value, str):
         value = _replace_paths(value, active_replacements)
+        value = _normalize_line_endings(value)
+        value = _normalize_path_separators(value, active_replacements)
         try:
             uuid.UUID(value)
         except (ValueError, AttributeError, TypeError):
             return value
         return "<uuid>"
+    return value
+
+
+def _normalize_shell_display(value: dict[str, Any]) -> dict[str, Any]:
+    if value.get("type") != "shell":
+        return value
+    language = value.get("language")
+    if isinstance(language, str) and language.lower() in {"powershell", "pwsh"}:
+        value["language"] = "bash"
+    return value
+
+
+def _normalize_line_endings(value: str) -> str:
+    return value.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _normalize_path_separators(value: str, replacements: Mapping[str, str]) -> str:
+    if not replacements:
+        return value
+    tokens = set(replacements.values())
+    if not tokens:
+        return value
+    if any(token in value for token in tokens):
+        return value.replace("\\", "/")
     return value
 
 

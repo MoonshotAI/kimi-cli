@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 
 from kosong.message import MergeableMixin
@@ -52,6 +53,14 @@ class Wire:
         logger.debug("Shutting down wire")
         self._raw_queue.shutdown()
         self._merged_queue.shutdown()
+
+    async def join(self) -> None:
+        if self._recorder is None:
+            return
+        try:
+            await self._recorder.join()
+        except Exception:
+            logger.exception("Wire recorder failed to flush:")
 
 
 class WireSoulSide:
@@ -122,6 +131,10 @@ class _WireRecorder:
     def __init__(self, wire_file: WireFile, queue: Queue[WireMessage]) -> None:
         self._wire_file = wire_file
         self._task = asyncio.create_task(self._consume_loop(queue))
+
+    async def join(self) -> None:
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._task
 
     async def _consume_loop(self, queue: Queue[WireMessage]) -> None:
         while True:
