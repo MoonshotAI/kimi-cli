@@ -131,7 +131,7 @@ class Runtime:
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
+            approval=self.approval.share(),
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
             skills=self.skills,
@@ -146,7 +146,7 @@ class Runtime:
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
+            approval=self.approval.share(),
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
             skills=self.skills,
