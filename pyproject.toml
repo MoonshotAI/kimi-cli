@@ -81,17 +81,31 @@ select = [
     "I",   # isort
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E501"]
+"tests_e2e/**/*.py" = ["E501"]
+
 [tool.pyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.14"
-include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]
+include = [
+    "src/**/*.py",
+    "tests/**/*.py",
+    "tests_ai/scripts/**/*.py",
+    "tests_e2e/**/*.py",
+]
 strict = ["src/kimi_cli/**/*.py"]
 
 [tool.ty.environment]
 python-version = "3.14"
 
 [tool.ty.src]
-include = ["src/**/*.py", "tests/**/*.py", "tests_ai/scripts/**/*.py"]
+include = [
+    "src/**/*.py",
+    "tests/**/*.py",
+    "tests_ai/scripts/**/*.py",
+    "tests_e2e/**/*.py",
+]
 
 [tool.typos.files]
 extend-exclude = ["kimi.spec", "pyinstaller.py"]
