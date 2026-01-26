@@ -74,6 +74,7 @@ test: test-kimi-cli test-kosong test-pykaos test-kimi-sdk ## Run all test suites
 test-kimi-cli: ## Run Kimi CLI tests.
 	@echo "==> Running Kimi CLI tests"
 	@uv run pytest tests -vv
+	@uv run pytest tests_e2e -vv
 test-kosong: ## Run kosong tests (including doctests).
 	@echo "==> Running kosong tests"
 	@uv run --project packages/kosong --directory packages/kosong pytest --doctest-modules -vv
