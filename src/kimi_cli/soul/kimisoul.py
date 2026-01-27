@@ -337,10 +337,6 @@ class KimiSoul:
 
             wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
-            # FIXME: It's possible that a subagent's approval task steals approval request
-            # from the main agent. We must ensure that the Task tool will redirect them
-            # to the main wire. See `_SubWire` for more details. Later we need to figure
-            # out a better solution.
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
             try:
