@@ -15,7 +15,7 @@ from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm
+from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
@@ -284,10 +284,23 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=self._soul.model_name,
+                    value=model_display_name(self._soul.model_name),
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )
+            if self._soul.model_name not in (
+                "kimi-for-coding",
+                "kimi-code",
+                "kimi-k2.5",
+                "kimi-k2-5",
+            ):
+                welcome_info.append(
+                    WelcomeInfoItem(
+                        name="Tip",
+                        value="send /login to use our latest kimi-k2.5 model",
+                        level=WelcomeInfoItem.Level.WARN,
+                    )
+                )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
             return await shell.run(command)

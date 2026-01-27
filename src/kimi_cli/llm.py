@@ -45,6 +45,14 @@ class LLM:
         return self.chat_provider.model_name
 
 
+def model_display_name(model_name: str | None) -> str:
+    if not model_name:
+        return ""
+    if model_name in ("kimi-for-coding", "kimi-code"):
+        return f"{model_name} (powered by kimi-k2.5)"
+    return model_name
+
+
 def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
     """Override provider/model settings from environment variables.
 

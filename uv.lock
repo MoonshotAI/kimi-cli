@@ -1155,7 +1155,7 @@ wheels = [
 
 [[package]]
 name = "kimi-cli"
-version = "1.1"
+version = "1.2"
 source = { editable = "." }
 dependencies = [
     { name = "agent-client-protocol" },
@@ -1237,7 +1237,7 @@ dev = [
 
 [[package]]
 name = "kimi-code"
-version = "1.1"
+version = "1.2"
 source = { editable = "packages/kimi-code" }
 dependencies = [
     { name = "kimi-cli" },

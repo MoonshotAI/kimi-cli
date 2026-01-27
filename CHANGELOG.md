@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.2 (2026-01-27)
+
+- UI: Show description for `kimi-for-coding` model
+
 ## 1.1 (2026-01-27)
 
 - LLM: Fix `kimi-for-coding` model's capabilities
