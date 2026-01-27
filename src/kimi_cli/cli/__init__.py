@@ -12,6 +12,7 @@ from kimi_cli.constant import VERSION
 
 from .info import cli as info_cli
 from .mcp import cli as mcp_cli
+from .web import cli as web_cli
 
 
 class Reload(Exception):
@@ -559,6 +560,7 @@ def acp():
 
 
 cli.add_typer(mcp_cli, name="mcp")
+cli.add_typer(web_cli, name="web")
 
 
 if __name__ == "__main__":

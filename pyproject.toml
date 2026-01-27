@@ -30,6 +30,11 @@ dependencies = [
     "tomlkit==0.14.0",
     "jinja2==3.1.6",
     "pyobjc-framework-cocoa>=12.1 ; sys_platform == 'darwin'",
+    # Web UI dependencies
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "scalar-fastapi>=1.5.0",
+    "websockets>=14.0",
 ]
 
 [dependency-groups]
@@ -84,6 +89,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["E501"]
 "tests_e2e/**/*.py" = ["E501"]
+"src/kimi_cli/web/api/**/*.py" = ["B008"]  # FastAPI Depends() is standard usage
 
 [tool.pyright]
 typeCheckingMode = "standard"
