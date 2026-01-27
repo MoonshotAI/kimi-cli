@@ -11,7 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
-- Shell: Add `/login` and `/logout` slash command for login and logout
+- Shell: Add `/login` and `/logout` slash commands for login and logout
 - CLI: Add `kimi login` and `kimi logout` subcommands
 - Core: Fix subagent approval request handling
 
