@@ -28,11 +28,23 @@ Alias: `/release-notes`
 
 Open the GitHub Issues page to submit feedback.
 
-## Configuration and debugging
+## Account and configuration
+
+### `/login`
+
+Log in to your Kimi account. This automatically opens a browser; complete account authorization and available models will be automatically configured. After successful login, Kimi Code CLI will automatically reload the configuration.
+
+::: tip
+This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
+:::
+
+### `/logout`
+
+Log out from your Kimi account. This clears stored OAuth credentials and removes related configuration from the config file. After logout, Kimi Code CLI will automatically reload the configuration.
 
 ### `/setup`
 
-Start the configuration wizard to set up API platform and model.
+Start the configuration wizard to set up API platform and model using an API key.
 
 Configuration flow:
 1. Select an API platform (Kimi Code, Moonshot AI Open Platform, etc.)

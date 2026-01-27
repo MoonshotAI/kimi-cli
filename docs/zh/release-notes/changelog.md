@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：添加 `/login` 和 `/logout` 斜杠命令，用于登录和登出
+- CLI：添加 `kimi login` 和 `kimi logout` 子命令
 - Core：修复子 Agent 审批请求处理问题
 
 ## 0.88 (2026-01-26)
