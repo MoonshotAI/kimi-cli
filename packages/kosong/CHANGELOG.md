@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.41.0 (2026-01-27)
+
 - Remove default temperature setting in Kimi chat provider based on model name
 
 ## 0.40.0 (2026-01-24)
