@@ -24,12 +24,12 @@ Run the installation script to complete the installation. The script will first 
 
 ```sh
 # Linux / macOS
-curl -LsSf https://cdn.kimi.com/binaries/kimi-cli/install.sh | bash
+curl -LsSf https://code.kimi.com/install.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-Invoke-RestMethod https://cdn.kimi.com/binaries/kimi-cli/install.ps1 | Invoke-Expression
+Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
 ```
 
 Verify the installation:

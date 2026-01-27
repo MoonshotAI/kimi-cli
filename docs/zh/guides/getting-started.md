@@ -24,12 +24,12 @@ Kimi Code CLI 目前处于技术预览阶段，功能和 API 可能会发生变�
 
 ```sh
 # Linux / macOS
-curl -LsSf https://cdn.kimi.com/binaries/kimi-cli/install.sh | bash
+curl -LsSf https://code.kimi.com/install.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-Invoke-RestMethod https://cdn.kimi.com/binaries/kimi-cli/install.ps1 | Invoke-Expression
+Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
 ```
 
 验证安装是否成功：
