@@ -17,14 +17,14 @@ members = [
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.7.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/4d/e33e4e997de8fdc6c7154e59490a20c455cd46543b62dab768ae99317046/agent_client_protocol-0.7.0.tar.gz", hash = "sha256:c66811bb804868c4e7728b18b67379bcb0335afba3b1c2ff0fcdfd0c48d93029", size = 64809, upload-time = "2025-12-04T16:17:34.568Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/7c/12da39be4f73026fd9b02144df5f64d803488cf1439aa221b0edb7c305e3/agent_client_protocol-0.7.1.tar.gz", hash = "sha256:8d7031209e14c3f2f987e3b95e7d9c3286158e7b2af1bf43d6aae5b8a429249f", size = 66226, upload-time = "2025-12-28T13:58:57.012Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/02/257ea400cfee72a48dabe04ef0a984c496c9687830cf7977b327979e8cd7/agent_client_protocol-0.7.0-py3-none-any.whl", hash = "sha256:71fce4088fe7faa85b30278aecd1d8d6012f03505ae2ee6e312f9e2ba4ea1f4e", size = 52922, upload-time = "2025-12-04T16:17:33.562Z" },
+    { url = "https://files.pythonhosted.org/packages/03/48/48d2fb454f911147432cd779f548e188274e1700f1cbe0a258e78158331a/agent_client_protocol-0.7.1-py3-none-any.whl", hash = "sha256:4ffe999488f2b23db26f09becdfaa2aaae6529f0847a52bca61bc2c628001c0f", size = 53771, upload-time = "2025-12-28T13:58:55.967Z" },
 ]
 
 [[package]]
@@ -1198,7 +1198,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.7.0" },
+    { name = "agent-client-protocol", specifier = "==0.7.1" },
     { name = "aiofiles", specifier = ">=24.0,<26.0" },
     { name = "aiohttp", specifier = "==3.13.3" },
     { name = "batrachian-toad", marker = "python_full_version >= '3.14'", specifier = "==0.5.23" },
