@@ -235,7 +235,7 @@ def derive_model_capabilities(model: LLMModel) -> set[ModelCapability]:
         capabilities.update(("thinking", "always_thinking"))
     # These models support thinking but can be toggled on/off
     elif model.model in {"kimi-for-coding", "kimi-code"}:
-        capabilities.add("thinking")
+        capabilities.update(("thinking", "image_in", "video_in"))
     return capabilities
 
 
