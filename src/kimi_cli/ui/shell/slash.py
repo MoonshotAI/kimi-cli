@@ -14,7 +14,6 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
-from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
@@ -416,10 +415,8 @@ async def mcp(app: Shell, args: str):
 
 from . import (  # noqa: E402
     debug,  # noqa: F401 # type: ignore[reportUnusedImport]
+    oauth,  # noqa: F401 # type: ignore[reportUnusedImport]
     setup,  # noqa: F401 # type: ignore[reportUnusedImport]
     update,  # noqa: F401 # type: ignore[reportUnusedImport]
     usage,  # noqa: F401 # type: ignore[reportUnusedImport]
 )
-
-if get_env_bool("KIMI_ENABLE_OAUTH"):
-    from . import oauth  # noqa: F401 # type: ignore[reportUnusedImport]

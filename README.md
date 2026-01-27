@@ -34,7 +34,7 @@ Kimi Code CLI supports [Agent Client Protocol] out of the box. You can use it to
 
 [Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
 
-To use Kimi Code CLI with ACP clients, make sure to run Kimi Code CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi Code CLI as an ACP agent server with command `kimi acp`.
+To use Kimi Code CLI with ACP clients, make sure to run Kimi Code CLI in the terminal and send `/login` to complete the login first. Then, you can configure your ACP client to start Kimi Code CLI as an ACP agent server with command `kimi acp`.
 
 For example, to use Kimi Code CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
