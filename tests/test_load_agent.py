@@ -13,21 +13,32 @@ from inline_snapshot import snapshot
 from kimi_cli.config import Config
 from kimi_cli.exception import InvalidToolError
 from kimi_cli.session import Session
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
+from kimi_cli.soul.agent import (
+    BuiltinSystemPromptArgs,
+    Runtime,
+    _load_system_prompt_template,
+    load_agent,
+)
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.environment import Environment
 
 
-def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSystemPromptArgs):
-    """Test loading system prompt with template substitution."""
-    prompt = _load_system_prompt(system_prompt_file, {"CUSTOM_ARG": "test_value"}, builtin_args)
+def test_load_system_prompt_template(
+    system_prompt_file: Path, builtin_args: BuiltinSystemPromptArgs
+):
+    """Test loading system prompt template with partial substitution."""
+    template = _load_system_prompt_template(
+        system_prompt_file, {"CUSTOM_ARG": "test_value"}, builtin_args
+    )
 
-    assert "Test system prompt with " in prompt
-    assert "1970-01-01" in prompt  # Should contain the actual timestamp
-    assert builtin_args.KIMI_NOW in prompt
-    assert "test_value" in prompt
+    assert "Test system prompt with " in template
+    assert "1970-01-01" in template  # Should contain the actual timestamp
+    assert builtin_args.KIMI_NOW in template
+    assert "test_value" in template
+    # KIMI_SKILLS should remain as placeholder
+    assert "${KIMI_SKILLS}" in template or "KIMI_SKILLS" in template
 
 
 def test_load_tools_valid(runtime: Runtime):
@@ -106,6 +117,8 @@ def system_prompt_file() -> Generator[Path, Any, Any]:
         tmpdir = Path(tmpdir)
 
         system_md = tmpdir / "system.md"
-        system_md.write_text("Test system prompt with ${KIMI_NOW} and ${CUSTOM_ARG}")
+        system_md.write_text(
+            "Test system prompt with ${KIMI_NOW} and ${CUSTOM_ARG}. ${KIMI_SKILLS}"
+        )
 
         yield system_md

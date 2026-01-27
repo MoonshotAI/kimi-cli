@@ -15,7 +15,8 @@ from kimi_cli.soul.agent import Runtime
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
-    assert agent.system_prompt.replace(
+    system_prompt = agent.build_system_prompt(runtime.builtin_args.KIMI_SKILLS)
+    assert system_prompt.replace(
         f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
     ) == snapshot(
         """\
@@ -633,7 +634,7 @@ Replace specific strings within a specified file.
         (
             name,
             runtime.labor_market.fixed_subagent_descs[name],
-            agent.system_prompt.replace(
+            agent.build_system_prompt(runtime.builtin_args.KIMI_SKILLS).replace(
                 f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
             ),
             [tool.name for tool in agent.toolset.tools],

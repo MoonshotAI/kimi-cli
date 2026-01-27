@@ -171,12 +171,13 @@ def runtime(
         labor_market=labor_market,
         environment=environment,
         skills={},
+        skills_roots=[],
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",
         Agent(
             name="Mocker",
-            system_prompt="You are a mock agent for testing.",
+            system_prompt_template="You are a mock agent for testing.",
             toolset=EmptyToolset(),
             runtime=rt.copy_for_fixed_subagent(),
         ),

@@ -218,6 +218,14 @@ class KimiSoul:
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
+
+        # Notify lesson extractor about user message
+        if self._runtime.lesson_extractor is not None:
+            try:
+                self._runtime.lesson_extractor.on_message(user_message)
+            except Exception as e:
+                logger.debug("Lesson message collection failed: {}", e)
+
         return await self._agent_loop()
 
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
@@ -390,6 +398,15 @@ class KimiSoul:
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
+        # Dynamically refresh skills and build system prompt
+        skills_formatted = await self._runtime.refresh_skills()
+        system_prompt = self._agent.build_system_prompt(skills_formatted)
+        logger.debug(
+            "System prompt length: {}, skills_formatted length: {}",
+            len(system_prompt),
+            len(skills_formatted),
+        )
+
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
             before_sleep=partial(self._retry_log, "step"),
@@ -401,7 +418,7 @@ class KimiSoul:
             # run an LLM step (may be interrupted)
             return await kosong.step(
                 chat_provider,
-                self._agent.system_prompt,
+                system_prompt,
                 self._agent.toolset,
                 self._context.history,
                 on_message_part=wire_send,
@@ -481,6 +498,19 @@ class KimiSoul:
         )
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
+
+        # Notify lesson extractor about messages and step completion (non-blocking)
+        if self._runtime.lesson_extractor is not None:
+            try:
+                # Collect assistant message
+                self._runtime.lesson_extractor.on_message(result.message)
+                # Collect tool result messages
+                for tool_msg in tool_messages:
+                    self._runtime.lesson_extractor.on_message(tool_msg)
+                # Mark step as complete
+                self._runtime.lesson_extractor.on_step_complete()
+            except Exception as e:
+                logger.debug("Lesson extraction notification failed: {}", e)
 
     async def compact_context(self) -> None:
         """

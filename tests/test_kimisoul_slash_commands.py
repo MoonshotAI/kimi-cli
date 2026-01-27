@@ -39,7 +39,7 @@ def test_flow_skill_registers_skill_and_flow_commands(runtime: Runtime, tmp_path
 
     agent = Agent(
         name="Test Agent",
-        system_prompt="Test system prompt.",
+        system_prompt_template="Test system prompt.",
         toolset=EmptyToolset(),
         runtime=runtime,
     )

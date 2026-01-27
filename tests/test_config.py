@@ -41,6 +41,14 @@ def test_default_config_dump():
             },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
+            "lessons": {
+                "enabled": True,
+                "auto_extract": True,
+                "window_size": 5,
+                "max_lessons_per_scope": 50,
+                "min_confidence_threshold": 0.3,
+                "retrieval_top_k": 5,
+            },
         }
     )
 

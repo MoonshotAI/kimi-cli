@@ -114,6 +114,37 @@ class MCPConfig(BaseModel):
     )
 
 
+class LessonsConfig(BaseModel):
+    """Lessons (dynamic experience memory) configuration."""
+
+    enabled: bool = Field(default=True, description="Enable lessons system")
+    auto_extract: bool = Field(
+        default=True,
+        description="Automatically extract lessons from trajectories",
+    )
+    window_size: int = Field(
+        default=20,
+        ge=1,
+        description="Number of steps between lesson checks (across turns)",
+    )
+    max_lessons_per_scope: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum number of lessons to keep per scope",
+    )
+    min_confidence_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence threshold for saving lessons",
+    )
+    retrieval_top_k: int = Field(
+        default=5,
+        ge=1,
+        description="Number of lessons to retrieve for injection",
+    )
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -131,6 +162,10 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    lessons: LessonsConfig = Field(
+        default_factory=LessonsConfig,
+        description="Lessons (dynamic memory) configuration",
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

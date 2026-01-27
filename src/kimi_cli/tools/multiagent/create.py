@@ -39,7 +39,7 @@ class CreateSubagent(CallableTool2[Params]):
 
         subagent = Agent(
             name=params.name,
-            system_prompt=params.system_prompt,
+            system_prompt_template=params.system_prompt,
             toolset=self._toolset,  # share the same toolset as the parent agent
             runtime=self._runtime.copy_for_dynamic_subagent(),
         )

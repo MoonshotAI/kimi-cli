@@ -37,12 +37,12 @@ async def test_list_directory_unix(temp_work_dir: KaosPath) -> None:
     )  # Remove size for snapshot stability
     assert out_without_size == snapshot(
         """\
--rw-r--r-- largefile.bin
--rw-r--r-- link_to_regular
--rw-r--r-- regular.txt
+-rw-rw-r-- largefile.bin
+-rw-rw-r-- link_to_regular
+-rw-rw-r-- regular.txt
 ?--------- link_to_regular_missing [stat failed]
-drwxr-xr-x adir
-drwxr-xr-x emptydir\
+drwxrwxr-x adir
+drwxrwxr-x emptydir\
 """
     )
 

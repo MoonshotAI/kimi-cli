@@ -12,12 +12,13 @@ from kaos.path import KaosPath
 from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
+from kimi_cli.lessons.models import LessonMeta
 from kimi_cli.skill.flow import Flow, FlowError
 from kimi_cli.skill.flow.d2 import parse_d2_flowchart
 from kimi_cli.skill.flow.mermaid import parse_mermaid_flowchart
 from kimi_cli.utils.frontmatter import parse_frontmatter
 
-SkillType = Literal["standard", "flow"]
+SkillType = Literal["standard", "flow", "lesson"]
 
 
 def get_skills_dir() -> KaosPath:
@@ -168,11 +169,18 @@ class Skill(BaseModel):
     type: SkillType = "standard"
     dir: KaosPath
     flow: Flow | None = None
+    lesson_meta: LessonMeta | None = None
+    """Metadata for lesson-type skills, loaded from LESSON.meta.json."""
 
     @property
     def skill_md_file(self) -> KaosPath:
         """Path to the SKILL.md file."""
         return self.dir / "SKILL.md"
+
+    @property
+    def is_lesson(self) -> bool:
+        """Check if this skill is a lesson."""
+        return self.type == "lesson"
 
 
 async def discover_skills(skills_dir: KaosPath) -> list[Skill]:
@@ -200,12 +208,40 @@ async def discover_skills(skills_dir: KaosPath) -> list[Skill]:
 
         try:
             content = await skill_md.read_text(encoding="utf-8")
-            skills.append(parse_skill_text(content, dir_path=skill_dir))
+            skill = parse_skill_text(content, dir_path=skill_dir)
+
+            # Load lesson metadata if this is a lesson-type skill
+            if skill.type == "lesson":
+                skill = await _load_lesson_meta(skill)
+
+            skills.append(skill)
         except Exception as exc:
             logger.info("Skipping invalid skill at {}: {}", skill_md, exc)
             continue
 
     return sorted(skills, key=lambda s: s.name)
+
+
+async def _load_lesson_meta(skill: Skill) -> Skill:
+    """Load lesson metadata from LESSON.meta.json if it exists."""
+    from kimi_cli.lessons.models import LessonMeta
+
+    meta_file = skill.dir / "LESSON.meta.json"
+    if not await meta_file.is_file():
+        logger.debug("No LESSON.meta.json found for lesson skill: {}", skill.name)
+        return skill
+
+    try:
+        meta_content = await meta_file.read_text(encoding="utf-8")
+        lesson_meta = LessonMeta.model_validate_json(meta_content)
+        return skill.model_copy(update={"lesson_meta": lesson_meta})
+    except Exception as exc:
+        logger.warning(
+            "Failed to load lesson metadata for {}: {}",
+            skill.name,
+            exc,
+        )
+        return skill
 
 
 def parse_skill_text(content: str, *, dir_path: KaosPath) -> Skill:
@@ -217,7 +253,7 @@ def parse_skill_text(content: str, *, dir_path: KaosPath) -> Skill:
     name = frontmatter.get("name") or dir_path.name
     description = frontmatter.get("description") or "No description provided."
     skill_type = frontmatter.get("type") or "standard"
-    if skill_type not in ("standard", "flow"):
+    if skill_type not in ("standard", "flow", "lesson"):
         raise ValueError(f'Invalid skill type "{skill_type}"')
     flow = None
     if skill_type == "flow":

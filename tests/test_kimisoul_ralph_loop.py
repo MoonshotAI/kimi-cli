@@ -112,6 +112,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
         labor_market=runtime.labor_market,
         environment=runtime.environment,
         skills=runtime.skills,
+        skills_roots=runtime.skills_roots,
     )
 
 
@@ -120,7 +121,7 @@ def _make_soul(
 ) -> tuple[KimiSoul, Context]:
     agent = Agent(
         name="Test Agent",
-        system_prompt="Test system prompt.",
+        system_prompt_template="Test system prompt.",
         toolset=toolset,
         runtime=_runtime_with_llm(runtime, llm),
     )
