@@ -75,7 +75,15 @@ cd your-project
 kimi
 ```
 
-On first launch, you need to configure the API platform and model. Enter the `/setup` command to start the configuration wizard:
+On first launch, you need to configure your API source. The recommended approach is to use the `/login` command to log in to your Kimi account, which automatically configures available models:
+
+```
+/login
+```
+
+This will automatically open a browser. Complete the Kimi account authorization and you're ready to go. After successful login, Kimi Code CLI will automatically reload the configuration.
+
+If you prefer using an API key instead, enter the `/setup` command to start the configuration wizard:
 
 1. Select an API platform (e.g., Kimi Code, Moonshot AI Open Platform)
 2. Enter your API key

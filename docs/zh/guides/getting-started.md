@@ -75,7 +75,15 @@ cd your-project
 kimi
 ```
 
-首次启动时，你需要配置 API 平台和模型。输入 `/setup` 命令进入配置向导：
+首次启动时，你需要配置 API 来源。推荐使用 `/login` 命令登录 Kimi 账号，登录后会自动配置可用的模型：
+
+```
+/login
+```
+
+执行后会自动打开浏览器，完成 Kimi 账号授权即可。登录成功后 Kimi Code CLI 会自动重新加载配置。
+
+如果你更倾向于使用 API 密钥，可以输入 `/setup` 命令进入配置向导：
 
 1. 选择 API 平台（如 Kimi Code、Moonshot AI 开放平台）
 2. 输入你的 API 密钥

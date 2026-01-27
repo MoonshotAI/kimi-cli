@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Add `/login` and `/logout` slash commands for login and logout
+- CLI: Add `kimi login` and `kimi logout` subcommands
 - Core: Fix subagent approval request handling
 
 ## 0.88 (2026-01-26)
