@@ -724,6 +724,10 @@ class CustomPromptSession:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
 
+                text = buff.text.strip()
+                if text.startswith("/") and not text.startswith("//") and "@" not in text[:1]:
+                    buff.validate_and_handle()
+
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
             self._mode = self._mode.toggle()
