@@ -5,7 +5,7 @@ import base64
 from PIL import Image
 
 from kimi_cli.ui.shell.prompt import AttachmentCache, _parse_attachment_kind
-from kimi_cli.wire.types import ImageURLPart
+from kimi_cli.wire.types import ImageURLPart, TextPart
 
 
 def _make_image() -> Image.Image:
@@ -21,12 +21,15 @@ def test_attachment_cache_roundtrip(tmp_path) -> None:
     assert cached.path.exists()
     assert cached.path.parent == tmp_path / "images"
 
-    part = cache.load_content_part("image", cached.attachment_id)
-    assert isinstance(part, ImageURLPart)
-    assert part.image_url.id == str(cached.path)
-    assert part.image_url.url.startswith("data:image/png;base64,")
+    parts = cache.load_content_parts("image", cached.attachment_id)
+    assert parts is not None
+    assert len(parts) == 3
+    assert parts[0] == TextPart(text=f'<image path="{cached.path}">')
+    assert isinstance(parts[1], ImageURLPart)
+    assert parts[2] == TextPart(text="</image>")
+    assert parts[1].image_url.url.startswith("data:image/png;base64,")
 
-    encoded = part.image_url.url.split(",", 1)[1]
+    encoded = parts[1].image_url.url.split(",", 1)[1]
     assert base64.b64decode(encoded).startswith(b"\x89PNG")
 
 

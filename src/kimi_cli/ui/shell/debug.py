@@ -51,8 +51,7 @@ def _format_content_part(part: ContentPart) -> Text | Panel | Group:
 
         case ImageURLPart(image_url=img):
             url_display = img.url[:80] + "..." if len(img.url) > 80 else img.url
-            id_text = f" (id: {img.id})" if img.id else ""
-            return Text(f"[Image{id_text}] {url_display}", style="blue")
+            return Text(f"[Image] {url_display}", style="blue")
 
         case AudioURLPart(audio_url=audio):
             url_display = audio.url[:80] + "..." if len(audio.url) > 80 else audio.url
@@ -61,8 +60,7 @@ def _format_content_part(part: ContentPart) -> Text | Panel | Group:
 
         case VideoURLPart(video_url=video):
             url_display = video.url[:80] + "..." if len(video.url) > 80 else video.url
-            id_text = f" (id: {video.id})" if video.id else ""
-            return Text(f"[Video{id_text}] {url_display}", style="blue")
+            return Text(f"[Video] {url_display}", style="blue")
 
         case _:
             return Text(f"[Unknown content type: {type(part).__name__}]", style="red")
