@@ -153,7 +153,11 @@ class Shell:
                 console.print("[red]Usage: cd <dir>[/red]")
                 return
             target = split_cmd[1] if len(split_cmd) == 2 else "~"
-            new_cwd = Path(target).expanduser()
+            try:
+                new_cwd = Path(target).expanduser()
+            except RuntimeError:
+                console.print(f"[red]Invalid path: {target}[/red]")
+                return
             if not new_cwd.is_absolute():
                 new_cwd = self._shell_cwd / new_cwd
             new_cwd = new_cwd.resolve()
