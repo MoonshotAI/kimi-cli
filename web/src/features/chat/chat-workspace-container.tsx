@@ -309,11 +309,12 @@ export function ChatWorkspaceContainer({
       }
 
       const hasModifier = isMacOS() ? event.metaKey : event.ctrlKey;
-      if (!hasModifier || !event.shiftKey) {
+      if (!(hasModifier && event.shiftKey)) {
         return;
       }
 
       event.preventDefault();
+      // biome-ignore lint/complexity/noVoid: Intentionally fire-and-forget async handler
       void handleCreateSession();
     };
 

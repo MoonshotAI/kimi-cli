@@ -137,6 +137,7 @@ export function ChatConversation({
                   <Button
                     className="mt-1"
                     type="button"
+                    // biome-ignore lint/complexity/noVoid: Intentionally fire-and-forget async handler
                     onClick={() => void onCreateSession()}
                     disabled={isCreatingSession}
                   >

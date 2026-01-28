@@ -22,8 +22,8 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 	@echo "==> Syncing dependencies for release builds (no sources)"
 	@uv sync --all-extras --all-packages --no-sources
 
-.PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk
-format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk ## Auto-format all workspace packages with ruff.
+.PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web
+format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web ## Auto-format all workspace packages.
 format-kimi-cli: ## Auto-format Kimi Code CLI sources with ruff.
 	@echo "==> Formatting Kimi Code CLI sources"
 	@uv run ruff check --fix
@@ -40,6 +40,14 @@ format-kimi-sdk: ## Auto-format kimi-sdk sources with ruff.
 	@echo "==> Formatting kimi-sdk sources"
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff check --fix
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff format
+format-web: ## Auto-format web sources with npm run format.
+	@echo "==> Formatting web sources"
+	@if command -v npm >/dev/null 2>&1; then \
+		npm --prefix web run format; \
+	else \
+		echo "npm not found. Install Node.js (npm) to run web formatting."; \
+		exit 1; \
+	fi
 
 .PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk
 check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk ## Run linting and type checks for all packages.
