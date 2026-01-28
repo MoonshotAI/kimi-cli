@@ -30,3 +30,6 @@ result-*
 
 # macOS files
 .DS_Store
+
+# Rust files
+target/

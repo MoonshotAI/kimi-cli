@@ -6,9 +6,10 @@
 - Do not test: W-23, W-26, W-29, W-27 (env overrides).
 
 ## Execution Rules
-- Tests run via `uv run kimi`.
-- Always isolate `HOME` and `USERPROFILE` and use a temporary `--work-dir` to avoid touching real
-  `~/.kimi`.
+- Tests run via `uv run kimi` by default; set `KIMI_E2E_WIRE_CMD` to override the base command
+  (e.g. `./rust/target/debug/kimi` or `cargo run -p kimi-cli --`). `--wire` is appended if missing.
+- Always isolate `HOME`, `USERPROFILE`, and `KIMI_SHARE_DIR`, and use a temporary `--work-dir` to
+  avoid touching real `~/.kimi`.
 - Use `inline_snapshot` for snapshot testing; snapshots can start empty and be updated later.
 - Wire traffic is line-delimited JSON; `event`/`request`/responses may interleave.
 
