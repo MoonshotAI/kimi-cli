@@ -89,7 +89,7 @@ class SimpleToolset:
     def tools(self) -> list[Tool]:
         return [tool.base for tool in self._tool_dict.values()]
 
-    def handle(self, tool_call: ToolCall) -> HandleResult:
+    def handle(self, tool_call: ToolCall, catch_exception: bool = True) -> HandleResult:
         if tool_call.function.name not in self._tool_dict:
             return ToolResult(
                 tool_call_id=tool_call.id,
@@ -103,11 +103,14 @@ class SimpleToolset:
         except json.JSONDecodeError as e:
             return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
-        async def _call():
+        async def _call(catch_exception: bool = catch_exception) -> ToolResult:
             try:
                 ret = await tool.call(arguments)
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
             except Exception as e:
-                return ToolResult(tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e)))
+                if catch_exception:
+                    return ToolResult(tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e)))
+                else:
+                    raise
 
-        return asyncio.create_task(_call())
+        return asyncio.create_task(_call(catch_exception))
