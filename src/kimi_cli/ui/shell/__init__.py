@@ -5,6 +5,7 @@ import shlex
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
@@ -36,6 +37,7 @@ class Shell:
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        self._shell_cwd = self._resolve_initial_shell_cwd()
         self._available_slash_commands: dict[str, SlashCommand[Any]] = {
             **{cmd.name: cmd for cmd in soul.available_slash_commands},
             **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
@@ -46,6 +48,14 @@ class Shell:
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
+
+    def _resolve_initial_shell_cwd(self) -> Path:
+        if isinstance(self.soul, KimiSoul):
+            try:
+                return self.soul.runtime.session.work_dir.unsafe_to_local_path()
+            except Exception:
+                logger.debug("Failed to resolve session work dir for shell cwd, using CWD")
+        return Path.cwd()
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -138,11 +148,20 @@ class Shell:
             split_cmd = shlex.split(stripped_cmd)
         except ValueError as exc:
             logger.debug("Failed to parse shell command for cd check: {error}", error=exc)
-        if split_cmd and len(split_cmd) == 2 and split_cmd[0] == "cd":
-            console.print(
-                "[yellow]Warning: Directory changes are not preserved across command executions."
-                "[/yellow]"
-            )
+        if split_cmd and split_cmd[0] == "cd":
+            if len(split_cmd) > 2:
+                console.print("[red]Usage: cd <dir>[/red]")
+                return
+            target = split_cmd[1] if len(split_cmd) == 2 else "~"
+            new_cwd = Path(target).expanduser()
+            if not new_cwd.is_absolute():
+                new_cwd = self._shell_cwd / new_cwd
+            new_cwd = new_cwd.resolve()
+            if not new_cwd.exists() or not new_cwd.is_dir():
+                console.print(f"[red]Directory not found: {new_cwd}[/red]")
+                return
+            self._shell_cwd = new_cwd
+            console.print(f"[grey50]cwd: {new_cwd}[/grey50]")
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
@@ -163,6 +182,7 @@ class Shell:
                 kwargs: dict[str, Any] = {}
                 if stderr is not None:
                     kwargs["stderr"] = stderr
+                kwargs["cwd"] = str(self._shell_cwd)
                 proc = await asyncio.create_subprocess_shell(command, **kwargs)
                 await proc.wait()
         except Exception as e:
