@@ -51,6 +51,8 @@ function App() {
     refreshSession,
     refreshSessions,
     applySessionStatus,
+    fetchWorkDirs,
+    fetchStartupDir,
     error: sessionsError,
   } = sessionsHook;
 
@@ -145,9 +147,12 @@ function App() {
     [applySessionStatus, refreshSession],
   );
 
-  const handleCreateSession = useCallback(async () => {
-    await createSession();
-  }, [createSession]);
+  const handleCreateSession = useCallback(
+    async (workDir: string) => {
+      await createSession(workDir);
+    },
+    [createSession],
+  );
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
@@ -225,6 +230,8 @@ function App() {
                     onSelectSession={handleSelectSession}
                     onDuplicateSession={handleDuplicateSession}
                     onRefreshSessions={handleRefreshSessions}
+                    fetchWorkDirs={fetchWorkDirs}
+                    fetchStartupDir={fetchStartupDir}
                     streamStatus={streamStatus}
                     selectedSessionId={selectedSessionId}
                     sessions={sessionSummaries}

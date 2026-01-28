@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   type ReactElement,
   useEffect,
   useState,
@@ -25,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { CreateSessionDialog } from "./create-session-dialog";
 
 type SessionSummary = {
   id: string;
@@ -36,10 +38,12 @@ type SessionsSidebarProps = {
   sessions: SessionSummary[];
   selectedSessionId: string;
   onSelectSession: (id: string) => void;
-  onCreateSession: () => void;
+  onCreateSession: (workDir: string) => void | Promise<void>;
   onDeleteSession: (id: string) => void;
   onDuplicateSession: (id: string) => void;
   onRefreshSessions?: () => Promise<void> | void;
+  fetchWorkDirs: () => Promise<string[]>;
+  fetchStartupDir: () => Promise<string>;
   streamStatus?: "ready" | "streaming" | "submitted" | "error";
 };
 
@@ -57,6 +61,8 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   onDeleteSession,
   onDuplicateSession,
   onRefreshSessions,
+  fetchWorkDirs,
+  fetchStartupDir,
 }: SessionsSidebarProps): ReactElement {
   const minimumSpinMs = 600;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -66,9 +72,21 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     sessionTitle: "",
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   // Session search state
   const [sessionSearch, setSessionSearch] = useState("");
+
+  const handleOpenCreateDialog = useCallback(() => {
+    setShowCreateDialog(true);
+  }, []);
+
+  const handleCreateSession = useCallback(
+    async (workDir: string) => {
+      await onCreateSession(workDir);
+    },
+    [onCreateSession],
+  );
 
   const filteredSessions = sessionSearch.trim()
     ? sessions.filter((s) =>
@@ -245,7 +263,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
               <button
                 aria-label="New Session"
                 className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                onClick={onCreateSession}
+                onClick={handleOpenCreateDialog}
                 title="New Session"
                 type="button"
               >
@@ -335,6 +353,15 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create Session Dialog */}
+      <CreateSessionDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onConfirm={handleCreateSession}
+        fetchWorkDirs={fetchWorkDirs}
+        fetchStartupDir={fetchStartupDir}
+      />
     </>
   );
 });

@@ -1,5 +1,6 @@
 """Kimi Code CLI Web UI application."""
 
+import os
 import socket
 import webbrowser
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import HTMLResponse
 
-from kimi_cli.web.api import config_router, sessions_router
+from kimi_cli.web.api import config_router, sessions_router, work_dirs_router
 from kimi_cli.web.runner.process import KimiCLIRunner
 
 # scalar-fastapi does not ship typing stubs.
@@ -36,6 +37,8 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.startup_dir = os.getcwd()
+
         # Start KimiCLI runner
         runner = KimiCLIRunner()
         app.state.runner = runner
@@ -70,6 +73,7 @@ def create_app() -> FastAPI:
 
     application.include_router(config_router)
     application.include_router(sessions_router)
+    application.include_router(work_dirs_router)
 
     @application.get("/scalar", include_in_schema=False)
     @application.get("/docs", include_in_schema=False)

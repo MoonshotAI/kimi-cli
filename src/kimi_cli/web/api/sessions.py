@@ -41,6 +41,7 @@ from kimi_cli.wire.serde import deserialize_wire_message
 from kimi_cli.wire.types import is_request
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+work_dirs_router = APIRouter(prefix="/api/work-dirs", tags=["work-dirs"])
 
 # Constants
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
@@ -148,10 +149,25 @@ async def get_session(
 
 
 @router.post("/", summary="Create a new session")
-async def create_session() -> Session:
+async def create_session(request: CreateSessionRequest | None = None) -> Session:
     """Create a new session."""
-    # Create session in user's home directory
-    work_dir = KaosPath.unsafe_from_local_path(Path.home())
+    # Use provided work_dir or default to user's home directory
+    if request and request.work_dir:
+        work_dir_path = Path(request.work_dir)
+        # Validate the directory exists
+        if not work_dir_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Directory does not exist: {request.work_dir}",
+            )
+        if not work_dir_path.is_dir():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Path is not a directory: {request.work_dir}",
+            )
+        work_dir = KaosPath.unsafe_from_local_path(work_dir_path)
+    else:
+        work_dir = KaosPath.unsafe_from_local_path(Path.home())
     kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
     context_file = kimi_cli_session.dir / "context.jsonl"
     invalidate_sessions_cache()
@@ -172,6 +188,12 @@ async def create_session() -> Session:
         work_dir=str(work_dir),
         session_dir=str(kimi_cli_session.dir),
     )
+
+
+class CreateSessionRequest(BaseModel):
+    """Create session request."""
+
+    work_dir: str | None = None
 
 
 class UploadSessionFileResponse(BaseModel):
@@ -396,3 +418,25 @@ async def session_stream(
     finally:
         if attached and session_process:
             await session_process.remove_websocket(websocket)
+
+
+@work_dirs_router.get("/", summary="List available work directories")
+async def get_work_dirs() -> list[str]:
+    """Get a list of available work directories from metadata."""
+    metadata = load_metadata()
+    work_dirs: list[str] = []
+    for wd in metadata.work_dirs:
+        # Filter out temporary directories
+        if "/tmp" in wd.path or "/var/folders" in wd.path or "/.cache/" in wd.path:
+            continue
+        # Verify directory exists
+        if Path(wd.path).exists():
+            work_dirs.append(wd.path)
+    # Return at most 20 directories
+    return work_dirs[:20]
+
+
+@work_dirs_router.get("/startup", summary="Get the startup directory")
+async def get_startup_dir(request: Request) -> str:
+    """Get the directory where kimi web was started."""
+    return request.app.state.startup_dir

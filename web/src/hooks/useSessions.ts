@@ -32,7 +32,7 @@ type UseSessionsReturn = {
   /** Refresh a single session's data from API */
   refreshSession: (sessionId: string) => Promise<Session | null>;
   /** Create a new session */
-  createSession: () => Promise<Session>;
+  createSession: (workDir?: string) => Promise<Session>;
   /** Delete a session by ID */
   deleteSession: (sessionId: string) => Promise<boolean>;
   /** Select a session */
@@ -57,6 +57,10 @@ type UseSessionsReturn = {
   getSessionFile: (sessionId: string, path: string) => Promise<Blob>;
   /** Get the URL for a session file (for direct access/download) */
   getSessionFileUrl: (sessionId: string, path: string) => string;
+  /** Fetch available work directories */
+  fetchWorkDirs: () => Promise<string[]>;
+  /** Fetch the startup directory */
+  fetchStartupDir: () => Promise<string>;
 };
 
 const normalizeSessionPath = (value?: string): string => {
@@ -172,29 +176,58 @@ export function useSessions(): UseSessionsReturn {
   /**
    * Create a new session
    * Returns: Session (API type)
+   * @param workDir - Optional working directory for the session
    */
-  const createSession = useCallback(async (): Promise<Session> => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const session = await apiClient.sessions.createSessionApiSessionsPost();
+  const createSession = useCallback(
+    async (workDir?: string): Promise<Session> => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Use fetch directly to support the work_dir parameter
+        const basePath = getApiBaseUrl();
+        const response = await fetch(`${basePath}/api/sessions/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: workDir ? JSON.stringify({ work_dir: workDir }) : undefined,
+        });
 
-      // Update sessions list (add to beginning)
-      setSessions((current) => [session, ...current]);
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Failed to create session");
+        }
 
-      // Select the new session
-      setSelectedSessionId(session.sessionId);
+        const sessionData = await response.json();
+        // Convert snake_case to camelCase
+        const session: Session = {
+          sessionId: sessionData.session_id,
+          title: sessionData.title,
+          lastUpdated: new Date(sessionData.last_updated),
+          isRunning: sessionData.is_running,
+          status: sessionData.status,
+          workDir: sessionData.work_dir,
+          sessionDir: sessionData.session_dir,
+        };
 
-      return session;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create session";
-      setError(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+        // Update sessions list (add to beginning)
+        setSessions((current) => [session, ...current]);
+
+        // Select the new session
+        setSelectedSessionId(session.sessionId);
+
+        return session;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to create session";
+        setError(message);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [],
+  );
 
   /**
    * Delete a session
@@ -381,6 +414,34 @@ export function useSessions(): UseSessionsReturn {
     [],
   );
 
+  /**
+   * Fetch available work directories from the backend
+   */
+  const fetchWorkDirs = useCallback(async (): Promise<string[]> => {
+    const basePath = getApiBaseUrl();
+    const response = await fetch(`${basePath}/api/work-dirs/`);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch work directories");
+    }
+
+    return response.json();
+  }, []);
+
+  /**
+   * Fetch the startup directory from the backend
+   */
+  const fetchStartupDir = useCallback(async (): Promise<string> => {
+    const basePath = getApiBaseUrl();
+    const response = await fetch(`${basePath}/api/work-dirs/startup`);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch startup directory");
+    }
+
+    return response.json();
+  }, []);
+
   return {
     sessions,
     selectedSessionId,
@@ -398,5 +459,7 @@ export function useSessions(): UseSessionsReturn {
     listSessionDirectory,
     getSessionFile,
     getSessionFileUrl,
+    fetchWorkDirs,
+    fetchStartupDir,
   };
 }
