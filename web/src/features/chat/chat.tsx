@@ -56,6 +56,10 @@ type ChatWorkspaceProps = {
   isUploadingFiles?: boolean;
   /** Whether waiting for the first response after a prompt is sent */
   isAwaitingFirstResponse?: boolean;
+  /** Create a new session when none is selected */
+  onCreateSession?: () => Promise<void>;
+  /** Whether a new session is being created */
+  isCreatingSession?: boolean;
 };
 
 type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
@@ -78,6 +82,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   onCancel,
   isUploadingFiles = false,
   isAwaitingFirstResponse = false,
+  onCreateSession,
+  isCreatingSession = false,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
   const [pendingApprovalMap, setPendingApprovalMap] = useState<
@@ -152,6 +158,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             }
             canRespondToApproval={Boolean(onApprovalResponse)}
             blocksExpanded={blocksExpanded}
+            onCreateSession={onCreateSession}
+            isCreatingSession={isCreatingSession}
           />
         </div>
 

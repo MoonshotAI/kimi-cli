@@ -20,7 +20,7 @@ import type {
   UploadSessionFileResponse,
 } from "@/lib/api/models";
 import type { SessionFileEntry } from "@/hooks/useSessions";
-import { getApiBaseUrl } from "@/hooks/utils";
+import { getApiBaseUrl, isMacOS } from "@/hooks/utils";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { useToolEventsStore } from "@/features/tool/store";
 import { ChatWorkspace } from "./chat";
@@ -62,6 +62,7 @@ export function ChatWorkspaceContainer({
   onGetSessionFile,
 }: ChatWorkspaceContainerProps): ReactElement {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
   // Pending message state for when we need to create a session first
   const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(
     null,
@@ -275,6 +276,53 @@ export function ChatWorkspaceContainer({
     ],
   );
 
+  const handleCreateSession = useCallback(async () => {
+    if (isCreatingSession) {
+      return;
+    }
+
+    setIsCreatingSession(true);
+    try {
+      await createSession();
+    } catch (error) {
+      console.error(
+        "[ChatWorkspaceContainer] Failed to create session:",
+        error,
+      );
+      toast.error("Failed to Create Session", {
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      });
+    } finally {
+      setIsCreatingSession(false);
+    }
+  }, [createSession, isCreatingSession]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      if (event.key.toLowerCase() !== "o") {
+        return;
+      }
+
+      const hasModifier = isMacOS() ? event.metaKey : event.ctrlKey;
+      if (!hasModifier || !event.shiftKey) {
+        return;
+      }
+
+      event.preventDefault();
+      void handleCreateSession();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleCreateSession]);
+
   return (
     <ChatWorkspace
       selectedSessionId={selectedSessionId}
@@ -282,6 +330,8 @@ export function ChatWorkspaceContainer({
       onSubmit={handlePromptSubmit}
       status={status}
       isUploadingFiles={isUploadingFiles}
+      onCreateSession={handleCreateSession}
+      isCreatingSession={isCreatingSession}
       onCancel={cancelStream}
       onApprovalResponse={respondToApproval}
       sessionDescription={sessionDescription}

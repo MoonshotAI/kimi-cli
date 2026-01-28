@@ -26,7 +26,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CreateSessionDialog } from "./create-session-dialog";
+import { isMacOS } from "@/hooks/utils";
 
 type SessionSummary = {
   id: string;
@@ -87,6 +94,8 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     },
     [onCreateSession],
   );
+
+  const newSessionShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
 
   const filteredSessions = sessionSearch.trim()
     ? sessions.filter((s) =>
@@ -260,15 +269,28 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
               >
                 <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
               </button>
-              <button
-                aria-label="New Session"
-                className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                onClick={handleOpenCreateDialog}
-                title="New Session"
-                type="button"
-              >
-                <Plus className="size-4" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    aria-label="New Session"
+                    className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    onClick={handleOpenCreateDialog}
+                    type="button"
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="flex items-center gap-2" side="bottom">
+                  <span>New session</span>
+                  <KbdGroup>
+                    <Kbd>Shift</Kbd>
+                    <span className="text-muted-foreground">+</span>
+                    <Kbd>{newSessionShortcutModifier}</Kbd>
+                    <span className="text-muted-foreground">+</span>
+                    <Kbd>O</Kbd>
+                  </KbdGroup>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
 

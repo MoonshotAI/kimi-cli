@@ -2,15 +2,22 @@ import type { ChatStatus } from "ai";
 import type { LiveMessage } from "@/hooks/types";
 import { ConversationEmptyState } from "@ai-elements";
 import { Button } from "@/components/ui/button";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Session } from "@/lib/api/models";
 import type { AssistantApprovalHandler } from "./assistant-message";
 import {
   ArrowDownIcon,
-  BookOpenIcon,
   Loader2Icon,
+  PlusIcon,
   SparklesIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isMacOS } from "@/hooks/utils";
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -28,6 +35,8 @@ type ChatConversationProps = {
   onApprovalAction?: AssistantApprovalHandler;
   canRespondToApproval: boolean;
   blocksExpanded: boolean;
+  onCreateSession?: () => void | Promise<void>;
+  isCreatingSession?: boolean;
 };
 
 export function ChatConversation({
@@ -40,6 +49,8 @@ export function ChatConversation({
   onApprovalAction,
   canRespondToApproval,
   blocksExpanded,
+  onCreateSession,
+  isCreatingSession = false,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -93,6 +104,7 @@ export function ChatConversation({
   const conversationKey = hasSelectedSession
     ? `session:${selectedSessionId}`
     : "empty";
+  const newSessionShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
 
   return (
     <div
@@ -119,20 +131,39 @@ export function ChatConversation({
                 Click the + button in the sidebar to start a new session
               </p>
             </div>
-            <Button
-              asChild
-              className="mt-4 rounded-lg bg-secondary/50 px-4 py-2 text-base text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              variant="ghost"
-            >
-              <a
-                href="https://moonshot.feishu.cn/wiki/No7kwUkeYi9hiQkQNb1cQsfKntb"
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <BookOpenIcon className="size-5" />
-                Kiwi User Guide
-              </a>
-            </Button>
+            {onCreateSession ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    className="mt-1"
+                    type="button"
+                    onClick={() => void onCreateSession()}
+                    disabled={isCreatingSession}
+                  >
+                    {isCreatingSession ? (
+                      <Loader2Icon className="size-4 animate-spin" />
+                    ) : (
+                      <PlusIcon className="size-4" />
+                    )}
+                    <span>
+                      {isCreatingSession
+                        ? "Creating session..."
+                        : "Create new session"}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="flex items-center gap-2" side="top">
+                  <span>Create new session</span>
+                  <KbdGroup>
+                    <Kbd>Shift</Kbd>
+                    <span className="text-muted-foreground">+</span>
+                    <Kbd>{newSessionShortcutModifier}</Kbd>
+                    <span className="text-muted-foreground">+</span>
+                    <Kbd>O</Kbd>
+                  </KbdGroup>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
           </ConversationEmptyState>
         ) : emptySessionState ? (
           <div className="flex h-full items-center justify-center">

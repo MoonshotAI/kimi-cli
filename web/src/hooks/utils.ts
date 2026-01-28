@@ -27,6 +27,16 @@ export function isElectronMac(): boolean {
 }
 
 /**
+ * Check if running on macOS (web or Electron).
+ */
+export function isMacOS(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return navigator.platform.toLowerCase().includes("mac");
+}
+
+/**
  * Get the API base URL for connecting to the Kiwi backend.
  * - Electron: uses the port injected by main process via window.__KIWI__.port
  * - Vite dev: uses Vite proxy, so empty string (relative URLs like /api/...)
