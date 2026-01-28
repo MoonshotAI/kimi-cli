@@ -207,7 +207,7 @@ function App() {
             )}
           >
             {/* Sidebar */}
-            <div className="min-h-0 flex flex-col transition-all duration-200">
+            <div className="min-h-0 flex flex-col transition-all duration-200 border-r pl-0.5 pr-2">
               {isSidebarCollapsed ? (
                 /* Collapsed sidebar - vertical strip with logo and expand button */
                 <div className="flex h-full flex-col items-center py-3">

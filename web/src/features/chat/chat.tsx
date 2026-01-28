@@ -129,7 +129,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   );
 
   return (
-    <div className="shell-pane sticky top-4 flex h-full min-h-[560px] w-full flex-col overflow-hidden">
+    <div className=" sticky top-4 flex h-full min-h-[560px] w-full flex-col overflow-hidden">
       <div className="relative flex h-full flex-col">
         <ChatWorkspaceHeader
           currentStep={currentStep}
