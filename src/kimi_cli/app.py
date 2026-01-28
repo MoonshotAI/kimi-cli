@@ -185,7 +185,8 @@ class KimiCLI:
         try:
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            yield
+            async with self._runtime.oauth.refreshing(self._runtime):
+                yield
         finally:
             await kaos.chdir(original_cwd)
 

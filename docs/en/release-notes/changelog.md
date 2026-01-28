@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Auth: Fix authentication issue during agent turns
+
 ## 1.2 (2026-01-27)
 
 - UI: Show description for `kimi-for-coding` model
