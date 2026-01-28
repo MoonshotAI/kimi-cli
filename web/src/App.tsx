@@ -192,63 +192,74 @@ function App() {
         <div className="app-shell max-w-none">
           <div
             className={cn(
-              "grid min-h-0 flex-1 gap-2 -ml-2 sm:-ml-3",
+              "grid min-h-0 flex-1 gap-2 -ml-2 sm:-ml-3 transition-[grid-template-columns] duration-200 ease-in-out",
               isSidebarCollapsed
                 ? "grid-cols-[48px_minmax(0,1fr)]"
                 : "grid-cols-[260px_minmax(0,1fr)]",
             )}
           >
             {/* Sidebar */}
-            <div className="min-h-0 flex flex-col transition-all duration-200 border-r pl-0.5 pr-2">
-              {isSidebarCollapsed ? (
-                /* Collapsed sidebar - vertical strip with logo and expand button */
-                <div className="flex h-full flex-col items-center py-3">
-                  <img
-                    src="/logo.png"
-                    alt="Kimi"
-                    width={24}
-                    height={24}
-                    className="size-6"
-                  />
+            <div className="relative min-h-0 border-r pl-0.5 pr-2 overflow-hidden">
+              {/* Collapsed sidebar - vertical strip with logo and expand button */}
+              <div
+                className={cn(
+                  "absolute inset-0 flex h-full flex-col items-center py-3 transition-all duration-200 ease-in-out",
+                  isSidebarCollapsed
+                    ? "opacity-100 translate-x-0"
+                    : "opacity-0 -translate-x-2 pointer-events-none select-none",
+                )}
+              >
+                <img
+                  src="/logo.png"
+                  alt="Kimi"
+                  width={24}
+                  height={24}
+                  className="size-6"
+                />
+                <button
+                  type="button"
+                  aria-label="Expand sidebar"
+                  className="mt-auto mb-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                >
+                  <PanelLeftOpen className="size-4" />
+                </button>
+              </div>
+              {/* Expanded sidebar */}
+              <div
+                className={cn(
+                  "absolute inset-0 flex h-full min-h-0 flex-col gap-3 transition-all duration-200 ease-in-out",
+                  isSidebarCollapsed
+                    ? "opacity-0 translate-x-2 pointer-events-none select-none"
+                    : "opacity-100 translate-x-0",
+                )}
+              >
+                <SessionsSidebar
+                  onCreateSession={handleCreateSession}
+                  onDeleteSession={handleDeleteSession}
+                  onSelectSession={handleSelectSession}
+                  onRefreshSessions={handleRefreshSessions}
+                  fetchWorkDirs={fetchWorkDirs}
+                  fetchStartupDir={fetchStartupDir}
+                  streamStatus={streamStatus}
+                  selectedSessionId={selectedSessionId}
+                  sessions={sessionSummaries}
+                />
+                <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
+                  <div className="flex items-center gap-2">
+                    <ThemeToggle />
+                    <SettingsDialog />
+                  </div>
                   <button
                     type="button"
-                    aria-label="Expand sidebar"
-                    className="mt-auto mb-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
-                    onClick={() => setIsSidebarCollapsed(false)}
+                    aria-label="Collapse sidebar"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+                    onClick={handleCollapseSidebar}
                   >
-                    <PanelLeftOpen className="size-4" />
+                    <PanelLeftClose className="size-4" />
                   </button>
                 </div>
-              ) : (
-                /* Expanded sidebar */
-                <div className="min-h-0 flex flex-col gap-3 h-full">
-                  <SessionsSidebar
-                    onCreateSession={handleCreateSession}
-                    onDeleteSession={handleDeleteSession}
-                    onSelectSession={handleSelectSession}
-                    onRefreshSessions={handleRefreshSessions}
-                    fetchWorkDirs={fetchWorkDirs}
-                    fetchStartupDir={fetchStartupDir}
-                    streamStatus={streamStatus}
-                    selectedSessionId={selectedSessionId}
-                    sessions={sessionSummaries}
-                  />
-                  <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
-                    <div className="flex items-center gap-2">
-                      <ThemeToggle />
-                      <SettingsDialog />
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="Collapse sidebar"
-                      className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
-                      onClick={handleCollapseSidebar}
-                    >
-                      <PanelLeftClose className="size-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
             {/* Main Chat Area */}
