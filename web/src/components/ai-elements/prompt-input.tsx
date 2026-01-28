@@ -282,6 +282,35 @@ export function PromptInputAttachment({
 
   const attachmentLabel = filename || (isImage ? "Image" : "Attachment");
 
+  if (isImage) {
+    return (
+      <div
+        className={cn("group relative", className)}
+        key={data.id}
+        {...props}
+      >
+        <img
+          alt={filename || "uploaded image"}
+          className="h-14 w-14 rounded-lg border border-border/50 object-cover"
+          src={data.url}
+        />
+        <Button
+          aria-label="Remove attachment"
+          className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
+          onClick={(e) => {
+            e.stopPropagation();
+            attachments.remove(data.id);
+          }}
+          type="button"
+          variant="outline"
+        >
+          <XIcon />
+          <span className="sr-only">Remove</span>
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <PromptInputHoverCard>
       <HoverCardTrigger asChild>
@@ -295,19 +324,9 @@ export function PromptInputAttachment({
         >
           <div className="relative size-5 shrink-0">
             <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-background transition-opacity group-hover:opacity-0">
-              {isImage ? (
-                <img
-                  alt={filename || "attachment"}
-                  className="size-5 object-cover"
-                  height={20}
-                  src={data.url}
-                  width={20}
-                />
-              ) : (
-                <div className="flex size-5 items-center justify-center text-muted-foreground">
-                  <PaperclipIcon className="size-3" />
-                </div>
-              )}
+              <div className="flex size-5 items-center justify-center text-muted-foreground">
+                <PaperclipIcon className="size-3" />
+              </div>
             </div>
             <Button
               aria-label="Remove attachment"
@@ -329,21 +348,10 @@ export function PromptInputAttachment({
       </HoverCardTrigger>
       <PromptInputHoverCardContent className="w-auto p-2">
         <div className="w-auto space-y-3">
-          {isImage && (
-            <div className="flex max-h-96 w-96 items-center justify-center overflow-hidden rounded-md border">
-              <img
-                alt={filename || "attachment preview"}
-                className="max-h-full max-w-full object-contain"
-                height={384}
-                src={data.url}
-                width={448}
-              />
-            </div>
-          )}
           <div className="flex items-center gap-2.5">
             <div className="min-w-0 flex-1 space-y-1 px-0.5">
               <h4 className="truncate font-semibold text-sm leading-none">
-                {filename || (isImage ? "Image" : "Attachment")}
+                {attachmentLabel}
               </h4>
               {data.mediaType && (
                 <p className="truncate font-mono text-muted-foreground text-xs">
@@ -378,7 +386,7 @@ export function PromptInputAttachments({
 
   return (
     <div
-      className={cn("flex flex-wrap items-center gap-2 p-3", className)}
+      className={cn("flex flex-wrap items-start gap-2 p-3 w-full", className)}
       {...props}
     >
       {attachments.files.map((file) => (
