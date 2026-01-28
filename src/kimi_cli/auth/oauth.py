@@ -10,7 +10,7 @@ import time
 import uuid
 import webbrowser
 from collections.abc import AsyncIterator
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -49,6 +49,7 @@ KIMI_CODE_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
 KIMI_CODE_OAUTH_KEY = "oauth/kimi-code"
 DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
 KEYRING_SERVICE = "kimi-code"
+REFRESH_INTERVAL_SECONDS = 60
 REFRESH_THRESHOLD_SECONDS = 300
 
 
@@ -574,7 +575,6 @@ class OAuthManager:
     def __init__(self, config: Config) -> None:
         self._config = config
         self._tokens: dict[str, OAuthToken] = {}
-        self._refresh_task: asyncio.Task[None] | None = None
         self._refresh_lock = asyncio.Lock()
         self._load_initial_tokens()
 
@@ -632,29 +632,51 @@ class OAuthManager:
         if token is None:
             return
         self._tokens[ref.key] = token
-        await self._refresh_tokens(ref, token, runtime, force=True)
+        await self._refresh_tokens(ref, token, runtime)
 
-    def _schedule_refresh(self, ref: OAuthRef, token: OAuthToken, runtime: Runtime) -> None:
-        if self._refresh_task and not self._refresh_task.done():
-            return
+    @asynccontextmanager
+    async def refreshing(self, runtime: Runtime) -> AsyncIterator[None]:
+        stop_event = asyncio.Event()
 
         async def _runner() -> None:
-            await self._refresh_tokens(ref, token, runtime, force=False)
+            try:
+                while True:
+                    try:
+                        await asyncio.wait_for(
+                            stop_event.wait(),
+                            timeout=REFRESH_INTERVAL_SECONDS,
+                        )
+                        return
+                    except TimeoutError:
+                        pass
+                    try:
+                        await self.ensure_fresh(runtime)
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to refresh OAuth token in background: {error}",
+                            error=exc,
+                        )
+            except asyncio.CancelledError:
+                pass
 
-        self._refresh_task = asyncio.create_task(_runner())
+        await self.ensure_fresh(runtime)
+        refresh_task = asyncio.create_task(_runner())
+        try:
+            yield
+        finally:
+            stop_event.set()
+            refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await refresh_task
 
     async def _refresh_tokens(
         self,
         ref: OAuthRef,
         token: OAuthToken,
         runtime: Runtime,
-        *,
-        force: bool,
     ) -> None:
         current_token = self._tokens.get(ref.key) or token
         if not current_token.refresh_token:
-            if force:
-                logger.warning("No refresh token available for OAuth refresh.")
             return
         async with self._refresh_lock:
             current = self._tokens.get(ref.key) or current_token
@@ -662,14 +684,11 @@ class OAuthManager:
             if (
                 current.expires_at
                 and current.expires_at > now
-                and not force
                 and current.expires_at - now >= REFRESH_THRESHOLD_SECONDS
             ):
                 return
             refresh_token_value = current.refresh_token
             if not refresh_token_value:
-                if force:
-                    logger.warning("No refresh token available for OAuth refresh.")
                 return
             try:
                 refreshed = await refresh_token(refresh_token_value)

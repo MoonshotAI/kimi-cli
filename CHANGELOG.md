@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Auth: Fix authentication issue during agent turns
+
 ## 1.2 (2026-01-27)
 
 - UI: Show description for `kimi-for-coding` model
