@@ -86,7 +86,7 @@ export function SessionInfoPopover({
         </TooltipTrigger>
         <TooltipContent side="bottom">Session info</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-80 p-3">
+      <DropdownMenuContent align="end" className="w-100 p-3">
         <div className="space-y-3">
           <p className="font-medium text-sm">Session Info</p>
           <SessionInfoItem label="Session ID" value={sessionId} />

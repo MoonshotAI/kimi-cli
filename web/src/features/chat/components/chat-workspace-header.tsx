@@ -82,7 +82,7 @@ export function ChatWorkspaceHeader({
           tokenUsage={tokenUsage}
         >
           <ContextTrigger className="cursor-pointer">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground select-none">
               {usagePercent}% context
             </span>
           </ContextTrigger>

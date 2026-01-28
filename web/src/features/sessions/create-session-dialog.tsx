@@ -173,30 +173,33 @@ export function CreateSessionDialog({
             Create New Session
           </DialogTitle>
           <DialogDescription>
-            Select the working directory for this session.
+            Input or select the working directory for this session.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2 py-2">
           <div ref={containerRef} className="relative">
             {/* Input with dropdown button */}
-            <div className="flex items-center border border-input rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+            <div className="flex items-center border border-input rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ">
               <Input
                 ref={inputRef}
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Enter or select a folder..."
-                className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 !bg-background "
                 disabled={isLoading}
               />
+
+              <div className="mx-0 h-4 w-px bg-border/70 mr-2" />
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-9 px-2 hover:bg-transparent"
+                    className="h-9 px-2 bg-background"
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                     disabled={isLoading}
                   >
