@@ -192,10 +192,19 @@ def get_device_id() -> str:
     return device_id
 
 
+def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
+    try:
+        value.encode("ascii")
+        return value
+    except UnicodeEncodeError:
+        sanitized = value.encode("ascii", errors="ignore").decode("ascii").strip()
+        return sanitized or fallback
+
+
 def _common_headers() -> dict[str, str]:
     device_name = platform.node() or socket.gethostname()
     device_model = _device_model()
-    return {
+    headers = {
         "X-Msh-Platform": "kimi_cli",
         "X-Msh-Version": VERSION,
         "X-Msh-Device-Name": device_name,
@@ -203,6 +212,7 @@ def _common_headers() -> dict[str, str]:
         "X-Msh-Os-Version": platform.version(),
         "X-Msh-Device-Id": get_device_id(),
     }
+    return {key: _ascii_header_value(value) for key, value in headers.items()}
 
 
 def _credentials_dir() -> Path:

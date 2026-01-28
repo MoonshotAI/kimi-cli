@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Auth: Fix encoding error when device name or OS version contains non-ASCII characters
+
 ## 1.3 (2026-01-28)
 
 - Auth: Fix authentication issue during agent turns
