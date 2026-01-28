@@ -34,3 +34,4 @@ result-*
 
 node_modules/
 static/
+.memo/
