@@ -725,7 +725,7 @@ class CustomPromptSession:
                 buff.apply_completion(completion)
 
                 text = buff.text.strip()
-                if text.startswith("/") and not text.startswith("//") and "@" not in text[:1]:
+                if text.startswith("/") and not text.startswith("//"):
                     buff.validate_and_handle()
 
         @_kb.add("c-x", eager=True)
