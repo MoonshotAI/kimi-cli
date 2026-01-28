@@ -69,6 +69,45 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 输入 `@` 后开始输入文件名，会显示匹配的补全项。按 `Tab` 或 `Enter` 选择补全项。
 
+## $ Skills 选择
+
+Kimi Code CLI 支持通过 `$` 符号快速选择和使用 Skills。这是一种 Codex 风格的快捷方式，让你无需离开输入框就能启用特定 Skill。
+
+**列出并选择 Skills**
+
+输入 `$` 后按回车，会列出所有可用的标准 Skills：
+
+```
+Select skills:
+1. kimi-cli-help - Kimi Code CLI 帮助
+2. code-style - 代码风格规范
+3. git-commits - Git 提交规范
+
+Skills (comma/space separated, empty to cancel):
+```
+
+输入序号或 Skill 名称（多个用逗号或空格分隔）即可选择。选择后，下一次输入会自动带上选中的 Skills。
+
+**直接预选 Skills**
+
+你也可以在输入时直接通过 `$<skill-name>` 语法预选 Skills：
+
+```
+$code-style 帮我重构这段代码
+```
+
+系统会识别 `$code-style` 并将其作为 Skill 标记，同时自动加载对应的 `SKILL.md` 内容。
+
+**使用多个 Skills**
+
+可以同时使用多个 Skills：
+
+```
+$code-style $git-commits 审查这段代码并生成提交信息
+```
+
+Kimi Code CLI 支持 `$` 符号的自动补全，输入 `$` 后显示可用的 Skills，继续输入可过滤选项。
+
 ## 审批与确认
 
 当 AI 需要执行可能有影响的操作（如修改文件、运行命令）时，Kimi Code CLI 会请求你的确认。
