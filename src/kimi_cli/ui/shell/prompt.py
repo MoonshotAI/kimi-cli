@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import re
+import sys
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
@@ -43,6 +44,7 @@ from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
+from kimi_cli.skill import Skill
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
@@ -129,6 +131,54 @@ class SlashCommandCompleter(Completer):
                     display=cmd.slash_name(),
                     display_meta=cmd.description,
                 )
+
+
+class SkillCommandCompleter(Completer):
+    """Offer fuzzy `$` skill completion by name."""
+
+    def __init__(self, skills: Sequence[Skill]) -> None:
+        super().__init__()
+        self._skills = sorted(skills, key=lambda s: s.name)
+        self._skill_lookup: dict[str, Skill] = {skill.name: skill for skill in self._skills}
+        words = list(self._skill_lookup.keys())
+
+        self._word_pattern = re.compile(r"[^\s]+")
+        self._fuzzy_pattern = r"^[^\s]*"
+        self._word_completer = WordCompleter(words, WORD=False, pattern=self._word_pattern)
+        self._fuzzy = FuzzyCompleter(self._word_completer, WORD=False, pattern=self._fuzzy_pattern)
+
+    @override
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterable[Completion]:
+        text = document.text_before_cursor
+
+        if document.text_after_cursor.strip():
+            return
+
+        match = re.search(r"(\S+)$", text)
+        if not match:
+            return
+        token = match.group(1)
+        if not token.startswith("$"):
+            return
+
+        typed = token[1:]
+        mention_doc = Document(text=typed, cursor_position=len(typed))
+        candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
+
+        seen: set[str] = set()
+        for candidate in candidates:
+            skill = self._skill_lookup.get(candidate.text)
+            if not skill or skill.name in seen:
+                continue
+            seen.add(skill.name)
+            yield Completion(
+                text=f"${skill.name}",
+                start_position=-len(token),
+                display=f"${skill.name}",
+                display_meta=skill.description,
+            )
 
 
 class LocalFileMentionCompleter(Completer):
@@ -645,6 +695,7 @@ class CustomPromptSession:
         thinking: bool,
         agent_mode_slash_commands: Sequence[SlashCommand[Any]],
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
+        skills: Sequence[Skill],
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -668,9 +719,11 @@ class CustomPromptSession:
             self._last_history_content = history_entries[-1].content
 
         # Build completers
+        self._skill_completer = SkillCommandCompleter(skills) if skills else None
         self._agent_mode_completer = merge_completers(
             [
                 SlashCommandCompleter(agent_mode_slash_commands),
+                *([self._skill_completer] if self._skill_completer else []),
                 # TODO(kaos): we need an async KaosFileMentionCompleter
                 LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
@@ -708,12 +761,21 @@ class CustomPromptSession:
 
         if is_clipboard_available():
 
-            @_kb.add("c-v", eager=True)
-            def _(event: KeyPressEvent) -> None:
+            def _handle_paste(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
+
+            @_kb.add("c-v", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                _handle_paste(event)
+
+            if sys.platform == "win32":
+
+                @_kb.add("escape", "v", eager=True)
+                def _(event: KeyPressEvent) -> None:
+                    _handle_paste(event)
 
             clipboard = PyperclipClipboard()
         else:

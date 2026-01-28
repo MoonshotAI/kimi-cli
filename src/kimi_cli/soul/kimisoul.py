@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
-from kimi_cli.skill import Skill, read_skill_text
+from kimi_cli.skill import Skill, normalize_skill_name, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
     LLMNotSet,
@@ -64,6 +65,8 @@ if TYPE_CHECKING:
 SKILL_COMMAND_PREFIX = "skill:"
 FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
+_SKILL_TOKEN_SPLIT_RE = re.compile(r"(\s+)")
+_SKILL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
@@ -181,11 +184,12 @@ class KimiSoul:
     async def run(self, user_input: str | list[ContentPart]):
         await self._runtime.oauth.ensure_fresh(self._runtime)
 
-        user_message = Message(role="user", content=user_input)
-        text_input = user_message.extract_text(" ").strip()
+        raw_user_input = user_input
+        raw_message = Message(role="user", content=raw_user_input)
+        text_input = raw_message.extract_text(" ").strip()
 
         if command_call := parse_slash_command_call(text_input):
-            wire_send(TurnBegin(user_input=user_input))
+            wire_send(TurnBegin(user_input=raw_user_input))
             command = self._find_slash_command(command_call.name)
             if command is None:
                 # this should not happen actually, the shell should have filtered it out
@@ -197,6 +201,9 @@ class KimiSoul:
                 await ret
             return
 
+        processed_input = await self._expand_skill_tokens(raw_user_input)
+        user_message = Message(role="user", content=processed_input)
+
         if self._loop_control.max_ralph_iterations != 0:
             runner = FlowRunner.ralph_loop(
                 user_message,
@@ -205,7 +212,7 @@ class KimiSoul:
             await runner.run(self, "")
             return
 
-        wire_send(TurnBegin(user_input=user_input))
+        wire_send(TurnBegin(user_input=raw_user_input))
         result = await self._turn(user_message)
         if result.stop_reason == "tool_rejected":
             return
@@ -301,6 +308,89 @@ class KimiSoul:
 
         _run_skill.__doc__ = skill.description
         return _run_skill
+
+    async def _expand_skill_tokens(
+        self, user_input: str | list[ContentPart]
+    ) -> str | list[ContentPart]:
+        skills = {k: v for k, v in self._runtime.skills.items() if v.type == "standard"}
+        if not skills:
+            return user_input
+
+        skill_keys = self._find_skill_tokens(user_input, skills)
+        if not skill_keys:
+            return user_input
+
+        skill_texts: list[str] = []
+        for key in skill_keys:
+            skill = skills.get(key)
+            if skill is None:
+                continue
+            text = await read_skill_text(skill)
+            if text:
+                skill_texts.append(text)
+
+        if not skill_texts:
+            return user_input
+
+        remaining_parts = self._strip_skill_tokens(user_input, skills)
+        combined = "\n\n".join(skill_texts)
+        if remaining_parts:
+            combined += "\n\nUser request:\n"
+            return [TextPart(text=combined), *remaining_parts]
+        return [TextPart(text=combined)]
+
+    @staticmethod
+    def _content_parts(user_input: str | list[ContentPart]) -> list[ContentPart]:
+        return [TextPart(text=user_input)] if isinstance(user_input, str) else list(user_input)
+
+    @staticmethod
+    def _find_skill_tokens(
+        user_input: str | list[ContentPart],
+        skills: dict[str, Skill],
+    ) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        for part in KimiSoul._content_parts(user_input):
+            if not isinstance(part, TextPart):
+                continue
+            for chunk in _SKILL_TOKEN_SPLIT_RE.split(part.text):
+                if not chunk or chunk.isspace():
+                    continue
+                if not chunk.startswith("$"):
+                    continue
+                name = chunk[1:]
+                if not _SKILL_NAME_RE.match(name):
+                    continue
+                key = normalize_skill_name(name)
+                if key in skills and key not in seen:
+                    found.append(key)
+                    seen.add(key)
+        return found
+
+    @staticmethod
+    def _strip_skill_tokens(
+        user_input: str | list[ContentPart],
+        skills: dict[str, Skill],
+    ) -> list[ContentPart]:
+        remaining: list[ContentPart] = []
+        for part in KimiSoul._content_parts(user_input):
+            if not isinstance(part, TextPart):
+                remaining.append(part)
+                continue
+            chunks = _SKILL_TOKEN_SPLIT_RE.split(part.text)
+            kept: list[str] = []
+            for chunk in chunks:
+                if not chunk:
+                    continue
+                if chunk.startswith("$"):
+                    name = chunk[1:]
+                    if _SKILL_NAME_RE.match(name) and normalize_skill_name(name) in skills:
+                        continue
+                kept.append(chunk)
+            new_text = "".join(kept)
+            if new_text != "":
+                remaining.append(TextPart(text=new_text))
+        return remaining
 
     async def _agent_loop(self) -> TurnOutcome:
         """The main agent loop for one run."""
