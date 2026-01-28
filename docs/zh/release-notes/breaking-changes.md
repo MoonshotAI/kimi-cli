@@ -4,6 +4,10 @@
 
 ## 未发布
 
+## 1.3
+
+无破坏性变更。
+
 ## 0.81 - Prompt Flow 被 Flow Skills 取代
 
 ### `--prompt-flow` 选项移除
