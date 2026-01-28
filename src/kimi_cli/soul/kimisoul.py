@@ -182,11 +182,9 @@ class KimiSoul:
         return self._slash_commands
 
     async def run(self, user_input: str | list[ContentPart]):
-        await self._runtime.oauth.ensure_fresh(self._runtime)
-
         raw_user_input = user_input
-        raw_message = Message(role="user", content=raw_user_input)
-        text_input = raw_message.extract_text(" ").strip()
+        user_message = Message(role="user", content=raw_user_input)
+        text_input = user_message.extract_text(" ").strip()
 
         if command_call := parse_slash_command_call(text_input):
             wire_send(TurnBegin(user_input=raw_user_input))

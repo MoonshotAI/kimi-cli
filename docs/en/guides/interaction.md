@@ -69,6 +69,45 @@ Check if there are any issues with @src/components/Button.tsx
 
 After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
 
+## $ skill selection
+
+Kimi Code CLI supports quickly selecting and using skills via the `$` symbol. This is a Codex-style shortcut that lets you enable specific skills without leaving the input box.
+
+**List and select skills**
+
+Type `$` and press Enter to list all available standard skills:
+
+```
+Select skills:
+1. kimi-cli-help - Kimi Code CLI help
+2. code-style - Code style guidelines
+3. git-commits - Git commit conventions
+
+Skills (comma/space separated, empty to cancel):
+```
+
+Enter the number or skill name (multiple skills separated by commas or spaces) to select. After selection, the next input will automatically include the selected skills.
+
+**Directly pre-select skills**
+
+You can also pre-select skills directly using the `$<skill-name>` syntax while typing:
+
+```
+$code-style Help me refactor this code
+```
+
+The system will recognize `$code-style` as a skill tag and automatically load the corresponding `SKILL.md` content.
+
+**Use multiple skills**
+
+You can use multiple skills at the same time:
+
+```
+$code-style $git-commits Review this code and generate a commit message
+```
+
+Kimi Code CLI supports autocomplete for the `$` symbol. After typing `$`, available skills will be displayed, and you can continue typing to filter the options.
+
 ## Approvals
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi Code CLI will request your confirmation.

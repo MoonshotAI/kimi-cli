@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add `$` command to list and select skills
+- Shell: Support `$<skill-name>` syntax in input to pre-select skills (Codex-style)
+
 ## 1.2 (2026-01-27)
 
 - UI: Show description for `kimi-for-coding` model
