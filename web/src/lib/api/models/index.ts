@@ -2,6 +2,7 @@
 /* eslint-disable */
 export * from './ConfigModel';
 export * from './ConfigToml';
+export * from './CreateSessionRequest';
 export * from './GlobalConfig';
 export * from './HTTPValidationError';
 export * from './ModelCapability';

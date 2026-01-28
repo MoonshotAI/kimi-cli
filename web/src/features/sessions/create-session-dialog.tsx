@@ -22,6 +22,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+const HOME_DIR_REGEX = /^(\/Users\/[^/]+|\/home\/[^/]+)/;
+
 type CreateSessionDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,7 +39,7 @@ type CreateSessionDialogProps = {
  */
 function formatPathForDisplay(path: string, maxSegments = 3): string {
   // Detect home directory prefix (works for most Unix-like systems)
-  const homeMatch = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+)/);
+  const homeMatch = path.match(HOME_DIR_REGEX);
   let displayPath = path;
 
   if (homeMatch) {
@@ -86,8 +88,8 @@ export function CreateSessionDialog({
       .then(([dirs, startupDir]) => {
         setWorkDirs(dirs);
         // Set the startup directory as the default path
-        if (startupDir && !path) {
-          setPath(startupDir);
+        if (startupDir) {
+          setPath((current) => (current ? current : startupDir));
         }
       })
       .catch((error) => {
@@ -96,7 +98,7 @@ export function CreateSessionDialog({
       .finally(() => {
         setIsLoading(false);
       });
-  }, [open, fetchWorkDirs, fetchStartupDir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, fetchWorkDirs, fetchStartupDir]);
 
   // Reset state when dialog closes
   useEffect(() => {

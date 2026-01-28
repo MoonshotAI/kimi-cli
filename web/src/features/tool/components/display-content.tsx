@@ -582,33 +582,46 @@ const DiffContent = ({ data }: { data: DiffDisplayData }) => {
       )}
     >
       {/* Title bar with file path and stats */}
-      <div
-        className={cn(
-          "flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3 py-1.5",
-          hasMoreLines && "cursor-pointer hover:bg-muted/50",
-        )}
-        onClick={hasMoreLines ? () => setIsExpanded(!isExpanded) : undefined}
-        onKeyDown={hasMoreLines ? (e) => e.key === "Enter" && setIsExpanded(!isExpanded) : undefined}
-        role={hasMoreLines ? "button" : undefined}
-        tabIndex={hasMoreLines ? 0 : undefined}
-      >
-        <span className="text-xs font-mono text-muted-foreground truncate flex-1">
-          {filePath || "diff"}
-        </span>
-        <div className="flex items-center gap-2 shrink-0">
-          {addedLines > 0 && (
-            <span className="text-xs text-green-600 dark:text-green-400">+{addedLines}</span>
+      {hasMoreLines ? (
+        <button
+          type="button"
+          className={cn(
+            "flex w-full items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3 py-1.5 text-left",
+            "cursor-pointer hover:bg-muted/50",
           )}
-          {removedLines > 0 && (
-            <span className="text-xs text-orange-600 dark:text-orange-400">-{removedLines}</span>
-          )}
-          {hasMoreLines && (
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+        >
+          <span className="text-xs font-mono text-muted-foreground truncate flex-1">
+            {filePath || "diff"}
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {addedLines > 0 && (
+              <span className="text-xs text-green-600 dark:text-green-400">+{addedLines}</span>
+            )}
+            {removedLines > 0 && (
+              <span className="text-xs text-orange-600 dark:text-orange-400">-{removedLines}</span>
+            )}
             <span className="text-xs text-muted-foreground">
               {isExpanded ? "▲" : "▼"}
             </span>
-          )}
+          </div>
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/30 px-3 py-1.5">
+          <span className="text-xs font-mono text-muted-foreground truncate flex-1">
+            {filePath || "diff"}
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {addedLines > 0 && (
+              <span className="text-xs text-green-600 dark:text-green-400">+{addedLines}</span>
+            )}
+            {removedLines > 0 && (
+              <span className="text-xs text-orange-600 dark:text-orange-400">-{removedLines}</span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Diff content */}
       <Suspense
@@ -627,15 +640,13 @@ const DiffContent = ({ data }: { data: DiffDisplayData }) => {
 
       {/* Show more indicator when collapsed */}
       {!isExpanded && hasMoreLines && (
-        <div
-          className="border-t border-border/40 bg-muted/20 px-3 py-1.5 text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted/40"
+        <button
+          type="button"
+          className="w-full border-t border-border/40 bg-muted/20 px-3 py-1.5 text-center text-xs text-muted-foreground cursor-pointer hover:bg-muted/40"
           onClick={() => setIsExpanded(true)}
-          onKeyDown={(e) => e.key === "Enter" && setIsExpanded(true)}
-          role="button"
-          tabIndex={0}
         >
           Show {totalLines - maxCollapsedLines} more lines...
-        </div>
+        </button>
       )}
     </div>
   );

@@ -15,10 +15,17 @@ export function KimiCliBrand({
   const textSizeClass = size === "sm" ? "text-base" : "text-lg";
   const versionPadding = size === "sm" ? "text-xs" : "text-sm";
   const logoSize = size === "sm" ? "size-6" : "size-7";
+  const logoPx = size === "sm" ? 24 : 28;
 
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <img src="/logo.png" alt="Kimi" className={logoSize} />
+      <img
+        src="/logo.png"
+        alt="Kimi"
+        width={logoPx}
+        height={logoPx}
+        className={logoSize}
+      />
       <span className={cn(textSizeClass, "font-semibold text-foreground")}>
         Kimi Code
       </span>

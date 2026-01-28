@@ -2,10 +2,12 @@
 apis/ConfigApi.ts
 apis/DefaultApi.ts
 apis/SessionsApi.ts
+apis/WorkDirsApi.ts
 apis/index.ts
 docs/ConfigApi.md
 docs/ConfigModel.md
 docs/ConfigToml.md
+docs/CreateSessionRequest.md
 docs/DefaultApi.md
 docs/GlobalConfig.md
 docs/HTTPValidationError.md
@@ -21,9 +23,11 @@ docs/UpdateGlobalConfigResponse.md
 docs/UploadSessionFileResponse.md
 docs/ValidationError.md
 docs/ValidationErrorLocInner.md
+docs/WorkDirsApi.md
 index.ts
 models/ConfigModel.ts
 models/ConfigToml.ts
+models/CreateSessionRequest.ts
 models/GlobalConfig.ts
 models/HTTPValidationError.ts
 models/ModelCapability.ts

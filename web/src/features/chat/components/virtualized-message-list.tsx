@@ -71,7 +71,6 @@ function VirtuosoScrollerComponent(
   );
 }
 
-// biome-ignore lint/nursery/noReactForwardRef: Virtuoso requires forwardRef for compatibility
 const VirtuosoScroller = forwardRef(VirtuosoScrollerComponent);
 
 function VirtuosoListComponent(
@@ -84,7 +83,6 @@ function VirtuosoListComponent(
   );
 }
 
-// biome-ignore lint/nursery/noReactForwardRef: Virtuoso requires forwardRef for compatibility
 const VirtuosoList = forwardRef(VirtuosoListComponent);
 
 VirtuosoScroller.displayName = "VirtuosoScroller";
@@ -329,7 +327,6 @@ function VirtualizedMessageListComponent(
   );
 }
 
-// biome-ignore lint/nursery/noReactForwardRef: Virtuoso requires forwardRef for compatibility
 export const VirtualizedMessageList = forwardRef(
   VirtualizedMessageListComponent,
 );

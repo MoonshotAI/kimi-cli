@@ -394,7 +394,7 @@ export function useSessionStream(
 
   const getSessionUploadUrl = useCallback(
     (filename?: string): string | undefined => {
-      if (!sessionId || !filename) {
+      if (!(sessionId && filename)) {
         return undefined;
       }
       const basePath = baseUrl ?? getApiBaseUrl();

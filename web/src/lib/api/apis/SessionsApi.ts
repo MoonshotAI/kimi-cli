@@ -15,11 +15,14 @@
 
 import * as runtime from '../runtime';
 import type {
+  CreateSessionRequest,
   HTTPValidationError,
   Session,
   UploadSessionFileResponse,
 } from '../models/index';
 import {
+    CreateSessionRequestFromJSON,
+    CreateSessionRequestToJSON,
     HTTPValidationErrorFromJSON,
     HTTPValidationErrorToJSON,
     SessionFromJSON,
@@ -27,6 +30,10 @@ import {
     UploadSessionFileResponseFromJSON,
     UploadSessionFileResponseToJSON,
 } from '../models/index';
+
+export interface CreateSessionApiSessionsPostRequest {
+    createSessionRequest?: CreateSessionRequest;
+}
 
 export interface DeleteSessionApiSessionsSessionIdDeleteRequest {
     sessionId: string;
@@ -37,6 +44,11 @@ export interface GetSessionApiSessionsSessionIdGetRequest {
 }
 
 export interface GetSessionFileApiSessionsSessionIdFilesPathGetRequest {
+    sessionId: string;
+    path: string;
+}
+
+export interface GetSessionUploadFileApiSessionsSessionIdUploadsPathGetRequest {
     sessionId: string;
     path: string;
 }
@@ -55,10 +67,12 @@ export class SessionsApi extends runtime.BaseAPI {
      * Create a new session.
      * Create a new session
      */
-    async createSessionApiSessionsPostRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Session>> {
+    async createSessionApiSessionsPostRaw(requestParameters: CreateSessionApiSessionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Session>> {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
 
 
         let urlPath = `/api/sessions/`;
@@ -68,6 +82,7 @@ export class SessionsApi extends runtime.BaseAPI {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
+            body: CreateSessionRequestToJSON(requestParameters['createSessionRequest']),
         }, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => SessionFromJSON(jsonValue));
@@ -77,8 +92,8 @@ export class SessionsApi extends runtime.BaseAPI {
      * Create a new session.
      * Create a new session
      */
-    async createSessionApiSessionsPost(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Session> {
-        const response = await this.createSessionApiSessionsPostRaw(initOverrides);
+    async createSessionApiSessionsPost(requestParameters: CreateSessionApiSessionsPostRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Session> {
+        const response = await this.createSessionApiSessionsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -212,6 +227,57 @@ export class SessionsApi extends runtime.BaseAPI {
      */
     async getSessionFileApiSessionsSessionIdFilesPathGet(requestParameters: GetSessionFileApiSessionsSessionIdFilesPathGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.getSessionFileApiSessionsSessionIdFilesPathGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Get a file from a session\'s uploads directory.
+     * Get uploaded file from session uploads
+     */
+    async getSessionUploadFileApiSessionsSessionIdUploadsPathGetRaw(requestParameters: GetSessionUploadFileApiSessionsSessionIdUploadsPathGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<any>> {
+        if (requestParameters['sessionId'] == null) {
+            throw new runtime.RequiredError(
+                'sessionId',
+                'Required parameter "sessionId" was null or undefined when calling getSessionUploadFileApiSessionsSessionIdUploadsPathGet().'
+            );
+        }
+
+        if (requestParameters['path'] == null) {
+            throw new runtime.RequiredError(
+                'path',
+                'Required parameter "path" was null or undefined when calling getSessionUploadFileApiSessionsSessionIdUploadsPathGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/sessions/{session_id}/uploads/{path}`;
+        urlPath = urlPath.replace(`{${"session_id"}}`, encodeURIComponent(String(requestParameters['sessionId'])));
+        urlPath = urlPath.replace(`{${"path"}}`, encodeURIComponent(String(requestParameters['path'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<any>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * Get a file from a session\'s uploads directory.
+     * Get uploaded file from session uploads
+     */
+    async getSessionUploadFileApiSessionsSessionIdUploadsPathGet(requestParameters: GetSessionUploadFileApiSessionsSessionIdUploadsPathGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
+        const response = await this.getSessionUploadFileApiSessionsSessionIdUploadsPathGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

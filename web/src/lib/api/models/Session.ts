@@ -52,19 +52,19 @@ export interface Session {
      */
     isRunning?: boolean;
     /**
-     *
+     * 
      * @type {SessionStatus}
      * @memberof Session
      */
     status?: SessionStatus | null;
     /**
-     * Working directory for the session
+     * 
      * @type {string}
      * @memberof Session
      */
     workDir?: string | null;
     /**
-     * Session directory path
+     * 
      * @type {string}
      * @memberof Session
      */
@@ -90,7 +90,7 @@ export function SessionFromJSONTyped(json: any, ignoreDiscriminator: boolean): S
         return json;
     }
     return {
-
+        
         'sessionId': json['session_id'],
         'title': json['title'],
         'lastUpdated': (new Date(json['last_updated'])),
@@ -111,7 +111,7 @@ export function SessionToJSONTyped(value?: Session | null, ignoreDiscriminator: 
     }
 
     return {
-
+        
         'session_id': value['sessionId'],
         'title': value['title'],
         'last_updated': value['lastUpdated'].toISOString(),

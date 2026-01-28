@@ -22,7 +22,7 @@ export function useVideoThumbnail(url?: string): string | null {
       if (cancelled) {
         return;
       }
-      if (!video.videoWidth || !video.videoHeight) {
+      if (!(video.videoWidth && video.videoHeight)) {
         return;
       }
       const canvas = document.createElement("canvas");

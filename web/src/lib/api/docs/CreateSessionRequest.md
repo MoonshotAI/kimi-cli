@@ -1,35 +1,23 @@
 
-# Session
+# CreateSessionRequest
 
-Web UI session metadata.
+Create session request.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`sessionId` | string
-`title` | string
-`lastUpdated` | Date
-`isRunning` | boolean
-`status` | [SessionStatus](SessionStatus.md)
 `workDir` | string
-`sessionDir` | string
 
 ## Example
 
 ```typescript
-import type { Session } from ''
+import type { CreateSessionRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "sessionId": null,
-  "title": null,
-  "lastUpdated": null,
-  "isRunning": null,
-  "status": null,
   "workDir": null,
-  "sessionDir": null,
-} satisfies Session
+} satisfies CreateSessionRequest
 
 console.log(example)
 
@@ -38,7 +26,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as Session
+const exampleParsed = JSON.parse(exampleJSON) as CreateSessionRequest
 console.log(exampleParsed)
 ```
 

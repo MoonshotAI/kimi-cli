@@ -5,8 +5,6 @@ import type { ApprovalResponseDecision } from "@/hooks/wireTypes";
 import type { LiveMessage } from "@/hooks/types";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 
-type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
-
 type ApprovalDialogProps = {
   messages: LiveMessage[];
   onApprovalResponse?: (
@@ -48,7 +46,7 @@ export function ApprovalDialog({
 
   const handleResponse = useCallback(
     async (decision: ApprovalResponseDecision) => {
-      if (!pendingApproval || !onApprovalResponse) return;
+      if (!(pendingApproval && onApprovalResponse)) return;
 
       const { approval } = pendingApproval;
       if (!approval.id) return;
@@ -66,7 +64,7 @@ export function ApprovalDialog({
 
   // keyboard shortcuts support
   useEffect(() => {
-    if (!pendingApproval || !canRespondToApproval || !onApprovalResponse) {
+    if (!((pendingApproval && canRespondToApproval ) && onApprovalResponse)) {
       return;
     }
 
@@ -122,7 +120,7 @@ export function ApprovalDialog({
     ? pendingApprovalMap[approval.id] === true
     : false;
   const disableActions =
-    !canRespondToApproval || !onApprovalResponse || approvalPending;
+    !(canRespondToApproval && onApprovalResponse ) || approvalPending;
 
   const options = [
     { key: "approve", label: "Approve", index: 1 },
@@ -189,11 +187,29 @@ export function ApprovalDialog({
           {/* Display blocks (if any) */}
           {toolCall.display && toolCall.display.length > 0 && (
             <div className="rounded-md border border-blue-200 bg-background/50 p-3 text-sm dark:border-blue-800">
-              {toolCall.display.map((item, index) => (
-                <div key={index} className="font-mono text-xs">
-                  {JSON.stringify(item, null, 2)}
-                </div>
-              ))}
+              {toolCall.display.map((item) => {
+                const displayKeyBase =
+                  typeof item.data === "string" ||
+                  typeof item.data === "number" ||
+                  typeof item.data === "boolean"
+                    ? `${item.type}:${item.data}`
+                    : item.data == null
+                      ? `${item.type}:null`
+                      : (() => {
+                          try {
+                            return `${item.type}:${JSON.stringify(item.data)}`;
+                          } catch {
+                            return `${item.type}:unserializable`;
+                          }
+                        })();
+                const displayKey = `${toolCall.toolCallId ?? toolCall.title}:${displayKeyBase}`;
+
+                return (
+                  <div key={displayKey} className="font-mono text-xs">
+                    {JSON.stringify(item, null, 2)}
+                  </div>
+                );
+              })}
             </div>
           )}
 

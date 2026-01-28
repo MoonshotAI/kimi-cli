@@ -147,7 +147,9 @@ body {
 }
 
 body {
-  font-family: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   font-size: 14px;
   background-color: var(--background);
   color: var(--foreground);
@@ -162,8 +164,12 @@ body {
 
 /* 4. Tailwind @theme inline */
 @theme inline {
-  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans:
+    "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
 
   /* Color mapping */
   --color-background: var(--background);
@@ -485,11 +491,22 @@ body {
 
   /* ===== Animations ===== */
   @keyframes bounce-attention {
-    0%, 100% { transform: scale(1); }
-    20% { transform: scale(1.25); }
-    40% { transform: scale(0.9); }
-    60% { transform: scale(1.15); }
-    80% { transform: scale(0.95); }
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    20% {
+      transform: scale(1.25);
+    }
+    40% {
+      transform: scale(0.9);
+    }
+    60% {
+      transform: scale(1.15);
+    }
+    80% {
+      transform: scale(0.95);
+    }
   }
 
   .animate-bounce-attention {
@@ -497,8 +514,13 @@ body {
   }
 
   @keyframes cursor-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
   }
 
   .animate-cursor {
@@ -506,8 +528,13 @@ body {
   }
 
   @keyframes glow-pulse {
-    0%, 100% { box-shadow: 0 0 4px rgba(59, 130, 246, 0.4); }
-    50% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.8); }
+    0%,
+    100% {
+      box-shadow: 0 0 4px rgba(59, 130, 246, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+    }
   }
 
   .step-indicator-active {

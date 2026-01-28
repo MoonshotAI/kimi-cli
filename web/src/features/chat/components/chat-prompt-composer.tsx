@@ -15,15 +15,10 @@ import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import type { Session } from "@/lib/api/models";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
-import { FolderIcon, Loader2Icon, SquareIcon } from "lucide-react";
+import { Loader2Icon, SquareIcon } from "lucide-react";
 import { toast } from "sonner";
 import { GlobalConfigControls } from "@/features/settings/global-config-controls";
 import {
@@ -62,7 +57,6 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   onCancel,
   onListSessionDirectory,
 }: ChatPromptComposerProps): ReactElement {
-  const EnvironmentIcon = FolderIcon;
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);

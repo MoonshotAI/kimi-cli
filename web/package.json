@@ -8,6 +8,7 @@
     "typecheck": "tsc -b --noEmit",
     "build": "tsc -b && vite build",
     "generate": "./scripts/generate-api.sh",
+    "format": "biome check --write .",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "preview": "vite preview"
@@ -75,6 +76,7 @@
     "@vitejs/plugin-react": "^5.1.1",
     "rollup-plugin-visualizer": "6.0.3",
     "typescript": "~5.9.3",
+    "ultracite": "^7.1.1",
     "vite": "^7.2.4",
     "vite-plugin-node-polyfills": "0.24.0"
   }

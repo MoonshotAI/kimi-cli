@@ -211,7 +211,13 @@ function App() {
               {isSidebarCollapsed ? (
                 /* Collapsed sidebar - vertical strip with logo and expand button */
                 <div className="flex h-full flex-col items-center py-3">
-                  <img src="/logo.png" alt="Kimi" className="size-6" />
+                  <img
+                    src="/logo.png"
+                    alt="Kimi"
+                    width={24}
+                    height={24}
+                    className="size-6"
+                  />
                   <button
                     type="button"
                     aria-label="Expand sidebar"
