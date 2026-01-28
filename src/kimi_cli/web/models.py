@@ -47,3 +47,5 @@ class Session(BaseModel):
     last_updated: datetime = Field(..., description="Last updated timestamp")
     is_running: bool = Field(default=False, description="Whether the session is running")
     status: SessionStatus | None = Field(default=None, description="Session runtime status")
+    work_dir: str | None = Field(default=None, description="Working directory for the session")
+    session_dir: str | None = Field(default=None, description="Session directory path")

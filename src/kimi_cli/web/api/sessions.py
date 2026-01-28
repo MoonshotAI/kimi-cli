@@ -169,6 +169,8 @@ async def create_session() -> Session:
             detail=None,
             updated_at=datetime.now(UTC),
         ),
+        work_dir=str(work_dir),
+        session_dir=str(kimi_cli_session.dir),
     )
 
 

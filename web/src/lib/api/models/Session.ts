@@ -52,11 +52,23 @@ export interface Session {
      */
     isRunning?: boolean;
     /**
-     * 
+     *
      * @type {SessionStatus}
      * @memberof Session
      */
     status?: SessionStatus | null;
+    /**
+     * Working directory for the session
+     * @type {string}
+     * @memberof Session
+     */
+    workDir?: string | null;
+    /**
+     * Session directory path
+     * @type {string}
+     * @memberof Session
+     */
+    sessionDir?: string | null;
 }
 
 /**
@@ -78,12 +90,14 @@ export function SessionFromJSONTyped(json: any, ignoreDiscriminator: boolean): S
         return json;
     }
     return {
-        
+
         'sessionId': json['session_id'],
         'title': json['title'],
         'lastUpdated': (new Date(json['last_updated'])),
         'isRunning': json['is_running'] == null ? undefined : json['is_running'],
         'status': json['status'] == null ? undefined : SessionStatusFromJSON(json['status']),
+        'workDir': json['work_dir'] == null ? undefined : json['work_dir'],
+        'sessionDir': json['session_dir'] == null ? undefined : json['session_dir'],
     };
 }
 
@@ -97,12 +111,14 @@ export function SessionToJSONTyped(value?: Session | null, ignoreDiscriminator: 
     }
 
     return {
-        
+
         'session_id': value['sessionId'],
         'title': value['title'],
         'last_updated': value['lastUpdated'].toISOString(),
         'is_running': value['isRunning'],
         'status': SessionStatusToJSON(value['status']),
+        'work_dir': value['workDir'],
+        'session_dir': value['sessionDir'],
     };
 }
 

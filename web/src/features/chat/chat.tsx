@@ -129,6 +129,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           currentStep={currentStep}
           sessionDescription={sessionDescription}
           currentSession={currentSession}
+          selectedSessionId={selectedSessionId}
           blocksExpanded={blocksExpanded}
           onToggleBlocks={() => setBlocksExpanded((prev) => !prev)}
           usedTokens={usedTokens}

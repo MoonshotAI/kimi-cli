@@ -12,15 +12,14 @@ import {
 } from "@/components/ui/tooltip";
 import type { TokenUsage } from "@/hooks/wireTypes";
 import type { Session } from "@/lib/api/models";
-import {
-  ChevronsDownUpIcon,
-  ChevronsUpDownIcon,
-} from "lucide-react";
+import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
+import { SessionInfoPopover } from "./session-info-popover";
 
 type ChatWorkspaceHeaderProps = {
   currentStep: number;
   sessionDescription?: string;
   currentSession?: Session;
+  selectedSessionId?: string;
   blocksExpanded: boolean;
   onToggleBlocks: () => void;
   usedTokens: number;
@@ -32,7 +31,8 @@ type ChatWorkspaceHeaderProps = {
 export function ChatWorkspaceHeader({
   currentStep: _,
   sessionDescription,
-  currentSession: __,
+  currentSession,
+  selectedSessionId,
   blocksExpanded,
   onToggleBlocks,
   usedTokens,
@@ -40,22 +40,20 @@ export function ChatWorkspaceHeader({
   maxTokens,
   tokenUsage,
 }: ChatWorkspaceHeaderProps) {
-
   return (
     <div className="workspace-header px-5 py-3">
       <div className="space-y-1">
-        {/* <div className="workspace-header-section">
-          {currentStep > 0 && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-              Step {currentStep}
-            </span>
-          )}
-        </div> */}
         {sessionDescription && (
           <p className="text-xs font-bold">{sessionDescription}</p>
         )}
       </div>
       <div className="workspace-header-section">
+        {selectedSessionId && (
+          <SessionInfoPopover
+            sessionId={selectedSessionId}
+            session={currentSession}
+          />
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button

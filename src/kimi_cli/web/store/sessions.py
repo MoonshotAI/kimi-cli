@@ -141,6 +141,8 @@ def load_all_sessions() -> list[JointSession]:
                 last_updated=datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC),
                 is_running=False,
                 status=None,
+                work_dir=wd.path,
+                session_dir=str(session_dir),
                 kimi_cli_session=kimi_session,
             )
             sessions.append(session)
@@ -209,6 +211,8 @@ def load_session_by_id(id: UUID) -> JointSession | None:
                 last_updated=datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC),
                 is_running=False,
                 status=None,
+                work_dir=wd.path,
+                session_dir=str(session_dir),
                 kimi_cli_session=kimi_session,
             )
 

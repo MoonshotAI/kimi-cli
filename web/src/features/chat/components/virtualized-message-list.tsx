@@ -80,7 +80,7 @@ function VirtuosoListComponent(
 ) {
   const { className, ...rest } = props;
   return (
-    <div ref={ref} className={cn("flex flex-col p-4", className)} {...rest} />
+    <div ref={ref} className={cn("flex flex-col p-4 px-8", className)} {...rest} />
   );
 }
 

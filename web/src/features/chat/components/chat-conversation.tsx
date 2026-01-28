@@ -16,7 +16,6 @@ import {
   type VirtualizedMessageListHandle,
 } from "./virtualized-message-list";
 import { MessageSearchDialog } from "../message-search-dialog";
-import { SessionIdDisplay } from "./session-id-display";
 
 type ChatConversationProps = {
   messages: LiveMessage[];
@@ -179,12 +178,6 @@ export function ChatConversation({
         onOpenChange={setIsSearchOpen}
         onJumpToMessage={handleJumpToMessage}
       />
-
-      {selectedSessionId ? (
-        <div className="pointer-events-auto absolute bottom-3 right-3 z-10">
-          <SessionIdDisplay sessionId={selectedSessionId} />
-        </div>
-      ) : null}
     </div>
   );
 }
