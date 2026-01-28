@@ -12,6 +12,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, FileType, detect_file_type
 from kimi_cli.tools.utils import load_desc_jinja
+from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.path import is_within_directory
 from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
@@ -86,7 +87,7 @@ class ReadMediaFile(CallableTool2[Params]):
     async def _read_media(self, path: KaosPath, file_type: FileType) -> ToolReturnValue:
         assert file_type.kind in ("image", "video")
 
-        media_id = str(path)
+        media_path = str(path)
         stat = await path.stat()
         size = stat.st_size
         if size == 0:
@@ -107,7 +108,8 @@ class ReadMediaFile(CallableTool2[Params]):
             case "image":
                 data = await path.read_bytes()
                 data_url = _to_data_url(file_type.mime_type, data)
-                part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url, id=media_id))
+                part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
+                wrapped = wrap_media_part(part, tag="image", attrs={"path": media_path})
                 image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
@@ -116,10 +118,11 @@ class ReadMediaFile(CallableTool2[Params]):
                         data=data,
                         mime_type=file_type.mime_type,
                     )
-                    part.video_url.id = media_id
+                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
-                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url, id=media_id))
+                    part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
+                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
                 image_size = None
 
         size_hint = ""
@@ -132,7 +135,7 @@ class ReadMediaFile(CallableTool2[Params]):
             "before continuing."
         )
         return ToolOk(
-            output=part,
+            output=wrapped,
             message=(
                 f"Loaded {file_type.kind} file `{path}` "
                 f"({file_type.mime_type}, {size} bytes{size_hint}).{note}"

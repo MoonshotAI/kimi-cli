@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Auth: Fix authentication issue during agent turns
+- Tool: Wrap media content with descriptive tags in `ReadMediaFile` for better path traceability
 
 ## 1.2 (2026-01-27)
 
