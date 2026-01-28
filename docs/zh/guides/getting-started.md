@@ -12,8 +12,8 @@ Kimi Code CLI 适合以下场景：
 
 Kimi Code CLI 在终端中提供类似 Shell 的交互体验，你可以用自然语言描述需求，也可以随时切换到 Shell 模式直接执行命令。除了终端使用，Kimi Code CLI 还支持通过 [Agent Client Protocol] 集成到 [IDE](./ides.md) 和其他本地 Agent 客户端中。
 
-::: warning 注意
-Kimi Code CLI 目前处于技术预览阶段，功能和 API 可能会发生变化。如果你遇到问题或有建议，欢迎在 [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues) 反馈。
+::: info 提示
+如果你遇到问题或有建议，欢迎在 [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues) 反馈。
 :::
 
 [Agent Client Protocol]: https://agentclientprotocol.com/

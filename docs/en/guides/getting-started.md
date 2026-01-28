@@ -12,8 +12,8 @@ Kimi Code CLI is suited for:
 
 Kimi Code CLI provides a shell-like interactive experience in the terminal. You can describe your needs in natural language or switch to shell mode at any time to execute commands directly. Beyond terminal usage, Kimi Code CLI also supports integration with [IDEs](./ides.md) and other local agent clients via the [Agent Client Protocol].
 
-::: warning Note
-Kimi Code CLI is currently in technical preview. Features and APIs may change. If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
+::: info Tip
+If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
 :::
 
 [Agent Client Protocol]: https://agentclientprotocol.com/
