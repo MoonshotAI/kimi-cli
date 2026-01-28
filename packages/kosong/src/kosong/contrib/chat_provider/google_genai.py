@@ -354,12 +354,21 @@ def tool_to_google_genai(tool: KosongTool) -> Tool:
     """Convert a Kosong tool to GoogleGenAI tool format."""
     # Kosong already validates parameters as JSON Schema format via jsonschema
     # The google-genai SDK accepts dict format and internally converts to Schema
+
+    # Strip JSON Schema metadata fields (google-genai SDK has extra='forbid')
+    # Note: $defs/definitions are already removed by kosong's deref_json_schema()
+    parameters = {
+        k: v
+        for k, v in tool.parameters.items()
+        if k not in ("$schema", "$id", "$comment", "examples")
+    }
+
     return Tool(
         function_declarations=[
             FunctionDeclaration(
                 name=tool.name,
                 description=tool.description,
-                parameters=tool.parameters,  # type: ignore[arg-type] # GoogleGenAI accepts dict
+                parameters=parameters,  # type: ignore[arg-type] # GoogleGenAI accepts dict
             )
         ]
     )
