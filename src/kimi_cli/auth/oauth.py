@@ -49,7 +49,8 @@ KIMI_CODE_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
 KIMI_CODE_OAUTH_KEY = "oauth/kimi-code"
 DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
 KEYRING_SERVICE = "kimi-code"
-REFRESH_INTERVAL_SECONDS = 300
+REFRESH_INTERVAL_SECONDS = 60
+REFRESH_THRESHOLD_SECONDS = 300
 
 
 class OAuthError(RuntimeError):
@@ -679,6 +680,13 @@ class OAuthManager:
             return
         async with self._refresh_lock:
             current = self._tokens.get(ref.key) or current_token
+            now = time.time()
+            if (
+                current.expires_at
+                and current.expires_at > now
+                and current.expires_at - now >= REFRESH_THRESHOLD_SECONDS
+            ):
+                return
             refresh_token_value = current.refresh_token
             if not refresh_token_value:
                 return
