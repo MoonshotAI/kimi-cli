@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AttachmentButton } from "./attachment-button";
+
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
 import { FolderIcon, Loader2Icon, SquareIcon } from "lucide-react";
@@ -180,8 +180,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
       </PromptInputBody>
       <PromptInputFooter className="w-full justify-between py-1 border-none bg-transparent shadow-none">
         <PromptInputTools>
-          <AttachmentButton />
-          <GlobalConfigControls className="ml-1" />
+          <GlobalConfigControls />
           {/* <Tooltip>
             <TooltipTrigger asChild>
               <button

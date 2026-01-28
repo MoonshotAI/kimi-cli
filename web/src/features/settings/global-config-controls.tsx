@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { toast } from "sonner";
-import { Check, Cpu, RefreshCcw } from "lucide-react";
+import { Check, Cpu, Paperclip, RefreshCcw } from "lucide-react";
+import { usePromptInputAttachments } from "@ai-elements";
 import type { ConfigModel } from "@/lib/api/models";
 import { ModelCapability } from "@/lib/api/models";
 import { useGlobalConfig } from "@/hooks/useGlobalConfig";
@@ -176,7 +177,7 @@ export function GlobalConfigControls({
   }, [thinkingState]);
 
   const thinkingToggle = (
-    <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-2 shadow-xs dark:bg-input/30">
+    <div className="flex h-9 items-center gap-2 rounded-md px-2">
       <span className="text-xs text-muted-foreground">Thinking</span>
       <Switch
         aria-label="Toggle global thinking"
@@ -193,14 +194,28 @@ export function GlobalConfigControls({
     </div>
   );
 
+  const attachments = usePromptInputAttachments();
+
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-1", className)}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-9 border-0"
+        aria-label="Attach files"
+        onClick={() => attachments.openFileDialog()}
+      >
+        <Paperclip className="size-4" />
+      </Button>
+
+      <div className="mx-0 h-4 w-px bg-border/70" />
+
       <ModelSelector open={isSelectorOpen} onOpenChange={setIsSelectorOpen}>
         <ModelSelectorTrigger asChild>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="h-9 max-w-[160px] justify-start gap-2"
+            className="h-9 max-w-[160px] justify-start gap-2 border-0"
             aria-label="Change global model"
             disabled={isLoading || isUpdating || !config}
           >
@@ -247,6 +262,8 @@ export function GlobalConfigControls({
         </ModelSelectorContent>
       </ModelSelector>
 
+      <div className="mx-0 h-4 w-px bg-border/70" />
+      
       {thinkingTooltip ? (
         <Tooltip>
           <TooltipTrigger asChild>{thinkingToggle}</TooltipTrigger>
@@ -255,6 +272,10 @@ export function GlobalConfigControls({
       ) : (
         thinkingToggle
       )}
+
+      {(lastBusySkip && lastBusySkip.length > 0) || error ? (
+        <div className="mx-1.5 h-4 w-px bg-border/70" />
+      ) : null}
 
       {lastBusySkip && lastBusySkip.length > 0 ? (
         <Button
