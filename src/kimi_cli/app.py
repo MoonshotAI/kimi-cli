@@ -7,10 +7,10 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import kaos
 from kaos.path import KaosPath
 from pydantic import SecretStr
 
+import kaos
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat

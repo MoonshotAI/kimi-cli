@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import contextvars
-from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+import fnmatch
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
-from pathlib import PurePath
+from pathlib import PurePath, PurePosixPath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -293,6 +294,70 @@ def glob(
 ) -> AsyncGenerator[KaosPath]:
     return get_current_kaos().glob(path, pattern, case_sensitive=case_sensitive)
 
+
+async def glob_pruned(
+    base_dir: KaosPath,
+    pattern: str,
+    *,
+    should_ignore: Callable[[KaosPath, bool], bool] | None = None,
+) -> list[KaosPath]:
+    """Glob with a pruning callback to skip entries during traversal."""
+    normalized_pattern = pattern.replace("\\", "/")
+    parts = list(PurePosixPath(normalized_pattern).parts)
+    if parts and parts[0] == "/":
+        parts = parts[1:]
+
+    matches: list[KaosPath] = []
+
+    def _should_ignore(path: KaosPath, is_dir: bool) -> bool:
+        if should_ignore is None:
+            return False
+        return should_ignore(path, is_dir)
+
+    async def recurse(current: KaosPath, idx: int) -> None:
+        if idx == len(parts):
+            matches.append(current)
+            return
+
+        part = parts[idx]
+        if part == "**":
+            await recurse(current, idx + 1)
+
+            if not await current.is_dir():
+                return
+
+            async for child in current.iterdir():
+                try:
+                    is_dir = await child.is_dir()
+                except OSError:
+                    continue
+
+                if _should_ignore(child, is_dir):
+                    continue
+
+                if is_dir:
+                    await recurse(child, idx)
+                elif idx == len(parts) - 1:
+                    matches.append(child)
+            return
+
+        if not await current.is_dir():
+            return
+
+        async for child in current.iterdir():
+            try:
+                is_dir = await child.is_dir()
+            except OSError:
+                continue
+
+            if _should_ignore(child, is_dir):
+                continue
+
+            if fnmatch.fnmatchcase(child.name, part):
+                await recurse(child, idx + 1)
+
+    await recurse(base_dir, 0)
+    return matches
 
 async def readbytes(path: StrOrKaosPath, n: int | None = None) -> bytes:
     return await get_current_kaos().readbytes(path, n=n)
