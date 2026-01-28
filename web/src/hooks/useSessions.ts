@@ -37,8 +37,6 @@ type UseSessionsReturn = {
   deleteSession: (sessionId: string) => Promise<boolean>;
   /** Select a session */
   selectSession: (sessionId: string) => void;
-  /** Duplicate a session */
-  duplicateSession: (sessionId: string) => Promise<Session | null>;
   /** Apply a runtime session status update */
   applySessionStatus: (status: SessionStatus) => void;
   /** Get formatted relative time for a session */
@@ -278,39 +276,6 @@ export function useSessions(): UseSessionsReturn {
   }, []);
 
   /**
-   * Duplicate a session
-   * Returns: Session (API type) or null
-   */
-  const duplicateSession = useCallback(
-    async (_sourceSessionId: string): Promise<Session | null> => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Session-level config/metadata is not supported in Kiwi.
-        // "Duplicate" creates a fresh session.
-        const newSession =
-          await apiClient.sessions.createSessionApiSessionsPost();
-
-        setSessions((current) => [newSession, ...current]);
-
-        // Select the new session
-        setSelectedSessionId(newSession.sessionId);
-
-        return newSession;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to duplicate session";
-        setError(message);
-        return null;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [],
-  );
-
-  /**
    * Get formatted relative time for a session
    */
   const getRelativeTime = useCallback(
@@ -452,7 +417,6 @@ export function useSessions(): UseSessionsReturn {
     createSession,
     deleteSession,
     selectSession,
-    duplicateSession,
     applySessionStatus,
     getRelativeTime,
     uploadSessionFile,

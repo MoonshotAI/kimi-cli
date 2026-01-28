@@ -43,7 +43,6 @@ function App() {
     createSession,
     deleteSession,
     selectSession,
-    duplicateSession,
     uploadSessionFile,
     getSessionFile,
     getSessionFileUrl,
@@ -161,13 +160,6 @@ function App() {
     [deleteSession],
   );
 
-  const handleDuplicateSession = useCallback(
-    async (sessionId: string) => {
-      await duplicateSession(sessionId);
-    },
-    [duplicateSession],
-  );
-
   const handleSelectSession = useCallback(
     (sessionId: string) => {
       selectSession(sessionId);
@@ -234,7 +226,6 @@ function App() {
                     onCreateSession={handleCreateSession}
                     onDeleteSession={handleDeleteSession}
                     onSelectSession={handleSelectSession}
-                    onDuplicateSession={handleDuplicateSession}
                     onRefreshSessions={handleRefreshSessions}
                     fetchWorkDirs={fetchWorkDirs}
                     fetchStartupDir={fetchStartupDir}

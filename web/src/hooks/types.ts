@@ -114,9 +114,6 @@ export type SessionOperations = {
   createSession: () => Promise<import("../lib/api/models").Session>;
   deleteSession: (sessionId: string) => Promise<boolean>;
   selectSession: (sessionId: string) => void;
-  duplicateSession: (
-    sessionId: string,
-  ) => Promise<import("../lib/api/models").Session | null>;
   applySessionStatus: (
     status: import("../lib/api/models").SessionStatus,
   ) => void;

@@ -10,7 +10,6 @@ import { createPortal } from "react-dom";
 import {
   Plus,
   Trash2,
-  Copy,
   Search,
   X,
   AlertTriangle,
@@ -47,7 +46,6 @@ type SessionsSidebarProps = {
   onSelectSession: (id: string) => void;
   onCreateSession: (workDir: string) => void | Promise<void>;
   onDeleteSession: (id: string) => void;
-  onDuplicateSession: (id: string) => void;
   onRefreshSessions?: () => Promise<void> | void;
   fetchWorkDirs: () => Promise<string[]>;
   fetchStartupDir: () => Promise<string>;
@@ -66,7 +64,6 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   onSelectSession,
   onCreateSession,
   onDeleteSession,
-  onDuplicateSession,
   onRefreshSessions,
   fetchWorkDirs,
   fetchStartupDir,
@@ -136,7 +133,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     event.stopPropagation();
 
     const menuWidth = 200;
-    const menuHeight = 56;
+    const menuHeight = 32;
     const padding = 8;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -157,15 +154,11 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     });
   };
 
-  const handleMenuAction = (action: "duplicate" | "delete") => {
+  const handleMenuAction = (action: "delete") => {
     if (!contextMenu) {
       return;
     }
 
-    if (action === "duplicate") {
-      onDuplicateSession(contextMenu.sessionId);
-      setContextMenu(null);
-    }
     if (action === "delete") {
       const session = sessions.find((s) => s.id === contextMenu.sessionId);
       setDeleteConfirm({
@@ -222,14 +215,6 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
         role="menu"
         style={{ top: contextMenu.y, left: contextMenu.x }}
       >
-        <button
-          className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent"
-          onClick={() => handleMenuAction("duplicate")}
-          type="button"
-        >
-          <Copy className="size-3.5" />
-          Copy session
-        </button>
         <button
           className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10"
           onClick={() => handleMenuAction("delete")}
