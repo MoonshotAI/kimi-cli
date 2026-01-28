@@ -376,7 +376,15 @@ class LocalFileMentionCompleter(Completer):
                 return (cat,)
 
             candidates.sort(key=_rank)
-            yield from candidates
+            for candidate in candidates:
+                yield Completion(
+                    text=candidate.text + " ",
+                    start_position=candidate.start_position,
+                    display=candidate.display,
+                    display_meta=candidate.display_meta,
+                    style=candidate.style,
+                    selected_style=candidate.selected_style,
+                )
         finally:
             self._fragment_hint = None
 
@@ -680,6 +688,29 @@ class CustomPromptSession:
 
         # Build key bindings
         _kb = KeyBindings()
+
+        @_kb.add("down", filter=has_completions)
+        def _(event: KeyPressEvent) -> None:
+            """Navigate completion menu down without updating the buffer."""
+            buff = event.current_buffer
+            if buff.complete_state:
+                state = buff.complete_state
+                if state.complete_index is None:
+                    state.complete_index = 0
+                else:
+                    state.complete_index = (state.complete_index + 1) % len(state.completions)
+
+        @_kb.add("up", filter=has_completions)
+        def _(event: KeyPressEvent) -> None:
+            """Navigate completion menu up without updating the buffer."""
+            buff = event.current_buffer
+            if buff.complete_state:
+                state = buff.complete_state
+                count = len(state.completions)
+                if state.complete_index is None:
+                    state.complete_index = count - 1
+                else:
+                    state.complete_index = (state.complete_index - 1) % count
 
         @_kb.add("enter", filter=has_completions)
         def _(event: KeyPressEvent) -> None:
