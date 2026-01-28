@@ -16,11 +16,13 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
-import type { MessageAttachmentPart, NoPreviewAttachment } from "@/hooks/types";
+import type { MessageAttachmentPart, NoPreviewAttachment, VideoNoPreviewAttachment } from "@/hooks/types";
+import { useVideoThumbnail } from "@/hooks/useVideoThumbnail";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   PaperclipIcon,
+  VideoIcon,
   XIcon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
@@ -376,20 +378,29 @@ export function MessageAttachment({
     attachment: MessageAttachmentPart,
   ): attachment is NoPreviewAttachment =>
     "kind" in attachment && attachment.kind === "nopreview";
+  const isVideoNoPreviewAttachment = (
+    attachment: MessageAttachmentPart,
+  ): attachment is VideoNoPreviewAttachment =>
+    "kind" in attachment && attachment.kind === "video-nopreview";
   const isNoPreview = isNoPreviewAttachment(data);
+  const isVideoNoPreview = isVideoNoPreviewAttachment(data);
   const filename = data.filename || "";
   let mediaType: string | undefined;
   let url: string | undefined;
-  if (!isNoPreview) {
+  if (!isNoPreview && !isVideoNoPreview) {
     mediaType = data.mediaType;
     url = data.url;
+  } else if (isVideoNoPreview) {
+    mediaType = data.mediaType;
   }
   const isImage = mediaType?.startsWith("image/") && url;
   const isVideo = mediaType?.startsWith("video/") && url;
   const isText = mediaType?.startsWith("text/") && url;
   const canPreview = (isImage || isVideo || isText) && Boolean(url);
   const attachmentLabel =
-    filename || (isImage ? "Image" : isVideo ? "Video" : "Attachment");
+    filename || (isImage ? "Image" : isVideo || isVideoNoPreview ? "Video" : "Attachment");
+  const typeBadge = isImage ? "Image" : isVideo ? "Video" : undefined;
+  const videoPoster = useVideoThumbnail(isVideo ? url : undefined);
 
   // Decode text content from data URL when opening preview
   const handleOpenPreview = () => {
@@ -442,6 +453,11 @@ export function MessageAttachment({
               src={url}
               width={160}
             />
+            {typeBadge && (
+              <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm">
+                {typeBadge}
+              </span>
+            )}
             {onRemove && (
               <Button
                 aria-label="Remove attachment"
@@ -463,11 +479,18 @@ export function MessageAttachment({
             <video
               className="size-full object-cover"
               height={160}
+              poster={videoPoster ?? undefined}
+              preload="metadata"
               src={url}
               width={160}
               muted
               playsInline
             />
+            {typeBadge && (
+              <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm">
+                {typeBadge}
+              </span>
+            )}
             {onRemove && (
               <Button
                 aria-label="Remove attachment"
@@ -489,7 +512,11 @@ export function MessageAttachment({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex size-full shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                  <PaperclipIcon className="size-4" />
+                  {isVideoNoPreview ? (
+                    <VideoIcon className="size-4" />
+                  ) : (
+                    <PaperclipIcon className="size-4" />
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent>
@@ -538,6 +565,7 @@ export function MessageAttachment({
                   className="block max-h-[88vh] w-full object-contain"
                   src={url}
                   controls
+                  poster={videoPoster ?? undefined}
                   autoPlay
                   playsInline
                 />

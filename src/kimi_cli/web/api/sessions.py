@@ -13,7 +13,7 @@ from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from kaos.path import KaosPath
 from loguru import logger
 from pydantic import BaseModel
@@ -238,6 +238,53 @@ async def upload_session_file(
         path=str(upload_path),
         filename=file_name,
         size=len(content),
+    )
+
+
+@router.get(
+    "/{session_id}/uploads/{path:path}",
+    summary="Get uploaded file from session uploads",
+)
+async def get_session_upload_file(
+    session_id: UUID,
+    path: str,
+) -> Response:
+    """Get a file from a session's uploads directory."""
+    session = load_session_by_id(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    uploads_dir = (session.kimi_cli_session.dir / "uploads").resolve()
+    if not uploads_dir.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Uploads directory not found",
+        )
+
+    file_path = (uploads_dir / path).resolve()
+    if not file_path.is_relative_to(uploads_dir):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid path: path traversal not allowed",
+        )
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    media_type, _ = mimetypes.guess_type(file_path.name)
+    encoded_filename = quote(file_path.name, safe="")
+    return FileResponse(
+        file_path,
+        media_type=media_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}",
+        },
     )
 
 

@@ -129,7 +129,7 @@ import {
   type SessionStatusPayload,
   extractEvent,
 } from "./wireTypes";
-import { createMessageId } from "./utils";
+import { createMessageId, getApiBaseUrl } from "./utils";
 import { handleToolResult } from "@/features/tool/store";
 import { v4 as uuidV4 } from "uuid";
 
@@ -392,6 +392,19 @@ export function useSessionStream(
     [],
   );
 
+  const getSessionUploadUrl = useCallback(
+    (filename?: string): string | undefined => {
+      if (!sessionId || !filename) {
+        return undefined;
+      }
+      const basePath = baseUrl ?? getApiBaseUrl();
+      return `${basePath}/api/sessions/${encodeURIComponent(
+        sessionId,
+      )}/uploads/${encodeURIComponent(filename)}`;
+    },
+    [baseUrl, sessionId],
+  );
+
   const parseUserInput = useCallback(
     (input: string | ContentPart[]): ParsedUserInput => {
       if (typeof input === "string") {
@@ -459,8 +472,29 @@ export function useSessionStream(
             continue; // Skip this text part, it's just metadata
           }
 
-          // New format: </video> closing tag - skip it
+          // New format: </video> closing tag - create attachment if no video_url follows
           if (text.trim() === "</video>") {
+            // If we have pending video metadata but no video_url part will follow,
+            // create a video attachment from the session uploads.
+            if (pendingFilename && pendingMediaType?.startsWith("video/")) {
+              const url = getSessionUploadUrl(pendingFilename);
+              if (url) {
+                attachments.push({
+                  type: "file",
+                  mediaType: pendingMediaType,
+                  filename: pendingFilename,
+                  url,
+                });
+              } else {
+                attachments.push({
+                  kind: "video-nopreview",
+                  mediaType: pendingMediaType,
+                  filename: pendingFilename,
+                });
+              }
+              pendingFilename = undefined;
+              pendingMediaType = undefined;
+            }
             continue;
           }
 
@@ -597,7 +631,7 @@ export function useSessionStream(
 
       return { text: textParts.join("\n\n").trim(), attachments };
     },
-    [parseMediaTypeFromDataUrl],
+    [getSessionUploadUrl, parseMediaTypeFromDataUrl],
   );
 
   const upsertMessage = useCallback(

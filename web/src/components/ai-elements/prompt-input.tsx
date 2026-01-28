@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useVideoThumbnail } from "@/hooks/useVideoThumbnail";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
   CornerDownLeftIcon,
@@ -276,11 +277,12 @@ export function PromptInputAttachment({
 
   const filename = data.filename || "";
 
-  const mediaType =
-    data.mediaType?.startsWith("image/") && data.url ? "image" : "file";
-  const isImage = mediaType === "image";
+  const isImage = data.mediaType?.startsWith("image/") && data.url;
+  const isVideo = data.mediaType?.startsWith("video/") && data.url;
 
-  const attachmentLabel = filename || (isImage ? "Image" : "Attachment");
+  const attachmentLabel = filename || (isImage ? "Image" : isVideo ? "Video" : "Attachment");
+  const typeBadge = isImage ? "Image" : isVideo ? "Video" : undefined;
+  const videoPoster = useVideoThumbnail(isVideo ? data.url : undefined);
 
   if (isImage) {
     return (
@@ -294,6 +296,48 @@ export function PromptInputAttachment({
           className="h-14 w-14 rounded-lg border border-border/50 object-cover"
           src={data.url}
         />
+        {typeBadge && (
+          <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white shadow-sm">
+            {typeBadge}
+          </span>
+        )}
+        <Button
+          aria-label="Remove attachment"
+          className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
+          onClick={(e) => {
+            e.stopPropagation();
+            attachments.remove(data.id);
+          }}
+          type="button"
+          variant="outline"
+        >
+          <XIcon />
+          <span className="sr-only">Remove</span>
+        </Button>
+      </div>
+    );
+  }
+
+  if (isVideo) {
+    return (
+      <div
+        className={cn("group relative", className)}
+        key={data.id}
+        {...props}
+      >
+        <video
+          className="h-14 w-14 rounded-lg border border-border/50 object-cover"
+          poster={videoPoster ?? undefined}
+          preload="metadata"
+          src={data.url}
+          muted
+          playsInline
+        />
+        {typeBadge && (
+          <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white shadow-sm">
+            {typeBadge}
+          </span>
+        )}
         <Button
           aria-label="Remove attachment"
           className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"

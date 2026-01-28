@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from kosong.message import ContentPart, ImageURLPart, TextPart, VideoURLPart
+from kosong.message import ContentPart, ImageURLPart, TextPart
 from loguru import logger
 from PIL import Image
 from PIL.Image import Image as PILImage
@@ -452,17 +452,11 @@ class SessionProcess:
                     # Skip files that fail to encode - don't block the upload
                     pass
             elif is_video_in and mime_type.startswith("video/"):
-                try:
-                    content = file.read_bytes()
-                    encoded = base64.b64encode(content).decode("ascii")
-                    yield TextPart(text=f'<video path="{file_path}" content_type="{mime_type}">')
-                    yield VideoURLPart(
-                        video_url=VideoURLPart.VideoURL(url=f"data:{mime_type};base64,{encoded}")
-                    )
-                    yield TextPart(text="</video>\n\n")
-                except Exception:
-                    # Skip files that fail to encode - don't block the upload
-                    pass
+                # For video files, emit a <video> tag for frontend display but don't embed content.
+                # The agent will use ReadMediaFile tool to read it, which handles video uploads
+                # properly.
+                yield TextPart(text=f'<video path="{file_path}" content_type="{mime_type}">')
+                yield TextPart(text="</video>\n\n")
             elif ext in text_extensions or mime_type.startswith("text/"):
                 try:
                     content = file.read_bytes()

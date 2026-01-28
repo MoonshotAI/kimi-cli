@@ -5,7 +5,13 @@ export type NoPreviewAttachment = {
   filename: string;
 };
 
-export type MessageAttachmentPart = FileUIPart | NoPreviewAttachment;
+export type VideoNoPreviewAttachment = {
+  kind: "video-nopreview";
+  mediaType: string;
+  filename: string;
+};
+
+export type MessageAttachmentPart = FileUIPart | NoPreviewAttachment | VideoNoPreviewAttachment;
 
 // Re-export API types for convenience
 export type { Session } from "../lib/api/models";
