@@ -1,0 +1,7 @@
+version: 1
+agent:
+  extend: default
+  name: "e2b"
+  # Grep tool only supports local KAOS; disable it for E2B sandboxes.
+  exclude_tools:
+    - "kimi_cli.tools.file:Grep"

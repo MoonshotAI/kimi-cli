@@ -1,0 +1,14 @@
+[project]
+name = "kimi-cli-e2b-kaos"
+version = "0.1.0"
+description = "Run Kimi CLI with E2B-backed KAOS"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "kimi-cli",
+    "e2b>=2.10.2",
+    "rich",
+]
+
+[tool.uv.sources]
+kimi-cli = { path = "../../" }

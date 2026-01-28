@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `E2BKaos` implementation in `kaos.contrib.e2b` for running on E2B sandboxes
+- Add `contrib` optional dependency group with `e2b>=2.10.2,<3.0.0`
+
 ## 0.6.0 (2026-01-09)
 
 - Add optional `n` parameter to `readbytes` to read only the first n bytes
