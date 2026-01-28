@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - Shell: Add `$` command to list and select skills
 - Shell: Support `$<skill-name>` syntax in input to pre-select skills (Codex-style)
+- Auth: Fix authentication issue during agent turns
 
 ## 1.2 (2026-01-27)
 

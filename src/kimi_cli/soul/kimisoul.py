@@ -184,6 +184,7 @@ class KimiSoul:
     async def run(self, user_input: str | list[ContentPart]):
         raw_user_input = user_input
         user_message = Message(role="user", content=raw_user_input)
+        user_message = Message(role="user", content=user_input)
         text_input = user_message.extract_text(" ").strip()
 
         if command_call := parse_slash_command_call(text_input):

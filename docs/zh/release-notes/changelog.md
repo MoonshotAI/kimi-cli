@@ -6,6 +6,7 @@
 
 - Shell：添加 `$` 命令来列出和选择 Skills
 - Shell：支持在输入中使用 `$<skill-name>` 语法预选 Skills（Codex 风格）
+- Auth: 修复 Agent 轮次期间的认证问题
 
 ## 1.2 (2026-01-27)
 
