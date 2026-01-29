@@ -57,6 +57,26 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+#### Reasoning Content Support
+
+Some OpenAI-compatible APIs (like DeepSeek, Venice AI) return reasoning/thinking content in a custom field alongside the regular response. Use `reasoning_key` to specify the field name so it's preserved across multi-turn conversations:
+
+```toml
+[providers.venice]
+type = "openai_legacy"
+base_url = "https://api.venice.ai/api/v1"
+api_key = "xxx"
+reasoning_key = "reasoning_content"
+
+[providers.deepseek]
+type = "openai_legacy"
+base_url = "https://api.deepseek.com/v1"
+api_key = "sk-xxx"
+reasoning_key = "reasoning_content"
+```
+
+When configured, reasoning content from the model's response will be properly extracted and included in subsequent API requests, which is required for multi-turn tool calling with reasoning models.
+
 ### `openai_responses`
 
 For OpenAI Responses API (newer API format).
