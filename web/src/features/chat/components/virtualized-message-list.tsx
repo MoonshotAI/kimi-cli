@@ -249,12 +249,12 @@ function VirtualizedMessageListComponent(
               className={messages.length > 0 ? "mt-3" : undefined}
               from="assistant"
             >
-              <MessageContent className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2Icon className="size-4 animate-spin text-primary" />
-                <span>Preparing environment...</span>
-              </MessageContent>
-            </Message>
-          );
+            <MessageContent className="flex-row items-center justify-start gap-2 text-left text-sm text-muted-foreground">
+              <Loader2Icon className="size-4 animate-spin text-primary" />
+              <span>Waiting for response...</span>
+            </MessageContent>
+          </Message>
+        );
         }
 
         const message = item.message;

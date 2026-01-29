@@ -283,6 +283,12 @@ export function useSessionStream(
     awaitingFirstResponseRef.current = value;
     setIsAwaitingFirstResponse(value);
   }, []);
+  const clearAwaitingFirstResponse = useCallback(() => {
+    if (!awaitingFirstResponseRef.current) {
+      return;
+    }
+    setAwaitingFirstResponse(false);
+  }, [setAwaitingFirstResponse]);
 
   const normalizeSessionStatus = useCallback(
     (payload: SessionStatusPayload): SessionStatus => ({
@@ -714,10 +720,6 @@ export function useSessionStream(
           };
 
           upsertMessage(userMessage);
-
-          if (!isReplay && awaitingFirstResponseRef.current) {
-            setAwaitingFirstResponse(false);
-          }
           break;
         }
 
@@ -726,14 +728,14 @@ export function useSessionStream(
           resetStepState();
           if (!isReplay) {
             setStatus("streaming");
-            if (awaitingFirstResponseRef.current) {
-              setAwaitingFirstResponse(false);
-            }
           }
           break;
         }
 
         case "ContentPart": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
           if (event.payload.type === "think" && event.payload.think) {
             // Accumulate thinking content
             currentThinkingRef.current += event.payload.think;
@@ -796,6 +798,9 @@ export function useSessionStream(
         }
 
         case "ToolCall": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
           const toolCall = event.payload;
           currentToolCallIdRef.current = toolCall.id;
 
@@ -881,6 +886,9 @@ export function useSessionStream(
         }
 
         case "ToolResult": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
           const { tool_call_id, return_value } = event.payload;
           const tc = currentToolCallsRef.current.get(tool_call_id);
 
@@ -947,6 +955,9 @@ export function useSessionStream(
         }
 
         case "ApprovalRequest": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
           const payload = event.payload;
           const tc = currentToolCallsRef.current.get(payload.tool_call_id);
 
@@ -1169,6 +1180,9 @@ export function useSessionStream(
         }
 
         case "SessionNotice": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
           if (event.payload.text) {
             setMessages((prev) => [
               ...prev,
@@ -1214,7 +1228,7 @@ export function useSessionStream(
       upsertMessage,
       parseUserInput,
       safeStringify,
-      setAwaitingFirstResponse,
+      clearAwaitingFirstResponse,
       updateMessageById,
     ],
   );
