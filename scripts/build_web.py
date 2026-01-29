@@ -42,8 +42,32 @@ def find_version_in_dist(version: str) -> bool:
     return found_plain
 
 
+def resolve_npm() -> str | None:
+    candidates = ["npm"]
+    if os.name == "nt":
+        candidates.extend(["npm.cmd", "npm.exe", "npm.bat"])
+    for candidate in candidates:
+        npm = shutil.which(candidate)
+        if npm:
+            return npm
+    return None
+
+
+def run_npm(npm: str, args: list[str]) -> int:
+    try:
+        result = subprocess.run([npm, *args], check=False)
+    except FileNotFoundError:
+        print(
+            "npm not found or failed to execute. Install Node.js (npm) and ensure it is on PATH.",
+            file=sys.stderr,
+        )
+        return 1
+    return result.returncode
+
+
 def main() -> int:
-    if shutil.which("npm") is None:
+    npm = resolve_npm()
+    if npm is None:
         print("npm not found. Install Node.js (npm) to build the web UI.", file=sys.stderr)
         return 1
 
@@ -57,16 +81,13 @@ def main() -> int:
         return 1
 
     if not NODE_MODULES.exists():
-        result = subprocess.run(
-            ["npm", "--prefix", str(WEB_DIR), "ci"],
-            check=False,
-        )
-        if result.returncode != 0:
-            return result.returncode
+        returncode = run_npm(npm, ["--prefix", str(WEB_DIR), "ci"])
+        if returncode != 0:
+            return returncode
 
-    result = subprocess.run(["npm", "--prefix", str(WEB_DIR), "run", "build"], check=False)
-    if result.returncode != 0:
-        return result.returncode
+    returncode = run_npm(npm, ["--prefix", str(WEB_DIR), "run", "build"])
+    if returncode != 0:
+        return returncode
 
     if not DIST_DIR.exists():
         print("web/dist not found after build. Check the web build output.", file=sys.stderr)
