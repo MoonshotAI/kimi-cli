@@ -12,7 +12,7 @@ import {
 import { ChatWorkspaceContainer } from "./features/chat/chat-workspace-container";
 import { SessionsSidebar } from "./features/sessions/sessions";
 import { Toaster } from "./components/ui/sonner";
-import { formatRelativeTime, isElectronMac } from "./hooks/utils";
+import { formatRelativeTime } from "./hooks/utils";
 import { useSessions } from "./hooks/useSessions";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
@@ -234,13 +234,9 @@ function App() {
     [sessions],
   );
 
-  const showElectronTitlebar = isElectronMac();
-
   return (
     <PromptInputProvider>
-      <div className={cn("app-page", showElectronTitlebar && "electron-app")}>
-        {/* Electron macOS titlebar - provides drag region and space for traffic lights */}
-        {showElectronTitlebar && <div className="electron-titlebar" />}
+      <div className="app-page">
         <div className="app-shell max-w-none">
           <ResizablePanelGroup
             orientation="horizontal"

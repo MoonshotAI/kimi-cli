@@ -30,7 +30,7 @@ const shouldAnalyze = process.env.ANALYZE === "true";
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Use relative paths for Electron file:// protocol compatibility
+  // Use relative paths so assets work under any base path.
   base: "./",
   plugins: [
     nodePolyfills({

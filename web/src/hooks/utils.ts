@@ -1,33 +1,7 @@
 import { v4 as uuidV4 } from "uuid";
 
-// Declare the global __KIMI__ object injected by Electron
-declare global {
-  interface Window {
-    __KIMI__?: {
-      port?: number;
-      isElectron?: boolean;
-    };
-  }
-}
-
 /**
- * Check if running in Electron environment.
- * Used for platform-specific UI adjustments (e.g., titlebar spacing on macOS).
- */
-export function isElectron(): boolean {
-  return window.__KIMI__?.isElectron === true;
-}
-
-/**
- * Check if running on macOS in Electron.
- * macOS uses hiddenInset titlebar style which requires special handling.
- */
-export function isElectronMac(): boolean {
-  return isElectron() && navigator.platform.toLowerCase().includes("mac");
-}
-
-/**
- * Check if running on macOS (web or Electron).
+ * Check if running on macOS.
  */
 export function isMacOS(): boolean {
   if (typeof navigator === "undefined") {
@@ -38,16 +12,10 @@ export function isMacOS(): boolean {
 
 /**
  * Get the API base URL for connecting to the Kimi backend.
- * - Electron: uses the port injected by main process via window.__KIMI__.port
  * - Vite dev: uses Vite proxy, so empty string (relative URLs like /api/...)
  * - Production web: same-origin, so empty string
  */
 export function getApiBaseUrl(): string {
-  // In Electron, use the injected port
-  if (window.__KIMI__?.port) {
-    return `http://127.0.0.1:${window.__KIMI__.port}`;
-  }
-  // Web mode: relative URLs work with Vite proxy or same-origin
   return "";
 }
 

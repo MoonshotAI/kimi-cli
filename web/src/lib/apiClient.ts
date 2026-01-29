@@ -32,7 +32,7 @@ function formatValidationError(detail: unknown): string {
 
 /**
  * Create API configuration with the current base URL.
- * Lazily evaluated to support Electron's port injection.
+ * Lazily evaluated to support runtime base URL changes.
  */
 function createConfig(): Configuration {
   return new Configuration({

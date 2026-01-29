@@ -290,34 +290,10 @@ body {
 
 /* 6. @layer components */
 @layer components {
-  /* ===== Electron Layout ===== */
-  .electron-titlebar {
-    height: 40px;
-    min-height: 40px;
-    -webkit-app-region: drag;
-    app-region: drag;
-    @apply flex items-end -mx-3 px-3;
-  }
-
-  .electron-titlebar button,
-  .electron-titlebar a,
-  .electron-titlebar input {
-    -webkit-app-region: no-drag;
-    app-region: no-drag;
-  }
-
-  .electron-main-padding {
-    padding-top: 40px;
-  }
-
   /* ===== Layout Containers ===== */
   .app-page {
     height: 100dvh;
     @apply box-border flex flex-col bg-background text-foreground px-3 py-3;
-  }
-
-  .app-page.electron-app {
-    @apply pt-0;
   }
 
   .app-shell {
