@@ -116,7 +116,7 @@ class Runtime:
                 KIMI_SKILLS=skills_formatted or "No skills found.",
             ),
             denwa_renji=DenwaRenji(),
-            approval=Approval(yolo=yolo),
+            approval=Approval(yolo=yolo, session_dir=session.dir),
             labor_market=LaborMarket(),
             environment=environment,
             skills=skills_by_name,
