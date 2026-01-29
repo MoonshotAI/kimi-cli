@@ -72,20 +72,35 @@ class ACPServer:
             ),
             auth_methods=[
                 acp.schema.AuthMethod(
-                    id="setup",
-                    name="Setup LLM with /setup slash command",
+                    id="login",
+                    name="Login with Kimi account",
                     description=(
-                        "Run `kimi` command in the terminal, "
-                        "then send `/setup` command to complete the setup."
+                        "Run `kimi login` command in the terminal, "
+                        "then follow the instructions to finish login."
                     ),
                     field_meta={
                         "terminal-auth": {
                             "command": command,
-                            "args": args,
-                            "label": "Kimi Code CLI Setup",
+                            "args": args + ["login"],
+                            "label": "Kimi Code Login",
                         }
                     },
-                )
+                ),
+                # acp.schema.AuthMethod(
+                #     id="setup",
+                #     name="Setup LLM with /setup slash command",
+                #     description=(
+                #         "Run `kimi` command in the terminal, "
+                #         "then send `/setup` command to complete the setup."
+                #     ),
+                #     field_meta={
+                #         "terminal-auth": {
+                #             "command": command,
+                #             "args": args,
+                #             "label": "Kimi Code CLI Setup",
+                #         }
+                #     },
+                # ),
             ],
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
@@ -250,6 +265,7 @@ class ACPServer:
             new_model,
             session_id=acp_session.id,
             thinking=model_id_conv.thinking,
+            oauth=cli_instance.soul.runtime.oauth,
         )
         cli_instance.soul.runtime.llm = new_llm
 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from kimi_cli.config import Config
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
@@ -40,19 +41,22 @@ class SearchWeb(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "search.md", {})
     params: type[Params] = Params
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, runtime: Runtime):
         super().__init__()
         if config.services.moonshot_search is None:
             raise SkipThisTool()
+        self._runtime = runtime
         self._base_url = config.services.moonshot_search.base_url
-        self._api_key = config.services.moonshot_search.api_key.get_secret_value()
+        self._api_key = config.services.moonshot_search.api_key
+        self._oauth_ref = config.services.moonshot_search.oauth
         self._custom_headers = config.services.moonshot_search.custom_headers or {}
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder(max_line_length=None)
 
-        if not self._base_url or not self._api_key:
+        api_key = self._runtime.oauth.resolve_api_key(self._api_key, self._oauth_ref)
+        if not self._base_url or not api_key:
             return builder.error(
                 "Search service is not configured. You may want to try other methods to search.",
                 brief="Search service not configured",
@@ -67,8 +71,9 @@ class SearchWeb(CallableTool2[Params]):
                 self._base_url,
                 headers={
                     "User-Agent": USER_AGENT,
-                    "Authorization": f"Bearer {self._api_key}",
+                    "Authorization": f"Bearer {api_key}",
                     "X-Msh-Tool-Call-Id": tool_call.id,
+                    **self._runtime.oauth.common_headers(),
                     **self._custom_headers,
                 },
                 json={

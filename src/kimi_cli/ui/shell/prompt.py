@@ -47,6 +47,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
 from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
@@ -508,12 +509,11 @@ def _guess_image_mime(path: Path) -> str:
     return "image/png"
 
 
-def _build_image_part(image_bytes: bytes, image_id: str, mime_type: str) -> ImageURLPart:
+def _build_image_part(image_bytes: bytes, mime_type: str) -> ImageURLPart:
     image_base64 = base64.b64encode(image_bytes).decode("ascii")
     return ImageURLPart(
         image_url=ImageURLPart.ImageURL(
             url=f"data:{mime_type};base64,{image_base64}",
-            id=image_id,
         )
     )
 
@@ -607,16 +607,17 @@ class AttachmentCache:
             )
             return None
 
-    def load_content_part(
+    def load_content_parts(
         self, kind: CachedAttachmentKind, attachment_id: str
-    ) -> ContentPart | None:
+    ) -> list[ContentPart] | None:
         if kind == "image":
             payload = self.load_bytes(kind, attachment_id)
             if payload is None:
                 return None
             path, image_bytes = payload
             mime_type = _guess_image_mime(path)
-            return _build_image_part(image_bytes, str(path), mime_type)
+            part = _build_image_part(image_bytes, mime_type)
+            return wrap_media_part(part, tag="image", attrs={"path": str(path)})
         return None
 
 
@@ -841,9 +842,9 @@ class CustomPromptSession:
             attachment_kind = _parse_attachment_kind(match.group("type"))
             part = None
             if attachment_kind is not None:
-                part = self._attachment_cache.load_content_part(attachment_kind, attachment_id)
+                part = self._attachment_cache.load_content_parts(attachment_kind, attachment_id)
             if part is not None:
-                content.append(part)
+                content.extend(part)
             else:
                 logger.warning(
                     "Attachment placeholder found but no matching attachment part: {placeholder}",

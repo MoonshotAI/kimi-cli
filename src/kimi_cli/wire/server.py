@@ -11,6 +11,7 @@ from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolResult
 from kosong.utils.typing import JsonType
 
+from kimi_cli.constant import USER_AGENT
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset, WireExternalTool
@@ -21,6 +22,7 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, Request, ToolCallRequest
 
 from .jsonrpc import (
+    ClientInfo,
     ErrorCodes,
     JSONRPCCancelMessage,
     JSONRPCErrorObject,
@@ -351,10 +353,34 @@ class WireServer:
                 },
             )
 
+        self._apply_wire_client_info(msg.params.client)
+
         return JSONRPCSuccessResponse(
             id=msg.id,
             result=result,
         )
+
+    def _apply_wire_client_info(self, client: ClientInfo | None) -> None:
+        if not isinstance(self._soul, KimiSoul):
+            return
+        llm = self._soul.runtime.llm
+        if llm is None:
+            return
+
+        ua_suffix = ""
+        if client is not None:
+            ua_suffix = client.name
+            if client.version:
+                ua_suffix += f" {client.version}"
+            ua_suffix = f" ({ua_suffix.strip()})"
+
+        from kosong.chat_provider.kimi import Kimi
+
+        if isinstance(llm.chat_provider, Kimi):
+            kimi_client = llm.chat_provider.client
+            headers = dict(kimi_client._custom_headers)  # pyright: ignore[reportPrivateUsage]
+            headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
+            kimi_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]
 
     async def _handle_prompt(
         self, msg: JSONRPCPromptMessage

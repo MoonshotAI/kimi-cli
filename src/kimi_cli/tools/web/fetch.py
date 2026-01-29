@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.config import Config
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
@@ -23,8 +24,9 @@ class FetchURL(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "fetch.md", {})
     params: type[Params] = Params
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, runtime: Runtime):
         super().__init__()
+        self._runtime = runtime
         self._service_config = config.services.moonshot_fetch
 
     @override
@@ -112,11 +114,20 @@ class FetchURL(CallableTool2[Params]):
         assert tool_call is not None, "Tool call is expected to be set"
 
         builder = ToolResultBuilder(max_line_length=None)
+        api_key = self._runtime.oauth.resolve_api_key(
+            self._service_config.api_key, self._service_config.oauth
+        )
+        if not api_key:
+            return builder.error(
+                "Fetch service is not configured. You may want to try other methods to fetch.",
+                brief="Fetch service not configured",
+            )
         headers = {
             "User-Agent": USER_AGENT,
-            "Authorization": f"Bearer {self._service_config.api_key.get_secret_value()}",
+            "Authorization": f"Bearer {api_key}",
             "Accept": "text/markdown",
             "X-Msh-Tool-Call-Id": tool_call.id,
+            **self._runtime.oauth.common_headers(),
             **(self._service_config.custom_headers or {}),
         }
 

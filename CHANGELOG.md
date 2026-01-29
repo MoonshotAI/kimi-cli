@@ -11,6 +11,27 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.3 (2026-01-28)
+
+- Auth: Fix authentication issue during agent turns
+- Tool: Wrap media content with descriptive tags in `ReadMediaFile` for better path traceability
+
+## 1.2 (2026-01-27)
+
+- UI: Show description for `kimi-for-coding` model
+
+## 1.1 (2026-01-27)
+
+- LLM: Fix `kimi-for-coding` model's capabilities
+
+## 1.0 (2026-01-27)
+
+- Shell: Add `/login` and `/logout` slash commands for login and logout
+- CLI: Add `kimi login` and `kimi logout` subcommands
+- Core: Fix subagent approval request handling
+
+## 0.88 (2026-01-26)
+
 - MCP: Remove `Mcp-Session-Id` header when connecting to MCP servers to fix compatibility
 
 ## 0.87 (2026-01-25)

@@ -413,11 +413,24 @@ def summarize_messages(
     return summary
 
 
+def _normalize_server_version(value: Any) -> Any:
+    """Normalize the server version in initialize response to '<VERSION>'."""
+    if isinstance(value, dict):
+        value = {k: _normalize_server_version(v) for k, v in value.items()}
+        if value.get("name") == "Kimi Code CLI" and "version" in value:
+            value = {**value, "version": "<VERSION>"}
+    elif isinstance(value, list):
+        value = [_normalize_server_version(v) for v in value]
+    return value
+
+
 def normalize_response(
     msg: dict[str, Any], *, replacements: Mapping[str, str] | None = None
 ) -> dict[str, Any]:
     if "result" in msg:
-        return {"result": normalize_value(msg["result"], replacements=replacements)}
+        result = normalize_value(msg["result"], replacements=replacements)
+        result = _normalize_server_version(result)
+        return {"result": result}
     if "error" in msg:
         return {"error": normalize_value(msg["error"], replacements=replacements)}
     return normalize_value(msg, replacements=replacements)

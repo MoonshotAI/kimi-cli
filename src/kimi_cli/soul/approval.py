@@ -24,19 +24,28 @@ class Request:
 type Response = Literal["approve", "approve_for_session", "reject"]
 
 
-class Approval:
+class ApprovalState:
     def __init__(self, yolo: bool = False):
-        self._request_queue = Queue[Request]()
-        self._requests: dict[str, tuple[Request, asyncio.Future[bool]]] = {}
-        self._yolo = yolo
-        self._auto_approve_actions: set[str] = set()  # TODO: persist across sessions
+        self.yolo = yolo
+        self.auto_approve_actions: set[str] = set()  # TODO: persist across sessions
         """Set of action names that should automatically be approved."""
 
+
+class Approval:
+    def __init__(self, yolo: bool = False, *, state: ApprovalState | None = None):
+        self._request_queue = Queue[Request]()
+        self._requests: dict[str, tuple[Request, asyncio.Future[bool]]] = {}
+        self._state = state or ApprovalState(yolo=yolo)
+
+    def share(self) -> Approval:
+        """Create a new approval queue that shares state (yolo + auto-approve)."""
+        return Approval(state=self._state)
+
     def set_yolo(self, yolo: bool) -> None:
-        self._yolo = yolo
+        self._state.yolo = yolo
 
     def is_yolo(self) -> bool:
-        return self._yolo
+        return self._state.yolo
 
     async def request(
         self,
@@ -71,10 +80,10 @@ class Approval:
             action=action,
             description=description,
         )
-        if self._yolo:
+        if self._state.yolo:
             return True
 
-        if action in self._auto_approve_actions:
+        if action in self._state.auto_approve_actions:
             return True
 
         request = Request(
@@ -96,7 +105,7 @@ class Approval:
         """
         while True:
             request = await self._request_queue.get()
-            if request.action in self._auto_approve_actions:
+            if request.action in self._state.auto_approve_actions:
                 # the action is not auto-approved when the request was created, but now it should be
                 logger.debug(
                     "Auto-approving previously requested action: {action}", action=request.action
@@ -131,7 +140,7 @@ class Approval:
             case "approve":
                 future.set_result(True)
             case "approve_for_session":
-                self._auto_approve_actions.add(request.action)
+                self._state.auto_approve_actions.add(request.action)
                 future.set_result(True)
             case "reject":
                 future.set_result(False)

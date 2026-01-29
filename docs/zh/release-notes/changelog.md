@@ -4,6 +4,27 @@
 
 ## 未发布
 
+## 1.3 (2026-01-28)
+
+- Auth：修复 Agent 轮次期间的认证问题
+- Tool：为 `ReadMediaFile` 中的媒体内容添加描述性标签，提高路径可追溯性
+
+## 1.2 (2026-01-27)
+
+- UI: 显示 `kimi-for-coding` 模型的说明
+
+## 1.1 (2026-01-27)
+
+- LLM: 修复 `kimi-for-coding` 模型的能力
+
+## 1.0 (2026-01-27)
+
+- Shell：添加 `/login` 和 `/logout` 斜杠命令，用于登录和登出
+- CLI：添加 `kimi login` 和 `kimi logout` 子命令
+- Core：修复子 Agent 审批请求处理问题
+
+## 0.88 (2026-01-26)
+
 - MCP：移除连接 MCP 服务器时的 `Mcp-Session-Id` header 以修复兼容性问题
 
 ## 0.87 (2026-01-25)

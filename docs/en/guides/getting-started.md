@@ -12,8 +12,8 @@ Kimi Code CLI is suited for:
 
 Kimi Code CLI provides a shell-like interactive experience in the terminal. You can describe your needs in natural language or switch to shell mode at any time to execute commands directly. Beyond terminal usage, Kimi Code CLI also supports integration with [IDEs](./ides.md) and other local agent clients via the [Agent Client Protocol].
 
-::: warning Note
-Kimi Code CLI is currently in technical preview. Features and APIs may change. If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
+::: info Tip
+If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
 :::
 
 [Agent Client Protocol]: https://agentclientprotocol.com/
@@ -24,12 +24,12 @@ Run the installation script to complete the installation. The script will first 
 
 ```sh
 # Linux / macOS
-curl -LsSf https://cdn.kimi.com/binaries/kimi-cli/install.sh | bash
+curl -LsSf https://code.kimi.com/install.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-Invoke-RestMethod https://cdn.kimi.com/binaries/kimi-cli/install.ps1 | Invoke-Expression
+Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
 ```
 
 Verify the installation:
@@ -75,7 +75,15 @@ cd your-project
 kimi
 ```
 
-On first launch, you need to configure the API platform and model. Enter the `/setup` command to start the configuration wizard:
+On first launch, you need to configure your API source. The recommended approach is to use the `/login` command to log in to your Kimi account, which automatically configures available models:
+
+```
+/login
+```
+
+This will automatically open a browser. Complete the Kimi account authorization and you're ready to go. After successful login, Kimi Code CLI will automatically reload the configuration.
+
+If you prefer using an API key instead, enter the `/setup` command to start the configuration wizard:
 
 1. Select an API platform (e.g., Kimi Code, Moonshot AI Open Platform)
 2. Enter your API key

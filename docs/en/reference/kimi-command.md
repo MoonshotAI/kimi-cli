@@ -144,7 +144,25 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 
 | Subcommand | Description |
 |------------|-------------|
+| [`kimi login`](#kimi-login) | Log in to your Kimi account |
+| [`kimi logout`](#kimi-logout) | Log out from your Kimi account |
 | [`kimi info`](./kimi-info.md) | Display version and protocol information |
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
 | [`kimi term`](./kimi-term.md) | Launch the Toad terminal UI |
+
+### `kimi login`
+
+Log in to your Kimi account. This automatically opens a browser; complete account authorization and available models will be automatically configured.
+
+```sh
+kimi login
+```
+
+### `kimi logout`
+
+Log out from your Kimi account. This clears stored OAuth credentials and removes related configuration from the config file.
+
+```sh
+kimi logout
+```

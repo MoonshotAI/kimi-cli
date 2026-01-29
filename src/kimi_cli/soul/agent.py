@@ -13,6 +13,7 @@ from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
+from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.llm import LLM
@@ -63,6 +64,7 @@ class Runtime:
     """Agent runtime."""
 
     config: Config
+    oauth: OAuthManager
     llm: LLM | None  # we do not freeze the `Runtime` dataclass because LLM can be changed
     session: Session
     builtin_args: BuiltinSystemPromptArgs
@@ -75,6 +77,7 @@ class Runtime:
     @staticmethod
     async def create(
         config: Config,
+        oauth: OAuthManager,
         llm: LLM | None,
         session: Session,
         yolo: bool,
@@ -102,6 +105,7 @@ class Runtime:
 
         return Runtime(
             config=config,
+            oauth=oauth,
             llm=llm,
             session=session,
             builtin_args=BuiltinSystemPromptArgs(
@@ -122,11 +126,12 @@ class Runtime:
         """Clone runtime for fixed subagent."""
         return Runtime(
             config=self.config,
+            oauth=self.oauth,
             llm=self.llm,
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
+            approval=self.approval.share(),
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
             skills=self.skills,
@@ -136,11 +141,12 @@ class Runtime:
         """Clone runtime for dynamic subagent."""
         return Runtime(
             config=self.config,
+            oauth=self.oauth,
             llm=self.llm,
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval,
+            approval=self.approval.share(),
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
             skills=self.skills,
