@@ -15,10 +15,11 @@ import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import type { Session } from "@/lib/api/models";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
-import { Loader2Icon, SquareIcon } from "lucide-react";
+import { Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { GlobalConfigControls } from "@/features/settings/global-config-controls";
 import {
@@ -28,6 +29,7 @@ import {
   memo,
   useCallback,
   useRef,
+  useState,
 } from "react";
 import type { SessionFileEntry } from "@/hooks/useSessions";
 
@@ -60,6 +62,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const {
     isOpen: isMentionOpen,
@@ -113,114 +116,117 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
     [],
   );
 
+  const handleToggleExpand = useCallback(() => {
+    setIsExpanded((prev) => !prev);
+  }, []);
+
   return (
     <PromptInput
-      accept="*"
-      className="w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border"
-      multiple
-      onSubmit={onSubmit}
-      onError={handleFileError}
-    >
-      <PromptInputBody className="w-full">
-        <PromptInputAttachments>
-          {(file) => <PromptInputAttachment data={file} />}
-        </PromptInputAttachments>
-        {isUploading ? (
-          <Badge
-            className="mb-2 bg-secondary/70 text-muted-foreground"
-            variant="secondary"
+        accept="*"
+        className="w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border"
+        multiple
+        onSubmit={onSubmit}
+        onError={handleFileError}
+      >
+        <PromptInputBody className="w-full relative">
+          {/* Expand/Collapse button - positioned relative to entire input body */}
+          <button
+            type="button"
+            onClick={handleToggleExpand}
+            disabled={!canSendMessage || !currentSession}
+            className="absolute top-2 right-2 z-10 p-1 cursor-pointer rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            aria-label={isExpanded ? "Collapse input" : "Expand input"}
           >
-            <Loader2Icon className="size-4 animate-spin text-primary" />
-            <span>Uploading files…</span>
-          </Badge>
-        ) : null}
-        <div className="relative w-full flex items-start">
-          <div className="flex-1 relative">
-            <PromptInputTextarea
-              ref={textareaRef}
-              placeholder={
-                !currentSession
-                  ? "Create a session to start..."
-                  : isAwaitingIdle
-                    ? "Connecting to environment..."
-                    : ""
-              }
-              aria-busy={isUploading}
-              disabled={!canSendMessage || isUploading || !currentSession}
-              onChange={handleTextareaChange}
-              onSelect={handleTextareaSelection}
-              onKeyUp={handleTextareaSelection}
-              onClick={handleTextareaSelection}
-              onBlur={handleTextareaBlur}
-              onKeyDown={handleMentionKeyDown}
-            />
-            <FileMentionMenu
-              open={isMentionOpen && canSendMessage}
-              query={mentionQuery}
-              sections={mentionSections}
-              flatOptions={mentionOptions}
-              activeIndex={mentionActiveIndex}
-              onSelect={selectMentionOption}
-              onHover={setMentionActiveIndex}
-              workspaceStatus={mentionWorkspaceStatus}
-              workspaceError={mentionWorkspaceError}
-              onRetryWorkspace={retryMentionWorkspace}
-              isWorkspaceAvailable={Boolean(
-                currentSession && onListSessionDirectory,
-              )}
-            />
-          </div>
-        </div>
-      </PromptInputBody>
-      <PromptInputFooter className="w-full justify-between py-1 border-none bg-transparent shadow-none">
-        <PromptInputTools>
-          <GlobalConfigControls />
-          {/* <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="Workdir info"
-                tabIndex={0}
-                disabled
-                className="inline-flex cursor-default items-center justify-center rounded-md p-2 text-muted-foreground opacity-70"
-              >
-                <EnvironmentIcon className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              className="max-w-xs wrap-break-word text-xs leading-snug"
+            {isExpanded ? (
+              <Minimize2Icon className="size-4" />
+            ) : (
+              <Maximize2Icon className="size-4" />
+            )}
+          </button>
+          <PromptInputAttachments>
+            {(file) => <PromptInputAttachment data={file} />}
+          </PromptInputAttachments>
+          {isUploading ? (
+            <Badge
+              className="mb-2 bg-secondary/70 text-muted-foreground"
+              variant="secondary"
             >
-              <div>Workdir is managed by kimi-cli for this session.</div>
-            </TooltipContent>
-          </Tooltip> */}
-        </PromptInputTools>
-        {isStreaming ? (
-          <PromptInputButton
-            aria-label="Stop generation"
-            disabled={!onCancel}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onCancel?.();
-            }}
-            size="icon-sm"
-            variant="default"
-          >
-            <SquareIcon className="size-4" />
-          </PromptInputButton>
-        ) : (
-          <PromptInputSubmit
-            status={isUploading ? "submitted" : status}
-            disabled={
-              !canSendMessage ||
-              isAwaitingIdle ||
-              isUploading ||
-              !currentSession
-            }
-          />
-        )}
-      </PromptInputFooter>
-    </PromptInput>
+              <Loader2Icon className="size-4 animate-spin text-primary" />
+              <span>Uploading files…</span>
+            </Badge>
+          ) : null}
+          <div className="relative w-full flex items-start">
+            <div className="flex-1 relative">
+              <PromptInputTextarea
+                ref={textareaRef}
+                className={cn(
+                  "transition-all duration-200 pr-8",
+                  isExpanded ? "min-h-[300px] max-h-[60vh]" : "min-h-16 max-h-48",
+                )}
+                placeholder={
+                  !currentSession
+                    ? "Create a session to start..."
+                    : isAwaitingIdle
+                      ? "Connecting to environment..."
+                      : ""
+                }
+                aria-busy={isUploading}
+                disabled={!canSendMessage || isUploading || !currentSession}
+                onChange={handleTextareaChange}
+                onSelect={handleTextareaSelection}
+                onKeyUp={handleTextareaSelection}
+                onClick={handleTextareaSelection}
+                onBlur={handleTextareaBlur}
+                onKeyDown={handleMentionKeyDown}
+              />
+              <FileMentionMenu
+                open={isMentionOpen && canSendMessage}
+                query={mentionQuery}
+                sections={mentionSections}
+                flatOptions={mentionOptions}
+                activeIndex={mentionActiveIndex}
+                onSelect={selectMentionOption}
+                onHover={setMentionActiveIndex}
+                workspaceStatus={mentionWorkspaceStatus}
+                workspaceError={mentionWorkspaceError}
+                onRetryWorkspace={retryMentionWorkspace}
+                isWorkspaceAvailable={Boolean(
+                  currentSession && onListSessionDirectory,
+                )}
+              />
+            </div>
+          </div>
+        </PromptInputBody>
+        <PromptInputFooter className="w-full justify-between py-1 border-none bg-transparent shadow-none">
+          <PromptInputTools>
+            <GlobalConfigControls />
+          </PromptInputTools>
+          {isStreaming ? (
+            <PromptInputButton
+              aria-label="Stop generation"
+              disabled={!onCancel}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onCancel?.();
+              }}
+              size="icon-sm"
+              variant="default"
+            >
+              <SquareIcon className="size-4" />
+            </PromptInputButton>
+          ) : (
+            <PromptInputSubmit
+              status={isUploading ? "submitted" : status}
+              disabled={
+                !canSendMessage ||
+                isAwaitingIdle ||
+                isUploading ||
+                !currentSession
+              }
+            />
+          )}
+        </PromptInputFooter>
+      </PromptInput>
   );
 });
