@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 
 export type Theme = "light" | "dark";
 
-const THEME_STORAGE_KEY = "kiwi-theme";
+const THEME_STORAGE_KEY = "kimi-theme";
 const THEME_SWITCHING_ATTR = "data-theme-switching";
 const THEME_SWITCH_DURATION_MS = 260;
 
