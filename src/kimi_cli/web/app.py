@@ -135,9 +135,42 @@ def run_web_server(
     open_browser: bool = True,
 ) -> None:
     """Run the web server."""
+    import textwrap
     import threading
 
     import uvicorn
+
+    def print_banner(lines: list[str]) -> None:
+        wrapped: list[str] = []
+        for line in lines:
+            if line == "<hr>":
+                wrapped.append(line)
+                continue
+            if not line:
+                wrapped.append("")
+                continue
+            if line.startswith("<center>"):
+                wrapped.append(line)
+                continue
+            wrapped.extend(textwrap.wrap(line, width=78))
+        content_lines = [
+            line.removeprefix("<center>") if line.startswith("<center>") else line
+            for line in wrapped
+            if line != "<hr>"
+        ]
+        width = max(60, *(len(line) for line in content_lines))
+        top = "+" + "=" * (width + 2) + "+"
+        print(top)
+        for line in wrapped:
+            if line == "<hr>":
+                print("|" + "-" * (width + 2) + "|")
+                continue
+            if line.startswith("<center>"):
+                content = line.removeprefix("<center>")
+                print(f"| {content.center(width)} |")
+                continue
+            print(f"| {line.ljust(width)} |")
+        print(top)
 
     # Find available port
     actual_port = find_available_port(host, port)
@@ -158,8 +191,27 @@ def run_web_server(
         thread = threading.Thread(target=open_browser_after_delay, daemon=True)
         thread.start()
 
-    print(f"Starting Kimi Code CLI web interface at {url}")
-    print(f"API docs available at {url}/docs")
+    print_banner(
+        [
+            "<center>█▄▀ █ █▀▄▀█ █   █▀▀ █▀█ █▀▄ █▀▀",
+            "<center>█ █ █ █ ▀ █ █   █▄▄ █▄█ █▄▀ ██▄",
+            "",
+            "<center>~ WEB (Technical Preview) ~",
+            "",
+            "<hr>",
+            "",
+            f"<center>{url}",
+            "",
+            "<center>Open the URL above in your browser",
+            "<center>Please keep this process running",
+            "",
+            "<hr>",
+            "",
+            '<center>"Why use a CLI if we already invented GUIs?"',
+            "",
+        ]
+    )
+    # print(f"API docs available at {url}/docs")
 
     uvicorn.run(
         "kimi_cli.web.app:create_app",
