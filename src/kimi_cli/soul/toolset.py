@@ -28,7 +28,7 @@ from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
 from loguru import logger
 
-from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.exception import InvalidToolError
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
@@ -206,9 +206,7 @@ class KimiToolset:
         """
         Load MCP tools from specified MCP configs.
 
-        Raises:
-            MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
-                connected.
+        Failed connections are logged as warnings and do not prevent CLI startup.
         """
         import fastmcp
         from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
@@ -298,8 +296,11 @@ class KimiToolset:
                     continue
 
             if failed_servers:
+                logger.warning(
+                    "Some MCP servers failed to connect: {failed_servers}",
+                    failed_servers=list(failed_servers.keys()),
+                )
                 _toast_mcp("mcp connection failed")
-                raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
             if unauthorized_servers:
                 _toast_mcp("mcp authorization needed")
             else:
