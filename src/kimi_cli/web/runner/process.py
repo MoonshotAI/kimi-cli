@@ -190,11 +190,18 @@ class SessionProcess:
             # 16MB buffer for large messages (e.g., base64-encoded images)
             STREAM_LIMIT = 16 * 1024 * 1024
 
+            if getattr(sys, "frozen", False):
+                worker_cmd = [sys.executable, "__web-worker", str(self.session_id)]
+            else:
+                worker_cmd = [
+                    sys.executable,
+                    "-m",
+                    "kimi_cli.web.runner.worker",
+                    str(self.session_id),
+                ]
+
             self._process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
-                "kimi_cli.web.runner.worker",
-                str(self.session_id),
+                *worker_cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
