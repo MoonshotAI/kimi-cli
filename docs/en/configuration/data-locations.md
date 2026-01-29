@@ -63,13 +63,13 @@ Session data is grouped by working directory and stored under `~/.kimi/sessions/
 
 ### `context.jsonl`
 
-Context history file, stores the session's message history in JSONL format. Each line is a message (user input, model response, tool calls, etc.).
+Context history file, stores the session's message history in JSON Lines (JSONL) format. Each line is a message (user input, model response, tool calls, etc.).
 
 Kimi Code CLI uses this file to restore session context when using `--continue` or `--session`.
 
 ### `wire.jsonl`
 
-Wire message log file, stores Wire events during the session in JSONL format. Used for session replay and extracting session titles.
+Wire message log file, stores Wire events during the session in JSON Lines (JSONL) format. Used for session replay and extracting session titles.
 
 ## Input history
 
