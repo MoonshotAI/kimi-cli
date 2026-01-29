@@ -481,7 +481,7 @@ class SessionProcess:
                     user_input.append(part)
                 # Special marker for file-only uploads
                 if isinstance(message.params.user_input, str):
-                    if message.params.user_input != "KIWI_FILE_UPLOAD_WITHOUT_MESSAGE":
+                    if message.params.user_input != "KIMI_FILE_UPLOAD_WITHOUT_MESSAGE":
                         user_input.append(TextPart(text=message.params.user_input))
                 else:
                     user_input += message.params.user_input

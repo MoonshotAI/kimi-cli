@@ -235,7 +235,7 @@ export function ChatWorkspaceContainer({
           const messageText =
             message.text.trim() ||
             (message.files.length > 0
-              ? "KIWI_FILE_UPLOAD_WITHOUT_MESSAGE"
+              ? "KIMI_FILE_UPLOAD_WITHOUT_MESSAGE"
               : "");
           setPendingMessage({
             text: messageText,
@@ -262,7 +262,7 @@ export function ChatWorkspaceContainer({
 
       const messageText =
         message.text.trim() ||
-        (message.files.length > 0 ? "KIWI_FILE_UPLOAD_WITHOUT_MESSAGE" : "");
+        (message.files.length > 0 ? "KIMI_FILE_UPLOAD_WITHOUT_MESSAGE" : "");
 
       await sendMessage(messageText);
     },

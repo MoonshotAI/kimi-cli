@@ -75,7 +75,7 @@
  *    - `useLayoutEffect([sessionId])` teardown before paint
  *    - identity guard `if (wsRef.current !== ws) return;` in every callback
  *
- * 2) Browser tabs (two Kiwi pages open in Chrome, etc.):
+ * 2) Browser tabs (two Kimi pages open in Chrome, etc.):
  *
  *    Each browser tab is its own JS runtime, so it has its own hook instance and
  *    its own `wsRef/messages/state`. They are naturally isolated on the client.

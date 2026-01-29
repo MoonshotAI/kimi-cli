@@ -229,10 +229,10 @@ export function PromptInputProvider({
         setInput: setTextInput,
         clear: clearInput,
       },
-      attachments,
+      attachments: attachmentsContext,
       __registerFileInput,
     }),
-    [textInput, clearInput, attachments, __registerFileInput],
+    [textInput, clearInput, attachmentsContext, __registerFileInput],
   );
 
   return (

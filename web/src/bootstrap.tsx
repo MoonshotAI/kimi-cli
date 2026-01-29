@@ -16,7 +16,7 @@ const isDynamicImportFailure = (error: Error): boolean =>
     error.message.includes(pattern),
   );
 
-const DYNAMIC_IMPORT_RELOAD_KEY = "kiwi:dynamic-import-reload";
+const DYNAMIC_IMPORT_RELOAD_KEY = "kimi:dynamic-import-reload";
 
 const shouldReloadAfterDynamicImportFailure = (): boolean =>
   sessionStorage.getItem(DYNAMIC_IMPORT_RELOAD_KEY) !== "1";
