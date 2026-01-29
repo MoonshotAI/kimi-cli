@@ -21,7 +21,7 @@ import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
 import { Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { GlobalConfigControls } from "@/features/settings/global-config-controls";
+import { GlobalConfigControls } from "@/features/chat/global-config-controls";
 import {
   type ChangeEvent,
   type ReactElement,
