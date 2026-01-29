@@ -268,13 +268,20 @@ function App() {
                     : "opacity-0 -translate-x-2 pointer-events-none select-none",
                 )}
               >
-                <img
-                  src="/logo.png"
-                  alt="Kimi"
-                  width={24}
-                  height={24}
-                  className="size-6"
-                />
+                <a
+                  href="https://www.kimi.com/code"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:opacity-80 transition-opacity"
+                >
+                  <img
+                    src="/logo.png"
+                    alt="Kimi"
+                    width={24}
+                    height={24}
+                    className="size-6"
+                  />
+                </a>
                 <button
                   type="button"
                   aria-label="Expand sidebar"
