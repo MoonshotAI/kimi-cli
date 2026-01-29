@@ -152,7 +152,7 @@ export function PromptInputProvider({
   const clearInput = useCallback(() => setTextInput(""), []);
 
   // ----- attachments state (global when wrapped)
-  const [attachements, setAttachements] = useState<
+  const [attachments, setAttachments] = useState<
     (FileUIPart & { id: string })[]
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -164,7 +164,7 @@ export function PromptInputProvider({
       return;
     }
 
-    setAttachements((prev) =>
+    setAttachments((prev) =>
       prev.concat(
         incoming.map((file) => ({
           id: nanoid(),
@@ -178,7 +178,7 @@ export function PromptInputProvider({
   }, []);
 
   const remove = useCallback((id: string) => {
-    setAttachements((prev) => {
+    setAttachments((prev) => {
       const found = prev.find((f) => f.id === id);
       if (found?.url) {
         URL.revokeObjectURL(found.url);
@@ -188,7 +188,7 @@ export function PromptInputProvider({
   }, []);
 
   const clear = useCallback(() => {
-    setAttachements((prev) => {
+    setAttachments((prev) => {
       for (const f of prev) {
         if (f.url) {
           URL.revokeObjectURL(f.url);
@@ -202,16 +202,16 @@ export function PromptInputProvider({
     openRef.current?.();
   }, []);
 
-  const attachments = useMemo<AttachmentsContext>(
+  const attachmentsContext = useMemo<AttachmentsContext>(
     () => ({
-      files: attachements,
+      files: attachments,
       add,
       remove,
       clear,
       openFileDialog,
       fileInputRef,
     }),
-    [attachements, add, remove, clear, openFileDialog],
+    [attachments, add, remove, clear, openFileDialog],
   );
 
   const __registerFileInput = useCallback(
@@ -237,7 +237,7 @@ export function PromptInputProvider({
 
   return (
     <PromptInputController.Provider value={controller}>
-      <ProviderAttachmentsContext.Provider value={attachments}>
+      <ProviderAttachmentsContext.Provider value={attachmentsContext}>
         {children}
       </ProviderAttachmentsContext.Provider>
     </PromptInputController.Provider>

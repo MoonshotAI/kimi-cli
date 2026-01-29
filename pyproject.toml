@@ -118,3 +118,5 @@ extend-exclude = ["kimi.spec", "pyinstaller.py"]
 
 [tool.typos.default.extend-words]
 datas = "datas"
+Seeked = "Seeked"
+seeked = "seeked"
