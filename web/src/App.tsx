@@ -4,6 +4,11 @@ import { PromptInputProvider } from "@ai-elements";
 import { toast } from "sonner";
 import { PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { cn } from "./lib/utils";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "./components/ui/resizable";
 import { ChatWorkspaceContainer } from "./features/chat/chat-workspace-container";
 import { SessionsSidebar } from "./features/sessions/sessions";
 import { Toaster } from "./components/ui/sonner";
@@ -12,6 +17,7 @@ import { useSessions } from "./hooks/useSessions";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
 import { SettingsDialog } from "./features/settings/settings-dialog";
+import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
 
 /**
  * Get session ID from URL search params
@@ -34,7 +40,14 @@ function updateUrlWithSession(sessionId: string | null): void {
   window.history.replaceState({}, "", url.toString());
 }
 
+const SIDEBAR_COLLAPSED_SIZE = 48;
+const SIDEBAR_MIN_SIZE = 200;
+const SIDEBAR_DEFAULT_SIZE = 260;
+const SIDEBAR_ANIMATION_MS = 250;
+
 function App() {
+  const sidebarElementRef = useRef<HTMLDivElement | null>(null);
+  const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null);
   const sessionsHook = useSessions();
 
   const {
@@ -64,9 +77,49 @@ function App() {
 
   // Sidebar state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
   const handleCollapseSidebar = useCallback(() => {
-    setIsSidebarCollapsed(true);
+    setIsSidebarAnimating(true);
+    sidebarPanelRef.current?.collapse();
   }, []);
+  const handleExpandSidebar = useCallback(() => {
+    setIsSidebarAnimating(true);
+    sidebarPanelRef.current?.expand();
+  }, []);
+  const handleSidebarResize = useCallback((panelSize: PanelSize) => {
+    const collapsed = panelSize.inPixels <= SIDEBAR_COLLAPSED_SIZE + 1;
+    setIsSidebarCollapsed((prev) => (prev === collapsed ? prev : collapsed));
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarAnimating) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setIsSidebarAnimating(false);
+    }, SIDEBAR_ANIMATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [isSidebarAnimating]);
+
+  useEffect(() => {
+    const current = sidebarPanelRef.current;
+    if (!current) {
+      return;
+    }
+    setIsSidebarCollapsed(current.isCollapsed());
+  }, []);
+
+  useEffect(() => {
+    const element = sidebarElementRef.current;
+    if (!element) {
+      return;
+    }
+    if (isSidebarAnimating) {
+      element.style.transition = `flex-basis ${SIDEBAR_ANIMATION_MS}ms ease-in-out`;
+      return;
+    }
+    element.style.transition = "";
+  }, [isSidebarAnimating]);
 
   // Track if we've restored session from URL
   const hasRestoredFromUrlRef = useRef(false);
@@ -190,16 +243,22 @@ function App() {
         {/* Electron macOS titlebar - provides drag region and space for traffic lights */}
         {showElectronTitlebar && <div className="electron-titlebar" />}
         <div className="app-shell max-w-none">
-          <div
-            className={cn(
-              "grid min-h-0 flex-1 gap-2 -ml-2 sm:-ml-3 transition-[grid-template-columns] duration-200 ease-in-out",
-              isSidebarCollapsed
-                ? "grid-cols-[48px_minmax(0,1fr)]"
-                : "grid-cols-[260px_minmax(0,1fr)]",
-            )}
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="min-h-0 flex-1 -ml-2 sm:-ml-3"
           >
             {/* Sidebar */}
-            <div className="relative min-h-0 border-r pl-0.5 pr-2 overflow-hidden">
+            <ResizablePanel
+              id="sessions"
+              collapsible
+              collapsedSize={SIDEBAR_COLLAPSED_SIZE}
+              defaultSize={SIDEBAR_DEFAULT_SIZE}
+              minSize={SIDEBAR_MIN_SIZE}
+              elementRef={sidebarElementRef}
+              panelRef={sidebarPanelRef}
+              onResize={handleSidebarResize}
+              className={cn("relative min-h-0 border-r pl-0.5 pr-2 overflow-hidden")}
+            >
               {/* Collapsed sidebar - vertical strip with logo and expand button */}
               <div
                 className={cn(
@@ -220,7 +279,7 @@ function App() {
                   type="button"
                   aria-label="Expand sidebar"
                   className="mt-auto mb-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
-                  onClick={() => setIsSidebarCollapsed(false)}
+                  onClick={handleExpandSidebar}
                 >
                   <PanelLeftOpen className="size-4" />
                 </button>
@@ -260,10 +319,10 @@ function App() {
                   </button>
                 </div>
               </div>
-            </div>
+            </ResizablePanel>
 
             {/* Main Chat Area */}
-            <div className="relative flex min-h-0 justify-center">
+            <ResizablePanel id="chat" className="relative min-h-0 flex justify-center">
               <ChatWorkspaceContainer
                 selectedSessionId={selectedSessionId}
                 currentSession={currentSession}
@@ -276,8 +335,8 @@ function App() {
                 onGetSessionFileUrl={getSessionFileUrl}
                 onGetSessionFile={getSessionFile}
               />
-            </div>
-          </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       </div>
 
