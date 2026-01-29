@@ -302,6 +302,16 @@ class KimiCLI:
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )
+        welcome_info.append(
+            WelcomeInfoItem(
+                name="\nTip",
+                value=(
+                    "kimi web, a GUI version of Kimi Code, is now in technical preview. "
+                    "Run `kimi web` to try it!"
+                ),
+                level=WelcomeInfoItem.Level.INFO,
+            )
+        )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
             return await shell.run(command)
