@@ -40,6 +40,7 @@ from kimi_cli.constant import VERSION
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.string import sanitize_http_header_value
 
 if TYPE_CHECKING:
     from kimi_cli.soul.agent import Runtime
@@ -193,16 +194,17 @@ def get_device_id() -> str:
 
 
 def _common_headers() -> dict[str, str]:
-    device_name = platform.node() or socket.gethostname()
-    device_model = _device_model()
-    return {
+    device_name_raw = platform.node() or socket.gethostname()
+    device_model_raw = _device_model()
+    headers: dict[str, str] = {
         "X-Msh-Platform": "kimi_cli",
         "X-Msh-Version": VERSION,
-        "X-Msh-Device-Name": device_name,
-        "X-Msh-Device-Model": device_model,
-        "X-Msh-Os-Version": platform.version(),
+        "X-Msh-Device-Name": sanitize_http_header_value(device_name_raw, default="device"),
+        "X-Msh-Device-Model": sanitize_http_header_value(device_model_raw, default="unknown"),
+        "X-Msh-Os-Version": sanitize_http_header_value(platform.version(), default="unknown"),
         "X-Msh-Device-Id": get_device_id(),
     }
+    return headers
 
 
 def _credentials_dir() -> Path:
