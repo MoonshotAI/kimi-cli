@@ -301,7 +301,7 @@ class KimiToolset:
                     failed_servers=list(failed_servers.keys()),
                 )
                 _toast_mcp("mcp connection failed")
-            if unauthorized_servers:
+            elif unauthorized_servers:
                 _toast_mcp("mcp authorization needed")
             else:
                 _toast_mcp("mcp servers connected")
