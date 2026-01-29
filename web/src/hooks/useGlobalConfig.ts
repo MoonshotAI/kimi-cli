@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/apiClient";
-import { GLOBAL_CONFIG_CHANGED_EVENT } from "@/features/settings/events";
 import type {
   GlobalConfig,
   UpdateGlobalConfigRequest,
@@ -85,14 +84,6 @@ export function useGlobalConfig(): UseGlobalConfigReturn {
     }
     isInitializedRef.current = true;
     refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const handle = () => {
-      refresh();
-    };
-    window.addEventListener(GLOBAL_CONFIG_CHANGED_EVENT, handle);
-    return () => window.removeEventListener(GLOBAL_CONFIG_CHANGED_EVENT, handle);
   }, [refresh]);
 
   return {

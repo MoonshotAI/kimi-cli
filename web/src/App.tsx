@@ -16,7 +16,6 @@ import { formatRelativeTime, isElectronMac } from "./hooks/utils";
 import { useSessions } from "./hooks/useSessions";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
-import { SettingsDialog } from "./features/settings/settings-dialog";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
 
 /**
@@ -314,7 +313,6 @@ function App() {
                 <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
                   <div className="flex items-center gap-2">
                     <ThemeToggle />
-                    <SettingsDialog />
                   </div>
                   <button
                     type="button"
