@@ -11,6 +11,11 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Add new Web UI for browser-based interaction
+- CLI: Add `kimi web` subcommand to launch the Web UI server
+- Build: Add Web UI build process integrated into Makefile
+- Core: Add internal web worker command for session management
+
 ## 1.3 (2026-01-28)
 
 - Auth: Fix authentication issue during agent turns

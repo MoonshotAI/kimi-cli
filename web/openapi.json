@@ -1,0 +1,783 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Kimi Code CLI Web Interface", "version": "0.1.0" },
+  "paths": {
+    "/api/config/": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get global (kimi-cli) config snapshot",
+        "description": "Get global (kimi-cli) config snapshot.",
+        "operationId": "get_global_config_api_config__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalConfig" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["config"],
+        "summary": "Update global (kimi-cli) default model/thinking",
+        "description": "Update global (kimi-cli) default model/thinking.",
+        "operationId": "update_global_config_api_config__patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGlobalConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateGlobalConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config/toml": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get kimi-cli config.toml",
+        "description": "Get kimi-cli config.toml.",
+        "operationId": "get_config_toml_api_config_toml_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConfigToml" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update kimi-cli config.toml",
+        "description": "Update kimi-cli config.toml.",
+        "operationId": "update_config_toml_api_config_toml_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConfigTomlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateConfigTomlResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "List all sessions",
+        "description": "List all sessions.",
+        "operationId": "list_sessions_api_sessions__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/Session" },
+                  "type": "array",
+                  "title": "Response List Sessions Api Sessions  Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["sessions"],
+        "summary": "Create a new session",
+        "description": "Create a new session.",
+        "operationId": "create_session_api_sessions__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CreateSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Session" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "Get session",
+        "description": "Get a session by ID.",
+        "operationId": "get_session_api_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/Session" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Get Session Api Sessions  Session Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["sessions"],
+        "summary": "Delete a session",
+        "description": "Delete a session.",
+        "operationId": "delete_session_api_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/files": {
+      "post": {
+        "tags": ["sessions"],
+        "summary": "Upload file to session",
+        "description": "Upload a file to a session.",
+        "operationId": "upload_session_file_api_sessions__session_id__files_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_session_file_api_sessions__session_id__files_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSessionFileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/uploads/{path}": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "Get uploaded file from session uploads",
+        "description": "Get a file from a session's uploads directory.",
+        "operationId": "get_session_upload_file_api_sessions__session_id__uploads__path__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/files/{path}": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "Get file or list directory from session work_dir",
+        "description": "Get a file or list directory from session work directory.",
+        "operationId": "get_session_file_api_sessions__session_id__files__path__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Path" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-dirs/": {
+      "get": {
+        "tags": ["work-dirs"],
+        "summary": "List available work directories",
+        "description": "Get a list of available work directories from metadata.",
+        "operationId": "get_work_dirs_api_work_dirs__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Get Work Dirs Api Work Dirs  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-dirs/startup": {
+      "get": {
+        "tags": ["work-dirs"],
+        "summary": "Get the startup directory",
+        "description": "Get the directory where kimi web was started.",
+        "operationId": "get_startup_dir_api_work_dirs_startup_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "title": "Response Get Startup Dir Api Work Dirs Startup Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Health Probe",
+        "description": "Health check endpoint.",
+        "operationId": "health_probe_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Probe Healthz Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_session_file_api_sessions__session_id__files_post": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_upload_session_file_api_sessions__session_id__files_post"
+      },
+      "ConfigModel": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "model": { "type": "string", "title": "Model" },
+          "max_context_size": {
+            "type": "integer",
+            "title": "Max Context Size"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/ModelCapability" },
+                "type": "array",
+                "uniqueItems": true
+              },
+              { "type": "null" }
+            ],
+            "title": "Capabilities"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Model key in kimi-cli config (Config.models)"
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/ProviderType",
+            "description": "Provider type (LLMProvider.type)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "max_context_size",
+          "name",
+          "provider_type"
+        ],
+        "title": "ConfigModel",
+        "description": "Model configuration for frontend."
+      },
+      "ConfigToml": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "Raw TOML content"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Path to config file"
+          }
+        },
+        "type": "object",
+        "required": ["content", "path"],
+        "title": "ConfigToml",
+        "description": "Raw config.toml content."
+      },
+      "CreateSessionRequest": {
+        "properties": {
+          "work_dir": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Dir"
+          }
+        },
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Create session request."
+      },
+      "GlobalConfig": {
+        "properties": {
+          "default_model": {
+            "type": "string",
+            "title": "Default Model",
+            "description": "Current default model key"
+          },
+          "default_thinking": {
+            "type": "boolean",
+            "title": "Default Thinking",
+            "description": "Current default thinking mode"
+          },
+          "models": {
+            "items": { "$ref": "#/components/schemas/ConfigModel" },
+            "type": "array",
+            "title": "Models",
+            "description": "All configured models"
+          }
+        },
+        "type": "object",
+        "required": ["default_model", "default_thinking", "models"],
+        "title": "GlobalConfig",
+        "description": "Global configuration snapshot for frontend."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": { "$ref": "#/components/schemas/ValidationError" },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ModelCapability": {
+        "type": "string",
+        "enum": ["image_in", "video_in", "thinking", "always_thinking"]
+      },
+      "ProviderType": {
+        "type": "string",
+        "enum": [
+          "kimi",
+          "openai_legacy",
+          "openai_responses",
+          "anthropic",
+          "google_genai",
+          "gemini",
+          "vertexai",
+          "_echo",
+          "_scripted_echo",
+          "_chaos"
+        ]
+      },
+      "Session": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id",
+            "description": "Session unique ID"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Session title derived from kimi-cli history"
+          },
+          "last_updated": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Updated",
+            "description": "Last updated timestamp"
+          },
+          "is_running": {
+            "type": "boolean",
+            "title": "Is Running",
+            "description": "Whether the session is running",
+            "default": false
+          },
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SessionStatus" },
+              { "type": "null" }
+            ],
+            "description": "Session runtime status"
+          },
+          "work_dir": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Dir",
+            "description": "Working directory for the session"
+          },
+          "session_dir": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Dir",
+            "description": "Session directory path"
+          }
+        },
+        "type": "object",
+        "required": ["session_id", "title", "last_updated"],
+        "title": "Session",
+        "description": "Web UI session metadata."
+      },
+      "SessionStatus": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id",
+            "description": "Session unique ID"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["stopped", "idle", "busy", "restarting", "error"],
+            "title": "State",
+            "description": "Current session state"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq",
+            "description": "Monotonic sequence number"
+          },
+          "worker_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Worker Id",
+            "description": "Worker instance ID"
+          },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason",
+            "description": "Reason for the state transition"
+          },
+          "detail": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Detail",
+            "description": "Additional detail for debugging"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Timestamp for this state"
+          }
+        },
+        "type": "object",
+        "required": ["session_id", "state", "seq", "updated_at"],
+        "title": "SessionStatus",
+        "description": "Runtime status of a web session."
+      },
+      "UpdateConfigTomlRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "New TOML content"
+          }
+        },
+        "type": "object",
+        "required": ["content"],
+        "title": "UpdateConfigTomlRequest",
+        "description": "Request to update config.toml."
+      },
+      "UpdateConfigTomlResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the update was successful"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error",
+            "description": "Error message if failed"
+          }
+        },
+        "type": "object",
+        "required": ["success"],
+        "title": "UpdateConfigTomlResponse",
+        "description": "Response after updating config.toml."
+      },
+      "UpdateGlobalConfigRequest": {
+        "properties": {
+          "default_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Model",
+            "description": "New default model key"
+          },
+          "default_thinking": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Default Thinking",
+            "description": "New default thinking mode"
+          },
+          "restart_running_sessions": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Restart Running Sessions",
+            "description": "Whether to restart running sessions"
+          },
+          "force_restart_busy_sessions": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Force Restart Busy Sessions",
+            "description": "Whether to force restart busy sessions"
+          }
+        },
+        "type": "object",
+        "title": "UpdateGlobalConfigRequest",
+        "description": "Request to update global config."
+      },
+      "UpdateGlobalConfigResponse": {
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/GlobalConfig",
+            "description": "Updated config snapshot"
+          },
+          "restarted_session_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Restarted Session Ids",
+            "description": "IDs of restarted sessions"
+          },
+          "skipped_busy_session_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Skipped Busy Session Ids",
+            "description": "IDs of busy sessions that were skipped"
+          }
+        },
+        "type": "object",
+        "required": ["config"],
+        "title": "UpdateGlobalConfigResponse",
+        "description": "Response after updating global config."
+      },
+      "UploadSessionFileResponse": {
+        "properties": {
+          "path": { "type": "string", "title": "Path" },
+          "filename": { "type": "string", "title": "Filename" },
+          "size": { "type": "integer", "title": "Size" }
+        },
+        "type": "object",
+        "required": ["path", "filename", "size"],
+        "title": "UploadSessionFileResponse",
+        "description": "Upload file response."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": { "type": "string", "title": "Message" },
+          "type": { "type": "string", "title": "Error Type" }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

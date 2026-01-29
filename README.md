@@ -158,10 +158,13 @@ make test  # run tests
 make test-kimi-cli  # run Kimi Code CLI tests only
 make test-kosong  # run kosong tests only
 make test-pykaos  # run pykaos tests only
+make build-web  # build the web UI and sync it into the package (requires Node.js/npm)
 make build  # build python packages
 make build-bin  # build standalone binary
 make help  # show all make targets
 ```
+
+Note: `make build` and `make build-bin` automatically run `make build-web` to embed the web UI.
 
 ## Contributing
 

@@ -73,7 +73,7 @@ interface JSONRPCError {
 Legacy clients can skip this request and send `prompt` directly.
 :::
 
-- **Direction**: Client → Agent
+- **Direction**: client → agent
 - **Type**: Request (requires response)
 
 Optional handshake request for negotiating protocol version, submitting external tool definitions, and retrieving the slash command list.
@@ -233,7 +233,7 @@ If no turn is in progress:
 
 ### `event`
 
-- **Direction**: Agent → Client
+- **Direction**: agent → client
 - **Type**: Notification (no response needed)
 
 Events emitted by the agent during a turn. No `id` field, client doesn't need to respond.
@@ -254,7 +254,7 @@ interface EventParams {
 
 ### `request`
 
-- **Direction**: Agent → Client
+- **Direction**: agent → client
 - **Type**: Request (requires response)
 
 Requests from the agent to the client, used for approval confirmation or external tool calls. The client must respond before the agent can continue execution.

@@ -1,6 +1,6 @@
 # FAQ
 
-## Installation and Authentication
+## Installation and authentication
 
 ### Empty model list during `/setup`
 
@@ -21,7 +21,7 @@ Possible reasons for an invalid API key:
 
 If you're using the Kimi Code platform, you can check your current quota and membership status with the `/usage` command. If the quota is exhausted or membership expired, you need to renew or upgrade at [Kimi Code](https://kimi.com/coding).
 
-## Interaction Issues
+## Interaction issues
 
 ### `cd` command doesn't work in shell mode
 
@@ -42,7 +42,7 @@ Solutions:
 - **Switch to an image-capable model**: Use a model that supports the `image_in` capability.
 - **Check clipboard content**: Make sure the clipboard contains actual image data, not just a file path to an image.
 
-## ACP Issues
+## ACP issues
 
 ### IDE cannot connect to Kimi Code CLI
 
@@ -53,7 +53,7 @@ If your IDE (like Zed or JetBrains IDEs) cannot connect to Kimi Code CLI, check 
 - **Check uv path**: If installed via uv, ensure `~/.local/bin` is in PATH. You can use an absolute path like `/Users/yourname/.local/bin/kimi acp`.
 - **Check logs**: Examine error messages in `~/.kimi/logs/kimi.log`.
 
-## MCP Issues
+## MCP issues
 
 ### MCP server startup fails
 
@@ -92,7 +92,7 @@ kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CO
 kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY=your-key"
 ```
 
-## Print/Wire Mode Issues
+## Print/Wire mode issues
 
 ### Invalid JSONL input format
 
@@ -116,7 +116,7 @@ If there's no output in `--print` mode, it may be:
 - **Output is buffered**: Try using `--output-format stream-json` for streaming output.
 - **Configuration incomplete**: Ensure API key and model are configured via `/setup`.
 
-## Updates and Upgrades
+## Updates and upgrades
 
 ### macOS slow first run
 

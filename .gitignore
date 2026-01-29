@@ -30,3 +30,8 @@ result-*
 
 # macOS files
 .DS_Store
+
+
+node_modules/
+static/
+.memo/
