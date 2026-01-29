@@ -36,7 +36,6 @@ type ChatWorkspaceContainerProps = {
   sessionDescription?: string;
   onSessionStatus: (status: SessionStatus) => void;
   onStreamStatusChange?: (status: ChatStatus) => void;
-  createSession: (workDir?: string) => Promise<Session>;
   uploadSessionFile: (
     sessionId: string,
     file: File,
@@ -47,6 +46,7 @@ type ChatWorkspaceContainerProps = {
   ) => Promise<SessionFileEntry[]>;
   onGetSessionFileUrl?: (sessionId: string, path: string) => string;
   onGetSessionFile?: (sessionId: string, path: string) => Promise<Blob>;
+  onOpenCreateDialog?: () => void;
 };
 
 export function ChatWorkspaceContainer({
@@ -55,14 +55,13 @@ export function ChatWorkspaceContainer({
   sessionDescription,
   onSessionStatus,
   onStreamStatusChange,
-  createSession,
   uploadSessionFile,
   onListSessionDirectory,
   onGetSessionFileUrl,
   onGetSessionFile,
+  onOpenCreateDialog,
 }: ChatWorkspaceContainerProps): ReactElement {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
   // Pending message state for when we need to create a session first
   const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(
     null,
@@ -218,43 +217,12 @@ export function ChatWorkspaceContainer({
         return;
       }
 
-      let targetSessionId = selectedSessionId;
-
-      // If no session is selected, create one first
+      // Note: This check is defensive - the submit button is disabled when no session exists
       if (!selectedSessionId) {
-        try {
-          const newSession = await createSession();
-          targetSessionId = newSession.sessionId;
-
-          // Upload files first, before sending the message
-          if (message.files.length > 0) {
-            await uploadFilesToSession(targetSessionId, message.files);
-          }
-
-          // Defer sending until the stream is connected to the new session.
-          const messageText =
-            message.text.trim() ||
-            (message.files.length > 0
-              ? "KIMI_FILE_UPLOAD_WITHOUT_MESSAGE"
-              : "");
-          setPendingMessage({
-            text: messageText,
-            targetSessionId,
-          });
-
-          return;
-        } catch (error) {
-          console.error(
-            "[ChatWorkspaceContainer] Failed to create session:",
-            error,
-          );
-          toast.error("Failed to Create Session", {
-            description:
-              error instanceof Error ? error.message : "Unknown error occurred",
-          });
-          return;
-        }
+        return;
       }
+
+      const targetSessionId = selectedSessionId;
 
       if (message.files.length > 0 && targetSessionId) {
         await uploadFilesToSession(targetSessionId, message.files);
@@ -266,37 +234,8 @@ export function ChatWorkspaceContainer({
 
       await sendMessage(messageText);
     },
-    [
-      status,
-      isUploadingFiles,
-      selectedSessionId,
-      createSession,
-      uploadFilesToSession,
-      sendMessage,
-    ],
+    [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage],
   );
-
-  const handleCreateSession = useCallback(async () => {
-    if (isCreatingSession) {
-      return;
-    }
-
-    setIsCreatingSession(true);
-    try {
-      await createSession();
-    } catch (error) {
-      console.error(
-        "[ChatWorkspaceContainer] Failed to create session:",
-        error,
-      );
-      toast.error("Failed to Create Session", {
-        description:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
-    } finally {
-      setIsCreatingSession(false);
-    }
-  }, [createSession, isCreatingSession]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -314,15 +253,14 @@ export function ChatWorkspaceContainer({
       }
 
       event.preventDefault();
-      // biome-ignore lint/complexity/noVoid: Intentionally fire-and-forget async handler
-      void handleCreateSession();
+      onOpenCreateDialog?.();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleCreateSession]);
+  }, [onOpenCreateDialog]);
 
   return (
     <ChatWorkspace
@@ -331,8 +269,7 @@ export function ChatWorkspaceContainer({
       onSubmit={handlePromptSubmit}
       status={status}
       isUploadingFiles={isUploadingFiles}
-      onCreateSession={handleCreateSession}
-      isCreatingSession={isCreatingSession}
+      onCreateSession={onOpenCreateDialog}
       onCancel={cancelStream}
       onApprovalResponse={respondToApproval}
       sessionDescription={sessionDescription}

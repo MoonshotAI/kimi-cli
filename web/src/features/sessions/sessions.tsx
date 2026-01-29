@@ -31,7 +31,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CreateSessionDialog } from "./create-session-dialog";
 import { isMacOS } from "@/hooks/utils";
 
 type SessionSummary = {
@@ -44,11 +43,9 @@ type SessionsSidebarProps = {
   sessions: SessionSummary[];
   selectedSessionId: string;
   onSelectSession: (id: string) => void;
-  onCreateSession: (workDir: string) => void | Promise<void>;
   onDeleteSession: (id: string) => void;
   onRefreshSessions?: () => Promise<void> | void;
-  fetchWorkDirs: () => Promise<string[]>;
-  fetchStartupDir: () => Promise<string>;
+  onOpenCreateDialog: () => void;
   streamStatus?: "ready" | "streaming" | "submitted" | "error";
 };
 
@@ -62,11 +59,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   sessions,
   selectedSessionId,
   onSelectSession,
-  onCreateSession,
   onDeleteSession,
   onRefreshSessions,
-  fetchWorkDirs,
-  fetchStartupDir,
+  onOpenCreateDialog,
 }: SessionsSidebarProps): ReactElement {
   const minimumSpinMs = 600;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -76,21 +71,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     sessionTitle: "",
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   // Session search state
   const [sessionSearch, setSessionSearch] = useState("");
-
-  const handleOpenCreateDialog = useCallback(() => {
-    setShowCreateDialog(true);
-  }, []);
-
-  const handleCreateSession = useCallback(
-    async (workDir: string) => {
-      await onCreateSession(workDir);
-    },
-    [onCreateSession],
-  );
 
   const newSessionShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
 
@@ -259,7 +242,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                   <button
                     aria-label="New Session"
                     className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={handleOpenCreateDialog}
+                    onClick={onOpenCreateDialog}
                     type="button"
                   >
                     <Plus className="size-4" />
@@ -360,15 +343,6 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Create Session Dialog */}
-      <CreateSessionDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onConfirm={handleCreateSession}
-        fetchWorkDirs={fetchWorkDirs}
-        fetchStartupDir={fetchStartupDir}
-      />
     </>
   );
 });

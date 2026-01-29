@@ -35,8 +35,7 @@ type ChatConversationProps = {
   onApprovalAction?: AssistantApprovalHandler;
   canRespondToApproval: boolean;
   blocksExpanded: boolean;
-  onCreateSession?: () => void | Promise<void>;
-  isCreatingSession?: boolean;
+  onCreateSession?: () => void;
 };
 
 export function ChatConversation({
@@ -50,7 +49,6 @@ export function ChatConversation({
   canRespondToApproval,
   blocksExpanded,
   onCreateSession,
-  isCreatingSession = false,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -137,20 +135,10 @@ export function ChatConversation({
                   <Button
                     className="mt-1"
                     type="button"
-                    // biome-ignore lint/complexity/noVoid: Intentionally fire-and-forget async handler
-                    onClick={() => void onCreateSession()}
-                    disabled={isCreatingSession}
+                    onClick={() => onCreateSession()}
                   >
-                    {isCreatingSession ? (
-                      <Loader2Icon className="size-4 animate-spin" />
-                    ) : (
-                      <PlusIcon className="size-4" />
-                    )}
-                    <span>
-                      {isCreatingSession
-                        ? "Creating session..."
-                        : "Create new session"}
-                    </span>
+                    <PlusIcon className="size-4" />
+                    <span>Create new session</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent className="flex items-center gap-2" side="top">

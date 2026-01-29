@@ -11,6 +11,7 @@ import {
 } from "./components/ui/resizable";
 import { ChatWorkspaceContainer } from "./features/chat/chat-workspace-container";
 import { SessionsSidebar } from "./features/sessions/sessions";
+import { CreateSessionDialog } from "./features/sessions/create-session-dialog";
 import { Toaster } from "./components/ui/sonner";
 import { formatRelativeTime } from "./hooks/utils";
 import { useSessions } from "./hooks/useSessions";
@@ -73,6 +74,13 @@ function App() {
   );
 
   const [streamStatus, setStreamStatus] = useState<ChatStatus>("ready");
+
+  // Create session dialog state (lifted to App for unified access)
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+
+  const handleOpenCreateDialog = useCallback(() => {
+    setShowCreateDialog(true);
+  }, []);
 
   // Sidebar state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -296,12 +304,10 @@ function App() {
                 )}
               >
                 <SessionsSidebar
-                  onCreateSession={handleCreateSession}
                   onDeleteSession={handleDeleteSession}
                   onSelectSession={handleSelectSession}
                   onRefreshSessions={handleRefreshSessions}
-                  fetchWorkDirs={fetchWorkDirs}
-                  fetchStartupDir={fetchStartupDir}
+                  onOpenCreateDialog={handleOpenCreateDialog}
                   streamStatus={streamStatus}
                   selectedSessionId={selectedSessionId}
                   sessions={sessionSummaries}
@@ -330,11 +336,11 @@ function App() {
                 sessionDescription={currentSession?.title}
                 onSessionStatus={handleSessionStatus}
                 onStreamStatusChange={handleStreamStatusChange}
-                createSession={createSession}
                 uploadSessionFile={uploadSessionFile}
                 onListSessionDirectory={listSessionDirectory}
                 onGetSessionFileUrl={getSessionFileUrl}
                 onGetSessionFile={getSessionFile}
+                onOpenCreateDialog={handleOpenCreateDialog}
               />
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -343,6 +349,15 @@ function App() {
 
       {/* Toast notifications */}
       <Toaster position="top-right" richColors />
+
+      {/* Create Session Dialog - unified for sidebar button and keyboard shortcut */}
+      <CreateSessionDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onConfirm={handleCreateSession}
+        fetchWorkDirs={fetchWorkDirs}
+        fetchStartupDir={fetchStartupDir}
+      />
     </PromptInputProvider>
   );
 }
