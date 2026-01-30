@@ -85,15 +85,9 @@ def test_prepare_filters_out_media_parts():
             role="user",
             content=[
                 TextPart(text="Analyze these files:"),
-                ImageURLPart(
-                    image_url=ImageURLPart.ImageURL(url="data:image/png;base64,IMG")
-                ),
-                AudioURLPart(
-                    audio_url=AudioURLPart.AudioURL(url="data:audio/mp3;base64,AUD")
-                ),
-                VideoURLPart(
-                    video_url=VideoURLPart.VideoURL(url="data:video/mp4;base64,VID")
-                ),
+                ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,IMG")),
+                AudioURLPart(audio_url=AudioURLPart.AudioURL(url="data:audio/mp3;base64,AUD")),
+                VideoURLPart(video_url=VideoURLPart.VideoURL(url="data:video/mp4;base64,VID")),
             ],
         ),
         Message(role="assistant", content=[TextPart(text="I can see all the media files.")]),
