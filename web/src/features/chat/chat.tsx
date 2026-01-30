@@ -15,6 +15,7 @@ import { ChatWorkspaceHeader } from "./components/chat-workspace-header";
 import { ChatConversation } from "./components/chat-conversation";
 import { ChatPromptComposer } from "./components/chat-prompt-composer";
 import { ApprovalDialog } from "./components/approval-dialog";
+import { useGitDiffStats } from "@/hooks/useGitDiffStats";
 
 // Re-export LiveMessage type from hooks for backward compatibility
 export type { LiveMessage } from "@/hooks/types";
@@ -86,6 +87,11 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   const [pendingApprovalMap, setPendingApprovalMap] = useState<
     Record<string, boolean>
   >({});
+
+  // Fetch git diff stats for the current session
+  const { stats: gitDiffStats, isLoading: isGitDiffLoading } = useGitDiffStats(
+    currentSession?.sessionId ?? null
+  );
 
   const maxTokens = 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
@@ -178,6 +184,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             isAwaitingIdle={isAwaitingIdle}
             onCancel={onCancel}
             onListSessionDirectory={onListSessionDirectory}
+            gitDiffStats={gitDiffStats}
+            isGitDiffLoading={isGitDiffLoading}
           />
         </div>
       </div>

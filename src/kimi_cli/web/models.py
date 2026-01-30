@@ -39,6 +39,28 @@ class SessionNoticeEvent(BaseModel):
     payload: SessionNoticePayload
 
 
+class GitFileDiff(BaseModel):
+    """Single file git diff statistics"""
+
+    path: str = Field(..., description="File path")
+    additions: int = Field(..., description="Number of added lines")
+    deletions: int = Field(..., description="Number of deleted lines")
+    status: Literal["added", "modified", "deleted", "renamed"] = Field(
+        ..., description="File change status"
+    )
+
+
+class GitDiffStats(BaseModel):
+    """Git diff statistics for a work directory."""
+
+    is_git_repo: bool = Field(..., description="Whether the directory is a git repo")
+    has_changes: bool = Field(default=False, description="Whether there are uncommitted changes")
+    total_additions: int = Field(default=0, description="Total added lines")
+    total_deletions: int = Field(default=0, description="Total deleted lines")
+    files: list[GitFileDiff] = Field(default=[], description="Per-file diff stats")
+    error: str | None = Field(default=None, description="Error message if any")
+
+
 class Session(BaseModel):
     """Web UI session metadata."""
 
