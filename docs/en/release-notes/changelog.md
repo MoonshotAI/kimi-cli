@@ -10,6 +10,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Add new Web UI for browser-based interaction
 - CLI: Add `kimi web` subcommand to launch the Web UI server
 - Auth: Fix encoding error when device name or OS version contains non-ASCII characters
+- Auth: OAuth credentials are now stored in files instead of keyring; existing tokens are automatically migrated on startup
 
 ## 1.3 (2026-01-28)
 
