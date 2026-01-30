@@ -54,7 +54,7 @@ export function ChatWorkspaceHeader({
   const searchShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
 
   return (
-    <div className="flex min-w-0 flex-nowrap justify-between gap-4 px-5 py-3">
+    <div className="flex min-w-0 flex-nowrap justify-between gap-4 px-5 py-3 pl-8">
       <div className="min-w-0 space-y-1">
         {sessionDescription && (
           <Tooltip>
@@ -74,26 +74,7 @@ export function ChatWorkspaceHeader({
           <OpenInMenu workDir={currentSession.workDir} />
         ) : null}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Search messages"
-              className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              onClick={onOpenSearch}
-            >
-              <SearchIcon className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="flex items-center gap-2" side="bottom">
-            <span>Search messages</span>
-            <KbdGroup>
-              <Kbd>{searchShortcutModifier}</Kbd>
-              <span className="text-muted-foreground">+</span>
-              <Kbd>F</Kbd>
-            </KbdGroup>
-          </TooltipContent>
-        </Tooltip>
+        
 
         <Context
           maxTokens={maxTokens}
@@ -121,6 +102,29 @@ export function ChatWorkspaceHeader({
             </ContextContentBody>
           </ContextContent>
         </Context>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Search messages"
+              className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+              onClick={onOpenSearch}
+            >
+              <SearchIcon className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="flex items-center gap-2" side="bottom">
+            <span>Search messages</span>
+            <KbdGroup>
+              <Kbd>{searchShortcutModifier}</Kbd>
+              <span className="text-muted-foreground">+</span>
+              <Kbd>F</Kbd>
+            </KbdGroup>
+          </TooltipContent>
+        </Tooltip>
+
+
         <Tooltip>
           <TooltipTrigger asChild>
             <button
