@@ -504,6 +504,21 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
         return GitDiffStats(is_git_repo=False)
 
     try:
+        # Check if HEAD exists (repo has at least one commit)
+        check_proc = await asyncio.create_subprocess_exec(
+            "git",
+            "rev-parse",
+            "--verify",
+            "HEAD",
+            cwd=str(work_dir),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await check_proc.wait()
+        if check_proc.returncode != 0:
+            # No commits yet, return empty diff
+            return GitDiffStats(is_git_repo=True, has_changes=False)
+
         # Execute git diff --numstat HEAD (including staged and unstaged)
         proc = await asyncio.create_subprocess_exec(
             "git",
