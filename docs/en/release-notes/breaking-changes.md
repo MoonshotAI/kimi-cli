@@ -4,10 +4,6 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
-## 1.3
-
-No breaking changes.
-
 ## 0.81 - Prompt Flow replaced by Flow Skills
 
 ### `--prompt-flow` option removed

@@ -179,6 +179,9 @@ class KimiSoul:
         return self._slash_commands
 
     async def run(self, user_input: str | list[ContentPart]):
+        # Refresh OAuth tokens on each turn to avoid idle-time expirations.
+        await self._runtime.oauth.ensure_fresh(self._runtime)
+
         user_message = Message(role="user", content=user_input)
         text_input = user_message.extract_text(" ").strip()
 

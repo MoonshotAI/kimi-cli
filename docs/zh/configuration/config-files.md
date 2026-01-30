@@ -145,7 +145,7 @@ capabilities = ["thinking", "image_in"]
 | `custom_headers` | `table` | 否 | 请求时附加的自定义 HTTP 头 |
 
 ::: tip 提示
-使用 `/setup` 命令配置 Kimi Code 平台时，搜索和抓取服务会自动配置。
+使用 `/login` 命令配置 Kimi Code 平台时，搜索和抓取服务会自动配置。
 :::
 
 ### `mcp`

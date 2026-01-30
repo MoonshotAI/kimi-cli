@@ -2,9 +2,9 @@
 
 ## Installation and authentication
 
-### Empty model list during `/setup`
+### Empty model list during `/login`
 
-If you see "No models available for the selected platform" error when running the `/setup` command, it may be due to:
+If you see "No models available for the selected platform" error when running the `/login` (or `/setup`) command, it may be due to:
 
 - **Invalid or expired API key**: Check if your API key is correct and still valid.
 - **Network connection issues**: Confirm you can access the API service addresses (such as `api.kimi.com` or `api.moonshot.cn`).
@@ -114,7 +114,7 @@ If there's no output in `--print` mode, it may be:
 
 - **No input provided**: You need to provide input via `--prompt` (or `--command`) or stdin. For example: `kimi --print --prompt "Hello"`.
 - **Output is buffered**: Try using `--output-format stream-json` for streaming output.
-- **Configuration incomplete**: Ensure API key and model are configured via `/setup`.
+- **Configuration incomplete**: Ensure API key and model are configured via `/login`.
 
 ## Updates and upgrades
 
