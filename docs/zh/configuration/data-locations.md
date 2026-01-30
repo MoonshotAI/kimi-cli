@@ -13,6 +13,8 @@ Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中
 ├── config.toml           # 主配置文件
 ├── kimi.json             # 元数据
 ├── mcp.json              # MCP 服务器配置
+├── credentials/          # OAuth 凭据
+│   └── <provider>.json
 ├── sessions/             # 会话数据
 │   └── <work-dir-hash>/
 │       └── <session-id>/
@@ -61,6 +63,12 @@ MCP 服务器配置文件，存储通过 `kimi mcp add` 命令添加的 MCP 服�
 }
 ```
 
+## 凭据
+
+OAuth 凭据存储在 `~/.kimi/credentials/` 目录下。通过 `/login` 登录 Kimi 账号后，OAuth token 会保存在此目录中。
+
+此目录中的文件权限设置为仅当前用户可读写（600），以保护敏感信息。
+
 ## 会话数据
 
 会话数据按工作目录分组存储在 `~/.kimi/sessions/` 下。每个工作目录对应一个以路径 MD5 哈希命名的子目录，每个会话对应一个以会话 ID 命名的子目录。
@@ -101,4 +109,5 @@ Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用�
 | 清理输入历史 | 删除 `~/.kimi/user-history/` 目录 |
 | 清理日志 | 删除 `~/.kimi/logs/` 目录 |
 | 清理 MCP 配置 | 删除 `~/.kimi/mcp.json` 或使用 `kimi mcp remove` |
+| 清理登录凭据 | 删除 `~/.kimi/credentials/` 目录或使用 `/logout` |
 
