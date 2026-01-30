@@ -32,7 +32,14 @@ Open the GitHub Issues page to submit feedback.
 
 ### `/login`
 
-Log in to your Kimi account. This automatically opens a browser; complete account authorization and available models will be automatically configured. After successful login, Kimi Code CLI will automatically reload the configuration.
+Log in or configure an API platform. After execution, first select a platform:
+
+- **Kimi Code**: Automatically opens a browser for OAuth authorization
+- **Other platforms**: Enter an API key, then select an available model
+
+After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
+
+Alias: `/setup`
 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
@@ -40,18 +47,7 @@ This command is only available when using the default configuration file. If a c
 
 ### `/logout`
 
-Log out from your Kimi account. This clears stored OAuth credentials and removes related configuration from the config file. After logout, Kimi Code CLI will automatically reload the configuration.
-
-### `/setup`
-
-Start the configuration wizard to set up API platform and model using an API key.
-
-Configuration flow:
-1. Select an API platform (Kimi Code, Moonshot AI Open Platform, etc.)
-2. Enter your API key
-3. Select an available model
-
-After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
+Log out from the current platform. This clears stored credentials and removes related configuration from the config file. After logout, Kimi Code CLI will automatically reload the configuration.
 
 ### `/model`
 

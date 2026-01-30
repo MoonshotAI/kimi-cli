@@ -32,7 +32,14 @@
 
 ### `/login`
 
-登录 Kimi 账号。执行后会自动打开浏览器，完成账号授权后自动配置可用的模型。登录成功后 Kimi Code CLI 会自动重新加载配置。
+登录或配置 API 平台。执行后首先选择平台：
+
+- **Kimi Code**：自动打开浏览器进行 OAuth 授权登录
+- **其他平台**：输入 API 密钥，然后选择可用模型
+
+配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
+
+别名：`/setup`
 
 ::: tip 提示
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
@@ -40,18 +47,7 @@
 
 ### `/logout`
 
-登出 Kimi 账号。会清理存储的 OAuth 凭据并移除配置文件中的相关配置。登出后 Kimi Code CLI 会自动重新加载配置。
-
-### `/setup`
-
-启动配置向导，通过 API 密钥配置平台和模型。
-
-配置流程：
-1. 选择 API 平台（Kimi Code、Moonshot AI 开放平台等）
-2. 输入 API 密钥
-3. 选择可用模型
-
-配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
+登出当前平台。会清理存储的凭据并移除配置文件中的相关配置。登出后 Kimi Code CLI 会自动重新加载配置。
 
 ### `/model`
 

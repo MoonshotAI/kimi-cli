@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Merge `/login` and `/setup` commands; `/setup` is now an alias for `/login`
 - Web: Add new Web UI for browser-based interaction
 - CLI: Add `kimi web` subcommand to launch the Web UI server
 - Build: Add Web UI build process integrated into Makefile

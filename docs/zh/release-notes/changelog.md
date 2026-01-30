@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：合并 `/login` 和 `/setup` 命令，`/setup` 现为 `/login` 的别名
 - Web：新增 Web UI，支持基于浏览器的交互
 - CLI：添加 `kimi web` 子命令以启动 Web UI 服务器
 - Build：添加 Web UI 构建流程并集成到 Makefile
