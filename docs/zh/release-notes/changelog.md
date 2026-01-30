@@ -9,6 +9,7 @@
 - Config：添加 `KIMI_SHARE_DIR` 环境变量，用于自定义共享目录路径（默认 `~/.kimi`）
 - Web：新增 Web UI，支持基于浏览器的交互
 - CLI：添加 `kimi web` 子命令以启动 Web UI 服务器
+- Auth：修复设备名称或操作系统版本包含非 ASCII 字符时的编码错误
 
 ## 1.3 (2026-01-28)
 
