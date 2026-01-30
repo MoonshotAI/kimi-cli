@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from kimi_cli.config import LLMModel, get_config_file, load_config, save_config
 from kimi_cli.llm import ProviderType, derive_model_capabilities
+from kimi_cli.web.runner.process import KimiCLIRunner
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -104,6 +105,11 @@ def _build_global_config() -> GlobalConfig:
     )
 
 
+def _get_runner(req: Request) -> KimiCLIRunner:
+    """Get KimiCLIRunner from FastAPI app state."""
+    return req.app.state.runner
+
+
 @router.get("/", summary="Get global (kimi-cli) config snapshot")
 async def get_global_config() -> GlobalConfig:
     """Get global (kimi-cli) config snapshot."""
@@ -111,7 +117,10 @@ async def get_global_config() -> GlobalConfig:
 
 
 @router.patch("/", summary="Update global (kimi-cli) default model/thinking")
-async def update_global_config(request: UpdateGlobalConfigRequest) -> UpdateGlobalConfigResponse:
+async def update_global_config(
+    request: UpdateGlobalConfigRequest,
+    runner: KimiCLIRunner = Depends(_get_runner),
+) -> UpdateGlobalConfigResponse:
     """Update global (kimi-cli) default model/thinking."""
     config = load_config()
 
@@ -131,12 +140,26 @@ async def update_global_config(request: UpdateGlobalConfigRequest) -> UpdateGlob
     # Save config
     save_config(config)
 
-    # Note: Session restart is not implemented in the open-source version
-    # as it requires coordination with the runner
+    # Restart running workers to apply config changes
+    restarted: list[str] = []
+    skipped_busy: list[str] = []
+
+    restart_running = request.restart_running_sessions
+    if restart_running is None:
+        restart_running = True  # Default to restarting sessions
+
+    if restart_running:
+        summary = await runner.restart_running_workers(
+            reason="config_update",
+            force=request.force_restart_busy_sessions or False,
+        )
+        restarted = [str(sid) for sid in summary.restarted_session_ids]
+        skipped_busy = [str(sid) for sid in summary.skipped_busy_session_ids]
+
     return UpdateGlobalConfigResponse(
         config=_build_global_config(),
-        restarted_session_ids=None,
-        skipped_busy_session_ids=None,
+        restarted_session_ids=restarted if restarted else None,
+        skipped_busy_session_ids=skipped_busy if skipped_busy else None,
     )
 
 

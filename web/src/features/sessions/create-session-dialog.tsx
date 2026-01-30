@@ -220,7 +220,7 @@ export function CreateSessionDialog({
 
             {/* Dropdown list */}
             {isDropdownOpen && !isLoading && (
-              <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg max-h-64 overflow-y-auto">
+              <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg max-h-64 overflow-y-auto [-webkit-overflow-scrolling:touch]">
                 {workDirs.length > 0 ? (
                   workDirs.map((dir) => (
                     <button

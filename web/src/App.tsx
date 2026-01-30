@@ -238,17 +238,19 @@ function App() {
         id: session.sessionId,
         title: session.title ?? "Untitled",
         updatedAt: formatRelativeTime(session.lastUpdated),
+        workDir: session.workDir,
+        lastUpdated: session.lastUpdated,
       })),
     [sessions],
   );
 
   return (
     <PromptInputProvider>
-      <div className="app-page">
-        <div className="app-shell max-w-none">
+      <div className="box-border flex h-[100dvh] flex-col bg-background text-foreground px-3 py-3">
+        <div className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col gap-2 max-w-none">
           <ResizablePanelGroup
             orientation="horizontal"
-            className="min-h-0 flex-1 -ml-2 sm:-ml-3"
+            className="min-h-0 flex-1 overflow-hidden"
           >
             {/* Sidebar */}
             <ResizablePanel
@@ -329,7 +331,7 @@ function App() {
             </ResizablePanel>
 
             {/* Main Chat Area */}
-            <ResizablePanel id="chat" className="relative min-h-0 flex justify-center">
+            <ResizablePanel id="chat" className="relative min-h-0 flex justify-center flex-1">
               <ChatWorkspaceContainer
                 selectedSessionId={selectedSessionId}
                 currentSession={currentSession}

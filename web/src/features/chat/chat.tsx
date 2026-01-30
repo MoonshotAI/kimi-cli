@@ -15,6 +15,7 @@ import { ChatWorkspaceHeader } from "./components/chat-workspace-header";
 import { ChatConversation } from "./components/chat-conversation";
 import { ChatPromptComposer } from "./components/chat-prompt-composer";
 import { ApprovalDialog } from "./components/approval-dialog";
+import { useGitDiffStats } from "@/hooks/useGitDiffStats";
 
 // Re-export LiveMessage type from hooks for backward compatibility
 export type { LiveMessage } from "@/hooks/types";
@@ -83,9 +84,15 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   onCreateSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [pendingApprovalMap, setPendingApprovalMap] = useState<
     Record<string, boolean>
   >({});
+
+  // Fetch git diff stats for the current session
+  const { stats: gitDiffStats, isLoading: isGitDiffLoading } = useGitDiffStats(
+    currentSession?.sessionId ?? null
+  );
 
   const maxTokens = 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
@@ -135,6 +142,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           selectedSessionId={selectedSessionId}
           blocksExpanded={blocksExpanded}
           onToggleBlocks={() => setBlocksExpanded((prev) => !prev)}
+          onOpenSearch={() => setIsSearchOpen(true)}
           usedTokens={usedTokens}
           usagePercent={usagePercent}
           maxTokens={maxTokens}
@@ -156,6 +164,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             canRespondToApproval={Boolean(onApprovalResponse)}
             blocksExpanded={blocksExpanded}
             onCreateSession={onCreateSession}
+            isSearchOpen={isSearchOpen}
+            onSearchOpenChange={setIsSearchOpen}
           />
         </div>
 
@@ -178,6 +188,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             isAwaitingIdle={isAwaitingIdle}
             onCancel={onCancel}
             onListSessionDirectory={onListSessionDirectory}
+            gitDiffStats={gitDiffStats}
+            isGitDiffLoading={isGitDiffLoading}
           />
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import mimetypes
 import os
@@ -21,7 +22,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session as KimiCLISession
-from kimi_cli.web.models import Session, SessionStatus
+from kimi_cli.web.models import GitDiffStats, GitFileDiff, Session, SessionStatus
 from kimi_cli.web.runner.messages import send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
 from kimi_cli.web.store.sessions import (
@@ -487,3 +488,84 @@ async def get_work_dirs() -> list[str]:
 async def get_startup_dir(request: Request) -> str:
     """Get the directory where kimi web was started."""
     return request.app.state.startup_dir
+
+
+@router.get("/{session_id}/git-diff", summary="Get git diff stats")
+async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
+    """get git diff stats for the session's work directory"""
+    session = load_session_by_id(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    work_dir = Path(str(session.kimi_cli_session.work_dir))
+
+    # Check if it is a git repository
+    if not (work_dir / ".git").exists():
+        return GitDiffStats(is_git_repo=False)
+
+    try:
+        # Check if HEAD exists (repo has at least one commit)
+        check_proc = await asyncio.create_subprocess_exec(
+            "git",
+            "rev-parse",
+            "--verify",
+            "HEAD",
+            cwd=str(work_dir),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await check_proc.wait()
+        if check_proc.returncode != 0:
+            # No commits yet, return empty diff
+            return GitDiffStats(is_git_repo=True, has_changes=False)
+
+        # Execute git diff --numstat HEAD (including staged and unstaged)
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "diff",
+            "--numstat",
+            "HEAD",
+            cwd=str(work_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+        # Parse output
+        files: list[GitFileDiff] = []
+        total_add, total_del = 0, 0
+        for line in stdout.decode().strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                add = int(parts[0]) if parts[0] != "-" else 0
+                dele = int(parts[1]) if parts[1] != "-" else 0
+                total_add += add
+                total_del += dele
+                # Determine file status
+                file_status: str = "modified"
+                if dele == 0 and add > 0:
+                    file_status = "added"
+                elif add == 0 and dele > 0:
+                    file_status = "deleted"
+                files.append(
+                    GitFileDiff(
+                        path=parts[2],
+                        additions=add,
+                        deletions=dele,
+                        status=file_status,  # type: ignore[arg-type]
+                    )
+                )
+
+        return GitDiffStats(
+            is_git_repo=True,
+            has_changes=len(files) > 0,
+            total_additions=total_add,
+            total_deletions=total_del,
+            files=files,
+        )
+    except TimeoutError:
+        return GitDiffStats(is_git_repo=True, error="Git command timed out")
+    except Exception as e:
+        return GitDiffStats(is_git_repo=True, error=str(e))

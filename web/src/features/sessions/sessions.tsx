@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useMemo,
   type ReactElement,
   useEffect,
   useState,
@@ -14,6 +15,9 @@ import {
   X,
   AlertTriangle,
   RefreshCw,
+  List,
+  FolderTree,
+  ChevronDown,
 } from "lucide-react";
 import { KimiCliBrand } from "@/components/kimi-cli-brand";
 import {
@@ -25,19 +29,48 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import { isMacOS } from "@/hooks/utils";
+import { shortenTitle } from "@/lib/utils";
 
 type SessionSummary = {
   id: string;
   title: string;
   updatedAt: string;
+  workDir?: string | null;
+  lastUpdated: Date;
 };
+
+type ViewMode = "list" | "grouped";
+
+type SessionGroup = {
+  workDir: string;
+  displayName: string;
+  sessions: SessionSummary[];
+};
+
+const VIEW_MODE_KEY = "kimi-sessions-view-mode";
+
+/**
+ * Shorten a path to fit in limited space
+ */
+function shortenPath(path: string, maxLen = 30): string {
+  if (path.length <= maxLen) return path;
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 2) return path;
+  return ".../" + parts.slice(-2).join("/");
+}
 
 type SessionsSidebarProps = {
   sessions: SessionSummary[];
@@ -64,6 +97,14 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   onOpenCreateDialog,
 }: SessionsSidebarProps): ReactElement {
   const minimumSpinMs = 600;
+  const normalizeTitle = useCallback((t: string) => {
+    // Split by any newline, join with space, then collapse whitespace
+    return String(t)
+      .split(/\r\n|\r|\n/)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, []);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; sessionId: string; sessionTitle: string }>({
     open: false,
@@ -75,13 +116,58 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   // Session search state
   const [sessionSearch, setSessionSearch] = useState("");
 
+  // View mode state with localStorage persistence
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const stored = localStorage.getItem(VIEW_MODE_KEY);
+    return stored === "grouped" ? "grouped" : "list";
+  });
+
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem(VIEW_MODE_KEY, mode);
+  }, []);
+
   const newSessionShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
 
-  const filteredSessions = sessionSearch.trim()
-    ? sessions.filter((s) =>
-        s.title.toLowerCase().includes(sessionSearch.toLowerCase()),
-      )
-    : sessions;
+  // Enhanced search: support both title and workDir
+  const filteredSessions = useMemo(() => {
+    const search = sessionSearch.trim().toLowerCase();
+    if (!search) return sessions;
+    return sessions.filter(
+      (s) =>
+        s.title.toLowerCase().includes(search) ||
+        s.workDir?.toLowerCase().includes(search)
+    );
+  }, [sessions, sessionSearch]);
+
+  // Group sessions by workDir
+  const sessionGroups = useMemo((): SessionGroup[] => {
+    if (viewMode !== "grouped") return [];
+
+    const groups = new Map<string, SessionSummary[]>();
+    for (const session of filteredSessions) {
+      const key = session.workDir || "__other__";
+      const existing = groups.get(key) || [];
+      groups.set(key, [...existing, session]);
+    }
+
+    return Array.from(groups.entries())
+      .map(([key, items]) => ({
+        workDir: key,
+        displayName: key === "__other__" ? "Other" : shortenPath(key),
+        sessions: items,
+      }))
+      .sort((a, b) => {
+        // "Other" always at bottom
+        if (a.workDir === "__other__") return 1;
+        if (b.workDir === "__other__") return -1;
+
+        // Sort by latest session time (newest first)
+        const aLatest = Math.max(...a.sessions.map(s => s.lastUpdated.getTime()));
+        const bLatest = Math.max(...b.sessions.map(s => s.lastUpdated.getTime()));
+        return bLatest - aLatest;
+      });
+  }, [filteredSessions, viewMode]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -147,7 +233,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       setDeleteConfirm({
         open: true,
         sessionId: contextMenu.sessionId,
-        sessionTitle: session?.title ?? "Unknown Session",
+        sessionTitle: normalizeTitle(session?.title ?? "Unknown Session"),
       });
       setContextMenu(null);
     }
@@ -262,9 +348,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
             </div>
           </div>
 
-          {/* Session search */}
-          <div className="px-2">
-            <div className="relative">
+          {/* Session search and view toggle */}
+          <div className="px-2 flex gap-2">
+            <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
@@ -284,37 +370,125 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                 </button>
               )}
             </div>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={viewMode}
+              onValueChange={(value) => value && handleViewModeChange(value as ViewMode)}
+            >
+              <ToggleGroupItem value="list" aria-label="List view" title="List view" className="h-8 w-8 px-0">
+                <List className="size-3.5" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="grouped" aria-label="Grouped view" title="Grouped by folder" className="h-8 w-8 px-0">
+                <FolderTree className="size-3.5" />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 pb-4 pr-1">
-            <ul className="space-y-2">
-              {filteredSessions.map((session) => {
-                const isActive = session.id === selectedSessionId;
-                return (
-                  <li key={session.id}>
-                    <button
-                      className={`w-full cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
-                        isActive
-                          ? "bg-secondary"
-                          : "hover:bg-secondary/60"
-                      }`}
-                      onClick={() => onSelectSession(session.id)}
-                      onContextMenu={(event) =>
-                        handleSessionContextMenu(event, session.id)
-                      }
-                      type="button"
-                    >
-                      <p className="text-sm font-medium text-foreground line-clamp-2">
-                        {session.title}
-                      </p>
-                      <span className="text-[10px] text-muted-foreground mt-1 block">
-                        {session.updatedAt}
-                      </span>
-                    </button>
+          <div className="flex-1 overflow-y-auto [-webkit-overflow-scrolling:touch] px-3 pb-4 pr-1">
+            {viewMode === "grouped" ? (
+              <ul className="space-y-1">
+                {sessionGroups.map((group) => (
+                  <li key={group.workDir}>
+                    <Collapsible defaultOpen={group.sessions.some(s => s.id === selectedSessionId)}>
+                      <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary/50 group">
+                        <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex-1 truncate text-left font-medium">
+                              {group.displayName}
+                            </span>
+                          </TooltipTrigger>
+                          {group.workDir !== "__other__" && (
+                            <TooltipContent
+                              side="right"
+                            >
+                              {group.workDir}
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                        <span className="text-[10px] text-muted-foreground">
+                          ({group.sessions.length})
+                        </span>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <ul className="pl-3 space-y-1 mt-1">
+                          {group.sessions.map((session) => {
+                            const isActive = session.id === selectedSessionId;
+                            return (
+                              <li key={session.id}>
+                                <button
+                                  className={`w-full cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
+                                    isActive
+                                      ? "bg-secondary"
+                                      : "hover:bg-secondary/60"
+                                  }`}
+                                  onClick={() => onSelectSession(session.id)}
+                                  onContextMenu={(event) =>
+                                    handleSessionContextMenu(event, session.id)
+                                  }
+                                  type="button"
+                                >
+                                  <Tooltip delayDuration={500}>
+                                    <TooltipTrigger asChild>
+                                      <p className="text-sm font-medium text-foreground overflow-hidden">
+                                        {shortenTitle(normalizeTitle(session.title), 50)}
+                                      </p>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="max-w-md">
+                                      {normalizeTitle(session.title)}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <span className="text-[10px] text-muted-foreground mt-1 block">
+                                    {session.updatedAt}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </li>
-                );
-              })}
-            </ul>
+                ))}
+              </ul>
+            ) : (
+              <ul className="space-y-2">
+                {filteredSessions.map((session) => {
+                  const isActive = session.id === selectedSessionId;
+                  return (
+                    <li key={session.id}>
+                      <button
+                        className={`w-full cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
+                          isActive
+                            ? "bg-secondary"
+                            : "hover:bg-secondary/60"
+                        }`}
+                        onClick={() => onSelectSession(session.id)}
+                        onContextMenu={(event) =>
+                          handleSessionContextMenu(event, session.id)
+                        }
+                        type="button"
+                      >
+                        <Tooltip delayDuration={500}>
+                          <TooltipTrigger asChild>
+                            <p className="text-sm font-medium text-foreground overflow-hidden">
+                              {shortenTitle(normalizeTitle(session.title), 50)}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-md">
+                            {normalizeTitle(session.title)}
+                          </TooltipContent>
+                        </Tooltip>
+                        <span className="text-[10px] text-muted-foreground mt-1 block">
+                          {session.updatedAt}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
       </aside>

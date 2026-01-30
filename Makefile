@@ -111,7 +111,7 @@ build-kimi-sdk: ## Build the kimi-sdk sdist and wheel.
 	@uv build --package kimi-sdk --no-sources --out-dir dist/kimi-sdk
 build-web: ## Build web UI and sync into kimi-cli package.
 	@echo "==> Building web UI"
-	@python scripts/build_web.py
+	@uv run scripts/build_web.py
 build-bin: build-web ## Build the standalone executable with PyInstaller (one-file mode).
 	@echo "==> Building PyInstaller binary (one-file)"
 	@uv run pyinstaller kimi.spec

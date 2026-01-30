@@ -13,12 +13,13 @@ import {
 } from "@ai-elements";
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
-import type { Session } from "@/lib/api/models";
+import type { GitDiffStats, Session } from "@/lib/api/models";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
+import { GitDiffStatusBar } from "./git-diff-status-bar";
 import { Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { GlobalConfigControls } from "@/features/chat/global-config-controls";
@@ -46,6 +47,8 @@ type ChatPromptComposerProps = {
     sessionId: string,
     path?: string,
   ) => Promise<SessionFileEntry[]>;
+  gitDiffStats?: GitDiffStats | null;
+  isGitDiffLoading?: boolean;
 };
 
 export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
@@ -58,6 +61,8 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   isAwaitingIdle,
   onCancel,
   onListSessionDirectory,
+  gitDiffStats,
+  isGitDiffLoading,
 }: ChatPromptComposerProps): ReactElement {
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
@@ -121,7 +126,17 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   }, []);
 
   return (
-    <PromptInput
+    <div className="w-full">
+      <div className="w-full px-2">
+        <GitDiffStatusBar
+          stats={gitDiffStats ?? null}
+          isLoading={isGitDiffLoading}
+          workDir={currentSession?.workDir}
+        />
+
+      </div>
+
+      <PromptInput
         accept="*"
         className="w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border"
         multiple
@@ -228,5 +243,6 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
           )}
         </PromptInputFooter>
       </PromptInput>
+    </div>
   );
 });

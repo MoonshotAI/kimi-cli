@@ -21,6 +21,9 @@ uv.toml
 src/kimi_cli/deps/bin
 src/kimi_cli/deps/tmp
 
+# Web build artifacts
+src/kimi_cli/web/static/assets/
+
 # Generated reports
 tests_ai/report.json
 
