@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -69,19 +68,17 @@ def _open_app(app_name: str, path: Path, fallback: str | None = None) -> None:
 
 
 def _open_terminal(path: Path) -> None:
-    command = f"cd {shlex.quote(str(path))}"
-    script = f'tell application "Terminal" to do script "{command}"'
+    script = f'tell application "Terminal" to do script "cd " & quoted form of "{path}"'
     _run_command(["osascript", "-e", script])
 
 
 def _open_iterm(path: Path) -> None:
-    command = f"cd {shlex.quote(str(path))}"
     script = "\n".join(
         [
             'tell application "iTerm"',
             "  create window with default profile",
             "  tell current session of current window",
-            f'    write text "{command}"',
+            f'    write text "cd " & quoted form of "{path}"',
             "  end tell",
             "end tell",
         ]
