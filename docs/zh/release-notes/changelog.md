@@ -4,10 +4,9 @@
 
 ## 未发布
 
+- Config：添加 `KIMI_SHARE_DIR` 环境变量，用于自定义共享目录路径（默认 `~/.kimi`）
 - Web：新增 Web UI，支持基于浏览器的交互
 - CLI：添加 `kimi web` 子命令以启动 Web UI 服务器
-- Build：添加 Web UI 构建流程并集成到 Makefile
-- Core：添加内部 web worker 命令用于会话管理
 
 ## 1.3 (2026-01-28)
 

@@ -4,10 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Config: Add `KIMI_SHARE_DIR` environment variable to customize the share directory path (default: `~/.kimi`)
 - Web: Add new Web UI for browser-based interaction
 - CLI: Add `kimi web` subcommand to launch the Web UI server
-- Build: Add Web UI build process integrated into Makefile
-- Core: Add internal web worker command for session management
 
 ## 1.3 (2026-01-28)
 

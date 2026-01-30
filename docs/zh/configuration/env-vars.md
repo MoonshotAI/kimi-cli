@@ -112,7 +112,18 @@ export OPENAI_API_KEY="sk-xxx"
 
 | 环境变量 | 说明 |
 | --- | --- |
+| `KIMI_SHARE_DIR` | 自定义共享目录路径（默认 `~/.kimi`） |
 | `KIMI_CLI_NO_AUTO_UPDATE` | 禁用自动更新检查 |
+
+### `KIMI_SHARE_DIR`
+
+自定义 Kimi Code CLI 的共享目录路径。默认路径为 `~/.kimi`，所有配置、会话、日志等数据都存储在此目录下。
+
+```sh
+export KIMI_SHARE_DIR="/path/to/custom/kimi"
+```
+
+详见 [数据路径](./data-locations.md)。
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 

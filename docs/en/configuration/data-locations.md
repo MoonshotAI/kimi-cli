@@ -2,6 +2,10 @@
 
 Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
+::: tip Custom path
+You can customize the share directory path by setting the `KIMI_SHARE_DIR` environment variable. See [Environment Variables](./env-vars.md#kimi-share-dir) for details.
+:::
+
 ## Directory structure
 
 ```
@@ -85,7 +89,7 @@ Log files are used for troubleshooting. When reporting bugs, please include rele
 
 ## Cleaning data
 
-Deleting the `~/.kimi/` directory completely clears all Kimi Code CLI data, including configuration, sessions, and history.
+Deleting the share directory (default `~/.kimi/`, or the path specified by `KIMI_SHARE_DIR`) completely clears all Kimi Code CLI data, including configuration, sessions, and history.
 
 To clean only specific data:
 

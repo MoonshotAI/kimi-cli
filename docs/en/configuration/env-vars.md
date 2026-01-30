@@ -112,7 +112,18 @@ export OPENAI_API_KEY="sk-xxx"
 
 | Environment Variable | Description |
 | --- | --- |
+| `KIMI_SHARE_DIR` | Customize the share directory path (default: `~/.kimi`) |
 | `KIMI_CLI_NO_AUTO_UPDATE` | Disable automatic update check |
+
+### `KIMI_SHARE_DIR`
+
+Customize the share directory path for Kimi Code CLI. The default path is `~/.kimi`, where all configuration, sessions, logs, and other data are stored.
+
+```sh
+export KIMI_SHARE_DIR="/path/to/custom/kimi"
+```
+
+See [Data Locations](./data-locations.md) for details.
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 
