@@ -101,7 +101,7 @@ def load_all_sessions() -> list[JointSession]:
             )
 
             # Derive title from first message by reading wire.jsonl directly
-            title = f"Untitled ({session_id})"
+            title = "Untitled"
             try:
                 import json
                 from textwrap import shorten
@@ -124,7 +124,6 @@ def load_all_sessions() -> list[JointSession]:
                                         msg = Message(role="user", content=user_input)
                                         text = msg.extract_text(" ")
                                         title = shorten(text, width=50)
-                                        title = f"{title} ({session_id})"
                                         break
                             except json.JSONDecodeError:
                                 continue
@@ -201,7 +200,7 @@ def load_session_by_id(id: UUID) -> JointSession | None:
                 work_dir_meta=wd,
                 context_file=context_file,
                 wire_file=WireFile(session_dir / "wire.jsonl"),
-                title=f"New Session ({id})",
+                title="New Session",
                 updated_at=context_file.stat().st_mtime,
             )
 
