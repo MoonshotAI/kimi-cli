@@ -202,7 +202,7 @@ def run_web_server(
             "<center>█▄▀ █ █▀▄▀█ █   █▀▀ █▀█ █▀▄ █▀▀",
             "<center>█ █ █ █ ▀ █ █   █▄▄ █▄█ █▄▀ ██▄",
             "",
-            "<center>WEB (Technical Preview)",
+            "<center>WEB UI (Technical Preview)",
             "",
             "<hr>",
             "",
