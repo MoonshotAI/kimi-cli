@@ -80,7 +80,9 @@ Debug information is displayed in a pager, press `q` to exit.
 
 ### `/usage`
 
-Display API usage and quota information.
+Display API usage and quota information, showing quota usage with progress bars and remaining percentages.
+
+Aliases: `/status`
 
 ::: tip
 This command only works with the Kimi Code platform.
