@@ -93,17 +93,17 @@ async def context(soul: KimiSoul, args: str):
     token_count = ctx.token_count
     lines = [
         "Context Info:",
-        f"  Total messages: {len(history)}\n",
-        f"  Checkpoints: {ctx.n_checkpoints}\n",
+        f"  Total messages: {len(history)}",
+        f"  Checkpoints: {ctx.n_checkpoints}",
     ]
 
     # Add token usage with percentage if LLM is available
     if soul.runtime.llm is not None:
         max_context = soul.runtime.llm.max_context_size
         usage_percent = (token_count / max_context * 100) if max_context > 0 else 0
-        lines.append(f"  Token usage: {token_count:,} / {max_context:,} ({usage_percent:.1f}%)\n")
+        lines.append(f"  Token usage: {token_count:,} / {max_context:,} ({usage_percent:.1f}%)")
     else:
-        lines.append(f"  Token count: {token_count:,}\n")
+        lines.append(f"  Token count: {token_count:,}")
 
     # Count messages by role
     role_counts: dict[str, int] = {}
