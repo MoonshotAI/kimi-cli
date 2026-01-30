@@ -14,6 +14,7 @@ import {
   UserIcon,
   BotIcon,
   WrenchIcon,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -161,11 +162,16 @@ export function MessageSearchDialog({
     [matches, selectedIndex, onJumpToMessage, onOpenChange],
   );
 
+  const handleClear = () => {
+    setQuery("");
+    inputRef.current?.focus();
+  };
+
   const selectedMatch = matches[selectedIndex];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] max-w-6xl flex-col gap-0 p-0 sm:max-w-6xl">
+      <DialogContent showCloseButton={false} className="flex h-[70vh] max-w-6xl flex-col gap-0 p-0 sm:max-w-6xl">
         <DialogHeader className="border-b px-4 py-3">
           <DialogTitle className="sr-only">Search Messages</DialogTitle>
           <div className="flex items-center gap-2">
@@ -178,6 +184,16 @@ export function MessageSearchDialog({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
+            {query ? (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="cursor-pointer rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
             <span className="text-xs text-muted-foreground">
               {query
                 ? matches.length > 0
