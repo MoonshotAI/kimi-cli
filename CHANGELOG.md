@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.5 (2026-01-30)
+
 - Web: Add Git diff status bar showing uncommitted changes in session working directory
 - Web: Add "Open in" menu for opening files/directories in Terminal, VS Code, Cursor, or other local applications
 - Web: Add search functionality to filter sessions by title or working directory
