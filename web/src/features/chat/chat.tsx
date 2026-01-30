@@ -84,6 +84,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   onCreateSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [pendingApprovalMap, setPendingApprovalMap] = useState<
     Record<string, boolean>
   >({});
@@ -141,6 +142,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           selectedSessionId={selectedSessionId}
           blocksExpanded={blocksExpanded}
           onToggleBlocks={() => setBlocksExpanded((prev) => !prev)}
+          onOpenSearch={() => setIsSearchOpen(true)}
           usedTokens={usedTokens}
           usagePercent={usagePercent}
           maxTokens={maxTokens}
@@ -162,6 +164,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             canRespondToApproval={Boolean(onApprovalResponse)}
             blocksExpanded={blocksExpanded}
             onCreateSession={onCreateSession}
+            isSearchOpen={isSearchOpen}
+            onSearchOpenChange={setIsSearchOpen}
           />
         </div>
 

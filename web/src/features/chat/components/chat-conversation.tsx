@@ -36,6 +36,8 @@ type ChatConversationProps = {
   canRespondToApproval: boolean;
   blocksExpanded: boolean;
   onCreateSession?: () => void;
+  isSearchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
 };
 
 export function ChatConversation({
@@ -49,10 +51,11 @@ export function ChatConversation({
   canRespondToApproval,
   blocksExpanded,
   onCreateSession,
+  isSearchOpen,
+  onSearchOpenChange,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   // Handle Cmd+F / Ctrl+F
@@ -60,13 +63,13 @@ export function ChatConversation({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
         e.preventDefault();
-        setIsSearchOpen(true);
+        onSearchOpenChange(true);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [onSearchOpenChange]);
 
   const handleJumpToMessage = useCallback((messageIndex: number) => {
     setHighlightedIndex(messageIndex);
@@ -195,7 +198,7 @@ export function ChatConversation({
       <MessageSearchDialog
         messages={messages}
         open={isSearchOpen}
-        onOpenChange={setIsSearchOpen}
+        onOpenChange={onSearchOpenChange}
         onJumpToMessage={handleJumpToMessage}
       />
     </div>

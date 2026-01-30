@@ -10,12 +10,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import type { TokenUsage } from "@/hooks/wireTypes";
 import type { Session } from "@/lib/api/models";
 import { shortenTitle } from "@/lib/utils";
-import { ChevronsDownUpIcon, ChevronsUpDownIcon, InfoIcon } from "lucide-react";
+import {
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
+  InfoIcon,
+  SearchIcon,
+} from "lucide-react";
 import { SessionInfoSection } from "./session-info-popover";
 import { OpenInMenu } from "./open-in-menu";
+import { isMacOS } from "@/hooks/utils";
 
 type ChatWorkspaceHeaderProps = {
   currentStep: number;
@@ -24,6 +31,7 @@ type ChatWorkspaceHeaderProps = {
   selectedSessionId?: string;
   blocksExpanded: boolean;
   onToggleBlocks: () => void;
+  onOpenSearch: () => void;
   usedTokens: number;
   usagePercent: number;
   maxTokens: number;
@@ -37,11 +45,14 @@ export function ChatWorkspaceHeader({
   selectedSessionId,
   blocksExpanded,
   onToggleBlocks,
+  onOpenSearch,
   usedTokens,
   usagePercent,
   maxTokens,
   tokenUsage,
 }: ChatWorkspaceHeaderProps) {
+  const searchShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
+
   return (
     <div className="flex min-w-0 flex-nowrap justify-between gap-4 px-5 py-3">
       <div className="min-w-0 space-y-1">
@@ -62,6 +73,27 @@ export function ChatWorkspaceHeader({
         {currentSession?.workDir ? (
           <OpenInMenu workDir={currentSession.workDir} />
         ) : null}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Search messages"
+              className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+              onClick={onOpenSearch}
+            >
+              <SearchIcon className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="flex items-center gap-2" side="bottom">
+            <span>Search messages</span>
+            <KbdGroup>
+              <Kbd>{searchShortcutModifier}</Kbd>
+              <span className="text-muted-foreground">+</span>
+              <Kbd>F</Kbd>
+            </KbdGroup>
+          </TooltipContent>
+        </Tooltip>
 
         <Context
           maxTokens={maxTokens}
