@@ -123,7 +123,7 @@ def load_all_sessions() -> list[JointSession]:
                                     if user_input:
                                         msg = Message(role="user", content=user_input)
                                         text = msg.extract_text(" ")
-                                        title = shorten(text, width=50)
+                                        title = shorten(text, width=300)
                                         break
                             except json.JSONDecodeError:
                                 continue

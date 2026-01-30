@@ -32,6 +32,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isMacOS } from "@/hooks/utils";
+import { shortenTitle } from "@/lib/utils";
 
 type SessionSummary = {
   id: string;
@@ -64,6 +65,14 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   onOpenCreateDialog,
 }: SessionsSidebarProps): ReactElement {
   const minimumSpinMs = 600;
+  const normalizeTitle = useCallback((t: string) => {
+    // Split by any newline, join with space, then collapse whitespace
+    return String(t)
+      .split(/\r\n|\r|\n/)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, []);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; sessionId: string; sessionTitle: string }>({
     open: false,
@@ -147,7 +156,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       setDeleteConfirm({
         open: true,
         sessionId: contextMenu.sessionId,
-        sessionTitle: session?.title ?? "Unknown Session",
+        sessionTitle: normalizeTitle(session?.title ?? "Unknown Session"),
       });
       setContextMenu(null);
     }
@@ -304,9 +313,16 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                       }
                       type="button"
                     >
-                      <p className="text-sm font-medium text-foreground line-clamp-2">
-                        {session.title}
-                      </p>
+                      <Tooltip delayDuration={500}>
+                        <TooltipTrigger asChild>
+                          <p className="text-sm font-medium text-foreground">
+                            {shortenTitle(normalizeTitle(session.title), 50)}
+                          </p>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-md">
+                          {normalizeTitle(session.title)}
+                        </TooltipContent>
+                      </Tooltip>
                       <span className="text-[10px] text-muted-foreground mt-1 block">
                         {session.updatedAt}
                       </span>

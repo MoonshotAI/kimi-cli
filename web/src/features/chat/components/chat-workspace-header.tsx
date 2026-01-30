@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { TokenUsage } from "@/hooks/wireTypes";
 import type { Session } from "@/lib/api/models";
+import { shortenTitle } from "@/lib/utils";
 import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { SessionInfoPopover } from "./session-info-popover";
 
@@ -44,10 +45,19 @@ export function ChatWorkspaceHeader({
     <div className="workspace-header px-5 py-3">
       <div className="space-y-1">
         {sessionDescription && (
-          <p className="text-xs font-bold">{sessionDescription}</p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className="text-xs font-bold">
+                {shortenTitle(sessionDescription, 50)}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-md">
+              {sessionDescription}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
-      <div className="workspace-header-section">
+      <div className="workspace-header-section flex-shrink-0">
         {selectedSessionId && (
           <SessionInfoPopover
             sessionId={selectedSessionId}

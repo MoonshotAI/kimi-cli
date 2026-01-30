@@ -369,7 +369,7 @@ body {
   }
 
   .workspace-header {
-    @apply flex flex-wrap items-center justify-between gap-4;
+    @apply flex flex-nowrap items-center justify-between gap-4 min-w-0;
   }
 
   .workspace-header-section {
