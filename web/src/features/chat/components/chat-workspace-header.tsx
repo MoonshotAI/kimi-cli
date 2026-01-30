@@ -15,6 +15,7 @@ import type { Session } from "@/lib/api/models";
 import { shortenTitle } from "@/lib/utils";
 import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { SessionInfoPopover } from "./session-info-popover";
+import { OpenInMenu } from "./open-in-menu";
 
 type ChatWorkspaceHeaderProps = {
   currentStep: number;
@@ -58,6 +59,9 @@ export function ChatWorkspaceHeader({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-3">
+        {currentSession?.workDir ? (
+          <OpenInMenu workDir={currentSession.workDir} />
+        ) : null}
         {selectedSessionId && (
           <SessionInfoPopover
             sessionId={selectedSessionId}
