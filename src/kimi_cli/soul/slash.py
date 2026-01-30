@@ -78,3 +78,41 @@ async def yolo(soul: KimiSoul, args: str):
     else:
         soul.runtime.approval.set_yolo(True)
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
+
+
+@registry.command
+async def context(soul: KimiSoul, args: str):
+    """Display context information (messages, tokens, checkpoints)"""
+    ctx = soul.context
+    history = ctx.history
+
+    if not history:
+        wire_send(TextPart(text="Context is empty - no messages yet."))
+        return
+
+    token_count = ctx.token_count
+    lines = [
+        "Context Info:",
+        f"  Total messages: {len(history)}\n",
+        f"  Checkpoints: {ctx.n_checkpoints}\n",
+    ]
+
+    # Add token usage with percentage if LLM is available
+    if soul.runtime.llm is not None:
+        max_context = soul.runtime.llm.max_context_size
+        usage_percent = (token_count / max_context * 100) if max_context > 0 else 0
+        lines.append(f"  Token usage: {token_count:,} / {max_context:,} ({usage_percent:.1f}%)\n")
+    else:
+        lines.append(f"  Token count: {token_count:,}\n")
+
+    # Count messages by role
+    role_counts: dict[str, int] = {}
+    for msg in history:
+        role_counts[msg.role] = role_counts.get(msg.role, 0) + 1
+
+    if role_counts:
+        lines.append("  Messages by role:")
+        for role, count in sorted(role_counts.items()):
+            lines.append(f"    {role}: {count}")
+
+    wire_send(TextPart(text="\n".join(lines)))
