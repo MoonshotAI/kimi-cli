@@ -2,6 +2,10 @@
 
 Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
+::: tip Custom path
+You can customize the share directory path by setting the `KIMI_SHARE_DIR` environment variable. See [Environment Variables](./env-vars.md#kimi-share-dir) for details.
+:::
+
 ## Directory structure
 
 ```
@@ -63,13 +67,13 @@ Session data is grouped by working directory and stored under `~/.kimi/sessions/
 
 ### `context.jsonl`
 
-Context history file, stores the session's message history in JSONL format. Each line is a message (user input, model response, tool calls, etc.).
+Context history file, stores the session's message history in JSON Lines (JSONL) format. Each line is a message (user input, model response, tool calls, etc.).
 
 Kimi Code CLI uses this file to restore session context when using `--continue` or `--session`.
 
 ### `wire.jsonl`
 
-Wire message log file, stores Wire events during the session in JSONL format. Used for session replay and extracting session titles.
+Wire message log file, stores Wire events during the session in JSON Lines (JSONL) format. Used for session replay and extracting session titles.
 
 ## Input history
 
@@ -85,7 +89,7 @@ Log files are used for troubleshooting. When reporting bugs, please include rele
 
 ## Cleaning data
 
-Deleting the `~/.kimi/` directory completely clears all Kimi Code CLI data, including configuration, sessions, and history.
+Deleting the share directory (default `~/.kimi/`, or the path specified by `KIMI_SHARE_DIR`) completely clears all Kimi Code CLI data, including configuration, sessions, and history.
 
 To clean only specific data:
 

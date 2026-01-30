@@ -78,6 +78,14 @@ jobs:
           PYTHONUTF8: "1"
         run: make test-kimi-cli
 
+      - name: Set up Node.js (web build)
+        if: matrix.python-version == '3.14'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
       - name: Build standalone binary
         if: matrix.python-version == '3.14'
         env:

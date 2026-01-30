@@ -57,6 +57,9 @@ jobs:
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
+    env:
+      KIMI_WEB_STRICT_VERSION: "1"
+      KIMI_WEB_EXPECT_VERSION: ${{ github.ref_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,6 +78,13 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
+
+      - name: Set up Node.js (web build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
 
       - name: Prepare building environment
         run: make prepare-build
@@ -457,6 +467,9 @@ jobs:
     name: Publish Python package
     needs: validate
     runs-on: ubuntu-latest
+    env:
+      KIMI_WEB_STRICT_VERSION: "1"
+      KIMI_WEB_EXPECT_VERSION: ${{ github.ref_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -471,6 +484,13 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
+
+      - name: Set up Node.js (web build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
 
       - name: Build distributions
         run: make build-kimi-cli

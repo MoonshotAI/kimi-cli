@@ -1,0 +1,365 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChatStatus } from "ai";
+import { PromptInputProvider } from "@ai-elements";
+import { toast } from "sonner";
+import { PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { cn } from "./lib/utils";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "./components/ui/resizable";
+import { ChatWorkspaceContainer } from "./features/chat/chat-workspace-container";
+import { SessionsSidebar } from "./features/sessions/sessions";
+import { CreateSessionDialog } from "./features/sessions/create-session-dialog";
+import { Toaster } from "./components/ui/sonner";
+import { formatRelativeTime } from "./hooks/utils";
+import { useSessions } from "./hooks/useSessions";
+import { ThemeToggle } from "./components/ui/theme-toggle";
+import type { SessionStatus } from "./lib/api/models";
+import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
+
+/**
+ * Get session ID from URL search params
+ */
+function getSessionIdFromUrl(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("session");
+}
+
+/**
+ * Update URL with session ID without triggering page reload
+ */
+function updateUrlWithSession(sessionId: string | null): void {
+  const url = new URL(window.location.href);
+  if (sessionId) {
+    url.searchParams.set("session", sessionId);
+  } else {
+    url.searchParams.delete("session");
+  }
+  window.history.replaceState({}, "", url.toString());
+}
+
+const SIDEBAR_COLLAPSED_SIZE = 48;
+const SIDEBAR_MIN_SIZE = 200;
+const SIDEBAR_DEFAULT_SIZE = 260;
+const SIDEBAR_ANIMATION_MS = 250;
+
+function App() {
+  const sidebarElementRef = useRef<HTMLDivElement | null>(null);
+  const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const sessionsHook = useSessions();
+
+  const {
+    sessions,
+    selectedSessionId,
+    createSession,
+    deleteSession,
+    selectSession,
+    uploadSessionFile,
+    getSessionFile,
+    getSessionFileUrl,
+    listSessionDirectory,
+    refreshSession,
+    refreshSessions,
+    applySessionStatus,
+    fetchWorkDirs,
+    fetchStartupDir,
+    error: sessionsError,
+  } = sessionsHook;
+
+  const currentSession = useMemo(
+    () => sessions.find((session) => session.sessionId === selectedSessionId),
+    [sessions, selectedSessionId],
+  );
+
+  const [streamStatus, setStreamStatus] = useState<ChatStatus>("ready");
+
+  // Create session dialog state (lifted to App for unified access)
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+
+  const handleOpenCreateDialog = useCallback(() => {
+    setShowCreateDialog(true);
+  }, []);
+
+  // Sidebar state
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
+  const handleCollapseSidebar = useCallback(() => {
+    setIsSidebarAnimating(true);
+    sidebarPanelRef.current?.collapse();
+  }, []);
+  const handleExpandSidebar = useCallback(() => {
+    setIsSidebarAnimating(true);
+    sidebarPanelRef.current?.expand();
+  }, []);
+  const handleSidebarResize = useCallback((panelSize: PanelSize) => {
+    const collapsed = panelSize.inPixels <= SIDEBAR_COLLAPSED_SIZE + 1;
+    setIsSidebarCollapsed((prev) => (prev === collapsed ? prev : collapsed));
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarAnimating) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setIsSidebarAnimating(false);
+    }, SIDEBAR_ANIMATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [isSidebarAnimating]);
+
+  useEffect(() => {
+    const current = sidebarPanelRef.current;
+    if (!current) {
+      return;
+    }
+    setIsSidebarCollapsed(current.isCollapsed());
+  }, []);
+
+  useEffect(() => {
+    const element = sidebarElementRef.current;
+    if (!element) {
+      return;
+    }
+    if (isSidebarAnimating) {
+      element.style.transition = `flex-basis ${SIDEBAR_ANIMATION_MS}ms ease-in-out`;
+      return;
+    }
+    element.style.transition = "";
+  }, [isSidebarAnimating]);
+
+  // Track if we've restored session from URL
+  const hasRestoredFromUrlRef = useRef(false);
+
+  // Eagerly restore session from URL - don't wait for session list to load
+  // This allows session content to load in parallel with the session list
+  useEffect(() => {
+    if (hasRestoredFromUrlRef.current) {
+      return;
+    }
+
+    const urlSessionId = getSessionIdFromUrl();
+    if (urlSessionId) {
+      console.log("[App] Eagerly restoring session from URL:", urlSessionId);
+      selectSession(urlSessionId);
+    }
+    hasRestoredFromUrlRef.current = true;
+  }, [selectSession]);
+
+  // Validate session exists once session list loads, clear URL if not found
+  useEffect(() => {
+    if (sessions.length === 0 || !selectedSessionId) {
+      return;
+    }
+
+    const sessionExists = sessions.some(
+      (s) => s.sessionId === selectedSessionId,
+    );
+    if (!sessionExists) {
+      console.log("[App] Session from URL not found, clearing selection");
+      updateUrlWithSession(null);
+      selectSession("");
+    }
+  }, [sessions, selectedSessionId, selectSession]);
+
+  // Update URL when selected session changes
+  useEffect(() => {
+    // Skip the initial render before URL restoration
+    if (!hasRestoredFromUrlRef.current) {
+      return;
+    }
+    updateUrlWithSession(selectedSessionId || null);
+  }, [selectedSessionId]);
+
+  // Show toast notifications for errors
+  useEffect(() => {
+    if (sessionsError) {
+      toast.error("Session Error", {
+        description: sessionsError,
+      });
+    }
+  }, [sessionsError]);
+
+  const handleStreamStatusChange = useCallback((nextStatus: ChatStatus) => {
+    setStreamStatus(nextStatus);
+  }, []);
+
+  const handleSessionStatus = useCallback(
+    (status: SessionStatus) => {
+      applySessionStatus(status);
+
+      if (status.state !== "idle") {
+        return;
+      }
+
+      const reason = status.reason ?? "";
+      if (!reason.startsWith("prompt_")) {
+        return;
+      }
+
+      console.log(
+        "[App] Prompt complete, refreshing session info:",
+        status.sessionId,
+      );
+      refreshSession(status.sessionId);
+    },
+    [applySessionStatus, refreshSession],
+  );
+
+  const handleCreateSession = useCallback(
+    async (workDir: string) => {
+      await createSession(workDir);
+    },
+    [createSession],
+  );
+
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      await deleteSession(sessionId);
+    },
+    [deleteSession],
+  );
+
+  const handleSelectSession = useCallback(
+    (sessionId: string) => {
+      selectSession(sessionId);
+    },
+    [selectSession],
+  );
+
+  const handleRefreshSessions = useCallback(async () => {
+    await refreshSessions();
+  }, [refreshSessions]);
+
+  // Transform Session[] to SessionSummary[] for sidebar
+  const sessionSummaries = useMemo(
+    () =>
+      sessions.map((session) => ({
+        id: session.sessionId,
+        title: session.title ?? "Untitled",
+        updatedAt: formatRelativeTime(session.lastUpdated),
+      })),
+    [sessions],
+  );
+
+  return (
+    <PromptInputProvider>
+      <div className="app-page">
+        <div className="app-shell max-w-none">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="min-h-0 flex-1 -ml-2 sm:-ml-3"
+          >
+            {/* Sidebar */}
+            <ResizablePanel
+              id="sessions"
+              collapsible
+              collapsedSize={SIDEBAR_COLLAPSED_SIZE}
+              defaultSize={SIDEBAR_DEFAULT_SIZE}
+              minSize={SIDEBAR_MIN_SIZE}
+              elementRef={sidebarElementRef}
+              panelRef={sidebarPanelRef}
+              onResize={handleSidebarResize}
+              className={cn("relative min-h-0 border-r pl-0.5 pr-2 overflow-hidden")}
+            >
+              {/* Collapsed sidebar - vertical strip with logo and expand button */}
+              <div
+                className={cn(
+                  "absolute inset-0 flex h-full flex-col items-center py-3 transition-all duration-200 ease-in-out",
+                  isSidebarCollapsed
+                    ? "opacity-100 translate-x-0"
+                    : "opacity-0 -translate-x-2 pointer-events-none select-none",
+                )}
+              >
+                <a
+                  href="https://www.kimi.com/code"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:opacity-80 transition-opacity"
+                >
+                  <img
+                    src="/logo.png"
+                    alt="Kimi"
+                    width={24}
+                    height={24}
+                    className="size-6"
+                  />
+                </a>
+                <button
+                  type="button"
+                  aria-label="Expand sidebar"
+                  className="mt-auto mb-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+                  onClick={handleExpandSidebar}
+                >
+                  <PanelLeftOpen className="size-4" />
+                </button>
+              </div>
+              {/* Expanded sidebar */}
+              <div
+                className={cn(
+                  "absolute inset-0 flex h-full min-h-0 flex-col gap-3 transition-all duration-200 ease-in-out",
+                  isSidebarCollapsed
+                    ? "opacity-0 translate-x-2 pointer-events-none select-none"
+                    : "opacity-100 translate-x-0",
+                )}
+              >
+                <SessionsSidebar
+                  onDeleteSession={handleDeleteSession}
+                  onSelectSession={handleSelectSession}
+                  onRefreshSessions={handleRefreshSessions}
+                  onOpenCreateDialog={handleOpenCreateDialog}
+                  streamStatus={streamStatus}
+                  selectedSessionId={selectedSessionId}
+                  sessions={sessionSummaries}
+                />
+                <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
+                  <div className="flex items-center gap-2">
+                    <ThemeToggle />
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Collapse sidebar"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+                    onClick={handleCollapseSidebar}
+                  >
+                    <PanelLeftClose className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </ResizablePanel>
+
+            {/* Main Chat Area */}
+            <ResizablePanel id="chat" className="relative min-h-0 flex justify-center">
+              <ChatWorkspaceContainer
+                selectedSessionId={selectedSessionId}
+                currentSession={currentSession}
+                sessionDescription={currentSession?.title}
+                onSessionStatus={handleSessionStatus}
+                onStreamStatusChange={handleStreamStatusChange}
+                uploadSessionFile={uploadSessionFile}
+                onListSessionDirectory={listSessionDirectory}
+                onGetSessionFileUrl={getSessionFileUrl}
+                onGetSessionFile={getSessionFile}
+                onOpenCreateDialog={handleOpenCreateDialog}
+              />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      </div>
+
+      {/* Toast notifications */}
+      <Toaster position="top-right" richColors />
+
+      {/* Create Session Dialog - unified for sidebar button and keyboard shortcut */}
+      <CreateSessionDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onConfirm={handleCreateSession}
+        fetchWorkDirs={fetchWorkDirs}
+        fetchStartupDir={fetchStartupDir}
+      />
+    </PromptInputProvider>
+  );
+}
+
+export default App;

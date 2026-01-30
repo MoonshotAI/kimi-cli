@@ -10,9 +10,6 @@
 
 Kimi Code CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
-> [!IMPORTANT]
-> Kimi Code CLI is currently in technical preview.
-
 ## Getting Started
 
 See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi Code CLI.
@@ -161,10 +158,13 @@ make test  # run tests
 make test-kimi-cli  # run Kimi Code CLI tests only
 make test-kosong  # run kosong tests only
 make test-pykaos  # run pykaos tests only
+make build-web  # build the web UI and sync it into the package (requires Node.js/npm)
 make build  # build python packages
 make build-bin  # build standalone binary
 make help  # show all make targets
 ```
+
+Note: `make build` and `make build-bin` automatically run `make build-web` to embed the web UI.
 
 ## Contributing
 

@@ -1,0 +1,333 @@
+import type { ChatStatus } from "ai";
+import type { LiveMessage } from "@/hooks/types";
+import {
+  Message,
+  MessageAttachment,
+  MessageAttachments,
+  MessageContent,
+  UserMessageContent,
+} from "@ai-elements";
+import {
+  AssistantMessage,
+  type AssistantApprovalHandler,
+} from "./assistant-message";
+
+import { Loader2Icon } from "lucide-react";
+import type React from "react";
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { cn } from "@/lib/utils";
+
+export type VirtualizedMessageListProps = {
+  messages: LiveMessage[];
+  status: ChatStatus;
+  isAwaitingFirstResponse?: boolean;
+  conversationKey: string;
+  isReplayingHistory: boolean;
+  pendingApprovalMap: Record<string, boolean>;
+  onApprovalAction?: AssistantApprovalHandler;
+  canRespondToApproval: boolean;
+  blocksExpanded: boolean;
+  /** Index of message to highlight (for search) */
+  highlightedMessageIndex?: number;
+  /** Callback when scroll position changes */
+  onAtBottomChange?: (atBottom: boolean) => void;
+};
+
+export type VirtualizedMessageListHandle = {
+  scrollToIndex: (index: number, behavior?: "auto" | "smooth") => void;
+  scrollToBottom: () => void;
+};
+
+type ConversationListItem =
+  | {
+      kind: "message";
+      message: LiveMessage;
+      index: number;
+    }
+  | {
+      kind: "loading";
+    };
+
+function VirtuosoScrollerComponent(
+  props: ComponentPropsWithoutRef<"div">,
+  ref: React.Ref<HTMLDivElement>,
+) {
+  const { className, ...rest } = props;
+  return (
+    <div
+      ref={ref}
+      className={cn("flex-1 overflow-y-auto overflow-x-hidden pr-2", className)}
+      {...rest}
+    />
+  );
+}
+
+const VirtuosoScroller = forwardRef(VirtuosoScrollerComponent);
+
+function VirtuosoListComponent(
+  props: ComponentPropsWithoutRef<"div">,
+  ref: React.Ref<HTMLDivElement>,
+) {
+  const { className, ...rest } = props;
+  return (
+    <div ref={ref} className={cn("flex flex-col p-4 px-8", className)} {...rest} />
+  );
+}
+
+const VirtuosoList = forwardRef(VirtuosoListComponent);
+
+VirtuosoScroller.displayName = "VirtuosoScroller";
+VirtuosoList.displayName = "VirtuosoList";
+
+function getMessageSpacingClass(
+  message: LiveMessage,
+  index: number,
+  allMessages: LiveMessage[],
+): string | undefined {
+  // Terminal-style message spacing - more compact
+  // 1. User messages get breathing room (`mt-3`) from previous content
+  // 2. Assistant messages flow naturally with minimal spacing
+  // 3. Tool calls have subtle spacing to group related operations
+  const previousMessage = index > 0 ? allMessages[index - 1] : undefined;
+  const nextMessage =
+    index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
+
+  const classes: string[] = [];
+
+  const isUser = message.role === "user";
+  const isAssistant = message.role === "assistant";
+  const isToolMessage = isAssistant && message.variant === "tool";
+  const isThinkingMessage = isAssistant && message.variant === "thinking";
+  const previousIsUser = previousMessage?.role === "user";
+  const previousIsAssistant = previousMessage?.role === "assistant";
+  const previousIsTool =
+    previousIsAssistant && previousMessage?.variant === "tool";
+
+  if (index > 0) {
+    if (isUser) {
+      // User messages get more space from previous content
+      classes.push("mt-4");
+    } else if (isAssistant) {
+      if (isToolMessage) {
+        // Tool calls have minimal spacing
+        classes.push(previousIsUser ? "mt-2" : "mt-1");
+      } else if (isThinkingMessage) {
+        // Thinking blocks have minimal spacing
+        classes.push(previousIsUser ? "mt-2" : "mt-1");
+      } else if (previousIsTool) {
+        // Text after tool gets slight spacing
+        classes.push("mt-2");
+      } else if (previousIsAssistant) {
+        // Consecutive assistant messages flow together
+        classes.push("mt-1");
+      } else {
+        // After user message
+        classes.push("mt-2");
+      }
+    }
+  }
+
+  // Add bottom margin for tool messages near end
+  if (isToolMessage && !nextMessage) {
+    classes.push("mb-4");
+  }
+
+  return classes.length > 0 ? classes.join(" ") : undefined;
+}
+
+function VirtualizedMessageListComponent(
+  {
+    messages,
+    isAwaitingFirstResponse = false,
+    conversationKey,
+    isReplayingHistory,
+    pendingApprovalMap,
+    onApprovalAction,
+    canRespondToApproval,
+    blocksExpanded,
+    highlightedMessageIndex = -1,
+    onAtBottomChange,
+  }: VirtualizedMessageListProps,
+  ref: React.Ref<VirtualizedMessageListHandle>,
+) {
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const showLoadingBubble = isAwaitingFirstResponse;
+
+  const listItems = useMemo<ConversationListItem[]>(() => {
+    // Filter out message-id variants to avoid zero-height elements in virtuoso
+    const items = messages
+      .filter((message) => message.variant !== "message-id")
+      .map<ConversationListItem>((message, index) => ({
+        kind: "message",
+        message,
+        index,
+      }));
+
+    if (showLoadingBubble) {
+      items.push({ kind: "loading" });
+    }
+
+    return items;
+  }, [messages, showLoadingBubble]);
+
+  const handleAtBottomChange = useCallback(
+    (atBottom: boolean) => {
+      setIsAtBottom(atBottom);
+      onAtBottomChange?.(atBottom);
+    },
+    [onAtBottomChange],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToIndex: (
+        index: number,
+        behavior: "auto" | "smooth" = "smooth",
+      ) => {
+        virtuosoRef.current?.scrollToIndex({
+          index,
+          align: "center",
+          behavior,
+        });
+      },
+      scrollToBottom: () => {
+        if (listItems.length > 0) {
+          virtuosoRef.current?.scrollToIndex({
+            index: listItems.length - 1,
+            align: "end",
+            behavior: "smooth",
+          });
+        }
+      },
+    }),
+    [listItems.length],
+  );
+
+  return (
+    <Virtuoso
+      key={conversationKey}
+      ref={virtuosoRef}
+      data={listItems}
+      className="h-full"
+      followOutput={!isReplayingHistory && isAtBottom ? "auto" : false}
+      defaultItemHeight={160}
+      increaseViewportBy={{ top: 400, bottom: 400 }}
+      overscan={200}
+      minOverscanItemCount={4}
+      atBottomStateChange={handleAtBottomChange}
+      initialTopMostItemIndex={
+        isReplayingHistory
+          ? 0
+          : {
+              index: Math.max(0, listItems.length - 1),
+              align: "end",
+            }
+      }
+      components={{
+        Scroller: VirtuosoScroller,
+        List: VirtuosoList,
+      }}
+      computeItemKey={(_index: number, item: ConversationListItem) =>
+        item.kind === "message" ? item.message.id : `loading-${_index}`
+      }
+      itemContent={(_index, item) => {
+        if (item.kind === "loading") {
+          return (
+            <Message
+              className={messages.length > 0 ? "mt-3" : undefined}
+              from="assistant"
+            >
+            <MessageContent className="flex-row items-center justify-start gap-2 text-left text-sm text-muted-foreground">
+              <Loader2Icon className="size-4 animate-spin text-primary" />
+              <span>Waiting for response...</span>
+            </MessageContent>
+          </Message>
+        );
+        }
+
+        const message = item.message;
+
+        if (message.variant === "status") {
+          return (
+            <Message
+              className={messages.length > 0 ? "mt-2" : undefined}
+              from="assistant"
+            >
+              <MessageContent className="text-xs text-muted-foreground">
+                {message.content}
+              </MessageContent>
+            </Message>
+          );
+        }
+
+        const spacingClass = getMessageSpacingClass(
+          message,
+          item.index,
+          messages,
+        );
+
+        const isHighlighted = item.index === highlightedMessageIndex;
+
+        return (
+          <Message
+            className={cn(
+              spacingClass,
+              isHighlighted && "rounded-lg ring-2 ring-primary/50",
+            )}
+            from={message.role}
+          >
+            {message.role === "user" ? (
+              message.content && (
+                <UserMessageContent>{message.content}</UserMessageContent>
+              )
+            ) : (
+              <AssistantMessage
+                message={message}
+                pendingApprovalMap={pendingApprovalMap}
+                onApprovalAction={onApprovalAction}
+                canRespondToApproval={canRespondToApproval}
+                blocksExpanded={blocksExpanded}
+              />
+            )}
+            {message.attachments && message.attachments.length > 0 ? (
+              <MessageAttachments>
+                {message.attachments.map((attachment, attIdx) => {
+                  const key =
+                    "kind" in attachment
+                      ? attachment.filename
+                      : (attachment.filename ??
+                        attachment.url ??
+                        `${message.id}-${attIdx}`);
+                  return (
+                    <MessageAttachment
+                      className="size-32 sm:size-40"
+                      data={attachment}
+                      key={key}
+                    />
+                  );
+                })}
+              </MessageAttachments>
+            ) : null}
+          </Message>
+        );
+      }}
+    />
+  );
+}
+
+export const VirtualizedMessageList = forwardRef(
+  VirtualizedMessageListComponent,
+);
+VirtualizedMessageList.displayName = "VirtualizedMessageList";
