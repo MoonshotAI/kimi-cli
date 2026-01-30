@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：合并 `/login` 和 `/setup` 命令，`/setup` 现为 `/login` 的别名
 - Shell：`/usage` 命令现在显示剩余配额百分比；添加 `/status` 别名
 - Config：添加 `KIMI_SHARE_DIR` 环境变量，用于自定义共享目录路径（默认 `~/.kimi`）
 - Web：新增 Web UI，支持基于浏览器的交互

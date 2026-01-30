@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Merge `/login` and `/setup` commands; `/setup` is now an alias for `/login`
 - Shell: `/usage` now shows remaining quota percentage; add `/status` alias
 - Config: Add `KIMI_SHARE_DIR` environment variable to customize the share directory path (default: `~/.kimi`)
 - Web: Add new Web UI for browser-based interaction
