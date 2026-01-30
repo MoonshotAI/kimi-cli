@@ -25,6 +25,12 @@ Kimi Code CLI is not only a coding agent, but also a shell. You can switch the s
 > [!NOTE]
 > Built-in shell commands like `cd` are not supported yet.
 
+### VS Code extension
+
+Kimi Code CLI can be integrated with [Visual Studio Code](https://code.visualstudio.com/) via the [Kimi Code VS Code Extension](https://marketplace.visualstudio.com/items?itemName=moonshot-ai.kimi-code).
+
+![VS Code Extension](./docs/media/vscode.png)
+
 ### IDE integration via ACP
 
 Kimi Code CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
@@ -165,7 +171,3 @@ make help  # show all make targets
 ```
 
 Note: `make build` and `make build-bin` automatically run `make build-web` to embed the web UI.
-
-## Contributing
-
-We welcome contributions to Kimi Code CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.
