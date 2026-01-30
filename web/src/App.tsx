@@ -238,6 +238,8 @@ function App() {
         id: session.sessionId,
         title: session.title ?? "Untitled",
         updatedAt: formatRelativeTime(session.lastUpdated),
+        workDir: session.workDir,
+        lastUpdated: session.lastUpdated,
       })),
     [sessions],
   );
