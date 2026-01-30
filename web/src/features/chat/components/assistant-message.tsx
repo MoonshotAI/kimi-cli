@@ -92,7 +92,8 @@ const renderAssistantText = (message: LiveMessage) => (
       <span
         className={cn(
           "mt-1.5 size-2 shrink-0 rounded-full bg-muted-foreground/60",
-          message.isStreaming && "bg-green-500 step-indicator-active",
+          message.isStreaming &&
+            "bg-green-500 animate-[glow-pulse_1.5s_ease-in-out_infinite]",
         )}
       />
       <div className="flex-1 min-w-0">

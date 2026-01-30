@@ -42,8 +42,8 @@ export function ChatWorkspaceHeader({
   tokenUsage,
 }: ChatWorkspaceHeaderProps) {
   return (
-    <div className="workspace-header px-5 py-3">
-      <div className="space-y-1">
+    <div className="flex min-w-0 flex-nowrap items-center gap-4 px-5 py-3">
+      <div className="min-w-0 flex-1 space-y-1">
         {sessionDescription && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -57,7 +57,7 @@ export function ChatWorkspaceHeader({
           </Tooltip>
         )}
       </div>
-      <div className="workspace-header-section flex-shrink-0">
+      <div className="flex shrink-0 items-center gap-3">
         {selectedSessionId && (
           <SessionInfoPopover
             sessionId={selectedSessionId}

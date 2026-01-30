@@ -295,7 +295,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 pb-4 pr-1">
+          <div className="flex-1 overflow-y-auto [-webkit-overflow-scrolling:touch] px-3 pb-4 pr-1">
             <ul className="space-y-2">
               {filteredSessions.map((session) => {
                 const isActive = session.id === selectedSessionId;

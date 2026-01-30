@@ -244,8 +244,8 @@ function App() {
 
   return (
     <PromptInputProvider>
-      <div className="app-page">
-        <div className="app-shell max-w-none">
+      <div className="box-border flex h-[100dvh] flex-col bg-background text-foreground px-3 py-3">
+        <div className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col gap-2 max-w-none">
           <ResizablePanelGroup
             orientation="horizontal"
             className="min-h-0 flex-1 overflow-hidden"
