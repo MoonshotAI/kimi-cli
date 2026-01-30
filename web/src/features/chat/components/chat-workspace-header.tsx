@@ -42,8 +42,8 @@ export function ChatWorkspaceHeader({
   tokenUsage,
 }: ChatWorkspaceHeaderProps) {
   return (
-    <div className="flex min-w-0 flex-nowrap items-center gap-4 px-5 py-3">
-      <div className="min-w-0 flex-1 space-y-1">
+    <div className="flex min-w-0 flex-nowrap justify-between gap-4 px-5 py-3">
+      <div className="min-w-0 space-y-1">
         {sessionDescription && (
           <Tooltip>
             <TooltipTrigger asChild>
