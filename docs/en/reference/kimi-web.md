@@ -39,10 +39,12 @@ kimi web --reload
 The Web UI provides functionality similar to the terminal Shell mode:
 
 - **Chat interface**: Have natural language conversations with Kimi Code CLI
-- **Session management**: Create, switch, and manage multiple sessions
+- **Session management**: Create, switch, and manage multiple sessions, with search filtering by title or working directory
 - **File operations**: Upload and view files
 - **Approval control**: Approve or reject Agent operation requests
 - **Configuration management**: Adjust settings such as thinking mode
+- **Git status bar**: Show uncommitted changes in the session's working directory in real time
+- **Quick open**: Open files or directories in Terminal, VS Code, Cursor, or other applications via the "Open in" menu
 
 ## LAN access
 
