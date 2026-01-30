@@ -315,7 +315,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     >
                       <Tooltip delayDuration={500}>
                         <TooltipTrigger asChild>
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-sm font-medium text-foreground overflow-hidden">
                             {shortenTitle(normalizeTitle(session.title), 50)}
                           </p>
                         </TooltipTrigger>
