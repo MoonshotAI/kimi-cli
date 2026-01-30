@@ -230,7 +230,6 @@ export const GitDiffStatusBar = memo(function GitDiffStatusBarComponent({
               className="group/file flex items-center gap-2 px-3 py-1 text-xs hover:bg-muted/50 transition-colors"
             >
               <FileIcon className="size-3 flex-shrink-0 text-muted-foreground" />
-              {/* 统计放在文件名前 */}
               <span className="flex items-center gap-1 flex-shrink-0 text-[11px]">
                 {file.additions > 0 && (
                   <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
