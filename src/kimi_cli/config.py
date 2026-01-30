@@ -129,6 +129,21 @@ class MCPConfig(BaseModel):
     )
 
 
+class ShellConfig(BaseModel):
+    """Shell configuration for command execution."""
+
+    path: str | None = Field(default=None, description="Explicit path to shell executable")
+    """Explicit path to shell executable. Highest priority.
+    Example: 'C:/Program Files/Git/bin/bash.exe'"""
+
+    preferred: Literal["auto", "powershell", "bash"] = Field(default="auto")
+    """Preferred shell when path is not set.
+    - "auto": Check SHELL env var, then auto-detect
+    - "powershell": Use PowerShell (default/current behavior)
+    - "bash": Auto-detect bash on Windows
+    """
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -146,6 +161,8 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    shell: ShellConfig = Field(default_factory=ShellConfig, description="Shell configuration")
+    """Shell configuration for command execution."""
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -169,6 +186,7 @@ def get_default_config() -> Config:
         models={},
         providers={},
         services=Services(),
+        shell=ShellConfig(),
     )
 
 
