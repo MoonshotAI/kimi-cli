@@ -535,7 +535,11 @@ def kimi(
                 continue
         await _post_run(last_session, succeeded)
 
-    asyncio.run(_reload_loop(session_id))
+    try:
+        asyncio.run(_reload_loop(session_id))
+    except ConfigError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
 
 cli.add_typer(info_cli, name="info")

@@ -73,3 +73,21 @@ def test_load_config_reserved_context_size():
 def test_load_config_reserved_context_size_too_low():
     with pytest.raises(ConfigError, match="reserved_context_size"):
         load_config_from_string('{"loop_control": {"reserved_context_size": 500}}')
+
+
+def test_load_config_duplicate_toml_key():
+    """Test that duplicate TOML keys raise ConfigError with descriptive message."""
+    duplicate_key_config = """
+[models.qwen]
+provider = "qwen"
+model = "qwen"
+max_context_size = 252144
+
+[models.qwen]
+provider = "deepseek"
+model = "deepseek"
+max_context_size = 252144
+"""
+    with pytest.raises(ConfigError, match="already exists"):
+        load_config_from_string(duplicate_key_config)
+
