@@ -2,9 +2,9 @@
 
 ## 安装与鉴权
 
-### `/setup` 时模型列表为空
+### `/login` 时模型列表为空
 
-如果在运行 `/setup` 命令时看到 "No models available for the selected platform" 错误，可能是以下原因：
+如果在运行 `/login`（或 `/setup`）命令时看到 "No models available for the selected platform" 错误，可能是以下原因：
 
 - **API 密钥无效或过期**：检查你输入的 API 密钥是否正确，以及是否仍有效。
 - **网络连接问题**：确认能正常访问 API 服务地址（如 `api.kimi.com` 或 `api.moonshot.cn`）。
@@ -114,7 +114,7 @@ kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header "CO
 
 - **未提供输入**：需要通过 `--prompt`（或 `--command`）或 stdin 提供输入。例如：`kimi --print --prompt "你好"`。
 - **输出被缓冲**：尝试使用 `--output-format stream-json` 获取流式输出。
-- **配置未完成**：确保已通过 `/setup` 配置 API 密钥和模型。
+- **配置未完成**：确保已通过 `/login` 配置 API 密钥和模型。
 
 ## 更新与升级
 
