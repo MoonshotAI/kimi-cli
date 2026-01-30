@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.4 (2026-01-30)
+
 - Shell: Merge `/login` and `/setup` commands; `/setup` is now an alias for `/login`
 - Shell: `/usage` now shows remaining quota percentage; add `/status` alias
 - Config: Add `KIMI_SHARE_DIR` environment variable to customize the share directory path (default: `~/.kimi`)
@@ -11,7 +13,7 @@ This page documents the changes in each Kimi Code CLI release.
 - CLI: Add `kimi web` subcommand to launch the Web UI server
 - Auth: Fix encoding error when device name or OS version contains non-ASCII characters
 - Auth: OAuth credentials are now stored in files instead of keyring; existing tokens are automatically migrated on startup
-- Auth: Fix authronization failure after the system sleeps or hibernates
+- Auth: Fix authorization failure after the system sleeps or hibernates
 
 ## 1.3 (2026-01-28)
 

@@ -4,6 +4,10 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.4
+
+No breaking changes.
+
 ## 1.3
 
 No breaking changes.
