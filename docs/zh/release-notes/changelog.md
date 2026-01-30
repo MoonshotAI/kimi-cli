@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Config：添加 `[shell]` 配置节，Windows 用户可使用 bash（Git Bash、MSYS2、Cygwin）替代 PowerShell
 - Web：新增 Web UI，支持基于浏览器的交互
 - CLI：添加 `kimi web` 子命令以启动 Web UI 服务器
 - Build：添加 Web UI 构建流程并集成到 Makefile

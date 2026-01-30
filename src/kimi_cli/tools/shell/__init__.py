@@ -122,6 +122,8 @@ class Shell(CallableTool2[Params]):
             raise
 
     def _shell_args(self, command: str) -> tuple[str, ...]:
+        """Generate shell arguments based on shell type."""
         if self._is_powershell:
-            return (str(self._shell_path), "-command", command)
+            return (str(self._shell_path), "-Command", command)
+        # bash, zsh, fish, and sh all use -c flag
         return (str(self._shell_path), "-c", command)

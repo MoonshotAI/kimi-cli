@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Config: Auto-detect bash on Windows (Git Bash, MSYS2, Cygwin, WSL) and add `[shell]` configuration for explicit control
 - Web: Add new Web UI for browser-based interaction
 - CLI: Add `kimi web` subcommand to launch the Web UI server
 - Build: Add Web UI build process integrated into Makefile

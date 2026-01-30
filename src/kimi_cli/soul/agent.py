@@ -86,7 +86,7 @@ class Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
-            Environment.detect(),
+            Environment.detect(config.shell),
         )
 
         # Discover and format skills

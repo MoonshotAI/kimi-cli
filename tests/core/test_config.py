@@ -6,6 +6,7 @@ from inline_snapshot import snapshot
 from kimi_cli.config import (
     Config,
     Services,
+    ShellConfig,
     get_default_config,
     load_config_from_string,
 )
@@ -21,6 +22,7 @@ def test_default_config():
             models={},
             providers={},
             services=Services(),
+            shell=ShellConfig(),
         )
     )
 
@@ -41,6 +43,7 @@ def test_default_config_dump():
             },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
+            "shell": {"path": None, "preferred": "auto"},
         }
     )
 
