@@ -120,3 +120,4 @@ extend-exclude = ["kimi.spec", "pyinstaller.py"]
 datas = "datas"
 Seeked = "Seeked"
 seeked = "seeked"
+iterm = "iterm"
