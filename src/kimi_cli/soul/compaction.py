@@ -110,7 +110,9 @@ class SimpleCompaction:
                 TextPart(text=f"## Message {i + 1}\nRole: {msg.role}\nContent:\n")
             )
             compact_message.content.extend(
-                part for part in msg.content if not isinstance(part, (ThinkPart, ImageURLPart, AudioURLPart, VideoURLPart))
+                part
+                for part in msg.content
+                if not isinstance(part, (ThinkPart, ImageURLPart, AudioURLPart, VideoURLPart))
             )
         compact_message.content.append(TextPart(text="\n" + prompts.COMPACT))
         return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)
