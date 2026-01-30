@@ -65,6 +65,27 @@
 
 重新加载配置文件，无需退出 Kimi Code CLI。
 
+### `/context`
+
+显示当前会话的上下文信息。
+
+输出内容包括：
+- 消息总数
+- 检查点数量
+- Token 使用量（显示当前使用量、最大限制和百分比）
+- 按角色分类的消息统计（user、assistant、tool 等）
+
+```
+Context Info:
+  Total messages: 42
+  Checkpoints: 3
+  Token usage: 15,234 / 131,072 (11.6%)
+  Messages by role:
+    assistant: 18
+    tool: 12
+    user: 12
+```
+
 ### `/debug`
 
 显示当前上下文的调试信息，包括：

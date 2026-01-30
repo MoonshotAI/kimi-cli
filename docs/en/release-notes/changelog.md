@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Add `/context` command to display context information (messages, tokens, checkpoints)
+
 ## 1.5 (2026-01-30)
 
 - Web: Add Git diff status bar showing uncommitted changes in session working directory

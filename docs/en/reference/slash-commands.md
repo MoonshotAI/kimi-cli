@@ -65,6 +65,27 @@ This command is only available when using the default configuration file. If a c
 
 Reload the configuration file without exiting Kimi Code CLI.
 
+### `/context`
+
+Display context information for the current session.
+
+Output includes:
+- Total number of messages
+- Number of checkpoints
+- Token usage (showing current usage, maximum limit, and percentage)
+- Message counts by role (user, assistant, tool, etc.)
+
+```
+Context Info:
+  Total messages: 42
+  Checkpoints: 3
+  Token usage: 15,234 / 131,072 (11.6%)
+  Messages by role:
+    assistant: 18
+    tool: 12
+    user: 12
+```
+
 ### `/debug`
 
 Display debug information for the current context, including:
