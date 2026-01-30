@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 import kosong
-from kosong.message import Message
+from kosong.message import AudioURLPart, ImageURLPart, Message, VideoURLPart
 from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
@@ -110,7 +110,7 @@ class SimpleCompaction:
                 TextPart(text=f"## Message {i + 1}\nRole: {msg.role}\nContent:\n")
             )
             compact_message.content.extend(
-                part for part in msg.content if not isinstance(part, ThinkPart)
+                part for part in msg.content if not isinstance(part, (ThinkPart, ImageURLPart, AudioURLPart, VideoURLPart))
             )
         compact_message.content.append(TextPart(text="\n" + prompts.COMPACT))
         return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)
