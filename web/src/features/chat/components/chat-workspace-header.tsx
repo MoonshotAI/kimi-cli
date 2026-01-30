@@ -13,8 +13,8 @@ import {
 import type { TokenUsage } from "@/hooks/wireTypes";
 import type { Session } from "@/lib/api/models";
 import { shortenTitle } from "@/lib/utils";
-import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
-import { SessionInfoPopover } from "./session-info-popover";
+import { ChevronsDownUpIcon, ChevronsUpDownIcon, InfoIcon } from "lucide-react";
+import { SessionInfoSection } from "./session-info-popover";
 import { OpenInMenu } from "./open-in-menu";
 
 type ChatWorkspaceHeaderProps = {
@@ -62,12 +62,33 @@ export function ChatWorkspaceHeader({
         {currentSession?.workDir ? (
           <OpenInMenu workDir={currentSession.workDir} />
         ) : null}
-        {selectedSessionId && (
-          <SessionInfoPopover
-            sessionId={selectedSessionId}
-            session={currentSession}
-          />
-        )}
+
+        <Context
+          maxTokens={maxTokens}
+          usedTokens={usedTokens}
+          tokenUsage={tokenUsage}
+        >
+          <ContextTrigger className="cursor-pointer">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground select-none">
+              {usagePercent}% context
+              <InfoIcon className="size-3" />
+            </span>
+          </ContextTrigger>
+          <ContextContent align="end" sideOffset={16} >
+            <ContextContentBody className="space-y-4">
+              <ContextRawUsage />
+              {selectedSessionId && (
+                <>
+                  <div className="border-t" />
+                  <SessionInfoSection
+                    sessionId={selectedSessionId}
+                    session={currentSession}
+                  />
+                </>
+              )}
+            </ContextContentBody>
+          </ContextContent>
+        </Context>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -75,7 +96,7 @@ export function ChatWorkspaceHeader({
               aria-label={
                 blocksExpanded ? "Fold all blocks" : "Unfold all blocks"
               }
-              className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+              className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
               onClick={onToggleBlocks}
             >
               {blocksExpanded ? (
@@ -89,23 +110,6 @@ export function ChatWorkspaceHeader({
             {blocksExpanded ? "Fold all blocks" : "Unfold all blocks"}
           </TooltipContent>
         </Tooltip>
-        <Context
-          maxTokens={maxTokens}
-          modelId="kimi-k2-turbo-preview"
-          usedTokens={usedTokens}
-          tokenUsage={tokenUsage}
-        >
-          <ContextTrigger className="cursor-pointer">
-            <span className="text-xs text-muted-foreground select-none">
-              {usagePercent}% context
-            </span>
-          </ContextTrigger>
-          <ContextContent>
-            <ContextContentBody className="space-y-2">
-              <ContextRawUsage />
-            </ContextContentBody>
-          </ContextContent>
-        </Context>
       </div>
     </div>
   );

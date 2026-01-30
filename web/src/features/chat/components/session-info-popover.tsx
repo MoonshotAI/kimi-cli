@@ -61,6 +61,29 @@ function SessionInfoItem({ label, value }: SessionInfoItemProps) {
   );
 }
 
+type SessionInfoSectionProps = {
+  sessionId: string;
+  session?: Session;
+};
+
+export function SessionInfoSection({
+  sessionId,
+  session,
+}: SessionInfoSectionProps) {
+  return (
+    <div className="space-y-3">
+      <p className="font-medium text-sm">Session Info</p>
+      <SessionInfoItem label="Session ID" value={sessionId} />
+      {session?.workDir && (
+        <SessionInfoItem label="Working Directory" value={session.workDir} />
+      )}
+      {session?.sessionDir && (
+        <SessionInfoItem label="Session Directory" value={session.sessionDir} />
+      )}
+    </div>
+  );
+}
+
 type SessionInfoPopoverProps = {
   sessionId: string;
   session?: Session;

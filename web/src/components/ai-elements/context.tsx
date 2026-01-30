@@ -60,7 +60,7 @@ export const Context = ({
       tokenUsage,
     }}
   >
-    <HoverCard closeDelay={0} openDelay={0} {...props} />
+    <HoverCard closeDelay={150} openDelay={0} {...props} />
   </ContextContext.Provider>
 );
 
@@ -415,11 +415,11 @@ export const ContextRawUsage = ({
         Raw token usage
       </div>
       <RawUsageRow label="Input (other)" value={tokenUsage.input_other} />
-      <RawUsageRow label="Cache read" value={tokenUsage.input_cache_read} />
-      <RawUsageRow
+      {/* <RawUsageRow label="Cache read" value={tokenUsage.input_cache_read} /> */}
+      {/* <RawUsageRow
         label="Cache create"
         value={tokenUsage.input_cache_creation}
-      />
+      /> */}
       <RawUsageRow label="Output" value={tokenUsage.output} />
     </div>
   );
