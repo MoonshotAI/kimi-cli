@@ -29,7 +29,8 @@ class OpenInResponse(BaseModel):
     detail: str | None = None
 
 
-def _resolve_directory(path: str) -> Path:
+def _resolve_path(path: str) -> Path:
+    """Resolve and validate a path (file or directory)."""
     resolved = Path(path).expanduser()
     try:
         resolved = resolved.resolve()
@@ -43,11 +44,6 @@ def _resolve_directory(path: str) -> Path:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Path does not exist: {path}",
-        )
-    if not resolved.is_dir():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Path is not a directory: {path}",
         )
     return resolved
 
@@ -105,19 +101,27 @@ async def open_in(request: OpenInRequest) -> OpenInResponse:
             detail="Open-in is only supported on macOS.",
         )
 
-    directory = _resolve_directory(request.path)
+    path = _resolve_path(request.path)
+    is_file = path.is_file()
 
     try:
         match request.app:
             case "finder":
-                _run_command(["open", str(directory)])
+                if is_file:
+                    # Reveal file in Finder
+                    _run_command(["open", "-R", str(path)])
+                else:
+                    _run_command(["open", str(path)])
             case "cursor":
-                _open_app("Cursor", directory)
+                _open_app("Cursor", path)
             case "vscode":
-                _open_app("Visual Studio Code", directory, fallback="Code")
+                _open_app("Visual Studio Code", path, fallback="Code")
             case "iterm":
+                # Terminal apps need directory
+                directory = path.parent if is_file else path
                 _open_iterm(directory)
             case "terminal":
+                directory = path.parent if is_file else path
                 _open_terminal(directory)
             case _:
                 raise HTTPException(

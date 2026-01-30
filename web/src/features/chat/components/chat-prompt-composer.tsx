@@ -127,11 +127,12 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
 
   return (
     <div className="w-full">
-      <div className="w-full px-2">     
+      <div className="w-full px-2">
         <GitDiffStatusBar
-        stats={gitDiffStats ?? null}
-        isLoading={isGitDiffLoading}
-      />
+          stats={gitDiffStats ?? null}
+          isLoading={isGitDiffLoading}
+          workDir={currentSession?.workDir}
+        />
 
       </div>
 
