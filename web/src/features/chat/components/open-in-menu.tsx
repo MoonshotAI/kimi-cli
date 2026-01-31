@@ -7,6 +7,7 @@ import {
   SquareTerminalIcon,
   TerminalIcon,
   AppWindowIcon,
+  ChevronUpIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,7 +37,7 @@ type OpenTarget = {
   id: string;
   label: string;
   icon: ReactNode;
-  backendApp: "finder" | "cursor" | "vscode" | "iterm" | "terminal";
+  backendApp: "finder" | "cursor" | "vscode" | "iterm" | "terminal" | "antigravity";
   macOnly?: boolean;
   shortcut?: string;
 };
@@ -116,6 +117,12 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
         label: "VS Code",
         icon: <CodeIcon className="size-4" />,
         backendApp: "vscode",
+      },
+      {
+        id: "antigravity",
+        label: "Antigravity",
+        icon: <ChevronUpIcon className="size-4" />,
+        backendApp: "antigravity",
       },
       {
         id: "iterm",
