@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from rich.console import Console
+
+console = Console()
+
 
 class KimiCLIException(Exception):
     """Base exception class for Kimi Code CLI."""
 
-    pass
+    def __init__(self, message: str):
+        self.message = message
+        console.print(f"[red]Error: {self.message}[/red]")
+        super().__init__(self.message)
 
 
 class ConfigError(KimiCLIException, ValueError):

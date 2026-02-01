@@ -15,6 +15,7 @@ from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
+from kimi_cli.exception import AgentSpecError
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
@@ -150,7 +151,12 @@ class KimiCLI:
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
-        agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+        try:
+            agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+        except AgentSpecError as e:
+            logger.warning(f"Failed to load agent file '{agent_file}':{e}. Trying default agent.")
+            agent_file = DEFAULT_AGENT_FILE
+            agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
 
         context = Context(session.context_file)
         await context.restore()

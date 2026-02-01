@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Improve error handling when loading agent spec files; automatically fall back to default agent on failure
+- Core: Fix YAML validation in agent spec loading to properly handle non-dictionary content
+- Core: Enhance error message display with colored output
+
 ## 1.5 (2026-01-30)
 
 - Web: Add Git diff status bar showing uncommitted changes in session working directory
