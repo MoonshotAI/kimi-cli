@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -104,9 +104,14 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
         raise AgentSpecError(f"Agent spec path is not a file: {agent_file}")
     try:
         with open(agent_file, encoding="utf-8") as f:
-            data: dict[str, Any] = yaml.safe_load(f)
+            data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise AgentSpecError(f"Invalid YAML in agent spec file: {e}") from e
+
+    if not isinstance(data, dict):
+        raise AgentSpecError(f"Invalid YAML format in agent spec file: {agent_file}")
+
+    data = cast(dict[str, Any], data)
 
     version = str(data.get("version", DEFAULT_AGENT_SPEC_VERSION))
     if version not in SUPPORTED_AGENT_SPEC_VERSIONS:
