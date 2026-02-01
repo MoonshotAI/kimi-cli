@@ -10,7 +10,7 @@ class KimiCLIException(Exception):
 
     def __init__(self, message: str):
         self.message = message
-        console.print(f"[red]Error: {self.message}[red]")
+        console.print(f"[red]Error: {self.message}[/red]")
         super().__init__(self.message)
 
 
