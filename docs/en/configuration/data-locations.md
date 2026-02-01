@@ -2,6 +2,10 @@
 
 Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
+::: tip Custom path
+You can customize the share directory path by setting the `KIMI_SHARE_DIR` environment variable. See [Environment Variables](./env-vars.md#kimi-share-dir) for details.
+:::
+
 ## Directory structure
 
 ```
@@ -9,6 +13,8 @@ Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home 
 ├── config.toml           # Main configuration file
 ├── kimi.json             # Metadata
 ├── mcp.json              # MCP server configuration
+├── credentials/          # OAuth credentials
+│   └── <provider>.json
 ├── sessions/             # Session data
 │   └── <work-dir-hash>/
 │       └── <session-id>/
@@ -57,6 +63,12 @@ Example structure:
 }
 ```
 
+## Credentials
+
+OAuth credentials are stored in the `~/.kimi/credentials/` directory. After logging in to your Kimi account via `/login`, OAuth tokens are saved in this directory.
+
+Files in this directory have permissions set to read/write for the current user only (600) to protect sensitive information.
+
 ## Session data
 
 Session data is grouped by working directory and stored under `~/.kimi/sessions/`. Each working directory corresponds to a subdirectory named with the path's MD5 hash, and each session corresponds to a subdirectory named with the session ID.
@@ -85,7 +97,7 @@ Log files are used for troubleshooting. When reporting bugs, please include rele
 
 ## Cleaning data
 
-Deleting the `~/.kimi/` directory completely clears all Kimi Code CLI data, including configuration, sessions, and history.
+Deleting the share directory (default `~/.kimi/`, or the path specified by `KIMI_SHARE_DIR`) completely clears all Kimi Code CLI data, including configuration, sessions, and history.
 
 To clean only specific data:
 
@@ -97,3 +109,4 @@ To clean only specific data:
 | Clear input history | Delete `~/.kimi/user-history/` directory |
 | Clear logs | Delete `~/.kimi/logs/` directory |
 | Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |
+| Clear login credentials | Delete `~/.kimi/credentials/` directory or use `/logout` |

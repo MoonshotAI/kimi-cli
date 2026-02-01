@@ -290,112 +290,6 @@ body {
 
 /* 6. @layer components */
 @layer components {
-  /* ===== Layout Containers ===== */
-  .app-page {
-    height: 100dvh;
-    @apply box-border flex flex-col bg-background text-foreground px-3 py-3;
-  }
-
-  .app-shell {
-    @apply mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col gap-2;
-  }
-
-  .shell-pane {
-    @apply rounded-lg border border-border/60 bg-card text-foreground;
-    box-shadow: var(--shadow-pane);
-  }
-
-  /* ===== Content Cards ===== */
-  .content-block {
-    @apply rounded-lg border border-border/40 bg-card px-4 py-3 text-left;
-    box-shadow: var(--shadow-card);
-  }
-
-  .option-card {
-    @apply rounded-lg border border-border/60 bg-card px-4 py-3 text-left cursor-pointer transition-colors;
-    box-shadow: var(--shadow-card);
-  }
-  .option-card:hover {
-    @apply border-border bg-secondary/50;
-  }
-
-  /* ===== Input & Toolbar ===== */
-  .input-frame {
-    @apply rounded-lg border border-border bg-background px-3 py-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/20;
-    box-shadow: var(--shadow-input);
-  }
-
-  .toolbar {
-    @apply flex items-center gap-2 rounded-lg border border-border/40 bg-card/90 px-2 py-1;
-    box-shadow: var(--shadow-toolbar);
-  }
-
-  /* ===== Chips ===== */
-  .chip {
-    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium;
-  }
-
-  .chip-group {
-    @apply flex flex-wrap items-center gap-1.5;
-  }
-
-  .chip-default {
-    @apply bg-secondary text-secondary-foreground;
-  }
-
-  .chip-primary {
-    @apply bg-primary/10 text-primary;
-  }
-
-  .chip-success {
-    @apply bg-success/10 text-success;
-  }
-
-  .chip-warning {
-    @apply bg-warning/10 text-warning;
-  }
-
-  .chip-danger {
-    @apply bg-destructive/10 text-destructive;
-  }
-
-  .chip-info {
-    @apply bg-info/10 text-info;
-  }
-
-  /* ===== Utility Classes ===== */
-  .config-detail-row {
-    @apply grid grid-cols-[110px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-3 py-1.5;
-  }
-
-  .workspace-header {
-    @apply flex flex-wrap items-center justify-between gap-4;
-  }
-
-  .workspace-header-section {
-    @apply flex items-center gap-3;
-  }
-
-  .menu-option {
-    @apply flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors;
-  }
-
-  .menu-option-meta {
-    @apply flex items-center gap-2;
-  }
-
-  .status-row {
-    @apply flex flex-wrap items-center gap-2;
-  }
-
-  .icon-with-text {
-    @apply inline-flex items-center gap-1;
-  }
-
-  .inline-list {
-    @apply flex flex-wrap items-center gap-1;
-  }
-
   /* ===== CodeMirror ===== */
   .cm-editor {
     background-color: var(--card);
@@ -466,43 +360,6 @@ body {
   }
 
   /* ===== Animations ===== */
-  @keyframes bounce-attention {
-    0%,
-    100% {
-      transform: scale(1);
-    }
-    20% {
-      transform: scale(1.25);
-    }
-    40% {
-      transform: scale(0.9);
-    }
-    60% {
-      transform: scale(1.15);
-    }
-    80% {
-      transform: scale(0.95);
-    }
-  }
-
-  .animate-bounce-attention {
-    animation: bounce-attention 0.6s ease-in-out;
-  }
-
-  @keyframes cursor-blink {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0;
-    }
-  }
-
-  .animate-cursor {
-    animation: cursor-blink 1s step-end infinite;
-  }
-
   @keyframes glow-pulse {
     0%,
     100% {
@@ -513,9 +370,6 @@ body {
     }
   }
 
-  .step-indicator-active {
-    animation: glow-pulse 1.5s ease-in-out infinite;
-  }
 }
 
 /* View Transitions: Theme Toggle Animation */
@@ -527,13 +381,6 @@ body {
 
 :root[data-theme-switching="true"] * {
   transition: none !important;
-}
-
-:root[data-theme-switching="true"] .option-card,
-:root[data-theme-switching="true"] .content-block,
-:root[data-theme-switching="true"] .input-frame,
-:root[data-theme-switching="true"] .toolbar {
-  box-shadow: none !important;
 }
 
 ::view-transition-old(root) {
@@ -575,9 +422,4 @@ body {
 
 .slide-in-from-bottom-2 {
   --tw-enter-translate-y: 0.5rem;
-}
-
-.overflow-y-auto {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }

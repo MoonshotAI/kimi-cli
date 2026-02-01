@@ -11,6 +11,7 @@ import mimetypes
 import sys
 import time
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -665,3 +666,48 @@ class KimiCLIRunner:
             session = self._sessions.get(session_id)
             if session:
                 await session.remove_websocket(ws)
+
+    async def restart_running_workers(
+        self,
+        *,
+        reason: str,
+        force: bool,
+    ) -> RestartWorkersSummary:
+        """Restart all running workers to apply global config updates.
+
+        Args:
+            reason: Reason for the restart (e.g., "config_update")
+            force: If True, also restart busy sessions (may interrupt prompts)
+
+        Returns:
+            Summary of restarted and skipped sessions
+        """
+        async with self._lock:
+            running = [(sid, proc) for sid, proc in self._sessions.items() if proc.is_running]
+
+        restarted: list[UUID] = []
+        skipped_busy: list[UUID] = []
+        tasks: list[asyncio.Task[None]] = []
+
+        for session_id, proc in running:
+            if proc.is_busy and not force:
+                skipped_busy.append(session_id)
+                continue
+            restarted.append(session_id)
+            tasks.append(asyncio.create_task(proc.restart_worker(reason=reason)))
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        return RestartWorkersSummary(
+            restarted_session_ids=restarted,
+            skipped_busy_session_ids=skipped_busy,
+        )
+
+
+@dataclass(slots=True)
+class RestartWorkersSummary:
+    """Summary of a restart_running_workers operation."""
+
+    restarted_session_ids: list[UUID]
+    skipped_busy_session_ids: list[UUID]

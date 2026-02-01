@@ -7,8 +7,22 @@
 - Config：添加 `[shell]` 配置节，Windows 用户可使用 bash（Git Bash、MSYS2、Cygwin）替代 PowerShell
 - Web：新增 Web UI，支持基于浏览器的交互
 - CLI：添加 `kimi web` 子命令以启动 Web UI 服务器
-- Build：添加 Web UI 构建流程并集成到 Makefile
-- Core：添加内部 web worker 命令用于会话管理
+- Auth：修复设备名称或操作系统版本包含非 ASCII 字符时的编码错误
+- Auth：OAuth 凭据现在存储在文件中而非 keyring；启动时自动迁移现有令牌
+- Auth：修复系统休眠或睡眠后的授权失败问题
+
+## 1.5 (2026-01-30)
+
+- Web：添加 Git diff 状态栏，显示会话工作目录中的未提交更改
+- Web：添加 "Open in" 菜单，用于在终端、VS Code、Cursor 或其他本地应用中打开文件/目录
+- Web：添加会话搜索功能，支持按标题或工作目录过滤会话
+- Web：改进会话标题显示，优化溢出处理
+
+## 1.4 (2026-01-30)
+
+- Shell：合并 `/login` 和 `/setup` 命令，`/setup` 现为 `/login` 的别名
+- Shell：`/usage` 命令现在显示剩余配额百分比；添加 `/status` 别名
+- Config：添加 `KIMI_SHARE_DIR` 环境变量，用于自定义共享目录路径（默认 `~/.kimi`）
 
 ## 1.3 (2026-01-28)
 

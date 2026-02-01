@@ -46,7 +46,12 @@ def make_env(home_dir: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["HOME"] = str(home_dir)
     env["USERPROFILE"] = str(home_dir)
+    env["KIMI_SHARE_DIR"] = str(share_dir(home_dir))
     return env
+
+
+def share_dir(home_dir: Path) -> Path:
+    return home_dir / "share"
 
 
 def register_path_replacements(

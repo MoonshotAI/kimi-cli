@@ -86,7 +86,7 @@ const renderSection = ({
               key={option.id}
               type="button"
               className={cn(
-                "menu-option",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                 isActive
                   ? "bg-primary/10 text-foreground ring-1 ring-primary/30"
                   : "hover:bg-muted",
@@ -108,7 +108,7 @@ const renderSection = ({
                   </p>
                 ) : null}
               </div>
-              <div className="menu-option-meta">
+              <div className="flex items-center gap-2">
                 {sizeLabel ? (
                   <span className="text-xs text-muted-foreground">
                     {sizeLabel}
@@ -150,7 +150,7 @@ export const FileMentionMenu = ({
   return (
     <div className="absolute left-0 right-0 bottom-[calc(100%+0.75rem)] z-30">
       <div className="rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur supports-backdrop-filter:bg-popover/80">
-        <div className="max-h-64 overflow-y-auto">
+        <div className="max-h-64 overflow-y-auto [-webkit-overflow-scrolling:touch]">
           {hasSections ? (
             <>
               {renderSection({
@@ -179,13 +179,13 @@ export const FileMentionMenu = ({
         {showStatus ? (
           <div className="mt-2 rounded-md border border-border/80 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             {workspaceStatus === "loading" ? (
-              <div className="menu-option-meta">
+              <div className="flex items-center gap-2">
                 <RefreshCwIcon className="size-3.5 animate-spin text-primary" />
                 Indexing workspace files…
               </div>
             ) : workspaceStatus === "error" ? (
-              <div className="status-row">
-                <span className="icon-with-text text-destructive">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-destructive">
                   <AlertCircleIcon className="size-3.5" />
                   {workspaceError ?? "Workspace files unavailable."}
                 </span>

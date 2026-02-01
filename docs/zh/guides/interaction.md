@@ -57,7 +57,7 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 ## 斜杠命令
 
-斜杠命令是以 `/` 开头的特殊指令，用于执行 Kimi Code CLI 的内置功能，如 `/help`、`/setup`、`/sessions` 等。输入 `/` 后会自动显示可用命令列表。完整的斜杠命令列表请参考 [斜杠命令参考](../reference/slash-commands.md)。
+斜杠命令是以 `/` 开头的特殊指令，用于执行 Kimi Code CLI 的内置功能，如 `/help`、`/login`、`/sessions` 等。输入 `/` 后会自动显示可用命令列表。完整的斜杠命令列表请参考 [斜杠命令参考](../reference/slash-commands.md)。
 
 ## @ 路径补全
 

@@ -3,6 +3,7 @@
 export * from './ConfigModel';
 export * from './ConfigToml';
 export * from './CreateSessionRequest';
+export * from './GitDiffStats';
 export * from './GlobalConfig';
 export * from './HTTPValidationError';
 export * from './ModelCapability';
