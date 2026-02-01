@@ -31,6 +31,7 @@ The configuration file contains the following top-level configuration items:
 | `loop_control` | `table` | Agent loop control parameters |
 | `services` | `table` | External service configuration (search, fetch) |
 | `mcp` | `table` | MCP client configuration |
+| `shell` | `table` | Shell configuration (Windows only) |
 
 ### Complete configuration example
 
@@ -155,6 +156,39 @@ When configuring the Kimi Code platform using the `/login` command, search and f
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `client.tool_call_timeout_ms` | `integer` | `60000` | MCP tool call timeout (milliseconds) |
+
+### `shell`
+
+::: warning
+This configuration is **Windows only**. On Unix-like systems, the shell is always determined in this priority order: `config.path` → `SHELL` environment variable → auto-detection.
+:::
+
+`shell` configures the shell used for executing shell commands on Windows.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `path` | `string` | `null` | Explicit path to the shell executable. Highest priority. Example: `C:/Program Files/Git/bin/bash.exe` |
+| `preferred` | `string` | `"auto"` | Preferred shell when path is not set. Options: `"auto"`, `"powershell"`, `"bash"` |
+
+**`preferred` options:**
+
+- `"auto"`: Check `SHELL` environment variable, then auto-detect bash from common locations (Git Bash, MSYS2, Cygwin), fallback to PowerShell
+- `"powershell"`: Use PowerShell, ignoring `SHELL` environment variable
+- `"bash"`: Auto-detect bash from common locations, ignoring `SHELL` environment variable
+
+Example:
+
+```toml
+[shell]
+path = "C:/Program Files/Git/bin/bash.exe"
+```
+
+Or use auto-detection:
+
+```toml
+[shell]
+preferred = "bash"  # Auto-detect bash, ignoring SHELL environment variable
+```
 
 ## JSON configuration migration
 

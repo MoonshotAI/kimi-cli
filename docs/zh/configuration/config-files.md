@@ -31,6 +31,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `loop_control` | `table` | Agent 循环控制参数 |
 | `services` | `table` | 外部服务配置（搜索、抓取） |
 | `mcp` | `table` | MCP 客户端配置 |
+| `shell` | `table` | Shell 配置（仅 Windows） |
 
 ### 完整配置示例
 
@@ -155,6 +156,39 @@ capabilities = ["thinking", "image_in"]
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `client.tool_call_timeout_ms` | `integer` | `60000` | MCP 工具调用超时时间（毫秒） |
+
+### `shell`
+
+::: warning
+此配置**仅适用于 Windows**。在类 Unix 系统上，Shell 始终按以下优先级确定：`config.path` → `SHELL` 环境变量 → 自动检测。
+:::
+
+`shell` 配置在 Windows 上执行 Shell 命令时使用的 Shell。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `path` | `string` | `null` | Shell 可执行文件的显式路径。优先级最高。示例：`C:/Program Files/Git/bin/bash.exe` |
+| `preferred` | `string` | `"auto"` | 未设置 path 时的首选 Shell。选项：`"auto"`、`"powershell"`、`"bash"` |
+
+**`preferred` 选项说明：**
+
+- `"auto"`：检查 `SHELL` 环境变量，然后从常见位置自动检测 bash（Git Bash、MSYS2、Cygwin），最后回退到 PowerShell
+- `"powershell"`：使用 PowerShell，忽略 `SHELL` 环境变量
+- `"bash"`：从常见位置自动检测 bash，忽略 `SHELL` 环境变量
+
+示例：
+
+```toml
+[shell]
+path = "C:/Program Files/Git/bin/bash.exe"
+```
+
+或使用自动检测：
+
+```toml
+[shell]
+preferred = "bash"  # 自动检测 bash，忽略 SHELL 环境变量
+```
 
 ## JSON 配置迁移
 
