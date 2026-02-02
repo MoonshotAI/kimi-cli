@@ -428,6 +428,11 @@ def kimi(
             "Final-message-only output is only supported for print UI",
             param_hint="--final-message-only",
         )
+    if starting_prompt is not None and ui != "shell":
+        raise typer.BadParameter(
+            "Starting prompt is only supported for shell UI",
+            param_hint="--starting-prompt",
+        )
 
     config: Config | Path | None = None
     if config_string is not None:
