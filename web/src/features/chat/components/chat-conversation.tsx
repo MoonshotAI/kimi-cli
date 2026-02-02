@@ -78,17 +78,34 @@ export function ChatConversation({
     setTimeout(() => setHighlightedIndex(-1), 2000);
   }, []);
 
-  // Auto-scroll to bottom when history replay completes after session switch
-  const prevIsReplayingRef = useRef(isReplayingHistory);
+  // Auto-scroll to bottom when history replay completes after a session switch
+  const pendingScrollSessionRef = useRef<string | null>(null);
+  const wasReplayingRef = useRef(isReplayingHistory);
+
+  // When session changes, mark that we need to scroll once replay completes
   useEffect(() => {
-    // Detect transition from replaying (true) to not replaying (false)
-    if (prevIsReplayingRef.current && !isReplayingHistory && selectedSessionId) {
-      // Small delay to ensure messages are rendered
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToBottom();
-      });
+    if (selectedSessionId) {
+      pendingScrollSessionRef.current = selectedSessionId;
     }
-    prevIsReplayingRef.current = isReplayingHistory;
+  }, [selectedSessionId]);
+
+  // When replay completes (transition from true to false), scroll to bottom if pending
+  useEffect(() => {
+    const replayJustCompleted = wasReplayingRef.current && !isReplayingHistory;
+    wasReplayingRef.current = isReplayingHistory;
+
+    if (
+      replayJustCompleted &&
+      selectedSessionId &&
+      pendingScrollSessionRef.current === selectedSessionId
+    ) {
+      pendingScrollSessionRef.current = null;
+      // Delay to ensure Virtuoso has rendered after key change
+      const timeoutId = setTimeout(() => {
+        listRef.current?.scrollToBottom();
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
   }, [isReplayingHistory, selectedSessionId]);
 
   const handleScrollToBottom = useCallback(() => {
