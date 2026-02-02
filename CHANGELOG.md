@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Wire: Add `TurnEnd` event to signal the completion of an agent turn (protocol version 1.2)
+- Core: Fix custom agent prompt files containing `$` causing silent startup failure
 
 ## 1.5 (2026-01-30)
 
