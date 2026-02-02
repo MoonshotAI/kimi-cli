@@ -22,7 +22,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session as KimiCLISession
-from kimi_cli.web.auth import is_origin_allowed, verify_token
+from kimi_cli.web.auth import is_origin_allowed, is_private_ip, verify_token
 from kimi_cli.web.models import GitDiffStats, GitFileDiff, Session, SessionStatus
 from kimi_cli.web.runner.messages import send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
@@ -512,6 +512,14 @@ async def session_stream(
     expected_token = getattr(websocket.app.state, "session_token", None)
     enforce_origin = getattr(websocket.app.state, "enforce_origin", False)
     allowed_origins = getattr(websocket.app.state, "allowed_origins", [])
+    lan_only = getattr(websocket.app.state, "lan_only", False)
+
+    # LAN-only check
+    if lan_only:
+        client_ip = websocket.client.host if websocket.client else None
+        if client_ip and not is_private_ip(client_ip):
+            await websocket.close(code=4403, reason="Access denied: LAN only")
+            return
 
     if enforce_origin:
         origin = websocket.headers.get("origin")

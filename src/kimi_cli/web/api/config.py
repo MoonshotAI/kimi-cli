@@ -175,8 +175,9 @@ async def update_global_config(
 
 
 @router.get("/toml", summary="Get kimi-cli config.toml")
-async def get_config_toml() -> ConfigToml:
+async def get_config_toml(http_request: Request) -> ConfigToml:
     """Get kimi-cli config.toml."""
+    _ensure_sensitive_apis_allowed(http_request)
     config_file = get_config_file()
     if not config_file.exists():
         return ConfigToml(content="", path=str(config_file))

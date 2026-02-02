@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import re
 from collections.abc import Iterable
 
@@ -90,31 +91,20 @@ def verify_token(provided: str | None, expected: str) -> bool:
 
 
 def is_private_ip(ip: str) -> bool:
-    """Check if an IP address is in a private range (RFC 1918 + localhost)."""
+    """Check if an IP address is in a private range (RFC 1918 + localhost).
+
+    Supports both IPv4 and IPv6 addresses.
+    """
     if not ip:
         return False
-    parts = ip.split(".")
-    if len(parts) != 4:
-        return False
     try:
-        octets = [int(p) for p in parts]
+        addr = ipaddress.ip_address(ip)
+        # is_private covers RFC 1918 (10.x, 172.16-31.x, 192.168.x)
+        # is_loopback covers 127.x.x.x and ::1
+        # is_link_local covers 169.254.x.x and fe80::/10
+        return addr.is_private or addr.is_loopback or addr.is_link_local
     except ValueError:
         return False
-
-    # 127.0.0.0/8 - Loopback
-    if octets[0] == 127:
-        return True
-    # 10.0.0.0/8 - Private
-    if octets[0] == 10:
-        return True
-    # 172.16.0.0/12 - Private
-    if octets[0] == 172 and 16 <= octets[1] <= 31:
-        return True
-    # 192.168.0.0/16 - Private
-    if octets[0] == 192 and octets[1] == 168:
-        return True
-    # 169.254.0.0/16 - Link-local
-    return octets[0] == 169 and octets[1] == 254
 
 
 def get_client_ip(request: Request, trust_proxy: bool = False) -> str | None:
