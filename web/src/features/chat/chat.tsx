@@ -153,7 +153,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           onOpenSidebar={onOpenSidebar}
         />
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden min-h-0">
           <ChatConversation
             messages={messages}
             status={status}
@@ -182,7 +182,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
         />
 
         {currentSession && (
-          <div className="mt-auto px-0 pb-0 pt-0 sm:px-3 sm:pb-3 sm:pt-3">
+          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 sm:pt-3">
             <ChatPromptComposer
               status={status}
               onSubmit={onSubmit}

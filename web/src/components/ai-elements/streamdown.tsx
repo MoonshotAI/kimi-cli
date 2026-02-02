@@ -6,13 +6,17 @@ import type { StreamdownProps } from "streamdown";
 import { defaultRehypePlugins } from "streamdown";
 import { CodeBlock } from "./code-block";
 
-// Disable all rehype plugins to prevent XSS attacks and ensure raw HTML-like
-// text is displayed as-is. The default plugins include:
-// - 'raw': renders raw HTML embedded in markdown (XSS risk)
-// - 'harden': sanitizes HTML (strips tags, which loses content like <script>)
-// - 'katex': math rendering
-// By disabling all plugins, HTML-like text in markdown is kept as text.
-export const safeRehypePlugins: StreamdownProps["rehypePlugins"] = [];
+// Selectively enable rehype plugins while maintaining security.
+// The default plugins include:
+// - 'raw': renders raw HTML embedded in markdown (XSS risk - DISABLED)
+// - 'harden': sanitizes HTML (strips tags, which loses content like <script> - DISABLED)
+// - 'sanitize': HTML sanitization
+// - 'katex': math rendering (SAFE - only processes math syntax $...$ and $$...$$)
+// We only enable katex to support math formula rendering while keeping HTML-like
+// text displayed as-is for security.
+export const safeRehypePlugins: StreamdownProps["rehypePlugins"] = [
+  defaultRehypePlugins.katex, // Enable math formula rendering
+];
 
 /**
  * Escape HTML-like tags outside of code blocks to prevent XSS and preserve

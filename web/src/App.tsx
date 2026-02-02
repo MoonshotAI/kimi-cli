@@ -11,6 +11,7 @@ import { CreateSessionDialog } from "./features/sessions/create-session-dialog";
 import { Toaster } from "./components/ui/sonner";
 import { formatRelativeTime } from "./hooks/utils";
 import { useSessions } from "./hooks/useSessions";
+import { useTheme } from "./hooks/use-theme";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
@@ -43,6 +44,9 @@ const SIDEBAR_DEFAULT_SIZE = 260;
 const SIDEBAR_ANIMATION_MS = 250;
 
 function App() {
+  // Initialize theme on app startup
+  useTheme();
+
   const sidebarElementRef = useRef<HTMLDivElement | null>(null);
   const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null);
   const sessionsHook = useSessions();
@@ -296,7 +300,7 @@ function App() {
 
   return (
     <PromptInputProvider>
-      <div className="box-border flex h-[100dvh] flex-col bg-background text-foreground px-[calc(0.75rem+var(--safe-left))] pr-[calc(0.75rem+var(--safe-right))] pt-[calc(0.75rem+var(--safe-top))] pb-1 lg:pb-[calc(0.75rem+var(--safe-bottom))]">
+      <div className="box-border flex h-[100dvh] flex-col bg-background text-foreground px-[calc(0.75rem+var(--safe-left))] pr-[calc(0.75rem+var(--safe-right))] pt-[calc(0.75rem+var(--safe-top))] pb-1 lg:pb-[calc(0.75rem+var(--safe-bottom))] max-lg:h-[100svh] max-lg:overflow-hidden">
         <div className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col gap-2 max-w-none">
           {isDesktop ? (
             <ResizablePanelGroup
