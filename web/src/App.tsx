@@ -14,6 +14,7 @@ import { useSessions } from "./hooks/useSessions";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
+import { consumeAuthTokenFromUrl, setAuthToken } from "./lib/auth";
 
 /**
  * Get session ID from URL search params
@@ -77,6 +78,13 @@ function App() {
   );
 
   const [streamStatus, setStreamStatus] = useState<ChatStatus>("ready");
+
+  useEffect(() => {
+    const token = consumeAuthTokenFromUrl();
+    if (token) {
+      setAuthToken(token);
+    }
+  }, []);
 
   // Create session dialog state (lifted to App for unified access)
   const [showCreateDialog, setShowCreateDialog] = useState(false);
