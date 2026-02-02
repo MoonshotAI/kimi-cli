@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Fix WebSocket disconnect when creating new sessions
+- Web: Increase maximum image dimension from 1024 to 4096 pixels
+- Web: Improve UI responsiveness with enhanced hover effects and better layout handling
+
 ## 1.5 (2026-01-30)
 
 - Web: Add Git diff status bar showing uncommitted changes in session working directory
