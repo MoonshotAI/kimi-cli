@@ -11,7 +11,6 @@ import { CreateSessionDialog } from "./features/sessions/create-session-dialog";
 import { Toaster } from "./components/ui/sonner";
 import { formatRelativeTime } from "./hooks/utils";
 import { useSessions } from "./hooks/useSessions";
-import { useTheme } from "./hooks/use-theme";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
@@ -44,9 +43,6 @@ const SIDEBAR_DEFAULT_SIZE = 260;
 const SIDEBAR_ANIMATION_MS = 250;
 
 function App() {
-  // Initialize theme on app startup
-  useTheme();
-
   const sidebarElementRef = useRef<HTMLDivElement | null>(null);
   const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null);
   const sessionsHook = useSessions();

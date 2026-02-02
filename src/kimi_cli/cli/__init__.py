@@ -23,14 +23,6 @@ class Reload(Exception):
         self.session_id = session_id
 
 
-class SwitchToWeb(Exception):
-    """Switch to web interface."""
-
-    def __init__(self, session_id: str | None = None):
-        super().__init__("switch_to_web")
-        self.session_id = session_id
-
-
 cli = typer.Typer(
     epilog="""\b\
 Documentation:        https://moonshotai.github.io/kimi-cli/\n
@@ -533,11 +525,7 @@ def kimi(
 
         save_metadata(metadata)
 
-    async def _reload_loop(session_id: str | None) -> bool:
-        """
-        Returns:
-            True if should switch to web interface, False otherwise.
-        """
+    async def _reload_loop(session_id: str | None):
         while True:
             try:
                 last_session, succeeded = await _run(session_id)
@@ -545,20 +533,9 @@ def kimi(
             except Reload as e:
                 session_id = e.session_id
                 continue
-            except SwitchToWeb as e:
-                if e.session_id is not None:
-                    session = await Session.find(work_dir, e.session_id)
-                    if session is not None:
-                        await _post_run(session, True)
-                return True
         await _post_run(last_session, succeeded)
-        return False
 
-    switch_to_web = asyncio.run(_reload_loop(session_id))
-    if switch_to_web:
-        from kimi_cli.web.app import run_web_server
-
-        run_web_server(open_browser=True)
+    asyncio.run(_reload_loop(session_id))
 
 
 cli.add_typer(info_cli, name="info")
