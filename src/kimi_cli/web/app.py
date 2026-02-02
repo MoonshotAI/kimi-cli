@@ -54,6 +54,17 @@ def _is_local_host(host: str) -> bool:
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
+def _get_address_family(host: str) -> socket.AddressFamily:
+    """Determine the socket address family for a given host.
+
+    Returns AF_INET6 for IPv6 addresses, AF_INET for IPv4 and hostnames.
+    """
+    # Check for IPv6 address patterns
+    if ":" in host:
+        return socket.AF_INET6
+    return socket.AF_INET
+
+
 def _get_private_addresses(addresses: list[str]) -> list[str]:
     """Filter addresses to only include private IPs."""
     return [ip for ip in addresses if is_private_ip(ip)]
@@ -246,9 +257,10 @@ def find_available_port(host: str, start_port: int, max_attempts: int = MAX_PORT
     if start_port < 1 or start_port > 65535:
         raise ValueError("start_port must be between 1 and 65535")
 
+    family = _get_address_family(host)
     for offset in range(max_attempts):
         port = start_port + offset
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        with socket.socket(family, socket.SOCK_STREAM) as s:
             try:
                 s.bind((host, port))
                 return port
