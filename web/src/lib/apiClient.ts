@@ -6,7 +6,6 @@ import {
   type ResponseContext,
 } from "./api";
 import { getApiBaseUrl } from "../hooks/utils";
-import { getAuthHeader } from "./auth";
 
 /**
  * Format validation errors from FastAPI into a readable string.
@@ -43,7 +42,6 @@ function createConfig(): Configuration {
         pre: async (context: RequestContext) => {
           context.init.headers = {
             ...context.init.headers,
-            ...getAuthHeader(),
           };
           return context;
         },

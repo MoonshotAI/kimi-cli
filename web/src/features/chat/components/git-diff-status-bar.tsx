@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { getAuthHeader } from "@/lib/auth";
 import { isMacOS } from "@/hooks/utils";
 import { toast } from "sonner";
 import {
@@ -68,7 +67,7 @@ const OPEN_TARGETS: OpenTarget[] = [
 async function openViaBackend(app: OpenTarget["backendApp"], path: string) {
   const response = await fetch("/api/open-in", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ app, path }),
   });
 

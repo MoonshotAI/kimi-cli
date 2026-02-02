@@ -562,92 +562,57 @@ export const PromptInput = ({
     [],
   );
 
-  /**
-   * Validates and filters files with unified error handling.
-   * Returns validated files and optionally reports the first error encountered.
-   */
-  const validateAndFilterFiles = useCallback(
-    (fileList: File[] | FileList): File[] => {
+  const addLocal = useCallback(
+    (fileList: File[] | FileList) => {
       const incoming = Array.from(fileList);
-
-      // Filter by accept type
       const accepted = incoming.filter((f) => matchesAccept(f));
       if (incoming.length && accepted.length === 0) {
         onError?.({
           code: "accept",
           message: "No files match the accepted types.",
         });
-        return [];
+        return;
       }
 
-      // Validate media files (images/videos) and collect first error
+      // Validate media files (images/videos) against config limits
       const validatedFiles: File[] = [];
-      let firstValidationError: string | null = null;
-
       for (const file of accepted) {
         const validation = validateMediaFile(file);
         if (!validation.valid) {
-          if (!firstValidationError) {
-            firstValidationError = validation.error ?? "File validation failed";
-          }
+          onError?.({
+            code: "max_file_size",
+            message: validation.error ?? "File validation failed",
+          });
         } else {
           validatedFiles.push(file);
         }
       }
 
-      // Report first validation error if any files failed
-      if (firstValidationError && validatedFiles.length < accepted.length) {
-        const failedCount = accepted.length - validatedFiles.length;
-        const message = failedCount > 1
-          ? `${failedCount} files failed validation. First error: ${firstValidationError}`
-          : firstValidationError;
+      if (validatedFiles.length === 0) {
+        return;
+      }
+
+      const withinSize = (f: File) =>
+        maxFileSize ? f.size <= maxFileSize : true;
+      const sized = validatedFiles.filter(withinSize);
+      if (validatedFiles.length > 0 && sized.length === 0) {
         onError?.({
           code: "max_file_size",
-          message,
+          message: "All files exceed the maximum size.",
         });
-      }
-
-      if (validatedFiles.length === 0) {
-        return [];
-      }
-
-      // Filter by maxFileSize (if specified)
-      if (maxFileSize) {
-        const sized = validatedFiles.filter((f) => f.size <= maxFileSize);
-        if (sized.length === 0) {
-          onError?.({
-            code: "max_file_size",
-            message: "All files exceed the maximum size.",
-          });
-          return [];
-        }
-        return sized;
-      }
-
-      return validatedFiles;
-    },
-    [matchesAccept, validateMediaFile, maxFileSize, onError],
-  );
-
-  const addLocal = useCallback(
-    (fileList: File[] | FileList) => {
-      const validatedFiles = validateAndFilterFiles(fileList);
-      if (validatedFiles.length === 0) {
         return;
       }
 
       setItems((prev) => {
         const effectiveMaxFiles = maxFiles ?? MEDIA_CONFIG.maxCount;
         const capacity = Math.max(0, effectiveMaxFiles - prev.length);
-        const capped = validatedFiles.slice(0, capacity);
-
-        if (validatedFiles.length > capacity) {
+        const capped = sized.slice(0, capacity);
+        if (sized.length > capacity) {
           onError?.({
             code: "max_files",
             message: `Too many files. Maximum ${effectiveMaxFiles} files allowed.`,
           });
         }
-
         const next: (FileUIPart & { id: string })[] = [];
         for (const file of capped) {
           next.push({
@@ -661,12 +626,26 @@ export const PromptInput = ({
         return prev.concat(next);
       });
     },
-    [validateAndFilterFiles, maxFiles, onError],
+    [matchesAccept, maxFiles, maxFileSize, onError, validateMediaFile],
   );
 
   const addWithValidation = useCallback(
     (fileList: File[] | FileList) => {
-      const validatedFiles = validateAndFilterFiles(fileList);
+      const incoming = Array.from(fileList);
+      const validatedFiles: File[] = [];
+
+      for (const file of incoming) {
+        const validation = validateMediaFile(file);
+        if (!validation.valid) {
+          onError?.({
+            code: "max_file_size",
+            message: validation.error ?? "File validation failed",
+          });
+        } else {
+          validatedFiles.push(file);
+        }
+      }
+
       if (validatedFiles.length === 0) {
         return;
       }
@@ -688,7 +667,7 @@ export const PromptInput = ({
         controller?.attachments.add(capped);
       }
     },
-    [controller, maxFiles, onError, validateAndFilterFiles],
+    [controller, maxFiles, onError, validateMediaFile],
   );
 
   const add = usingProvider ? addWithValidation : addLocal;
