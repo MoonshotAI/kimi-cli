@@ -177,21 +177,23 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           canRespondToApproval={Boolean(onApprovalResponse)}
         />
 
-        <div className="mt-auto px-3 pb-3 pt-3">
-          <ChatPromptComposer
-            status={status}
-            onSubmit={onSubmit}
-            canSendMessage={canSendMessage}
-            currentSession={currentSession}
-            isUploading={isUploading}
-            isStreaming={isStreaming}
-            isAwaitingIdle={isAwaitingIdle}
-            onCancel={onCancel}
-            onListSessionDirectory={onListSessionDirectory}
-            gitDiffStats={gitDiffStats}
-            isGitDiffLoading={isGitDiffLoading}
-          />
-        </div>
+        {currentSession && (
+          <div className="mt-auto px-3 pb-3 pt-3">
+            <ChatPromptComposer
+              status={status}
+              onSubmit={onSubmit}
+              canSendMessage={canSendMessage}
+              currentSession={currentSession}
+              isUploading={isUploading}
+              isStreaming={isStreaming}
+              isAwaitingIdle={isAwaitingIdle}
+              onCancel={onCancel}
+              onListSessionDirectory={onListSessionDirectory}
+              gitDiffStats={gitDiffStats}
+              isGitDiffLoading={isGitDiffLoading}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
