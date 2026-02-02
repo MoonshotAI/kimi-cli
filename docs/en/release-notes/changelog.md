@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Wire: Add `TurnEnd` event to signal the completion of an agent turn (protocol version 1.2)
+
 ## 1.5 (2026-01-30)
 
 - Web: Add Git diff status bar showing uncommitted changes in session working directory
