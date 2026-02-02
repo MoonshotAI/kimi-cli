@@ -22,6 +22,13 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 	@echo "==> Syncing dependencies for release builds (no sources)"
 	@uv sync --all-extras --all-packages --no-sources
 
+# for kimi web development
+.PHONY: web-back web-front
+web-back: ## Start web backend with uvicorn (reload enabled).
+	@uv run uvicorn kimi_cli.web.app:create_app --factory --reload --port 5494
+web-front: ## Start web frontend (vite dev server).
+	@npm --prefix web run dev
+
 .PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web
 format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web ## Auto-format all workspace packages.
 format-kimi-cli: ## Auto-format Kimi Code CLI sources with ruff.

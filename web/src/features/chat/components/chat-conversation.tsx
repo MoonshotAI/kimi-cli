@@ -185,7 +185,7 @@ export function ChatConversation({
 
       {shouldShowScrollButton ? (
         <Button
-          className="absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full"
+          className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-[50%] translate-x-[-50%] rounded-full"
           onClick={handleScrollToBottom}
           size="icon"
           type="button"

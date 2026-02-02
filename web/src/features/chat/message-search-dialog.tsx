@@ -165,7 +165,7 @@ export function MessageSearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] max-w-6xl flex-col gap-0 p-0 sm:max-w-6xl">
+      <DialogContent className="flex h-[80dvh] max-w-[min(100vw-1.5rem,72rem)] flex-col gap-0 p-0 sm:h-[70vh] sm:max-w-6xl">
         <DialogHeader className="border-b px-4 py-3">
           <DialogTitle className="sr-only">Search Messages</DialogTitle>
           <div className="flex items-center gap-2">
@@ -188,10 +188,10 @@ export function MessageSearchDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           {/* Results list */}
-          <div className="w-1/3 border-r">
-            <ScrollArea className="h-full">
+          <div className="w-full border-b sm:w-1/3 sm:border-b-0 sm:border-r">
+            <ScrollArea className="h-[35vh] sm:h-full">
               <div ref={resultsRef} className="p-2">
                 {matches.length === 0 && query ? (
                   <p className="px-2 py-4 text-center text-sm text-muted-foreground">
@@ -232,7 +232,7 @@ export function MessageSearchDialog({
           </div>
 
           {/* Preview panel */}
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {selectedMatch ? (
               <>
                 <div className="flex items-center justify-between border-b px-4 py-2">

@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { IMAGE_CONFIG, VIDEO_CONFIG, MEDIA_CONFIG } from "@/config/media";
 import { useVideoThumbnail } from "@/hooks/useVideoThumbnail";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
@@ -303,7 +304,7 @@ export function PromptInputAttachment({
         )}
         <Button
           aria-label="Remove attachment"
-          className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
+          className="hover-reveal absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
           onClick={(e) => {
             e.stopPropagation();
             attachments.remove(data.id);
@@ -340,7 +341,7 @@ export function PromptInputAttachment({
         )}
         <Button
           aria-label="Remove attachment"
-          className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
+          className="hover-reveal absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
           onClick={(e) => {
             e.stopPropagation();
             attachments.remove(data.id);
@@ -374,7 +375,7 @@ export function PromptInputAttachment({
             </div>
             <Button
               aria-label="Remove attachment"
-              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
+              className="hover-reveal absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
               onClick={(e) => {
                 e.stopPropagation();
                 attachments.remove(data.id);
@@ -536,6 +537,31 @@ export const PromptInput = ({
     [accept],
   );
 
+  const validateMediaFile = useCallback(
+    (file: File): { valid: boolean; error?: string } => {
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+
+      if (isImage) {
+        if (!IMAGE_CONFIG.allowedTypes.includes(file.type as typeof IMAGE_CONFIG.allowedTypes[number])) {
+          return { valid: false, error: `Unsupported image type: ${file.type}` };
+        }
+        if (file.size > IMAGE_CONFIG.maxSizeBytes) {
+          return { valid: false, error: `Image too large: ${(file.size / 1024 / 1024).toFixed(1)}MB (max ${IMAGE_CONFIG.maxSizeBytes / 1024 / 1024}MB)` };
+        }
+      } else if (isVideo) {
+        if (!VIDEO_CONFIG.allowedTypes.includes(file.type as typeof VIDEO_CONFIG.allowedTypes[number])) {
+          return { valid: false, error: `Unsupported video type: ${file.type}` };
+        }
+        if (file.size > VIDEO_CONFIG.maxSizeBytes) {
+          return { valid: false, error: `Video too large: ${(file.size / 1024 / 1024).toFixed(1)}MB (max ${VIDEO_CONFIG.maxSizeBytes / 1024 / 1024}MB)` };
+        }
+      }
+      return { valid: true };
+    },
+    [],
+  );
+
   const addLocal = useCallback(
     (fileList: File[] | FileList) => {
       const incoming = Array.from(fileList);
@@ -547,10 +573,29 @@ export const PromptInput = ({
         });
         return;
       }
+
+      // Validate media files (images/videos) against config limits
+      const validatedFiles: File[] = [];
+      for (const file of accepted) {
+        const validation = validateMediaFile(file);
+        if (!validation.valid) {
+          onError?.({
+            code: "max_file_size",
+            message: validation.error ?? "File validation failed",
+          });
+        } else {
+          validatedFiles.push(file);
+        }
+      }
+
+      if (validatedFiles.length === 0) {
+        return;
+      }
+
       const withinSize = (f: File) =>
         maxFileSize ? f.size <= maxFileSize : true;
-      const sized = accepted.filter(withinSize);
-      if (accepted.length > 0 && sized.length === 0) {
+      const sized = validatedFiles.filter(withinSize);
+      if (validatedFiles.length > 0 && sized.length === 0) {
         onError?.({
           code: "max_file_size",
           message: "All files exceed the maximum size.",
@@ -559,16 +604,13 @@ export const PromptInput = ({
       }
 
       setItems((prev) => {
-        const capacity =
-          typeof maxFiles === "number"
-            ? Math.max(0, maxFiles - prev.length)
-            : undefined;
-        const capped =
-          typeof capacity === "number" ? sized.slice(0, capacity) : sized;
-        if (typeof capacity === "number" && sized.length > capacity) {
+        const effectiveMaxFiles = maxFiles ?? MEDIA_CONFIG.maxCount;
+        const capacity = Math.max(0, effectiveMaxFiles - prev.length);
+        const capped = sized.slice(0, capacity);
+        if (sized.length > capacity) {
           onError?.({
             code: "max_files",
-            message: "Too many files. Some were not added.",
+            message: `Too many files. Maximum ${effectiveMaxFiles} files allowed.`,
           });
         }
         const next: (FileUIPart & { id: string })[] = [];
@@ -584,12 +626,51 @@ export const PromptInput = ({
         return prev.concat(next);
       });
     },
-    [matchesAccept, maxFiles, maxFileSize, onError],
+    [matchesAccept, maxFiles, maxFileSize, onError, validateMediaFile],
   );
 
-  const add = usingProvider
-    ? (files: File[] | FileList) => controller.attachments.add(files)
-    : addLocal;
+  const addWithValidation = useCallback(
+    (fileList: File[] | FileList) => {
+      const incoming = Array.from(fileList);
+      const validatedFiles: File[] = [];
+
+      for (const file of incoming) {
+        const validation = validateMediaFile(file);
+        if (!validation.valid) {
+          onError?.({
+            code: "max_file_size",
+            message: validation.error ?? "File validation failed",
+          });
+        } else {
+          validatedFiles.push(file);
+        }
+      }
+
+      if (validatedFiles.length === 0) {
+        return;
+      }
+
+      // Check max files limit
+      const currentCount = controller?.attachments.files.length ?? 0;
+      const effectiveMaxFiles = maxFiles ?? MEDIA_CONFIG.maxCount;
+      const capacity = Math.max(0, effectiveMaxFiles - currentCount);
+      const capped = validatedFiles.slice(0, capacity);
+
+      if (validatedFiles.length > capacity) {
+        onError?.({
+          code: "max_files",
+          message: `Too many files. Maximum ${effectiveMaxFiles} files allowed.`,
+        });
+      }
+
+      if (capped.length > 0) {
+        controller?.attachments.add(capped);
+      }
+    },
+    [controller, maxFiles, onError, validateMediaFile],
+  );
+
+  const add = usingProvider ? addWithValidation : addLocal;
 
   const remove = usingProvider
     ? (id: string) => controller.attachments.remove(id)

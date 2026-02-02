@@ -1230,6 +1230,7 @@ export function useSessionStream(
       safeStringify,
       clearAwaitingFirstResponse,
       updateMessageById,
+      setAwaitingFirstResponse,
     ],
   );
 

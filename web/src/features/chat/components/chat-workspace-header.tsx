@@ -18,6 +18,7 @@ import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   InfoIcon,
+  PanelLeftOpen,
   SearchIcon,
 } from "lucide-react";
 import { SessionInfoSection } from "./session-info-popover";
@@ -36,6 +37,7 @@ type ChatWorkspaceHeaderProps = {
   usagePercent: number;
   maxTokens: number;
   tokenUsage: TokenUsage | null;
+  onOpenSidebar?: () => void;
 };
 
 export function ChatWorkspaceHeader({
@@ -50,28 +52,43 @@ export function ChatWorkspaceHeader({
   usagePercent,
   maxTokens,
   tokenUsage,
+  onOpenSidebar,
 }: ChatWorkspaceHeaderProps) {
   const searchShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
 
   return (
-    <div className="flex min-w-0 flex-nowrap justify-between gap-4 px-5 py-3 pl-8">
-      <div className="min-w-0 space-y-1">
-        {sessionDescription && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <p className="text-xs font-bold">
-                {shortenTitle(sessionDescription, 50)}
-              </p>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-md">
-              {sessionDescription}
-            </TooltipContent>
-          </Tooltip>
-        )}
+    <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8">
+      <div className="flex min-w-0 items-center gap-2">
+        {onOpenSidebar ? (
+          <button
+            type="button"
+            aria-label="Open sessions sidebar"
+            className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground lg:hidden"
+            onClick={onOpenSidebar}
+          >
+            <PanelLeftOpen className="size-4" />
+          </button>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          {sessionDescription && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="truncate text-xs font-bold">
+                  {shortenTitle(sessionDescription, 60)}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-md">
+                {sessionDescription}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex items-center justify-end gap-2">
         {currentSession?.workDir ? (
-          <OpenInMenu workDir={currentSession.workDir} />
+          <div className="hidden lg:block">
+            <OpenInMenu workDir={currentSession.workDir} />
+          </div>
         ) : null}
 
         

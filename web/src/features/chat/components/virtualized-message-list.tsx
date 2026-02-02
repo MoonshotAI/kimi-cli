@@ -65,7 +65,10 @@ function VirtuosoScrollerComponent(
   return (
     <div
       ref={ref}
-      className={cn("flex-1 overflow-y-auto overflow-x-hidden pr-2", className)}
+      className={cn(
+        "flex-1 overflow-y-auto overflow-x-hidden pr-1 sm:pr-2",
+        className,
+      )}
       {...rest}
     />
   );
@@ -79,7 +82,11 @@ function VirtuosoListComponent(
 ) {
   const { className, ...rest } = props;
   return (
-    <div ref={ref} className={cn("flex flex-col p-4 px-8", className)} {...rest} />
+    <div
+      ref={ref}
+      className={cn("flex flex-col px-3 py-4 sm:px-6 lg:px-8", className)}
+      {...rest}
+    />
   );
 }
 
@@ -312,7 +319,7 @@ function VirtualizedMessageListComponent(
                         `${message.id}-${attIdx}`);
                   return (
                     <MessageAttachment
-                      className="size-32 sm:size-40"
+                      className="size-28 sm:size-32 lg:size-40"
                       data={attachment}
                       key={key}
                     />

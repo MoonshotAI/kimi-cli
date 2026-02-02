@@ -77,6 +77,12 @@
   /* Inline code */
   --code-background: oklch(0.967 0.001 286.375);
   --code-foreground: oklch(0.141 0.005 285.823);
+
+  /* Safe area insets (iOS) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 /* Dark mode tokens */
@@ -369,7 +375,6 @@ body {
       box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
     }
   }
-
 }
 
 /* View Transitions: Theme Toggle Animation */
@@ -422,4 +427,11 @@ body {
 
 .slide-in-from-bottom-2 {
   --tw-enter-translate-y: 0.5rem;
+}
+
+/* Touch devices: reveal hover-only controls */
+@media (hover: none) {
+  .hover-reveal {
+    opacity: 1 !important;
+  }
 }

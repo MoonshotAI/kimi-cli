@@ -16,6 +16,7 @@ import type { PromptInputMessage } from "@ai-elements";
 import type { GitDiffStats, Session } from "@/lib/api/models";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { MEDIA_CONFIG } from "@/config/media";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
@@ -127,7 +128,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
 
   return (
     <div className="w-full">
-      <div className="w-full px-2">
+      <div className="w-full px-1 sm:px-2">
         <GitDiffStatusBar
           stats={gitDiffStats ?? null}
           isLoading={isGitDiffLoading}
@@ -140,6 +141,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         accept="*"
         className="w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border"
         multiple
+        maxFiles={MEDIA_CONFIG.maxCount}
         onSubmit={onSubmit}
         onError={handleFileError}
       >
@@ -148,7 +150,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
           <button
             type="button"
             onClick={handleToggleExpand}
-            disabled={!canSendMessage || !currentSession}
+            disabled={!(canSendMessage && currentSession)}
             className="absolute top-2 right-2 z-10 p-1 cursor-pointer rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
             aria-label={isExpanded ? "Collapse input" : "Expand input"}
           >
@@ -176,7 +178,9 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                 ref={textareaRef}
                 className={cn(
                   "transition-all duration-200 pr-8",
-                  isExpanded ? "min-h-[300px] max-h-[60vh]" : "min-h-16 max-h-48",
+                  isExpanded
+                    ? "min-h-[220px] max-h-[60vh] sm:min-h-[300px]"
+                    : "min-h-[80px] max-h-36 sm:min-h-16 sm:max-h-48",
                 )}
                 placeholder={
                   !currentSession
@@ -212,7 +216,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
             </div>
           </div>
         </PromptInputBody>
-        <PromptInputFooter className="w-full justify-between py-1 border-none bg-transparent shadow-none">
+        <PromptInputFooter className="w-full flex-wrap justify-between gap-2 py-1 border-none bg-transparent shadow-none">
           <PromptInputTools>
             <GlobalConfigControls />
           </PromptInputTools>

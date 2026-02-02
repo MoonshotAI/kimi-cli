@@ -47,6 +47,7 @@ type ChatWorkspaceContainerProps = {
   onGetSessionFileUrl?: (sessionId: string, path: string) => string;
   onGetSessionFile?: (sessionId: string, path: string) => Promise<Blob>;
   onOpenCreateDialog?: () => void;
+  onOpenSidebar?: () => void;
 };
 
 export function ChatWorkspaceContainer({
@@ -60,6 +61,7 @@ export function ChatWorkspaceContainer({
   onGetSessionFileUrl,
   onGetSessionFile,
   onOpenCreateDialog,
+  onOpenSidebar,
 }: ChatWorkspaceContainerProps): ReactElement {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   // Pending message state for when we need to create a session first
@@ -282,6 +284,7 @@ export function ChatWorkspaceContainer({
       onListSessionDirectory={onListSessionDirectory}
       onGetSessionFileUrl={onGetSessionFileUrl}
       onGetSessionFile={onGetSessionFile}
+      onOpenSidebar={onOpenSidebar}
     />
   );
 }

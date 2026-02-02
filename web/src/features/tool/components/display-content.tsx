@@ -151,7 +151,7 @@ const ImageSearchByTextResults = ({
   result: ImageSearchByTextResult;
 }) => (
   <div className="my-2">
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {result.images.map((image, idx) => (
         <a
           key={`${result.requestId}-${idx}`}
@@ -199,7 +199,7 @@ const ImageSearchByImageResults = ({
     {items.map((item) => (
       <div
         key={item.link || item.title}
-        className="flex gap-3 rounded-md border border-border/40 bg-card/20 p-3 hover:bg-card/40"
+        className="flex flex-col gap-3 rounded-md border border-border/40 bg-card/20 p-3 hover:bg-card/40 sm:flex-row"
       >
         {item.thumbnailUrl && (
           <a
@@ -213,7 +213,7 @@ const ImageSearchByImageResults = ({
               alt={item.title}
               width={80}
               height={80}
-              className="h-20 w-20 rounded object-cover"
+              className="h-32 w-full rounded object-cover sm:h-20 sm:w-20"
             />
           </a>
         )}
@@ -249,7 +249,7 @@ const WebSearchResults = ({ result }: { result: WebSearchResult }) => (
         className="rounded-md border border-border/40 bg-card/20 px-3 py-2 hover:bg-card/40"
       >
         {/* Title row with metadata */}
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
           <a
             href={chunk.url}
             target="_blank"

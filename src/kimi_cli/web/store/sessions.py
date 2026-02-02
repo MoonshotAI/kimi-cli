@@ -84,9 +84,6 @@ def load_all_sessions() -> list[JointSession]:
             except (ValueError, AttributeError, TypeError):
                 continue
 
-            if context_file.stat().st_size == 0:
-                continue
-
             # Create kimi-cli session object
             from kaos.path import KaosPath
 
