@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Config: Auto-detect bash on Windows (Git Bash, MSYS2, Cygwin, WSL) and add `[shell]` configuration for explicit control
+
 ## 1.5 (2026-01-30)
 
 - Web: Add Git diff status bar showing uncommitted changes in session working directory

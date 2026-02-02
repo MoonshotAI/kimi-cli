@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Config：添加 `[shell]` 配置节，Windows 用户可使用 bash（Git Bash、MSYS2、Cygwin）替代 PowerShell
+
 ## 1.5 (2026-01-30)
 
 - Web：添加 Git diff 状态栏，显示会话工作目录中的未提交更改
