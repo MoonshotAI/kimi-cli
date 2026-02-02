@@ -53,6 +53,7 @@ from kimi_cli.wire.types import (
     TextPart,
     ToolResult,
     TurnBegin,
+    TurnEnd,
 )
 
 if TYPE_CHECKING:
@@ -182,34 +183,29 @@ class KimiSoul:
         # Refresh OAuth tokens on each turn to avoid idle-time expirations.
         await self._runtime.oauth.ensure_fresh(self._runtime)
 
+        wire_send(TurnBegin(user_input=user_input))
         user_message = Message(role="user", content=user_input)
         text_input = user_message.extract_text(" ").strip()
 
         if command_call := parse_slash_command_call(text_input):
-            wire_send(TurnBegin(user_input=user_input))
             command = self._find_slash_command(command_call.name)
             if command is None:
                 # this should not happen actually, the shell should have filtered it out
                 wire_send(TextPart(text=f'Unknown slash command "/{command_call.name}".'))
-                return
-
-            ret = command.func(self, command_call.args)
-            if isinstance(ret, Awaitable):
-                await ret
-            return
-
-        if self._loop_control.max_ralph_iterations != 0:
+            else:
+                ret = command.func(self, command_call.args)
+                if isinstance(ret, Awaitable):
+                    await ret
+        elif self._loop_control.max_ralph_iterations != 0:
             runner = FlowRunner.ralph_loop(
                 user_message,
                 self._loop_control.max_ralph_iterations,
             )
             await runner.run(self, "")
-            return
+        else:
+            await self._turn(user_message)
 
-        wire_send(TurnBegin(user_input=user_input))
-        result = await self._turn(user_message)
-        if result.stop_reason == "tool_rejected":
-            return
+        wire_send(TurnEnd())
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -713,4 +709,6 @@ class FlowRunner:
         prompt: str | list[ContentPart],
     ) -> TurnOutcome:
         wire_send(TurnBegin(user_input=prompt))
-        return await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
+        res = await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
+        wire_send(TurnEnd())
+        return res

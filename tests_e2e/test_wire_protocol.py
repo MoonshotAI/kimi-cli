@@ -36,12 +36,12 @@ def test_initialize_handshake(tmp_path) -> None:
     try:
         resp = send_initialize(wire)
         result = _as_dict(resp.get("result"))
-        assert result.get("protocol_version") == "1.1"
+        assert result.get("protocol_version") == "1.2"
         assert "slash_commands" in result
         assert normalize_response(resp) == snapshot(
             {
                 "result": {
-                    "protocol_version": "1.1",
+                    "protocol_version": "1.2",
                     "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
@@ -103,7 +103,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
         assert normalize_response(resp) == snapshot(
             {
                 "result": {
-                    "protocol_version": "1.1",
+                    "protocol_version": "1.2",
                     "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
@@ -268,6 +268,7 @@ def test_external_tool_call(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {"context_usage": None, "token_usage": None, "message_id": None},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -311,6 +312,7 @@ def test_prompt_without_initialize(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {"context_usage": None, "token_usage": None, "message_id": None},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

@@ -79,6 +79,7 @@ def test_config_string(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -164,6 +165,7 @@ def test_model_override(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

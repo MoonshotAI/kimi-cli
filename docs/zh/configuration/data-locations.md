@@ -2,8 +2,10 @@
 
 Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中。本页介绍各类数据文件的位置和用途。
 
-::: tip 自定义路径
+::: tip 提示
 可以通过设置 `KIMI_SHARE_DIR` 环境变量来自定义共享目录路径。详见 [环境变量](./env-vars.md#kimi-share-dir)。
+
+注意：`KIMI_SHARE_DIR` 仅影响上述运行时数据的存储位置，不影响 [Agent Skills](../customization/skills.md) 的搜索路径。Skills 作为跨工具共享的能力扩展，与运行时数据是不同类型的数据。
 :::
 
 ## 目录结构

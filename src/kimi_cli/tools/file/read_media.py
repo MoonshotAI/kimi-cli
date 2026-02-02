@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, FileType, detect_file_type
-from kimi_cli.tools.utils import load_desc_jinja
+from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.path import is_within_directory
 from kimi_cli.wire.types import ImageURLPart, VideoURLPart
@@ -55,7 +55,7 @@ class ReadMediaFile(CallableTool2[Params]):
         if "image_in" not in capabilities and "video_in" not in capabilities:
             raise SkipThisTool()
 
-        description = load_desc_jinja(
+        description = load_desc(
             Path(__file__).parent / "read_media.md",
             {
                 "MAX_MEDIA_MEGABYTES": MAX_MEDIA_MEGABYTES,
