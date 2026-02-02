@@ -4,7 +4,7 @@ Kimi Code CLI 支持通过 [Agent Client Protocol (ACP)](https://agentclientprot
 
 ## 前置准备
 
-在配置 IDE 之前，请确保已安装 Kimi Code CLI 并完成 `/setup` 配置。
+在配置 IDE 之前，请确保已安装 Kimi Code CLI 并完成 `/login` 配置。
 
 ## 在 Zed 中使用
 

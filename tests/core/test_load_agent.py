@@ -11,7 +11,7 @@ import pytest
 from inline_snapshot import snapshot
 
 from kimi_cli.config import Config
-from kimi_cli.exception import InvalidToolError
+from kimi_cli.exception import InvalidToolError, SystemPromptTemplateError
 from kimi_cli.session import Session
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
 from kimi_cli.soul.approval import Approval
@@ -28,6 +28,29 @@ def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSyste
     assert "1970-01-01" in prompt  # Should contain the actual timestamp
     assert builtin_args.KIMI_NOW in prompt
     assert "test_value" in prompt
+
+
+def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):
+    """System prompt should allow literal $ without template errors."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        system_md = tmpdir / "system.md"
+        system_md.write_text("Price is $100, path $PATH, time ${KIMI_NOW}.")
+        prompt = _load_system_prompt(system_md, {}, builtin_args)
+
+    assert "$100" in prompt
+    assert "$PATH" in prompt
+    assert builtin_args.KIMI_NOW in prompt
+
+
+def test_load_system_prompt_missing_arg_raises(builtin_args: BuiltinSystemPromptArgs):
+    """Missing template args should raise a dedicated error."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        system_md = tmpdir / "system.md"
+        system_md.write_text("Missing ${UNKNOWN_ARG}.")
+        with pytest.raises(SystemPromptTemplateError):
+            _load_system_prompt(system_md, {}, builtin_args)
 
 
 def test_load_tools_valid(runtime: Runtime):

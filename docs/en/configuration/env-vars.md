@@ -112,7 +112,22 @@ export OPENAI_API_KEY="sk-xxx"
 
 | Environment Variable | Description |
 | --- | --- |
+| `KIMI_SHARE_DIR` | Customize the share directory path (default: `~/.kimi`) |
 | `KIMI_CLI_NO_AUTO_UPDATE` | Disable automatic update check |
+
+### `KIMI_SHARE_DIR`
+
+Customize the share directory path for Kimi Code CLI. The default path is `~/.kimi`, where configuration, sessions, logs, and other runtime data are stored.
+
+```sh
+export KIMI_SHARE_DIR="/path/to/custom/kimi"
+```
+
+See [Data Locations](./data-locations.md) for details.
+
+::: warning Note
+`KIMI_SHARE_DIR` does not affect [Agent Skills](../customization/skills.md) search paths. Skills are cross-tool shared capability extensions (compatible with Claude, Codex, etc.), which is a different type of data from application runtime data. To override Skills paths, use the `--skills-dir` flag.
+:::
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 

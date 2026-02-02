@@ -12,6 +12,7 @@ from kimi_cli.constant import VERSION
 
 from .info import cli as info_cli
 from .mcp import cli as mcp_cli
+from .web import cli as web_cli
 
 
 class Reload(Exception):
@@ -19,6 +20,14 @@ class Reload(Exception):
 
     def __init__(self, session_id: str | None = None):
         super().__init__("reload")
+        self.session_id = session_id
+
+
+class SwitchToWeb(Exception):
+    """Switch to web interface."""
+
+    def __init__(self, session_id: str | None = None):
+        super().__init__("switch_to_web")
         self.session_id = session_id
 
 
@@ -524,7 +533,11 @@ def kimi(
 
         save_metadata(metadata)
 
-    async def _reload_loop(session_id: str | None):
+    async def _reload_loop(session_id: str | None) -> bool:
+        """
+        Returns:
+            True if should switch to web interface, False otherwise.
+        """
         while True:
             try:
                 last_session, succeeded = await _run(session_id)
@@ -532,9 +545,20 @@ def kimi(
             except Reload as e:
                 session_id = e.session_id
                 continue
+            except SwitchToWeb as e:
+                if e.session_id is not None:
+                    session = await Session.find(work_dir, e.session_id)
+                    if session is not None:
+                        await _post_run(session, True)
+                return True
         await _post_run(last_session, succeeded)
+        return False
 
-    asyncio.run(_reload_loop(session_id))
+    switch_to_web = asyncio.run(_reload_loop(session_id))
+    if switch_to_web:
+        from kimi_cli.web.app import run_web_server
+
+        run_web_server(open_browser=True)
 
 
 cli.add_typer(info_cli, name="info")
@@ -657,7 +681,25 @@ def acp():
     acp_main()
 
 
+@cli.command(name="__web-worker", hidden=True)
+def web_worker(session_id: str) -> None:
+    """Run web worker subprocess (internal)."""
+    from uuid import UUID
+
+    from kimi_cli.app import enable_logging
+    from kimi_cli.web.runner.worker import run_worker
+
+    try:
+        parsed_session_id = UUID(session_id)
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid session ID: {session_id}") from exc
+
+    enable_logging(debug=False)
+    asyncio.run(run_worker(parsed_session_id))
+
+
 cli.add_typer(mcp_cli, name="mcp")
+cli.add_typer(web_cli, name="web")
 
 
 if __name__ == "__main__":

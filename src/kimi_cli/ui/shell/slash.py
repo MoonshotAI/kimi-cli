@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
-from kimi_cli.cli import Reload
+from kimi_cli.cli import Reload, SwitchToWeb
 from kimi_cli.config import load_config, save_config
 from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
@@ -352,6 +352,14 @@ async def list_sessions(app: Shell, args: str):
 
     console.print(f"[green]Switching to session {selection}...[/green]")
     raise Reload(session_id=selection)
+
+
+@registry.command
+def web(app: Shell, args: str):
+    """Open Kimi Code Web UI in browser"""
+    soul = _ensure_kimi_soul(app)
+    session_id = soul.runtime.session.id if soul else None
+    raise SwitchToWeb(session_id=session_id)
 
 
 @registry.command

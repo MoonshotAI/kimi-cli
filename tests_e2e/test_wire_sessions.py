@@ -10,6 +10,7 @@ from tests_e2e.wire_helpers import (
     make_home_dir,
     make_work_dir,
     send_initialize,
+    share_dir,
     start_wire,
     summarize_messages,
     write_scripted_config,
@@ -18,7 +19,7 @@ from tests_e2e.wire_helpers import (
 
 def _session_dir(home_dir: Path, work_dir: Path) -> Path:
     digest = hashlib.md5(str(work_dir).encode("utf-8")).hexdigest()
-    return home_dir / ".kimi" / "sessions" / digest
+    return share_dir(home_dir) / "sessions" / digest
 
 
 def _count_lines(path: Path) -> int:
@@ -137,7 +138,7 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 5, "wire_after": 9})
+    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 6, "wire_after": 11})
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -183,6 +184,7 @@ def test_clear_context_rotates(tmp_path) -> None:
                     "type": "ContentPart",
                     "payload": {"type": "text", "text": "The context has been cleared."},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -247,6 +249,7 @@ def test_manual_compact(tmp_path) -> None:
                     "type": "ContentPart",
                     "payload": {"type": "text", "text": "The context has been compacted."},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

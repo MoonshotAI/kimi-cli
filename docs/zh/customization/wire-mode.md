@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.1`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.2`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -69,8 +69,8 @@ interface JSONRPCError {
 
 ### `initialize`
 
-::: info 新增于 Wire 1.1
-旧版 Client 可跳过此请求，直接发送 `prompt`。
+::: info 新增
+新增于 Wire 1.1。旧版 Client 可跳过此请求，直接发送 `prompt`。
 :::
 
 - **方向**：Client → Agent
@@ -314,6 +314,7 @@ type WireMessage = Event | Request
 /** 事件：通过 event 方法发送，无需响应 */
 type Event =
   | TurnBegin
+  | TurnEnd
   | StepBegin
   | StepInterrupted
   | CompactionBegin
@@ -338,6 +339,20 @@ type Request = ApprovalRequest | ToolCallRequest
 interface TurnBegin {
   /** 用户输入，可以是纯文本或内容片段数组 */
   user_input: string | ContentPart[]
+}
+```
+
+### `TurnEnd`
+
+::: info 新增
+新增于 Wire 1.2。
+:::
+
+轮次结束。此事件在轮次的所有其他事件之后发送。如果轮次被中断，此事件可能不会发送。
+
+```typescript
+interface TurnEnd {
+  // 无额外字段
 }
 ```
 
@@ -506,8 +521,8 @@ interface ToolReturnValue {
 
 ### `ApprovalResponse`
 
-::: info 重命名于 Wire 1.1
-原名 `ApprovalRequestResolved`，旧名称仍可使用以保持向后兼容。
+::: info 变更
+重命名于 Wire 1.1。原名 `ApprovalRequestResolved`，旧名称仍可使用以保持向后兼容。
 :::
 
 审批响应事件，表示审批请求已完成。

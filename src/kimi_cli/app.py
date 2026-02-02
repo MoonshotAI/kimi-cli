@@ -93,6 +93,8 @@ class KimiCLI:
             FileNotFoundError: When the agent file is not found.
             ConfigError(KimiCLIException, ValueError): When the configuration is invalid.
             AgentSpecError(KimiCLIException, ValueError): When the agent specification is invalid.
+            SystemPromptTemplateError(KimiCLIException, ValueError): When the system prompt
+                template is invalid.
             InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
             MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
@@ -302,6 +304,17 @@ class KimiCLI:
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )
+        welcome_info.append(
+            WelcomeInfoItem(
+                name="\nTip",
+                value=(
+                    "Kimi Code Web UI, a GUI version of Kimi Code, is now in technical preview."
+                    "\n"
+                    "     Type /web to switch, or next time run `kimi web` directly."
+                ),
+                level=WelcomeInfoItem.Level.INFO,
+            )
+        )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
             return await shell.run(command)

@@ -8,6 +8,7 @@ from kosong.tooling import CallableTool2, ToolError, ToolOk, Toolset
 from kosong.tooling.simple import SimpleToolset
 from pydantic import BaseModel, Field, SecretStr
 
+from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.config import LLMModel, LLMProvider, get_default_config
 from kimi_cli.llm import LLM, create_llm
 from kimi_cli.session import Session
@@ -32,6 +33,7 @@ class HakimiSoul(KimiSoul):
         session = session or await Session.create(kaos_work_dir)
         runtime = await Runtime.create(
             config=config,
+            oauth=OAuthManager(config),
             llm=llm,
             session=session,
             yolo=True,

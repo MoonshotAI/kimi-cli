@@ -14,6 +14,7 @@ from tests_e2e.wire_helpers import (
     make_home_dir,
     make_work_dir,
     send_initialize,
+    share_dir,
     start_wire,
     summarize_messages,
     write_scripted_config,
@@ -22,7 +23,7 @@ from tests_e2e.wire_helpers import (
 
 def _session_dir(home_dir: Path, work_dir: Path, session_id: str) -> Path:
     digest = hashlib.md5(str(work_dir).encode("utf-8")).hexdigest()
-    return home_dir / ".kimi" / "sessions" / digest / session_id
+    return share_dir(home_dir) / "sessions" / digest / session_id
 
 
 def _read_user_texts(context_file: Path) -> list[str]:
@@ -111,6 +112,7 @@ def test_skill_prompt_injects_skill_text(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -196,6 +198,8 @@ def test_flow_skill(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -350,6 +354,7 @@ def test_mcp_tool_call(tmp_path) -> None:
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
