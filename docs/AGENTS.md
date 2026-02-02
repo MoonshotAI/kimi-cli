@@ -100,7 +100,14 @@ JetBrains IDE terminology (Chinese UI translations):
   - ✗ 详见\[配置文件\](./config.md)。
 - **Full-width punctuation**: Use full-width punctuation in Chinese text: `，。；：？！（）` not `, . ; : ? ! ( )`.
 - **Code block language**: Always specify language for fenced code blocks (e.g., ` ```sh `, ` ```toml `, ` ```json `). Exception: natural language examples (user prompts) may omit the language.
-- **Version info blocks**: Use `::: info` blocks to indicate version changes. The title should be a category (Added/Changed/Removed in English; 新增/变更/移除 in Chinese), and the content should be a complete sentence describing the change.
+- **Callout titles**: Use short category titles for callout blocks (`::: tip`, `::: warning`, `::: info`, `::: danger`). Put the detailed description in the block content, not the title.
+  - Chinese: use `提示` for tip, `注意` for warning, `说明` for info, `警告` for danger.
+  - English: use no title or short words like `Note` for warning.
+  - ✓ `::: tip 提示` + content starting with the key point
+  - ✓ `::: warning 注意` + content `\`KIMI_SHARE_DIR\` 不影响 Skills 的搜索路径。...`
+  - ✗ `::: warning 不影响 Skills` (title too long, should be in content)
+  - ✗ `::: tip Skills 路径独立于 KIMI_SHARE_DIR` (title too long)
+- **Version info blocks**: For version change callouts, use `::: info` with a category title (Added/Changed/Removed in English; 新增/变更/移除 in Chinese). The content should be a complete sentence.
   - ✓ `::: info 新增` + content `新增于 Wire 1.2。`
   - ✗ `::: info 新增于 Wire 1.2` (title too long)
   - ✓ `::: info Changed` + content `Renamed in Wire 1.1. ...`
