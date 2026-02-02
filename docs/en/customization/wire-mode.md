@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.1`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.2`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -69,8 +69,8 @@ interface JSONRPCError {
 
 ### `initialize`
 
-::: info Added in Wire 1.1
-Legacy clients can skip this request and send `prompt` directly.
+::: info Added
+Added in Wire 1.1. Legacy clients can skip this request and send `prompt` directly.
 :::
 
 - **Direction**: client → agent
@@ -314,6 +314,7 @@ type WireMessage = Event | Request
 /** Events: sent via event method, no response needed */
 type Event =
   | TurnBegin
+  | TurnEnd
   | StepBegin
   | StepInterrupted
   | CompactionBegin
@@ -338,6 +339,20 @@ Turn started.
 interface TurnBegin {
   /** User input, can be plain text or array of content parts */
   user_input: string | ContentPart[]
+}
+```
+
+### `TurnEnd`
+
+::: info Added
+Added in Wire 1.2.
+:::
+
+Turn ended. This event is sent after all other events in the turn. If the turn is interrupted, this event may be omitted.
+
+```typescript
+interface TurnEnd {
+  // No additional fields
 }
 ```
 
@@ -506,8 +521,8 @@ interface ToolReturnValue {
 
 ### `ApprovalResponse`
 
-::: info Renamed in Wire 1.1
-Formerly `ApprovalRequestResolved`. The old name is still accepted for backwards compatibility.
+::: info Changed
+Renamed in Wire 1.1. Formerly `ApprovalRequestResolved`. The old name is still accepted for backwards compatibility.
 :::
 
 Approval response event, indicates an approval request has been completed.
