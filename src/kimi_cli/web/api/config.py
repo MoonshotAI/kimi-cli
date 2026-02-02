@@ -110,6 +110,15 @@ def _get_runner(req: Request) -> KimiCLIRunner:
     return req.app.state.runner
 
 
+def _ensure_sensitive_apis_allowed(request: Request) -> None:
+    """Block sensitive config writes when restricted."""
+    if getattr(request.app.state, "restrict_sensitive_apis", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sensitive config APIs are disabled in this mode.",
+        )
+
+
 @router.get("/", summary="Get global (kimi-cli) config snapshot")
 async def get_global_config() -> GlobalConfig:
     """Get global (kimi-cli) config snapshot."""
@@ -119,9 +128,11 @@ async def get_global_config() -> GlobalConfig:
 @router.patch("/", summary="Update global (kimi-cli) default model/thinking")
 async def update_global_config(
     request: UpdateGlobalConfigRequest,
+    http_request: Request,
     runner: KimiCLIRunner = Depends(_get_runner),
 ) -> UpdateGlobalConfigResponse:
     """Update global (kimi-cli) default model/thinking."""
+    _ensure_sensitive_apis_allowed(http_request)
     config = load_config()
 
     # Validate and update default_model
@@ -164,8 +175,9 @@ async def update_global_config(
 
 
 @router.get("/toml", summary="Get kimi-cli config.toml")
-async def get_config_toml() -> ConfigToml:
+async def get_config_toml(http_request: Request) -> ConfigToml:
     """Get kimi-cli config.toml."""
+    _ensure_sensitive_apis_allowed(http_request)
     config_file = get_config_file()
     if not config_file.exists():
         return ConfigToml(content="", path=str(config_file))
@@ -173,10 +185,14 @@ async def get_config_toml() -> ConfigToml:
 
 
 @router.put("/toml", summary="Update kimi-cli config.toml")
-async def update_config_toml(request: UpdateConfigTomlRequest) -> UpdateConfigTomlResponse:
+async def update_config_toml(
+    request: UpdateConfigTomlRequest,
+    http_request: Request,
+) -> UpdateConfigTomlResponse:
     """Update kimi-cli config.toml."""
     from kimi_cli.config import load_config_from_string
 
+    _ensure_sensitive_apis_allowed(http_request)
     try:
         # Validate the config first
         load_config_from_string(request.content)

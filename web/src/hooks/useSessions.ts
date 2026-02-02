@@ -5,6 +5,7 @@ import type {
   SessionStatus,
 } from "../lib/api/models";
 import { apiClient } from "../lib/apiClient";
+import { getAuthHeader, getAuthToken } from "../lib/auth";
 import { formatRelativeTime, getApiBaseUrl } from "./utils";
 
 // Regex patterns for path normalization
@@ -187,6 +188,7 @@ export function useSessions(): UseSessionsReturn {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...getAuthHeader(),
           },
           body: workDir ? JSON.stringify({ work_dir: workDir }) : undefined,
         });
@@ -374,7 +376,9 @@ export function useSessions(): UseSessionsReturn {
   const getSessionFileUrl = useCallback(
     (sessionId: string, path: string): string => {
       const basePath = getApiBaseUrl();
-      return `${basePath}/api/sessions/${encodeURIComponent(sessionId)}/files/${encodeURIComponent(path)}`;
+      const token = getAuthToken();
+      const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
+      return `${basePath}/api/sessions/${encodeURIComponent(sessionId)}/files/${encodeURIComponent(path)}${tokenParam}`;
     },
     [],
   );
@@ -384,7 +388,9 @@ export function useSessions(): UseSessionsReturn {
    */
   const fetchWorkDirs = useCallback(async (): Promise<string[]> => {
     const basePath = getApiBaseUrl();
-    const response = await fetch(`${basePath}/api/work-dirs/`);
+    const response = await fetch(`${basePath}/api/work-dirs/`, {
+      headers: getAuthHeader(),
+    });
 
     if (!response.ok) {
       throw new Error("Failed to fetch work directories");
@@ -398,7 +404,9 @@ export function useSessions(): UseSessionsReturn {
    */
   const fetchStartupDir = useCallback(async (): Promise<string> => {
     const basePath = getApiBaseUrl();
-    const response = await fetch(`${basePath}/api/work-dirs/startup`);
+    const response = await fetch(`${basePath}/api/work-dirs/startup`, {
+      headers: getAuthHeader(),
+    });
 
     if (!response.ok) {
       throw new Error("Failed to fetch startup directory");

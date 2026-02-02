@@ -116,6 +116,7 @@ import {
 import type { ChatStatus, ToolUIPart } from "ai";
 import type { LiveMessage, MessageAttachmentPart } from "./types";
 import type { SessionStatus } from "@/lib/api/models";
+import { getAuthToken } from "@/lib/auth";
 import {
   type ContentPart,
   type TokenUsage,
@@ -404,9 +405,11 @@ export function useSessionStream(
         return undefined;
       }
       const basePath = baseUrl ?? getApiBaseUrl();
+      const token = getAuthToken();
+      const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
       return `${basePath}/api/sessions/${encodeURIComponent(
         sessionId,
-      )}/uploads/${encodeURIComponent(filename)}`;
+      )}/uploads/${encodeURIComponent(filename)}${tokenParam}`;
     },
     [baseUrl, sessionId],
   );
@@ -1353,16 +1356,19 @@ export function useSessionStream(
   // Build WebSocket URL
   const getWebSocketUrl = useCallback(
     (sid: string): string => {
+      const token = getAuthToken();
       if (baseUrl) {
         // Convert HTTP URL to WebSocket URL
         const url = baseUrl.replace(HTTP_TO_WS_REGEX, "ws");
-        return `${url}/api/sessions/${sid}/stream`;
+        const wsUrl = `${url}/api/sessions/${sid}/stream`;
+        return token ? `${wsUrl}?token=${encodeURIComponent(token)}` : wsUrl;
       }
 
       // Use current host
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.host;
-      return `${protocol}//${host}/api/sessions/${sid}/stream`;
+      const wsUrl = `${protocol}//${host}/api/sessions/${sid}/stream`;
+      return token ? `${wsUrl}?token=${encodeURIComponent(token)}` : wsUrl;
     },
     [baseUrl],
   );

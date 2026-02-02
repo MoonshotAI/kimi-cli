@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isMacOS } from "@/hooks/utils";
+import { getAuthHeader } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 type OpenInMenuProps = {
@@ -71,7 +72,7 @@ function compactPath(path: string, maxLength = 22): string {
 async function openViaBackend(app: OpenTarget["backendApp"], path: string) {
   const response = await fetch("/api/open-in", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeader() },
     body: JSON.stringify({ app, path }),
   });
 

@@ -216,8 +216,8 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
             </div>
           </div>
         </PromptInputBody>
-        <PromptInputFooter className="w-full flex-wrap justify-between gap-2 py-1 border-none bg-transparent shadow-none">
-          <PromptInputTools>
+        <PromptInputFooter className="w-full gap-2 py-1 border-none bg-transparent shadow-none">
+          <PromptInputTools className="flex-1 min-w-0 flex-wrap">
             <GlobalConfigControls />
           </PromptInputTools>
           {isStreaming ? (
@@ -231,6 +231,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
               }}
               size="icon-sm"
               variant="default"
+              className="shrink-0"
             >
               <SquareIcon className="size-4" />
             </PromptInputButton>
@@ -243,6 +244,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                 isUploading ||
                 !currentSession
               }
+              className="shrink-0"
             />
           )}
         </PromptInputFooter>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { GitDiffStats } from "../lib/api/models";
+import { getAuthHeader } from "../lib/auth";
 import { getApiBaseUrl } from "./utils";
 
 type UseGitDiffStatsReturn = {
@@ -51,7 +52,8 @@ export function useGitDiffStats(sessionId: string | null): UseGitDiffStatsReturn
     try {
       const basePath = getApiBaseUrl();
       const response = await fetch(
-        `${basePath}/api/sessions/${encodeURIComponent(sessionId)}/git-diff`
+        `${basePath}/api/sessions/${encodeURIComponent(sessionId)}/git-diff`,
+        { headers: getAuthHeader() }
       );
 
       if (!response.ok) {
