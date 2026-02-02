@@ -59,6 +59,8 @@ type ChatWorkspaceProps = {
   isAwaitingFirstResponse?: boolean;
   /** Create a new session when none is selected */
   onCreateSession?: () => void;
+  /** Open sessions sidebar (mobile) */
+  onOpenSidebar?: () => void;
 };
 
 type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
@@ -82,6 +84,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   isUploadingFiles = false,
   isAwaitingFirstResponse = false,
   onCreateSession,
+  onOpenSidebar,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -133,7 +136,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   );
 
   return (
-    <div className=" sticky top-4 flex h-full min-h-[560px] w-full flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-[560px]">
       <div className="relative flex h-full flex-col">
         <ChatWorkspaceHeader
           currentStep={currentStep}
@@ -147,6 +150,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           usagePercent={usagePercent}
           maxTokens={maxTokens}
           tokenUsage={tokenUsage}
+          onOpenSidebar={onOpenSidebar}
         />
 
         <div className="flex-1 overflow-hidden">
@@ -178,7 +182,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
         />
 
         {currentSession && (
-          <div className="mt-auto px-3 pb-3 pt-3">
+          <div className="mt-auto px-0 pb-0 pt-0 sm:px-3 sm:pb-3 sm:pt-3">
             <ChatPromptComposer
               status={status}
               onSubmit={onSubmit}

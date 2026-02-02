@@ -44,6 +44,10 @@ import {
 import { isMacOS } from "@/hooks/utils";
 import { shortenTitle } from "@/lib/utils";
 
+// Top-level regex constants for performance
+const NEWLINE_REGEX = /\r\n|\r|\n/;
+const WHITESPACE_REGEX = /\s+/g;
+
 type SessionSummary = {
   id: string;
   title: string;
@@ -100,9 +104,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   const normalizeTitle = useCallback((t: string) => {
     // Split by any newline, join with space, then collapse whitespace
     return String(t)
-      .split(/\r\n|\r|\n/)
+      .split(NEWLINE_REGEX)
       .join(" ")
-      .replace(/\s+/g, " ")
+      .replace(WHITESPACE_REGEX, " ")
       .trim();
   }, []);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -230,14 +234,24 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
 
     if (action === "delete") {
       const session = sessions.find((s) => s.id === contextMenu.sessionId);
-      setDeleteConfirm({
-        open: true,
-        sessionId: contextMenu.sessionId,
-        sessionTitle: normalizeTitle(session?.title ?? "Unknown Session"),
-      });
+      openDeleteConfirm(session);
       setContextMenu(null);
     }
   };
+
+  const openDeleteConfirm = useCallback(
+    (session?: SessionSummary) => {
+      if (!session) {
+        return;
+      }
+      setDeleteConfirm({
+        open: true,
+        sessionId: session.id,
+        sessionTitle: normalizeTitle(session.title ?? "Unknown Session"),
+      });
+    },
+    [normalizeTitle],
+  );
 
   const handleConfirmDelete = () => {
     if (deleteConfirm.sessionId) {
@@ -349,7 +363,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
           </div>
 
           {/* Session search and view toggle */}
-          <div className="px-2 flex gap-2">
+          <div className="px-2 flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -417,32 +431,45 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                             const isActive = session.id === selectedSessionId;
                             return (
                               <li key={session.id}>
-                                <button
-                                  className={`w-full cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
-                                    isActive
-                                      ? "bg-secondary"
-                                      : "hover:bg-secondary/60"
-                                  }`}
-                                  onClick={() => onSelectSession(session.id)}
-                                  onContextMenu={(event) =>
-                                    handleSessionContextMenu(event, session.id)
-                                  }
-                                  type="button"
-                                >
-                                  <Tooltip delayDuration={500}>
-                                    <TooltipTrigger asChild>
-                                      <p className="text-sm font-medium text-foreground overflow-hidden">
-                                        {shortenTitle(normalizeTitle(session.title), 50)}
-                                      </p>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right" className="max-w-md">
-                                      {normalizeTitle(session.title)}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  <span className="text-[10px] text-muted-foreground mt-1 block">
-                                    {session.updatedAt}
-                                  </span>
-                                </button>
+                                <div className="flex items-center gap-2 ">
+                                  <button
+                                    className={`w-full flex-1 cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
+                                      isActive
+                                        ? "bg-secondary"
+                                        : "hover:bg-secondary/60"
+                                    }`}
+                                    onClick={() => onSelectSession(session.id)}
+                                    onContextMenu={(event) =>
+                                      handleSessionContextMenu(event, session.id)
+                                    }
+                                    type="button"
+                                  >
+                                    <Tooltip delayDuration={500}>
+                                      <TooltipTrigger asChild>
+                                        <p className="text-sm font-medium text-foreground overflow-hidden">
+                                          {shortenTitle(normalizeTitle(session.title), 50)}
+                                        </p>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="max-w-md">
+                                        {normalizeTitle(session.title)}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <span className="text-[10px] text-muted-foreground mt-1 block">
+                                      {session.updatedAt}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label="Delete session"
+                                    className="md:hidden inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openDeleteConfirm(session);
+                                    }}
+                                  >
+                                    <Trash2 className="size-4" />
+                                  </button>
+                                </div>
                               </li>
                             );
                           })}
@@ -458,32 +485,45 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                   const isActive = session.id === selectedSessionId;
                   return (
                     <li key={session.id}>
-                      <button
-                        className={`w-full cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
-                          isActive
-                            ? "bg-secondary"
-                            : "hover:bg-secondary/60"
-                        }`}
-                        onClick={() => onSelectSession(session.id)}
-                        onContextMenu={(event) =>
-                          handleSessionContextMenu(event, session.id)
-                        }
-                        type="button"
-                      >
-                        <Tooltip delayDuration={500}>
-                          <TooltipTrigger asChild>
-                            <p className="text-sm font-medium text-foreground overflow-hidden">
-                              {shortenTitle(normalizeTitle(session.title), 50)}
-                            </p>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-md">
-                            {normalizeTitle(session.title)}
-                          </TooltipContent>
-                        </Tooltip>
-                        <span className="text-[10px] text-muted-foreground mt-1 block">
-                          {session.updatedAt}
-                        </span>
-                      </button>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          className={`min-w-0 flex-1 cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
+                            isActive
+                              ? "bg-secondary"
+                              : "hover:bg-secondary/60"
+                          }`}
+                          onClick={() => onSelectSession(session.id)}
+                          onContextMenu={(event) =>
+                            handleSessionContextMenu(event, session.id)
+                          }
+                          type="button"
+                        >
+                          <Tooltip delayDuration={500}>
+                            <TooltipTrigger asChild>
+                              <p className="text-sm font-medium text-foreground overflow-hidden">
+                                {shortenTitle(normalizeTitle(session.title), 50)}
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-md">
+                              {normalizeTitle(session.title)}
+                            </TooltipContent>
+                          </Tooltip>
+                          <span className="text-[10px] text-muted-foreground mt-1 block">
+                            {session.updatedAt}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete session"
+                          className="md:hidden inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openDeleteConfirm(session);
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
                     </li>
                   );
                 })}

@@ -304,7 +304,7 @@ export function PromptInputAttachment({
         )}
         <Button
           aria-label="Remove attachment"
-          className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
+          className="hover-reveal absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
           onClick={(e) => {
             e.stopPropagation();
             attachments.remove(data.id);
@@ -341,7 +341,7 @@ export function PromptInputAttachment({
         )}
         <Button
           aria-label="Remove attachment"
-          className="absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
+          className="hover-reveal absolute -right-1.5 -top-1.5 size-5 cursor-pointer rounded-full bg-background p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 [&>svg]:size-3"
           onClick={(e) => {
             e.stopPropagation();
             attachments.remove(data.id);
@@ -375,7 +375,7 @@ export function PromptInputAttachment({
             </div>
             <Button
               aria-label="Remove attachment"
-              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
+              className="hover-reveal absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
               onClick={(e) => {
                 e.stopPropagation();
                 attachments.remove(data.id);

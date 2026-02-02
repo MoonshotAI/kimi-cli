@@ -10,7 +10,14 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { TokenUsage } from "@/hooks/wireTypes";
 import type { LanguageModelUsage } from "ai";
-import { type ComponentProps, createContext, useContext } from "react";
+import {
+  type ComponentProps,
+  createContext,
+  useContext,
+  useState,
+  type ReactNode,
+  type MouseEvent,
+} from "react";
 import { getUsage } from "tokenlens";
 
 const PERCENT_MAX = 100;
@@ -29,7 +36,12 @@ type ContextSchema = {
   tokenUsage?: TokenUsage | null;
 };
 
-const ContextContext = createContext<ContextSchema | null>(null);
+type ContextValue = ContextSchema & {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+};
+
+const ContextContext = createContext<ContextValue | null>(null);
 
 const useContextValue = () => {
   const context = useContext(ContextContext);
@@ -49,20 +61,34 @@ export const Context = ({
   usage,
   modelId,
   tokenUsage,
+  open: _openProp,
+  onOpenChange: _onOpenChange,
   ...props
-}: ContextProps) => (
-  <ContextContext.Provider
-    value={{
-      usedTokens,
-      maxTokens,
-      usage,
-      modelId,
-      tokenUsage,
-    }}
-  >
-    <HoverCard closeDelay={150} openDelay={0} {...props} />
-  </ContextContext.Provider>
-);
+}: ContextProps) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <ContextContext.Provider
+      value={{
+        usedTokens,
+        maxTokens,
+        usage,
+        modelId,
+        tokenUsage,
+        open,
+        setOpen,
+      }}
+    >
+      <HoverCard
+        closeDelay={150}
+        openDelay={0}
+        open={open}
+        onOpenChange={setOpen}
+        {...props}
+      />
+    </ContextContext.Provider>
+  );
+};
 
 const ContextIcon = () => {
   const { usedTokens, maxTokens } = useContextValue();
@@ -105,26 +131,54 @@ const ContextIcon = () => {
   );
 };
 
-export type ContextTriggerProps = ComponentProps<typeof Button>;
+export type ContextTriggerProps = {
+  children?: ReactNode;
+  className?: string;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+};
 
-export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
-  const { usedTokens, maxTokens } = useContextValue();
+export const ContextTrigger = ({
+  children,
+  className,
+  onClick,
+}: ContextTriggerProps) => {
+  const { usedTokens, maxTokens, open, setOpen } = useContextValue();
   const usedPercent = usedTokens / maxTokens;
   const renderedPercent = new Intl.NumberFormat("en-US", {
     style: "percent",
     maximumFractionDigits: 1,
   }).format(usedPercent);
 
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    onClick?.(event);
+    setOpen(!open);
+  };
+
+  if (children) {
+    return (
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          onClick={handleClick}
+          className={cn(
+            "inline-flex items-center gap-1.5 bg-transparent p-0 text-left appearance-none",
+            className,
+          )}
+        >
+          {children}
+        </button>
+      </HoverCardTrigger>
+    );
+  }
+
   return (
     <HoverCardTrigger asChild>
-      {children ?? (
-        <Button type="button" variant="ghost" {...props}>
-          <span className="font-medium text-muted-foreground">
-            {renderedPercent}
-          </span>
-          <ContextIcon />
-        </Button>
-      )}
+      <Button type="button" variant="ghost" className={className} onClick={handleClick}>
+        <span className="font-medium text-muted-foreground">
+          {renderedPercent}
+        </span>
+        <ContextIcon />
+      </Button>
     </HoverCardTrigger>
   );
 };

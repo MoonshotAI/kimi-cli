@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "host": "vite --host",
     "typecheck": "tsc -b --noEmit",
     "build": "tsc -b && vite build",
     "generate": "./scripts/generate-api.sh",
