@@ -76,10 +76,7 @@ def _enable_ssh_logging(
 
     logger = logging.getLogger(__name__)
     logger.setLevel(level)
-    if any(
-        isinstance(handler, logging.StreamHandler) and handler.stream is stream
-        for handler in logger.handlers
-    ):
+    if any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers):
         return
     handler = logging.StreamHandler(stream)
     handler.setLevel(level)
