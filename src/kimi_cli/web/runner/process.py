@@ -216,7 +216,7 @@ class SessionProcess:
                 await self._emit_status("idle", reason=reason or "start", detail=detail)
                 await self._emit_restart_notice(reason=reason, restart_ms=elapsed_ms)
             else:
-                await self._emit_status("idle", reason=reason or "start", detail=detail)
+                await self._emit_status("idle", reason=reason or "start", detail=None)
 
     async def stop(self) -> None:
         """Stop the session: terminate worker and close all WebSockets."""
