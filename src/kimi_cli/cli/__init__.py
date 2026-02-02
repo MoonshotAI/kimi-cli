@@ -160,7 +160,21 @@ def kimi(
             "-p",
             "--command",
             "-c",
-            help="User prompt to the agent. Default: prompt interactively.",
+            help=(
+                "User prompt to the agent. The session exits after processing. "
+                "Default: prompt interactively."
+            ),
+        ),
+    ] = None,
+    starting_prompt: Annotated[
+        str | None,
+        typer.Option(
+            "--starting-prompt",
+            "-s",
+            help=(
+                "Starting prompt to the agent. The session stays open after processing. "
+                "Default: prompt interactively."
+            ),
         ),
     ] = None,
     print_mode: Annotated[
@@ -359,6 +373,10 @@ def kimi(
             "--config": config_string is not None,
             "--config-file": config_file is not None,
         },
+        {
+            "--prompt": prompt is not None,
+            "--starting-prompt": starting_prompt is not None,
+        },
     ]
     for option_set in conflict_option_sets:
         active_options = [flag for flag, active in option_set.items() if active]
@@ -387,6 +405,13 @@ def kimi(
         prompt = prompt.strip()
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
+
+    if starting_prompt is not None:
+        starting_prompt = starting_prompt.strip()
+        if not starting_prompt:
+            raise typer.BadParameter(
+                "Starting prompt cannot be empty", param_hint="--starting-prompt"
+            )
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
@@ -483,7 +508,11 @@ def kimi(
         )
         match ui:
             case "shell":
-                succeeded = await instance.run_shell(prompt)
+                # --prompt/-c exits after processing, --starting-prompt/-s stays open
+                succeeded = await instance.run_shell(
+                    prompt or starting_prompt,
+                    stay_open=starting_prompt is not None,
+                )
             case "print":
                 succeeded = await instance.run_print(
                     input_format or "text",

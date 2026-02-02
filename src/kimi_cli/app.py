@@ -241,8 +241,14 @@ class KimiCLI:
                 # wait for the soul task to finish, or raise
                 await soul_task
 
-    async def run_shell(self, command: str | None = None) -> bool:
-        """Run the Kimi Code CLI instance with shell UI."""
+    async def run_shell(self, command: str | None = None, *, stay_open: bool = False) -> bool:
+        """Run the Kimi Code CLI instance with shell UI.
+
+        Args:
+            command: The initial command/prompt to process. If None, starts interactively.
+            stay_open: If True and command is provided, stay open after processing the command.
+                If False and command is provided, exit after processing.
+        """
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
         welcome_info = [
@@ -317,7 +323,7 @@ class KimiCLI:
         )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
-            return await shell.run(command)
+            return await shell.run(command, stay_open=stay_open)
 
     async def run_print(
         self,

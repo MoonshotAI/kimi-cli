@@ -47,11 +47,26 @@ class Shell:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
 
-    async def run(self, command: str | None = None) -> bool:
+    async def run(self, command: str | None = None, *, stay_open: bool = False) -> bool:
+        """Run the shell UI.
+
+        Args:
+            command: The initial command/prompt to process. If None, starts interactively.
+            stay_open: If True and command is provided, stay open after processing the command.
+                If False and command is provided, exit after processing.
+
+        Returns:
+            bool: True if the run succeeded, False otherwise.
+        """
         if command is not None:
-            # run single command and exit
-            logger.info("Running agent with command: {command}", command=command)
-            return await self.run_soul_command(command)
+            if not stay_open:
+                # run single command and exit
+                logger.info("Running agent with command: {command}", command=command)
+                return await self.run_soul_command(command)
+            # stay_open is True: process the command first, then continue to interactive loop
+            logger.info("Running agent with starting command: {command}", command=command)
+            await self.run_soul_command(command)
+            # continue to interactive loop below
 
         # Start auto-update background task if not disabled
         if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
