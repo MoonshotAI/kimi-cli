@@ -1,10 +1,10 @@
 # Using in IDEs
 
-Kimi Code CLI supports integration with IDEs through the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/), allowing you to use AI-assisted programming directly within your editor.
+Kimi Code CLI supports integration into IDEs via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/), allowing you to use AI-assisted programming directly within your editor.
 
 ## Prerequisites
 
-Before configuring your IDE, make sure you have installed Kimi Code CLI and completed the `/login` configuration.
+Before configuring your IDE, ensure that Kimi Code CLI is installed and you have completed the `/login` configuration.
 
 ## Using in Zed
 
@@ -25,22 +25,22 @@ Add the following to Zed's configuration file `~/.config/zed/settings.json`:
 }
 ```
 
-Configuration notes:
+Configuration details:
 
 - `type`: Fixed value `"custom"`
-- `command`: Path to the Kimi Code CLI command. If `kimi` is not in PATH, use the full path
-- `args`: Startup arguments. `acp` enables ACP mode
-- `env`: Environment variables, usually left empty
+- `command`: The command path for Kimi Code CLI; use the full path if `kimi` is not in PATH
+- `args`: Startup arguments; `acp` enables ACP mode
+- `env`: Environment variables; usually left empty
 
-After saving the configuration, you can create Kimi Code CLI sessions in Zed's Agent panel.
+After saving the configuration, you can create Kimi Code CLI sessions in Zed's agent panel.
 
 ## Using in JetBrains IDEs
 
-JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, etc.) support ACP through the AI Chat plugin.
+JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm, etc.) support ACP through the AI chat plugin.
 
-If you don't have a JetBrains AI subscription, you can enable `llm.enable.mock.response` in the Registry to use the AI Chat feature. Press Shift twice to search for "Registry" to open it.
+If you don't have a JetBrains AI subscription, you can enable `llm.enable.mock.response` in the registry to use the AI chat feature. Press Shift twice and search for "registry" to open it.
 
-In the AI Chat panel menu, click "Configure ACP agents" and add the following configuration:
+Click "Configure ACP agents" in the AI chat panel menu and add the following configuration:
 
 ```json
 {
@@ -54,4 +54,4 @@ In the AI Chat panel menu, click "Configure ACP agents" and add the following co
 }
 ```
 
-`command` needs to be the full path. You can run `which kimi` in the terminal to get it. After saving, you can select Kimi Code CLI in the AI Chat Agent selector.
+`command` requires the full path; you can run `which kimi` in the terminal to get it. After saving, you can select Kimi Code CLI in the AI chat's agent selector.

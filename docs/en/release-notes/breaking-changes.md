@@ -1,6 +1,6 @@
-# Breaking changes and migration
+# Breaking changes and migration guide
 
-This page documents breaking changes in Kimi Code CLI releases and provides migration guidance.
+This page documents breaking changes and corresponding migration instructions for each version of Kimi Code CLI.
 
 ## Unreleased
 
@@ -8,62 +8,62 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ### `--prompt-flow` option removed
 
-The `--prompt-flow` CLI option has been removed. Use flow skills instead.
+The `--prompt-flow` CLI option has been removed. Please use flow skills instead.
 
 - **Affected**: Scripts and automation using `--prompt-flow` to load Mermaid/D2 flowcharts
-- **Migration**: Create a flow skill with embedded Agent Flow in `SKILL.md` and invoke via `/flow:<skill-name>`
+- **Migration**: Create a flow skill with embedded agent flow (in `SKILL.md`) and invoke via `/flow:<skill-name>`
 
 ### `/begin` command replaced
 
-The `/begin` slash command has been replaced with `/flow:<skill-name>` commands.
+The `/begin` slash command has been replaced by the `/flow:<skill-name>` command.
 
-- **Affected**: Users who used `/begin` to start a loaded Prompt Flow
-- **Migration**: Use `/flow:<skill-name>` to invoke flow skills directly
+- **Affected**: Users using `/begin` to start loaded Prompt Flow
+- **Migration**: Use `/flow:<skill-name>` to directly invoke flow skills
 
 ## 0.77 - Thinking mode and CLI option changes
 
-### Thinking mode setting migration change
+### Thinking mode setting migration adjustment
 
-After upgrading from `0.76`, the thinking mode setting is no longer automatically preserved. The previous `thinking` state stored in `~/.kimi/kimi.json` is no longer used; instead, thinking mode is now managed via the `default_thinking` configuration option in `~/.kimi/config.toml`, but values are not automatically migrated from legacy `metadata`.
+After upgrading from `0.76`, Thinking mode settings are no longer automatically preserved. The `thinking` state previously saved in `~/.kimi/kimi.json` is no longer used. It is now managed by the `default_thinking` configuration option in `~/.kimi/config.toml`, but will not be automatically migrated from the old `metadata`.
 
-- **Affected**: Users who previously had thinking mode enabled
-- **Migration**: Reconfigure thinking mode after upgrading:
-  - Use the `/model` command to select model and set thinking mode (interactive)
+- **Affected**: Users who previously enabled Thinking mode
+- **Migration**: Reconfigure Thinking mode after upgrade:
+  - Use the `/model` command to set Thinking mode when selecting a model (interactive)
   - Or manually add to `~/.kimi/config.toml`:
 
     ```toml
-    default_thinking = true  # Set to true if you want thinking mode enabled by default
+    default_thinking = true  # To enable Thinking mode by default
     ```
 
 ### `--query` option removed
 
-The `--query` (`-q`) option has been removed. Use `--prompt` as the primary option, with `--command` as an alias.
+`--query` (`-q`) has been removed. Use `--prompt` as the main parameter, with `--command` as an alias.
 
 - **Affected**: Scripts and automation using `--query` or `-q`
 - **Migration**:
   - `--query` / `-q` → `--prompt` / `-p`
   - Or continue using `--command` / `-c`
 
-## 0.74 - ACP command change
+## 0.74 - ACP command changes
 
 ### `--acp` option deprecated
 
-The `--acp` option has been deprecated. Use the `kimi acp` subcommand instead.
+The `--acp` option is deprecated. Please use the `kimi acp` subcommand.
 
 - **Affected**: Scripts and IDE configurations using `kimi --acp`
 - **Migration**: `kimi --acp` → `kimi acp`
 
-## 0.66 - Config file and provider type
+## 0.66 - Configuration file and provider types
 
-### Config file format migration
+### Configuration file format migration
 
-The config file format has been migrated from JSON to TOML.
+Configuration file format migrated from JSON to TOML.
 
-- **Affected**: Users with `~/.kimi/config.json`
-- **Migration**: Kimi Code CLI will automatically read the old JSON config, but manual migration to TOML is recommended
+- **Affected**: Users using `~/.kimi/config.json`
+- **Migration**: Kimi Code CLI can automatically read old JSON configs, but manual migration to TOML format is recommended
 - **New location**: `~/.kimi/config.toml`
 
-JSON config example:
+JSON configuration example:
 
 ```json
 {
@@ -78,7 +78,7 @@ JSON config example:
 }
 ```
 
-Equivalent TOML config:
+Corresponding TOML configuration:
 
 ```toml
 default_model = "kimi-k2-0711"
@@ -93,8 +93,8 @@ api_key = "your-key"
 
 The provider type for Gemini Developer API has been renamed from `google_genai` to `gemini`.
 
-- **Affected**: Users with `type = "google_genai"` in their config
-- **Migration**: Change the `type` value to `"gemini"`
+- **Affected**: Users with `type = "google_genai"` in their configuration
+- **Migration**: Change the `type` value to `"gemini"` in your configuration
 - **Compatibility**: `google_genai` still works but updating is recommended
 
 ## 0.57 - Tool changes
@@ -110,23 +110,23 @@ The `Bash` tool (or `CMD` on Windows) has been unified and renamed to `Shell`.
 
 The `Task` tool has been moved from `kimi_cli.tools.task` to `kimi_cli.tools.multiagent`.
 
-- **Affected**: Custom tools importing the `Task` tool
+- **Affected**: Code importing `Task` tool in custom tools
 - **Migration**: Change import path to `from kimi_cli.tools.multiagent import Task`
 
 ### `PatchFile` tool removed
 
 The `PatchFile` tool has been removed.
 
-- **Affected**: Agent configs using the `PatchFile` tool
+- **Affected**: Agent configurations using `PatchFile` tool
 - **Alternative**: Use `StrReplaceFile` tool for file modifications
 
 ## 0.52 - CLI option changes
 
 ### `--ui` option removed
 
-The `--ui` option has been removed in favor of separate flags.
+The `--ui` option has been removed in favor of standalone flags.
 
-- **Affected**: Scripts using `--ui print`, `--ui acp`, or `--ui wire`
+- **Affected**: Scripts using `--ui print`, `--ui acp`, `--ui wire`
 - **Migration**:
   - `--ui print` → `--print`
   - `--ui acp` → `kimi acp`
@@ -134,14 +134,14 @@ The `--ui` option has been removed in favor of separate flags.
 
 ## 0.42 - Keyboard shortcut changes
 
-### Mode switch shortcut
+### Mode switching shortcuts
 
-The agent/shell mode toggle shortcut has changed from `Ctrl-K` to `Ctrl-X`.
+The agent/shell mode switching shortcut has been changed from `Ctrl-K` to `Ctrl-X`.
 
-- **Affected**: Users accustomed to using `Ctrl-K` for mode switching
-- **Migration**: Use `Ctrl-X` to toggle modes
+- **Affected**: Users accustomed to using `Ctrl-K` to switch modes
+- **Migration**: Use `Ctrl-X` to switch modes
 
-## 0.27 - CLI option rename
+## 0.27 - CLI option renamed
 
 ### `--agent` option renamed
 
@@ -149,11 +149,11 @@ The `--agent` option has been renamed to `--agent-file`.
 
 - **Affected**: Scripts using `--agent` to specify custom agent files
 - **Migration**: Change `--agent` to `--agent-file`
-- **Note**: `--agent` is now used to specify built-in agents (e.g., `default`, `okabe`)
+- **Note**: `--agent` is now used for specifying built-in agents (e.g., `default`, `okabe`)
 
-## 0.25 - Package name change
+## 0.25 - Package name changes
 
-### Package renamed from `ensoul` to `kimi-cli`
+### Package name changed from `ensoul` to `kimi-cli`
 
 - **Affected**: Code or scripts using the `ensoul` package name
 - **Migration**:
@@ -162,7 +162,7 @@ The `--agent` option has been renamed to `--agent-file`.
 
 ### `ENSOUL_*` parameter prefix changed
 
-The system prompt built-in parameter prefix has changed from `ENSOUL_*` to `KIMI_*`.
+System prompt built-in parameter prefixes have been changed from `ENSOUL_*` to `KIMI_*`.
 
-- **Affected**: Custom agent files using `ENSOUL_*` parameters
-- **Migration**: Change parameter prefix to `KIMI_*` (e.g., `ENSOUL_NOW` → `KIMI_NOW`)
+- **Affected**: Agent configurations using `ENSOUL_*` parameters in custom agent files
+- **Migration**: Change parameter prefixes to `KIMI_*` (e.g., `ENSOUL_NOW` → `KIMI_NOW`)

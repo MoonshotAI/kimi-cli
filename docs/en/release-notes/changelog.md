@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- CLI: Add `--starting-prompt` option to provide an initial prompt while keeping the session open for interaction
+
 ## 1.6 (2026-02-03)
 
 - Web: Add token-based authentication and access control for network mode (`--network`, `--lan-only`, `--public`)

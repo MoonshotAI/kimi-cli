@@ -1,6 +1,6 @@
-# `kimi info` Subcommand
+# The `kimi info` subcommand
 
-`kimi info` displays version and protocol information for Kimi Code CLI.
+The `kimi info` command displays the version and protocol information of Kimi Code CLI.
 
 ```sh
 kimi info [--json]
@@ -12,7 +12,7 @@ kimi info [--json]
 |--------|-------------|
 | `--json` | Output in JSON format |
 
-## Output
+## Output fields
 
 | Field | Description |
 |-------|-------------|

@@ -1,14 +1,14 @@
-# Sessions and Context
+# Sessions and context
 
-Kimi Code CLI automatically saves your conversation history, allowing you to continue previous work at any time.
+Kimi Code CLI automatically saves your conversation history, making it easy to resume your work at any time.
 
-## Session resuming
+## Session resumption
 
 Each time you start Kimi Code CLI, a new session is created. If you want to continue a previous conversation, there are several ways:
 
 **Continue the most recent session**
 
-Use the `--continue` flag to continue the most recent session in the current working directory:
+Use the `--continue` parameter to resume the most recent session in the current working directory:
 
 ```sh
 kimi --continue
@@ -16,7 +16,7 @@ kimi --continue
 
 **Switch to a specific session**
 
-Use the `--session` flag to switch to a session with a specific ID:
+Use the `--session` parameter to switch to a session with a specific ID:
 
 ```sh
 kimi --session abc123
@@ -24,44 +24,44 @@ kimi --session abc123
 
 **Switch sessions during runtime**
 
-Enter `/sessions` (or `/resume`) to view all sessions in the current working directory, and use arrow keys to select the session you want to switch to:
+Type `/sessions` (or `/resume`) to view a list of all sessions in the current working directory. Use the arrow keys to select the session you want to switch to:
 
 ```
 /sessions
 ```
 
-The list shows each session's title and last update time, helping you find the conversation you want to continue.
+The list displays the title and last update time of each session to help you find the conversation you want to continue.
 
 **Startup replay**
 
-When you continue an existing session, Kimi Code CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
+When you resume an existing session, Kimi Code CLI will replay the previous conversation history to help you quickly understand the context. During replay, previous messages and AI responses are displayed.
 
-## Clear and compact
+## Clearing and compaction
 
-As the conversation progresses, the context grows longer. Kimi Code CLI will automatically compress the context when needed to ensure the conversation can continue.
+As the conversation progresses, the context becomes longer. Kimi Code CLI automatically compacts the context when needed to ensure the conversation can continue.
 
-You can also manually manage the context using slash commands:
+You can also use slash commands to manually manage the context:
 
 **Clear context**
 
-Enter `/clear` to clear all context in the current session and start a fresh conversation:
+Type `/clear` to clear all context in the current session and start a new conversation:
 
 ```
 /clear
 ```
 
-After clearing, the AI will forget all previous conversation content. You usually don't need to use this command; for new tasks, starting a new session is a better choice.
+After clearing, the AI will forget all previous conversation content. Usually you don't need this command; starting a new session is a better choice for new tasks.
 
 **Compact context**
 
-Enter `/compact` to have the AI summarize the current conversation and replace the original context with the summary:
+Type `/compact` to have the AI summarize the current conversation and replace the original context with the summary:
 
 ```
 /compact
 ```
 
-Compacting preserves key information while reducing token consumption. This is useful when the conversation is long but you still want to retain some context.
+Compaction preserves key information while reducing token consumption. This is useful when the conversation is long but you want to retain some context.
 
-::: tip
-The bottom status bar displays the current context usage (`context: xx%`), helping you understand when you need to clear or compact.
+::: tip Tip
+The bottom status bar displays the current context usage (`context: xx%`) to help you understand when you need to clear or compact.
 :::

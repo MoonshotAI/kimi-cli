@@ -1,4 +1,4 @@
-# `kimi acp` Subcommand
+# The `kimi acp` subcommand
 
 The `kimi acp` command starts a multi-session ACP (Agent Client Protocol) server.
 
@@ -16,4 +16,4 @@ ACP is a standardized protocol that allows IDEs and other clients to interact wi
 - Custom ACP client development
 - Multi-session concurrent processing
 
-For using Kimi Code CLI in IDEs, see [Using in IDEs](../guides/ides.md).
+To use Kimi Code CLI in an IDE, please refer to [Using in IDEs](../guides/ides.md).

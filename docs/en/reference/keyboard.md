@@ -1,17 +1,17 @@
-# Keyboard Shortcuts
+# Keyboard shortcuts
 
 Kimi Code CLI shell mode supports the following keyboard shortcuts.
 
-## Shortcuts list
+## Shortcut list
 
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
 | `Ctrl-/` | Show help |
-| `Ctrl-J` | Insert newline |
-| `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
+| `Ctrl-J` | Insert new line |
+| `Alt-Enter` | Insert new line (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
-| `Ctrl-E` | Expand full approval request content |
+| `Ctrl-E` | Expand approval request full content |
 | `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
 
@@ -21,27 +21,27 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 
 Press `Ctrl-X` in the input box to switch between two modes:
 
-- **Agent mode**: Input is sent to AI agent for processing
-- **Shell mode**: Input is executed as local shell command
+- **Agent mode**: Input is sent to the AI agent for processing
+- **Shell mode**: Input is executed as a local shell command
 
-The prompt changes based on current mode:
-- Agent mode: `✨` (normal) or `💫` (thinking mode)
+The prompt changes based on the current mode:
+- Agent mode: `✨` (normal) or `💫` (Thinking mode)
 - Shell mode: `$`
 
 ### `Ctrl-/`: Show help
 
-Press `Ctrl-/` in the input box to quickly display help information, equivalent to entering the `/help` command.
+Press `Ctrl-/` in the input box to quickly display help information, equivalent to entering the `/help` slash command.
 
 ## Multi-line input
 
-### `Ctrl-J` / `Alt-Enter`: Insert newline
+### `Ctrl-J` / `Alt-Enter`: Insert new line
 
 By default, pressing `Enter` submits the input. To enter multi-line content, use:
 
-- `Ctrl-J`: Insert newline at any position
-- `Alt-Enter`: Insert newline at any position
+- `Ctrl-J`: Insert a new line at any position
+- `Alt-Enter`: Insert a new line at any position
 
-Useful for entering multi-line code snippets or formatted text.
+Suitable for entering multi-line code snippets or formatted text.
 
 ## Clipboard operations
 
@@ -49,22 +49,22 @@ Useful for entering multi-line code snippets or formatted text.
 
 Paste clipboard content into the input box. Supports:
 
-- **Text**: Pasted directly
-- **Images**: Converted to base64 embedding (requires model image input support)
+- **Text**: Paste directly
+- **Images**: Convert to base64 embedding (requires model support for image input)
 
-When pasting images, a placeholder `[image:xxx.png,WxH]` is displayed. The actual image data is sent along with the message to the model.
+When pasting an image, a placeholder `[image:xxx.png,WxH]` is displayed. The actual image data is passed to the model when sending.
 
-::: tip
-Image pasting requires the model to support `image_in` capability.
+::: tip Tip
+Image pasting requires the model to support the `image_in` capability.
 :::
 
 ## Approval request operations
 
 ### `Ctrl-E`: Expand full content
 
-When approval request preview content is truncated, press `Ctrl-E` to view the full content in a fullscreen pager. When preview is truncated, a "... (truncated, ctrl-e to expand)" hint is displayed.
+When the approval request preview content is truncated, press `Ctrl-E` to view the full content in a full-screen pager. When truncated, the preview displays the "... (truncated, ctrl-e to expand)" hint.
 
-Useful for viewing longer shell commands or file diff content.
+Suitable for viewing long shell commands or file diff content.
 
 ## Exit and interrupt
 
@@ -75,20 +75,20 @@ Press `Ctrl-D` when the input box is empty to exit Kimi Code CLI.
 ### `Ctrl-C`: Interrupt
 
 - In input box: Clear current input
-- During agent execution: Interrupt current operation
+- During agent runtime: Interrupt current operation
 - During slash command execution: Interrupt command
 
 ## Completion operations
 
-In agent mode, a completion menu is automatically displayed while typing:
+In agent mode, the completion menu is automatically displayed when typing:
 
 | Trigger | Completion content |
 |---------|-------------------|
 | `/` | Slash commands |
-| `@` | File paths in working directory |
+| `@` | Working directory file paths |
 
 Completion operations:
-- Arrow keys to select
+- Use arrow keys to select
 - `Enter` to confirm selection
 - `Esc` to close menu
 - Continue typing to filter options
@@ -98,9 +98,9 @@ Completion operations:
 The bottom status bar displays:
 
 - Current time
-- Current mode (agent/shell) and model name (in agent mode)
-- YOLO badge (when enabled)
+- Current mode (agent/shell) and model name (displayed in agent mode)
+- YOLO indicator (displayed when enabled)
 - Shortcut hints
-- Context usage
+- Context usage rate
 
 The status bar automatically refreshes to update information.

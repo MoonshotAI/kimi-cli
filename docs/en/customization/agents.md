@@ -1,10 +1,10 @@
-# Agents and Subagents
+# Agents and subagents
 
-An agent defines the AI's behavior, including system prompts, available tools, and subagents. You can use built-in agents or create custom agents.
+Agents define how the AI behaves, including the system prompt, available tools, and subagents. You can use built-in agents or create custom agents.
 
 ## Built-in agents
 
-Kimi Code CLI provides two built-in agents. You can select one at startup with the `--agent` flag:
+Kimi Code CLI provides two built-in agents. You can select one at startup using the `--agent` parameter:
 
 ```sh
 kimi --agent okabe
@@ -18,11 +18,11 @@ The default agent, suitable for general use. Enabled tools:
 
 ### `okabe`
 
-An experimental agent for testing new prompts and tools. Adds `SendDMail` on top of `default`.
+An experimental agent for testing new prompts and tools. Enables `SendDMail` in addition to the `default` tools.
 
 ## Custom agent files
 
-Agents are defined in YAML format. Load a custom agent with the `--agent-file` flag:
+Agents are defined in YAML format. Load a custom agent using the `--agent-file` parameter:
 
 ```sh
 kimi --agent-file /path/to/my-agent.yaml
@@ -43,35 +43,35 @@ agent:
 
 **Inheritance and overrides**
 
-Use `extend` to inherit another agent's configuration and only override what you need to change:
+Use `extend` to inherit configuration from another agent, overriding only the parts you need:
 
 ```yaml
 version: 1
 agent:
-  extend: default  # Inherit from default agent
+  extend: default  # Inherit from the default agent
   system_prompt_path: ./my-prompt.md  # Override system prompt
   exclude_tools:  # Exclude certain tools
     - "kimi_cli.tools.web:SearchWeb"
     - "kimi_cli.tools.web:FetchURL"
 ```
 
-`extend: default` inherits from the built-in default agent. You can also specify a relative path to inherit from another agent file.
+`extend: default` inherits the built-in default agent. You can also specify a relative path to inherit from another agent file.
 
 **Configuration fields**
 
 | Field | Description | Required |
 |-------|-------------|----------|
 | `extend` | Agent to inherit from, can be `default` or a relative path | No |
-| `name` | Agent name | Yes (optional when inheriting) |
-| `system_prompt_path` | System prompt file path, relative to agent file | Yes (optional when inheriting) |
-| `system_prompt_args` | Custom arguments passed to system prompt, merged when inheriting | No |
-| `tools` | Tool list, format is `module:ClassName` | Yes (optional when inheriting) |
+| `name` | Agent name | Yes (can be omitted when inheriting) |
+| `system_prompt_path` | Path to system prompt file, relative to the agent file | Yes (can be omitted when inheriting) |
+| `system_prompt_args` | Custom parameters passed to the system prompt, merged when inheriting | No |
+| `tools` | List of tools in `module:ClassName` format | Yes (can be omitted when inheriting) |
 | `exclude_tools` | Tools to exclude | No |
 | `subagents` | Subagent definitions | No |
 
-## System prompt built-in parameters
+## Built-in system prompt parameters
 
-The system prompt file is a Markdown template that can use `${VAR}` syntax to reference variables. Built-in variables include:
+The system prompt file is a Markdown template that can reference variables using `${VAR}` syntax. Built-in variables include:
 
 | Variable | Description |
 |----------|-------------|
@@ -79,7 +79,7 @@ The system prompt file is a Markdown template that can use `${VAR}` syntax to re
 | `${KIMI_WORK_DIR}` | Working directory path |
 | `${KIMI_WORK_DIR_LS}` | Working directory file list |
 | `${KIMI_AGENTS_MD}` | AGENTS.md file content (if exists) |
-| `${KIMI_SKILLS}` | Loaded skills list |
+| `${KIMI_SKILLS}` | List of loaded skills |
 
 You can also define custom parameters via `system_prompt_args`:
 
@@ -105,7 +105,7 @@ ${MY_VAR}
 
 ## Defining subagents in agent files
 
-Subagents can handle specific types of tasks. After defining subagents in an agent file, the main agent can launch them via the `Task` tool:
+Subagents can handle specific types of tasks. Once defined in the agent file, the main agent can launch them via the `Task` tool:
 
 ```yaml
 version: 1
@@ -120,7 +120,7 @@ agent:
       description: "Code review expert"
 ```
 
-Subagent files are also standard agent format, typically inheriting from the main agent and excluding certain tools:
+Subagent files also follow the standard agent format, typically inheriting from the main agent and excluding certain tools:
 
 ```yaml
 # coder-sub.yaml
@@ -136,15 +136,15 @@ agent:
 
 ## How subagents run
 
-Subagents launched via the `Task` tool run in an isolated context and return results to the main agent when complete. Advantages of this approach:
+Subagents launched via the `Task` tool run in an isolated context and return results to the main agent upon completion. Advantages of this approach:
 
-- Isolated context, avoiding pollution of main agent's conversation history
+- Isolated context prevents polluting the main agent's conversation history
 - Multiple independent tasks can be processed in parallel
-- Subagents can have targeted system prompts
+- Subagents can have tailored system prompts
 
 ## Dynamic subagent creation
 
-`CreateSubagent` is an advanced tool that allows AI to dynamically define new subagent types at runtime (not enabled by default). To use it, add to your agent file:
+`CreateSubagent` is an advanced tool that allows the AI to dynamically define new subagent types at runtime (disabled by default). To use it, add to your agent file:
 
 ```yaml
 agent:
@@ -152,30 +152,30 @@ agent:
     - "kimi_cli.tools.multiagent:CreateSubagent"
 ```
 
-## Built-in tools list
+## Built-in tool list
 
-The following are all built-in tools in Kimi Code CLI.
+Here are all the built-in tools in Kimi Code CLI.
 
 ### `Task`
 
 - **Path**: `kimi_cli.tools.multiagent:Task`
-- **Description**: Dispatch a subagent to execute a task. Subagents cannot access the main agent's context; all necessary information must be provided in the prompt.
+- **Description**: Dispatch subagents to execute tasks. Subagents cannot access the main agent's context; all necessary information must be provided in the prompt.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `description` | string | Short task description (3-5 words) |
+| `description` | string | Brief task description (3-5 words) |
 | `subagent_name` | string | Subagent name |
 | `prompt` | string | Detailed task description |
 
 ### `SetTodoList`
 
 - **Path**: `kimi_cli.tools.todo:SetTodoList`
-- **Description**: Manage todo list, track task progress
+- **Description**: Manage todo list to track task progress
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `todos` | array | Todo list items |
-| `todos[].title` | string | Todo item title |
+| `todos` | array | Todo list |
+| `todos[].title` | string | Todo title |
 | `todos[].status` | string | Status: `pending`, `in_progress`, `done` |
 
 ### `Shell`
@@ -191,7 +191,7 @@ The following are all built-in tools in Kimi Code CLI.
 ### `ReadFile`
 
 - **Path**: `kimi_cli.tools.file:ReadFile`
-- **Description**: Read text file content. Max 1000 lines per read, max 2000 characters per line. Files outside working directory require absolute paths.
+- **Description**: Read text file content. Reads up to 1000 lines per request, max 2000 characters per line. Files outside the working directory require absolute paths.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -202,7 +202,7 @@ The following are all built-in tools in Kimi Code CLI.
 ### `ReadMediaFile`
 
 - **Path**: `kimi_cli.tools.file:ReadMediaFile`
-- **Description**: Read image or video files. Max file size 100MB. Only available when the model supports image/video input. Files outside working directory require absolute paths.
+- **Description**: Read image or video files. Max file size 100MB. Only available when the model supports image/video input. Files outside the working directory require absolute paths.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -211,18 +211,18 @@ The following are all built-in tools in Kimi Code CLI.
 ### `Glob`
 
 - **Path**: `kimi_cli.tools.file:Glob`
-- **Description**: Match files and directories by pattern. Returns max 1000 matches, patterns starting with `**` not allowed.
+- **Description**: Match files and directories by pattern. Returns up to 1000 matches, patterns starting with `**` are not allowed.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pattern` | string | Glob pattern (e.g., `*.py`, `src/**/*.ts`) |
 | `directory` | string | Search directory, defaults to working directory |
-| `include_dirs` | bool | Include directories, default true |
+| `include_dirs` | bool | Whether to include directories, default true |
 
 ### `Grep`
 
 - **Path**: `kimi_cli.tools.file:Grep`
-- **Description**: Search file content with regular expressions, based on ripgrep
+- **Description**: Search file content using regular expressions, based on ripgrep
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -231,18 +231,18 @@ The following are all built-in tools in Kimi Code CLI.
 | `glob` | string | File filter (e.g., `*.js`) |
 | `type` | string | File type (e.g., `py`, `js`, `go`) |
 | `output_mode` | string | Output mode: `files_with_matches` (default), `content`, `count_matches` |
-| `-B` | int | Show N lines before match |
-| `-A` | int | Show N lines after match |
-| `-C` | int | Show N lines before and after match |
+| `-B` | int | Show N lines before each match |
+| `-A` | int | Show N lines after each match |
+| `-C` | int | Show N lines before and after each match |
 | `-n` | bool | Show line numbers |
-| `-i` | bool | Case insensitive |
+| `-i` | bool | Case insensitive search |
 | `multiline` | bool | Enable multiline matching |
 | `head_limit` | int | Limit output lines |
 
 ### `WriteFile`
 
 - **Path**: `kimi_cli.tools.file:WriteFile`
-- **Description**: Write files. Requires user approval. Absolute paths are required when writing files outside the working directory.
+- **Description**: Write to a file. Write operations require user approval. When writing files outside the working directory, an absolute path must be used.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -253,31 +253,31 @@ The following are all built-in tools in Kimi Code CLI.
 ### `StrReplaceFile`
 
 - **Path**: `kimi_cli.tools.file:StrReplaceFile`
-- **Description**: Edit files using string replacement. Requires user approval. Absolute paths are required when editing files outside the working directory.
+- **Description**: Edit files using string replacement. Edit operations require user approval. When editing files outside the working directory, an absolute path must be used.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `path` | string | Absolute path |
 | `edit` | object/array | Single edit or list of edits |
-| `edit.old` | string | Original string to replace |
+| `edit.old` | string | String to be replaced |
 | `edit.new` | string | Replacement string |
-| `edit.replace_all` | bool | Replace all matches, default false |
+| `edit.replace_all` | bool | Whether to replace all matches, default false |
 
 ### `SearchWeb`
 
 - **Path**: `kimi_cli.tools.web:SearchWeb`
-- **Description**: Search the web. Requires search service configuration (auto-configured on Kimi Code platform).
+- **Description**: Search the web. Requires search service configuration (automatically configured on Kimi Code platform).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `query` | string | Search keywords |
+| `query` | string | Search query |
 | `limit` | int | Number of results, default 5, max 20 |
-| `include_content` | bool | Include page content, default false |
+| `include_content` | bool | Whether to include page content, default false |
 
 ### `FetchURL`
 
 - **Path**: `kimi_cli.tools.web:FetchURL`
-- **Description**: Fetch webpage content, returns extracted main text. Uses fetch service if configured, otherwise uses local HTTP request.
+- **Description**: Fetch web page content and return the extracted main text. If a fetch service is configured, it will be used preferentially; otherwise, local HTTP requests will be used.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -286,7 +286,7 @@ The following are all built-in tools in Kimi Code CLI.
 ### `Think`
 
 - **Path**: `kimi_cli.tools.think:Think`
-- **Description**: Let the agent record thinking process, suitable for complex reasoning scenarios
+- **Description**: Let the agent record thinking process, useful for complex reasoning scenarios
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -295,7 +295,7 @@ The following are all built-in tools in Kimi Code CLI.
 ### `SendDMail`
 
 - **Path**: `kimi_cli.tools.dmail:SendDMail`
-- **Description**: Send delayed message (D-Mail), for checkpoint rollback scenarios
+- **Description**: Send delayed message (D-Mail), used for checkpoint rollback scenarios
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -309,23 +309,23 @@ The following are all built-in tools in Kimi Code CLI.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `name` | string | Unique name for the subagent, used to reference in `Task` tool |
-| `system_prompt` | string | System prompt defining agent's role, capabilities, and boundaries |
+| `name` | string | Unique name for the subagent, used to reference in the `Task` tool |
+| `system_prompt` | string | System prompt defining the agent's role, capabilities, and boundaries |
 
-## Tool security boundaries
+## Tool safety boundaries
 
 **Working directory restrictions**
 
-- File reading and writing are typically done within the working directory
-- Absolute paths are required when reading files outside the working directory
-- Write and edit operations require user approval; absolute paths are required when operating on files outside the working directory
+- File read/write typically occurs within the working directory
+- Reading files outside the working directory requires absolute paths
+- Write and edit operations require user approval; when operating on files outside the working directory, absolute paths must be used
 
 **Approval mechanism**
 
 The following operations require user approval:
 
-| Operation | Approval required |
-|-----------|-------------------|
-| Shell command execution | Each execution |
-| File write/edit | Each operation |
-| MCP tool calls | Each call |
+| Operation | Approval requirement |
+|-----------|---------------------|
+| Shell command execution | Every execution |
+| File write/edit | Every operation |
+| MCP tool calls | Every call |

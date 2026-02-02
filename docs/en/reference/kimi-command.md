@@ -60,10 +60,11 @@ The working directory determines the root directory for file operations. Relativ
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--prompt TEXT` | `-p` | Pass user prompt, doesn't enter interactive mode |
+| `--prompt TEXT` | `-p` | Pass user prompt, exit after processing |
 | `--command TEXT` | `-c` | Alias for `--prompt` |
+| `--starting-prompt TEXT` | `-s` | Pass starting prompt, keep session open after processing |
 
-When using `--prompt` (or `--command`), Kimi Code CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode).
+When using `--prompt` (or `--command`), Kimi Code CLI exits after processing the query (unless `--print` is specified, results are still displayed in interactive mode). When using `--starting-prompt`, Kimi Code CLI keeps the session open after processing, allowing continued interaction.
 
 ## Loop control
 
@@ -180,10 +181,15 @@ If the default port is in use, the server will pick the next available port (by 
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--host TEXT` | `-h` | Host address to bind to (default: `127.0.0.1`) |
+| `--host TEXT` | `-h` | Bind to specific IP address |
+| `--network` | `-n` | Enable network access (bind to `0.0.0.0`) |
 | `--port INTEGER` | `-p` | Port number to bind to (default: `5494`) |
 | `--reload` | | Enable auto-reload (development mode) |
 | `--open / --no-open` | | Automatically open browser (default: enabled) |
+| `--auth-token TEXT` | | Set Bearer Token for API authentication |
+| `--allowed-origins TEXT` | | Set allowed Origin list (comma-separated) |
+| `--lan-only / --public` | | Only allow LAN access (default) or allow public access |
+| `--restrict-sensitive-apis / --no-restrict-sensitive-apis` | | Restrict sensitive API access |
 
 Examples:
 
@@ -199,6 +205,9 @@ kimi web --no-open
 
 # Bind to all network interfaces (allow LAN access)
 kimi web --host 0.0.0.0
+
+# Enable network access with token protection
+kimi web --network --auth-token $(openssl rand -hex 32)
 ```
 
 See [Web UI](./kimi-web.md) for details.

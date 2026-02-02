@@ -1,54 +1,54 @@
-# Print Mode
+# Print mode
 
-Print mode lets Kimi Code CLI run non-interactively, suitable for scripting and automation scenarios.
+Print mode allows Kimi Code CLI to run in a non-interactive manner, suitable for scripting and automation scenarios.
 
 ## Basic usage
 
-Use the `--print` flag to enable print mode:
+Use the `--print` parameter to enable print mode:
 
 ```sh
-# Pass instructions via -p (or -c)
+# Pass instruction via -p (or -c)
 kimi --print -p "List all Python files in the current directory"
 
-# Pass instructions via stdin
+# Pass instruction via stdin
 echo "Explain what this code does" | kimi --print
 ```
 
-Print mode characteristics:
+Characteristics of print mode:
 
-- **Non-interactive**: Exits automatically after executing instructions
-- **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved
+- **Non-interactive**: Automatically exits after executing the instruction
+- **Auto-approval**: Implicitly enables `--yolo` mode, all operations are automatically approved
 - **Text output**: AI responses are output to stdout
 
-<!-- TODO: Enable this example after supporting reading content from stdin and instructions from -p simultaneously
-**Pipeline examples**
+<!-- TODO: Support reading content from stdin and instructions from -p simultaneously, then enable this example
+**Pipeline composition example**
 
 ```sh
 # Analyze git diff and generate commit message
-git diff --staged | kimi --print -p "Generate a Conventional Commits compliant commit message based on this diff"
+git diff --staged | kimi --print -p "Generate a commit message following Conventional Commits based on this diff"
 
 # Read file and generate documentation
 cat src/api.py | kimi --print -p "Generate API documentation for this Python module"
 ```
 -->
 
-## Final message only
+## Output final message only
 
-Use the `--final-message-only` option to only output the final assistant message, skipping intermediate tool call processes:
+Use the `--final-message-only` option to output only the final assistant message, skipping intermediate tool call processes:
 
 ```sh
-kimi --print -p "Give me a Git commit message based on the current changes" --final-message-only
+kimi --print -p "Give me a Git commit message based on current changes" --final-message-only
 ```
 
-`--quiet` is a shortcut for `--print --output-format text --final-message-only`, suitable for scenarios where only the final result is needed:
+`--quiet` is a shorthand for `--print --output-format text --final-message-only`, suitable for scenarios where only the final result is needed:
 
 ```sh
-kimi --quiet -p "Give me a Git commit message based on the current changes"
+kimi --quiet -p "Give me a Git commit message based on current changes"
 ```
 
 ## JSON format
 
-Print mode supports JSON format for input and output, convenient for programmatic processing. Both input and output use the [Message](#message-format) format.
+Print mode supports JSON format input and output for easier programmatic processing. Both input and output use the [Message](#message-format) format.
 
 **JSON output**
 
@@ -58,13 +58,13 @@ Use `--output-format=stream-json` to output in JSONL (one JSON per line) format:
 kimi --print -p "Hello" --output-format=stream-json
 ```
 
-Example output:
+Output example:
 
 ```jsonl
 {"role":"assistant","content":"Hello! How can I help you?"}
 ```
 
-If the AI called tools, assistant messages and tool messages are output sequentially:
+If the AI calls tools, it will output assistant messages and tool messages sequentially:
 
 ```jsonl
 {"role":"assistant","content":"Let me check the current directory.","tool_calls":[{"type":"function","id":"tc_1","function":{"name":"Shell","arguments":"{\"command\":\"ls\"}"}}]}
@@ -84,7 +84,7 @@ In this mode, Kimi Code CLI continuously reads from stdin, processing and output
 
 ## Message format
 
-Both input and output use a unified message format.
+Input and output both use a unified message format.
 
 **User message**
 
@@ -92,7 +92,7 @@ Both input and output use a unified message format.
 {"role": "user", "content": "Your question or instruction"}
 ```
 
-Array-form content is also supported:
+You can also use array form for content:
 
 ```json
 {"role": "user", "content": [{"type": "text", "text": "Your question"}]}
@@ -129,14 +129,14 @@ Assistant message with tool calls:
 {"role": "tool", "tool_call_id": "tc_1", "content": "Tool execution result"}
 ```
 
-## Use cases
+## Usage scenarios
 
 **CI/CD integration**
 
-Auto-generate code or perform checks in CI workflows:
+Automatically generate code or perform checks in CI workflows:
 
 ```sh
-kimi --print -p "Check if there are any obvious security issues in the src/ directory, output a JSON format report"
+kimi --print -p "Check for obvious security issues in the src/ directory and output a JSON format report"
 ```
 
 **Batch processing**

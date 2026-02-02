@@ -2,11 +2,11 @@
 layout: home
 hero:
   name: Kimi Code CLI
-  text: Intelligent Command Line Assistant
+  text: Your terminal AI assistant
   tagline: Technical Preview
   actions:
     - theme: brand
-      text: Getting Started
+      text: Get started
       link: /en/guides/getting-started
     - theme: alt
       text: GitHub

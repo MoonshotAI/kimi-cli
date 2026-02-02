@@ -60,10 +60,11 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 | 选项 | 简写 | 说明 |
 |------|------|------|
-| `--prompt TEXT` | `-p` | 传入用户提示，不进入交互模式 |
+| `--prompt TEXT` | `-p` | 传入用户提示，处理完后退出 |
 | `--command TEXT` | `-c` | `--prompt` 的别名 |
+| `--starting-prompt TEXT` | `-s` | 传入初始提示，处理完后保持会话开启 |
 
-使用 `--prompt`（或 `--command`）时，Kimi Code CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。
+使用 `--prompt`（或 `--command`）时，Kimi Code CLI 会处理完查询后退出（除非指定 `--print`，否则仍以交互模式显示结果）。使用 `--starting-prompt` 时，Kimi Code CLI 会在处理完成后保持会话开启，允许继续交互。
 
 ## 循环控制
 
@@ -180,10 +181,15 @@ kimi web [OPTIONS]
 
 | 选项 | 简写 | 说明 |
 |------|------|------|
-| `--host TEXT` | `-h` | 绑定的主机地址（默认：`127.0.0.1`） |
+| `--host TEXT` | `-h` | 绑定到指定的 IP 地址 |
+| `--network` | `-n` | 启用网络访问（绑定到 `0.0.0.0`） |
 | `--port INTEGER` | `-p` | 绑定的端口号（默认：`5494`） |
 | `--reload` | | 启用自动重载（开发模式） |
 | `--open / --no-open` | | 自动打开浏览器（默认：启用） |
+| `--auth-token TEXT` | | 设置 Bearer Token 用于 API 认证 |
+| `--allowed-origins TEXT` | | 设置允许的 Origin 列表（逗号分隔） |
+| `--lan-only / --public` | | 仅允许局域网访问（默认）或允许公网访问 |
+| `--restrict-sensitive-apis / --no-restrict-sensitive-apis` | | 限制敏感 API 访问 |
 
 示例：
 
@@ -199,6 +205,9 @@ kimi web --no-open
 
 # 绑定到所有网络接口（允许局域网访问）
 kimi web --host 0.0.0.0
+
+# 启用网络访问并使用访问令牌保护
+kimi web --network --auth-token $(openssl rand -hex 32)
 ```
 
 详见 [Web UI](./kimi-web.md)。
