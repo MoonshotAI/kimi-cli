@@ -16,6 +16,7 @@ import type { PromptInputMessage } from "@ai-elements";
 import type { GitDiffStats, Session } from "@/lib/api/models";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { MEDIA_CONFIG } from "@/config/media";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
@@ -140,6 +141,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         accept="*"
         className="w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border"
         multiple
+        maxFiles={MEDIA_CONFIG.maxCount}
         onSubmit={onSubmit}
         onError={handleFileError}
       >
