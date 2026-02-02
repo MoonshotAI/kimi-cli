@@ -50,6 +50,7 @@ from kimi_cli.wire.types import (
     ToolResult,
     ToolReturnValue,
     TurnBegin,
+    TurnEnd,
     WireMessage,
 )
 
@@ -566,6 +567,8 @@ class _LiveView:
                         padding=(0, 1),
                     )
                 )
+            case TurnEnd():
+                pass
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()

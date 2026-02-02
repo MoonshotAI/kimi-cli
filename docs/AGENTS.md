@@ -100,6 +100,11 @@ JetBrains IDE terminology (Chinese UI translations):
   - ✗ 详见\[配置文件\](./config.md)。
 - **Full-width punctuation**: Use full-width punctuation in Chinese text: `，。；：？！（）` not `, . ; : ? ! ( )`.
 - **Code block language**: Always specify language for fenced code blocks (e.g., ` ```sh `, ` ```toml `, ` ```json `). Exception: natural language examples (user prompts) may omit the language.
+- **Version info blocks**: Use `::: info` blocks to indicate version changes. The title should be a category (Added/Changed/Removed in English; 新增/变更/移除 in Chinese), and the content should be a complete sentence describing the change.
+  - ✓ `::: info 新增` + content `新增于 Wire 1.2。`
+  - ✗ `::: info 新增于 Wire 1.2` (title too long)
+  - ✓ `::: info Changed` + content `Renamed in Wire 1.1. ...`
+  - ✗ `::: info Renamed in Wire 1.1` (title too long)
 
 ## Writing style
 
