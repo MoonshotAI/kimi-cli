@@ -4,7 +4,14 @@
 
 ## 未发布
 
+- Web：为网络模式添加基于 Token 的认证和访问控制（`--network`、`--lan-only`、`--public`）
+- Web：添加安全选项：`--auth-token`、`--allowed-origins`、`--restrict-sensitive-apis`、`--dangerously-omit-auth`
+- Web：变更 `--host` 选项，用于绑定到指定 IP 地址；添加自动网络地址检测
+- Web：修复创建新会话时 WebSocket 断开连接的问题
+- Web：将最大图片尺寸从 1024 提升至 4096 像素
+- Web：通过增强的悬停效果和更好的布局处理改进 UI 响应性
 - Wire：添加 `TurnEnd` 事件，用于标识 Agent 轮次的完成（协议版本 1.2）
+- Core：修复包含 `$` 的自定义 Agent 提示词文件导致静默启动失败的问题
 
 ## 1.5 (2026-01-30)
 

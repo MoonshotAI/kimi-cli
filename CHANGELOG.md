@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Add token-based authentication and access control for network mode (`--network`, `--lan-only`, `--public`)
+- Web: Add security options: `--auth-token`, `--allowed-origins`, `--restrict-sensitive-apis`, `--dangerously-omit-auth`
+- Web: Change `--host` option to bind to specific IP address; add automatic network address detection
 - Web: Fix WebSocket disconnect when creating new sessions
 - Web: Increase maximum image dimension from 1024 to 4096 pixels
 - Web: Improve UI responsiveness with enhanced hover effects and better layout handling
