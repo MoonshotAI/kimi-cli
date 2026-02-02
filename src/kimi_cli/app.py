@@ -308,8 +308,9 @@ class KimiCLI:
             WelcomeInfoItem(
                 name="\nTip",
                 value=(
-                    "Kimi Code Web UI, a GUI version of Kimi Code, is now in technical preview. "
-                    "Run `kimi web` to try it!"
+                    "Kimi Code Web UI, a GUI version of Kimi Code, is now in technical preview."
+                    "\n"
+                    "     Type /web to switch, or next time run `kimi web` directly."
                 ),
                 level=WelcomeInfoItem.Level.INFO,
             )

@@ -85,84 +85,81 @@ export function ChatWorkspaceHeader({
         </div>
       </div>
       <div className="flex items-center justify-end gap-2">
-        {currentSession?.workDir ? (
-          <div className="hidden lg:block">
-            <OpenInMenu workDir={currentSession.workDir} />
-          </div>
-        ) : null}
+        {selectedSessionId && (
+          <>
+            {currentSession?.workDir ? (
+              <div className="hidden lg:block">
+                <OpenInMenu workDir={currentSession.workDir} />
+              </div>
+            ) : null}
 
-        
-
-        <Context
-          maxTokens={maxTokens}
-          usedTokens={usedTokens}
-          tokenUsage={tokenUsage}
-        >
-          <ContextTrigger className="cursor-pointer">
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground select-none">
-              {usagePercent}% context
-              <InfoIcon className="size-3" />
-            </span>
-          </ContextTrigger>
-          <ContextContent align="end" sideOffset={16} >
-            <ContextContentBody className="space-y-4">
-              <ContextRawUsage />
-              {selectedSessionId && (
-                <>
+            <Context
+              maxTokens={maxTokens}
+              usedTokens={usedTokens}
+              tokenUsage={tokenUsage}
+            >
+              <ContextTrigger className="cursor-pointer">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground select-none">
+                  {usagePercent}% context
+                  <InfoIcon className="size-3" />
+                </span>
+              </ContextTrigger>
+              <ContextContent align="end" sideOffset={16} >
+                <ContextContentBody className="space-y-4">
+                  <ContextRawUsage />
                   <div className="border-t" />
                   <SessionInfoSection
                     sessionId={selectedSessionId}
                     session={currentSession}
                   />
-                </>
-              )}
-            </ContextContentBody>
-          </ContextContent>
-        </Context>
+                </ContextContentBody>
+              </ContextContent>
+            </Context>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Search messages"
-              className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              onClick={onOpenSearch}
-            >
-              <SearchIcon className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="flex items-center gap-2" side="bottom">
-            <span>Search messages</span>
-            <KbdGroup>
-              <Kbd>{searchShortcutModifier}</Kbd>
-              <span className="text-muted-foreground">+</span>
-              <Kbd>F</Kbd>
-            </KbdGroup>
-          </TooltipContent>
-        </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Search messages"
+                  className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                  onClick={onOpenSearch}
+                >
+                  <SearchIcon className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="flex items-center gap-2" side="bottom">
+                <span>Search messages</span>
+                <KbdGroup>
+                  <Kbd>{searchShortcutModifier}</Kbd>
+                  <span className="text-muted-foreground">+</span>
+                  <Kbd>F</Kbd>
+                </KbdGroup>
+              </TooltipContent>
+            </Tooltip>
 
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={
-                blocksExpanded ? "Fold all blocks" : "Unfold all blocks"
-              }
-              className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              onClick={onToggleBlocks}
-            >
-              {blocksExpanded ? (
-                <ChevronsDownUpIcon className="size-4" />
-              ) : (
-                <ChevronsUpDownIcon className="size-4" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {blocksExpanded ? "Fold all blocks" : "Unfold all blocks"}
-          </TooltipContent>
-        </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={
+                    blocksExpanded ? "Fold all blocks" : "Unfold all blocks"
+                  }
+                  className="inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                  onClick={onToggleBlocks}
+                >
+                  {blocksExpanded ? (
+                    <ChevronsDownUpIcon className="size-4" />
+                  ) : (
+                    <ChevronsUpDownIcon className="size-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {blocksExpanded ? "Fold all blocks" : "Unfold all blocks"}
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
     </div>
   );
