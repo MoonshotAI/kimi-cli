@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.6 (2026-02-03)
+
 - Web: Add token-based authentication and access control for network mode (`--network`, `--lan-only`, `--public`)
 - Web: Add security options: `--auth-token`, `--allowed-origins`, `--restrict-sensitive-apis`, `--dangerously-omit-auth`
 - Web: Change `--host` option to bind to specific IP address; add automatic network address detection
