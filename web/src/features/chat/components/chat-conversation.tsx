@@ -78,6 +78,19 @@ export function ChatConversation({
     setTimeout(() => setHighlightedIndex(-1), 2000);
   }, []);
 
+  // Auto-scroll to bottom when history replay completes after session switch
+  const prevIsReplayingRef = useRef(isReplayingHistory);
+  useEffect(() => {
+    // Detect transition from replaying (true) to not replaying (false)
+    if (prevIsReplayingRef.current && !isReplayingHistory && selectedSessionId) {
+      // Small delay to ensure messages are rendered
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToBottom();
+      });
+    }
+    prevIsReplayingRef.current = isReplayingHistory;
+  }, [isReplayingHistory, selectedSessionId]);
+
   const handleScrollToBottom = useCallback(() => {
     listRef.current?.scrollToBottom();
   }, []);
