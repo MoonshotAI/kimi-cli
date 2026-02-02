@@ -163,30 +163,34 @@ async def update_global_config(
     )
 
 
-@router.get("/toml", summary="Get kimi-cli config.toml")
+@router.get("/toml", summary="Get kimi-cli config.toml", deprecated=True)
 async def get_config_toml() -> ConfigToml:
-    """Get kimi-cli config.toml."""
-    config_file = get_config_file()
-    if not config_file.exists():
-        return ConfigToml(content="", path=str(config_file))
-    return ConfigToml(content=config_file.read_text(encoding="utf-8"), path=str(config_file))
+    """Get kimi-cli config.toml.
+    
+    DEPRECATED: This endpoint exposes sensitive configuration data including API keys.
+    Use GET /api/config/ instead for safe access to configuration settings.
+    This endpoint will be removed in a future version.
+    """
+    # Endpoint disabled for security - config.toml contains API keys and credentials
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access to raw config.toml is disabled for security reasons. "
+               "API keys and credentials should not be exposed through web APIs. "
+               "Use GET /api/config/ to access specific configuration settings safely.",
+    )
 
 
-@router.put("/toml", summary="Update kimi-cli config.toml")
+@router.put("/toml", summary="Update kimi-cli config.toml", deprecated=True)
 async def update_config_toml(request: UpdateConfigTomlRequest) -> UpdateConfigTomlResponse:
-    """Update kimi-cli config.toml."""
-    from kimi_cli.config import load_config_from_string
-
-    try:
-        # Validate the config first
-        load_config_from_string(request.content)
-
-        # Write to file
-        config_file = get_config_file()
-        config_file.parent.mkdir(parents=True, exist_ok=True)
-        config_file.write_text(request.content, encoding="utf-8")
-
-        return UpdateConfigTomlResponse(success=True)
-    except Exception as e:
-        logger.warning(f"Failed to update config.toml: {e}")
-        return UpdateConfigTomlResponse(success=False, error=str(e))
+    """Update kimi-cli config.toml.
+    
+    DEPRECATED: This endpoint allows modification of sensitive configuration including API keys.
+    Use PATCH /api/config/ instead for safe updates to configuration settings.
+    This endpoint will be removed in a future version.
+    """
+    # Endpoint disabled for security - config.toml contains API keys and credentials
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Direct modification of config.toml is disabled for security reasons. "
+               "Use PATCH /api/config/ to update specific configuration settings safely.",
+    )
