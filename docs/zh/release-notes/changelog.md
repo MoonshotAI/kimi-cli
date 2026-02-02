@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.6 (2026-02-03)
+
 - Web：为网络模式添加基于 Token 的认证和访问控制（`--network`、`--lan-only`、`--public`）
 - Web：添加安全选项：`--auth-token`、`--allowed-origins`、`--restrict-sensitive-apis`、`--dangerously-omit-auth`
 - Web：变更 `--host` 选项，用于绑定到指定 IP 地址；添加自动网络地址检测
