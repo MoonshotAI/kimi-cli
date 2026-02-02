@@ -545,7 +545,11 @@ def kimi(
             except Reload as e:
                 session_id = e.session_id
                 continue
-            except SwitchToWeb:
+            except SwitchToWeb as e:
+                if e.session_id is not None:
+                    session = await Session.find(work_dir, e.session_id)
+                    if session is not None:
+                        await _post_run(session, True)
                 return True
         await _post_run(last_session, succeeded)
         return False
