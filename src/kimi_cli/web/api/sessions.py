@@ -22,7 +22,6 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session as KimiCLISession
-from kimi_cli.web.auth import is_origin_allowed, verify_token
 from kimi_cli.web.models import GitDiffStats, GitFileDiff, Session, SessionStatus
 from kimi_cli.web.runner.messages import send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
@@ -47,35 +46,6 @@ work_dirs_router = APIRouter(prefix="/api/work-dirs", tags=["work-dirs"])
 
 # Constants
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
-DEFAULT_MAX_PUBLIC_PATH_DEPTH = 6
-SENSITIVE_PATH_PARTS = {
-    "id_rsa",
-    "id_ed25519",
-    "known_hosts",
-    "credentials",
-    ".aws",
-    ".ssh",
-    ".gnupg",
-    ".kube",
-    ".npmrc",
-    ".pypirc",
-    ".netrc",
-}
-SENSITIVE_PATH_EXTENSIONS = {
-    ".pem",
-    ".key",
-    ".p12",
-    ".pfx",
-    ".kdbx",
-    ".der",
-}
-# Home directory patterns to detect if resolved path escapes to sensitive locations
-SENSITIVE_HOME_PATHS = {
-    ".ssh",
-    ".gnupg",
-    ".aws",
-    ".kube",
-}
 
 
 def sanitize_filename(filename: str) -> str:
@@ -114,69 +84,6 @@ def get_editable_session(
             detail="Session is busy. Please wait for it to complete before modifying.",
         )
     return session
-
-
-def _relative_parts(path: Path) -> list[str]:
-    return [part for part in path.parts if part not in {"", "."}]
-
-
-def _is_sensitive_relative_path(rel_path: Path) -> bool:
-    parts = _relative_parts(rel_path)
-    for part in parts:
-        if part.startswith("."):
-            return True
-        if part.lower() in SENSITIVE_PATH_PARTS:
-            return True
-    return rel_path.suffix.lower() in SENSITIVE_PATH_EXTENSIONS
-
-
-def _contains_symlink(path: Path, base: Path) -> bool:
-    """Check if any component of the path (relative to base) is a symlink."""
-    try:
-        current = base
-        rel_parts = path.relative_to(base).parts
-        for part in rel_parts:
-            current = current / part
-            if current.is_symlink():
-                return True
-    except (ValueError, OSError):
-        return True
-    return False
-
-
-def _is_path_in_sensitive_location(path: Path) -> bool:
-    """Check if resolved path points to a sensitive location (e.g., ~/.ssh, ~/.aws)."""
-    try:
-        home = Path.home()
-        if path.is_relative_to(home):
-            rel_to_home = path.relative_to(home)
-            first_part = rel_to_home.parts[0] if rel_to_home.parts else ""
-            if first_part in SENSITIVE_HOME_PATHS:
-                return True
-    except (ValueError, RuntimeError):
-        pass
-    return False
-
-
-def _ensure_public_file_access_allowed(
-    rel_path: Path,
-    restrict_sensitive_apis: bool,
-    max_path_depth: int = DEFAULT_MAX_PUBLIC_PATH_DEPTH,
-) -> None:
-    if not restrict_sensitive_apis:
-        return
-    rel_parts = _relative_parts(rel_path)
-    if len(rel_parts) > max_path_depth:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Path too deep for public access "
-            f"(max depth: {max_path_depth}, current: {len(rel_parts)}).",
-        )
-    if _is_sensitive_relative_path(rel_path):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access to sensitive files is disabled.",
-        )
 
 
 async def replay_history(ws: WebSocket, session_dir: Path) -> None:
@@ -389,7 +296,6 @@ async def get_session_upload_file(
 async def get_session_file(
     session_id: UUID,
     path: str,
-    request: Request,
 ) -> Response:
     """Get a file or list directory from session work directory."""
     session = load_session_by_id(session_id)
@@ -401,39 +307,12 @@ async def get_session_file(
 
     # Security check: prevent path traversal attacks using resolve()
     work_dir = Path(str(session.kimi_cli_session.work_dir)).resolve()
-    requested_path = work_dir / path
-    file_path = requested_path.resolve()
-
-    # Check path traversal
+    file_path = (work_dir / path).resolve()
     if not file_path.is_relative_to(work_dir):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid path: path traversal not allowed",
         )
-
-    rel_path = file_path.relative_to(work_dir)
-    restrict_sensitive_apis = getattr(request.app.state, "restrict_sensitive_apis", False)
-    max_path_depth = (
-        getattr(request.app.state, "max_public_path_depth", None) or DEFAULT_MAX_PUBLIC_PATH_DEPTH
-    )
-
-    # Additional security checks when restricting sensitive APIs
-    if restrict_sensitive_apis:
-        # Check for symlinks in the path
-        if _contains_symlink(requested_path, work_dir):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Symbolic links are not allowed in public mode.",
-            )
-
-        # Check if resolved path points to sensitive location
-        if _is_path_in_sensitive_location(file_path):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access to sensitive system directories is not allowed.",
-            )
-
-    _ensure_public_file_access_allowed(rel_path, restrict_sensitive_apis, max_path_depth)
 
     if not file_path.exists():
         raise HTTPException(
@@ -444,10 +323,6 @@ async def get_session_file(
     if file_path.is_dir():
         result: list[dict[str, str | int]] = []
         for subpath in file_path.iterdir():
-            if restrict_sensitive_apis:
-                rel_subpath = rel_path / subpath.name
-                if _is_sensitive_relative_path(rel_subpath):
-                    continue
             if subpath.is_dir():
                 result.append({"name": subpath.name, "type": "directory"})
             else:
@@ -509,22 +384,6 @@ async def session_stream(
     6. Forward incoming messages to the subprocess
     7. Clean up on disconnect
     """
-    expected_token = getattr(websocket.app.state, "session_token", None)
-    enforce_origin = getattr(websocket.app.state, "enforce_origin", False)
-    allowed_origins = getattr(websocket.app.state, "allowed_origins", [])
-
-    if enforce_origin:
-        origin = websocket.headers.get("origin")
-        if origin and not is_origin_allowed(origin, allowed_origins):
-            await websocket.close(code=4403, reason="Origin not allowed")
-            return
-
-    if expected_token:
-        token = websocket.query_params.get("token")
-        if not verify_token(token, expected_token):
-            await websocket.close(code=4401, reason="Auth required")
-            return
-
     await websocket.accept()
 
     # Check if session exists
