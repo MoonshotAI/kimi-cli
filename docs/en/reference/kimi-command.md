@@ -144,7 +144,61 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 
 | Subcommand | Description |
 |------------|-------------|
+| [`kimi login`](#kimi-login) | Log in to your Kimi account |
+| [`kimi logout`](#kimi-logout) | Log out from your Kimi account |
 | [`kimi info`](./kimi-info.md) | Display version and protocol information |
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
 | [`kimi term`](./kimi-term.md) | Launch the Toad terminal UI |
+| [`kimi web`](./kimi-web.md) | Start the Web UI server |
+
+### `kimi login`
+
+Log in to your Kimi account. This automatically opens a browser; complete account authorization and available models will be automatically configured.
+
+```sh
+kimi login
+```
+
+### `kimi logout`
+
+Log out from your Kimi account. This clears stored OAuth credentials and removes related configuration from the config file.
+
+```sh
+kimi logout
+```
+
+### `kimi web`
+
+Start the Web UI server to access Kimi Code CLI through a browser.
+
+```sh
+kimi web [OPTIONS]
+```
+
+If the default port is in use, the server will pick the next available port (by default `5494`–`5503`) and print a notice in the terminal.
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--host TEXT` | `-h` | Host address to bind to (default: `127.0.0.1`) |
+| `--port INTEGER` | `-p` | Port number to bind to (default: `5494`) |
+| `--reload` | | Enable auto-reload (development mode) |
+| `--open / --no-open` | | Automatically open browser (default: enabled) |
+
+Examples:
+
+```sh
+# Default startup, automatically opens browser
+kimi web
+
+# Specify port
+kimi web --port 8080
+
+# Don't automatically open browser
+kimi web --no-open
+
+# Bind to all network interfaces (allow LAN access)
+kimi web --host 0.0.0.0
+```
+
+See [Web UI](./kimi-web.md) for details.

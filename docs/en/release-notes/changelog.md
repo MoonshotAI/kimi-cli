@@ -4,6 +4,43 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.5 (2026-01-30)
+
+- Web: Add Git diff status bar showing uncommitted changes in session working directory
+- Web: Add "Open in" menu for opening files/directories in Terminal, VS Code, Cursor, or other local applications
+- Web: Add search functionality to filter sessions by title or working directory
+- Web: Improve session title display with proper overflow handling
+
+## 1.4 (2026-01-30)
+
+- Shell: Merge `/login` and `/setup` commands; `/setup` is now an alias for `/login`
+- Shell: `/usage` now shows remaining quota percentage; add `/status` alias
+- Config: Add `KIMI_SHARE_DIR` environment variable to customize the share directory path (default: `~/.kimi`)
+- Web: Add new Web UI for browser-based interaction
+- CLI: Add `kimi web` subcommand to launch the Web UI server
+- Auth: Fix encoding error when device name or OS version contains non-ASCII characters
+- Auth: OAuth credentials are now stored in files instead of keyring; existing tokens are automatically migrated on startup
+- Auth: Fix authorization failure after the system sleeps or hibernates
+
+## 1.3 (2026-01-28)
+
+- Auth: Fix authentication issue during agent turns
+- Tool: Wrap media content with descriptive tags in `ReadMediaFile` for better path traceability
+
+## 1.2 (2026-01-27)
+
+- UI: Show description for `kimi-for-coding` model
+
+## 1.1 (2026-01-27)
+
+- LLM: Fix `kimi-for-coding` model's capabilities
+
+## 1.0 (2026-01-27)
+
+- Shell: Add `/login` and `/logout` slash commands for login and logout
+- CLI: Add `kimi login` and `kimi logout` subcommands
+- Core: Fix subagent approval request handling
+
 ## 0.88 (2026-01-26)
 
 - MCP: Remove `Mcp-Session-Id` header when connecting to MCP servers to fix compatibility

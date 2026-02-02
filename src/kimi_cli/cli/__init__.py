@@ -12,6 +12,7 @@ from kimi_cli.constant import VERSION
 
 from .info import cli as info_cli
 from .mcp import cli as mcp_cli
+from .web import cli as web_cli
 
 
 class Reload(Exception):
@@ -540,6 +541,7 @@ def kimi(
 cli.add_typer(info_cli, name="info")
 
 
+@cli.command()
 def login(
     json: bool = typer.Option(
         False,
@@ -596,6 +598,7 @@ def login(
         raise typer.Exit(code=1)
 
 
+@cli.command()
 def logout(
     json: bool = typer.Option(
         False,
@@ -637,17 +640,6 @@ def logout(
         raise typer.Exit(code=1)
 
 
-def _oauth_enabled() -> bool:
-    from kimi_cli.utils.envvar import get_env_bool
-
-    return get_env_bool("KIMI_ENABLE_OAUTH")
-
-
-if _oauth_enabled():
-    cli.command()(login)
-    cli.command()(logout)
-
-
 @cli.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def term(
     ctx: typer.Context,
@@ -666,7 +658,25 @@ def acp():
     acp_main()
 
 
+@cli.command(name="__web-worker", hidden=True)
+def web_worker(session_id: str) -> None:
+    """Run web worker subprocess (internal)."""
+    from uuid import UUID
+
+    from kimi_cli.app import enable_logging
+    from kimi_cli.web.runner.worker import run_worker
+
+    try:
+        parsed_session_id = UUID(session_id)
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid session ID: {session_id}") from exc
+
+    enable_logging(debug=False)
+    asyncio.run(run_worker(parsed_session_id))
+
+
 cli.add_typer(mcp_cli, name="mcp")
+cli.add_typer(web_cli, name="web")
 
 
 if __name__ == "__main__":

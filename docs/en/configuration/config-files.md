@@ -145,7 +145,7 @@ Configures web fetch service. When enabled, the `FetchURL` tool prioritizes usin
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
 
 ::: tip
-When configuring the Kimi Code platform using the `/setup` command, search and fetch services are automatically configured.
+When configuring the Kimi Code platform using the `/login` command, search and fetch services are automatically configured.
 :::
 
 ### `mcp`
@@ -160,4 +160,4 @@ When configuring the Kimi Code platform using the `/setup` command, search and f
 
 If `~/.kimi/config.toml` doesn't exist but `~/.kimi/config.json` exists, Kimi Code CLI will automatically migrate the JSON configuration to TOML format and backup the original file as `config.json.bak`.
 
-Configuration files specified via `--config-file` are parsed based on file extension. Configuration content passed via `--config` is first attempted as JSON, then falls back to TOML if that fails.
+`--config-file` specified configuration files are parsed based on file extension. `--config` passed configuration content is first attempted as JSON, then falls back to TOML if that fails.

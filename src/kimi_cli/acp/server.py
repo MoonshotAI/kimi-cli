@@ -72,32 +72,32 @@ class ACPServer:
             ),
             auth_methods=[
                 acp.schema.AuthMethod(
-                    id="setup",
-                    name="Setup LLM with /setup slash command",
+                    id="login",
+                    name="Login with Kimi account",
                     description=(
-                        "Run `kimi` command in the terminal, "
-                        "then send `/setup` command to complete the setup."
+                        "Run `kimi login` command in the terminal, "
+                        "then follow the instructions to finish login."
                     ),
                     field_meta={
                         "terminal-auth": {
                             "command": command,
-                            "args": args,
-                            "label": "Kimi Code CLI Setup",
+                            "args": args + ["login"],
+                            "label": "Kimi Code Login",
                         }
                     },
                 ),
                 # acp.schema.AuthMethod(
-                #     id="login",
-                #     name="Login",
+                #     id="setup",
+                #     name="Setup LLM with /setup slash command",
                 #     description=(
-                #         "Run `kimi login` command in the terminal, "
-                #         "then follow the instructions to finish login."
+                #         "Run `kimi` command in the terminal, "
+                #         "then send `/setup` command to complete the setup."
                 #     ),
                 #     field_meta={
                 #         "terminal-auth": {
                 #             "command": command,
-                #             "args": args + ["login"],
-                #             "label": "Kimi Code Login",
+                #             "args": args,
+                #             "label": "Kimi Code CLI Setup",
                 #         }
                 #     },
                 # ),

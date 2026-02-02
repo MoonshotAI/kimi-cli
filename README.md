@@ -10,9 +10,6 @@
 
 Kimi Code CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
-> [!IMPORTANT]
-> Kimi Code CLI is currently in technical preview.
-
 ## Getting Started
 
 See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi Code CLI.
@@ -28,13 +25,19 @@ Kimi Code CLI is not only a coding agent, but also a shell. You can switch the s
 > [!NOTE]
 > Built-in shell commands like `cd` are not supported yet.
 
+### VS Code extension
+
+Kimi Code CLI can be integrated with [Visual Studio Code](https://code.visualstudio.com/) via the [Kimi Code VS Code Extension](https://marketplace.visualstudio.com/items?itemName=moonshot-ai.kimi-code).
+
+![VS Code Extension](./docs/media/vscode.png)
+
 ### IDE integration via ACP
 
 Kimi Code CLI supports [Agent Client Protocol] out of the box. You can use it together with any ACP-compatible editor or IDE.
 
 [Agent Client Protocol]: https://github.com/agentclientprotocol/agent-client-protocol
 
-To use Kimi Code CLI with ACP clients, make sure to run Kimi Code CLI in the terminal and send `/setup` to complete the setup first. Then, you can configure your ACP client to start Kimi Code CLI as an ACP agent server with command `kimi acp`.
+To use Kimi Code CLI with ACP clients, make sure to run Kimi Code CLI in the terminal and send `/login` to complete the login first. Then, you can configure your ACP client to start Kimi Code CLI as an ACP agent server with command `kimi acp`.
 
 For example, to use Kimi Code CLI with [Zed](https://zed.dev/) or [JetBrains](https://blog.jetbrains.com/ai/2025/12/bring-your-own-ai-agent-to-jetbrains-ides/), add the following configuration to your `~/.config/zed/settings.json` or `~/.jetbrains/acp.json` file:
 
@@ -161,11 +164,10 @@ make test  # run tests
 make test-kimi-cli  # run Kimi Code CLI tests only
 make test-kosong  # run kosong tests only
 make test-pykaos  # run pykaos tests only
+make build-web  # build the web UI and sync it into the package (requires Node.js/npm)
 make build  # build python packages
 make build-bin  # build standalone binary
 make help  # show all make targets
 ```
 
-## Contributing
-
-We welcome contributions to Kimi Code CLI! Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for more information.
+Note: `make build` and `make build-bin` automatically run `make build-web` to embed the web UI.

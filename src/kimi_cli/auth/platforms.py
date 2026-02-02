@@ -17,8 +17,10 @@ class ModelInfo(BaseModel):
     """Model information returned from the API."""
 
     id: str
-    context_length: int = 0
-    supports_reasoning: bool = False
+    context_length: int
+    supports_reasoning: bool
+    supports_image_in: bool
+    supports_video_in: bool
 
     @property
     def capabilities(self) -> set[ModelCapability]:
@@ -29,6 +31,12 @@ class ModelInfo(BaseModel):
         # Models with "thinking" in name are always-thinking
         if "thinking" in self.id.lower():
             caps.update(("thinking", "always_thinking"))
+        if self.supports_image_in:
+            caps.add("image_in")
+        if self.supports_video_in:
+            caps.add("video_in")
+        if "kimi-k2.5" in self.id.lower():
+            caps.update(("thinking", "image_in", "video_in"))
         return caps
 
 
@@ -213,6 +221,8 @@ async def _list_models(
                 id=str(model_id),
                 context_length=int(item.get("context_length") or 0),
                 supports_reasoning=bool(item.get("supports_reasoning")),
+                supports_image_in=bool(item.get("supports_image_in")),
+                supports_video_in=bool(item.get("supports_video_in")),
             )
         )
     return result

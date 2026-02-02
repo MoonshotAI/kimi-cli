@@ -10,6 +10,7 @@ from tests_e2e.wire_helpers import (
     make_home_dir,
     make_work_dir,
     send_initialize,
+    share_dir,
     start_wire,
     summarize_messages,
     write_scripted_config,
@@ -18,7 +19,7 @@ from tests_e2e.wire_helpers import (
 
 def _session_dir(home_dir: Path, work_dir: Path) -> Path:
     digest = hashlib.md5(str(work_dir).encode("utf-8")).hexdigest()
-    return home_dir / ".kimi" / "sessions" / digest
+    return share_dir(home_dir) / "sessions" / digest
 
 
 def _count_lines(path: Path) -> int:

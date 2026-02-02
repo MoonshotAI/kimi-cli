@@ -26,14 +26,14 @@ body:
     id: plan
     attributes:
       label: Which open platform/subscription were you using?
-      description: The one you selected when running `/setup`
+      description: The one you selected when running `/login` or `/setup`
     validations:
       required: true
   - type: input
     id: model
     attributes:
       label: Which model were you using?
-      description: The one you selected when running `/setup`, like `kimi-k2-turbo-preview`, `kimi-for-coding`, etc.
+      description: The one you can see on the bottom status line, like `kimi-k2-turbo-preview`, `kimi-for-coding`, etc.
   - type: input
     id: platform
     attributes:

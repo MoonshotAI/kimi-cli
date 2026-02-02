@@ -180,6 +180,7 @@ class KimiSoul:
         return self._slash_commands
 
     async def run(self, user_input: str | list[ContentPart]):
+        # Refresh OAuth tokens on each turn to avoid idle-time expirations.
         await self._runtime.oauth.ensure_fresh(self._runtime)
 
         wire_send(TurnBegin(user_input=user_input))
@@ -333,10 +334,6 @@ class KimiSoul:
 
             wire_send(StepBegin(n=step_no))
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
-            # FIXME: It's possible that a subagent's approval task steals approval request
-            # from the main agent. We must ensure that the Task tool will redirect them
-            # to the main wire. See `_SubWire` for more details. Later we need to figure
-            # out a better solution.
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
             try:
