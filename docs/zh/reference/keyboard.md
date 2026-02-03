@@ -10,7 +10,7 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 | `Ctrl-/` | 显示帮助 |
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
-| `Ctrl-V` | 粘贴（支持图片） |
+| `Ctrl-V` / `Alt-V` | 粘贴（支持图片） |
 | `Ctrl-E` | 展开审批请求完整内容 |
 | `Ctrl-D` | 退出 Kimi Code CLI |
 | `Ctrl-C` | 中断当前操作 |
@@ -45,7 +45,7 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 
 ## 剪贴板操作
 
-### `Ctrl-V`：粘贴
+### `Ctrl-V` / `Alt-V`：粘贴
 
 粘贴剪贴板内容到输入框。支持：
 

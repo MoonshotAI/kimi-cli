@@ -47,7 +47,7 @@ After finishing your input, press `Enter` to send the complete message.
 
 ## Clipboard and image paste
 
-Press `Ctrl-V` to paste text or images from the clipboard.
+Press `Ctrl-V` or `Alt-V` to paste text or images from the clipboard.
 
 If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
 

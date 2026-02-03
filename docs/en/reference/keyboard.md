@@ -10,7 +10,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | `Ctrl-/` | Show help |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
-| `Ctrl-V` | Paste (supports images) |
+| `Ctrl-V` / `Alt-V` | Paste (supports images) |
 | `Ctrl-E` | Expand full approval request content |
 | `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
@@ -45,7 +45,7 @@ Useful for entering multi-line code snippets or formatted text.
 
 ## Clipboard operations
 
-### `Ctrl-V`: Paste
+### `Ctrl-V` / `Alt-V`: Paste
 
 Paste clipboard content into the input box. Supports:
 
