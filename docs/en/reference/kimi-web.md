@@ -132,6 +132,8 @@ Use `--restrict-sensitive-apis` to disable some sensitive API features:
 kimi web --network --restrict-sensitive-apis
 ```
 
+In `--public` mode, `--restrict-sensitive-apis` is enabled by default; in `--lan-only` mode (default), it is not enabled.
+
 ::: tip Tip
 When you need to expose Web UI to untrusted network environments, it is recommended to enable the `--restrict-sensitive-apis` option.
 :::
@@ -177,7 +179,7 @@ Session search feature added in version 1.5.
 
 Web UI detects Git repository status in the session working directory and displays uncommitted change statistics at the top of the interface:
 
-- Number of new files
+- Number of new files (including staged new files and untracked files)
 - Number of modified files
 - Number of deleted files
 

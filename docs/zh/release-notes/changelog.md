@@ -4,6 +4,10 @@
 
 ## 未发布
 
+- Web：修复历史记录回放时的 WebSocket 错误，发送前检查连接状态
+- Web：Git diff 状态栏现在显示未跟踪文件（尚未添加到 git 的新文件）
+- Web：仅在 public 模式下限制敏感 API；更新 origin 执行逻辑
+
 ## 1.6 (2026-02-03)
 
 - Web：为网络模式添加基于 Token 的认证和访问控制（`--network`、`--lan-only`、`--public`）
