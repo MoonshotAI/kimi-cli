@@ -4,6 +4,10 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix WebSocket errors during history replay by checking connection state before sending
+- Web: Git diff status bar now shows untracked files (new files not yet added to git)
+- Web: Restrict sensitive APIs only in public mode; update origin enforcement logic
+
 - Core: Add OpenTelemetry tracing and metrics support for observability (requires `uv sync --extra observability`)
 
 ## 1.6 (2026-02-03)
