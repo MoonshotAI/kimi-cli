@@ -70,28 +70,28 @@ export function ChatWorkspaceHeader({
     setEditingTitle(sessionDescription);
   }, [onRenameSession, selectedSessionId, sessionDescription]);
 
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditingTitle("");
+  }, []);
+
   const handleSaveEdit = useCallback(async () => {
     if (!selectedSessionId || !onRenameSession) {
-      setIsEditing(false);
+      handleCancelEdit();
       return;
     }
 
     const trimmedTitle = editingTitle.trim();
     if (!trimmedTitle) {
-      setIsEditing(false);
+      handleCancelEdit();
       return;
     }
 
     const success = await onRenameSession(selectedSessionId, trimmedTitle);
     if (success) {
-      setIsEditing(false);
+      handleCancelEdit();
     }
-  }, [selectedSessionId, editingTitle, onRenameSession]);
-
-  const handleCancelEdit = useCallback(() => {
-    setIsEditing(false);
-    setEditingTitle("");
-  }, []);
+  }, [selectedSessionId, editingTitle, onRenameSession, handleCancelEdit]);
 
   return (
     <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8">

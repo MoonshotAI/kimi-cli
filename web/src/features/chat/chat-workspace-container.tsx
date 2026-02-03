@@ -87,7 +87,6 @@ export function ChatWorkspaceContainer({
       return;
     }
 
-    console.log("[ChatWorkspaceContainer] Triggering auto-rename for session:", selectedSessionId);
     await generateTitle(selectedSessionId);
   }, [selectedSessionId, generateTitle]);
 

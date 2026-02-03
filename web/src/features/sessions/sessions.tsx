@@ -253,19 +253,19 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
 
   const handleSaveEdit = async () => {
     if (!editingSessionId || !onRenameSession) {
-      setEditingSessionId(null);
+      handleCancelEdit();
       return;
     }
 
     const trimmedTitle = editingTitle.trim();
     if (!trimmedTitle) {
-      setEditingSessionId(null);
+      handleCancelEdit();
       return;
     }
 
     const success = await onRenameSession(editingSessionId, trimmedTitle);
     if (success) {
-      setEditingSessionId(null);
+      handleCancelEdit();
     }
   };
 
