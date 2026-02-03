@@ -45,7 +45,8 @@ async def send_history_complete(ws: WebSocket) -> bool:
     """Send history complete message to a WebSocket.
 
     Returns:
-        True if message was sent successfully, False if WebSocket is not connected.
+        True if message was sent successfully, False if the send fails or the WebSocket is not
+        connected.
     """
     if ws.client_state != WebSocketState.CONNECTED:
         return False

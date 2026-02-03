@@ -656,6 +656,9 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
         return GitDiffStats(is_git_repo=False)
 
     try:
+        files: list[GitFileDiff] = []
+        total_add, total_del = 0, 0
+
         # Check if HEAD exists (repo has at least one commit)
         check_proc = await asyncio.create_subprocess_exec(
             "git",
@@ -667,48 +670,45 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
             stderr=asyncio.subprocess.DEVNULL,
         )
         await check_proc.wait()
-        if check_proc.returncode != 0:
-            # No commits yet, return empty diff
-            return GitDiffStats(is_git_repo=True, has_changes=False)
+        has_head = check_proc.returncode == 0
 
-        # Execute git diff --numstat HEAD (including staged and unstaged)
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            "diff",
-            "--numstat",
-            "HEAD",
-            cwd=str(work_dir),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        if has_head:
+            # Execute git diff --numstat HEAD (including staged and unstaged)
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "diff",
+                "--numstat",
+                "HEAD",
+                cwd=str(work_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
-        # Parse output
-        files: list[GitFileDiff] = []
-        total_add, total_del = 0, 0
-        for line in stdout.decode().strip().split("\n"):
-            if not line:
-                continue
-            parts = line.split("\t")
-            if len(parts) >= 3:
-                add = int(parts[0]) if parts[0] != "-" else 0
-                dele = int(parts[1]) if parts[1] != "-" else 0
-                total_add += add
-                total_del += dele
-                # Determine file status
-                file_status: str = "modified"
-                if dele == 0 and add > 0:
-                    file_status = "added"
-                elif add == 0 and dele > 0:
-                    file_status = "deleted"
-                files.append(
-                    GitFileDiff(
-                        path=parts[2],
-                        additions=add,
-                        deletions=dele,
-                        status=file_status,  # type: ignore[arg-type]
+            # Parse output
+            for line in stdout.decode().strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 3:
+                    add = int(parts[0]) if parts[0] != "-" else 0
+                    dele = int(parts[1]) if parts[1] != "-" else 0
+                    total_add += add
+                    total_del += dele
+                    # Determine file status
+                    file_status: str = "modified"
+                    if dele == 0 and add > 0:
+                        file_status = "added"
+                    elif add == 0 and dele > 0:
+                        file_status = "deleted"
+                    files.append(
+                        GitFileDiff(
+                            path=parts[2],
+                            additions=add,
+                            deletions=dele,
+                            status=file_status,  # type: ignore[arg-type]
+                        )
                     )
-                )
 
         # Also get untracked files (new files not yet added to git)
         untracked_proc = await asyncio.create_subprocess_exec(
@@ -733,6 +733,15 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
                         status="added",
                     )
                 )
+
+        if not has_head:
+            return GitDiffStats(
+                is_git_repo=True,
+                has_changes=len(files) > 0,
+                total_additions=0,
+                total_deletions=0,
+                files=files,
+            )
 
         return GitDiffStats(
             is_git_repo=True,
