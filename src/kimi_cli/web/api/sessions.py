@@ -561,7 +561,10 @@ async def session_stream(
             except Exception as e:
                 logger.warning(f"Failed to replay history: {e}")
 
-        await send_history_complete(websocket)
+        # Check if WebSocket is still connected before continuing
+        if not await send_history_complete(websocket):
+            logger.debug("WebSocket disconnected during history replay")
+            return
 
         # Ensure work_dir exists
         work_dir = Path(str(session.kimi_cli_session.work_dir))
@@ -704,6 +707,30 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
                         additions=add,
                         deletions=dele,
                         status=file_status,  # type: ignore[arg-type]
+                    )
+                )
+
+        # Also get untracked files (new files not yet added to git)
+        untracked_proc = await asyncio.create_subprocess_exec(
+            "git",
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            cwd=str(work_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        untracked_stdout, _ = await asyncio.wait_for(untracked_proc.communicate(), timeout=5.0)
+
+        # Add untracked files to the result
+        for line in untracked_stdout.decode().strip().split("\n"):
+            if line:
+                files.append(
+                    GitFileDiff(
+                        path=line,
+                        additions=0,  # Cannot count lines for untracked files
+                        deletions=0,
+                        status="added",
                     )
                 )
 
