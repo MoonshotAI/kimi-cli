@@ -640,7 +640,6 @@ async def generate_session_title(
     user_text = " ".join(user_text.split())
     fallback_title = shorten(user_text, width=50, placeholder="...") or "Untitled"
 
-    logger.info("Generating title using AI...", user_message, assistant_response)
     # Try to generate title using AI
     title = fallback_title
     try:
@@ -679,8 +678,6 @@ Title:"""
                         tools=[],
                         history=[Message(role="user", content=prompt)],
                     )
-
-                    logger.info("Generated title:", result)
 
                     generated_title = result.message.extract_text().strip()
                     # Remove quotes if present
