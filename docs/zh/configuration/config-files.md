@@ -31,6 +31,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `loop_control` | `table` | Agent 循环控制参数 |
 | `services` | `table` | 外部服务配置（搜索、抓取） |
 | `mcp` | `table` | MCP 客户端配置 |
+| `observability` | `table` | 可观测性配置（OpenTelemetry 追踪和指标） |
 
 ### 完整配置示例
 
@@ -64,6 +65,14 @@ api_key = "sk-xxx"
 
 [mcp.client]
 tool_call_timeout_ms = 60000
+
+[observability]
+enabled = false
+export_target = "none"  # console | otlp | file | none
+otlp_endpoint = "http://localhost:4317"
+otlp_protocol = "grpc"  # grpc | http
+sampling_rate = 1.0
+log_content = false
 ```
 
 ### `providers`

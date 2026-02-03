@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Add OpenTelemetry tracing and metrics support for observability (requires `uv sync --extra observability`)
+
 ## 1.6 (2026-02-03)
 
 - Web: Add token-based authentication and access control for network mode (`--network`, `--lan-only`, `--public`)
