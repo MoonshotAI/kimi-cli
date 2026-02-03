@@ -132,6 +132,8 @@ kimi web --network --public --auth-token my-secret-token
 kimi web --network --restrict-sensitive-apis
 ```
 
+在 `--public` 模式下，`--restrict-sensitive-apis` 默认启用；在 `--lan-only` 模式（默认）下则不启用。
+
 ::: tip 提示
 当你需要将 Web UI 暴露给不受信任的网络环境时，建议启用 `--restrict-sensitive-apis` 选项。
 :::
@@ -177,7 +179,7 @@ Web UI 提供了便捷的会话管理界面：
 
 Web UI 会在会话工作目录中检测 Git 仓库状态，并在界面顶部显示未提交的更改统计：
 
-- 新增文件数量
+- 新增文件数量（包含已暂存的新文件和未跟踪的文件）
 - 修改文件数量
 - 删除文件数量
 
