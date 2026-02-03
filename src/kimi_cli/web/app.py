@@ -3,6 +3,7 @@
 import os
 import secrets
 import socket
+import sys
 import webbrowser
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from loguru import logger
 from starlette.responses import HTMLResponse
 
 from kimi_cli.web.api import (
@@ -30,6 +32,12 @@ from kimi_cli.web.auth import (
     normalize_allowed_origins,
 )
 from kimi_cli.web.runner.process import KimiCLIRunner
+
+# Configure logging based on LOG_LEVEL environment variable
+_log_level = os.environ.get("LOG_LEVEL", "WARNING").upper()
+logger.remove()
+logger.enable("kimi_cli")
+logger.add(sys.stderr, level=_log_level)
 
 # scalar-fastapi does not ship typing stubs.
 get_scalar_api_reference = cast(  # pyright: ignore[reportUnknownMemberType]

@@ -158,6 +158,8 @@ type UseSessionStreamOptions = {
   onError?: (error: Error) => void;
   /** Callback when session status changes */
   onSessionStatus?: (status: SessionStatus) => void;
+  /** Callback when first turn is complete (for auto-renaming) */
+  onFirstTurnComplete?: () => void;
 };
 
 type UseSessionStreamReturn = {
@@ -224,6 +226,7 @@ export function useSessionStream(
     onConnectionChange,
     onError,
     onSessionStatus,
+    onFirstTurnComplete,
   } = options;
 
   const [messages, setMessagesInternal] = useState<LiveMessage[]>([]);
@@ -263,6 +266,10 @@ export function useSessionStream(
   const awaitingIdleRef = useRef(false); // Track pending idle after cancel
   const awaitingFirstResponseRef = useRef(false); // Track if waiting for first event of a turn
   const lastStatusSeqRef = useRef<number | null>(null);
+
+  // First turn tracking for auto-rename (simplified: backend reads from wire.jsonl)
+  const hasTurnStartedRef = useRef(false); // Whether at least one turn has started
+  const firstTurnCompleteCalledRef = useRef(false); // Whether onFirstTurnComplete was called
 
   // Current state accumulators
   const currentThinkingRef = useRef("");
@@ -349,6 +356,12 @@ export function useSessionStream(
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
           completeStreamingMessages();
+
+          // Trigger onFirstTurnComplete only after at least one turn has completed
+          if (hasTurnStartedRef.current && !firstTurnCompleteCalledRef.current) {
+            firstTurnCompleteCalledRef.current = true;
+            onFirstTurnComplete?.();
+          }
           break;
         }
       }
@@ -358,6 +371,7 @@ export function useSessionStream(
       normalizeSessionStatus,
       onSessionStatus,
       setAwaitingFirstResponse,
+      onFirstTurnComplete,
     ],
   );
 
@@ -697,6 +711,9 @@ export function useSessionStream(
     isReplayingRef.current = true;
     setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
+    // Reset first turn tracking
+    hasTurnStartedRef.current = false;
+    firstTurnCompleteCalledRef.current = false;
   }, [resetStepState, setAwaitingFirstResponse]);
 
   // Process a single wire event
@@ -705,6 +722,11 @@ export function useSessionStream(
       switch (event.type) {
         case "TurnBegin": {
           const parsedUserInput = parseUserInput(event.payload.user_input);
+
+          // Track that at least one turn has started (for auto-rename trigger)
+          if (!isReplay) {
+            hasTurnStartedRef.current = true;
+          }
 
           // Add user message
           const userMessageId = getNextMessageId("user");

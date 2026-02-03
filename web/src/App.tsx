@@ -73,6 +73,8 @@ function App() {
     applySessionStatus,
     fetchWorkDirs,
     fetchStartupDir,
+    renameSession,
+    generateTitle,
     error: sessionsError,
   } = sessionsHook;
 
@@ -295,6 +297,8 @@ function App() {
       onGetSessionFile={getSessionFile}
       onOpenCreateDialog={handleOpenCreateDialog}
       onOpenSidebar={handleOpenMobileSidebar}
+      generateTitle={generateTitle}
+      onRenameSession={renameSession}
     />
   );
 
@@ -363,6 +367,7 @@ function App() {
                   <SessionsSidebar
                     onDeleteSession={handleDeleteSession}
                     onSelectSession={handleSelectSession}
+                    onRenameSession={renameSession}
                     onRefreshSessions={handleRefreshSessions}
                     onOpenCreateDialog={handleOpenCreateDialog}
                     streamStatus={streamStatus}
@@ -435,6 +440,7 @@ function App() {
               <SessionsSidebar
                 onDeleteSession={handleDeleteSession}
                 onSelectSession={handleSelectSession}
+                onRenameSession={renameSession}
                 onRefreshSessions={handleRefreshSessions}
                 onOpenCreateDialog={handleOpenCreateDialog}
                 streamStatus={streamStatus}
