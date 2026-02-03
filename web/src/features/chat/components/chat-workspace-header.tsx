@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import {
   Context,
   ContextContent,
@@ -5,6 +6,7 @@ import {
   ContextRawUsage,
   ContextTrigger,
 } from "@ai-elements";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -38,6 +40,7 @@ type ChatWorkspaceHeaderProps = {
   maxTokens: number;
   tokenUsage: TokenUsage | null;
   onOpenSidebar?: () => void;
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
 };
 
 export function ChatWorkspaceHeader({
@@ -53,8 +56,42 @@ export function ChatWorkspaceHeader({
   maxTokens,
   tokenUsage,
   onOpenSidebar,
+  onRenameSession,
 }: ChatWorkspaceHeaderProps) {
   const searchShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
+
+  // Editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const handleDoubleClick = useCallback(() => {
+    if (!onRenameSession || !selectedSessionId || !sessionDescription) return;
+    setIsEditing(true);
+    setEditingTitle(sessionDescription);
+  }, [onRenameSession, selectedSessionId, sessionDescription]);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditingTitle("");
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!selectedSessionId || !onRenameSession) {
+      handleCancelEdit();
+      return;
+    }
+
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle) {
+      handleCancelEdit();
+      return;
+    }
+
+    const success = await onRenameSession(selectedSessionId, trimmedTitle);
+    if (success) {
+      handleCancelEdit();
+    }
+  }, [selectedSessionId, editingTitle, onRenameSession, handleCancelEdit]);
 
   return (
     <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8">
@@ -70,18 +107,44 @@ export function ChatWorkspaceHeader({
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          {sessionDescription && (
+          {isEditing ? (
+            <Input
+              autoFocus
+              value={editingTitle}
+              onChange={(e) => setEditingTitle(e.target.value)}
+              onBlur={handleSaveEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSaveEdit();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  handleCancelEdit();
+                }
+              }}
+              className="h-7 text-xs font-bold"
+            />
+          ) : sessionDescription ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <p className="truncate text-xs font-bold">
+                <p
+                  className="truncate text-xs font-bold cursor-pointer hover:text-primary"
+                  onDoubleClick={handleDoubleClick}
+                >
                   {shortenTitle(sessionDescription, 60)}
                 </p>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-md">
-                {sessionDescription}
+                <div>{sessionDescription}</div>
+                {onRenameSession && (
+                  <div className="text-muted-foreground text-[10px] mt-1">
+                    Double-click to rename
+                  </div>
+                )}
               </TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
         </div>
       </div>
       <div className="flex items-center justify-end gap-2">
@@ -104,7 +167,7 @@ export function ChatWorkspaceHeader({
                   <InfoIcon className="size-3" />
                 </span>
               </ContextTrigger>
-              <ContextContent align="end" sideOffset={16} >
+              <ContextContent align="end" sideOffset={16}>
                 <ContextContentBody className="space-y-4">
                   <ContextRawUsage />
                   <div className="border-t" />

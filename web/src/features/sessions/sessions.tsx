@@ -18,6 +18,7 @@ import {
   List,
   FolderTree,
   ChevronDown,
+  Pencil,
 } from "lucide-react";
 import { KimiCliBrand } from "@/components/kimi-cli-brand";
 import {
@@ -81,6 +82,7 @@ type SessionsSidebarProps = {
   selectedSessionId: string;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
+  onRenameSession?: (id: string, newTitle: string) => Promise<boolean>;
   onRefreshSessions?: () => Promise<void> | void;
   onOpenCreateDialog: () => void;
   streamStatus?: "ready" | "streaming" | "submitted" | "error";
@@ -97,6 +99,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   selectedSessionId,
   onSelectSession,
   onDeleteSession,
+  onRenameSession,
   onRefreshSessions,
   onOpenCreateDialog,
 }: SessionsSidebarProps): ReactElement {
@@ -116,6 +119,8 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     sessionTitle: "",
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   // Session search state
   const [sessionSearch, setSessionSearch] = useState("");
@@ -227,7 +232,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     });
   };
 
-  const handleMenuAction = (action: "delete") => {
+  const handleMenuAction = (action: "delete" | "rename") => {
     if (!contextMenu) {
       return;
     }
@@ -236,7 +241,37 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       const session = sessions.find((s) => s.id === contextMenu.sessionId);
       openDeleteConfirm(session);
       setContextMenu(null);
+    } else if (action === "rename") {
+      const session = sessions.find((s) => s.id === contextMenu.sessionId);
+      if (session) {
+        setEditingSessionId(session.id);
+        setEditingTitle(normalizeTitle(session.title));
+      }
+      setContextMenu(null);
     }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingSessionId || !onRenameSession) {
+      handleCancelEdit();
+      return;
+    }
+
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle) {
+      handleCancelEdit();
+      return;
+    }
+
+    const success = await onRenameSession(editingSessionId, trimmedTitle);
+    if (success) {
+      handleCancelEdit();
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSessionId(null);
+    setEditingTitle("");
   };
 
   const openDeleteConfirm = useCallback(
@@ -298,6 +333,16 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
         role="menu"
         style={{ top: contextMenu.y, left: contextMenu.x }}
       >
+        {onRenameSession && (
+          <button
+            className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent"
+            onClick={() => handleMenuAction("rename")}
+            type="button"
+          >
+            <Pencil className="size-3.5" />
+            Rename
+          </button>
+        )}
         <button
           className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10"
           onClick={() => handleMenuAction("delete")}
@@ -429,6 +474,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                         <ul className="pl-3 space-y-1 mt-1">
                           {group.sessions.map((session) => {
                             const isActive = session.id === selectedSessionId;
+                            const isEditing = editingSessionId === session.id;
                             return (
                               <li key={session.id}>
                                 <div className="flex items-center gap-2 ">
@@ -438,25 +484,48 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                         ? "bg-secondary"
                                         : "hover:bg-secondary/60"
                                     }`}
-                                    onClick={() => onSelectSession(session.id)}
+                                    onClick={() => !isEditing && onSelectSession(session.id)}
                                     onContextMenu={(event) =>
-                                      handleSessionContextMenu(event, session.id)
+                                      !isEditing && handleSessionContextMenu(event, session.id)
                                     }
                                     type="button"
                                   >
-                                    <Tooltip delayDuration={500}>
-                                      <TooltipTrigger asChild>
-                                        <p className="text-sm font-medium text-foreground overflow-hidden">
-                                          {shortenTitle(normalizeTitle(session.title), 50)}
-                                        </p>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="right" className="max-w-md">
-                                        {normalizeTitle(session.title)}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    <span className="text-[10px] text-muted-foreground mt-1 block">
-                                      {session.updatedAt}
-                                    </span>
+                                    {isEditing ? (
+                                      <input
+                                        autoFocus
+                                        value={editingTitle}
+                                        onChange={(e) => setEditingTitle(e.target.value)}
+                                        onBlur={handleSaveEdit}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            handleSaveEdit();
+                                          }
+                                          if (e.key === "Escape") {
+                                            e.preventDefault();
+                                            handleCancelEdit();
+                                          }
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                                      />
+                                    ) : (
+                                      <Tooltip delayDuration={500}>
+                                        <TooltipTrigger asChild>
+                                          <p className="text-sm font-medium text-foreground overflow-hidden">
+                                            {shortenTitle(normalizeTitle(session.title), 50)}
+                                          </p>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right" className="max-w-md">
+                                          {normalizeTitle(session.title)}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {!isEditing && (
+                                      <span className="text-[10px] text-muted-foreground mt-1 block">
+                                        {session.updatedAt}
+                                      </span>
+                                    )}
                                   </button>
                                   <button
                                     type="button"
@@ -483,6 +552,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
               <ul className="space-y-2">
                 {filteredSessions.map((session) => {
                   const isActive = session.id === selectedSessionId;
+                  const isEditing = editingSessionId === session.id;
                   return (
                     <li key={session.id}>
                       <div className="flex items-center gap-2 min-w-0">
@@ -492,25 +562,48 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                               ? "bg-secondary"
                               : "hover:bg-secondary/60"
                           }`}
-                          onClick={() => onSelectSession(session.id)}
+                          onClick={() => !isEditing && onSelectSession(session.id)}
                           onContextMenu={(event) =>
-                            handleSessionContextMenu(event, session.id)
+                            !isEditing && handleSessionContextMenu(event, session.id)
                           }
                           type="button"
                         >
-                          <Tooltip delayDuration={500}>
-                            <TooltipTrigger asChild>
-                              <p className="text-sm font-medium text-foreground overflow-hidden">
-                                {shortenTitle(normalizeTitle(session.title), 50)}
-                              </p>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-md">
-                              {normalizeTitle(session.title)}
-                            </TooltipContent>
-                          </Tooltip>
-                          <span className="text-[10px] text-muted-foreground mt-1 block">
-                            {session.updatedAt}
-                          </span>
+                          {isEditing ? (
+                            <input
+                              autoFocus
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onBlur={handleSaveEdit}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleSaveEdit();
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  handleCancelEdit();
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          ) : (
+                            <Tooltip delayDuration={500}>
+                              <TooltipTrigger asChild>
+                                <p className="text-sm font-medium text-foreground overflow-hidden">
+                                  {shortenTitle(normalizeTitle(session.title), 50)}
+                                </p>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-md">
+                                {normalizeTitle(session.title)}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          {!isEditing && (
+                            <span className="text-[10px] text-muted-foreground mt-1 block">
+                              {session.updatedAt}
+                            </span>
+                          )}
                         </button>
                         <button
                           type="button"

@@ -56,6 +56,61 @@ class JointSession(Session):
     kimi_cli_session: KimiCLISession = Field(exclude=True)
 
 
+def derive_session_title(session_dir: Path) -> str:
+    """Derive session title from metadata.json or wire.jsonl.
+
+    Priority:
+    1. Read from metadata.json if exists and not "Untitled"
+    2. Fallback to first user message from wire.jsonl
+    3. Final fallback to "Untitled"
+    """
+    import json
+
+    title: str | None = None
+
+    # 1. Try to read from metadata.json first
+    metadata_file = session_dir / "metadata.json"
+    if metadata_file.exists():
+        try:
+            metadata_data = json.loads(metadata_file.read_text(encoding="utf-8"))
+            if "title" in metadata_data:
+                title = metadata_data["title"]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # 2. Fallback: derive from wire.jsonl first user message
+    if not title or title == "Untitled":
+        try:
+            from textwrap import shorten
+
+            from kosong.message import Message
+
+            wire_file = session_dir / "wire.jsonl"
+            if wire_file.exists():
+                with open(wire_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                            message = record.get("message", {})
+                            if message.get("type") == "TurnBegin":
+                                user_input = message.get("payload", {}).get("user_input")
+                                if user_input:
+                                    msg = Message(role="user", content=user_input)
+                                    text = msg.extract_text(" ")
+                                    title = shorten(text, width=300)
+                                    break
+                        except json.JSONDecodeError:
+                            continue
+        except Exception:
+            pass
+
+    # 3. Final fallback
+    return title if title else "Untitled"
+
+
 def load_all_sessions() -> list[JointSession]:
     """Load all sessions from all work directories."""
     metadata = load_metadata()
@@ -97,37 +152,7 @@ def load_all_sessions() -> list[JointSession]:
                 updated_at=0.0,
             )
 
-            # Derive title from first message by reading wire.jsonl directly
-            title = "Untitled"
-            try:
-                import json
-                from textwrap import shorten
-
-                from kosong.message import Message
-
-                wire_file = session_dir / "wire.jsonl"
-                if wire_file.exists():
-                    with open(wire_file, encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                record = json.loads(line)
-                                message = record.get("message", {})
-                                if message.get("type") == "TurnBegin":
-                                    user_input = message.get("payload", {}).get("user_input")
-                                    if user_input:
-                                        msg = Message(role="user", content=user_input)
-                                        text = msg.extract_text(" ")
-                                        title = shorten(text, width=300)
-                                        break
-                            except json.JSONDecodeError:
-                                continue
-            except Exception:
-                # Ignore errors reading wire.jsonl - use default title
-                pass
-
+            title = derive_session_title(session_dir)
             kimi_session.title = title
             kimi_session.updated_at = context_file.stat().st_mtime
 
@@ -191,13 +216,15 @@ def load_session_by_id(id: UUID) -> JointSession | None:
         if context_file.exists():
             from kaos.path import KaosPath
 
+            title = derive_session_title(session_dir)
+
             kimi_session = KimiCLISession(
                 id=session_id_str,
                 work_dir=KaosPath.unsafe_from_local_path(Path(wd.path)),
                 work_dir_meta=wd,
                 context_file=context_file,
                 wire_file=WireFile(session_dir / "wire.jsonl"),
-                title="New Session",
+                title=title,
                 updated_at=context_file.stat().st_mtime,
             )
 

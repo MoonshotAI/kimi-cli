@@ -60,6 +60,10 @@ type UseSessionsReturn = {
   fetchWorkDirs: () => Promise<string[]>;
   /** Fetch the startup directory */
   fetchStartupDir: () => Promise<string>;
+  /** Rename a session */
+  renameSession: (sessionId: string, title: string) => Promise<boolean>;
+  /** Generate title using AI (backend reads messages from wire.jsonl) */
+  generateTitle: (sessionId: string) => Promise<string | null>;
 };
 
 const normalizeSessionPath = (value?: string): string => {
@@ -415,6 +419,78 @@ export function useSessions(): UseSessionsReturn {
     return response.json();
   }, []);
 
+  /**
+   * Rename a session
+   */
+  const renameSession = useCallback(
+    async (sessionId: string, title: string): Promise<boolean> => {
+      try {
+        const basePath = getApiBaseUrl();
+        const response = await fetch(
+          `${basePath}/api/sessions/${encodeURIComponent(sessionId)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...getAuthHeader(),
+            },
+            body: JSON.stringify({ title }),
+          },
+        );
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Failed to rename session");
+        }
+
+        // Refresh the session to get updated data
+        await refreshSession(sessionId);
+        return true;
+      } catch (err) {
+        console.error("Failed to rename session:", err);
+        return false;
+      }
+    },
+    [refreshSession],
+  );
+
+  /**
+   * Generate title using AI
+   * Backend reads messages from wire.jsonl automatically
+   */
+  const generateTitle = useCallback(
+    async (sessionId: string): Promise<string | null> => {
+      try {
+        const basePath = getApiBaseUrl();
+        const response = await fetch(
+          `${basePath}/api/sessions/${encodeURIComponent(sessionId)}/generate-title`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...getAuthHeader(),
+            },
+            body: JSON.stringify({}),
+          },
+        );
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Failed to generate title");
+        }
+
+        const result = await response.json();
+        // Refresh the session to get updated data
+        await refreshSession(sessionId);
+        return result.title;
+      } catch (err) {
+        console.error("Failed to generate title:", err);
+        return null;
+      }
+    },
+    [refreshSession],
+  );
+
   return {
     sessions,
     selectedSessionId,
@@ -433,5 +509,7 @@ export function useSessions(): UseSessionsReturn {
     getSessionFileUrl,
     fetchWorkDirs,
     fetchStartupDir,
+    renameSession,
+    generateTitle,
   };
 }
