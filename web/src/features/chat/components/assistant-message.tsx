@@ -349,7 +349,7 @@ const renderThinkingMessage = (
         defaultOpen={blocksExpanded}
         disableAutoClose
       >
-        <ReasoningTrigger />
+        <ReasoningTrigger className="items-center [&>span:first-child]:mt-0" />
         <ReasoningContent>{thinkingContent}</ReasoningContent>
       </Reasoning>
     </MessageContent>
