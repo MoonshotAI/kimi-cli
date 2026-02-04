@@ -206,6 +206,23 @@ Open-in functionality added in version 1.5.
 Open-in functionality requires browser support for Custom Protocol Handler. This feature is disabled when using the `--restrict-sensitive-apis` option.
 :::
 
+### Slash commands
+
+Web UI supports slash commands. Type `/` in the input box to open the command menu:
+
+- **Autocomplete**: Filter matching commands as you type
+- **Keyboard navigation**: Use up/down arrow keys to select commands, Enter to confirm
+- **Alias support**: Support command alias matching, e.g., `/h` matches `/help`
+
+### File mentions
+
+Web UI supports file mentions. Type `@` in the input box to open the file mention menu, allowing you to reference files in your conversation:
+
+- **Uploaded attachments**: Mention files attached to the current message
+- **Workspace files**: Mention existing files in the current session's working directory
+- **Autocomplete**: Filter matching files by name or path as you type
+- **Keyboard navigation**: Use up/down arrow keys to select files, Enter or Tab to confirm, Escape to cancel
+
 ### Rich media support
 
 Web UI supports viewing and pasting various types of rich media content:
