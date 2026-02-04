@@ -16,7 +16,7 @@ use crate::mcp::{
     load_mcp_config_file, load_mcp_config_string, save_mcp_config,
 };
 use crate::share::ensure_share_dir;
-use crate::soul::toolset::{McpServerConfig, list_mcp_tools, parse_mcp_config};
+use crate::soul::toolset::{list_mcp_tools, parse_mcp_config};
 
 #[derive(Args, Debug)]
 #[command(about = "Manage MCP server configurations.")]

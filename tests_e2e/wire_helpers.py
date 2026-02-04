@@ -478,13 +478,19 @@ def normalize_response(
     return _normalize_server_version(normalize_value(msg, replacements=replacements))
 
 
-def _wire_base_command() -> list[str]:
+def base_command() -> list[str]:
     override = os.getenv(WIRE_COMMAND_ENV)
     if override is not None:
         override = override.strip()
-    if override:
-        return shlex.split(override, posix=os.name != "nt")
-    return ["uv", "run", "kimi", "--wire"]
+    parts = shlex.split(override, posix=os.name != "nt") if override else ["uv", "run", "kimi"]
+    return [part for part in parts if part != "--wire"]
+
+
+def _wire_base_command() -> list[str]:
+    cmd = base_command()
+    if "--wire" not in cmd:
+        cmd.append("--wire")
+    return cmd
 
 
 def _normalize_message_order(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
