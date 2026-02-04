@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type {
   Session,
   UploadSessionFileResponse,
@@ -30,6 +30,16 @@ type UseSessionsReturn = {
   error: string | null;
   /** Refresh sessions list from API */
   refreshSessions: () => Promise<void>;
+  /** Load more sessions for pagination */
+  loadMoreSessions: () => Promise<void>;
+  /** Whether there are more sessions to load */
+  hasMoreSessions: boolean;
+  /** Loading state for pagination */
+  isLoadingMore: boolean;
+  /** Current search query */
+  searchQuery: string;
+  /** Update search query */
+  setSearchQuery: (query: string) => void;
   /** Refresh a single session's data from API */
   refreshSession: (sessionId: string) => Promise<Session | null>;
   /** Create a new session */
@@ -81,6 +91,9 @@ const normalizeSessionPath = (value?: string): string => {
   return stripped === "" ? "." : stripped;
 };
 
+const PAGE_SIZE = 100;
+const AUTO_REFRESH_MS = 30_000;
+
 /**
  * Hook for managing sessions with real API calls
  */
@@ -93,10 +106,12 @@ export function useSessions(): UseSessionsReturn {
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Track initialization
-  const isInitializedRef = useRef(false);
+  const [hasMoreSessions, setHasMoreSessions] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const lastRefreshRef = useRef(0);
 
   /**
    * Refresh sessions list from API
@@ -107,10 +122,16 @@ export function useSessions(): UseSessionsReturn {
 
     try {
       const sessionsList =
-        await apiClient.sessions.listSessionsApiSessionsGet();
+        await apiClient.sessions.listSessionsApiSessionsGet({
+          limit: PAGE_SIZE,
+          offset: 0,
+          q: searchQuery.trim() || undefined,
+        });
 
       // Update sessions list
       setSessions(sessionsList);
+      setHasMoreSessions(sessionsList.length === PAGE_SIZE);
+      lastRefreshRef.current = Date.now();
 
       // Don't auto-select first session - user can click on one or create a new one
     } catch (err) {
@@ -121,7 +142,34 @@ export function useSessions(): UseSessionsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [searchQuery]);
+
+  const loadMoreSessions = useCallback(async () => {
+    if (isLoadingMore || isLoading || !hasMoreSessions) {
+      return;
+    }
+    setIsLoadingMore(true);
+    setError(null);
+    try {
+      const offset = sessions.length;
+      const moreSessions =
+        await apiClient.sessions.listSessionsApiSessionsGet({
+          limit: PAGE_SIZE,
+          offset,
+          q: searchQuery.trim() || undefined,
+        });
+      setSessions((current) => [...current, ...moreSessions]);
+      setHasMoreSessions(moreSessions.length === PAGE_SIZE);
+      lastRefreshRef.current = Date.now();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to load more sessions";
+      setError(message);
+      console.error("Failed to load more sessions:", err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasMoreSessions, isLoading, isLoadingMore, searchQuery, sessions.length]);
 
   const applySessionStatus = useCallback((status: SessionStatus) => {
     setSessions((current) =>
@@ -133,21 +181,44 @@ export function useSessions(): UseSessionsReturn {
     );
   }, []);
 
-  // Initial load
+  // Refresh sessions list when search changes
   useEffect(() => {
-    if (!isInitializedRef.current) {
-      isInitializedRef.current = true;
-      refreshSessions();
-    }
+    refreshSessions();
   }, [refreshSessions]);
 
-  // Auto-refresh sessions list every 30 seconds
+  // Refresh when returning to the tab (throttled)
   useEffect(() => {
-    const interval = setInterval(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastRefreshRef.current < 60_000) {
+        return;
+      }
       refreshSessions();
-    }, 30000);
-    return () => clearInterval(interval);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [refreshSessions]);
+
+  // Periodic refresh to catch sessions created outside the web UI
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      if (isLoading || isLoadingMore) {
+        return;
+      }
+      refreshSessions();
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [isLoading, isLoadingMore, refreshSessions, searchQuery]);
 
   /**
    * Refresh a single session's data from API
@@ -163,9 +234,15 @@ export function useSessions(): UseSessionsReturn {
           });
 
         // Update sessions list
-        setSessions((current) =>
-          current.map((s) => (s.sessionId === sessionId ? session : s)),
-        );
+        setSessions((current) => {
+          const exists = current.some((s) => s.sessionId === sessionId);
+          if (!exists) {
+            return [session, ...current];
+          }
+          return current.map((s) =>
+            s.sessionId === sessionId ? session : s,
+          );
+        });
 
         return session;
       } catch (err) {
@@ -276,10 +353,19 @@ export function useSessions(): UseSessionsReturn {
   /**
    * Select a session
    */
-  const selectSession = useCallback((sessionId: string) => {
-    console.log("[useSessions] Selecting session:", sessionId);
-    setSelectedSessionId(sessionId);
-  }, []);
+  const selectSession = useCallback(
+    (sessionId: string) => {
+      console.log("[useSessions] Selecting session:", sessionId);
+      setSelectedSessionId(sessionId);
+      if (!sessionId) {
+        return;
+      }
+      if (!sessions.some((s) => s.sessionId === sessionId)) {
+        refreshSession(sessionId);
+      }
+    },
+    [refreshSession, sessions],
+  );
 
   /**
    * Get formatted relative time for a session
@@ -497,6 +583,11 @@ export function useSessions(): UseSessionsReturn {
     isLoading,
     error,
     refreshSessions,
+    loadMoreSessions,
+    hasMoreSessions,
+    isLoadingMore,
+    searchQuery,
+    setSearchQuery,
     refreshSession,
     createSession,
     deleteSession,

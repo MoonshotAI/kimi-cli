@@ -70,7 +70,7 @@ No authorization required
 
 ## getWorkDirsApiWorkDirsGet
 
-> Array&lt;string&gt; getWorkDirsApiWorkDirsGet()
+> Array&lt;string | null&gt; getWorkDirsApiWorkDirsGet()
 
 List available work directories
 
@@ -107,7 +107,7 @@ This endpoint does not need any parameter.
 
 ### Return type
 
-**Array<string>**
+**Array<string | null>**
 
 ### Authorization
 

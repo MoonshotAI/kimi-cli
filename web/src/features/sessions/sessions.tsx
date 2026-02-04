@@ -1,3 +1,4 @@
+import type React from "react";
 import {
   memo,
   useCallback,
@@ -6,6 +7,8 @@ import {
   useEffect,
   useState,
   type MouseEvent,
+  forwardRef,
+  type ComponentPropsWithoutRef,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -19,7 +22,9 @@ import {
   FolderTree,
   ChevronDown,
   Pencil,
+  Loader2,
 } from "lucide-react";
+import { Virtuoso } from "react-virtuoso";
 import { KimiCliBrand } from "@/components/kimi-cli-brand";
 import {
   Dialog,
@@ -43,7 +48,7 @@ import {
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 import { isMacOS } from "@/hooks/utils";
-import { shortenTitle } from "@/lib/utils";
+import { cn, } from "@/lib/utils";
 
 // Top-level regex constants for performance
 const NEWLINE_REGEX = /\r\n|\r|\n/;
@@ -84,6 +89,11 @@ type SessionsSidebarProps = {
   onDeleteSession: (id: string) => void;
   onRenameSession?: (id: string, newTitle: string) => Promise<boolean>;
   onRefreshSessions?: () => Promise<void> | void;
+  onLoadMoreSessions?: () => Promise<void> | void;
+  hasMoreSessions?: boolean;
+  isLoadingMore?: boolean;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
   onOpenCreateDialog: () => void;
   streamStatus?: "ready" | "streaming" | "submitted" | "error";
 };
@@ -94,6 +104,39 @@ type ContextMenuState = {
   y: number;
 };
 
+function SessionsScrollerComponent(
+  props: ComponentPropsWithoutRef<"div">,
+  ref: React.Ref<HTMLDivElement>,
+) {
+  const { className, ...rest } = props;
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "flex-1 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]  pb-4 pr-1 ",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+function SessionsListComponent(
+  props: ComponentPropsWithoutRef<"div">,
+  ref: React.Ref<HTMLDivElement>,
+) {
+  const { className, ...rest } = props;
+  return (
+    <div ref={ref} className={cn("flex flex-col space-y-2  w-full px-2", className)} {...rest} />
+  );
+}
+
+const SessionsScroller = forwardRef(SessionsScrollerComponent);
+const SessionsList = forwardRef(SessionsListComponent);
+
+SessionsScroller.displayName = "SessionsScroller";
+SessionsList.displayName = "SessionsList";
+
 export const SessionsSidebar = memo(function SessionsSidebarComponent({
   sessions,
   selectedSessionId,
@@ -101,6 +144,11 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   onDeleteSession,
   onRenameSession,
   onRefreshSessions,
+  onLoadMoreSessions,
+  hasMoreSessions = false,
+  isLoadingMore = false,
+  searchQuery,
+  onSearchQueryChange,
   onOpenCreateDialog,
 }: SessionsSidebarProps): ReactElement {
   const minimumSpinMs = 600;
@@ -123,13 +171,24 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   const [editingTitle, setEditingTitle] = useState("");
 
   // Session search state
-  const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionSearch, setSessionSearch] = useState(searchQuery);
 
   // View mode state with localStorage persistence
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const stored = localStorage.getItem(VIEW_MODE_KEY);
     return stored === "grouped" ? "grouped" : "list";
   });
+
+  useEffect(() => {
+    setSessionSearch(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      onSearchQueryChange(sessionSearch.trim());
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [sessionSearch, onSearchQueryChange]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -252,7 +311,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   };
 
   const handleSaveEdit = async () => {
-    if (!editingSessionId || !onRenameSession) {
+    if (!(editingSessionId && onRenameSession)) {
       handleCancelEdit();
       return;
     }
@@ -314,6 +373,34 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       }
       setIsRefreshing(false);
     }
+  };
+
+  const handleLoadMore = async () => {
+    if (!onLoadMoreSessions || isLoadingMore || !hasMoreSessions) {
+      return;
+    }
+    await Promise.resolve(onLoadMoreSessions());
+  };
+
+  const renderLoadMore = () => {
+    if (!(hasMoreSessions || isLoadingMore)) {
+      return null;
+    }
+    return (
+      <div className="flex items-center justify-center py-2">
+        {isLoadingMore ? (
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        ) : (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={handleLoadMore}
+          >
+            Load more
+          </button>
+        )}
+      </div>
+    );
   };
 
   const renderContextMenu = () => {
@@ -444,183 +531,203 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
             </ToggleGroup>
           </div>
 
-          <div className="flex-1 overflow-y-auto [-webkit-overflow-scrolling:touch] px-3 pb-4 pr-1">
+          <div className="flex-1 min-h-0">
             {viewMode === "grouped" ? (
-              <ul className="space-y-1">
-                {sessionGroups.map((group) => (
-                  <li key={group.workDir}>
-                    <Collapsible defaultOpen={group.sessions.some(s => s.id === selectedSessionId)}>
-                      <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary/50 group">
-                        <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex-1 truncate text-left font-medium">
-                              {group.displayName}
+              <div className="flex h-full flex-col">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] px-3 pb-4 pr-1">
+                  <ul className="space-y-1">
+                    {sessionGroups.map((group) => (
+                      <li key={group.workDir}>
+                        <Collapsible defaultOpen={group.sessions.some(s => s.id === selectedSessionId)}>
+                          <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary/50 group">
+                            <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex-1 truncate text-left font-medium">
+                                  {group.displayName}
+                                </span>
+                              </TooltipTrigger>
+                              {group.workDir !== "__other__" && (
+                                <TooltipContent
+                                  side="right"
+                                >
+                                  {group.workDir}
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                            <span className="text-[10px] text-muted-foreground">
+                              ({group.sessions.length})
                             </span>
-                          </TooltipTrigger>
-                          {group.workDir !== "__other__" && (
-                            <TooltipContent
-                              side="right"
-                            >
-                              {group.workDir}
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                        <span className="text-[10px] text-muted-foreground">
-                          ({group.sessions.length})
-                        </span>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <ul className="pl-3 space-y-1 mt-1">
-                          {group.sessions.map((session) => {
-                            const isActive = session.id === selectedSessionId;
-                            const isEditing = editingSessionId === session.id;
-                            return (
-                              <li key={session.id}>
-                                <div className="flex items-center gap-2 ">
-                                  <button
-                                    className={`w-full flex-1 cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
-                                      isActive
-                                        ? "bg-secondary"
-                                        : "hover:bg-secondary/60"
-                                    }`}
-                                    onClick={() => !isEditing && onSelectSession(session.id)}
-                                    onContextMenu={(event) =>
-                                      !isEditing && handleSessionContextMenu(event, session.id)
-                                    }
-                                    type="button"
-                                  >
-                                    {isEditing ? (
-                                      <input
-                                        autoFocus
-                                        value={editingTitle}
-                                        onChange={(e) => setEditingTitle(e.target.value)}
-                                        onBlur={handleSaveEdit}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            handleSaveEdit();
-                                          }
-                                          if (e.key === "Escape") {
-                                            e.preventDefault();
-                                            handleCancelEdit();
-                                          }
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <ul className="pl-3 space-y-1 mt-1">
+                              {group.sessions.map((session) => {
+                                const isActive = session.id === selectedSessionId;
+                                const isEditing = editingSessionId === session.id;
+                                return (
+                                  <li key={session.id}>
+                                    <div className="flex w-full items-center gap-2">
+                                      <button
+                                        className={`flex-1 min-w-0 cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
+                                          isActive
+                                            ? "bg-secondary"
+                                            : "hover:bg-secondary/60"
+                                        }`}
+                                        onClick={() => !isEditing && onSelectSession(session.id)}
+                                        onContextMenu={(event) =>
+                                          !isEditing && handleSessionContextMenu(event, session.id)
+                                        }
+                                        type="button"
+                                      >
+                                        {isEditing ? (
+                                          <input
+                                            autoFocus
+                                            value={editingTitle}
+                                            onChange={(e) => setEditingTitle(e.target.value)}
+                                            onBlur={handleSaveEdit}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleSaveEdit();
+                                              }
+                                              if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                handleCancelEdit();
+                                              }
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                                          />
+                                        ) : (
+                                          <Tooltip delayDuration={500}>
+                                            <TooltipTrigger asChild>
+                                              <p className="text-sm font-medium text-foreground truncate">
+                                                {normalizeTitle(session.title)}
+                                              </p>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="right" className="max-w-md">
+                                              {normalizeTitle(session.title)}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        )}
+                                        {!isEditing && (
+                                          <span className="text-[10px] text-muted-foreground mt-1 block">
+                                            {session.updatedAt}
+                                          </span>
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-label="Delete session"
+                                        className="md:hidden inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openDeleteConfirm(session);
                                         }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-                                      />
-                                    ) : (
-                                      <Tooltip delayDuration={500}>
-                                        <TooltipTrigger asChild>
-                                          <p className="text-sm font-medium text-foreground overflow-hidden">
-                                            {shortenTitle(normalizeTitle(session.title), 50)}
-                                          </p>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="right" className="max-w-md">
-                                          {normalizeTitle(session.title)}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    )}
-                                    {!isEditing && (
-                                      <span className="text-[10px] text-muted-foreground mt-1 block">
-                                        {session.updatedAt}
-                                      </span>
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-label="Delete session"
-                                    className="md:hidden inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openDeleteConfirm(session);
-                                    }}
-                                  >
-                                    <Trash2 className="size-4" />
-                                  </button>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </li>
-                ))}
-              </ul>
+                                      >
+                                        <Trash2 className="size-4" />
+                                      </button>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </li>
+                    ))}
+                  </ul>
+                  {renderLoadMore()}
+                </div>
+              </div>
             ) : (
-              <ul className="space-y-2">
-                {filteredSessions.map((session) => {
+              <Virtuoso
+                data={filteredSessions}
+                className="h-full"
+                computeItemKey={(_index, session) => session.id}
+                components={{
+                  Scroller: SessionsScroller,
+                  List: SessionsList,
+                  Footer: renderLoadMore,
+                }}
+                endReached={() => {
+                  if (hasMoreSessions) {
+                    handleLoadMore();
+                  }
+                }}
+                itemContent={(_index, session) => {
                   const isActive = session.id === selectedSessionId;
                   const isEditing = editingSessionId === session.id;
                   return (
-                    <li key={session.id}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <button
-                          className={`min-w-0 flex-1 cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
-                            isActive
-                              ? "bg-secondary"
-                              : "hover:bg-secondary/60"
-                          }`}
-                          onClick={() => !isEditing && onSelectSession(session.id)}
-                          onContextMenu={(event) =>
-                            !isEditing && handleSessionContextMenu(event, session.id)
-                          }
-                          type="button"
-                        >
-                          {isEditing ? (
-                            <input
-                              autoFocus
-                              value={editingTitle}
-                              onChange={(e) => setEditingTitle(e.target.value)}
-                              onBlur={handleSaveEdit}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleSaveEdit();
-                                }
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  handleCancelEdit();
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-                            />
-                          ) : (
-                            <Tooltip delayDuration={500}>
-                              <TooltipTrigger asChild>
-                                <p className="text-sm font-medium text-foreground overflow-hidden">
-                                  {shortenTitle(normalizeTitle(session.title), 50)}
-                                </p>
-                              </TooltipTrigger>
-                              <TooltipContent side="right" className="max-w-md">
+                    <div className={`flex w-full items-center gap-2  transition-colors rounded-lg ${
+                          isActive
+                            ? "bg-secondary"
+                            : "hover:bg-secondary/60"
+                        }`}>
+                      <button
+                        className={`flex-1 min-w-0 cursor-pointer text-left rounded-lg px-3 py-2 transition-colors ${
+                          isActive
+                            ? "bg-secondary"
+                            : "hover:bg-secondary/60"
+                        }`}
+                        onClick={() => !isEditing && onSelectSession(session.id)}
+                        onContextMenu={(event) =>
+                          !isEditing && handleSessionContextMenu(event, session.id)
+                        }
+                        type="button"
+                      >
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onBlur={handleSaveEdit}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleSaveEdit();
+                              }
+                              if (e.key === "Escape") {
+                                e.preventDefault();
+                                handleCancelEdit();
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        ) : (
+                          <Tooltip delayDuration={500}>
+                            <TooltipTrigger asChild>
+                              <p className="text-sm font-medium text-foreground truncate">
                                 {normalizeTitle(session.title)}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          {!isEditing && (
-                            <span className="text-[10px] text-muted-foreground mt-1 block">
-                              {session.updatedAt}
-                            </span>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Delete session"
-                          className="md:hidden inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openDeleteConfirm(session);
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      </div>
-                    </li>
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-md">
+                              {normalizeTitle(session.title)}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {!isEditing && (
+                          <span className="text-[10px] text-muted-foreground mt-1 block">
+                            {session.updatedAt}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Delete session"
+                        className="md:hidden inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openDeleteConfirm(session);
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
                   );
-                })}
-              </ul>
+                }}
+              />
             )}
           </div>
         </div>

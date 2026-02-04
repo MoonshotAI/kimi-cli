@@ -65,7 +65,7 @@ export function ChatWorkspaceHeader({
   const [editingTitle, setEditingTitle] = useState("");
 
   const handleDoubleClick = useCallback(() => {
-    if (!onRenameSession || !selectedSessionId || !sessionDescription) return;
+    if (!((onRenameSession && selectedSessionId ) && sessionDescription)) return;
     setIsEditing(true);
     setEditingTitle(sessionDescription);
   }, [onRenameSession, selectedSessionId, sessionDescription]);
@@ -76,7 +76,7 @@ export function ChatWorkspaceHeader({
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
-    if (!selectedSessionId || !onRenameSession) {
+    if (!(selectedSessionId && onRenameSession)) {
       handleCancelEdit();
       return;
     }

@@ -70,6 +70,11 @@ function App() {
     listSessionDirectory,
     refreshSession,
     refreshSessions,
+    loadMoreSessions,
+    hasMoreSessions,
+    isLoadingMore,
+    searchQuery,
+    setSearchQuery,
     applySessionStatus,
     fetchWorkDirs,
     fetchStartupDir,
@@ -191,6 +196,10 @@ function App() {
       return;
     }
 
+    if (searchQuery.trim() || hasMoreSessions) {
+      return;
+    }
+
     const sessionExists = sessions.some(
       (s) => s.sessionId === selectedSessionId,
     );
@@ -199,7 +208,7 @@ function App() {
       updateUrlWithSession(null);
       selectSession("");
     }
-  }, [sessions, selectedSessionId, selectSession]);
+  }, [sessions, selectedSessionId, selectSession, hasMoreSessions, searchQuery]);
 
   // Update URL when selected session changes
   useEffect(() => {
@@ -270,6 +279,13 @@ function App() {
   const handleRefreshSessions = useCallback(async () => {
     await refreshSessions();
   }, [refreshSessions]);
+
+  const handleSearchQueryChange = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+    },
+    [setSearchQuery],
+  );
 
   // Transform Session[] to SessionSummary[] for sidebar
   const sessionSummaries = useMemo(
@@ -369,10 +385,15 @@ function App() {
                     onSelectSession={handleSelectSession}
                     onRenameSession={renameSession}
                     onRefreshSessions={handleRefreshSessions}
+                    onLoadMoreSessions={loadMoreSessions}
                     onOpenCreateDialog={handleOpenCreateDialog}
                     streamStatus={streamStatus}
                     selectedSessionId={selectedSessionId}
                     sessions={sessionSummaries}
+                    hasMoreSessions={hasMoreSessions}
+                    isLoadingMore={isLoadingMore}
+                    searchQuery={searchQuery}
+                    onSearchQueryChange={handleSearchQueryChange}
                   />
                   <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
                     <div className="flex items-center gap-2">
@@ -442,10 +463,15 @@ function App() {
                 onSelectSession={handleSelectSession}
                 onRenameSession={renameSession}
                 onRefreshSessions={handleRefreshSessions}
+                onLoadMoreSessions={loadMoreSessions}
                 onOpenCreateDialog={handleOpenCreateDialog}
                 streamStatus={streamStatus}
                 selectedSessionId={selectedSessionId}
                 sessions={sessionSummaries}
+                hasMoreSessions={hasMoreSessions}
+                isLoadingMore={isLoadingMore}
+                searchQuery={searchQuery}
+                onSearchQueryChange={handleSearchQueryChange}
               />
             </div>
             <div className="flex items-center justify-between border-t px-3 py-2">

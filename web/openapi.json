@@ -114,18 +114,49 @@
       "get": {
         "tags": ["sessions"],
         "summary": "List all sessions",
-        "description": "List all sessions.",
+        "description": "List sessions with optional pagination and search.",
         "operationId": "list_sessions_api_sessions__get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Q"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/Session" },
                   "type": "array",
+                  "items": { "$ref": "#/components/schemas/Session" },
                   "title": "Response List Sessions Api Sessions  Get"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -233,6 +264,50 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["sessions"],
+        "summary": "Update session",
+        "description": "Update a session (e.g., rename title).",
+        "operationId": "update_session_api_sessions__session_id__patch",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Session" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -375,6 +450,97 @@
         }
       }
     },
+    "/api/sessions/{session_id}/generate-title": {
+      "post": {
+        "tags": ["sessions"],
+        "summary": "Generate session title using AI",
+        "description": "Generate a concise session title using AI based on the first conversation turn.\n\nIf request body is empty or parameters are missing, the backend will\nautomatically read the first turn from wire.jsonl.",
+        "operationId": "generate_session_title_api_sessions__session_id__generate_title_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/GenerateTitleRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateTitleResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/git-diff": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "Get git diff stats",
+        "description": "get git diff stats for the session's work directory",
+        "operationId": "get_session_git_diff_api_sessions__session_id__git_diff_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GitDiffStats" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/work-dirs/": {
       "get": {
         "tags": ["work-dirs"],
@@ -412,6 +578,39 @@
                   "type": "string",
                   "title": "Response Get Startup Dir Api Work Dirs Startup Get"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/open-in": {
+      "post": {
+        "tags": ["open-in"],
+        "summary": "Open a path in a local application",
+        "operationId": "open_in_api_open_in_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OpenInRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OpenInResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -519,6 +718,100 @@
         "title": "CreateSessionRequest",
         "description": "Create session request."
       },
+      "GenerateTitleRequest": {
+        "properties": {
+          "user_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Message"
+          },
+          "assistant_response": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Assistant Response"
+          }
+        },
+        "type": "object",
+        "title": "GenerateTitleRequest",
+        "description": "Generate title request.\n\nParameters are optional - if not provided, the backend will read\nfrom wire.jsonl automatically."
+      },
+      "GenerateTitleResponse": {
+        "properties": { "title": { "type": "string", "title": "Title" } },
+        "type": "object",
+        "required": ["title"],
+        "title": "GenerateTitleResponse",
+        "description": "Generate title response."
+      },
+      "GitDiffStats": {
+        "properties": {
+          "is_git_repo": {
+            "type": "boolean",
+            "title": "Is Git Repo",
+            "description": "Whether the directory is a git repo"
+          },
+          "has_changes": {
+            "type": "boolean",
+            "title": "Has Changes",
+            "description": "Whether there are uncommitted changes",
+            "default": false
+          },
+          "total_additions": {
+            "type": "integer",
+            "title": "Total Additions",
+            "description": "Total added lines",
+            "default": 0
+          },
+          "total_deletions": {
+            "type": "integer",
+            "title": "Total Deletions",
+            "description": "Total deleted lines",
+            "default": 0
+          },
+          "files": {
+            "items": { "$ref": "#/components/schemas/GitFileDiff" },
+            "type": "array",
+            "title": "Files",
+            "description": "Per-file diff stats",
+            "default": []
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error",
+            "description": "Error message if any"
+          }
+        },
+        "type": "object",
+        "required": ["is_git_repo"],
+        "title": "GitDiffStats",
+        "description": "Git diff statistics for a work directory."
+      },
+      "GitFileDiff": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "File path"
+          },
+          "additions": {
+            "type": "integer",
+            "title": "Additions",
+            "description": "Number of added lines"
+          },
+          "deletions": {
+            "type": "integer",
+            "title": "Deletions",
+            "description": "Number of deleted lines"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["added", "modified", "deleted", "renamed"],
+            "title": "Status",
+            "description": "File change status"
+          }
+        },
+        "type": "object",
+        "required": ["path", "additions", "deletions", "status"],
+        "title": "GitFileDiff",
+        "description": "Single file git diff statistics"
+      },
       "GlobalConfig": {
         "properties": {
           "default_model": {
@@ -557,6 +850,33 @@
       "ModelCapability": {
         "type": "string",
         "enum": ["image_in", "video_in", "thinking", "always_thinking"]
+      },
+      "OpenInRequest": {
+        "properties": {
+          "app": {
+            "type": "string",
+            "enum": ["finder", "cursor", "vscode", "iterm", "terminal"],
+            "title": "App"
+          },
+          "path": { "type": "string", "title": "Path" }
+        },
+        "type": "object",
+        "required": ["app", "path"],
+        "title": "OpenInRequest",
+        "description": "Open path in a local app."
+      },
+      "OpenInResponse": {
+        "properties": {
+          "ok": { "type": "boolean", "title": "Ok" },
+          "detail": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": ["ok"],
+        "title": "OpenInResponse",
+        "description": "Open path response."
       },
       "ProviderType": {
         "type": "string",
@@ -752,6 +1072,20 @@
         "required": ["config"],
         "title": "UpdateGlobalConfigResponse",
         "description": "Response after updating global config."
+      },
+      "UpdateSessionRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "title": "UpdateSessionRequest",
+        "description": "Update session request."
       },
       "UploadSessionFileResponse": {
         "properties": {
