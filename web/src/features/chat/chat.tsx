@@ -61,6 +61,8 @@ type ChatWorkspaceProps = {
   onCreateSession?: () => void;
   /** Open sessions sidebar (mobile) */
   onOpenSidebar?: () => void;
+  /** Rename session */
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
 };
 
 type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
@@ -85,6 +87,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   isAwaitingFirstResponse = false,
   onCreateSession,
   onOpenSidebar,
+  onRenameSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -151,6 +154,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           maxTokens={maxTokens}
           tokenUsage={tokenUsage}
           onOpenSidebar={onOpenSidebar}
+          onRenameSession={onRenameSession}
         />
 
         <div className="flex-1 overflow-hidden min-h-0">

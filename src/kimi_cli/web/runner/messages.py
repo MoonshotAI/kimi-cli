@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict
+from starlette.websockets import WebSocketState
 
 from kimi_cli.web.models import SessionStatus
 
@@ -40,6 +41,17 @@ def new_history_complete_message() -> JSONRPCHistoryCompleteMessage:
     return JSONRPCHistoryCompleteMessage(id=str(uuid4()))
 
 
-async def send_history_complete(ws: WebSocket) -> None:
-    """Send history complete message to a WebSocket."""
-    await ws.send_text(new_history_complete_message().model_dump_json())
+async def send_history_complete(ws: WebSocket) -> bool:
+    """Send history complete message to a WebSocket.
+
+    Returns:
+        True if message was sent successfully, False if the send fails or the WebSocket is not
+        connected.
+    """
+    if ws.client_state != WebSocketState.CONNECTED:
+        return False
+    try:
+        await ws.send_text(new_history_complete_message().model_dump_json())
+        return True
+    except Exception:
+        return False

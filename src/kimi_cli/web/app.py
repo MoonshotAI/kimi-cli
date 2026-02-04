@@ -3,6 +3,7 @@
 import os
 import secrets
 import socket
+import sys
 import webbrowser
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from loguru import logger
 from starlette.responses import HTMLResponse
 
 from kimi_cli.web.api import (
@@ -30,6 +32,12 @@ from kimi_cli.web.auth import (
     normalize_allowed_origins,
 )
 from kimi_cli.web.runner.process import KimiCLIRunner
+
+# Configure logging based on LOG_LEVEL environment variable
+_log_level = os.environ.get("LOG_LEVEL", "WARNING").upper()
+logger.remove()
+logger.enable("kimi_cli")
+logger.add(sys.stderr, level=_log_level)
 
 # scalar-fastapi does not ship typing stubs.
 get_scalar_api_reference = cast(  # pyright: ignore[reportUnknownMemberType]
@@ -330,7 +338,8 @@ def run_web_server(
     auto_populate_origins = public_mode and not parsed_allowed_origins
 
     if restrict_sensitive_apis is None:
-        restrict_sensitive_apis = public_mode
+        # Only restrict sensitive APIs in public mode (non-LAN-only)
+        restrict_sensitive_apis = public_mode and not lan_only
 
     if public_mode and dangerously_omit_auth:
         warning_lines = [
@@ -388,7 +397,7 @@ def run_web_server(
     else:
         os.environ.pop(ENV_ALLOWED_ORIGINS, None)
 
-    os.environ[ENV_ENFORCE_ORIGIN] = "1" if public_mode else "0"
+    os.environ[ENV_ENFORCE_ORIGIN] = "1" if (public_mode and not lan_only) else "0"
     os.environ[ENV_RESTRICT_SENSITIVE_APIS] = "1" if restrict_sensitive_apis else "0"
     os.environ[ENV_LAN_ONLY] = "1" if lan_only else "0"
 

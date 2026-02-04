@@ -25,7 +25,7 @@ prepare-build: download-deps ## Sync dependencies for releases without workspace
 # for kimi web development
 .PHONY: web-back web-front
 web-back: ## Start web backend with uvicorn (reload enabled).
-	@uv run uvicorn kimi_cli.web.app:create_app --factory --reload --port 5494
+	@LOG_LEVEL=DEBUG uv run uvicorn kimi_cli.web.app:create_app --factory --reload --port 5494
 web-front: ## Start web frontend (vite dev server).
 	@npm --prefix web run dev
 
