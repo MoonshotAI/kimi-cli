@@ -1,40 +1,41 @@
 ---
 name: gen-rust
-description: Sync Rust implementation with Python changes (exclude UI/login) by diffing a commit range, mapping modules, porting logic, and updating tests.
+description: Sync Rust implementation with Python changes (exclude UI/login) by reviewing recent changes, mapping modules, porting logic, and updating tests.
 ---
 
 # gen-rust
 
-Use this skill when the user wants Rust (kagent/kosong/kaos) to stay logically identical to Python (kimi_cli/kosong/kaos), excluding UI and login/auth. This includes code and tests: Rust behavior and tests must be fully synchronized with Python changes. Prefer file-level diffs over commit-message scanning.
+Use this skill when the user wants Rust (kagent/kosong/kaos) to stay logically identical to Python (kimi_cli/kosong/kaos), excluding UI and login/auth. This includes code and tests: Rust behavior and tests must be fully synchronized with Python changes.
 
 Note: The Rust binary is named `kagent`. User-facing CLI/output text in Rust must use `kagent`
 instead of `kimi` to match the Rust command name.
 
 ## Quick workflow
 
-1) **Rebase first** (keep work safe)
+1) **Build a complete change inventory**
 
-- `git fetch origin main`
-- If working tree dirty: `git stash -u -m "codex: temp stash before rebase"`
-- `git rebase origin/main`
-- `git stash pop` (resolve if needed)
+Review recent changes to understand what needs syncing:
 
-2) **Build a complete change inventory** (do NOT rely on commit titles)
+```sh
+# Check staged changes
+git diff --cached --name-only
+git diff --cached -- src packages
 
-- List all changed files in range:
-  - `git diff --name-only <BASE>..origin/main`
-- Inspect Python diffs in range:
-  - `git diff <BASE>..origin/main -- src`
-- If needed, inspect specific file history:
-  - `git log --oneline <BASE>..origin/main -- src/kimi_cli/llm.py`
+# Check recent commits
+git log --oneline -20 -- src packages
+git diff HEAD~20..HEAD -- src packages
 
-3) **Classify changes**
+# Review CHANGELOG.md for context
+head -50 CHANGELOG.md
+```
 
-- Exclude UI and login/auth changes.
+2) **Classify changes**
+
+- Exclude UI and login/auth changes (Shell/Print/ACP UI, login/logout commands).
 - Everything else must be mirrored in Rust.
 - Keep a small checklist: file -> change summary -> Rust target -> status.
 
-4) **Map Python -> Rust**
+3) **Map Python -> Rust**
 
 Common mappings:
 - `src/kimi_cli/llm.py` -> `rust/kagent/src/llm.rs`
@@ -45,7 +46,7 @@ Common mappings:
 - `packages/kosong/*` -> `rust/kosong/*`
 - `packages/kaos/*` -> `rust/kaos/*`
 
-5) **Port logic carefully**
+4) **Port logic carefully**
 
 - Match error messages and tool output text exactly (tests often assert strings).
 - Preserve output types (text vs parts) and ordering.
@@ -53,7 +54,7 @@ Common mappings:
 - If Python adds new helper modules, mirror minimal Rust utilities.
 - Use `rg` to find existing analogs and references.
 
-6) **Update tests**
+5) **Update tests**
 
 - Update Rust tests that assert content/strings/parts.
 - Mirror Python unit and integration tests when they exist; add missing Rust tests so coverage matches intent.
@@ -61,12 +62,12 @@ Common mappings:
   `KIMI_E2E_WIRE_CMD` (do not rewrite E2E in Rust). All E2E cases must pass or the gap must be documented.
 - Prefer targeted tests first (`cargo test -p kagent --test <name>`), then full suite if asked.
 
-7) **Verification is mandatory**
+6) **Verification is mandatory**
 
 - Run the full Rust test suite and ensure all Rust tests pass.
 - Run E2E tests with the wire command swapped to Rust (set `KIMI_E2E_WIRE_CMD`), and ensure they pass.
 
-8) **Final report**
+7) **Final report**
 
 - List synced files and logic.
 - Call out intentionally skipped UI/login changes.
@@ -82,7 +83,7 @@ Common mappings:
 
 ## Minimal diff checklist (template)
 
-- [ ] `git diff --name-only <BASE>..origin/main` reviewed
+- [ ] Recent changes reviewed (staged, commits, changelog)
 - [ ] Python diffs inspected for core logic
 - [ ] Rust mappings applied
 - [ ] Tests updated
