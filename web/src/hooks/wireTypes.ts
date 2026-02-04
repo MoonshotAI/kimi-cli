@@ -212,7 +212,14 @@ export type WireMessage = {
       }
     | SessionStatusPayload;
   result?: {
-    status: string;
+    status?: string;
+    slash_commands?: Array<{
+      name: string;
+      description: string;
+      aliases: string[];
+    }>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
   };
   error?: {
     code: number;
