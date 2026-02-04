@@ -20,13 +20,16 @@ confirm_versions: |md
   versioning).
 |
 update_files: |md
-  Update the relevant pyproject.toml, CHANGELOG.md (keep the Unreleased header),
-  and breaking-changes.md in both languages.
+  Update the relevant pyproject.toml (and rust/Cargo.toml if root version changes),
+  CHANGELOG.md (keep the Unreleased header), and breaking-changes.md in both languages.
 |
 root_change: "Is the root package version changing?"
 sync_kimi_code: |md
   Sync packages/kimi-code/pyproject.toml version and dependency
   `kimi-cli==<version>`.
+|
+sync_kagent: |md
+  Sync rust/Cargo.toml workspace version to match the root package version.
 |
 uv_sync: "Run uv sync."
 gen_docs: |md
@@ -45,7 +48,7 @@ monitor_pr: "Monitor the PR until it is merged."
 post_merge: |md
   After merge, switch to main, pull latest changes, and tell the user the git
   tag command needed for the final release tag (they will tag + push tags). Note:
-  a single numeric tag releases both kimi-cli and kimi-code.
+  a single numeric tag releases kimi-cli, kimi-code, and kagent together.
 |
 
 BEGIN -> understand -> check_changes -> has_changes
@@ -54,6 +57,7 @@ has_changes -> confirm_versions: yes
 confirm_versions -> update_files -> root_change
 root_change -> sync_kimi_code: yes
 root_change -> uv_sync: no
-sync_kimi_code -> uv_sync
+sync_kimi_code -> sync_kagent
+sync_kagent -> uv_sync
 uv_sync -> gen_docs -> new_branch -> open_pr -> monitor_pr -> post_merge -> END
 ```

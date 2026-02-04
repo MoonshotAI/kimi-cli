@@ -28,6 +28,8 @@ jobs:
             wire_cmd: ./rust/target/debug/kagent
           - runner: windows-2022
             wire_cmd: .\\rust\\target\\debug\\kagent.exe
+          - runner: windows-11-arm
+            wire_cmd: .\\rust\\target\\debug\\kagent.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository

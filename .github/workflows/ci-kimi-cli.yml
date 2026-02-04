@@ -41,6 +41,9 @@ jobs:
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
             binary_path: dist/onefile/kimi.exe
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            binary_path: dist/onefile/kimi.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
