@@ -102,6 +102,9 @@ are the source of truth, and both sides should change together.
 
 - Rust tests live under `rust/kagent/tests`, `rust/kosong/tests`, `rust/kaos/tests`.
 - E2E tests cover wire-mode behavior using ScriptedEcho and mock services.
+- Run Python E2E against Rust after building the binary:
+  - `cargo build -p kagent`
+  - `KIMI_E2E_WIRE_CMD=./rust/target/debug/kagent uv run pytest tests_e2e`
 
 ## Conventions and runtime rules
 
