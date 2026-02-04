@@ -37,6 +37,8 @@ def _run_cli(args: list[str], env: dict[str, str]) -> subprocess.CompletedProces
         cwd=repo_root(),
         env=env,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         timeout=30,
     )
