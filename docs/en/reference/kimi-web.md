@@ -170,9 +170,15 @@ Web UI provides a convenient session management interface:
 - **Session search**: Quickly filter sessions by title or working directory
 - **Create session**: Create a new session with a specified working directory
 - **Switch session**: Switch to different sessions with one click
+- **Rename session**: Right-click a session and select rename to enter a custom title
+- **AI auto-title**: Have Kimi automatically generate a session title based on conversation content
 
 ::: info Added
 Session search feature added in version 1.5.
+:::
+
+::: info Added
+Session rename and AI auto-title features added in version 1.6.
 :::
 
 ### Git status bar

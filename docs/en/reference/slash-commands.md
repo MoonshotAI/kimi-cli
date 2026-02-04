@@ -92,6 +92,14 @@ Output includes:
 - Server connection status (green indicates connected)
 - List of tools provided by each server
 
+### `/web`
+
+Switch to Web UI.
+
+After execution, Kimi Code CLI will automatically start the Web UI server and open the current session in your browser. You can continue the conversation in Web UI, and the session history will remain synchronized.
+
+See [Web UI documentation](./kimi-web.md) for details.
+
 ## Session management
 
 ### `/sessions`

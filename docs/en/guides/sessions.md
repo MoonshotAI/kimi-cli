@@ -36,6 +36,15 @@ The list displays the title and last update time of each session to help you fin
 
 When you resume an existing session, Kimi Code CLI will replay the previous conversation history to help you quickly understand the context. During replay, previous messages and AI responses are displayed.
 
+## Session titles
+
+In Web UI, you can set custom titles for sessions to better identify and manage them:
+
+- **Manual rename**: Right-click a session in the session list, select rename, and enter a custom title
+- **AI auto-title**: Click the button next to the session title to have Kimi automatically generate a title based on the conversation content
+
+After setting a custom title, the session list will display your title instead of the default timestamp, which is particularly useful when managing multiple sessions simultaneously.
+
 ## Clearing and compaction
 
 As the conversation progresses, the context becomes longer. Kimi Code CLI automatically compacts the context when needed to ensure the conversation can continue.

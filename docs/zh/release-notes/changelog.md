@@ -4,8 +4,8 @@
 
 ## Unreleased
 
-- CLI: 添加 `--starting-prompt` 选项，用于提供初始提示并保持会话开启以便交互
-
+- CLI：添加 `--starting-prompt` 选项，用于提供初始提示并保持会话开启以便交互
+- Web：添加会话重命名和 AI 自动标题生成功能
 - Web：修复历史记录回放时的 WebSocket 错误，发送前检查连接状态
 - Web：Git diff 状态栏现在显示未跟踪文件（尚未添加到 git 的新文件）
 - Web：仅在 public 模式下限制敏感 API；更新 origin 执行逻辑
