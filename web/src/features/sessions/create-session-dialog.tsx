@@ -183,6 +183,8 @@ export function CreateSessionDialog({
     try {
       await onConfirm(pendingPath, true);
       onOpenChange(false);
+    } catch (err) {
+      // Other errors are handled by the hook
     } finally {
       setIsCreating(false);
       setPendingPath("");
