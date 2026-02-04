@@ -58,6 +58,7 @@ class Shell:
         Returns:
             bool: True if the run succeeded, False otherwise.
         """
+        starting_prompt_processed = False
         if command is not None:
             if not stay_open:
                 # run single command and exit
@@ -66,6 +67,7 @@ class Shell:
             # stay_open is True: process the command first, then continue to interactive loop
             logger.info("Running agent with starting command: {command}", command=command)
             await self.run_soul_command(command)
+            starting_prompt_processed = True
             # continue to interactive loop below
 
         # Start auto-update background task if not disabled
@@ -76,7 +78,7 @@ class Shell:
 
         _print_welcome_info(self.soul.name or "Kimi Code CLI", self._welcome_info)
 
-        if isinstance(self.soul, KimiSoul):
+        if isinstance(self.soul, KimiSoul) and not starting_prompt_processed:
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
