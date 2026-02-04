@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Add server-side pagination for session list with virtualized scrolling for better performance
+- Web: Improve session and work directories loading with smarter caching and invalidation
 - Web: Fix WebSocket errors during history replay by checking connection state before sending
 - Web: Git diff status bar now shows untracked files (new files not yet added to git)
 - Web: Restrict sensitive APIs only in public mode; update origin enforcement logic

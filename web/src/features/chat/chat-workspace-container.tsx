@@ -83,7 +83,7 @@ export function ChatWorkspaceContainer({
   // Handle first turn completion for auto-rename
   // Backend reads messages from wire.jsonl automatically
   const handleFirstTurnComplete = useCallback(async () => {
-    if (!selectedSessionId || !generateTitle) {
+    if (!(selectedSessionId && generateTitle)) {
       return;
     }
 
