@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
-
-export type SlashCommandDef = {
-  name: string;
-  description: string;
-  aliases: string[];
-};
+import type { SlashCommandDef } from "@/hooks/useSessionStream";
 
 export type SlashCommandOption = {
   id: string;

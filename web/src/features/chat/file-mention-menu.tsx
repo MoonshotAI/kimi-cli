@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   AlertCircleIcon,
@@ -58,12 +59,14 @@ const renderSection = ({
   label,
   options,
   activeIndex,
+  activeItemRef,
   onHover,
   onSelect,
 }: {
   label: string;
   options: MentionOption[];
   activeIndex: number;
+  activeItemRef: React.RefObject<HTMLButtonElement | null>;
   onHover: (index: number) => void;
   onSelect: (option: MentionOption) => void;
 }) => {
@@ -72,11 +75,11 @@ const renderSection = ({
   }
 
   return (
-    <div className="py-1">
-      <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="py-0.5 px-1">
+      <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="space-y-1">
+      <div>
         {options.map((option) => {
           const Icon = TypeIcon[option.type];
           const isActive = option.order === activeIndex;
@@ -84,9 +87,10 @@ const renderSection = ({
           return (
             <button
               key={option.id}
+              ref={isActive ? activeItemRef : undefined}
               type="button"
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors",
                 isActive
                   ? "bg-primary/10 text-foreground ring-1 ring-primary/30"
                   : "hover:bg-muted",
@@ -97,24 +101,18 @@ const renderSection = ({
               }}
               onMouseEnter={() => onHover(option.order)}
             >
-              <span className="rounded-md bg-muted/70 p-1 text-muted-foreground">
-                <Icon className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{option.label}</p>
-                {option.description ? (
-                  <p className="truncate text-xs text-muted-foreground">
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{option.label}</span>
+                {option.description && option.description !== option.label ? (
+                  <span className="ml-2 text-xs text-muted-foreground">
                     {option.description}
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
-                {sizeLabel ? (
-                  <span className="text-xs text-muted-foreground">
-                    {sizeLabel}
                   </span>
                 ) : null}
-                <span className="rounded-full border border-border/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              </span>
+              <div className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+                {sizeLabel ? <span>{sizeLabel}</span> : null}
+                <span className="rounded border border-border/60 px-1 py-px font-medium uppercase">
                   {TypeBadge[option.type]}
                 </span>
               </div>
@@ -139,6 +137,18 @@ export const FileMentionMenu = ({
   onRetryWorkspace,
   isWorkspaceAvailable,
 }: FileMentionMenuProps) => {
+  const activeItemRef = useRef<HTMLButtonElement>(null);
+
+  // Scroll active item into view when activeIndex changes
+  useEffect(() => {
+    if (open && activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [open, activeIndex]);
+
   if (!open) {
     return null;
   }
@@ -150,13 +160,14 @@ export const FileMentionMenu = ({
   return (
     <div className="absolute left-0 right-0 bottom-[calc(100%+0.75rem)] z-30">
       <div className="rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur supports-backdrop-filter:bg-popover/80">
-        <div className="max-h-64 overflow-y-auto [-webkit-overflow-scrolling:touch]">
+        <div className="max-h-96 overflow-y-auto [-webkit-overflow-scrolling:touch]">
           {hasSections ? (
             <>
               {renderSection({
                 label: SectionLabel.attachment,
                 options: sections.attachments,
                 activeIndex,
+                activeItemRef,
                 onHover,
                 onSelect,
               })}
@@ -164,6 +175,7 @@ export const FileMentionMenu = ({
                 label: SectionLabel.workspace,
                 options: sections.workspace,
                 activeIndex,
+                activeItemRef,
                 onHover,
                 onSelect,
               })}

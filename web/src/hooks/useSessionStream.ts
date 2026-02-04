@@ -724,6 +724,7 @@ export function useSessionStream(
     isReplayingRef.current = true;
     setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
+    setSlashCommands([]);
     // Reset first turn tracking
     hasTurnStartedRef.current = false;
     firstTurnCompleteCalledRef.current = false;
@@ -1358,13 +1359,9 @@ export function useSessionStream(
           initializeIdRef.current = null;
 
           // Extract slash commands
-          const commands = message.result.slash_commands as Array<{
-            name: string;
-            description: string;
-            aliases: string[];
-          }> | undefined;
-          if (commands) {
-            setSlashCommands(commands);
+          const { slash_commands } = message.result;
+          if (slash_commands) {
+            setSlashCommands(slash_commands);
           }
           return;
         }
@@ -1468,7 +1465,7 @@ export function useSessionStream(
       method: "initialize",
       id,
       params: {
-        protocol_version: "1.0",
+        protocol_version: "1.2",
         client: {
           name: "kimi-web",
           version: kimiCliVersion,
@@ -1612,7 +1609,7 @@ export function useSessionStream(
         awaitingIdleRef.current = false;
         setStatus("streaming"); // Will receive replay, then switch to ready
 
-        // Send initialize message to get slash commands and yolo status
+        // Send initialize message to get slash commands
         sendInitialize(ws);
 
         // Send pending message immediately after connection
