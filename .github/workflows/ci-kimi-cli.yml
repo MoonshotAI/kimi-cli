@@ -183,6 +183,13 @@ jobs:
             --pyproject packages/kimi-code/pyproject.toml \
             --expected-version "${{ steps.version.outputs.head_version }}"
 
+      - name: Check kagent version alignment
+        if: steps.version.outputs.bump == 'true'
+        run: |
+          python scripts/check_cargo_version_tag.py \
+            --cargo-toml rust/Cargo.toml \
+            --expected-version "${{ steps.version.outputs.head_version }}"
+
       - name: Check kimi-code dependency pin
         if: steps.version.outputs.bump == 'true'
         shell: python
