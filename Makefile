@@ -56,8 +56,8 @@ format-web: ## Auto-format web sources with npm run format.
 		exit 1; \
 	fi
 
-.PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk
-check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk ## Run linting and type checks for all packages.
+.PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk check-web
+check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk check-web ## Run linting and type checks for all packages.
 check-kimi-cli: ## Run linting and type checks for Kimi Code CLI.
 	@echo "==> Checking Kimi Code CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
@@ -82,6 +82,14 @@ check-kimi-sdk: ## Run linting and type checks for kimi-sdk.
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ruff format --check
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pyright
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk ty check || true
+check-web: ## Run linting and type checks for web.
+	@echo "==> Checking web (biome + tsc)"
+	@if command -v npm >/dev/null 2>&1; then \
+		npm --prefix web run lint && npm --prefix web run typecheck; \
+	else \
+		echo "npm not found. Install Node.js (npm) to run web checks."; \
+		exit 1; \
+	fi
 
 
 .PHONY: test test-kimi-cli test-kosong test-pykaos test-kimi-sdk

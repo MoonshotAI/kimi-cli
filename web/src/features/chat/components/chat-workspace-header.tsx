@@ -128,12 +128,13 @@ export function ChatWorkspaceHeader({
           ) : sessionDescription ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <p
-                  className="truncate text-xs font-bold cursor-pointer hover:text-primary"
+                <button
+                  type="button"
+                  className="truncate text-xs font-bold cursor-pointer hover:text-primary text-left bg-transparent border-none p-0"
                   onDoubleClick={handleDoubleClick}
                 >
                   {shortenTitle(sessionDescription, 60)}
-                </p>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-md">
                 <div>{sessionDescription}</div>
