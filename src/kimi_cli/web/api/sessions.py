@@ -272,10 +272,26 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
         work_dir_path = Path(request.work_dir)
         # Validate the directory exists
         if not work_dir_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Directory does not exist: {request.work_dir}",
-            )
+            if request.create_dir:
+                # Auto-create the directory
+                try:
+                    work_dir_path.mkdir(parents=True, exist_ok=True)
+                except PermissionError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Permission denied: cannot create directory {request.work_dir}",
+                    ) from e
+                except OSError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Failed to create directory: {e}",
+                    ) from e
+            else:
+                # Return 404 to indicate directory does not exist
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Directory does not exist: {request.work_dir}",
+                )
         if not work_dir_path.is_dir():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -311,6 +327,7 @@ class CreateSessionRequest(BaseModel):
     """Create session request."""
 
     work_dir: str | None = None
+    create_dir: bool = False  # Whether to auto-create directory if it doesn't exist
 
 
 class UploadSessionFileResponse(BaseModel):

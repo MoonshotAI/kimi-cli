@@ -43,7 +43,7 @@ type UseSessionsReturn = {
   /** Refresh a single session's data from API */
   refreshSession: (sessionId: string) => Promise<Session | null>;
   /** Create a new session */
-  createSession: (workDir?: string) => Promise<Session>;
+  createSession: (workDir?: string, createDir?: boolean) => Promise<Session>;
   /** Delete a session by ID */
   deleteSession: (sessionId: string) => Promise<boolean>;
   /** Select a session */
@@ -93,6 +93,17 @@ const normalizeSessionPath = (value?: string): string => {
 
 const PAGE_SIZE = 100;
 const AUTO_REFRESH_MS = 30_000;
+
+/**
+ * Custom error class for directory not found
+ */
+export class DirectoryNotFoundError extends Error {
+  isDirectoryNotFound = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "DirectoryNotFoundError";
+  }
+}
 
 /**
  * Hook for managing sessions with real API calls
@@ -257,25 +268,41 @@ export function useSessions(): UseSessionsReturn {
    * Create a new session
    * Returns: Session (API type)
    * @param workDir - Optional working directory for the session
+   * @param createDir - Whether to auto-create directory if it doesn't exist
    */
   const createSession = useCallback(
-    async (workDir?: string): Promise<Session> => {
+    async (workDir?: string, createDir?: boolean): Promise<Session> => {
       setIsLoading(true);
       setError(null);
       try {
         // Use fetch directly to support the work_dir parameter
         const basePath = getApiBaseUrl();
+        const body: { work_dir?: string; create_dir?: boolean } = {};
+        if (workDir) {
+          body.work_dir = workDir;
+        }
+        if (createDir) {
+          body.create_dir = createDir;
+        }
         const response = await fetch(`${basePath}/api/sessions/`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             ...getAuthHeader(),
           },
-          body: workDir ? JSON.stringify({ work_dir: workDir }) : undefined,
+          body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
         });
 
         if (!response.ok) {
           const data = await response.json();
+          // Check for 404 with "Directory does not exist" message
+          if (
+            response.status === 404 &&
+            typeof data.detail === "string" &&
+            data.detail.includes("Directory does not exist")
+          ) {
+            throw new DirectoryNotFoundError(data.detail);
+          }
           throw new Error(data.detail || "Failed to create session");
         }
 
@@ -299,6 +326,15 @@ export function useSessions(): UseSessionsReturn {
 
         return session;
       } catch (err) {
+        // Re-throw DirectoryNotFoundError without setting global error
+        // Use property check instead of instanceof for reliability
+        if (
+          err instanceof Error &&
+          "isDirectoryNotFound" in err &&
+          (err as DirectoryNotFoundError).isDirectoryNotFound
+        ) {
+          throw err;
+        }
         const message =
           err instanceof Error ? err.message : "Failed to create session";
         setError(message);
