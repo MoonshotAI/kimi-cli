@@ -29,7 +29,7 @@ def test_top_level_paths_skip_ignored_names(tmp_path: Path):
     texts = _completion_texts(completer, "@")
 
     assert "src/" in texts
-    assert "README.md" in texts
+    assert "README.md " in texts
     assert "node_modules/" not in texts
     assert ".DS_Store" not in texts
 
@@ -46,7 +46,22 @@ def test_directory_completion_continues_after_slash(tmp_path: Path):
     texts = _completion_texts(completer, "@src/")
 
     assert "src/" in texts
-    assert "src/module.py" in texts
+    assert "src/module.py " in texts
+
+
+def test_trailing_space_behavior(tmp_path: Path):
+    """Ensure directories have no trailing space, while files do."""
+    (tmp_path / "dir").mkdir()
+    (tmp_path / "file.txt").write_text("")
+
+    completer = LocalFileMentionCompleter(tmp_path)
+    texts = _completion_texts(completer, "@")
+
+    assert "dir/" in texts
+    assert "dir/ " not in texts
+    assert "file.txt " in texts
+    assert "file.txt" not in texts
+
 
 
 def test_completed_file_short_circuits_completions(tmp_path: Path):
@@ -113,7 +128,7 @@ def test_basename_prefix_is_ranked_first(tmp_path: Path):
     # Snapshot the full candidate list to keep order/content deterministic
     assert texts == snapshot(
         [
-            "src/kimi_cli/tools/web/fetch.py",
-            "src/kimi_cli/tools/file/patch.py",
+            "src/kimi_cli/tools/web/fetch.py ",
+            "src/kimi_cli/tools/file/patch.py ",
         ]
     )
