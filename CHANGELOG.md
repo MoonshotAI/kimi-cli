@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Add file mention menu (`@`) to reference uploaded attachments and workspace files with autocomplete
+- Web: Add slash command menu in chat input with autocomplete, keyboard navigation, and alias support
 - Web: Fix authentication token persistence by switching from sessionStorage to localStorage with 24-hour expiry
 - Web: Add server-side pagination for session list with virtualized scrolling for better performance
 - Web: Improve session and work directories loading with smarter caching and invalidation
