@@ -6,10 +6,13 @@ All URIs are relative to *http://localhost*
 |------------- | ------------- | -------------|
 | [**createSessionApiSessionsPost**](SessionsApi.md#createsessionapisessionspost) | **POST** /api/sessions/ | Create a new session |
 | [**deleteSessionApiSessionsSessionIdDelete**](SessionsApi.md#deletesessionapisessionssessioniddelete) | **DELETE** /api/sessions/{session_id} | Delete a session |
+| [**generateSessionTitleApiSessionsSessionIdGenerateTitlePost**](SessionsApi.md#generatesessiontitleapisessionssessionidgeneratetitlepost) | **POST** /api/sessions/{session_id}/generate-title | Generate session title using AI |
 | [**getSessionApiSessionsSessionIdGet**](SessionsApi.md#getsessionapisessionssessionidget) | **GET** /api/sessions/{session_id} | Get session |
 | [**getSessionFileApiSessionsSessionIdFilesPathGet**](SessionsApi.md#getsessionfileapisessionssessionidfilespathget) | **GET** /api/sessions/{session_id}/files/{path} | Get file or list directory from session work_dir |
+| [**getSessionGitDiffApiSessionsSessionIdGitDiffGet**](SessionsApi.md#getsessiongitdiffapisessionssessionidgitdiffget) | **GET** /api/sessions/{session_id}/git-diff | Get git diff stats |
 | [**getSessionUploadFileApiSessionsSessionIdUploadsPathGet**](SessionsApi.md#getsessionuploadfileapisessionssessioniduploadspathget) | **GET** /api/sessions/{session_id}/uploads/{path} | Get uploaded file from session uploads |
 | [**listSessionsApiSessionsGet**](SessionsApi.md#listsessionsapisessionsget) | **GET** /api/sessions/ | List all sessions |
+| [**updateSessionApiSessionsSessionIdPatch**](SessionsApi.md#updatesessionapisessionssessionidpatch) | **PATCH** /api/sessions/{session_id} | Update session |
 | [**uploadSessionFileApiSessionsSessionIdFilesPost**](SessionsApi.md#uploadsessionfileapisessionssessionidfilespost) | **POST** /api/sessions/{session_id}/files | Upload file to session |
 
 
@@ -138,6 +141,77 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## generateSessionTitleApiSessionsSessionIdGenerateTitlePost
+
+> GenerateTitleResponse generateSessionTitleApiSessionsSessionIdGenerateTitlePost(sessionId, generateTitleRequest)
+
+Generate session title using AI
+
+Generate a concise session title using AI based on the first conversation turn.  If request body is empty or parameters are missing, the backend will automatically read the first turn from wire.jsonl.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  SessionsApi,
+} from '';
+import type { GenerateSessionTitleApiSessionsSessionIdGenerateTitlePostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new SessionsApi();
+
+  const body = {
+    // string
+    sessionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // GenerateTitleRequest (optional)
+    generateTitleRequest: ...,
+  } satisfies GenerateSessionTitleApiSessionsSessionIdGenerateTitlePostRequest;
+
+  try {
+    const data = await api.generateSessionTitleApiSessionsSessionIdGenerateTitlePost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **sessionId** | `string` |  | [Defaults to `undefined`] |
+| **generateTitleRequest** | [GenerateTitleRequest](GenerateTitleRequest.md) |  | [Optional] |
+
+### Return type
+
+[**GenerateTitleResponse**](GenerateTitleResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
@@ -289,6 +363,74 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getSessionGitDiffApiSessionsSessionIdGitDiffGet
+
+> GitDiffStats getSessionGitDiffApiSessionsSessionIdGitDiffGet(sessionId)
+
+Get git diff stats
+
+get git diff stats for the session\&#39;s work directory
+
+### Example
+
+```ts
+import {
+  Configuration,
+  SessionsApi,
+} from '';
+import type { GetSessionGitDiffApiSessionsSessionIdGitDiffGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new SessionsApi();
+
+  const body = {
+    // string
+    sessionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+  } satisfies GetSessionGitDiffApiSessionsSessionIdGitDiffGetRequest;
+
+  try {
+    const data = await api.getSessionGitDiffApiSessionsSessionIdGitDiffGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **sessionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**GitDiffStats**](GitDiffStats.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getSessionUploadFileApiSessionsSessionIdUploadsPathGet
 
 > any getSessionUploadFileApiSessionsSessionIdUploadsPathGet(sessionId, path)
@@ -362,11 +504,11 @@ No authorization required
 
 ## listSessionsApiSessionsGet
 
-> Array&lt;Session&gt; listSessionsApiSessionsGet()
+> Array&lt;Session&gt; listSessionsApiSessionsGet(limit, offset, q)
 
 List all sessions
 
-List all sessions.
+List sessions with optional pagination and search.
 
 ### Example
 
@@ -381,8 +523,17 @@ async function example() {
   console.log("🚀 Testing  SDK...");
   const api = new SessionsApi();
 
+  const body = {
+    // number (optional)
+    limit: 56,
+    // number (optional)
+    offset: 56,
+    // string (optional)
+    q: q_example,
+  } satisfies ListSessionsApiSessionsGetRequest;
+
   try {
-    const data = await api.listSessionsApiSessionsGet();
+    const data = await api.listSessionsApiSessionsGet(body);
     console.log(data);
   } catch (error) {
     console.error(error);
@@ -395,7 +546,12 @@ example().catch(console.error);
 
 ### Parameters
 
-This endpoint does not need any parameter.
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **limit** | `number` |  | [Optional] [Defaults to `100`] |
+| **offset** | `number` |  | [Optional] [Defaults to `0`] |
+| **q** | `string` |  | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -415,6 +571,78 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## updateSessionApiSessionsSessionIdPatch
+
+> Session updateSessionApiSessionsSessionIdPatch(sessionId, updateSessionRequest)
+
+Update session
+
+Update a session (e.g., rename title).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  SessionsApi,
+} from '';
+import type { UpdateSessionApiSessionsSessionIdPatchRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new SessionsApi();
+
+  const body = {
+    // string
+    sessionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // UpdateSessionRequest
+    updateSessionRequest: ...,
+  } satisfies UpdateSessionApiSessionsSessionIdPatchRequest;
+
+  try {
+    const data = await api.updateSessionApiSessionsSessionIdPatch(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **sessionId** | `string` |  | [Defaults to `undefined`] |
+| **updateSessionRequest** | [UpdateSessionRequest](UpdateSessionRequest.md) |  | |
+
+### Return type
+
+[**Session**](Session.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

@@ -83,7 +83,7 @@ export function ChatWorkspaceContainer({
   // Handle first turn completion for auto-rename
   // Backend reads messages from wire.jsonl automatically
   const handleFirstTurnComplete = useCallback(async () => {
-    if (!selectedSessionId || !generateTitle) {
+    if (!(selectedSessionId && generateTitle)) {
       return;
     }
 
@@ -110,6 +110,7 @@ export function ChatWorkspaceContainer({
     currentStep,
     isConnected: isStreamConnected,
     isReplayingHistory,
+    slashCommands,
   } = sessionStream;
 
   const clearNewFiles = useToolEventsStore((state) => state.clearNewFiles);
@@ -301,6 +302,7 @@ export function ChatWorkspaceContainer({
       onGetSessionFile={onGetSessionFile}
       onOpenSidebar={onOpenSidebar}
       onRenameSession={onRenameSession}
+      slashCommands={slashCommands}
     />
   );
 }

@@ -108,6 +108,11 @@ export type SessionOperations = {
   isLoading: boolean;
   error: string | null;
   refreshSessions: () => Promise<void>;
+  loadMoreSessions: () => Promise<void>;
+  hasMoreSessions: boolean;
+  isLoadingMore: boolean;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
   refreshSession: (
     sessionId: string,
   ) => Promise<import("../lib/api/models").Session | null>;

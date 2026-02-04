@@ -1,6 +1,7 @@
 .openapi-generator-ignore
 apis/ConfigApi.ts
 apis/DefaultApi.ts
+apis/OpenInApi.ts
 apis/SessionsApi.ts
 apis/WorkDirsApi.ts
 apis/index.ts
@@ -9,9 +10,16 @@ docs/ConfigModel.md
 docs/ConfigToml.md
 docs/CreateSessionRequest.md
 docs/DefaultApi.md
+docs/GenerateTitleRequest.md
+docs/GenerateTitleResponse.md
+docs/GitDiffStats.md
+docs/GitFileDiff.md
 docs/GlobalConfig.md
 docs/HTTPValidationError.md
 docs/ModelCapability.md
+docs/OpenInApi.md
+docs/OpenInRequest.md
+docs/OpenInResponse.md
 docs/ProviderType.md
 docs/Session.md
 docs/SessionStatus.md
@@ -20,6 +28,7 @@ docs/UpdateConfigTomlRequest.md
 docs/UpdateConfigTomlResponse.md
 docs/UpdateGlobalConfigRequest.md
 docs/UpdateGlobalConfigResponse.md
+docs/UpdateSessionRequest.md
 docs/UploadSessionFileResponse.md
 docs/ValidationError.md
 docs/ValidationErrorLocInner.md
@@ -28,9 +37,15 @@ index.ts
 models/ConfigModel.ts
 models/ConfigToml.ts
 models/CreateSessionRequest.ts
+models/GenerateTitleRequest.ts
+models/GenerateTitleResponse.ts
+models/GitDiffStats.ts
+models/GitFileDiff.ts
 models/GlobalConfig.ts
 models/HTTPValidationError.ts
 models/ModelCapability.ts
+models/OpenInRequest.ts
+models/OpenInResponse.ts
 models/ProviderType.ts
 models/Session.ts
 models/SessionStatus.ts
@@ -38,6 +53,7 @@ models/UpdateConfigTomlRequest.ts
 models/UpdateConfigTomlResponse.ts
 models/UpdateGlobalConfigRequest.ts
 models/UpdateGlobalConfigResponse.ts
+models/UpdateSessionRequest.ts
 models/UploadSessionFileResponse.ts
 models/ValidationError.ts
 models/ValidationErrorLocInner.ts

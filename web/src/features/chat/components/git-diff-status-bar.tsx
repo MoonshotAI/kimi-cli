@@ -176,8 +176,8 @@ export const GitDiffStatusBar = memo(function GitDiffStatusBarComponent({
 }: GitDiffStatusBarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Don't render if not a git repo, no changes, or loading
-  if (!((stats?.isGitRepo) && stats.hasChanges) || stats.error) {
+  // Don't render if not a git repo, no changes, no files, or has error
+  if (!((stats?.isGitRepo) && stats.hasChanges && stats.files) || stats.error) {
     return null;
   }
 

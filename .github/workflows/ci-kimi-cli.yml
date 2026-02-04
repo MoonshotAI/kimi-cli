@@ -7,7 +7,9 @@ on:
       - "packages/**"
       - "src/**"
       - "tests/**"
+      - "tests_e2e/**"
       - "tests_ai/**"
+      - "web/**"
       - "pyproject.toml"
       - "uv.lock"
   push:
@@ -18,7 +20,9 @@ on:
       - "packages/**"
       - "src/**"
       - "tests/**"
+      - "tests_e2e/**"
       - "tests_ai/**"
+      - "web/**"
       - "pyproject.toml"
       - "uv.lock"
 
@@ -40,6 +44,9 @@ jobs:
             binary_path: dist/onefile/kimi
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
+            binary_path: dist/onefile/kimi.exe
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
             binary_path: dist/onefile/kimi.exe
     runs-on: ${{ matrix.runner }}
     steps:
@@ -79,7 +86,7 @@ jobs:
         run: make test-kimi-cli
 
       - name: Set up Node.js (web build)
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -87,13 +94,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Build standalone binary
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make build-bin
 
       - name: Smoke test binary --help
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         shell: python
         run: |
           import os
@@ -107,7 +114,7 @@ jobs:
           BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
-        if: matrix.python-version == '3.14' && success()
+        if: matrix.python-version == '3.13' && success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}
@@ -178,6 +185,13 @@ jobs:
         run: |
           python scripts/check_version_tag.py \
             --pyproject packages/kimi-code/pyproject.toml \
+            --expected-version "${{ steps.version.outputs.head_version }}"
+
+      - name: Check kagent version alignment
+        if: steps.version.outputs.bump == 'true'
+        run: |
+          python scripts/check_cargo_version_tag.py \
+            --cargo-toml rust/Cargo.toml \
             --expected-version "${{ steps.version.outputs.head_version }}"
 
       - name: Check kimi-code dependency pin

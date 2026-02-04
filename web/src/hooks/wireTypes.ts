@@ -212,7 +212,13 @@ export type WireMessage = {
       }
     | SessionStatusPayload;
   result?: {
-    status: string;
+    status?: string;
+    slash_commands?: Array<{
+      name: string;
+      description: string;
+      aliases: string[];
+    }>;
+    [key: string]: unknown;
   };
   error?: {
     code: number;
