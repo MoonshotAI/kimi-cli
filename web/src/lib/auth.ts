@@ -12,7 +12,13 @@ export function getAuthToken(): string | null {
   // Check if token has expired
   const timestamp = localStorage.getItem(AUTH_TOKEN_TIMESTAMP_KEY);
   if (timestamp) {
-    const age = Date.now() - parseInt(timestamp, 10);
+    const storedAt = parseInt(timestamp, 10);
+    if (Number.isNaN(storedAt)) {
+      // Treat non-parsable timestamps as expired/corrupted
+      clearAuthToken();
+      return null;
+    }
+    const age = Date.now() - storedAt;
     if (age > TOKEN_EXPIRY_MS) {
       clearAuthToken();
       return null;
@@ -48,7 +54,7 @@ export function getAuthHeader(): Record<string, string> {
   // Fallback: try reading from URL if localStorage is empty
   if (!token) {
     const url = new URL(window.location.href);
-    token = url.searchParams.get("token");
+    token = url.searchParams.get(AUTH_TOKEN_PARAM);
   }
   if (!token) {
     return {};
