@@ -178,7 +178,7 @@ Session search feature added in version 1.5.
 :::
 
 ::: info Added
-Session rename and AI auto-title features added in version 1.6.
+Session rename and AI auto-title features added in version 1.7.
 :::
 
 ### Git status bar

@@ -45,6 +45,17 @@ In Web UI, you can set custom titles for sessions to better identify and manage 
 
 After setting a custom title, the session list will display your title instead of the default timestamp, which is particularly useful when managing multiple sessions simultaneously.
 
+## Creating sessions
+
+When creating a new session in Web UI, you can specify the working directory:
+
+- **Existing directory**: Enter the path of an existing directory directly
+- **Auto-create**: If the specified path does not exist, Web UI will prompt whether to automatically create that directory
+
+::: info Added
+The feature to prompt for automatic directory creation when creating sessions was added in version 1.7.
+:::
+
 ## Clearing and compaction
 
 As the conversation progresses, the context becomes longer. Kimi Code CLI automatically compacts the context when needed to ensure the conversation can continue.
