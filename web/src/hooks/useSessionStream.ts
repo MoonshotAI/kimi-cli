@@ -1467,7 +1467,7 @@ export function useSessionStream(
       params: {
         protocol_version: "1.2",
         client: {
-          name: "kimi-web",
+          name: "kiwi",
           version: kimiCliVersion,
         },
       },
