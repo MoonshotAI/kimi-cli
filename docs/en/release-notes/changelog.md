@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Auth: Fix OAuth token refresh conflicts when running multiple sessions simultaneously
 - Web: Add file mention menu (`@`) to reference uploaded attachments and workspace files with autocomplete
 - Web: Add slash command menu in chat input with autocomplete, keyboard navigation, and alias support
 - Web: Fix authentication token persistence by switching from sessionStorage to localStorage with 24-hour expiry
