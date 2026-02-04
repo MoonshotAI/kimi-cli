@@ -7,7 +7,9 @@ on:
       - "packages/**"
       - "src/**"
       - "tests/**"
+      - "tests_e2e/**"
       - "tests_ai/**"
+      - "web/**"
       - "pyproject.toml"
       - "uv.lock"
   push:
@@ -18,7 +20,9 @@ on:
       - "packages/**"
       - "src/**"
       - "tests/**"
+      - "tests_e2e/**"
       - "tests_ai/**"
+      - "web/**"
       - "pyproject.toml"
       - "uv.lock"
 
@@ -82,7 +86,7 @@ jobs:
         run: make test-kimi-cli
 
       - name: Set up Node.js (web build)
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -90,13 +94,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Build standalone binary
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make build-bin
 
       - name: Smoke test binary --help
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.13'
         shell: python
         run: |
           import os
@@ -110,7 +114,7 @@ jobs:
           BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
-        if: matrix.python-version == '3.14' && success()
+        if: matrix.python-version == '3.13' && success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}
