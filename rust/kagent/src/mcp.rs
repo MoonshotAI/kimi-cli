@@ -149,7 +149,7 @@ impl CredentialStore for FileCredentialStore {
 }
 
 pub fn get_mcp_auth_file() -> PathBuf {
-    get_share_dir().join("mcp_auth.json")
+    get_share_dir().join("credentials").join("mcp_auth.json")
 }
 
 pub fn get_mcp_credential_store(server_url: &str) -> FileCredentialStore {

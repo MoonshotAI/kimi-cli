@@ -44,7 +44,7 @@ pub enum McpCommand {
 #[derive(Args, Debug)]
 #[command(
     about = "Add an MCP server.",
-    after_help = "Examples:\n\n      # Add streamable HTTP server:\n      kimi mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n\n      # Add streamable HTTP server with OAuth authorization:\n      kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n\n      # Add stdio server:\n      kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest"
+    after_help = "Examples:\n\n      # Add streamable HTTP server:\n      kagent mcp add --transport http context7 https://mcp.context7.com/mcp --header \"CONTEXT7_API_KEY: ctx7sk-your-key\"\n\n      # Add streamable HTTP server with OAuth authorization:\n      kagent mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n\n      # Add stdio server:\n      kagent mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest"
 )]
 pub struct McpAddArgs {
     #[arg(help = "Name of the MCP server to add.")]
@@ -244,6 +244,9 @@ async fn mcp_auth(args: McpAuthArgs) -> Result<()> {
     let Some(server) = server else {
         anyhow::bail!("MCP server '{}' not found.", args.name);
     };
+    if server.get("url").and_then(Value::as_str).is_none() {
+        anyhow::bail!("MCP server '{}' is not a remote server.", args.name);
+    }
     let auth = server.get("auth").and_then(Value::as_str);
     if auth != Some("oauth") {
         anyhow::bail!(
@@ -308,6 +311,9 @@ async fn mcp_reset_auth(args: McpResetAuthArgs) -> Result<()> {
     let Some(server) = server else {
         anyhow::bail!("MCP server '{}' not found.", args.name);
     };
+    if server.get("url").and_then(Value::as_str).is_none() {
+        anyhow::bail!("MCP server '{}' is not a remote server.", args.name);
+    }
     let url = server
         .get("url")
         .and_then(Value::as_str)
@@ -330,16 +336,10 @@ async fn mcp_test(args: McpTestArgs) -> Result<()> {
         .get(&args.name)
         .ok_or_else(|| anyhow::anyhow!("MCP server '{}' not found.", args.name))?;
 
-    if let McpServerConfig::Http(http) = server_config {
-        if http.auth.as_deref() == Some("oauth") && !has_oauth_tokens(&http.url).await? {
-            anyhow::bail!("MCP server '{}' requires OAuth authorization.", args.name);
-        }
-    }
-
     println!("Testing connection to '{}'...", args.name);
     let tools = list_mcp_tools(server_config)
         .await
-        .map_err(|err| anyhow::anyhow!("Failed to list MCP tools: {err}"))?;
+        .map_err(|err| anyhow::anyhow!("✗ Connection failed: {err}"))?;
 
     println!("✓ Connected to '{}'", args.name);
     println!("  Available tools: {}", tools.len());

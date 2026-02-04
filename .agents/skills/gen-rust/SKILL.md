@@ -7,6 +7,9 @@ description: Sync Rust implementation with Python changes (exclude UI/login) by 
 
 Use this skill when the user wants Rust (kagent/kosong/kaos) to stay logically identical to Python (kimi_cli/kosong/kaos), excluding UI and login/auth. This includes code and tests: Rust behavior and tests must be fully synchronized with Python changes. Prefer file-level diffs over commit-message scanning.
 
+Note: The Rust binary is named `kagent`. User-facing CLI/output text in Rust must use `kagent`
+instead of `kimi` to match the Rust command name.
+
 ## Quick workflow
 
 1) **Rebase first** (keep work safe)
