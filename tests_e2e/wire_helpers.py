@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import queue
+import shlex
 import subprocess
 import threading
 import time
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import IO, Any
 
 TRACE_ENV = "KIMI_TEST_TRACE"
+WIRE_COMMAND_ENV = "KIMI_E2E_WIRE_CMD"
 DEFAULT_TIMEOUT = 5.0
 _PATH_REPLACEMENTS: dict[str, str] = {}
 
@@ -51,7 +53,7 @@ def make_env(home_dir: Path) -> dict[str, str]:
 
 
 def share_dir(home_dir: Path) -> Path:
-    return home_dir / "share"
+    return home_dir / ".kimi"
 
 
 def register_path_replacements(
@@ -233,7 +235,7 @@ def start_wire(
     skills_dir: Path | None = None,
     agent_file: Path | None = None,
 ) -> WireProcess:
-    cmd = ["uv", "run", "kimi", "--wire"]
+    cmd = _wire_base_command()
     if yolo:
         cmd.append("--yolo")
     if config_path is not None:
@@ -350,7 +352,10 @@ def normalize_value(value: Any, *, replacements: Mapping[str, str] | None = None
         normalized = {
             k: normalize_value(v, replacements=active_replacements) for k, v in value.items()
         }
-        return _normalize_shell_display(normalized)
+        normalized = _normalize_shell_display(normalized)
+        normalized = _normalize_error_data(normalized)
+        normalized = _normalize_tool_result_extras(normalized)
+        return normalized
     if isinstance(value, list):
         return [normalize_value(v, replacements=active_replacements) for v in value]
     if isinstance(value, float):
@@ -359,6 +364,7 @@ def normalize_value(value: Any, *, replacements: Mapping[str, str] | None = None
         value = _replace_paths(value, active_replacements)
         value = _normalize_line_endings(value)
         value = _normalize_path_separators(value, active_replacements)
+        value = _normalize_echo_error_message(value)
         try:
             uuid.UUID(value)
         except (ValueError, AttributeError, TypeError):
@@ -373,6 +379,22 @@ def _normalize_shell_display(value: dict[str, Any]) -> dict[str, Any]:
     language = value.get("language")
     if isinstance(language, str) and language.lower() in {"powershell", "pwsh"}:
         value["language"] = "bash"
+    return value
+
+
+def _normalize_error_data(value: dict[str, Any]) -> dict[str, Any]:
+    error = value.get("error")
+    if isinstance(error, dict) and "data" not in error:
+        error["data"] = None
+    if "code" in value and "message" in value and "data" not in value:
+        value["data"] = None
+    return value
+
+
+def _normalize_tool_result_extras(value: dict[str, Any]) -> dict[str, Any]:
+    return_value = value.get("return_value")
+    if isinstance(return_value, dict) and "extras" not in return_value:
+        return_value["extras"] = None
     return value
 
 
@@ -400,6 +422,20 @@ def _replace_paths(value: str, replacements: Mapping[str, str]) -> str:
     return value
 
 
+def _normalize_echo_error_message(value: str) -> str:
+    if not value.startswith("Invalid echo DSL at line") and not value.startswith(
+        "Unknown echo DSL kind"
+    ):
+        return value
+    if ": " not in value:
+        return value
+    prefix, raw = value.rsplit(": ", 1)
+    raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+        raw = raw[1:-1]
+    return f"{prefix}: '{raw}'"
+
+
 def summarize_messages(
     messages: list[dict[str, Any]], *, replacements: Mapping[str, str] | None = None
 ) -> list[dict[str, Any]]:
@@ -415,7 +451,7 @@ def summarize_messages(
             "payload": normalize_value(params.get("payload"), replacements=replacements),
         }
         summary.append(entry)
-    return summary
+    return _normalize_message_order(summary)
 
 
 def _normalize_server_version(value: Any) -> Any:
@@ -437,5 +473,101 @@ def normalize_response(
         result = _normalize_server_version(result)
         return {"result": result}
     if "error" in msg:
-        return {"error": normalize_value(msg["error"], replacements=replacements)}
-    return normalize_value(msg, replacements=replacements)
+        normalized = {"error": normalize_value(msg["error"], replacements=replacements)}
+        return _normalize_server_version(normalized)
+    return _normalize_server_version(normalize_value(msg, replacements=replacements))
+
+
+def base_command() -> list[str]:
+    override = os.getenv(WIRE_COMMAND_ENV)
+    if override is not None:
+        override = override.strip()
+    parts = shlex.split(override, posix=os.name != "nt") if override else ["uv", "run", "kimi"]
+    return [part for part in parts if part != "--wire"]
+
+
+def _wire_base_command() -> list[str]:
+    cmd = base_command()
+    if "--wire" not in cmd:
+        cmd.append("--wire")
+    return cmd
+
+
+def _normalize_message_order(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized = list(messages)
+    step_boundaries = {"StepBegin", "TurnBegin", "CompactionBegin"}
+    idx = 0
+    while idx < len(normalized):
+        if normalized[idx].get("type") != "StepBegin":
+            idx += 1
+            continue
+        start = idx
+        end = start + 1
+        while end < len(normalized):
+            msg_type = normalized[end].get("type")
+            if msg_type in step_boundaries:
+                break
+            end += 1
+        block = normalized[start:end]
+        normalized[start:end] = _normalize_step_block(block)
+        idx = end
+    return normalized
+
+
+def _normalize_step_block(block: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not block or block[0].get("type") != "StepBegin":
+        return block
+    head = block[:1]
+    tail = block[1:]
+    if not tail:
+        return block
+    stream_events: list[dict[str, Any]] = []
+    status_updates: list[dict[str, Any]] = []
+    requests: list[dict[str, Any]] = []
+    approvals: list[dict[str, Any]] = []
+    tool_results: list[dict[str, Any]] = []
+    other: list[dict[str, Any]] = []
+    tool_call_order: list[str] = []
+    for msg in tail:
+        msg_type = msg.get("type")
+        method = msg.get("method")
+        if msg_type == "ToolCall":
+            payload = msg.get("payload")
+            tool_call_id = payload.get("id") if isinstance(payload, dict) else None
+            if isinstance(tool_call_id, str) and tool_call_id not in tool_call_order:
+                tool_call_order.append(tool_call_id)
+        if msg_type in {"ContentPart", "ToolCall", "ToolCallPart"}:
+            stream_events.append(msg)
+        elif msg_type == "StatusUpdate":
+            status_updates.append(msg)
+        elif method == "request":
+            requests.append(msg)
+        elif msg_type == "ApprovalResponse":
+            approvals.append(msg)
+        elif msg_type == "ToolResult":
+            tool_results.append(msg)
+        else:
+            other.append(msg)
+    tool_results = _order_tool_results(tool_results, tool_call_order)
+    return head + stream_events + status_updates + requests + approvals + tool_results + other
+
+
+def _order_tool_results(
+    tool_results: list[dict[str, Any]], tool_call_order: list[str]
+) -> list[dict[str, Any]]:
+    if not tool_call_order:
+        return tool_results
+    by_id: dict[str, list[dict[str, Any]]] = {}
+    unknown: list[dict[str, Any]] = []
+    for msg in tool_results:
+        payload = msg.get("payload")
+        tool_call_id = payload.get("tool_call_id") if isinstance(payload, dict) else None
+        if isinstance(tool_call_id, str) and tool_call_id in tool_call_order:
+            by_id.setdefault(tool_call_id, []).append(msg)
+        else:
+            unknown.append(msg)
+    ordered: list[dict[str, Any]] = []
+    for tool_call_id in tool_call_order:
+        ordered.extend(by_id.get(tool_call_id, []))
+    ordered.extend(unknown)
+    return ordered

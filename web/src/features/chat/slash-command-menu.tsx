@@ -23,6 +23,7 @@ export const SlashCommandMenu = ({
   const activeItemRef = useRef<HTMLButtonElement | null>(null);
 
   // Scroll active item into view when activeIndex changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keep activeIndex to scroll on selection
   useEffect(() => {
     if (open && activeItemRef.current) {
       activeItemRef.current.scrollIntoView({
