@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.7.0 (2026-02-05)
+
+- Rust: Add `kagent`, the Rust implementation of Kimi agent kernel with wire-mode support (experimental)
 - Auth: Fix OAuth token refresh conflicts when running multiple sessions simultaneously
 - Web: Add file mention menu (`@`) to reference uploaded attachments and workspace files with autocomplete
 - Web: Add slash command menu in chat input with autocomplete, keyboard navigation, and alias support
