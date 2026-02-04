@@ -287,6 +287,7 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
     kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
     context_file = kimi_cli_session.dir / "context.jsonl"
     invalidate_sessions_cache()
+    invalidate_work_dirs_cache()
     return Session(
         session_id=UUID(kimi_cli_session.id),
         title=kimi_cli_session.title,
@@ -863,9 +864,31 @@ async def session_stream(
             await session_process.remove_websocket(websocket)
 
 
-@work_dirs_router.get("/", summary="List available work directories")
-async def get_work_dirs() -> list[str]:
-    """Get a list of available work directories from metadata."""
+# Work dirs cache
+_work_dirs_cache: list[str] | None = None
+_work_dirs_cache_time: float = 0.0
+_WORK_DIRS_CACHE_TTL = 30.0  # seconds
+
+
+def invalidate_work_dirs_cache() -> None:
+    """Clear the work dirs cache."""
+    global _work_dirs_cache, _work_dirs_cache_time
+    _work_dirs_cache = None
+    _work_dirs_cache_time = 0.0
+
+
+def _get_work_dirs_sync() -> list[str]:
+    """Synchronous helper for get_work_dirs (runs in thread pool)."""
+    import time
+
+    global _work_dirs_cache, _work_dirs_cache_time
+
+    # Check cache
+    now = time.time()
+    if _work_dirs_cache is not None and (now - _work_dirs_cache_time) < _WORK_DIRS_CACHE_TTL:
+        return _work_dirs_cache
+
+    # Build fresh list
     metadata = load_metadata()
     work_dirs: list[str] = []
     for wd in metadata.work_dirs:
@@ -875,8 +898,18 @@ async def get_work_dirs() -> list[str]:
         # Verify directory exists
         if Path(wd.path).exists():
             work_dirs.append(wd.path)
-    # Return at most 20 directories
-    return work_dirs[:20]
+
+    # Update cache
+    result = work_dirs[:20]
+    _work_dirs_cache = result
+    _work_dirs_cache_time = now
+    return result
+
+
+@work_dirs_router.get("/", summary="List available work directories")
+async def get_work_dirs() -> list[str]:
+    """Get a list of available work directories from metadata."""
+    return await asyncio.to_thread(_get_work_dirs_sync)
 
 
 @work_dirs_router.get("/startup", summary="Get the startup directory")
