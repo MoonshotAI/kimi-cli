@@ -255,8 +255,8 @@ function App() {
   );
 
   const handleCreateSession = useCallback(
-    async (workDir: string) => {
-      await createSession(workDir);
+    async (workDir: string, createDir?: boolean) => {
+      await createSession(workDir, createDir);
     },
     [createSession],
   );
