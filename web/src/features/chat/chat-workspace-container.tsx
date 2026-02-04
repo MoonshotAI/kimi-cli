@@ -110,6 +110,7 @@ export function ChatWorkspaceContainer({
     currentStep,
     isConnected: isStreamConnected,
     isReplayingHistory,
+    slashCommands,
   } = sessionStream;
 
   const clearNewFiles = useToolEventsStore((state) => state.clearNewFiles);
@@ -301,6 +302,7 @@ export function ChatWorkspaceContainer({
       onGetSessionFile={onGetSessionFile}
       onOpenSidebar={onOpenSidebar}
       onRenameSession={onRenameSession}
+      slashCommands={slashCommands}
     />
   );
 }
