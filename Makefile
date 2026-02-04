@@ -29,8 +29,8 @@ web-back: ## Start web backend with uvicorn (reload enabled).
 web-front: ## Start web frontend (vite dev server).
 	@npm --prefix web run dev
 
-.PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web
-format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web ## Auto-format all workspace packages.
+.PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web format-kagent
+format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web format-kagent ## Auto-format all workspace packages.
 format-kimi-cli: ## Auto-format Kimi Code CLI sources with ruff.
 	@echo "==> Formatting Kimi Code CLI sources"
 	@uv run ruff check --fix
@@ -55,9 +55,12 @@ format-web: ## Auto-format web sources with npm run format.
 		echo "npm not found. Install Node.js (npm) to run web formatting."; \
 		exit 1; \
 	fi
+format-kagent: ## Auto-format kagent Rust sources with cargo fmt.
+	@echo "==> Formatting kagent (cargo fmt)"
+	@cargo fmt --all --manifest-path rust/Cargo.toml
 
-.PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk check-web
-check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk check-web ## Run linting and type checks for all packages.
+.PHONY: check check-kimi-cli check-kosong check-pykaos check-kimi-sdk check-web check-kagent
+check: check-kimi-cli check-kosong check-pykaos check-kimi-sdk check-web check-kagent ## Run linting and type checks for all packages.
 check-kimi-cli: ## Run linting and type checks for Kimi Code CLI.
 	@echo "==> Checking Kimi Code CLI (ruff + pyright + ty; ty is non-blocking)"
 	@uv run ruff check
@@ -90,10 +93,14 @@ check-web: ## Run linting and type checks for web.
 		echo "npm not found. Install Node.js (npm) to run web checks."; \
 		exit 1; \
 	fi
+check-kagent: ## Run formatting and compile checks for kagent.
+	@echo "==> Checking kagent (cargo fmt + cargo check)"
+	@cargo fmt --all --manifest-path rust/Cargo.toml -- --check
+	@cargo check --manifest-path rust/Cargo.toml
 
 
-.PHONY: test test-kimi-cli test-kosong test-pykaos test-kimi-sdk
-test: test-kimi-cli test-kosong test-pykaos test-kimi-sdk ## Run all test suites.
+.PHONY: test test-kimi-cli test-kosong test-pykaos test-kimi-sdk test-kagent
+test: test-kimi-cli test-kosong test-pykaos test-kimi-sdk test-kagent ## Run all test suites.
 test-kimi-cli: ## Run Kimi Code CLI tests.
 	@echo "==> Running Kimi Code CLI tests"
 	@uv run pytest tests -vv
@@ -107,9 +114,12 @@ test-pykaos: ## Run pykaos tests.
 test-kimi-sdk: ## Run kimi-sdk tests.
 	@echo "==> Running kimi-sdk tests"
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pytest tests -vv
+test-kagent: ## Run kagent Rust tests.
+	@echo "==> Running kagent tests"
+	@cargo test --manifest-path rust/Cargo.toml
 
-.PHONY: build build-kimi-cli build-kosong build-pykaos build-kimi-sdk build-bin build-bin-onedir
-build: build-web build-kimi-cli build-kosong build-pykaos build-kimi-sdk ## Build Python packages for release.
+.PHONY: build build-kimi-cli build-kosong build-pykaos build-kimi-sdk build-bin build-bin-onedir build-kagent
+build: build-web build-kimi-cli build-kosong build-pykaos build-kimi-sdk build-kagent ## Build Python packages for release.
 build-kimi-cli: build-web ## Build the kimi-cli and kimi-code sdists and wheels.
 	@echo "==> Building kimi-cli distributions"
 	@uv build --package kimi-cli --no-sources --out-dir dist
@@ -138,6 +148,9 @@ build-bin-onedir: build-web ## Build the standalone executable with PyInstaller 
 	@uv run pyinstaller kimi.spec
 	@if [ -f dist/kimi/kimi-exe.exe ]; then mv dist/kimi/kimi-exe.exe dist/kimi/kimi.exe; elif [ -f dist/kimi/kimi-exe ]; then mv dist/kimi/kimi-exe dist/kimi/kimi; fi
 	@mkdir -p dist/onedir && mv dist/kimi dist/onedir/
+build-kagent: ## Build kagent release binary.
+	@echo "==> Building kagent release binary"
+	@cargo build -p kagent --release --manifest-path rust/Cargo.toml
 
 .PHONY: ai-test
 ai-test: ## Run the test suite with Kimi Code CLI.
