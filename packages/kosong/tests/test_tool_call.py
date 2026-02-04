@@ -292,3 +292,97 @@ def test_simple_toolset_sub():
     assert len(toolset.tools) == 1
     toolset.remove(TestTool.name)
     assert len(toolset.tools) == 0
+
+
+# Tests for string annotations support (when using `from __future__ import annotations`)
+# These tests verify that SimpleToolset works correctly when type annotations are stored
+# as strings rather than actual type objects.
+
+
+def test_simple_toolset_with_string_annotations_callable_tool():
+    """Test that SimpleToolset works with CallableTool when using string annotations.
+
+    Note: This test works because we only check the annotation string suffix,
+    not the actual resolved type.
+    """
+
+    class TestTool(CallableTool):
+        name: str = "test"
+        description: str = "This is a test tool"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {},
+        }
+
+        @override
+        async def __call__(self) -> ToolReturnValue:  # type: ignore[reportIncompatibleMethodOverride]
+            return ToolOk(output="test")
+
+    # Should not raise TypeError when adding tool with string annotations
+    toolset = SimpleToolset()
+    toolset += TestTool()
+    assert len(toolset.tools) == 1
+    assert toolset.tools[0].name == "test"
+
+
+def test_simple_toolset_with_string_annotations_callable_tool2():
+    """Test that SimpleToolset works with CallableTool2 when using string annotations."""
+
+    class TestParams(BaseModel):
+        value: int = Field(description="A test value")
+
+    class TestTool(CallableTool2[TestParams]):
+        name: str = "test2"
+        description: str = "This is a test tool 2"
+        params: type[TestParams] = TestParams
+
+        @override
+        async def __call__(self, params: TestParams) -> ToolReturnValue:
+            return ToolOk(output=f"value: {params.value}")
+
+    # Should not raise TypeError when adding tool with string annotations
+    toolset = SimpleToolset()
+    toolset += TestTool()
+    assert len(toolset.tools) == 1
+    assert toolset.tools[0].name == "test2"
+
+
+async def _test_handle_async():
+    """Helper async function to test tool handling."""
+
+    class TestTool(CallableTool):
+        name: str = "add"
+        description: str = "Add two numbers"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "integer"},
+                "b": {"type": "integer"},
+            },
+            "required": ["a", "b"],
+        }
+
+        @override
+        async def __call__(self, a: int, b: int) -> ToolReturnValue:
+            return ToolOk(output=str(a + b))
+
+    toolset = SimpleToolset([TestTool()])
+    tool_call = ToolCall(
+        id="1",
+        function=ToolCall.FunctionBody(
+            name="add",
+            arguments='{"a": 2, "b": 3}',
+        ),
+    )
+
+    result = toolset.handle(tool_call)
+    # handle() returns a Task for async tools, so we need to await it
+    if asyncio.isfuture(result):
+        result = await result
+    return result
+
+
+def test_simple_toolset_with_string_annotations_handle():
+    """Test that tools with string annotations can be called correctly."""
+    result = asyncio.run(_test_handle_async())
+    assert result.return_value == ToolOk(output="5")
