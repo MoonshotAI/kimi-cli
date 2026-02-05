@@ -1260,6 +1260,8 @@ export function useSessionStream(
                       ? {
                           ...msg.toolCall.approval,
                           submitted: true,
+                          resolved: true,
+                          approved: false,
                           response: "reject",
                         }
                       : undefined,
@@ -1761,19 +1763,8 @@ export function useSessionStream(
       );
       awaitingIdleRef.current = false;
       pendingMessageRef.current = null;
-      // Clear pending approval requests
+      // Clear pending approval requests and update message states
       pendingApprovalRequestsRef.current.clear();
-      disconnect();
-      return;
-    }
-
-    // Clear all pending approval requests and update message states
-    const pendingApprovals = Array.from(
-      pendingApprovalRequestsRef.current.values(),
-    );
-    pendingApprovalRequestsRef.current.clear();
-
-    if (pendingApprovals.length > 0) {
       setMessages((prev) =>
         prev.map((msg) => {
           if (
@@ -1790,6 +1781,8 @@ export function useSessionStream(
                   ? {
                       ...msg.toolCall.approval,
                       submitted: true,
+                      resolved: true,
+                      approved: false,
                       response: "reject",
                     }
                   : undefined,
@@ -1799,7 +1792,41 @@ export function useSessionStream(
           return msg;
         }),
       );
+      disconnect();
+      return;
     }
+
+    // Clear all pending approval requests and update message states
+    pendingApprovalRequestsRef.current.clear();
+
+    // Always update messages (consistent with StepInterrupted handler)
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (
+          msg.variant === "tool" &&
+          msg.toolCall?.state === "approval-requested"
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
+              approval: msg.toolCall.approval
+                ? {
+                    ...msg.toolCall.approval,
+                    submitted: true,
+                    resolved: true,
+                    approved: false,
+                    response: "reject",
+                  }
+                : undefined,
+            },
+          };
+        }
+        return msg;
+      }),
+    );
 
     const cancelMessage: JsonRpcRequest = {
       jsonrpc: "2.0",
