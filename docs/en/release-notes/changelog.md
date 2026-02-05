@@ -10,6 +10,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 - Core: Update context token count after compaction completes
+- Web: Add session archive feature with auto-archive for sessions older than 15 days
+- Web: Add multi-select mode for bulk archive, unarchive, and delete operations
 
 ## 1.8.0 (2026-02-05)
 

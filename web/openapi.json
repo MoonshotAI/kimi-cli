@@ -114,7 +114,7 @@
       "get": {
         "tags": ["sessions"],
         "summary": "List all sessions",
-        "description": "List sessions with optional pagination and search.",
+        "description": "List sessions with optional pagination and search.\n\nArgs:\n    limit: Maximum number of sessions to return (default 100, max 500).\n    offset: Number of sessions to skip (default 0).\n    q: Optional search query to filter by title or work_dir.\n    archived: Filter by archived status.\n        - None (default): Only return non-archived sessions.\n        - True: Only return archived sessions.",
         "operationId": "list_sessions_api_sessions__get",
         "parameters": [
           {
@@ -136,6 +136,15 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Q"
+            }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "title": "Archived"
             }
           }
         ],
@@ -278,7 +287,7 @@
       "patch": {
         "tags": ["sessions"],
         "summary": "Update session",
-        "description": "Update a session (e.g., rename title).",
+        "description": "Update a session (e.g., rename title or archive/unarchive).",
         "operationId": "update_session_api_sessions__session_id__patch",
         "parameters": [
           {
@@ -712,6 +721,11 @@
           "work_dir": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Work Dir"
+          },
+          "create_dir": {
+            "type": "boolean",
+            "title": "Create Dir",
+            "default": false
           }
         },
         "type": "object",
@@ -855,7 +869,14 @@
         "properties": {
           "app": {
             "type": "string",
-            "enum": ["finder", "cursor", "vscode", "iterm", "terminal"],
+            "enum": [
+              "finder",
+              "cursor",
+              "vscode",
+              "iterm",
+              "terminal",
+              "antigravity"
+            ],
             "title": "App"
           },
           "path": { "type": "string", "title": "Path" }
@@ -934,6 +955,12 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Dir",
             "description": "Session directory path"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived",
+            "description": "Whether the session is archived",
+            "default": false
           }
         },
         "type": "object",
@@ -1081,6 +1108,11 @@
               { "type": "null" }
             ],
             "title": "Title"
+          },
+          "archived": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Archived",
+            "description": "Archive or unarchive the session"
           }
         },
         "type": "object",

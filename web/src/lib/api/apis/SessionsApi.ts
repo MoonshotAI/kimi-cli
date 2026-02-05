@@ -78,6 +78,7 @@ export interface ListSessionsApiSessionsGetRequest {
     limit?: number;
     offset?: number;
     q?: string | null;
+    archived?: boolean | null;
 }
 
 export interface UpdateSessionApiSessionsSessionIdPatchRequest {
@@ -395,7 +396,7 @@ export class SessionsApi extends runtime.BaseAPI {
     }
 
     /**
-     * List sessions with optional pagination and search.
+     * List sessions with optional pagination and search.  Args:     limit: Maximum number of sessions to return (default 100, max 500).     offset: Number of sessions to skip (default 0).     q: Optional search query to filter by title or work_dir.     archived: Filter by archived status.         - None (default): Only return non-archived sessions.         - True: Only return archived sessions.
      * List all sessions
      */
     async listSessionsApiSessionsGetRaw(requestParameters: ListSessionsApiSessionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Session>>> {
@@ -411,6 +412,10 @@ export class SessionsApi extends runtime.BaseAPI {
 
         if (requestParameters['q'] != null) {
             queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['archived'] != null) {
+            queryParameters['archived'] = requestParameters['archived'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -429,7 +434,7 @@ export class SessionsApi extends runtime.BaseAPI {
     }
 
     /**
-     * List sessions with optional pagination and search.
+     * List sessions with optional pagination and search.  Args:     limit: Maximum number of sessions to return (default 100, max 500).     offset: Number of sessions to skip (default 0).     q: Optional search query to filter by title or work_dir.     archived: Filter by archived status.         - None (default): Only return non-archived sessions.         - True: Only return archived sessions.
      * List all sessions
      */
     async listSessionsApiSessionsGet(requestParameters: ListSessionsApiSessionsGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Session>> {
@@ -438,7 +443,7 @@ export class SessionsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update a session (e.g., rename title).
+     * Update a session (e.g., rename title or archive/unarchive).
      * Update session
      */
     async updateSessionApiSessionsSessionIdPatchRaw(requestParameters: UpdateSessionApiSessionsSessionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Session>> {
@@ -478,7 +483,7 @@ export class SessionsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update a session (e.g., rename title).
+     * Update a session (e.g., rename title or archive/unarchive).
      * Update session
      */
     async updateSessionApiSessionsSessionIdPatch(requestParameters: UpdateSessionApiSessionsSessionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Session> {
