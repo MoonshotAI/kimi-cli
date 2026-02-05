@@ -3,7 +3,7 @@ from __future__ import annotations
 import posixpath
 import shlex
 import stat
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from pathlib import PurePath, PurePosixPath
 from typing import TYPE_CHECKING, Literal
 
@@ -273,7 +273,7 @@ class SSHKaos:
                 raise FileExistsError(f"{path} already exists")
             await self._sftp.mkdir(str(path))
 
-    async def exec(self, *args: str) -> KaosProcess:
+    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
         command = " ".join(shlex.quote(arg) for arg in args)
@@ -285,7 +285,7 @@ class SSHKaos:
         # This is intentionally strict: if cwd doesn't exist, the command fails.
         if self._cwd:
             command = f"cd {shlex.quote(self._cwd)} && {command}"
-        process = await self._connection.create_process(command, encoding=None)
+        process = await self._connection.create_process(command, encoding=None, env=env)
         return self.Process(process)
 
     async def unsafe_close(self) -> None:

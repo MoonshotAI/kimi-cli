@@ -27,6 +27,7 @@ from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 
@@ -163,7 +164,7 @@ class Shell:
                 kwargs: dict[str, Any] = {}
                 if stderr is not None:
                     kwargs["stderr"] = stderr
-                proc = await asyncio.create_subprocess_shell(command, **kwargs)
+                proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
                 await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")

@@ -22,6 +22,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session as KimiCLISession
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.web.auth import is_origin_allowed, is_private_ip, verify_token
 from kimi_cli.web.models import (
     GenerateTitleRequest,
@@ -961,6 +962,7 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
             cwd=str(work_dir),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            env=get_clean_env(),
         )
         await check_proc.wait()
         has_head = check_proc.returncode == 0
@@ -975,6 +977,7 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
                 cwd=str(work_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=get_clean_env(),
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
@@ -1012,6 +1015,7 @@ async def get_session_git_diff(session_id: UUID) -> GitDiffStats:
             cwd=str(work_dir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            env=get_clean_env(),
         )
         untracked_stdout, _ = await asyncio.wait_for(untracked_proc.communicate(), timeout=5.0)
 
