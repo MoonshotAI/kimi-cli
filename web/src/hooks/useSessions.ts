@@ -22,14 +22,20 @@ export type SessionFileEntry = {
 type UseSessionsReturn = {
   /** List of sessions (API Session type) */
   sessions: Session[];
+  /** List of archived sessions */
+  archivedSessions: Session[];
   /** Currently selected session ID */
   selectedSessionId: string;
   /** Loading state */
   isLoading: boolean;
+  /** Loading state for archived sessions */
+  isLoadingArchived: boolean;
   /** Error message if any */
   error: string | null;
   /** Refresh sessions list from API */
   refreshSessions: () => Promise<void>;
+  /** Refresh archived sessions list from API */
+  refreshArchivedSessions: () => Promise<void>;
   /** Load more sessions for pagination */
   loadMoreSessions: () => Promise<void>;
   /** Whether there are more sessions to load */
@@ -74,6 +80,16 @@ type UseSessionsReturn = {
   renameSession: (sessionId: string, title: string) => Promise<boolean>;
   /** Generate title using AI (backend reads messages from wire.jsonl) */
   generateTitle: (sessionId: string) => Promise<string | null>;
+  /** Archive a session */
+  archiveSession: (sessionId: string) => Promise<boolean>;
+  /** Unarchive a session */
+  unarchiveSession: (sessionId: string) => Promise<boolean>;
+  /** Bulk archive sessions */
+  bulkArchiveSessions: (sessionIds: string[]) => Promise<number>;
+  /** Bulk unarchive sessions */
+  bulkUnarchiveSessions: (sessionIds: string[]) => Promise<number>;
+  /** Bulk delete sessions */
+  bulkDeleteSessions: (sessionIds: string[]) => Promise<number>;
 };
 
 const normalizeSessionPath = (value?: string): string => {
@@ -112,12 +128,16 @@ export function useSessions(): UseSessionsReturn {
   // Sessions list (using API Session type)
   const [sessions, setSessions] = useState<Session[]>([]);
 
+  // Archived sessions list
+  const [archivedSessions, setArchivedSessions] = useState<Session[]>([]);
+
   // Currently selected session
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
 
   // Loading and error states
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [hasMoreSessions, setHasMoreSessions] = useState(true);
@@ -190,6 +210,44 @@ export function useSessions(): UseSessionsReturn {
           : session,
       ),
     );
+  }, []);
+
+  /**
+   * Refresh archived sessions list from API
+   */
+  const refreshArchivedSessions = useCallback(async () => {
+    setIsLoadingArchived(true);
+    try {
+      const basePath = getApiBaseUrl();
+      const response = await fetch(
+        `${basePath}/api/sessions/?archived=true&limit=${PAGE_SIZE}`,
+        {
+          headers: getAuthHeader(),
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Failed to load archived sessions");
+      }
+      const data = await response.json();
+      // Convert snake_case to camelCase
+      const archivedList: Session[] = data.map(
+        (item: Record<string, unknown>) => ({
+          sessionId: item.session_id,
+          title: item.title,
+          lastUpdated: new Date(item.last_updated as string),
+          isRunning: item.is_running,
+          status: item.status,
+          workDir: item.work_dir,
+          sessionDir: item.session_dir,
+          archived: item.archived,
+        }),
+      );
+      setArchivedSessions(archivedList);
+    } catch (err) {
+      console.error("Failed to refresh archived sessions:", err);
+    } finally {
+      setIsLoadingArchived(false);
+    }
   }, []);
 
   // Refresh sessions list when search changes
@@ -613,12 +671,244 @@ export function useSessions(): UseSessionsReturn {
     [refreshSession],
   );
 
+  /**
+   * Archive a session
+   */
+  const archiveSession = useCallback(
+    async (sessionId: string): Promise<boolean> => {
+      try {
+        const basePath = getApiBaseUrl();
+        const response = await fetch(
+          `${basePath}/api/sessions/${encodeURIComponent(sessionId)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...getAuthHeader(),
+            },
+            body: JSON.stringify({ archived: true }),
+          },
+        );
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Failed to archive session");
+        }
+
+        // Move session from active to archived list
+        setSessions((current) =>
+          current.filter((s) => s.sessionId !== sessionId),
+        );
+
+        // Refresh archived sessions to get the updated list
+        await refreshArchivedSessions();
+
+        return true;
+      } catch (err) {
+        console.error("Failed to archive session:", err);
+        return false;
+      }
+    },
+    [refreshArchivedSessions],
+  );
+
+  /**
+   * Unarchive a session
+   */
+  const unarchiveSession = useCallback(
+    async (sessionId: string): Promise<boolean> => {
+      try {
+        const basePath = getApiBaseUrl();
+        const response = await fetch(
+          `${basePath}/api/sessions/${encodeURIComponent(sessionId)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...getAuthHeader(),
+            },
+            body: JSON.stringify({ archived: false }),
+          },
+        );
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Failed to unarchive session");
+        }
+
+        // Remove from archived list
+        setArchivedSessions((current) =>
+          current.filter((s) => s.sessionId !== sessionId),
+        );
+
+        // Refresh active sessions to get the updated list
+        await refreshSessions();
+
+        return true;
+      } catch (err) {
+        console.error("Failed to unarchive session:", err);
+        return false;
+      }
+    },
+    [refreshSessions],
+  );
+
+  /**
+   * Bulk archive sessions
+   * Returns the number of successfully archived sessions
+   */
+  const bulkArchiveSessions = useCallback(
+    async (sessionIds: string[]): Promise<number> => {
+      const basePath = getApiBaseUrl();
+      let successCount = 0;
+
+      // Process in parallel with Promise.allSettled
+      const results = await Promise.allSettled(
+        sessionIds.map(async (sessionId) => {
+          const response = await fetch(
+            `${basePath}/api/sessions/${encodeURIComponent(sessionId)}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+              },
+              body: JSON.stringify({ archived: true }),
+            },
+          );
+          if (!response.ok) {
+            throw new Error("Failed to archive");
+          }
+          return sessionId;
+        }),
+      );
+
+      const successfulIds: string[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          successCount++;
+          successfulIds.push(result.value);
+        }
+      }
+
+      // Update state
+      if (successfulIds.length > 0) {
+        setSessions((current) =>
+          current.filter((s) => !successfulIds.includes(s.sessionId)),
+        );
+        await refreshArchivedSessions();
+      }
+
+      return successCount;
+    },
+    [refreshArchivedSessions],
+  );
+
+  /**
+   * Bulk unarchive sessions
+   * Returns the number of successfully unarchived sessions
+   */
+  const bulkUnarchiveSessions = useCallback(
+    async (sessionIds: string[]): Promise<number> => {
+      const basePath = getApiBaseUrl();
+      let successCount = 0;
+
+      const results = await Promise.allSettled(
+        sessionIds.map(async (sessionId) => {
+          const response = await fetch(
+            `${basePath}/api/sessions/${encodeURIComponent(sessionId)}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeader(),
+              },
+              body: JSON.stringify({ archived: false }),
+            },
+          );
+          if (!response.ok) {
+            throw new Error("Failed to unarchive");
+          }
+          return sessionId;
+        }),
+      );
+
+      const successfulIds: string[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          successCount++;
+          successfulIds.push(result.value);
+        }
+      }
+
+      if (successfulIds.length > 0) {
+        setArchivedSessions((current) =>
+          current.filter((s) => !successfulIds.includes(s.sessionId)),
+        );
+        await refreshSessions();
+      }
+
+      return successCount;
+    },
+    [refreshSessions],
+  );
+
+  /**
+   * Bulk delete sessions
+   * Returns the number of successfully deleted sessions
+   */
+  const bulkDeleteSessions = useCallback(
+    async (sessionIds: string[]): Promise<number> => {
+      const basePath = getApiBaseUrl();
+      let successCount = 0;
+
+      const results = await Promise.allSettled(
+        sessionIds.map(async (sessionId) => {
+          const response = await fetch(
+            `${basePath}/api/sessions/${encodeURIComponent(sessionId)}`,
+            {
+              method: "DELETE",
+              headers: getAuthHeader(),
+            },
+          );
+          if (!response.ok) {
+            throw new Error("Failed to delete");
+          }
+          return sessionId;
+        }),
+      );
+
+      const successfulIds: string[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          successCount++;
+          successfulIds.push(result.value);
+        }
+      }
+
+      if (successfulIds.length > 0) {
+        setSessions((current) =>
+          current.filter((s) => !successfulIds.includes(s.sessionId)),
+        );
+        setArchivedSessions((current) =>
+          current.filter((s) => !successfulIds.includes(s.sessionId)),
+        );
+      }
+
+      return successCount;
+    },
+    [],
+  );
+
   return {
     sessions,
+    archivedSessions,
     selectedSessionId,
     isLoading,
+    isLoadingArchived,
     error,
     refreshSessions,
+    refreshArchivedSessions,
     loadMoreSessions,
     hasMoreSessions,
     isLoadingMore,
@@ -638,5 +928,10 @@ export function useSessions(): UseSessionsReturn {
     fetchStartupDir,
     renameSession,
     generateTitle,
+    archiveSession,
+    unarchiveSession,
+    bulkArchiveSessions,
+    bulkUnarchiveSessions,
+    bulkDeleteSessions,
   };
 }

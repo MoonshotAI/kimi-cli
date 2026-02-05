@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import shutil
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -234,8 +235,18 @@ async def list_sessions(
     limit: int = 100,
     offset: int = 0,
     q: str | None = None,
+    archived: bool | None = None,
 ) -> list[Session]:
-    """List sessions with optional pagination and search."""
+    """List sessions with optional pagination and search.
+
+    Args:
+        limit: Maximum number of sessions to return (default 100, max 500).
+        offset: Number of sessions to skip (default 0).
+        q: Optional search query to filter by title or work_dir.
+        archived: Filter by archived status.
+            - None (default): Only return non-archived sessions.
+            - True: Only return archived sessions.
+    """
     if limit <= 0:
         limit = 100
     if limit > 500:
@@ -243,7 +254,7 @@ async def list_sessions(
     if offset < 0:
         offset = 0
 
-    sessions = load_sessions_page(limit=limit, offset=offset, query=q)
+    sessions = load_sessions_page(limit=limit, offset=offset, query=q, archived=archived)
     for session in sessions:
         session_process = runner.get_session(session.session_id)
         session.is_running = session_process is not None and session_process.is_running
@@ -554,7 +565,7 @@ async def update_session(
     request: UpdateSessionRequest,
     runner: KimiCLIRunner = Depends(get_runner),
 ) -> Session:
-    """Update a session (e.g., rename title)."""
+    """Update a session (e.g., rename title or archive/unarchive)."""
     session = get_editable_session(session_id, runner)
     session_dir = session.kimi_cli_session.dir
 
@@ -564,6 +575,20 @@ async def update_session(
     # Update title if provided
     if request.title is not None:
         metadata = metadata.model_copy(update={"title": request.title})
+
+    # Update archived status if provided
+    if request.archived is not None:
+        updates: dict[str, bool | float | None] = {"archived": request.archived}
+        if request.archived:
+            # User manually archived: set archived_at, reset auto_archive_exempt
+            updates["archived_at"] = time.time()
+            updates["auto_archive_exempt"] = False
+        else:
+            # User manually unarchived: clear archived_at, set auto_archive_exempt
+            # This prevents the session from being auto-archived again
+            updates["archived_at"] = None
+            updates["auto_archive_exempt"] = True
+        metadata = metadata.model_copy(update=updates)
 
     # Save metadata
     save_session_metadata(session_dir, metadata)

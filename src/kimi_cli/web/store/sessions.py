@@ -35,6 +35,9 @@ from kimi_cli.wire.file import WireFile
 CACHE_TTL = 5.0  # seconds - balance between freshness and performance
 SESSION_METADATA_FILENAME = "metadata.json"
 
+# Auto-archive configuration
+AUTO_ARCHIVE_DAYS = 15  # Sessions older than this will be auto-archived
+
 _sessions_cache: list[JointSession] | None = None
 _cache_timestamp: float = 0.0
 _sessions_index_cache: list[SessionIndexEntry] | None = None
@@ -70,6 +73,9 @@ class SessionMetadata(BaseModel):
     title_generated: bool = False
     title_generate_attempts: int = 0
     wire_mtime: float | None = None
+    archived: bool = False
+    archived_at: float | None = None
+    auto_archive_exempt: bool = False  # True if user manually unarchived, exempt from auto-archive
 
 
 @dataclass(slots=True)
@@ -230,6 +236,7 @@ def _build_kimi_session(entry: SessionIndexEntry) -> KimiCLISession:
 
 def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
     kimi_session = _build_kimi_session(entry)
+    archived = entry.metadata.archived if entry.metadata else False
     return JointSession(
         session_id=entry.session_id,
         title=entry.title,
@@ -239,7 +246,24 @@ def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
         work_dir=entry.work_dir,
         session_dir=str(entry.session_dir),
         kimi_cli_session=kimi_session,
+        archived=archived,
     )
+
+
+def _should_auto_archive(last_updated: datetime, session_metadata: SessionMetadata) -> bool:
+    """Check if a session should be auto-archived based on age and exemption status."""
+    # Already archived, no need to auto-archive
+    if session_metadata.archived:
+        return False
+
+    # User manually unarchived this session, exempt from auto-archive
+    if session_metadata.auto_archive_exempt:
+        return False
+
+    # Check if session is older than AUTO_ARCHIVE_DAYS
+    now = datetime.now(tz=UTC)
+    age_days = (now - last_updated).days
+    return age_days >= AUTO_ARCHIVE_DAYS
 
 
 def _build_sessions_index() -> list[SessionIndexEntry]:
@@ -258,6 +282,17 @@ def _build_sessions_index() -> list[SessionIndexEntry]:
 
             last_updated = datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC)
             session_metadata = load_session_metadata(session_dir, str(session_id))
+
+            # Auto-archive old sessions
+            if _should_auto_archive(last_updated, session_metadata):
+                session_metadata = session_metadata.model_copy(
+                    update={
+                        "archived": True,
+                        "archived_at": time.time(),
+                    }
+                )
+                save_session_metadata(session_dir, session_metadata)
+
             title = session_metadata.title if session_metadata.title else "Untitled"
 
             entries.append(
@@ -327,9 +362,28 @@ def load_sessions_page(
     limit: int = 100,
     offset: int = 0,
     query: str | None = None,
+    archived: bool | None = None,
 ) -> list[JointSession]:
-    """Load a paginated list of sessions, optionally filtered by query."""
+    """Load a paginated list of sessions, optionally filtered by query and archived status.
+
+    Args:
+        limit: Maximum number of sessions to return.
+        offset: Number of sessions to skip.
+        query: Optional search query to filter by title or work_dir.
+        archived: Filter by archived status.
+            - None (default): Only return non-archived sessions.
+            - True: Only return archived sessions.
+            - False: Only return non-archived sessions.
+    """
     entries = list(_load_sessions_index_cached())
+
+    # Filter by archived status
+    if archived is None or archived is False:
+        # Default: only non-archived sessions
+        entries = [e for e in entries if not (e.metadata and e.metadata.archived)]
+    else:
+        # Only archived sessions
+        entries = [e for e in entries if e.metadata and e.metadata.archived]
 
     if query:
         query_text = query.strip().lower()

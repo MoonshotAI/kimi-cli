@@ -25,6 +25,12 @@ export interface CreateSessionRequest {
      * @memberof CreateSessionRequest
      */
     workDir?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CreateSessionRequest
+     */
+    createDir?: boolean;
 }
 
 /**
@@ -45,6 +51,7 @@ export function CreateSessionRequestFromJSONTyped(json: any, ignoreDiscriminator
     return {
         
         'workDir': json['work_dir'] == null ? undefined : json['work_dir'],
+        'createDir': json['create_dir'] == null ? undefined : json['create_dir'],
     };
 }
 
@@ -60,6 +67,7 @@ export function CreateSessionRequestToJSONTyped(value?: CreateSessionRequest | n
     return {
         
         'work_dir': value['workDir'],
+        'create_dir': value['createDir'],
     };
 }
 

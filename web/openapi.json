@@ -712,6 +712,11 @@
           "work_dir": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Work Dir"
+          },
+          "create_dir": {
+            "type": "boolean",
+            "title": "Create Dir",
+            "default": false
           }
         },
         "type": "object",
@@ -855,7 +860,14 @@
         "properties": {
           "app": {
             "type": "string",
-            "enum": ["finder", "cursor", "vscode", "iterm", "terminal"],
+            "enum": [
+              "finder",
+              "cursor",
+              "vscode",
+              "iterm",
+              "terminal",
+              "antigravity"
+            ],
             "title": "App"
           },
           "path": { "type": "string", "title": "Path" }
