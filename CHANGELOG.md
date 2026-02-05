@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Fix approval request states not updating when session is interrupted or cancelled
+
 ## 1.7.0 (2026-02-05)
 
 - Rust: Add `kagent`, the Rust implementation of Kimi agent kernel with wire-mode support (experimental)
