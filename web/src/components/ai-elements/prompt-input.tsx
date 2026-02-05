@@ -1041,6 +1041,7 @@ export const PromptInputTextarea = forwardRef<
         ref={ref}
         className={cn("field-sizing-content max-h-48 min-h-16", className)}
         name="message"
+        onBlur={() => setIsComposing(false)}
         onCompositionEnd={() => setIsComposing(false)}
         onCompositionStart={() => setIsComposing(true)}
         onKeyDown={handleKeyDown}

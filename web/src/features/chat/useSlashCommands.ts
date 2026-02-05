@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { SlashCommandDef } from "@/hooks/useSessionStream";
 
@@ -122,6 +122,8 @@ export const useSlashCommands = ({
 }: UseSlashCommandsArgs): UseSlashCommandsReturn => {
   const [range, setRange] = useState<SlashRange | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  // Track when we're in the middle of selecting an option to avoid race conditions
+  const isSelectingRef = useRef(false);
 
   const allOptions = useMemo(() => toSlashOptions(commands), [commands]);
 
@@ -147,6 +149,11 @@ export const useSlashCommands = ({
 
   // Detect slash on initial render
   useEffect(() => {
+    // Skip detection while selecting an option to avoid race condition
+    // where the menu reopens due to stale caret position
+    if (isSelectingRef.current) {
+      return;
+    }
     const caret = textareaRef.current?.selectionStart ?? text.length;
     const next = detectSlash(text, caret);
     setRange((previous) => (isSameRange(previous, next) ? previous : next));
@@ -154,6 +161,10 @@ export const useSlashCommands = ({
 
   const handleTextChange = useCallback(
     (value: string, caret: number | null) => {
+      // Skip detection while selecting an option to avoid race condition
+      if (isSelectingRef.current) {
+        return;
+      }
       setRange(detectSlash(value, caret));
     },
     [],
@@ -161,6 +172,10 @@ export const useSlashCommands = ({
 
   const handleCaretChange = useCallback(
     (caret: number | null) => {
+      // Skip detection while selecting an option to avoid race condition
+      if (isSelectingRef.current) {
+        return;
+      }
       setRange(detectSlash(text, caret));
     },
     [text],
@@ -189,17 +204,42 @@ export const useSlashCommands = ({
       const nextCaret =
         before.length + target.insertValue.length + needsSpace.length;
 
-      setText(nextValue);
+      // Mark as selecting to prevent useEffect from reopening the menu
+      // due to stale caret position before requestAnimationFrame runs
+      isSelectingRef.current = true;
+
+      const node = textareaRef.current;
+      if (node) {
+        // Blur first to force IME composition to end
+        // This triggers onBlur which resets isComposing state in prompt-input
+        node.blur();
+      }
+
+      // Clear range and reset activeIndex immediately
       setRange(null);
       setActiveIndex(0);
 
+      // Use requestAnimationFrame to ensure blur event processing completes
+      // before updating the text
       requestAnimationFrame(() => {
-        const node = textareaRef.current;
-        if (!node) {
-          return;
-        }
-        node.focus();
-        node.setSelectionRange(nextCaret, nextCaret);
+        setText(nextValue);
+
+        requestAnimationFrame(() => {
+          try {
+            const currentNode = textareaRef.current;
+            if (currentNode) {
+              currentNode.focus();
+              currentNode.setSelectionRange(nextCaret, nextCaret);
+            }
+          } finally {
+            // Delay resetting the flag to ensure all React renders and effects
+            // triggered by blur/focus have completed.
+            // Using finally ensures the flag is always reset even if an error occurs.
+            setTimeout(() => {
+              isSelectingRef.current = false;
+            }, 0);
+          }
+        });
       });
     },
     [range, options, activeIndex, text, setText, textareaRef],
