@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Update `last_session_id` for work directory when session stream starts
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
 - Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux

@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Update `last_session_id` for work directory when session stream starts
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 ## 1.8.0 (2026-02-05)
 
