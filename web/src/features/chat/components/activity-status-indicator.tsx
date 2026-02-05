@@ -1,6 +1,6 @@
 import { memo, type ReactElement } from "react";
 import type { ChatStatus } from "ai";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { Loader } from "@/components/ai-elements/loader";
 import type { LiveMessage } from "@/hooks/types";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,6 @@ export type ActivityStatus = "idle" | "connecting" | "processing" | "waiting_inp
 
 export type ActivityDetail = {
   status: ActivityStatus;
-  label: string;
   description: string;
 };
 
@@ -52,7 +51,6 @@ export function deriveActivityStatus({
   if (findPendingApproval(messages)) {
     return {
       status: "waiting_input",
-      label: "Waiting",
       description: "Waiting for approval...",
     };
   }
@@ -61,7 +59,6 @@ export function deriveActivityStatus({
   if (isUploadingFiles) {
     return {
       status: "processing",
-      label: "Uploading",
       description: "Uploading files...",
     };
   }
@@ -70,7 +67,6 @@ export function deriveActivityStatus({
   if (chatStatus === "error") {
     return {
       status: "idle",
-      label: "Error",
       description: "An error occurred",
     };
   }
@@ -79,7 +75,6 @@ export function deriveActivityStatus({
   if (chatStatus === "submitted" || isAwaitingFirstResponse) {
     return {
       status: "connecting",
-      label: "Connecting",
       description: "Connecting...",
     };
   }
@@ -94,7 +89,6 @@ export function deriveActivityStatus({
       const displayText = TOOL_DISPLAY_NAMES[toolName] || `Running ${toolName}...`;
       return {
         status: "processing",
-        label: "Processing",
         description: displayText,
       };
     }
@@ -102,7 +96,6 @@ export function deriveActivityStatus({
     // No active tool call - model is thinking
     return {
       status: "processing",
-      label: "Thinking",
       description: "Thinking...",
     };
   }
@@ -110,7 +103,6 @@ export function deriveActivityStatus({
   // Default idle state
   return {
     status: "idle",
-    label: "Ready",
     description: "Ready",
   };
 }
@@ -237,18 +229,20 @@ export const ActivityStatusIndicator = memo(function ActivityStatusIndicatorComp
       )}
 
       {/* Description text */}
-      {showDescription && (
-        <motion.span
-          key={description}
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 4 }}
-          transition={{ duration: 0.15 }}
-          className="text-xs text-muted-foreground select-none"
-        >
-          {description}
-        </motion.span>
-      )}
+      <AnimatePresence mode="wait">
+        {showDescription && (
+          <motion.span
+            key={description}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            className="text-xs text-muted-foreground select-none"
+          >
+            {description}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </output>
   );
 });
