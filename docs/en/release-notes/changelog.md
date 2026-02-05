@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Update `last_session_id` for work directory when session stream starts
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
 - Web: Fix IME composition issue when selecting slash commands
