@@ -185,6 +185,7 @@ export function CreateSessionDialog({
       onOpenChange(false);
     } catch (err) {
       // Other errors are handled by the hook
+      console.error("Failed to create directory:", err);
     } finally {
       setIsCreating(false);
       setPendingPath("");

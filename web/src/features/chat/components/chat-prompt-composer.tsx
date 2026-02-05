@@ -175,7 +175,6 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
           isLoading={isGitDiffLoading}
           workDir={currentSession?.workDir}
         />
-
       </div>
 
       <PromptInput

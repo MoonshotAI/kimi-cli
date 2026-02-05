@@ -11,6 +11,10 @@ import {
 import type { Session } from "@/lib/api/models";
 import type { AssistantApprovalHandler } from "./assistant-message";
 import {
+  ActivityStatusIndicator,
+  type ActivityDetail,
+} from "./activity-status-indicator";
+import {
   ArrowDownIcon,
   Loader2Icon,
   PlusIcon,
@@ -38,6 +42,7 @@ type ChatConversationProps = {
   onCreateSession?: () => void;
   isSearchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
+  activityStatus?: ActivityDetail;
 };
 
 export function ChatConversation({
@@ -53,6 +58,7 @@ export function ChatConversation({
   onCreateSession,
   isSearchOpen,
   onSearchOpenChange,
+  activityStatus,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -213,9 +219,21 @@ export function ChatConversation({
         </div>
       )}
 
+      {/* Floating activity status indicator */}
+      {activityStatus && activityStatus.status !== "idle" && (
+        <div className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-4">
+          <div className="rounded-full bg-background/80 backdrop-blur-sm border border-border px-3 py-1.5 shadow-sm">
+            <ActivityStatusIndicator
+              activity={activityStatus}
+              showDescription
+            />
+          </div>
+        </div>
+      )}
+
       {shouldShowScrollButton ? (
         <Button
-          className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-[50%] translate-x-[-50%] rounded-full"
+          className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-[50%] -translate-x-1/2 rounded-full"
           onClick={handleScrollToBottom}
           size="icon"
           type="button"

@@ -2,6 +2,8 @@ import {
   memo,
   type ReactElement,
   useCallback,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ChatStatus } from "ai";
@@ -20,6 +22,10 @@ import { ChatConversation } from "./components/chat-conversation";
 import { ChatPromptComposer } from "./components/chat-prompt-composer";
 import { ApprovalDialog } from "./components/approval-dialog";
 import { useGitDiffStats } from "@/hooks/useGitDiffStats";
+import {
+  deriveActivityStatus,
+  type ActivityDetail,
+} from "./components/activity-status-indicator";
 
 // Re-export LiveMessage type from hooks for backward compatibility
 export type { LiveMessage } from "@/hooks/types";
@@ -107,6 +113,32 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     currentSession?.sessionId ?? null
   );
 
+  // Derive activity status for the header indicator
+  // Use ref to cache the previous result and avoid unnecessary object reference changes
+  const prevActivityRef = useRef<ActivityDetail | null>(null);
+
+  const activityStatus = useMemo(() => {
+    const newStatus = deriveActivityStatus({
+      chatStatus: status,
+      isAwaitingFirstResponse,
+      isUploadingFiles,
+      messages,
+    });
+
+    // If status and description haven't changed, return cached reference
+    // to avoid unnecessary re-renders in downstream components
+    if (
+      prevActivityRef.current &&
+      prevActivityRef.current.status === newStatus.status &&
+      prevActivityRef.current.description === newStatus.description
+    ) {
+      return prevActivityRef.current;
+    }
+
+    prevActivityRef.current = newStatus;
+    return newStatus;
+  }, [status, isAwaitingFirstResponse, isUploadingFiles, messages]);
+
   const maxTokens = 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
   const usagePercent = Math.round(contextUsage * 100);
@@ -181,6 +213,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             onCreateSession={onCreateSession}
             isSearchOpen={isSearchOpen}
             onSearchOpenChange={setIsSearchOpen}
+            activityStatus={activityStatus}
           />
         </div>
 
