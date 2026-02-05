@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Fix approval request states not updating when session is interrupted or cancelled
 ## 1.8.0 (2026-02-05)
 
 - CLI: Fix startup errors (e.g. invalid config files) being silently swallowed instead of displayed

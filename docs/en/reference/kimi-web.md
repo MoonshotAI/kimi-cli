@@ -168,11 +168,11 @@ Web UI provides a convenient session management interface:
 
 - **Session list**: View all historical sessions, including session title and working directory
 - **Session search**: Quickly filter sessions by title or working directory
-- **Create session**: Create a new session with a specified working directory
+- **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory
 - **Switch session**: Switch to different sessions with one click
 
 ::: info Added
-Session search feature added in version 1.5.
+Session search feature added in version 1.5. Directory auto-creation prompt added in version 1.7.
 :::
 
 ### Git status bar

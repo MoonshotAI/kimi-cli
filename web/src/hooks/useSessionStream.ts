@@ -1237,10 +1237,39 @@ export function useSessionStream(
         }
 
         case "StepInterrupted": {
+          // Clear pending approval requests
+          pendingApprovalRequestsRef.current.clear();
+
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-            ),
+            prev.map((msg) => {
+              let updated = msg;
+              if (msg.isStreaming) {
+                updated = { ...updated, isStreaming: false };
+              }
+              // Update pending approval tool states to denied
+              if (
+                msg.variant === "tool" &&
+                msg.toolCall?.state === "approval-requested"
+              ) {
+                return {
+                  ...updated,
+                  toolCall: {
+                    ...msg.toolCall,
+                    state: "output-denied",
+                    approval: msg.toolCall.approval
+                      ? {
+                          ...msg.toolCall.approval,
+                          submitted: true,
+                          resolved: true,
+                          approved: false,
+                          response: "reject",
+                        }
+                      : undefined,
+                  },
+                };
+              }
+              return updated;
+            }),
           );
           setAwaitingFirstResponse(false);
           if (awaitingIdleRef.current) {
@@ -1734,9 +1763,70 @@ export function useSessionStream(
       );
       awaitingIdleRef.current = false;
       pendingMessageRef.current = null;
+      // Clear pending approval requests and update message states
+      pendingApprovalRequestsRef.current.clear();
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (
+            msg.variant === "tool" &&
+            msg.toolCall?.state === "approval-requested"
+          ) {
+            return {
+              ...msg,
+              isStreaming: false,
+              toolCall: {
+                ...msg.toolCall,
+                state: "output-denied",
+                approval: msg.toolCall.approval
+                  ? {
+                      ...msg.toolCall.approval,
+                      submitted: true,
+                      resolved: true,
+                      approved: false,
+                      response: "reject",
+                    }
+                  : undefined,
+              },
+            };
+          }
+          return msg;
+        }),
+      );
       disconnect();
       return;
     }
+
+    // Clear all pending approval requests and update message states
+    pendingApprovalRequestsRef.current.clear();
+
+    // Always update messages (consistent with StepInterrupted handler)
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (
+          msg.variant === "tool" &&
+          msg.toolCall?.state === "approval-requested"
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
+              approval: msg.toolCall.approval
+                ? {
+                    ...msg.toolCall.approval,
+                    submitted: true,
+                    resolved: true,
+                    approved: false,
+                    response: "reject",
+                  }
+                : undefined,
+            },
+          };
+        }
+        return msg;
+      }),
+    );
 
     const cancelMessage: JsonRpcRequest = {
       jsonrpc: "2.0",
@@ -1756,7 +1846,7 @@ export function useSessionStream(
     } catch (err) {
       console.error("[SessionStream] Failed to send cancel request:", err);
     }
-  }, [status, disconnect, setAwaitingFirstResponse]);
+  }, [status, disconnect, setAwaitingFirstResponse, setMessages]);
 
   // Reconnect
   const reconnect = useCallback(() => {
