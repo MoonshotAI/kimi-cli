@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
+- Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
 
 ## 1.8.0 (2026-02-05)
 
