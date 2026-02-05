@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 
 
 class FileOpsWindow:
@@ -7,7 +7,7 @@ class FileOpsWindow:
     pass
 
 
-class FileActions(str, Enum):
+class FileActions(StrEnum):
     READ = "read file"
     EDIT = "edit file"
     EDIT_OUTSIDE = "edit file outside of working directory"

@@ -23,14 +23,24 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session as KimiCLISession
 from kimi_cli.web.auth import is_origin_allowed, is_private_ip, verify_token
-from kimi_cli.web.models import GitDiffStats, GitFileDiff, Session, SessionStatus
+from kimi_cli.web.models import (
+    GenerateTitleRequest,
+    GenerateTitleResponse,
+    GitDiffStats,
+    GitFileDiff,
+    Session,
+    SessionStatus,
+    UpdateSessionRequest,
+)
 from kimi_cli.web.runner.messages import send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
 from kimi_cli.web.store.sessions import (
     JointSession,
     invalidate_sessions_cache,
-    load_all_sessions_cached,
     load_session_by_id,
+    load_session_metadata,
+    load_sessions_page,
+    save_session_metadata,
 )
 from kimi_cli.wire.jsonrpc import (
     ErrorCodes,
@@ -218,9 +228,21 @@ async def replay_history(ws: WebSocket, session_dir: Path) -> None:
 
 
 @router.get("/", summary="List all sessions")
-async def list_sessions(runner: KimiCLIRunner = Depends(get_runner)) -> list[Session]:
-    """List all sessions."""
-    sessions = load_all_sessions_cached()
+async def list_sessions(
+    runner: KimiCLIRunner = Depends(get_runner),
+    limit: int = 100,
+    offset: int = 0,
+    q: str | None = None,
+) -> list[Session]:
+    """List sessions with optional pagination and search."""
+    if limit <= 0:
+        limit = 100
+    if limit > 500:
+        limit = 500
+    if offset < 0:
+        offset = 0
+
+    sessions = load_sessions_page(limit=limit, offset=offset, query=q)
     for session in sessions:
         session_process = runner.get_session(session.session_id)
         session.is_running = session_process is not None and session_process.is_running
@@ -250,10 +272,26 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
         work_dir_path = Path(request.work_dir)
         # Validate the directory exists
         if not work_dir_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Directory does not exist: {request.work_dir}",
-            )
+            if request.create_dir:
+                # Auto-create the directory
+                try:
+                    work_dir_path.mkdir(parents=True, exist_ok=True)
+                except PermissionError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Permission denied: cannot create directory {request.work_dir}",
+                    ) from e
+                except OSError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Failed to create directory: {e}",
+                    ) from e
+            else:
+                # Return 404 to indicate directory does not exist
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Directory does not exist: {request.work_dir}",
+                )
         if not work_dir_path.is_dir():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -265,6 +303,7 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
     kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
     context_file = kimi_cli_session.dir / "context.jsonl"
     invalidate_sessions_cache()
+    invalidate_work_dirs_cache()
     return Session(
         session_id=UUID(kimi_cli_session.id),
         title=kimi_cli_session.title,
@@ -288,6 +327,7 @@ class CreateSessionRequest(BaseModel):
     """Create session request."""
 
     work_dir: str | None = None
+    create_dir: bool = False  # Whether to auto-create directory if it doesn't exist
 
 
 class UploadSessionFileResponse(BaseModel):
@@ -492,6 +532,227 @@ async def delete_session(session_id: UUID, runner: KimiCLIRunner = Depends(get_r
     invalidate_sessions_cache()
 
 
+@router.patch("/{session_id}", summary="Update session")
+async def update_session(
+    session_id: UUID,
+    request: UpdateSessionRequest,
+    runner: KimiCLIRunner = Depends(get_runner),
+) -> Session:
+    """Update a session (e.g., rename title)."""
+    session = get_editable_session(session_id, runner)
+    session_dir = session.kimi_cli_session.dir
+
+    # Load existing metadata
+    metadata = load_session_metadata(session_dir, str(session_id))
+
+    # Update title if provided
+    if request.title is not None:
+        metadata = metadata.model_copy(update={"title": request.title})
+
+    # Save metadata
+    save_session_metadata(session_dir, metadata)
+
+    # Invalidate cache to force reload
+    invalidate_sessions_cache()
+
+    # Return updated session
+    updated_session = load_session_by_id(session_id)
+    if updated_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reload session after update",
+        )
+    return updated_session
+
+
+def extract_first_turn_from_wire(session_dir: Path) -> tuple[str, str] | None:
+    """Extract the first turn's user message and assistant response from wire.jsonl.
+
+    Returns:
+        tuple[str, str] | None: (user_message, assistant_response) or None if not found
+    """
+    wire_file = session_dir / "wire.jsonl"
+    if not wire_file.exists():
+        return None
+
+    user_message: str | None = None
+    assistant_response_parts: list[str] = []
+    in_first_turn = False
+
+    try:
+        with open(wire_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    message = record.get("message", {})
+                    msg_type = message.get("type")
+
+                    if msg_type == "TurnBegin":
+                        if in_first_turn:
+                            # Second turn started, stop
+                            break
+                        in_first_turn = True
+                        user_input = message.get("payload", {}).get("user_input")
+                        if user_input:
+                            from kosong.message import Message
+
+                            msg = Message(role="user", content=user_input)
+                            user_message = msg.extract_text(" ")
+
+                    elif msg_type == "ContentPart" and in_first_turn:
+                        payload = message.get("payload", {})
+                        if payload.get("type") == "text" and payload.get("text"):
+                            assistant_response_parts.append(payload["text"])
+
+                    elif msg_type == "TurnEnd" and in_first_turn:
+                        break
+
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return None
+
+    if user_message and assistant_response_parts:
+        return (user_message, "".join(assistant_response_parts))
+    return None
+
+
+@router.post("/{session_id}/generate-title", summary="Generate session title using AI")
+async def generate_session_title(
+    session_id: UUID,
+    request: GenerateTitleRequest | None = None,
+    runner: KimiCLIRunner = Depends(get_runner),
+) -> GenerateTitleResponse:
+    """Generate a concise session title using AI based on the first conversation turn.
+
+    If request body is empty or parameters are missing, the backend will
+    automatically read the first turn from wire.jsonl.
+    """
+    session = get_editable_session(session_id, runner)
+    session_dir = session.kimi_cli_session.dir
+
+    # Load existing metadata
+    metadata = load_session_metadata(session_dir, str(session_id))
+
+    # Check if title was already generated (avoid duplicate calls)
+    if metadata.title_generated:
+        return GenerateTitleResponse(title=metadata.title)
+
+    # Get message content: prefer request parameters, otherwise read from wire.jsonl
+    user_message = request.user_message if request else None
+    assistant_response = request.assistant_response if request else None
+
+    if not user_message or not assistant_response:
+        first_turn = extract_first_turn_from_wire(session_dir)
+        if first_turn:
+            user_message, assistant_response = first_turn
+
+    # If still no user message, return default title
+    if not user_message:
+        return GenerateTitleResponse(title="Untitled")
+
+    # Fallback title from user message (used if AI generation fails)
+    from textwrap import shorten
+
+    user_text = user_message.strip()
+    user_text = " ".join(user_text.split())
+    fallback_title = shorten(user_text, width=50, placeholder="...") or "Untitled"
+
+    # If AI generation failed too many times, use fallback and mark as generated
+    if metadata.title_generate_attempts >= 3:
+        metadata = metadata.model_copy(
+            update={
+                "title": fallback_title,
+                "title_generated": True,
+            }
+        )
+        save_session_metadata(session_dir, metadata)
+        invalidate_sessions_cache()
+        return GenerateTitleResponse(title=fallback_title)
+
+    # Try to generate title using AI
+    title = fallback_title
+    ai_generated = False
+    try:
+        from kosong import generate
+        from kosong.message import Message
+
+        from kimi_cli.config import load_config
+        from kimi_cli.llm import create_llm
+
+        config = load_config()
+        model_name = config.default_model
+
+        if model_name and model_name in config.models:
+            model_config = config.models[model_name]
+            provider_config = config.providers.get(model_config.provider)
+
+            if provider_config:
+                llm = create_llm(provider_config, model_config)
+
+                if llm:
+                    system_prompt = (
+                        "Generate a concise session title (max 50 characters) "
+                        "based on the conversation. "
+                        "Only respond with the title text, nothing else. "
+                        "No quotes, no explanation."
+                    )
+
+                    prompt = f"""User: {user_message[:300]}
+Assistant: {(assistant_response or "")[:300]}
+
+Title:"""
+
+                    result = await generate(
+                        chat_provider=llm.chat_provider,
+                        system_prompt=system_prompt,
+                        tools=[],
+                        history=[Message(role="user", content=prompt)],
+                    )
+
+                    generated_title = result.message.extract_text().strip()
+                    # Remove quotes if present
+                    generated_title = generated_title.strip("\"'")
+
+                    if generated_title and len(generated_title) <= 50:
+                        title = generated_title
+                        ai_generated = True
+                    elif generated_title:
+                        title = shorten(generated_title, width=50, placeholder="...")
+                        ai_generated = True
+
+    except Exception as e:
+        logger.warning(f"Failed to generate title using AI: {e}")
+        # Keep fallback_title, ai_generated stays False
+
+    # Save the title to metadata
+    if ai_generated:
+        # AI succeeded: set title_generated = True
+        metadata = metadata.model_copy(
+            update={
+                "title": title,
+                "title_generated": True,
+            }
+        )
+    else:
+        # AI failed: increment attempts counter
+        metadata = metadata.model_copy(
+            update={
+                "title": title,
+                "title_generate_attempts": metadata.title_generate_attempts + 1,
+            }
+        )
+    save_session_metadata(session_dir, metadata)
+
+    # Invalidate cache
+    invalidate_sessions_cache()
+
+    return GenerateTitleResponse(title=title)
+
+
 @router.websocket("/{session_id}/stream")
 async def session_stream(
     session_id: UUID,
@@ -620,9 +881,31 @@ async def session_stream(
             await session_process.remove_websocket(websocket)
 
 
-@work_dirs_router.get("/", summary="List available work directories")
-async def get_work_dirs() -> list[str]:
-    """Get a list of available work directories from metadata."""
+# Work dirs cache
+_work_dirs_cache: list[str] | None = None
+_work_dirs_cache_time: float = 0.0
+_WORK_DIRS_CACHE_TTL = 30.0  # seconds
+
+
+def invalidate_work_dirs_cache() -> None:
+    """Clear the work dirs cache."""
+    global _work_dirs_cache, _work_dirs_cache_time
+    _work_dirs_cache = None
+    _work_dirs_cache_time = 0.0
+
+
+def _get_work_dirs_sync() -> list[str]:
+    """Synchronous helper for get_work_dirs (runs in thread pool)."""
+    import time
+
+    global _work_dirs_cache, _work_dirs_cache_time
+
+    # Check cache
+    now = time.time()
+    if _work_dirs_cache is not None and (now - _work_dirs_cache_time) < _WORK_DIRS_CACHE_TTL:
+        return _work_dirs_cache
+
+    # Build fresh list
     metadata = load_metadata()
     work_dirs: list[str] = []
     for wd in metadata.work_dirs:
@@ -632,8 +915,18 @@ async def get_work_dirs() -> list[str]:
         # Verify directory exists
         if Path(wd.path).exists():
             work_dirs.append(wd.path)
-    # Return at most 20 directories
-    return work_dirs[:20]
+
+    # Update cache
+    result = work_dirs[:20]
+    _work_dirs_cache = result
+    _work_dirs_cache_time = now
+    return result
+
+
+@work_dirs_router.get("/", summary="List available work directories")
+async def get_work_dirs() -> list[str]:
+    """Get a list of available work directories from metadata."""
+    return await asyncio.to_thread(_get_work_dirs_sync)
 
 
 @work_dirs_router.get("/startup", summary="Get the startup directory")

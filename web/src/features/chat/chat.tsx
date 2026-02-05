@@ -9,7 +9,11 @@ import type { PromptInputMessage } from "@ai-elements";
 import type { ApprovalResponseDecision, TokenUsage } from "@/hooks/wireTypes";
 import type { LiveMessage } from "@/hooks/types";
 import type { SessionFileEntry } from "@/hooks/useSessions";
+import type { SlashCommandDef } from "@/hooks/useSessionStream";
 import type { Session } from "@/lib/api/models";
+
+// Re-export SlashCommandDef for convenience
+export type { SlashCommandDef };
 import { toast } from "sonner";
 import { ChatWorkspaceHeader } from "./components/chat-workspace-header";
 import { ChatConversation } from "./components/chat-conversation";
@@ -61,6 +65,10 @@ type ChatWorkspaceProps = {
   onCreateSession?: () => void;
   /** Open sessions sidebar (mobile) */
   onOpenSidebar?: () => void;
+  /** Rename session */
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
+  /** Available slash commands */
+  slashCommands?: SlashCommandDef[];
 };
 
 type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
@@ -85,6 +93,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   isAwaitingFirstResponse = false,
   onCreateSession,
   onOpenSidebar,
+  onRenameSession,
+  slashCommands = [],
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -151,6 +161,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           maxTokens={maxTokens}
           tokenUsage={tokenUsage}
           onOpenSidebar={onOpenSidebar}
+          onRenameSession={onRenameSession}
         />
 
         <div className="flex-1 overflow-hidden min-h-0">
@@ -195,6 +206,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
               onListSessionDirectory={onListSessionDirectory}
               gitDiffStats={gitDiffStats}
               isGitDiffLoading={isGitDiffLoading}
+              slashCommands={slashCommands}
             />
           </div>
         )}

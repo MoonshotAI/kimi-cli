@@ -4,6 +4,20 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.8.0 (2026-02-05)
+
+- CLI: Fix startup errors (e.g. invalid config files) being silently swallowed instead of displayed
+
+## 1.7.0 (2026-02-05)
+
+- Rust: Add `kagent`, the Rust implementation of Kimi agent kernel with wire-mode support (experimental)
+- Auth: Fix OAuth token refresh conflicts when running multiple sessions simultaneously
+- Web: Add file mention menu (`@`) to reference uploaded attachments and workspace files with autocomplete
+- Web: Add slash command menu in chat input with autocomplete, keyboard navigation, and alias support
+- Web: Prompt to create directory when specified path doesn't exist during session creation
+- Web: Fix authentication token persistence by switching from sessionStorage to localStorage with 24-hour expiry
+- Web: Add server-side pagination for session list with virtualized scrolling for better performance
+- Web: Improve session and work directories loading with smarter caching and invalidation
 - Web: Fix WebSocket errors during history replay by checking connection state before sending
 - Web: Git diff status bar now shows untracked files (new files not yet added to git)
 - Web: Restrict sensitive APIs only in public mode; update origin enforcement logic

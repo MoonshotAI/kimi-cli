@@ -20,12 +20,15 @@ import { MEDIA_CONFIG } from "@/config/media";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
+import { SlashCommandMenu } from "../slash-command-menu";
+import { useSlashCommands, type SlashCommandDef } from "../useSlashCommands";
 import { GitDiffStatusBar } from "./git-diff-status-bar";
 import { Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { GlobalConfigControls } from "@/features/chat/global-config-controls";
 import {
   type ChangeEvent,
+  type KeyboardEvent,
   type ReactElement,
   type SyntheticEvent,
   memo,
@@ -50,6 +53,7 @@ type ChatPromptComposerProps = {
   ) => Promise<SessionFileEntry[]>;
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
+  slashCommands?: SlashCommandDef[];
 };
 
 export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
@@ -64,6 +68,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   onListSessionDirectory,
   gitDiffStats,
   isGitDiffLoading,
+  slashCommands = [],
 }: ChatPromptComposerProps): ReactElement {
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
@@ -94,26 +99,62 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
     listDirectory: onListSessionDirectory,
   });
 
+  const {
+    isOpen: isSlashOpen,
+    query: slashQuery,
+    options: slashOptions,
+    activeIndex: slashActiveIndex,
+    setActiveIndex: setSlashActiveIndex,
+    handleTextChange: handleSlashTextChange,
+    handleCaretChange: handleSlashCaretChange,
+    handleKeyDown: handleSlashKeyDown,
+    selectOption: selectSlashOption,
+    closeMenu: closeSlashMenu,
+  } = useSlashCommands({
+    text: promptController.textInput.value,
+    setText: promptController.textInput.setInput,
+    textareaRef,
+    commands: slashCommands,
+  });
+
   const handleTextareaChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
-      handleMentionTextChange(
-        event.currentTarget.value,
-        event.currentTarget.selectionStart,
-      );
+      const value = event.currentTarget.value;
+      const caret = event.currentTarget.selectionStart;
+      handleMentionTextChange(value, caret);
+      handleSlashTextChange(value, caret);
     },
-    [handleMentionTextChange],
+    [handleMentionTextChange, handleSlashTextChange],
   );
 
   const handleTextareaSelection = useCallback(
     (event: SyntheticEvent<HTMLTextAreaElement>) => {
-      handleMentionCaretChange(event.currentTarget.selectionStart);
+      const caret = event.currentTarget.selectionStart;
+      handleMentionCaretChange(caret);
+      handleSlashCaretChange(caret);
     },
-    [handleMentionCaretChange],
+    [handleMentionCaretChange, handleSlashCaretChange],
   );
 
   const handleTextareaBlur = useCallback(() => {
     closeMentionMenu();
-  }, [closeMentionMenu]);
+    closeSlashMenu();
+  }, [closeMentionMenu, closeSlashMenu]);
+
+  const handleTextareaKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Priority: slash menu first, then mention menu
+      if (isSlashOpen) {
+        handleSlashKeyDown(event);
+        return;
+      }
+      if (isMentionOpen) {
+        handleMentionKeyDown(event);
+        return;
+      }
+    },
+    [isSlashOpen, isMentionOpen, handleSlashKeyDown, handleMentionKeyDown],
+  );
 
   const handleFileError = useCallback(
     (err: { code: string; message: string }) => {
@@ -196,10 +237,20 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                 onKeyUp={handleTextareaSelection}
                 onClick={handleTextareaSelection}
                 onBlur={handleTextareaBlur}
-                onKeyDown={handleMentionKeyDown}
+                onKeyDown={handleTextareaKeyDown}
               />
+              {/* Slash command menu - mutually exclusive with file mention menu */}
+              <SlashCommandMenu
+                open={isSlashOpen && canSendMessage && !isMentionOpen}
+                query={slashQuery}
+                options={slashOptions}
+                activeIndex={slashActiveIndex}
+                onSelect={selectSlashOption}
+                onHover={setSlashActiveIndex}
+              />
+              {/* File mention menu - only show when slash menu is not open */}
               <FileMentionMenu
-                open={isMentionOpen && canSendMessage}
+                open={isMentionOpen && canSendMessage && !isSlashOpen}
                 query={mentionQuery}
                 sections={mentionSections}
                 flatOptions={mentionOptions}

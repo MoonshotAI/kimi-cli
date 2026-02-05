@@ -1,0 +1,83 @@
+name: CI (kagent)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci-kagent.yml"
+      - "rust/**"
+      - "tests_e2e/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci-kagent.yml"
+      - "rust/**"
+      - "tests_e2e/**"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            wire_cmd: ./rust/target/debug/kagent
+          - runner: ubuntu-22.04-arm
+            wire_cmd: ./rust/target/debug/kagent
+          - runner: macos-14
+            wire_cmd: ./rust/target/debug/kagent
+          - runner: windows-2022
+            wire_cmd: .\\rust\\target\\debug\\kagent.exe
+          - runner: windows-11-arm
+            wire_cmd: .\\rust\\target\\debug\\kagent.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GNU Make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make -y
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cargo fmt
+        working-directory: rust
+        run: cargo fmt --all -- --check
+
+      - name: Cargo check
+        working-directory: rust
+        run: cargo check
+
+      - name: Cargo test
+        working-directory: rust
+        run: cargo test
+
+      - name: Build kagent
+        working-directory: rust
+        run: cargo build -p kagent
+
+      - name: Set up Python 3.12
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Install dependencies
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
+      - name: Run e2e tests
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          KIMI_E2E_WIRE_CMD: ${{ matrix.wire_cmd }}
+        run: uv run pytest tests_e2e

@@ -213,11 +213,11 @@ def load_config(config_file: Path | None = None) -> Config:
             data = tomlkit.loads(config_text)
         config = Config.model_validate(data)
     except json.JSONDecodeError as e:
-        raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
+        raise ConfigError(f"Invalid JSON in configuration file {config_file}: {e}") from e
     except TOMLKitError as e:
-        raise ConfigError(f"Invalid TOML in configuration file: {e}") from e
+        raise ConfigError(f"Invalid TOML in configuration file {config_file}: {e}") from e
     except ValidationError as e:
-        raise ConfigError(f"Invalid configuration file: {e}") from e
+        raise ConfigError(f"Invalid configuration file {config_file}: {e}") from e
     config.is_from_default_location = is_default_config_file
     return config
 

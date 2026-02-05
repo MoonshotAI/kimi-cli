@@ -7,6 +7,16 @@ import {
 } from "react";
 import { FolderOpen, Loader2, ChevronDown } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -27,7 +37,7 @@ const HOME_DIR_REGEX = /^(\/Users\/[^/]+|\/home\/[^/]+)/;
 type CreateSessionDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (workDir: string) => void;
+  onConfirm: (workDir: string, createDir?: boolean) => Promise<void>;
   fetchWorkDirs: () => Promise<string[]>;
   fetchStartupDir: () => Promise<string>;
 };
@@ -73,6 +83,8 @@ export function CreateSessionDialog({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [showConfirmCreate, setShowConfirmCreate] = useState(false);
+  const [pendingPath, setPendingPath] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -106,6 +118,8 @@ export function CreateSessionDialog({
       setPath("");
       setIsDropdownOpen(false);
       setIsCreating(false);
+      setShowConfirmCreate(false);
+      setPendingPath("");
     }
   }, [open]);
 
@@ -142,10 +156,45 @@ export function CreateSessionDialog({
     try {
       await onConfirm(workDir);
       onOpenChange(false);
+    } catch (err) {
+      // Check if this is a directory not found error
+      if (
+        err instanceof Error &&
+        "isDirectoryNotFound" in err &&
+        (err as Error & { isDirectoryNotFound: boolean }).isDirectoryNotFound
+      ) {
+        // Show confirmation dialog
+        setPendingPath(workDir);
+        setShowConfirmCreate(true);
+      }
+      // Other errors are handled by the hook
     } finally {
       setIsCreating(false);
     }
   }, [path, onConfirm, onOpenChange]);
+
+  const handleConfirmCreateDir = useCallback(async () => {
+    if (!pendingPath) {
+      return;
+    }
+
+    setShowConfirmCreate(false);
+    setIsCreating(true);
+    try {
+      await onConfirm(pendingPath, true);
+      onOpenChange(false);
+    } catch (err) {
+      // Other errors are handled by the hook
+    } finally {
+      setIsCreating(false);
+      setPendingPath("");
+    }
+  }, [pendingPath, onConfirm, onOpenChange]);
+
+  const handleCancelCreateDir = useCallback(() => {
+    setShowConfirmCreate(false);
+    setPendingPath("");
+  }, []);
 
   const handleCancel = useCallback(() => {
     onOpenChange(false);
@@ -267,6 +316,26 @@ export function CreateSessionDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Confirmation dialog for creating non-existent directory */}
+      <AlertDialog open={showConfirmCreate} onOpenChange={setShowConfirmCreate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Directory Not Found</AlertDialogTitle>
+            <AlertDialogDescription>
+              The directory <code className="bg-muted px-1 py-0.5 rounded text-foreground break-all">{pendingPath}</code> does not exist. Would you like to create it?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelCreateDir}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCreateDir}>
+              Create Directory
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

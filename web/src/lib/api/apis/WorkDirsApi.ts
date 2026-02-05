@@ -59,7 +59,7 @@ export class WorkDirsApi extends runtime.BaseAPI {
      * Get a list of available work directories from metadata.
      * List available work directories
      */
-    async getWorkDirsApiWorkDirsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<string>>> {
+    async getWorkDirsApiWorkDirsGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<string | null>>> {
         const queryParameters: any = {};
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -81,7 +81,7 @@ export class WorkDirsApi extends runtime.BaseAPI {
      * Get a list of available work directories from metadata.
      * List available work directories
      */
-    async getWorkDirsApiWorkDirsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<string>> {
+    async getWorkDirsApiWorkDirsGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<string | null>> {
         const response = await this.getWorkDirsApiWorkDirsGetRaw(initOverrides);
         return await response.value();
     }

@@ -315,11 +315,24 @@ def kimi(
     from kimi_cli.exception import ConfigError
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
-    from kimi_cli.utils.logging import logger
+    from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 
     from .mcp import get_global_mcp_config_file
 
-    enable_logging(debug)
+    # Don't redirect stderr yet. Our stderr redirector replaces fd=2 with a pipe, which
+    # would swallow Click/Typer startup errors (e.g. config parsing / BadParameter).
+    # We re-enable stderr redirection after KimiCLI.create() succeeds.
+    enable_logging(debug, redirect_stderr=False)
+
+    def _emit_fatal_error(message: str) -> None:
+        # Prefer writing to the original stderr fd even if we later redirect fd=2.
+        # This ensures fatal errors are visible to the user.
+        with open_original_stderr() as stream:
+            if stream is not None:
+                stream.write((message.rstrip() + "\n").encode("utf-8", errors="replace"))
+                stream.flush()
+                return
+        typer.echo(message, err=True)
 
     if session_id is not None:
         session_id = session_id.strip()
@@ -481,6 +494,9 @@ def kimi(
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
         )
+        # Install stderr redirection only after initialization succeeded, so runtime
+        # stderr noise is captured into logs without hiding startup failures.
+        redirect_stderr_to_logger()
         match ui:
             case "shell":
                 succeeded = await instance.run_shell(prompt)
@@ -554,7 +570,31 @@ def kimi(
         await _post_run(last_session, succeeded)
         return False
 
-    switch_to_web = asyncio.run(_reload_loop(session_id))
+    try:
+        switch_to_web = asyncio.run(_reload_loop(session_id))
+    except (typer.BadParameter, typer.Exit):
+        # Let Typer/Click format these errors (rich panel + correct exit code).
+        raise
+    except Exception as exc:
+        import click
+
+        if isinstance(exc, click.ClickException):
+            # ClickException includes the errors Typer knows how to render; don't
+            # wrap them, or we'd lose the standard error UI and exit codes.
+            raise
+        logger.exception("Fatal error when running CLI")
+        if debug:
+            import traceback
+
+            # In debug mode, show full traceback for quick diagnosis.
+            _emit_fatal_error(traceback.format_exc())
+        else:
+            from kimi_cli.share import get_share_dir
+
+            log_path = get_share_dir() / "logs" / "kimi.log"
+            # In non-debug mode, print a concise error and point users to logs.
+            _emit_fatal_error(f"{exc}\nSee logs: {log_path}")
+        raise typer.Exit(code=1) from exc
     if switch_to_web:
         from kimi_cli.web.app import run_web_server
 
