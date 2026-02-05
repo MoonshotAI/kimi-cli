@@ -295,6 +295,9 @@ export function useSessionStream(
     new Map(),
   );
 
+  // Track if current turn is a /clear command (needs UI clear on turn end)
+  const pendingClearRef = useRef(false);
+
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
     setMessagesInternal(action);
@@ -715,6 +718,7 @@ export function useSessionStream(
     currentToolCallsRef.current.clear();
     currentToolCallIdRef.current = null;
     pendingApprovalRequestsRef.current.clear();
+    pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
     setTokenUsage(null);
@@ -744,6 +748,11 @@ export function useSessionStream(
           if (!isReplay) {
             hasTurnStartedRef.current = true;
           }
+
+          // Check if this is a /clear or /reset command (needs UI clear)
+          const userText = parsedUserInput.text.trim();
+          pendingClearRef.current =
+            userText === "/clear" || userText === "/reset";
 
           // Add user message
           const userMessageId = getNextMessageId("user");
@@ -1218,6 +1227,21 @@ export function useSessionStream(
               messageId,
             });
           }
+
+          // Clear UI for /clear command (triggered by StatusUpdate after clear)
+          if (pendingClearRef.current) {
+            pendingClearRef.current = false;
+            setMessages((prev) => {
+              let lastUserMsgIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].role === "user") {
+                  lastUserMsgIndex = i;
+                  break;
+                }
+              }
+              return lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
+            });
+          }
           break;
         }
 
@@ -1255,8 +1279,21 @@ export function useSessionStream(
         }
 
         case "CompactionBegin":
-        case "CompactionEnd":
           // Could show compaction indicator if needed
+          break;
+
+        case "CompactionEnd":
+          // Clear old messages after compaction, only keep the current turn
+          setMessages((prev) => {
+            let lastUserMsgIndex = -1;
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === "user") {
+                lastUserMsgIndex = i;
+                break;
+              }
+            }
+            return lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
+          });
           break;
 
         default:
