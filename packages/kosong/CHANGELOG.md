@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.41.1 (2026-02-05)
+
+- Handle string annotations in `SimpleToolset` return type check (supports `from __future__ import annotations`)
+
 ## 0.41.0 (2026-01-27)
 
 - Remove default temperature setting in Kimi chat provider based on model name

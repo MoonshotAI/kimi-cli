@@ -240,19 +240,33 @@ pub async fn load_config(config_file: Option<&Path>) -> Result<Config, ConfigErr
         .unwrap_or(false)
     {
         let data: serde_json::Value = serde_json::from_str(&config_text).map_err(|err| {
-            ConfigError::new(format!("Invalid JSON in configuration file: {err}"))
+            ConfigError::new(format!(
+                "Invalid JSON in configuration file {}: {err}",
+                config_file.display()
+            ))
         })?;
-        serde_json::from_value::<Config>(data)
-            .map_err(|err| ConfigError::new(format!("Invalid configuration file: {err}")))?
+        serde_json::from_value::<Config>(data).map_err(|err| {
+            ConfigError::new(format!(
+                "Invalid configuration file {}: {err}",
+                config_file.display()
+            ))
+        })?
     } else {
-        toml::from_str::<Config>(&config_text)
-            .map_err(|err| ConfigError::new(format!("Invalid TOML in configuration file: {err}")))?
+        toml::from_str::<Config>(&config_text).map_err(|err| {
+            ConfigError::new(format!(
+                "Invalid TOML in configuration file {}: {err}",
+                config_file.display()
+            ))
+        })?
     };
 
     config.is_from_default_location = is_default_config_file;
-    config
-        .validate()
-        .map_err(|err| ConfigError::new(format!("Invalid configuration file: {err}")))?;
+    config.validate().map_err(|err| {
+        ConfigError::new(format!(
+            "Invalid configuration file {}: {err}",
+            config_file.display()
+        ))
+    })?;
     Ok(config)
 }
 

@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.8.0 (2026-02-05)
+
 - CLI: Fix startup errors (e.g. invalid config files) being silently swallowed instead of displayed
 
 ## 1.7.0 (2026-02-05)

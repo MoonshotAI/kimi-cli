@@ -1582,7 +1582,7 @@ dependencies = [
 
 [[package]]
 name = "kagent"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "kaos"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1649,7 +1649,7 @@ dependencies = [
 
 [[package]]
 name = "kosong"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "async-stream",
