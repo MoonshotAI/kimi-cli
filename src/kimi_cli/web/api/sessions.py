@@ -512,6 +512,21 @@ async def get_session_file(
     )
 
 
+def _update_last_session_id(session: JointSession) -> None:
+    """Update last_session_id for the session's work directory."""
+    kimi_session = session.kimi_cli_session
+    work_dir = kimi_session.work_dir
+
+    metadata = load_metadata()
+    work_dir_meta = metadata.get_work_dir_meta(work_dir)
+
+    if work_dir_meta is None:
+        work_dir_meta = metadata.new_work_dir_meta(work_dir)
+
+    work_dir_meta.last_session_id = kimi_session.id
+    save_metadata(metadata)
+
+
 @router.delete("/{session_id}", summary="Delete a session")
 async def delete_session(session_id: UUID, runner: KimiCLIRunner = Depends(get_runner)) -> None:
     """Delete a session."""
@@ -843,6 +858,9 @@ async def session_stream(
         await session_process.end_replay(websocket)
         await session_process.start()
         await session_process.send_status_snapshot(websocket)
+
+        # Update last_session_id for this work directory
+        _update_last_session_id(session)
 
         # Forward incoming messages to the subprocess
         while True:
