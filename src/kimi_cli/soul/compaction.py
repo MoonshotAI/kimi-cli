@@ -42,12 +42,10 @@ if TYPE_CHECKING:
 class SimpleCompaction:
     def __init__(self, max_preserved_messages: int = 2) -> None:
         self.max_preserved_messages = max_preserved_messages
-        self.last_output_tokens: int = 0  # Stores output tokens from the last compaction
 
     async def compact(self, messages: Sequence[Message], llm: LLM) -> Sequence[Message]:
         compact_message, to_preserve = self.prepare(messages)
         if compact_message is None:
-            self.last_output_tokens = 0
             return to_preserve
 
         # Call kosong.step to get the compacted context
@@ -59,7 +57,6 @@ class SimpleCompaction:
             toolset=EmptyToolset(),
             history=[compact_message],
         )
-        self.last_output_tokens = result.usage.output if result.usage else 0
         if result.usage:
             logger.debug(
                 "Compaction used {input} input tokens and {output} output tokens",
