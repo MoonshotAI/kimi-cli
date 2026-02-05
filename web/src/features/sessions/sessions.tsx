@@ -102,8 +102,11 @@ type SessionsSidebarProps = {
   onRefreshSessions?: () => Promise<void> | void;
   onRefreshArchivedSessions?: () => Promise<void> | void;
   onLoadMoreSessions?: () => Promise<void> | void;
+  onLoadMoreArchivedSessions?: () => Promise<void> | void;
   hasMoreSessions?: boolean;
+  hasMoreArchivedSessions?: boolean;
   isLoadingMore?: boolean;
+  isLoadingMoreArchived?: boolean;
   isLoadingArchived?: boolean;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
@@ -166,8 +169,11 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   onRefreshSessions,
   onRefreshArchivedSessions,
   onLoadMoreSessions,
+  onLoadMoreArchivedSessions,
   hasMoreSessions = false,
+  hasMoreArchivedSessions = false,
   isLoadingMore = false,
+  isLoadingMoreArchived = false,
   isLoadingArchived = false,
   searchQuery,
   onSearchQueryChange,
@@ -605,7 +611,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       <aside className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
           <div className="flex items-center justify-between px-3 pt-2">
-            <KimiCliBrand size="sm"  showVersion={true} />
+            <KimiCliBrand size="sm" showVersion={true} />
             {onClose && (
               <button
                 type="button"
@@ -1064,97 +1070,115 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     ) : archivedSessions.length === 0 ? (
                       <p className="px-3 py-3 text-xs text-muted-foreground">No archived sessions</p>
                     ) : (
-                      <ul className="space-y-1 px-1 pb-2 max-h-[50vh] overflow-y-auto">
-                        {archivedSessions.map((session) => {
-                          const isActive = session.id === selectedSessionId;
-                          const isSelected = isMultiSelectMode && isMultiSelectArchived && selectedSessionIds.has(session.id);
-                          const showCheckbox = isMultiSelectMode && isMultiSelectArchived;
-                          return (
-                            <li key={session.id}>
-                              <div className={`flex w-full items-center gap-2 rounded-lg transition-colors ${
-                                isSelected
-                                  ? "bg-primary/10 ring-1 ring-primary/30"
-                                  : ""
-                              }`}>
-                                {showCheckbox && (
+                      <div className="space-y-1 px-1 pb-2 max-h-[50vh] overflow-y-auto">
+                        <ul className="space-y-1">
+                          {archivedSessions.map((session) => {
+                            const isActive = session.id === selectedSessionId;
+                            const isSelected = isMultiSelectMode && isMultiSelectArchived && selectedSessionIds.has(session.id);
+                            const showCheckbox = isMultiSelectMode && isMultiSelectArchived;
+                            return (
+                              <li key={session.id}>
+                                <div className={`flex w-full items-center gap-2 rounded-lg transition-colors ${
+                                  isSelected
+                                    ? "bg-primary/10 ring-1 ring-primary/30"
+                                    : ""
+                                }`}>
+                                  {showCheckbox && (
+                                    <button
+                                      type="button"
+                                      className="ml-2 shrink-0 cursor-pointer"
+                                      onClick={() => toggleSessionSelection(session.id)}
+                                    >
+                                      {isSelected ? (
+                                        <CheckSquare className="size-4 text-primary" />
+                                      ) : (
+                                        <Square className="size-4 text-muted-foreground" />
+                                      )}
+                                    </button>
+                                  )}
                                   <button
-                                    type="button"
-                                    className="ml-2 shrink-0 cursor-pointer"
-                                    onClick={() => toggleSessionSelection(session.id)}
-                                  >
-                                    {isSelected ? (
-                                      <CheckSquare className="size-4 text-primary" />
-                                    ) : (
-                                      <Square className="size-4 text-muted-foreground" />
-                                    )}
-                                  </button>
-                                )}
-                                <button
-                                  className={`flex-1 min-w-0 cursor-pointer text-left rounded-md px-2.5 py-1.5 transition-colors ${
-                                    showCheckbox ? "" : (isActive
-                                      ? "bg-secondary"
-                                      : "hover:bg-secondary/60")
-                                  }`}
-                                  onClick={() => {
-                                    if (showCheckbox) {
-                                      toggleSessionSelection(session.id);
-                                    } else {
-                                      onSelectSession(session.id);
+                                    className={`flex-1 min-w-0 cursor-pointer text-left rounded-md px-2.5 py-1.5 transition-colors ${
+                                      showCheckbox ? "" : (isActive
+                                        ? "bg-secondary"
+                                        : "hover:bg-secondary/60")
+                                    }`}
+                                    onClick={() => {
+                                      if (showCheckbox) {
+                                        toggleSessionSelection(session.id);
+                                      } else {
+                                        onSelectSession(session.id);
+                                      }
+                                    }}
+                                    onContextMenu={(event) =>
+                                      !showCheckbox && handleSessionContextMenu(event, session.id, true)
                                     }
-                                  }}
-                                  onContextMenu={(event) =>
-                                    !showCheckbox && handleSessionContextMenu(event, session.id, true)
-                                  }
-                                  type="button"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <Tooltip delayDuration={500}>
-                                      <TooltipTrigger asChild>
-                                        <p className="text-sm font-medium text-foreground truncate flex-1 opacity-70">
+                                    type="button"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Tooltip delayDuration={500}>
+                                        <TooltipTrigger asChild>
+                                          <p className="text-sm font-medium text-foreground truncate flex-1 opacity-70">
+                                            {normalizeTitle(session.title)}
+                                          </p>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right" className="max-w-md">
                                           {normalizeTitle(session.title)}
-                                        </p>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="right" className="max-w-md">
-                                        {normalizeTitle(session.title)}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    <span className="text-[10px] text-muted-foreground shrink-0">
-                                      {session.updatedAt}
-                                    </span>
-                                  </div>
-                                </button>
-                                {/* Mobile action buttons for archived sessions */}
-                                {!showCheckbox && onUnarchiveSession && (
-                                  <button
-                                    type="button"
-                                    aria-label="Unarchive session"
-                                    className="md:hidden inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      onUnarchiveSession(session.id);
-                                    }}
-                                  >
-                                    <ArchiveRestore className="size-3.5" />
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      <span className="text-[10px] text-muted-foreground shrink-0">
+                                        {session.updatedAt}
+                                      </span>
+                                    </div>
                                   </button>
-                                )}
-                                {!showCheckbox && (
-                                  <button
-                                    type="button"
-                                    aria-label="Delete session"
-                                    className="md:hidden inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openDeleteConfirm(session);
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                                  {/* Mobile action buttons for archived sessions */}
+                                  {!showCheckbox && onUnarchiveSession && (
+                                    <button
+                                      type="button"
+                                      aria-label="Unarchive session"
+                                      className="md:hidden inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onUnarchiveSession(session.id);
+                                      }}
+                                    >
+                                      <ArchiveRestore className="size-3.5" />
+                                    </button>
+                                  )}
+                                  {!showCheckbox && (
+                                    <button
+                                      type="button"
+                                      aria-label="Delete session"
+                                      className="md:hidden inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openDeleteConfirm(session);
+                                      }}
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        {/* Load more archived sessions */}
+                        {(hasMoreArchivedSessions || isLoadingMoreArchived) && (
+                          <div className="flex items-center justify-center py-2">
+                            {isLoadingMoreArchived ? (
+                              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => onLoadMoreArchivedSessions?.()}
+                              >
+                                Load more
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </CollapsibleContent>
                 </Collapsible>

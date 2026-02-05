@@ -42,6 +42,7 @@ from kimi_cli.web.store.sessions import (
     load_session_by_id,
     load_session_metadata,
     load_sessions_page,
+    run_auto_archive,
     save_session_metadata,
 )
 from kimi_cli.wire.jsonrpc import (
@@ -253,6 +254,9 @@ async def list_sessions(
         limit = 500
     if offset < 0:
         offset = 0
+
+    # Run auto-archive in background (throttled internally, runs at most once per 5 minutes)
+    await asyncio.to_thread(run_auto_archive)
 
     sessions = load_sessions_page(limit=limit, offset=offset, query=q, archived=archived)
     for session in sessions:

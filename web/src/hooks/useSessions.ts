@@ -38,10 +38,16 @@ type UseSessionsReturn = {
   refreshArchivedSessions: () => Promise<void>;
   /** Load more sessions for pagination */
   loadMoreSessions: () => Promise<void>;
+  /** Load more archived sessions for pagination */
+  loadMoreArchivedSessions: () => Promise<void>;
   /** Whether there are more sessions to load */
   hasMoreSessions: boolean;
+  /** Whether there are more archived sessions to load */
+  hasMoreArchivedSessions: boolean;
   /** Loading state for pagination */
   isLoadingMore: boolean;
+  /** Loading state for archived pagination */
+  isLoadingMoreArchived: boolean;
   /** Current search query */
   searchQuery: string;
   /** Update search query */
@@ -138,9 +144,11 @@ export function useSessions(): UseSessionsReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+  const [isLoadingMoreArchived, setIsLoadingMoreArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [hasMoreSessions, setHasMoreSessions] = useState(true);
+  const [hasMoreArchivedSessions, setHasMoreArchivedSessions] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const lastRefreshRef = useRef(0);
 
@@ -243,12 +251,60 @@ export function useSessions(): UseSessionsReturn {
         }),
       );
       setArchivedSessions(archivedList);
+      setHasMoreArchivedSessions(archivedList.length === PAGE_SIZE);
     } catch (err) {
       console.error("Failed to refresh archived sessions:", err);
     } finally {
       setIsLoadingArchived(false);
     }
   }, []);
+
+  /**
+   * Load more archived sessions for pagination
+   */
+  const loadMoreArchivedSessions = useCallback(async () => {
+    if (isLoadingMoreArchived || isLoadingArchived || !hasMoreArchivedSessions) {
+      return;
+    }
+    setIsLoadingMoreArchived(true);
+    try {
+      const basePath = getApiBaseUrl();
+      const offset = archivedSessions.length;
+      const response = await fetch(
+        `${basePath}/api/sessions/?archived=true&limit=${PAGE_SIZE}&offset=${offset}`,
+        {
+          headers: getAuthHeader(),
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Failed to load more archived sessions");
+      }
+      const data = await response.json();
+      const moreArchived: Session[] = data.map(
+        (item: Record<string, unknown>) => ({
+          sessionId: item.session_id,
+          title: item.title,
+          lastUpdated: new Date(item.last_updated as string),
+          isRunning: item.is_running,
+          status: item.status,
+          workDir: item.work_dir,
+          sessionDir: item.session_dir,
+          archived: item.archived,
+        }),
+      );
+      setArchivedSessions((current) => [...current, ...moreArchived]);
+      setHasMoreArchivedSessions(moreArchived.length === PAGE_SIZE);
+    } catch (err) {
+      console.error("Failed to load more archived sessions:", err);
+    } finally {
+      setIsLoadingMoreArchived(false);
+    }
+  }, [
+    archivedSessions.length,
+    hasMoreArchivedSessions,
+    isLoadingArchived,
+    isLoadingMoreArchived,
+  ]);
 
   // Refresh sessions list when search changes
   useEffect(() => {
@@ -307,16 +363,37 @@ export function useSessions(): UseSessionsReturn {
             sessionId,
           });
 
-        // Update sessions list
-        setSessions((current) => {
-          const exists = current.some((s) => s.sessionId === sessionId);
-          if (!exists) {
-            return [session, ...current];
-          }
-          return current.map((s) =>
-            s.sessionId === sessionId ? session : s,
+        const isArchived = Boolean(session.archived);
+
+        if (isArchived) {
+          // Update archived list and ensure it doesn't appear in active list
+          setArchivedSessions((current) => {
+            const exists = current.some((s) => s.sessionId === sessionId);
+            if (!exists) {
+              return [session, ...current];
+            }
+            return current.map((s) =>
+              s.sessionId === sessionId ? session : s,
+            );
+          });
+          setSessions((current) =>
+            current.filter((s) => s.sessionId !== sessionId),
           );
-        });
+        } else {
+          // Update active list and ensure it doesn't appear in archived list
+          setSessions((current) => {
+            const exists = current.some((s) => s.sessionId === sessionId);
+            if (!exists) {
+              return [session, ...current];
+            }
+            return current.map((s) =>
+              s.sessionId === sessionId ? session : s,
+            );
+          });
+          setArchivedSessions((current) =>
+            current.filter((s) => s.sessionId !== sessionId),
+          );
+        }
 
         return session;
       } catch (err) {
@@ -701,9 +778,18 @@ export function useSessions(): UseSessionsReturn {
         }
 
         // Move session from active to archived list
-        setSessions((current) =>
-          current.filter((s) => s.sessionId !== sessionId),
-        );
+        setSessions((current) => {
+          const next = current.filter((s) => s.sessionId !== sessionId);
+          // If we archived the selected session, select another one
+          if (sessionId === selectedSessionId) {
+            if (next.length > 0) {
+              setSelectedSessionId(next[0].sessionId);
+            } else {
+              setSelectedSessionId("");
+            }
+          }
+          return next;
+        });
 
         // Refresh archived sessions to get the updated list
         await refreshArchivedSessions();
@@ -714,7 +800,7 @@ export function useSessions(): UseSessionsReturn {
         return false;
       }
     },
-    [refreshArchivedSessions],
+    [refreshArchivedSessions, selectedSessionId],
   );
 
   /**
@@ -798,15 +884,26 @@ export function useSessions(): UseSessionsReturn {
 
       // Update state
       if (successfulIds.length > 0) {
-        setSessions((current) =>
-          current.filter((s) => !successfulIds.includes(s.sessionId)),
-        );
+        setSessions((current) => {
+          const next = current.filter(
+            (s) => !successfulIds.includes(s.sessionId),
+          );
+          // If we archived the selected session, select another one
+          if (successfulIds.includes(selectedSessionId)) {
+            if (next.length > 0) {
+              setSelectedSessionId(next[0].sessionId);
+            } else {
+              setSelectedSessionId("");
+            }
+          }
+          return next;
+        });
         await refreshArchivedSessions();
       }
 
       return successCount;
     },
-    [refreshArchivedSessions],
+    [refreshArchivedSessions, selectedSessionId],
   );
 
   /**
@@ -892,9 +989,19 @@ export function useSessions(): UseSessionsReturn {
       }
 
       if (successfulIds.length > 0) {
-        setSessions((current) =>
-          current.filter((s) => !successfulIds.includes(s.sessionId)),
-        );
+        setSessions((current) => {
+          const next = current.filter(
+            (s) => !successfulIds.includes(s.sessionId),
+          );
+          if (successfulIds.includes(selectedSessionId)) {
+            if (next.length > 0) {
+              setSelectedSessionId(next[0].sessionId);
+            } else {
+              setSelectedSessionId("");
+            }
+          }
+          return next;
+        });
         setArchivedSessions((current) =>
           current.filter((s) => !successfulIds.includes(s.sessionId)),
         );
@@ -902,7 +1009,7 @@ export function useSessions(): UseSessionsReturn {
 
       return successCount;
     },
-    [],
+    [selectedSessionId],
   );
 
   return {
@@ -915,8 +1022,11 @@ export function useSessions(): UseSessionsReturn {
     refreshSessions,
     refreshArchivedSessions,
     loadMoreSessions,
+    loadMoreArchivedSessions,
     hasMoreSessions,
+    hasMoreArchivedSessions,
     isLoadingMore,
+    isLoadingMoreArchived,
     searchQuery,
     setSearchQuery,
     refreshSession,

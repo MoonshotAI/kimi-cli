@@ -73,8 +73,11 @@ function App() {
     refreshSessions,
     refreshArchivedSessions,
     loadMoreSessions,
+    loadMoreArchivedSessions,
     hasMoreSessions,
+    hasMoreArchivedSessions,
     isLoadingMore,
+    isLoadingMoreArchived,
     isLoadingArchived,
     searchQuery,
     setSearchQuery,
@@ -413,13 +416,16 @@ function App() {
                     onRefreshSessions={handleRefreshSessions}
                     onRefreshArchivedSessions={refreshArchivedSessions}
                     onLoadMoreSessions={loadMoreSessions}
+                    onLoadMoreArchivedSessions={loadMoreArchivedSessions}
                     onOpenCreateDialog={handleOpenCreateDialog}
                     streamStatus={streamStatus}
                     selectedSessionId={selectedSessionId}
                     sessions={sessionSummaries}
                     archivedSessions={archivedSessionSummaries}
                     hasMoreSessions={hasMoreSessions}
+                    hasMoreArchivedSessions={hasMoreArchivedSessions}
                     isLoadingMore={isLoadingMore}
+                    isLoadingMoreArchived={isLoadingMoreArchived}
                     isLoadingArchived={isLoadingArchived}
                     searchQuery={searchQuery}
                     onSearchQueryChange={handleSearchQueryChange}
@@ -488,6 +494,7 @@ function App() {
                 onRefreshSessions={handleRefreshSessions}
                 onRefreshArchivedSessions={refreshArchivedSessions}
                 onLoadMoreSessions={loadMoreSessions}
+                onLoadMoreArchivedSessions={loadMoreArchivedSessions}
                 onOpenCreateDialog={handleOpenCreateDialog}
                 onClose={handleCloseMobileSidebar}
                 streamStatus={streamStatus}
@@ -495,7 +502,9 @@ function App() {
                 sessions={sessionSummaries}
                 archivedSessions={archivedSessionSummaries}
                 hasMoreSessions={hasMoreSessions}
+                hasMoreArchivedSessions={hasMoreArchivedSessions}
                 isLoadingMore={isLoadingMore}
+                isLoadingMoreArchived={isLoadingMoreArchived}
                 isLoadingArchived={isLoadingArchived}
                 searchQuery={searchQuery}
                 onSearchQueryChange={handleSearchQueryChange}

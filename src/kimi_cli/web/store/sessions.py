@@ -267,6 +267,12 @@ def _should_auto_archive(last_updated: datetime, session_metadata: SessionMetada
 
 
 def _build_sessions_index() -> list[SessionIndexEntry]:
+    """Build the sessions index from disk.
+
+    Note: This function only reads data and does NOT perform auto-archive writes.
+    Auto-archive is handled separately by run_auto_archive() to avoid disk writes
+    during read operations.
+    """
     metadata = load_metadata()
     entries: list[SessionIndexEntry] = []
 
@@ -282,17 +288,6 @@ def _build_sessions_index() -> list[SessionIndexEntry]:
 
             last_updated = datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC)
             session_metadata = load_session_metadata(session_dir, str(session_id))
-
-            # Auto-archive old sessions
-            if _should_auto_archive(last_updated, session_metadata):
-                session_metadata = session_metadata.model_copy(
-                    update={
-                        "archived": True,
-                        "archived_at": time.time(),
-                    }
-                )
-                save_session_metadata(session_dir, session_metadata)
-
             title = session_metadata.title if session_metadata.title else "Untitled"
 
             entries.append(
@@ -310,6 +305,53 @@ def _build_sessions_index() -> list[SessionIndexEntry]:
 
     entries.sort(key=lambda x: (x.last_updated, str(x.session_id)), reverse=True)
     return entries
+
+
+# Track when auto-archive was last run to avoid running too frequently
+_last_auto_archive_time: float = 0.0
+AUTO_ARCHIVE_INTERVAL = 300.0  # Run auto-archive at most once every 5 minutes
+
+
+def run_auto_archive() -> int:
+    """Run auto-archive on old sessions.
+
+    This function is designed to be called periodically (e.g., on app startup,
+    or via a background task) rather than on every read operation.
+
+    Returns:
+        Number of sessions that were auto-archived.
+    """
+    global _last_auto_archive_time
+
+    now = time.time()
+    if now - _last_auto_archive_time < AUTO_ARCHIVE_INTERVAL:
+        return 0
+
+    _last_auto_archive_time = now
+    archived_count = 0
+
+    # Load fresh index (bypass cache to get current state)
+    entries = _build_sessions_index()
+
+    for entry in entries:
+        if entry.metadata is None:
+            continue
+
+        if _should_auto_archive(entry.last_updated, entry.metadata):
+            updated_metadata = entry.metadata.model_copy(
+                update={
+                    "archived": True,
+                    "archived_at": time.time(),
+                }
+            )
+            save_session_metadata(entry.session_dir, updated_metadata)
+            archived_count += 1
+
+    # Invalidate cache if we archived anything
+    if archived_count > 0:
+        invalidate_sessions_cache()
+
+    return archived_count
 
 
 def _load_sessions_index_cached() -> list[SessionIndexEntry]:
