@@ -40,7 +40,7 @@ async def init(soul: KimiSoul, args: str):
         tmp_soul = KimiSoul(soul.agent, context=tmp_context)
         await tmp_soul.run(prompts.INIT)
 
-    agents_md = load_agents_md(soul.runtime.builtin_args.KIMI_WORK_DIR)
+    agents_md = await load_agents_md(soul.runtime.builtin_args.KIMI_WORK_DIR)
     system_message = system(
         "The user just ran `/init` slash command. "
         "The system has analyzed the codebase and generated an `AGENTS.md` file. "
