@@ -93,3 +93,44 @@ def test_create_llm_requires_base_url_for_kimi():
     model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
 
     assert create_llm(provider, model) is None
+
+
+def test_create_llm_openai_legacy_with_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://api.venice.ai/api/v1",
+        api_key=SecretStr("test-key"),
+        reasoning_key="reasoning_content",
+    )
+    model = LLMModel(
+        provider="venice",
+        model="kimi-k2-5",
+        max_context_size=131072,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == "reasoning_content"
+
+
+def test_create_llm_openai_legacy_without_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://api.openai.com/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="openai",
+        model="gpt-4o",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key is None
