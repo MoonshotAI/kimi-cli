@@ -225,15 +225,20 @@ export const useSlashCommands = ({
         setText(nextValue);
 
         requestAnimationFrame(() => {
-          if (node) {
-            node.focus();
-            node.setSelectionRange(nextCaret, nextCaret);
+          try {
+            const currentNode = textareaRef.current;
+            if (currentNode) {
+              currentNode.focus();
+              currentNode.setSelectionRange(nextCaret, nextCaret);
+            }
+          } finally {
+            // Delay resetting the flag to ensure all React renders and effects
+            // triggered by blur/focus have completed.
+            // Using finally ensures the flag is always reset even if an error occurs.
+            setTimeout(() => {
+              isSelectingRef.current = false;
+            }, 0);
           }
-          // Delay resetting the flag to ensure all React renders and effects
-          // triggered by blur/focus have completed
-          setTimeout(() => {
-            isSelectingRef.current = false;
-          }, 0);
         });
       });
     },

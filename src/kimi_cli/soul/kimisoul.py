@@ -503,10 +503,6 @@ class KimiSoul:
         await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compacted_messages)
-        # Update token count if the compaction implementation provides output tokens
-        output_tokens = getattr(self._compaction, "last_output_tokens", 0)
-        if output_tokens > 0:
-            await self._context.update_token_count(output_tokens)
         wire_send(CompactionEnd())
 
     @staticmethod
