@@ -735,6 +735,9 @@ export function useSessionStream(
     (event: WireEvent, isReplay = false, rpcMessageId?: string | number) => {
       switch (event.type) {
         case "TurnBegin": {
+          // Reset step state to ensure slash commands create new messages
+          resetStepState();
+
           const parsedUserInput = parseUserInput(event.payload.user_input);
 
           // Track that at least one turn has started (for auto-rename trigger)
