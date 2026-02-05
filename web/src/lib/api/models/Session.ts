@@ -69,6 +69,12 @@ export interface Session {
      * @memberof Session
      */
     sessionDir?: string | null;
+    /**
+     * Whether the session is archived
+     * @type {boolean}
+     * @memberof Session
+     */
+    archived?: boolean;
 }
 
 /**
@@ -98,6 +104,7 @@ export function SessionFromJSONTyped(json: any, ignoreDiscriminator: boolean): S
         'status': json['status'] == null ? undefined : SessionStatusFromJSON(json['status']),
         'workDir': json['work_dir'] == null ? undefined : json['work_dir'],
         'sessionDir': json['session_dir'] == null ? undefined : json['session_dir'],
+        'archived': json['archived'] == null ? undefined : json['archived'],
     };
 }
 
@@ -119,6 +126,7 @@ export function SessionToJSONTyped(value?: Session | null, ignoreDiscriminator: 
         'status': SessionStatusToJSON(value['status']),
         'work_dir': value['workDir'],
         'session_dir': value['sessionDir'],
+        'archived': value['archived'],
     };
 }
 

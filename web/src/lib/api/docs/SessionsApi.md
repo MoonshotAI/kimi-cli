@@ -504,11 +504,11 @@ No authorization required
 
 ## listSessionsApiSessionsGet
 
-> Array&lt;Session&gt; listSessionsApiSessionsGet(limit, offset, q)
+> Array&lt;Session&gt; listSessionsApiSessionsGet(limit, offset, q, archived)
 
 List all sessions
 
-List sessions with optional pagination and search.
+List sessions with optional pagination and search.  Args:     limit: Maximum number of sessions to return (default 100, max 500).     offset: Number of sessions to skip (default 0).     q: Optional search query to filter by title or work_dir.     archived: Filter by archived status.         - None (default): Only return non-archived sessions.         - True: Only return archived sessions.
 
 ### Example
 
@@ -530,6 +530,8 @@ async function example() {
     offset: 56,
     // string (optional)
     q: q_example,
+    // boolean (optional)
+    archived: true,
   } satisfies ListSessionsApiSessionsGetRequest;
 
   try {
@@ -552,6 +554,7 @@ example().catch(console.error);
 | **limit** | `number` |  | [Optional] [Defaults to `100`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **q** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **archived** | `boolean` |  | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -582,7 +585,7 @@ No authorization required
 
 Update session
 
-Update a session (e.g., rename title).
+Update a session (e.g., rename title or archive/unarchive).
 
 ### Example
 
