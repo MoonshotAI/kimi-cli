@@ -32,7 +32,10 @@ if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
 
 
-def enable_logging(debug: bool = False) -> None:
+def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None:
+    # NOTE: stderr redirection is implemented by swapping the process-level fd=2 (dup2).
+    # That can hide Click/Typer error output during CLI startup, so some entrypoints delay
+    # installing it until after critical initialization succeeds.
     logger.remove()  # Remove default stderr handler
     logger.enable("kimi_cli")
     if debug:
@@ -44,7 +47,8 @@ def enable_logging(debug: bool = False) -> None:
         rotation="06:00",
         retention="10 days",
     )
-    redirect_stderr_to_logger()
+    if redirect_stderr:
+        redirect_stderr_to_logger()
 
 
 class KimiCLI:
