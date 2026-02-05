@@ -5,6 +5,11 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Web: Fix approval request states not updating when session is interrupted or cancelled
+- Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
+- Web: Fix IME composition issue when selecting slash commands
+- Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
+- Core: Update context token count after compaction completes
+
 ## 1.8.0 (2026-02-05)
 
 - CLI: Fix startup errors (e.g. invalid config files) being silently swallowed instead of displayed

@@ -13,6 +13,9 @@ Only write entries that are worth mentioning to users.
 
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
+- Web: Fix IME composition issue when selecting slash commands
+- Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
+- Core: Update context token count after compaction completes
 - Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
 
 ## 1.8.0 (2026-02-05)

@@ -171,7 +171,7 @@ export function ChatWorkspaceHeader({
               <ContextContent align="end" sideOffset={16}>
                 <ContextContentBody className="space-y-4">
                   <ContextRawUsage />
-                  <div className="border-t" />
+                  {tokenUsage && <div className="border-t" />}
                   <SessionInfoSection
                     sessionId={selectedSessionId}
                     session={currentSession}

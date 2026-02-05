@@ -14,7 +14,7 @@ from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
-from kimi_cli.wire.types import TextPart
+from kimi_cli.wire.types import StatusUpdate, TextPart
 
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
@@ -59,6 +59,7 @@ async def compact(soul: KimiSoul, args: str):
     logger.info("Running `/compact`")
     await soul.compact_context()
     wire_send(TextPart(text="The context has been compacted."))
+    wire_send(StatusUpdate(context_usage=soul.status.context_usage))
 
 
 @registry.command(aliases=["reset"])
@@ -67,6 +68,7 @@ async def clear(soul: KimiSoul, args: str):
     logger.info("Running `/clear`")
     await soul.context.clear()
     wire_send(TextPart(text="The context has been cleared."))
+    wire_send(StatusUpdate(context_usage=soul.status.context_usage))
 
 
 @registry.command
