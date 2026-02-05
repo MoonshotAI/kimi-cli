@@ -255,6 +255,11 @@ export function useSessions(): UseSessionsReturn {
     refreshSessions();
   }, [refreshSessions]);
 
+  // Load archived sessions on initial mount (for showing the count)
+  useEffect(() => {
+    refreshArchivedSessions();
+  }, [refreshArchivedSessions]);
+
   // Refresh when returning to the tab (throttled)
   useEffect(() => {
     const handleVisibilityChange = () => {
