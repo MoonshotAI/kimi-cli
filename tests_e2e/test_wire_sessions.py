@@ -184,6 +184,11 @@ def test_clear_context_rotates(tmp_path) -> None:
                     "type": "ContentPart",
                     "payload": {"type": "text", "text": "The context has been cleared."},
                 },
+                {
+                    "method": "event",
+                    "type": "StatusUpdate",
+                    "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
+                },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
@@ -248,6 +253,11 @@ def test_manual_compact(tmp_path) -> None:
                     "method": "event",
                     "type": "ContentPart",
                     "payload": {"type": "text", "text": "The context has been compacted."},
+                },
+                {
+                    "method": "event",
+                    "type": "StatusUpdate",
+                    "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
