@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 import posixpath
 import shlex
 import stat
+import sys
 from collections.abc import AsyncGenerator
 from pathlib import PurePath, PurePosixPath
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TextIO
 
 import asyncssh
 from asyncssh.constants import (
@@ -18,7 +20,14 @@ from asyncssh.constants import (
     FILEXFER_TYPE_SYMLINK,
 )
 
-from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
+from kaos import (
+    AsyncReadable,
+    AsyncWritable,
+    Kaos,
+    KaosProcess,
+    StatResult,
+    StrOrKaosPath,
+)
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -56,6 +65,23 @@ def _sec_with_nanos(sec: int, ns: int | None) -> float:
     if ns is None:
         return float(sec)
     return float(sec) + (ns / 1_000_000_000.0)
+
+
+def _enable_ssh_logging(
+    *,
+    stream: TextIO = sys.stderr,
+    level: int = logging.INFO,
+) -> None:
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level)
+    if any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers):
+        return
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(level)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 class SSHKaos:
@@ -104,8 +130,12 @@ class SSHKaos:
         key_paths: list[str] | None = None,
         key_contents: list[str] | None = None,
         cwd: str | None = None,
+        log_exc: bool = False,
         **extra_options: object,
     ):
+        if log_exc:
+            _enable_ssh_logging()
+
         options = {
             "host": host,
             "port": port,
@@ -127,15 +157,43 @@ class SSHKaos:
         # Known hosts is None to avoid the "Host key is not trusted" error
         options["known_hosts"] = None
         # Connect to ssh
-        connection = await asyncssh.connect(**options)
-        sftp = await connection.start_sftp_client()
-        home_dir = await sftp.realpath(".")
-        if cwd is not None:
-            await sftp.chdir(cwd)
-            cwd = await sftp.realpath(".")
-        else:
-            cwd = home_dir
-        return cls(connection=connection, sftp=sftp, home=home_dir, cwd=cwd, host=host)
+        try:
+            connection = await asyncssh.connect(**options)
+        except Exception as exc:
+            if log_exc:
+                logging.getLogger(__name__).exception(
+                    "SSH connection failed (host=%s, port=%s, error=%s)",
+                    host,
+                    port,
+                    exc,
+                )
+            raise
+        try:
+            sftp = await connection.start_sftp_client()
+            home_dir = await sftp.realpath(".")
+            if cwd is not None:
+                await sftp.chdir(cwd)
+                cwd = await sftp.realpath(".")
+            else:
+                cwd = home_dir
+        except Exception as exc:
+            if log_exc:
+                logging.getLogger(__name__).exception(
+                    "SSH session initialization failed (host=%s, port=%s, error=%s)",
+                    host,
+                    port,
+                    exc,
+                )
+            connection.close()
+            raise
+        return cls(
+            connection=connection,
+            sftp=sftp,
+            home=home_dir,
+            cwd=cwd,
+            host=host,
+            log_exc=log_exc,
+        )
 
     def __init__(
         self,
@@ -145,12 +203,18 @@ class SSHKaos:
         home: str,
         cwd: str,
         host: str,
+        log_exc: bool = False,
     ) -> None:
         self._connection = connection
         self._sftp = sftp
         self._home_dir = home
         self._cwd = cwd
         self._host = host
+        self._log_exc = log_exc
+
+    def _log_exception(self, message: str, *args: object) -> None:
+        if self._log_exc:
+            logging.getLogger(__name__).exception(message, *args)
 
     @property
     def host(self) -> str:
@@ -169,8 +233,14 @@ class SSHKaos:
         return KaosPath(self._cwd)
 
     async def chdir(self, path: StrOrKaosPath) -> None:
-        await self._sftp.chdir(str(path))
-        self._cwd = await self._sftp.realpath(".")
+        try:
+            await self._sftp.chdir(str(path))
+            self._cwd = await self._sftp.realpath(".")
+        except Exception as exc:
+            self._log_exception(
+                "SSH chdir failed (host=%s, path=%s, error=%s)", self._host, path, exc
+            )
+            raise
 
     async def stat(
         self,
@@ -181,6 +251,13 @@ class SSHKaos:
         try:
             st = await self._sftp.stat(str(path), follow_symlinks=follow_symlinks)
         except asyncssh.SFTPError as e:
+            self._log_exception(
+                "SSH stat failed (host=%s, path=%s, follow_symlinks=%s, error=%s)",
+                self._host,
+                path,
+                follow_symlinks,
+                e,
+            )
             raise OSError from e
 
         return StatResult(
@@ -198,11 +275,17 @@ class SSHKaos:
 
     async def iterdir(self, path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
         kaos_path = KaosPath(path) if isinstance(path, str) else path
-        for entry in await self._sftp.listdir(str(path)):
-            # NOTE: sftp listdir gives . and ..
-            if entry in {".", ".."}:
-                continue
-            yield kaos_path / entry
+        try:
+            for entry in await self._sftp.listdir(str(path)):
+                # NOTE: sftp listdir gives . and ..
+                if entry in {".", ".."}:
+                    continue
+                yield kaos_path / entry
+        except Exception as exc:
+            self._log_exception(
+                "SSH iterdir failed (host=%s, path=%s, error=%s)", self._host, path, exc
+            )
+            raise
 
     async def glob(
         self,
@@ -213,13 +296,32 @@ class SSHKaos:
     ) -> AsyncGenerator[KaosPath]:
         if not case_sensitive:
             raise ValueError("Case insensitive glob is not supported in current environment")
-        real_path = await self._sftp.realpath(str(path))
-        for entry in await self._sftp.glob(f"{real_path}/{pattern}"):
-            yield KaosPath(await self._sftp.realpath(str(entry)))
+        try:
+            real_path = await self._sftp.realpath(str(path))
+            for entry in await self._sftp.glob(f"{real_path}/{pattern}"):
+                yield KaosPath(await self._sftp.realpath(str(entry)))
+        except Exception as exc:
+            self._log_exception(
+                "SSH glob failed (host=%s, path=%s, pattern=%s, error=%s)",
+                self._host,
+                path,
+                pattern,
+                exc,
+            )
+            raise
 
     async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
-        async with self._sftp.open(str(path), "rb") as f:
-            return await f.read() if n is None else await f.read(n)
+        try:
+            async with self._sftp.open(str(path), "rb") as f:
+                return await f.read() if n is None else await f.read(n)
+        except Exception as exc:
+            self._log_exception(
+                "SSH readbytes failed (host=%s, path=%s, error=%s)",
+                self._host,
+                path,
+                exc,
+            )
+            raise
 
     async def readtext(
         self,
@@ -228,8 +330,17 @@ class SSHKaos:
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> str:
-        async with self._sftp.open(str(path), "r", encoding=encoding, errors=errors) as f:
-            return await f.read()
+        try:
+            async with self._sftp.open(str(path), "r", encoding=encoding, errors=errors) as f:
+                return await f.read()
+        except Exception as exc:
+            self._log_exception(
+                "SSH readtext failed (host=%s, path=%s, error=%s)",
+                self._host,
+                path,
+                exc,
+            )
+            raise
 
     async def readlines(
         self,
@@ -244,8 +355,17 @@ class SSHKaos:
             yield line
 
     async def writebytes(self, path: StrOrKaosPath, data: bytes) -> int:
-        async with self._sftp.open(str(path), "wb") as f:
-            return await f.write(data)
+        try:
+            async with self._sftp.open(str(path), "wb") as f:
+                return await f.write(data)
+        except Exception as exc:
+            self._log_exception(
+                "SSH writebytes failed (host=%s, path=%s, error=%s)",
+                self._host,
+                path,
+                exc,
+            )
+            raise
 
     async def writetext(
         self,
@@ -256,8 +376,17 @@ class SSHKaos:
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> int:
-        async with self._sftp.open(str(path), mode, encoding=encoding, errors=errors) as f:
-            return await f.write(data)
+        try:
+            async with self._sftp.open(str(path), mode, encoding=encoding, errors=errors) as f:
+                return await f.write(data)
+        except Exception as exc:
+            self._log_exception(
+                "SSH writetext failed (host=%s, path=%s, error=%s)",
+                self._host,
+                path,
+                exc,
+            )
+            raise
 
     async def mkdir(
         self,
@@ -265,13 +394,24 @@ class SSHKaos:
         parents: bool = False,
         exist_ok: bool = False,
     ) -> None:
-        if parents:
-            await self._sftp.makedirs(str(path), exist_ok=exist_ok)
-        else:
-            existed = await self._sftp.exists(str(path))
-            if existed and not exist_ok:
-                raise FileExistsError(f"{path} already exists")
-            await self._sftp.mkdir(str(path))
+        try:
+            if parents:
+                await self._sftp.makedirs(str(path), exist_ok=exist_ok)
+            else:
+                existed = await self._sftp.exists(str(path))
+                if existed and not exist_ok:
+                    raise FileExistsError(f"{path} already exists")
+                await self._sftp.mkdir(str(path))
+        except Exception as exc:
+            self._log_exception(
+                "SSH mkdir failed (host=%s, path=%s, parents=%s, exist_ok=%s, error=%s)",
+                self._host,
+                path,
+                parents,
+                exist_ok,
+                exc,
+            )
+            raise
 
     async def exec(self, *args: str) -> KaosProcess:
         if not args:
@@ -285,12 +425,25 @@ class SSHKaos:
         # This is intentionally strict: if cwd doesn't exist, the command fails.
         if self._cwd:
             command = f"cd {shlex.quote(self._cwd)} && {command}"
-        process = await self._connection.create_process(command, encoding=None)
-        return self.Process(process)
+        try:
+            process = await self._connection.create_process(command, encoding=None)
+            return self.Process(process)
+        except Exception as exc:
+            self._log_exception(
+                "SSH exec failed (host=%s, command=%s, error=%s)",
+                self._host,
+                command,
+                exc,
+            )
+            raise
 
     async def unsafe_close(self) -> None:
         """Close the SSH connection. After that, SSHKaos will be unusable."""
-        if self._sftp:
-            self._sftp.exit()
-        if self._connection:
-            self._connection.close()
+        try:
+            if self._sftp:
+                self._sftp.exit()
+            if self._connection:
+                self._connection.close()
+        except Exception as exc:
+            self._log_exception("SSH close failed (host=%s, error=%s)", self._host, exc)
+            raise

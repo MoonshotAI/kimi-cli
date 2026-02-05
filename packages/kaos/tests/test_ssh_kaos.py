@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import platform
 import stat
@@ -12,6 +13,8 @@ from uuid import uuid4
 import asyncssh
 import pytest
 import pytest_asyncio
+from _pytest.logging import LogCaptureFixture
+from _pytest.monkeypatch import MonkeyPatch
 
 from kaos import reset_current_kaos, set_current_kaos
 from kaos.path import KaosPath
@@ -227,7 +230,7 @@ async def test_exec_streams_stdout_and_stderr(ssh_kaos: SSHKaos):
 
 async def test_exec_rejects_empty_command(ssh_kaos: SSHKaos):
     with pytest.raises(ValueError):
-        await ssh_kaos.exec()  # type: ignore[misc]
+        await ssh_kaos.exec()
 
 
 async def test_process_kill_updates_returncode(ssh_kaos: SSHKaos):
@@ -243,3 +246,42 @@ async def test_process_kill_updates_returncode(ssh_kaos: SSHKaos):
     assert exit_code != 0
     assert proc.returncode == exit_code
     assert proc.pid == -1
+
+
+async def test_create_logs_exception_when_log_exc_enabled(
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+):
+    async def fake_connect(**_kwargs: Any):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(asyncssh, "connect", fake_connect)
+    logger = logging.getLogger("kaos.ssh")
+    old_handlers = list(logger.handlers)
+    old_level = logger.level
+    caplog.set_level(logging.INFO, logger="kaos.ssh")
+
+    try:
+        with pytest.raises(RuntimeError):
+            await SSHKaos.create(host="example.com", username="user", log_exc=True)
+    finally:
+        logger.handlers = old_handlers
+        logger.setLevel(old_level)
+
+    assert any("SSH connection failed" in record.getMessage() for record in caplog.records)
+
+
+async def test_create_skips_logging_when_log_exc_disabled(
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+):
+    async def fake_connect(**_kwargs: Any):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(asyncssh, "connect", fake_connect)
+    caplog.set_level(logging.INFO, logger="kaos.ssh")
+
+    with pytest.raises(RuntimeError):
+        await SSHKaos.create(host="example.com", username="user", log_exc=False)
+
+    assert not [record for record in caplog.records if record.name == "kaos.ssh"]
