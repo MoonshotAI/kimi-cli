@@ -25,6 +25,7 @@ from starlette.websockets import WebSocket, WebSocketState
 
 from kimi_cli.config import load_config
 from kimi_cli.llm import ModelCapability
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.web.models import (
     SessionNoticeEvent,
     SessionNoticePayload,
@@ -207,6 +208,7 @@ class SessionProcess:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 limit=STREAM_LIMIT,
+                env=get_clean_env(),
             )
 
             self._read_task = asyncio.create_task(self._read_loop())
