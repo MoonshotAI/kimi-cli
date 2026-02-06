@@ -10,14 +10,15 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Show compaction indicator when context is being compacted
 - Web: Add error fallback UI when images fail to load
 - Web: Add session archive feature with auto-archive for sessions older than 15 days
+- Web: Add multi-select mode for bulk archive, unarchive, and delete operations
 - Web: Update `last_session_id` for work directory when session stream starts
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 - Core: Update context token count after compaction completes
-- Web: Add session archive feature with auto-archive for sessions older than 15 days
-- Web: Add multi-select mode for bulk archive, unarchive, and delete operations
+- Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
+- Core: Use adaptive thinking for Anthropic Opus 4.6+ models instead of budget-based thinking
 
 ## 1.8.0 (2026-02-05)
 

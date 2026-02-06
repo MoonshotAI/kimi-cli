@@ -25,6 +25,7 @@ Only write entries that are worth mentioning to users.
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 - Core: Update context token count after compaction completes
 - Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
+- Core: Use adaptive thinking for Anthropic Opus 4.6+ models instead of budget-based thinking
 
 ## 1.8.0 (2026-02-05)
 
