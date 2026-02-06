@@ -37,6 +37,8 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
+          cache: true
+          cache-dependency-path: uv.lock
 
       - name: Install dependencies
         env:
@@ -71,6 +73,8 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
+          cache: true
+          cache-dependency-path: uv.lock
 
       - name: Install dependencies
         run: uv sync --frozen --all-extras --project packages/kosong
