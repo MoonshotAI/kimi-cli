@@ -91,6 +91,7 @@ function App() {
     bulkArchiveSessions,
     bulkUnarchiveSessions,
     bulkDeleteSessions,
+    forkSession,
     error: sessionsError,
   } = sessionsHook;
 
@@ -324,6 +325,13 @@ function App() {
     [archivedSessions],
   );
 
+  const handleForkSession = useCallback(
+    async (sessionId: string, turnIndex: number) => {
+      await forkSession(sessionId, turnIndex);
+    },
+    [forkSession],
+  );
+
   const renderChatPanel = () => (
     <ChatWorkspaceContainer
       selectedSessionId={selectedSessionId}
@@ -339,6 +347,7 @@ function App() {
       onOpenSidebar={handleOpenMobileSidebar}
       generateTitle={generateTitle}
       onRenameSession={renameSession}
+      onForkSession={handleForkSession}
     />
   );
 
