@@ -6,6 +6,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
 - Core: Preserve session id when reloading configuration so the session resumes correctly
+- Web: Improve auto-scroll behavior in chat for smoother following of new content
+- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
+- Web: Add session fork feature to branch off a new session from any assistant response
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
 - Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
 - Web: Add shell command and todo list display components for tool outputs

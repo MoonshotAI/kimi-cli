@@ -42,13 +42,14 @@ type ChatConversationProps = {
   isSearchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
   activityStatus?: ActivityDetail;
+  onForkSession?: (turnIndex: number) => void;
 };
 
 export function ChatConversation({
   messages,
   status,
   selectedSessionId,
-  isReplayingHistory,
+  _isReplayingHistory,
   pendingApprovalMap,
   onApprovalAction,
   canRespondToApproval,
@@ -57,6 +58,7 @@ export function ChatConversation({
   isSearchOpen,
   onSearchOpenChange,
   activityStatus,
+  onForkSession,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -81,36 +83,6 @@ export function ChatConversation({
     // Clear highlight after a delay
     setTimeout(() => setHighlightedIndex(-1), 2000);
   }, []);
-
-  // Auto-scroll to bottom when history replay completes after a session switch
-  const pendingScrollSessionRef = useRef<string | null>(null);
-  const wasReplayingRef = useRef(isReplayingHistory);
-
-  // When session changes, mark that we need to scroll once replay completes
-  useEffect(() => {
-    if (selectedSessionId) {
-      pendingScrollSessionRef.current = selectedSessionId;
-    }
-  }, [selectedSessionId]);
-
-  // When replay completes (transition from true to false), scroll to bottom if pending
-  useEffect(() => {
-    const replayJustCompleted = wasReplayingRef.current && !isReplayingHistory;
-    wasReplayingRef.current = isReplayingHistory;
-
-    if (
-      replayJustCompleted &&
-      selectedSessionId &&
-      pendingScrollSessionRef.current === selectedSessionId
-    ) {
-      pendingScrollSessionRef.current = null;
-      // Delay to ensure Virtuoso has rendered after key change
-      const timeoutId = setTimeout(() => {
-        listRef.current?.scrollToBottom();
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isReplayingHistory, selectedSessionId]);
 
   const handleScrollToBottom = useCallback(() => {
     listRef.current?.scrollToBottom();
@@ -201,13 +173,13 @@ export function ChatConversation({
             ref={listRef}
             messages={messages}
             conversationKey={conversationKey}
-            isReplayingHistory={isReplayingHistory}
             pendingApprovalMap={pendingApprovalMap}
             onApprovalAction={onApprovalAction}
             canRespondToApproval={canRespondToApproval}
             blocksExpanded={blocksExpanded}
             highlightedMessageIndex={highlightedIndex}
             onAtBottomChange={setIsAtBottom}
+            onForkSession={onForkSession}
           />
         </div>
       )}

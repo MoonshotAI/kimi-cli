@@ -112,6 +112,20 @@ Conventional Commits format:
 Allowed types:
 `feat`, `fix`, `test`, `refactor`, `chore`, `style`, `docs`, `perf`, `build`, `ci`, `revert`.
 
+## Versioning
+
+The project follows a **minor-bump-only** versioning scheme (`MAJOR.MINOR.PATCH`):
+
+- **Patch** version is always `0`. Never bump it.
+- **Minor** version is bumped for any change: new features, improvements, bug fixes, etc.
+- **Major** version is only changed by explicit manual decision; it stays unchanged during
+  normal development.
+
+Examples: `0.68.0` → `0.69.0` → `0.70.0`; never `0.68.1`.
+
+This rule applies to all packages in the repo (root, `packages/*`, `sdks/*`) as well as release
+and skill workflows.
+
 ## Release workflow
 
 1. Ensure `main` is up to date (pull latest).
