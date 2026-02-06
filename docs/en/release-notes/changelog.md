@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Improve auto-scroll behavior in chat for smoother following of new content
 - Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
 - Web: Add session fork feature to branch off a new session from any assistant response
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
