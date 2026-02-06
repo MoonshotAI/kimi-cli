@@ -11,6 +11,11 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
+- Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
+- Web: Add shell command and todo list display components for tool outputs
+- Web: Show compaction indicator when context is being compacted
+- Web: Add error fallback UI when images fail to load
 - Web: Add session archive feature with auto-archive for sessions older than 15 days
 - Web: Add multi-select mode for bulk archive, unarchive, and delete operations
 - Web: Update `last_session_id` for work directory when session stream starts
