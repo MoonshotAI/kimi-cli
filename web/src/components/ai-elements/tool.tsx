@@ -520,35 +520,36 @@ export const ToolOutput = ({
   message,
   ...props
 }: ToolOutputProps): JSX.Element | null => {
-  const hasResult = Boolean(output || errorText || message);
+  const hasOutput = Boolean(output || errorText);
+  const hasMessage = Boolean(message);
 
-  if (!hasResult) {
+  if (!hasOutput && !hasMessage) {
     return null;
-  }
-
-  let Output = <div className="text-sm">{output as ReactNode}</div>;
-
-  if (typeof output === "object" && !isValidElement(output)) {
-    Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
-    );
-  } else if (typeof output === "string") {
-    // For string output, show truncated version inline or full in code block
-    if (output.length > 200) {
-      Output = <CodeBlock code={output} language="text" />;
-    } else {
-      Output = (
-        <pre className="whitespace-pre-wrap text-xs text-foreground/80">
-          {output}
-        </pre>
-      );
-    }
   }
 
   const isError = Boolean(errorText);
 
-  return (
-    <div className={cn("mt-1 space-y-1", className)} {...props}>
+  let OutputContent: ReactNode = null;
+  if (hasOutput) {
+    let Output = <div className="text-sm">{output as ReactNode}</div>;
+
+    if (typeof output === "object" && !isValidElement(output)) {
+      Output = (
+        <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      );
+    } else if (typeof output === "string") {
+      if (output.length > 200) {
+        Output = <CodeBlock code={output} language="text" />;
+      } else {
+        Output = (
+          <pre className="whitespace-pre-wrap text-xs text-foreground/80">
+            {output}
+          </pre>
+        );
+      }
+    }
+
+    OutputContent = (
       <div className="text-xs font-mono">
         <span className={isError ? "text-destructive" : "text-muted-foreground"}>
           {isError ? "error:" : "result:"}
@@ -563,9 +564,18 @@ export const ToolOutput = ({
           {Output}
         </div>
       </div>
-      {message && (
-        <div className="ml-4 text-xs text-muted-foreground/70 italic">
-          {message}
+    );
+  }
+
+  return (
+    <div className={cn("mt-1 space-y-1", className)} {...props}>
+      {OutputContent}
+      {hasMessage && (
+        <div className="text-xs font-mono">
+          <span className="text-muted-foreground">message:</span>
+          <div className="ml-4 mt-0.5 text-xs text-foreground/80">
+            {message}
+          </div>
         </div>
       )}
     </div>
