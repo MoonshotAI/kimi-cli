@@ -497,26 +497,31 @@ def kimi(
         # Install stderr redirection only after initialization succeeded, so runtime
         # stderr noise is captured into logs without hiding startup failures.
         redirect_stderr_to_logger()
-        match ui:
-            case "shell":
-                succeeded = await instance.run_shell(prompt)
-            case "print":
-                succeeded = await instance.run_print(
-                    input_format or "text",
-                    output_format or "text",
-                    prompt,
-                    final_only=final_message_only,
-                )
-            case "acp":
-                if prompt is not None:
-                    logger.warning("ACP server ignores prompt argument")
-                await instance.run_acp()
-                succeeded = True
-            case "wire":
-                if prompt is not None:
-                    logger.warning("Wire server ignores prompt argument")
-                await instance.run_wire_stdio()
-                succeeded = True
+        try:
+            match ui:
+                case "shell":
+                    succeeded = await instance.run_shell(prompt)
+                case "print":
+                    succeeded = await instance.run_print(
+                        input_format or "text",
+                        output_format or "text",
+                        prompt,
+                        final_only=final_message_only,
+                    )
+                case "acp":
+                    if prompt is not None:
+                        logger.warning("ACP server ignores prompt argument")
+                    await instance.run_acp()
+                    succeeded = True
+                case "wire":
+                    if prompt is not None:
+                        logger.warning("Wire server ignores prompt argument")
+                    await instance.run_wire_stdio()
+                    succeeded = True
+        except Reload as e:
+            if e.session_id is None:
+                raise Reload(session_id=session.id) from e
+            raise
 
         return session, succeeded
 
