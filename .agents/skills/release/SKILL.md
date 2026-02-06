@@ -16,8 +16,9 @@ check_changes: |md
 |
 has_changes: "Any packages changed?"
 confirm_versions: |md
-  For each changed package, confirm the new version with the user (semantic
-  versioning).
+  For each changed package, confirm the new version with the user. Follow the
+  project versioning policy: patch is always 0, bump minor for any change,
+  major only changes by explicit manual decision.
 |
 update_files: |md
   Update the relevant pyproject.toml (and rust/Cargo.toml if root version changes),

@@ -40,6 +40,7 @@ import {
   ToolDisplay,
   ToolHeader,
   ToolInput,
+  ToolMediaPreview,
   ToolOutput,
 } from "@ai-elements";
 
@@ -268,10 +269,12 @@ const renderToolMessage = ({
         <ToolContent>
           {toolCall.input ? <ToolInput input={toolCall.input} /> : null}
           <ToolDisplay display={toolCall.display} isError={toolCall.isError} />
+          {toolCall.mediaParts ? <ToolMediaPreview mediaParts={toolCall.mediaParts} /> : null}
           {shouldShowOutput ? (
             <ToolOutput
               errorText={toolCall.errorText}
               output={toolCall.output}
+              message={toolCall.message}
             />
           ) : null}
           {approval ? (

@@ -31,7 +31,6 @@ import { MessageSearchDialog } from "../message-search-dialog";
 type ChatConversationProps = {
   messages: LiveMessage[];
   status: ChatStatus;
-  isAwaitingFirstResponse?: boolean;
   selectedSessionId?: string;
   currentSession?: Session;
   isReplayingHistory: boolean;
@@ -49,7 +48,6 @@ type ChatConversationProps = {
 export function ChatConversation({
   messages,
   status,
-  isAwaitingFirstResponse = false,
   selectedSessionId,
   isReplayingHistory,
   pendingApprovalMap,
@@ -120,22 +118,19 @@ export function ChatConversation({
     listRef.current?.scrollToBottom();
   }, []);
 
-  const showLoadingBubble = isAwaitingFirstResponse;
   const isLoadingResponse =
-    !showLoadingBubble &&
     messages.length === 0 &&
     (status === "streaming" || status === "submitted");
 
   const hasSelectedSession = Boolean(selectedSessionId);
   const emptyNoSessionState =
-    messages.length === 0 && !hasSelectedSession && !showLoadingBubble;
+    messages.length === 0 && !hasSelectedSession;
   const emptySessionState =
     messages.length === 0 &&
     hasSelectedSession &&
-    !isLoadingResponse &&
-    !showLoadingBubble;
+    !isLoadingResponse;
 
-  const hasMessages = messages.length > 0 || showLoadingBubble;
+  const hasMessages = messages.length > 0;
   const shouldShowScrollButton = hasMessages && !isAtBottom;
   const shouldShowEmptyState =
     isLoadingResponse || emptyNoSessionState || emptySessionState;
@@ -207,8 +202,6 @@ export function ChatConversation({
           <VirtualizedMessageList
             ref={listRef}
             messages={messages}
-            status={status}
-            isAwaitingFirstResponse={isAwaitingFirstResponse}
             conversationKey={conversationKey}
             isReplayingHistory={isReplayingHistory}
             pendingApprovalMap={pendingApprovalMap}
