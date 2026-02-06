@@ -77,6 +77,8 @@ export type LiveMessage = {
     isError?: boolean;
     /** Error text for display (derived from message when isError) */
     errorText?: string;
+    /** Media parts extracted from tool output (images/videos from ReadMediaFile etc.) */
+    mediaParts?: Array<{ type: "image_url" | "video_url"; url: string }>;
     approval?: {
       id: string;
       action: string;
