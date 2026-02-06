@@ -77,8 +77,16 @@ tmux new-session -d -s "$SESSION" -x 200 -y 50 \
 
 ### Send a prompt
 
+The Codex TUI needs time to initialize before it accepts input.
+After launching a session, **wait at least 5 seconds** before sending
+a prompt. Then send the text followed by `Enter`. If the prompt stays
+in the input field without being submitted, send an additional `Enter`.
+
 ```bash
+sleep 5  # wait for Codex TUI to initialize
 tmux send-keys -t "$SESSION" "Your prompt here" Enter
+# If it doesn't submit, send another Enter:
+# tmux send-keys -t "$SESSION" Enter
 ```
 
 ### Peek at output
@@ -111,7 +119,7 @@ for entry in "${TASKS[@]}"; do
   git worktree add "$WORKTREE_DIR/$NAME" -b "$NAME" main 2>/dev/null
   tmux new-session -d -s "$SESSION" -x 200 -y 50 \
     "cd $WORKTREE_DIR/$NAME && codex --dangerously-bypass-approvals-and-sandbox"
-  sleep 2  # let codex TUI initialize
+  sleep 5  # wait for Codex TUI to fully initialize
   tmux send-keys -t "$SESSION" "$PROMPT" Enter
 done
 ```
