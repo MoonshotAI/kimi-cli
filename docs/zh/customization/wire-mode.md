@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.2`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.3`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -137,13 +137,13 @@ interface ExternalToolsResult {
 **请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.1", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.3", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.3", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。
@@ -196,12 +196,50 @@ interface PromptResult {
 | `-32002` | 不支持指定的 LLM |
 | `-32003` | LLM 服务错误 |
 
+### `replay`
+
+::: info 新增
+新增于 Wire 1.3。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+触发历史回放。Server 读取会话目录中的 `wire.jsonl`，按顺序重新发送已记录的 `event` 和 `request` 消息。回放是只读的，Client 不应对回放中的 `request` 消息作出响应。如果没有历史记录，Server 直接返回 `events: 0`、`requests: 0`。
+
+```typescript
+/** replay 请求无参数，params 可以是空对象或省略 */
+type ReplayParams = Record<string, never>
+
+/** replay 响应结果 */
+interface ReplayResult {
+  /** 回放结束状态 */
+  status: "finished" | "cancelled"
+  /** 回放的 event 数量 */
+  events: number
+  /** 回放的 request 数量 */
+  requests: number
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "replay", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8"}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
+```
+
 ### `cancel`
 
 - **方向**：Client → Agent
 - **类型**：Request（需要响应）
 
-取消当前正在进行的 Agent 轮次。调用后，正在进行的 `prompt` 请求会返回 `{"status": "cancelled"}`。
+取消当前正在进行的 Agent 轮次或回放。调用后，正在进行的 `prompt` 请求会返回 `{"status": "cancelled"}`，回放会返回 `{"status": "cancelled"}` 及已发送的消息计数。
 
 ```typescript
 /** cancel 请求无参数，params 可以是空对象或省略 */

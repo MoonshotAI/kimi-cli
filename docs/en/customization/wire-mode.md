@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.2`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.3`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -137,13 +137,13 @@ interface ExternalToolsResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.1", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.3", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **Success response example**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.3", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 If the server does not support the `initialize` method, the client will receive a `-32601 method not found` error and should automatically fall back to no-handshake mode.
@@ -196,12 +196,50 @@ interface PromptResult {
 | `-32002` | Specified LLM not supported |
 | `-32003` | LLM service error |
 
+### `replay`
+
+::: info Added
+Added in Wire 1.3.
+:::
+
+- **Direction**: Client → Agent
+- **Type**: Request (requires response)
+
+Trigger a history replay. The server reads `wire.jsonl` from the session directory and re-sends the recorded `event` and `request` messages in order. Replay is read-only; clients should not respond to replayed `request` messages. If there is no history, the server returns `events: 0` and `requests: 0`.
+
+```typescript
+/** replay request has no parameters, params can be empty object or omitted */
+type ReplayParams = Record<string, never>
+
+/** replay response result */
+interface ReplayResult {
+  /** Replay end status */
+  status: "finished" | "cancelled"
+  /** Number of replayed events */
+  events: number
+  /** Number of replayed requests */
+  requests: number
+}
+```
+
+**Request example**
+
+```json
+{"jsonrpc": "2.0", "method": "replay", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8"}
+```
+
+**Success response example**
+
+```json
+{"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
+```
+
 ### `cancel`
 
 - **Direction**: Client → Agent
 - **Type**: Request (requires response)
 
-Cancel the currently running agent turn. After calling, the in-progress `prompt` request will return `{"status": "cancelled"}`.
+Cancel the currently running agent turn or replay. After calling, the in-progress `prompt` request will return `{"status": "cancelled"}`, and replay will return `{"status": "cancelled"}` with the message counts sent so far.
 
 ```typescript
 /** cancel request has no parameters, params can be empty object or omitted */
