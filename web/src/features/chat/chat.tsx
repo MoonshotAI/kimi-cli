@@ -200,7 +200,6 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           <ChatConversation
             messages={messages}
             status={status}
-            isAwaitingFirstResponse={isAwaitingFirstResponse}
             selectedSessionId={selectedSessionId}
             currentSession={currentSession}
             isReplayingHistory={isReplayingHistory}

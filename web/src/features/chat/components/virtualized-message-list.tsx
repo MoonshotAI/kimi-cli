@@ -1,4 +1,3 @@
-import type { ChatStatus } from "ai";
 import type { LiveMessage } from "@/hooks/types";
 import {
   Message,
@@ -12,7 +11,6 @@ import {
   type AssistantApprovalHandler,
 } from "./assistant-message";
 
-import { Loader2Icon } from "lucide-react";
 import type React from "react";
 import {
   forwardRef,
@@ -28,8 +26,6 @@ import { cn } from "@/lib/utils";
 
 export type VirtualizedMessageListProps = {
   messages: LiveMessage[];
-  status: ChatStatus;
-  isAwaitingFirstResponse?: boolean;
   conversationKey: string;
   isReplayingHistory: boolean;
   pendingApprovalMap: Record<string, boolean>;
@@ -47,15 +43,10 @@ export type VirtualizedMessageListHandle = {
   scrollToBottom: () => void;
 };
 
-type ConversationListItem =
-  | {
-      kind: "message";
-      message: LiveMessage;
-      index: number;
-    }
-  | {
-      kind: "loading";
-    };
+type ConversationListItem = {
+  message: LiveMessage;
+  index: number;
+};
 
 function VirtuosoScrollerComponent(
   props: ComponentPropsWithoutRef<"div">,
@@ -143,9 +134,9 @@ function getMessageSpacingClass(
     }
   }
 
-  // Add bottom margin for tool messages near end
-  if (isToolMessage && !nextMessage) {
-    classes.push("mb-4");
+  // Add bottom margin for the last message to avoid clashing with UI below
+  if (!nextMessage) {
+    classes.push("mb-30");
   }
 
   return classes.length > 0 ? classes.join(" ") : undefined;
@@ -154,7 +145,6 @@ function getMessageSpacingClass(
 function VirtualizedMessageListComponent(
   {
     messages,
-    isAwaitingFirstResponse = false,
     conversationKey,
     isReplayingHistory,
     pendingApprovalMap,
@@ -169,24 +159,17 @@ function VirtualizedMessageListComponent(
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  const showLoadingBubble = isAwaitingFirstResponse;
+  // Filtered messages list (excluding message-id) aligned with listItems indices
+  const filteredMessages = useMemo(
+    () => messages.filter((m) => m.variant !== "message-id"),
+    [messages],
+  );
 
-  const listItems = useMemo<ConversationListItem[]>(() => {
-    // Filter out message-id variants to avoid zero-height elements in virtuoso
-    const items = messages
-      .filter((message) => message.variant !== "message-id")
-      .map<ConversationListItem>((message, index) => ({
-        kind: "message",
-        message,
-        index,
-      }));
-
-    if (showLoadingBubble) {
-      items.push({ kind: "loading" });
-    }
-
-    return items;
-  }, [messages, showLoadingBubble]);
+  const listItems = useMemo<ConversationListItem[]>(
+    () =>
+      filteredMessages.map((message, index) => ({ message, index })),
+    [filteredMessages],
+  );
 
   const handleAtBottomChange = useCallback(
     (atBottom: boolean) => {
@@ -247,23 +230,9 @@ function VirtualizedMessageListComponent(
         List: VirtuosoList,
       }}
       computeItemKey={(_index: number, item: ConversationListItem) =>
-        item.kind === "message" ? item.message.id : `loading-${_index}`
+        item.message.id
       }
       itemContent={(_index, item) => {
-        if (item.kind === "loading") {
-          return (
-            <Message
-              className={messages.length > 0 ? "mt-3" : undefined}
-              from="assistant"
-            >
-            <MessageContent className="flex-row items-center justify-start gap-2 text-left text-sm text-muted-foreground">
-              <Loader2Icon className="size-4 animate-spin text-primary" />
-              <span>Waiting for response...</span>
-            </MessageContent>
-          </Message>
-        );
-        }
-
         const message = item.message;
 
         if (message.variant === "status") {
@@ -282,7 +251,7 @@ function VirtualizedMessageListComponent(
         const spacingClass = getMessageSpacingClass(
           message,
           item.index,
-          messages,
+          filteredMessages,
         );
 
         const isHighlighted = item.index === highlightedMessageIndex;

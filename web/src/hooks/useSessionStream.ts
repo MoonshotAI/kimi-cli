@@ -145,6 +145,25 @@ const DOCUMENT_TAG_REGEX =
 const LEGACY_UPLOADS_REGEX = /`uploads\/([^`]+)`/;
 const HTTP_TO_WS_REGEX = /^http/;
 const NEWLINE_REGEX = /\r?\n/;
+// Match <image path="..."> or <video path="..."> tags (path attribute only, no content_type required)
+const MEDIA_TAG_PATH_REGEX = /<(?:image|video)\s+[^>]*path="([^"]*\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/uploads\/([^"]+))"/g;
+const BROWSER_URL_PROTOCOLS = new Set(["http:", "https:", "data:", "blob:"]);
+
+/** Extract the URL from a media output part (image_url or video_url) */
+const extractMediaUrl = (part: Record<string, unknown>): string => {
+  const imgUrl = (part.image_url as { url?: string })?.url;
+  const vidUrl = (part.video_url as { url?: string })?.url;
+  return imgUrl ?? vidUrl ?? "";
+};
+
+/** Check if a URL can be rendered in the browser (http/https/data/blob) */
+const isBrowserUrl = (url: string): boolean => {
+  try {
+    return BROWSER_URL_PROTOCOLS.has(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+};
 
 export type SlashCommandDef = {
   name: string;
@@ -297,6 +316,9 @@ export function useSessionStream(
 
   // Track if current turn is a /clear command (needs UI clear on turn end)
   const pendingClearRef = useRef(false);
+
+  // Track compaction indicator message so we can remove it on CompactionEnd
+  const compactionMessageIdRef = useRef<string | null>(null);
 
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
@@ -949,6 +971,44 @@ export function useSessionStream(
                 .filter(Boolean)
                 .join("\n")
             : return_value.output;
+
+          // Extract media parts (image_url/video_url) from output array
+          let mediaParts: Array<{ type: "image_url" | "video_url"; url: string }> = [];
+          if (Array.isArray(return_value.output)) {
+            mediaParts = return_value.output
+              .filter((part: Record<string, unknown>) => part.type === "image_url" || part.type === "video_url")
+              .map((part: Record<string, unknown>) => ({
+                type: part.type as "image_url" | "video_url",
+                url: extractMediaUrl(part),
+              }))
+              .filter((p) => p.url);
+
+            // For non-browser-renderable URLs (e.g. ms:// from Kimi model),
+            // try to construct serving URLs from file paths in text output tags
+            const hasNonBrowserUrl = mediaParts.some((p) => !isBrowserUrl(p.url));
+            if (hasNonBrowserUrl) {
+              const textOutput = return_value.output
+                .map((p: Record<string, unknown>) => (p.text as string) ?? "")
+                .filter(Boolean)
+                .join("");
+              // Collect all API URLs from media tags in order
+              const apiUrls: string[] = [];
+              for (const match of textOutput.matchAll(MEDIA_TAG_PATH_REGEX)) {
+                const [, , sid, filename] = match;
+                apiUrls.push(`/api/sessions/${sid}/uploads/${encodeURIComponent(filename)}`);
+              }
+              if (apiUrls.length > 0) {
+                let apiIdx = 0;
+                mediaParts = mediaParts.map((p) => {
+                  if (isBrowserUrl(p.url)) return p;
+                  const url = apiUrls[apiIdx] ?? apiUrls[apiUrls.length - 1];
+                  apiIdx++;
+                  return { ...p, url };
+                });
+              }
+            }
+          }
+
           const messageStr = return_value.message;
 
           if (tc) {
@@ -983,6 +1043,7 @@ export function useSessionStream(
                   errorText: return_value.is_error
                     ? messageStr || undefined
                     : undefined,
+                  mediaParts: mediaParts.length > 0 ? mediaParts : undefined,
                 },
                 isStreaming: false,
               };
@@ -1307,12 +1368,27 @@ export function useSessionStream(
           break;
         }
 
-        case "CompactionBegin":
-          // Could show compaction indicator if needed
+        case "CompactionBegin": {
+          const compactionMsgId = getNextMessageId("assistant");
+          compactionMessageIdRef.current = compactionMsgId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: compactionMsgId,
+              role: "assistant",
+              variant: "status",
+              content: "Compacting conversation history…",
+              isStreaming: true,
+            },
+          ]);
           break;
+        }
 
-        case "CompactionEnd":
+        case "CompactionEnd": {
+          const compactMsgId = compactionMessageIdRef.current;
+          compactionMessageIdRef.current = null;
           // Clear old messages after compaction, only keep the current turn
+          // Also remove the compaction indicator message
           setMessages((prev) => {
             let lastUserMsgIndex = -1;
             for (let i = prev.length - 1; i >= 0; i--) {
@@ -1321,9 +1397,11 @@ export function useSessionStream(
                 break;
               }
             }
-            return lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
+            const kept = lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
+            return compactMsgId ? kept.filter((m) => m.id !== compactMsgId) : kept;
           });
           break;
+        }
 
         default:
           break;

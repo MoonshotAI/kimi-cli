@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Anthropic: Use adaptive thinking for Opus 4.6+ models instead of budget-based thinking
+
 ## 0.41.1 (2026-02-05)
 
 - Handle string annotations in `SimpleToolset` return type check (supports `from __future__ import annotations`)

@@ -5,6 +5,11 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
+- Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
+- Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
+- Web: Add shell command and todo list display components for tool outputs
+- Web: Show compaction indicator when context is being compacted
+- Web: Add error fallback UI when images fail to load
 - Web: Add session archive feature with auto-archive for sessions older than 15 days
 - Web: Add multi-select mode for bulk archive, unarchive, and delete operations
 - Web: Update `last_session_id` for work directory when session stream starts
@@ -14,6 +19,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 - Core: Update context token count after compaction completes
 - Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
+- Core: Use adaptive thinking for Anthropic Opus 4.6+ models instead of budget-based thinking
 
 ## 1.8.0 (2026-02-05)
 
