@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
+- Web: Add session fork feature to branch off a new session from any assistant response
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
 - Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
 - Web: Add shell command and todo list display components for tool outputs

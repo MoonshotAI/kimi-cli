@@ -6,6 +6,7 @@ import asyncio
 import json
 import mimetypes
 import os
+import re
 import shutil
 import time
 from datetime import UTC, datetime
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, stat
 from fastapi.responses import FileResponse, Response
 from kaos.path import KaosPath
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kimi_cli.metadata import load_metadata, save_metadata
@@ -38,6 +39,7 @@ from kimi_cli.web.runner.messages import send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
 from kimi_cli.web.store.sessions import (
     JointSession,
+    SessionMetadata,
     invalidate_sessions_cache,
     load_session_by_id,
     load_session_metadata,
@@ -89,6 +91,7 @@ SENSITIVE_HOME_PATHS = {
     ".aws",
     ".kube",
 }
+CHECKPOINT_USER_PATTERN = re.compile(r"^<system>CHECKPOINT \d+</system>$")
 
 
 def sanitize_filename(filename: str) -> str:
@@ -344,6 +347,12 @@ class CreateSessionRequest(BaseModel):
 
     work_dir: str | None = None
     create_dir: bool = False  # Whether to auto-create directory if it doesn't exist
+
+
+class ForkSessionRequest(BaseModel):
+    """Fork session request."""
+
+    turn_index: int = Field(..., ge=0)  # 0-based, fork includes this turn and all previous turns
 
 
 class UploadSessionFileResponse(BaseModel):
@@ -663,6 +672,232 @@ def extract_first_turn_from_wire(session_dir: Path) -> tuple[str, str] | None:
     if user_message and assistant_response_parts:
         return (user_message, "".join(assistant_response_parts))
     return None
+
+
+def truncate_wire_at_turn(wire_path: Path, turn_index: int) -> list[str]:
+    """Read wire.jsonl and return all lines up to and including the given turn.
+
+    Args:
+        wire_path: Path to the wire.jsonl file
+        turn_index: 0-based turn index. Returns turns 0..turn_index inclusive.
+
+    Returns:
+        List of raw JSON lines (including the metadata header)
+
+    Raises:
+        ValueError: If turn_index is out of range
+    """
+    if not wire_path.exists():
+        raise ValueError("wire.jsonl not found")
+
+    lines: list[str] = []
+    current_turn = -1  # Will become 0 on first TurnBegin
+
+    with open(wire_path, encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            try:
+                record: dict[str, Any] = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+
+            # Always keep metadata header
+            if record.get("type") == "metadata":
+                lines.append(stripped)
+                continue
+
+            message: dict[str, Any] = record.get("message", {})
+            msg_type: str | None = message.get("type")
+
+            if msg_type == "TurnBegin":
+                current_turn += 1
+                if current_turn > turn_index:
+                    break
+
+            if current_turn <= turn_index:
+                lines.append(stripped)
+
+            # Stop after the TurnEnd of the target turn
+            if msg_type == "TurnEnd" and current_turn == turn_index:
+                break
+
+    if current_turn < turn_index:
+        raise ValueError(f"turn_index {turn_index} out of range (max turn: {current_turn})")
+
+    return lines
+
+
+def _is_checkpoint_user_message(record: dict[str, Any]) -> bool:
+    """Whether a context line is the synthetic user checkpoint marker."""
+    if record.get("role") != "user":
+        return False
+
+    content = record.get("content")
+    if isinstance(content, str):
+        return CHECKPOINT_USER_PATTERN.fullmatch(content.strip()) is not None
+
+    parts = cast(list[Any], content) if isinstance(content, list) else []
+    if len(parts) == 1 and isinstance(parts[0], dict):
+        first_part = cast(dict[str, Any], parts[0])
+        text = first_part.get("text")
+        if isinstance(text, str):
+            return CHECKPOINT_USER_PATTERN.fullmatch(text.strip()) is not None
+
+    return False
+
+
+def truncate_context_at_turn(context_path: Path, turn_index: int) -> list[str]:
+    """Read context.jsonl and return all lines up to and including the given turn.
+
+    Turn detection is based on real user messages, excluding synthetic checkpoint
+    user entries like ``<system>CHECKPOINT N</system>``.
+
+    Unlike wire truncation, this is best-effort: if context has fewer user turns
+    than ``turn_index`` (e.g. slash-command turns that did not mutate context),
+    return all available context lines instead of failing.
+    """
+    if not context_path.exists():
+        return []
+
+    lines: list[str] = []
+    current_turn = -1  # Will become 0 on first real user message
+
+    with open(context_path, encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            try:
+                record: dict[str, Any] = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+
+            if record.get("role") == "user" and not _is_checkpoint_user_message(record):
+                current_turn += 1
+                if current_turn > turn_index:
+                    break
+
+            if current_turn <= turn_index:
+                lines.append(stripped)
+
+    return lines
+
+
+@router.post("/{session_id}/fork", summary="Fork a session at a specific turn")
+async def fork_session(
+    session_id: UUID,
+    request: ForkSessionRequest,
+    runner: KimiCLIRunner = Depends(get_runner),
+) -> Session:
+    """Fork a session, creating a new session with history up to the specified turn.
+
+    The new session shares the same work_dir as the original session.
+    """
+    source_session = get_editable_session(session_id, runner)
+    source_dir = source_session.kimi_cli_session.dir
+    wire_path = source_dir / "wire.jsonl"
+    context_path = source_dir / "context.jsonl"
+
+    try:
+        truncated_wire_lines = truncate_wire_at_turn(wire_path, request.turn_index)
+        truncated_context_lines = truncate_context_at_turn(context_path, request.turn_index)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+    # Create new session with the same work_dir.
+    # Only write the essential files explicitly — do NOT copytree the whole
+    # source directory, which would bring in rotated context backups
+    # (context_N.jsonl) and subagent contexts (context_sub_N.jsonl).
+    work_dir = source_session.kimi_cli_session.work_dir
+    new_session = await KimiCLISession.create(work_dir=work_dir)
+    new_session_dir = new_session.dir
+
+    # Copy only the video files that are actually referenced in the truncated
+    # wire history.  Videos are referenced by path (<video path="...">) and
+    # served via the uploads endpoint, so the physical file must exist.
+    # Images and text docs are already embedded (base64 / inline) in
+    # context.jsonl and don't need the physical file.
+    source_uploads = source_dir / "uploads"
+    if source_uploads.is_dir():
+        # Collect video filenames referenced in the truncated wire.
+        # In the raw JSON lines the pattern looks like: uploads/filename.mp4
+        referenced_videos: set[str] = set()
+        for line in truncated_wire_lines:
+            for match in re.finditer(r"uploads/([^\"\\<>\s]+)", line):
+                fname = match.group(1)
+                mime, _ = mimetypes.guess_type(fname)
+                if mime and mime.startswith("video/"):
+                    referenced_videos.add(fname)
+
+        # Copy only those referenced video files that exist on disk.
+        files_to_copy = [
+            source_uploads / name for name in referenced_videos if (source_uploads / name).is_file()
+        ]
+        if files_to_copy:
+            new_uploads = new_session_dir / "uploads"
+            new_uploads.mkdir(parents=True, exist_ok=True)
+            copied_names: list[str] = []
+            for vf in files_to_copy:
+                shutil.copy2(vf, new_uploads / vf.name)
+                copied_names.append(vf.name)
+            # Write a .sent marker so _encode_uploaded_files() won't re-send
+            # these inherited videos.  The marker is kept across process
+            # restarts (not deleted after reading).
+            (new_uploads / ".sent").write_text(json.dumps(copied_names), encoding="utf-8")
+
+    # Write truncated wire.jsonl
+    new_wire_path = new_session_dir / "wire.jsonl"
+    with open(new_wire_path, "w", encoding="utf-8") as f:
+        for line in truncated_wire_lines:
+            f.write(line + "\n")
+
+    # Write truncated context.jsonl (overwrites the empty file from create())
+    new_context_path = new_session_dir / "context.jsonl"
+    with open(new_context_path, "w", encoding="utf-8") as f:
+        for line in truncated_context_lines:
+            f.write(line + "\n")
+
+    # Build fresh metadata — not inherited from source — so future
+    # SessionMetadata fields get their defaults instead of stale values.
+    source_metadata = load_session_metadata(source_dir, str(session_id))
+    source_title = (
+        source_metadata.title if source_metadata.title != "Untitled" else source_session.title
+    )
+    new_metadata = SessionMetadata(
+        session_id=new_session.id,
+        title=f"Fork: {source_title}",
+        wire_mtime=new_wire_path.stat().st_mtime,
+    )
+    save_session_metadata(new_session_dir, new_metadata)
+
+    invalidate_sessions_cache()
+    invalidate_work_dirs_cache()
+
+    context_file = new_session_dir / "context.jsonl"
+    return Session(
+        session_id=UUID(new_session.id),
+        title=new_metadata.title,
+        last_updated=datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC),
+        is_running=False,
+        status=SessionStatus(
+            session_id=UUID(new_session.id),
+            state="stopped",
+            seq=0,
+            worker_id=None,
+            reason=None,
+            detail=None,
+            updated_at=datetime.now(UTC),
+        ),
+        work_dir=str(work_dir),
+        session_dir=str(new_session_dir),
+    )
 
 
 @router.post("/{session_id}/generate-title", summary="Generate session title using AI")
