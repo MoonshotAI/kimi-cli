@@ -723,7 +723,21 @@ class _LiveView:
         self._approval_request_queue.append(request)
 
         if self._current_approval_request_panel is None:
+            # Play bell sound and send desktop notification
             console.bell()
+            try:
+                from kimi_cli.utils.notifications import (
+                    format_approval_notification,
+                    notify,
+                )
+
+                notification_message = format_approval_notification(
+                    request.action, request.description
+                )
+                notify("Kimi CLI - Approval Requested", notification_message)
+            except Exception:
+                # Notification failure should not block anything
+                pass
             self.show_next_approval_request()
 
     def show_next_approval_request(self) -> None:
