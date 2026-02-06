@@ -1,5 +1,6 @@
 "use client";
 
+import { CodeBlock } from "@/components/ai-elements/code-block";
 import { LazyDiff as Diff, LazyHunk as Hunk } from "@/components/ui/diff/lazy";
 import type { File, Hunk as HunkType, Line } from "@/components/ui/diff/utils";
 import { cn } from "@/lib/utils";
@@ -161,10 +162,14 @@ const ImageSearchByTextResults = ({
           className="group relative overflow-hidden rounded-md border border-border/40 bg-card/20 transition-all hover:border-border hover:bg-card/40"
         >
           {/* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */}
+          {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is a lifecycle event, not interactive */}
           <img
             src={image.clipThumbnail || image.thumbnail || image.original}
             alt={image.meta?.title || `Image ${idx + 1}`}
             className="aspect-square w-full object-cover"
+            onError={(e) => {
+              (e.currentTarget.parentElement as HTMLElement).style.display = "none";
+            }}
           />
           {image.meta && (
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
@@ -208,12 +213,16 @@ const ImageSearchByImageResults = ({
             rel="noopener noreferrer"
             className="flex-shrink-0"
           >
+            {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is a lifecycle event, not interactive */}
             <img
               src={item.thumbnailUrl}
               alt={item.title}
               width={80}
               height={80}
               className="h-32 w-full rounded object-cover sm:h-20 sm:w-20"
+              onError={(e) => {
+                (e.currentTarget.parentElement as HTMLElement).style.display = "none";
+              }}
             />
           </a>
         )}
@@ -685,21 +694,32 @@ const ImageBlobResource = ({
   mimeType: string;
   filename: string;
   uri?: string;
-}) => (
-  <div className="my-2">
-    {uri && (
-      <div className="mb-1 text-xs text-muted-foreground">
-        Generated: {filename}
-      </div>
-    )}
-    {/* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */}
-    <img
-      src={`data:${mimeType};base64,${blob}`}
-      alt={filename}
-      className="h-auto max-w-full overflow-hidden rounded-md border border-border/40"
-    />
-  </div>
-);
+}) => {
+  const [error, setError] = useState(false);
+  return (
+    <div className="my-2">
+      {uri && (
+        <div className="mb-1 text-xs text-muted-foreground">
+          Generated: {filename}
+        </div>
+      )}
+      {error ? (
+        <div className="flex items-center gap-2 rounded-md border border-border/40 bg-muted px-3 py-2 text-xs text-muted-foreground">
+          Failed to load image: {filename}
+        </div>
+      ) : (
+        /* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */
+        /* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is a lifecycle event */
+        <img
+          src={`data:${mimeType};base64,${blob}`}
+          alt={filename}
+          className="h-auto max-w-full overflow-hidden rounded-md border border-border/40"
+          onError={() => setError(true)}
+        />
+      )}
+    </div>
+  );
+};
 
 /**
  * Renders image resource with URI only
@@ -907,15 +927,24 @@ const ResourceContent = ({ content }: { content: MCPResourceData }) => {
  * Renders a base64 image
  */
 const ImageContent = ({ content }: { content: MCPImageData }) => {
+  const [error, setError] = useState(false);
   const mimeType = content.mimeType || "image/png";
   return (
     <div className="my-2">
-      {/* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */}
-      <img
-        src={`data:${mimeType};base64,${content.data}`}
-        alt="Generated output"
-        className="h-auto max-w-full overflow-hidden rounded-md border border-border/40"
-      />
+      {error ? (
+        <div className="flex items-center gap-2 rounded-md border border-border/40 bg-muted px-3 py-2 text-xs text-muted-foreground">
+          Failed to load image
+        </div>
+      ) : (
+        /* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */
+        /* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is a lifecycle event */
+        <img
+          src={`data:${mimeType};base64,${content.data}`}
+          alt="Generated output"
+          className="h-auto max-w-full overflow-hidden rounded-md border border-border/40"
+          onError={() => setError(true)}
+        />
+      )}
     </div>
   );
 };
@@ -973,6 +1002,99 @@ const MCPContentResource = ({ data }: { data: unknown }) => {
 };
 
 /**
+ * Shell display block data
+ * Backend format: { type: "shell", language: "bash", command: "ls -la" }
+ */
+type ShellDisplayData = {
+  language?: string;
+  command: string;
+};
+
+/**
+ * Renders a shell command with syntax highlighting
+ */
+const ShellContent = ({ data }: { data: ShellDisplayData }) => (
+  <CodeBlock
+    code={data.command}
+    language={data.language || "bash"}
+  />
+);
+
+/**
+ * Todo display block data
+ * Backend format: { type: "todo", items: [{ status: "completed", content: "..." }] }
+ */
+type TodoItem = {
+  status: "completed" | "done" | "in_progress" | "pending" | string;
+  content?: string;
+  title?: string;
+};
+
+type TodoDisplayData = {
+  items: TodoItem[];
+};
+
+const isTodoDone = (status: string): boolean =>
+  status === "completed" || status === "done";
+
+/**
+ * Renders a todo/task list with status icons
+ */
+const TodoContent = ({ data }: { data: TodoDisplayData }) => (
+  <div className="my-2 space-y-1">
+    {data.items.map((item, index) => {
+      const text = item.content || item.title || "";
+      const done = isTodoDone(item.status);
+      const inProgress = item.status === "in_progress";
+      return (
+        <div key={`${index}-${text}`} className="flex items-start gap-2 text-sm">
+          <span className="mt-0.5 shrink-0">
+            {done ? (
+              <span className="text-green-500 dark:text-green-400">&#x2713;</span>
+            ) : inProgress ? (
+              <span className="text-blue-500 dark:text-blue-400">&#x25CF;</span>
+            ) : (
+              <span className="text-muted-foreground">&#x25CB;</span>
+            )}
+          </span>
+          <span
+            className={cn(
+              done && "text-muted-foreground line-through",
+              inProgress && "text-blue-600 dark:text-blue-400",
+            )}
+          >
+            {text}
+          </span>
+        </div>
+      );
+    })}
+  </div>
+);
+
+/** Renders a direct image URL with error fallback */
+const DirectImage = ({ src }: { src: string }) => {
+  const [error, setError] = useState(false);
+  return (
+    <div className="my-2">
+      {error ? (
+        <div className="flex items-center gap-2 rounded-md border border-border/40 bg-muted px-3 py-2 text-xs text-muted-foreground">
+          Failed to load image
+        </div>
+      ) : (
+        /* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */
+        /* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is a lifecycle event */
+        <img
+          src={src}
+          alt="Generated content"
+          className="h-auto max-w-full overflow-hidden rounded-md border border-border/40"
+          onError={() => setError(true)}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
  * Renders a single display item
  */
 const DisplayItemRenderer = ({ item }: { item: DisplayItem }) => {
@@ -982,17 +1104,7 @@ const DisplayItemRenderer = ({ item }: { item: DisplayItem }) => {
 
     // Add more display types here as needed
     case "image":
-      // Handle direct image display
-      return (
-        <div className="my-2">
-          {/* biome-ignore lint/correctness/useImageSize: Dynamic image with unknown dimensions */}
-          <img
-            src={String(item.data)}
-            alt="Generated content"
-            className="h-auto max-w-full overflow-hidden rounded-md border border-border/40"
-          />
-        </div>
-      );
+      return <DirectImage src={String(item.data)} />;
 
     case "search_response":
       // Handle search response from backend search tool
@@ -1032,6 +1144,24 @@ const DisplayItemRenderer = ({ item }: { item: DisplayItem }) => {
           </pre>
         </div>
       );
+
+    case "shell": {
+      // Fallback: some backends nest payload in `item.data`, others put fields directly on `item`
+      const shellData = (item.data ?? item) as unknown as ShellDisplayData;
+      if (shellData.command) {
+        return <ShellContent data={shellData} />;
+      }
+      return <JSONContent data={item.data} />;
+    }
+
+    case "todo": {
+      // Fallback: some backends nest payload in `item.data`, others put fields directly on `item`
+      const todoData = (item.data ?? item) as unknown as TodoDisplayData;
+      if (todoData.items && Array.isArray(todoData.items)) {
+        return <TodoContent data={todoData} />;
+      }
+      return <JSONContent data={item.data} />;
+    }
 
     case "brief": {
       // Handle brief status message (short text shown to user)
