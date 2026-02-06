@@ -7,7 +7,6 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
-| `Ctrl-/` | Show help |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
@@ -27,10 +26,6 @@ Press `Ctrl-X` in the input box to switch between two modes:
 The prompt changes based on current mode:
 - Agent mode: `✨` (normal) or `💫` (thinking mode)
 - Shell mode: `$`
-
-### `Ctrl-/`: Show help
-
-Press `Ctrl-/` in the input box to quickly display help information, equivalent to entering the `/help` command.
 
 ## Multi-line input
 

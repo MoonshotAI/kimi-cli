@@ -720,13 +720,6 @@ class CustomPromptSession:
         else:
             clipboard = None
 
-        @_kb.add("c-_", eager=True)  # Ctrl-/ sends Ctrl-_ in most terminals
-        def _(event: KeyPressEvent) -> None:
-            """Show help by submitting /help command."""
-            buff = event.current_buffer
-            buff.text = "/help"
-            buff.validate_and_handle()
-
         self._session = PromptSession[str](
             message=self._render_message,
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
@@ -919,7 +912,7 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcuts = "ctrl-x: toggle mode  ctrl-/: help"
+            shortcuts = "ctrl-x: toggle mode"
             if columns - len(right_text) > len(shortcuts) + 2:
                 fragments.extend([("", shortcuts), ("", " " * 2)])
                 columns -= len(shortcuts) + 2
