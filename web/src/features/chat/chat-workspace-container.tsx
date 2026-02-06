@@ -50,6 +50,7 @@ type ChatWorkspaceContainerProps = {
   onOpenSidebar?: () => void;
   generateTitle?: (sessionId: string) => Promise<string | null>;
   onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
+  onForkSession?: (sessionId: string, turnIndex: number) => Promise<void>;
 };
 
 export function ChatWorkspaceContainer({
@@ -66,6 +67,7 @@ export function ChatWorkspaceContainer({
   onOpenSidebar,
   generateTitle,
   onRenameSession,
+  onForkSession,
 }: ChatWorkspaceContainerProps): ReactElement {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   // Pending message state for when we need to create a session first
@@ -255,6 +257,24 @@ export function ChatWorkspaceContainer({
     [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage],
   );
 
+  const handleForkSession = useCallback(
+    async (turnIndex: number) => {
+      if (!(selectedSessionId && onForkSession)) {
+        return;
+      }
+      try {
+        await onForkSession(selectedSessionId, turnIndex);
+        toast.success("Session forked successfully");
+      } catch (error) {
+        toast.error("Fork failed", {
+          description:
+            error instanceof Error ? error.message : "Failed to fork session",
+        });
+      }
+    },
+    [selectedSessionId, onForkSession],
+  );
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
@@ -303,6 +323,7 @@ export function ChatWorkspaceContainer({
       onOpenSidebar={onOpenSidebar}
       onRenameSession={onRenameSession}
       slashCommands={slashCommands}
+      onForkSession={onForkSession ? handleForkSession : undefined}
     />
   );
 }

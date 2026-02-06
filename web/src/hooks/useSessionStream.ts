@@ -298,6 +298,9 @@ export function useSessionStream(
   // Track if current turn is a /clear command (needs UI clear on turn end)
   const pendingClearRef = useRef(false);
 
+  // Turn counter for fork feature
+  const turnCounterRef = useRef(0);
+
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
     setMessagesInternal(action);
@@ -732,6 +735,8 @@ export function useSessionStream(
     // Reset first turn tracking
     hasTurnStartedRef.current = false;
     firstTurnCompleteCalledRef.current = false;
+    // Reset turn counter
+    turnCounterRef.current = 0;
   }, [resetStepState, setAwaitingFirstResponse]);
 
   // Process a single wire event
@@ -743,6 +748,10 @@ export function useSessionStream(
           resetStepState();
 
           const parsedUserInput = parseUserInput(event.payload.user_input);
+
+          // Track turn index for fork feature
+          const currentTurnIndex = turnCounterRef.current;
+          turnCounterRef.current += 1;
 
           // Track that at least one turn has started (for auto-rename trigger)
           if (!isReplay) {
@@ -759,6 +768,7 @@ export function useSessionStream(
           const userMessage: LiveMessage = {
             id: userMessageId,
             role: "user",
+            turnIndex: currentTurnIndex,
             content:
               parsedUserInput.text ||
               (parsedUserInput.attachments.length > 0
@@ -832,6 +842,7 @@ export function useSessionStream(
                 id: textMessageIdRef.current!,
                 role: "assistant",
                 variant: "text",
+                turnIndex: turnCounterRef.current > 0 ? turnCounterRef.current - 1 : undefined,
                 content: currentTextRef.current,
                 isStreaming: !isReplay,
               });

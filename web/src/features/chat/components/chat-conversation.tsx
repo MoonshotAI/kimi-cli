@@ -43,6 +43,7 @@ type ChatConversationProps = {
   isSearchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
   activityStatus?: ActivityDetail;
+  onForkSession?: (turnIndex: number) => void;
 };
 
 export function ChatConversation({
@@ -59,6 +60,7 @@ export function ChatConversation({
   isSearchOpen,
   onSearchOpenChange,
   activityStatus,
+  onForkSession,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -215,6 +217,7 @@ export function ChatConversation({
             blocksExpanded={blocksExpanded}
             highlightedMessageIndex={highlightedIndex}
             onAtBottomChange={setIsAtBottom}
+            onForkSession={onForkSession}
           />
         </div>
       )}

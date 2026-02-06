@@ -40,6 +40,8 @@ export type VirtualizedMessageListProps = {
   highlightedMessageIndex?: number;
   /** Callback when scroll position changes */
   onAtBottomChange?: (atBottom: boolean) => void;
+  /** Callback to fork session from before a specific turn */
+  onForkSession?: (turnIndex: number) => void;
 };
 
 export type VirtualizedMessageListHandle = {
@@ -163,6 +165,7 @@ function VirtualizedMessageListComponent(
     blocksExpanded,
     highlightedMessageIndex = -1,
     onAtBottomChange,
+    onForkSession,
   }: VirtualizedMessageListProps,
   ref: React.Ref<VirtualizedMessageListHandle>,
 ) {
@@ -296,9 +299,9 @@ function VirtualizedMessageListComponent(
             from={message.role}
           >
             {message.role === "user" ? (
-              message.content && (
+              message.content ? (
                 <UserMessageContent>{message.content}</UserMessageContent>
-              )
+              ) : null
             ) : (
               <AssistantMessage
                 message={message}
@@ -306,6 +309,9 @@ function VirtualizedMessageListComponent(
                 onApprovalAction={onApprovalAction}
                 canRespondToApproval={canRespondToApproval}
                 blocksExpanded={blocksExpanded}
+                onForkSession={onForkSession && message.turnIndex !== undefined
+                  ? () => onForkSession(message.turnIndex!)
+                  : undefined}
               />
             )}
             {message.attachments && message.attachments.length > 0 ? (
