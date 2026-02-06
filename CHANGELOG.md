@@ -13,7 +13,6 @@ Only write entries that are worth mentioning to users.
 
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
 - Core: Preserve session id when reloading configuration so the session resumes correctly
-
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
 - Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
 - Web: Add shell command and todo list display components for tool outputs
