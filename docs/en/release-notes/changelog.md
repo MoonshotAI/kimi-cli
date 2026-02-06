@@ -4,6 +4,10 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
+- Core: Update context token count after compaction completes
+- Core: Use adaptive thinking for Anthropic Opus 4.6+ models instead of budget-based thinking
+- Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
 - Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
 - Web: Add shell command and todo list display components for tool outputs
@@ -16,9 +20,6 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
-- Core: Update context token count after compaction completes
-- Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
-- Core: Use adaptive thinking for Anthropic Opus 4.6+ models instead of budget-based thinking
 
 ## 1.8.0 (2026-02-05)
 
