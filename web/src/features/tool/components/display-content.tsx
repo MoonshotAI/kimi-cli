@@ -1042,7 +1042,7 @@ const isTodoDone = (status: string): boolean =>
  */
 const TodoContent = ({ data }: { data: TodoDisplayData }) => (
   <div className="my-2 space-y-1">
-    {data.items.map((item) => {
+    {data.items.map((item, index) => {
       const text = item.content || item.title || "";
       const done = isTodoDone(item.status);
       const inProgress = item.status === "in_progress";
