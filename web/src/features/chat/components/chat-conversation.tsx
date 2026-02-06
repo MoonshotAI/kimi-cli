@@ -49,7 +49,7 @@ export function ChatConversation({
   messages,
   status,
   selectedSessionId,
-  _isReplayingHistory,
+  isReplayingHistory: _isReplayingHistory,
   pendingApprovalMap,
   onApprovalAction,
   canRespondToApproval,

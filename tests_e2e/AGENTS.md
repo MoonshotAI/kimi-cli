@@ -7,7 +7,7 @@
 
 ## Execution Rules
 - Tests run via `uv run kimi` by default; set `KIMI_E2E_WIRE_CMD` to override the base command
-  (e.g. `./rust/target/debug/kimi` or `cargo run -p kimi-cli --`). `--wire` is appended if missing.
+  (e.g. `../kimi-agent-rs/target/debug/kimi-agent` or `kimi-agent` on PATH). `--wire` is appended if missing.
 - Always isolate `HOME`, `USERPROFILE`, and `KIMI_SHARE_DIR`, and use a temporary `--work-dir` to
   avoid touching real `~/.kimi`.
 - Use `inline_snapshot` for snapshot testing; snapshots can start empty and be updated later.
