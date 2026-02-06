@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
 - Web：添加会话分支(fork)功能，可以从任意 Assistant 回复处创建新的分支会话
 - Web：重新设计工具输入 UI，支持可展开参数和长值的语法高亮
 - Web：添加工具结果的媒体预览（ReadMediaFile 的图片/视频），支持可点击缩略图
@@ -17,9 +18,6 @@
 - Web：添加活动状态指示器，显示 Agent 状态（处理中、等待审批等）
 - Web：修复选择斜杠命令时的输入法组合问题
 - Web：修复执行 `/clear`、`/reset` 或 `/compact` 命令后 UI 未清空消息的问题
-- Core：压缩完成后更新上下文 token 计数
-- Build：修复 Linux 上 PyInstaller 冻结构建中的子进程库路径冲突
-- Core：Anthropic Opus 4.6+ 模型使用 adaptive thinking 替代基于 budget 的 thinking
 
 ## 1.8.0 (2026-02-05)
 
