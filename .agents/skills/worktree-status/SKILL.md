@@ -67,13 +67,34 @@ done
 
 ### 3. Detect squash-merged branches (content diff)
 
-For any branch that shows "not merged", compare its content against
-`origin/main`. An empty diff means the branch content is already in main
-(i.e. it was squash-merged).
+For any branch that shows "not merged", check whether the branch's
+changes are already in main. The correct method is:
+
+1. Find the files the branch actually changed (relative to merge-base).
+2. For each changed file, compare the branch version with main.
+   If all files are identical, the branch was squash-merged.
+
+**⚠️ Do NOT use `git diff origin/main <branch>`** — that compares the
+two tips directly, so commits added to main *after* the branch diverged
+will show up as false differences.
 
 ```bash
-git diff origin/main <branch> -- | head -5
-# Empty output = squash-merged
+BRANCH="<branch>"
+BASE=$(git merge-base origin/main "$BRANCH")
+
+# List files the branch touched
+FILES=$(git diff --name-only "$BASE" "$BRANCH")
+
+# Compare each file between branch and current main
+for f in $FILES; do
+  d=$(git diff "$BRANCH" origin/main -- "$f" | wc -l)
+  if [ "$d" != "0" ]; then
+    echo "❌ $f — differs"
+  else
+    echo "✅ $f — identical in main"
+  fi
+done
+# All ✅ = squash-merged
 ```
 
 ### 4. (Optional) Check for associated tmux sessions
