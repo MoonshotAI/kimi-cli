@@ -62,6 +62,16 @@ def test_load_config_reserved_context_size():
     assert config.loop_control.reserved_context_size == 30000
 
 
+def test_load_config_max_steps_per_turn():
+    config = load_config_from_string("[loop_control]\nmax_steps_per_turn = 42\n")
+    assert config.loop_control.max_steps_per_turn == 42
+
+
+def test_load_config_max_steps_per_run():
+    config = load_config_from_string('{"loop_control": {"max_steps_per_run": 7}}')
+    assert config.loop_control.max_steps_per_turn == 7
+
+
 def test_load_config_reserved_context_size_too_low():
     with pytest.raises(ConfigError, match="reserved_context_size"):
         load_config_from_string('{"loop_control": {"reserved_context_size": 500}}')
