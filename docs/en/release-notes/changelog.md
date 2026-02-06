@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Config: Accept both `max_steps_per_turn` and `max_steps_per_run` as aliases for the loop control setting
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
 - Core: Preserve session id when reloading configuration so the session resumes correctly
@@ -23,8 +24,6 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
-- Core: Update context token count after compaction completes
-- Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
 
 ## 1.8.0 (2026-02-05)
 
