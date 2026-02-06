@@ -5,11 +5,11 @@
 ## 未发布
 
 - Web：添加会话分支(fork)功能，可以从任意 Assistant 回复处创建新的分支会话
-- Web：重新设计工具输入 UI，支持可展开的参数和长值的语法高亮
-- Web：添加工具结果的媒体预览（ReadMediaFile 返回的图片/视频），支持可点击缩略图
-- Web：添加 Shell 命令和待办列表显示组件用于工具输出
+- Web：重新设计工具输入 UI，支持可展开参数和长值的语法高亮
+- Web：添加工具结果的媒体预览（ReadMediaFile 的图片/视频），支持可点击缩略图
+- Web：添加 Shell 命令和 Todo 列表的工具输出显示组件
 - Web：上下文压缩时显示压缩指示器
-- Web：图片加载失败时显示错误回退 UI
+- Web：添加图片加载失败时的错误回退 UI
 - Web：添加会话归档功能，自动归档超过 15 天的会话
 - Web：添加多选模式，支持批量归档、取消归档和删除操作
 - Web：会话流开始时更新工作目录的最近会话 ID（`last_session_id`）
@@ -18,7 +18,8 @@
 - Web：修复选择斜杠命令时的输入法组合问题
 - Web：修复执行 `/clear`、`/reset` 或 `/compact` 命令后 UI 未清空消息的问题
 - Core：压缩完成后更新上下文 token 计数
-- Build：修复 PyInstaller 冻结构建在 Linux 上的子进程库路径冲突
+- Build：修复 Linux 上 PyInstaller 冻结构建中的子进程库路径冲突
+- Core：Anthropic Opus 4.6+ 模型使用 adaptive thinking 替代基于 budget 的 thinking
 
 ## 1.8.0 (2026-02-05)
 
