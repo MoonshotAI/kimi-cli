@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
+- Core: Preserve session id when reloading configuration so the session resumes correctly
 - Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
 - Web: Improve auto-scroll behavior in chat for smoother following of new content
 - Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
@@ -20,6 +22,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
+- Core: Update context token count after compaction completes
+- Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
 
 ## 1.8.0 (2026-02-05)
 
