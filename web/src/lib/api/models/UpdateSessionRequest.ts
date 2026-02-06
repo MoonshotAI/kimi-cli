@@ -25,6 +25,12 @@ export interface UpdateSessionRequest {
      * @memberof UpdateSessionRequest
      */
     title?: string | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof UpdateSessionRequest
+     */
+    archived?: boolean | null;
 }
 
 /**
@@ -45,6 +51,7 @@ export function UpdateSessionRequestFromJSONTyped(json: any, ignoreDiscriminator
     return {
         
         'title': json['title'] == null ? undefined : json['title'],
+        'archived': json['archived'] == null ? undefined : json['archived'],
     };
 }
 
@@ -60,6 +67,7 @@ export function UpdateSessionRequestToJSONTyped(value?: UpdateSessionRequest | n
     return {
         
         'title': value['title'],
+        'archived': value['archived'],
     };
 }
 

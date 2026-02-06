@@ -14,6 +14,7 @@ Name | Type
 `status` | [SessionStatus](SessionStatus.md)
 `workDir` | string
 `sessionDir` | string
+`archived` | boolean
 
 ## Example
 
@@ -29,6 +30,7 @@ const example = {
   "status": null,
   "workDir": null,
   "sessionDir": null,
+  "archived": null,
 } satisfies Session
 
 console.log(example)

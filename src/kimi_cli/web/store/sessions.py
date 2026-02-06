@@ -35,6 +35,9 @@ from kimi_cli.wire.file import WireFile
 CACHE_TTL = 5.0  # seconds - balance between freshness and performance
 SESSION_METADATA_FILENAME = "metadata.json"
 
+# Auto-archive configuration
+AUTO_ARCHIVE_DAYS = 15  # Sessions older than this will be auto-archived
+
 _sessions_cache: list[JointSession] | None = None
 _cache_timestamp: float = 0.0
 _sessions_index_cache: list[SessionIndexEntry] | None = None
@@ -70,6 +73,9 @@ class SessionMetadata(BaseModel):
     title_generated: bool = False
     title_generate_attempts: int = 0
     wire_mtime: float | None = None
+    archived: bool = False
+    archived_at: float | None = None
+    auto_archive_exempt: bool = False  # True if user manually unarchived, exempt from auto-archive
 
 
 @dataclass(slots=True)
@@ -230,6 +236,7 @@ def _build_kimi_session(entry: SessionIndexEntry) -> KimiCLISession:
 
 def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
     kimi_session = _build_kimi_session(entry)
+    archived = entry.metadata.archived if entry.metadata else False
     return JointSession(
         session_id=entry.session_id,
         title=entry.title,
@@ -239,10 +246,33 @@ def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
         work_dir=entry.work_dir,
         session_dir=str(entry.session_dir),
         kimi_cli_session=kimi_session,
+        archived=archived,
     )
 
 
+def _should_auto_archive(last_updated: datetime, session_metadata: SessionMetadata) -> bool:
+    """Check if a session should be auto-archived based on age and exemption status."""
+    # Already archived, no need to auto-archive
+    if session_metadata.archived:
+        return False
+
+    # User manually unarchived this session, exempt from auto-archive
+    if session_metadata.auto_archive_exempt:
+        return False
+
+    # Check if session is older than AUTO_ARCHIVE_DAYS
+    now = datetime.now(tz=UTC)
+    age_days = (now - last_updated).days
+    return age_days >= AUTO_ARCHIVE_DAYS
+
+
 def _build_sessions_index() -> list[SessionIndexEntry]:
+    """Build the sessions index from disk.
+
+    Note: This function only reads data and does NOT perform auto-archive writes.
+    Auto-archive is handled separately by run_auto_archive() to avoid disk writes
+    during read operations.
+    """
     metadata = load_metadata()
     entries: list[SessionIndexEntry] = []
 
@@ -275,6 +305,53 @@ def _build_sessions_index() -> list[SessionIndexEntry]:
 
     entries.sort(key=lambda x: (x.last_updated, str(x.session_id)), reverse=True)
     return entries
+
+
+# Track when auto-archive was last run to avoid running too frequently
+_last_auto_archive_time: float = 0.0
+AUTO_ARCHIVE_INTERVAL = 300.0  # Run auto-archive at most once every 5 minutes
+
+
+def run_auto_archive() -> int:
+    """Run auto-archive on old sessions.
+
+    This function is designed to be called periodically (e.g., on app startup,
+    or via a background task) rather than on every read operation.
+
+    Returns:
+        Number of sessions that were auto-archived.
+    """
+    global _last_auto_archive_time
+
+    now = time.time()
+    if now - _last_auto_archive_time < AUTO_ARCHIVE_INTERVAL:
+        return 0
+
+    _last_auto_archive_time = now
+    archived_count = 0
+
+    # Load fresh index (bypass cache to get current state)
+    entries = _build_sessions_index()
+
+    for entry in entries:
+        if entry.metadata is None:
+            continue
+
+        if _should_auto_archive(entry.last_updated, entry.metadata):
+            updated_metadata = entry.metadata.model_copy(
+                update={
+                    "archived": True,
+                    "archived_at": time.time(),
+                }
+            )
+            save_session_metadata(entry.session_dir, updated_metadata)
+            archived_count += 1
+
+    # Invalidate cache if we archived anything
+    if archived_count > 0:
+        invalidate_sessions_cache()
+
+    return archived_count
 
 
 def _load_sessions_index_cached() -> list[SessionIndexEntry]:
@@ -327,9 +404,28 @@ def load_sessions_page(
     limit: int = 100,
     offset: int = 0,
     query: str | None = None,
+    archived: bool | None = None,
 ) -> list[JointSession]:
-    """Load a paginated list of sessions, optionally filtered by query."""
+    """Load a paginated list of sessions, optionally filtered by query and archived status.
+
+    Args:
+        limit: Maximum number of sessions to return.
+        offset: Number of sessions to skip.
+        query: Optional search query to filter by title or work_dir.
+        archived: Filter by archived status.
+            - None (default): Only return non-archived sessions.
+            - True: Only return archived sessions.
+            - False: Only return non-archived sessions.
+    """
     entries = list(_load_sessions_index_cached())
+
+    # Filter by archived status
+    if archived is None or archived is False:
+        # Default: only non-archived sessions
+        entries = [e for e in entries if not (e.metadata and e.metadata.archived)]
+    else:
+        # Only archived sessions
+        entries = [e for e in entries if e.metadata and e.metadata.archived]
 
     if query:
         query_text = query.strip().lower()

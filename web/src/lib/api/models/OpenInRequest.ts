@@ -42,7 +42,8 @@ export const OpenInRequestAppEnum = {
     Cursor: 'cursor',
     Vscode: 'vscode',
     Iterm: 'iterm',
-    Terminal: 'terminal'
+    Terminal: 'terminal',
+    Antigravity: 'antigravity'
 } as const;
 export type OpenInRequestAppEnum = typeof OpenInRequestAppEnum[keyof typeof OpenInRequestAppEnum];
 

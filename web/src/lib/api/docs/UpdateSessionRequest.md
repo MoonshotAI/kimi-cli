@@ -8,6 +8,7 @@ Update session request.
 Name | Type
 ------------ | -------------
 `title` | string
+`archived` | boolean
 
 ## Example
 
@@ -17,6 +18,7 @@ import type { UpdateSessionRequest } from ''
 // TODO: Update the object below with actual values
 const example = {
   "title": null,
+  "archived": null,
 } satisfies UpdateSessionRequest
 
 console.log(example)

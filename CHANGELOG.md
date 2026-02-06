@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Add session archive feature with auto-archive for sessions older than 15 days
+- Web: Add multi-select mode for bulk archive, unarchive, and delete operations
 - Web: Update `last_session_id` for work directory when session stream starts
 - Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
