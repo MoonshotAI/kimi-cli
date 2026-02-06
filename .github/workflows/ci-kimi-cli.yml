@@ -48,8 +48,8 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
-          cache: true
-          cache-dependency-path: uv.lock
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Prepare building environment
         env:
@@ -82,8 +82,8 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
-          cache: true
-          cache-dependency-path: uv.lock
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Prepare building environment
         env:
@@ -132,8 +132,8 @@ jobs:
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
-          cache: true
-          cache-dependency-path: uv.lock
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Set up Node.js (web build)
         uses: actions/setup-node@v4
@@ -141,14 +141,6 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
-
-      - name: Cache web node_modules
-        uses: actions/cache@v4
-        with:
-          path: web/node_modules
-          key: ${{ runner.os }}-web-node-modules-${{ hashFiles('web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-web-node-modules-
 
       - name: Prepare building environment
         env:
