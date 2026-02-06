@@ -18,7 +18,6 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
-  useState,
   type ComponentPropsWithoutRef,
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -27,7 +26,6 @@ import { cn } from "@/lib/utils";
 export type VirtualizedMessageListProps = {
   messages: LiveMessage[];
   conversationKey: string;
-  isReplayingHistory: boolean;
   pendingApprovalMap: Record<string, boolean>;
   onApprovalAction?: AssistantApprovalHandler;
   canRespondToApproval: boolean;
@@ -148,7 +146,6 @@ function VirtualizedMessageListComponent(
   {
     messages,
     conversationKey,
-    isReplayingHistory,
     pendingApprovalMap,
     onApprovalAction,
     canRespondToApproval,
@@ -160,7 +157,7 @@ function VirtualizedMessageListComponent(
   ref: React.Ref<VirtualizedMessageListHandle>,
 ) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const scrollerRef = useRef<HTMLElement | null>(null);
 
   // Filtered messages list (excluding message-id) aligned with listItems indices
   const filteredMessages = useMemo(
@@ -176,10 +173,34 @@ function VirtualizedMessageListComponent(
 
   const handleAtBottomChange = useCallback(
     (atBottom: boolean) => {
-      setIsAtBottom(atBottom);
       onAtBottomChange?.(atBottom);
     },
     [onAtBottomChange],
+  );
+
+  const handleScrollerRef = useCallback(
+    (ref: HTMLElement | Window | null) => {
+      scrollerRef.current = ref instanceof HTMLElement ? ref : null;
+    },
+    [],
+  );
+
+  // Use a generous threshold to tolerate height estimation mismatches
+  // when blocks are expanded (actual heights >> defaultItemHeight).
+  // This is decoupled from atBottomStateChange which uses Virtuoso's
+  // default tight threshold for the scroll-to-bottom button.
+  const handleFollowOutput = useCallback(
+    (isAtBottom: boolean) => {
+      if (isAtBottom) return "auto" as const;
+      const scroller = scrollerRef.current;
+      if (scroller) {
+        const gap =
+          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+        if (gap <= 1500) return "auto" as const;
+      }
+      return false;
+    },
+    [],
   );
 
   useImperativeHandle(
@@ -200,7 +221,7 @@ function VirtualizedMessageListComponent(
           virtuosoRef.current?.scrollToIndex({
             index: listItems.length - 1,
             align: "end",
-            behavior: "smooth",
+            behavior: "auto",
           });
         }
       },
@@ -214,20 +235,17 @@ function VirtualizedMessageListComponent(
       ref={virtuosoRef}
       data={listItems}
       className="h-full"
-      followOutput={!isReplayingHistory && isAtBottom ? "auto" : false}
+      scrollerRef={handleScrollerRef}
+      followOutput={handleFollowOutput}
       defaultItemHeight={160}
       increaseViewportBy={{ top: 400, bottom: 400 }}
       overscan={200}
       minOverscanItemCount={4}
       atBottomStateChange={handleAtBottomChange}
-      initialTopMostItemIndex={
-        isReplayingHistory
-          ? 0
-          : {
-              index: Math.max(0, listItems.length - 1),
-              align: "end",
-            }
-      }
+      initialTopMostItemIndex={{
+        index: Math.max(0, listItems.length - 1),
+        align: "end",
+      }}
       components={{
         Scroller: VirtuosoScroller,
         List: VirtuosoList,

@@ -25,7 +25,7 @@ def _normalize_cli_output(text: str, *, replace: dict[str, str] | None = None) -
             if old and old in normalized:
                 normalized = normalized.replace(old, new)
     normalized = normalize_value(normalized)
-    normalized = normalized.replace("kagent mcp", "<cmd> mcp")
+    normalized = normalized.replace("kimi-agent mcp", "<cmd> mcp")
     normalized = normalized.replace("kimi mcp", "<cmd> mcp")
     return normalized
 

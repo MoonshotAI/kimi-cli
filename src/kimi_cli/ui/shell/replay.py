@@ -7,7 +7,7 @@ from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from kosong.message import Message
+from kosong.message import ContentPart, Message
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.ui.shell.console import console
@@ -16,6 +16,7 @@ from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.message import message_stringify
+from kimi_cli.utils.slashcmd import parse_slash_command_call
 from kimi_cli.wire import Wire
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
@@ -93,6 +94,9 @@ async def _build_replay_turns_from_wire(wire_file: WireFile | None) -> list[_Rep
             wire_msg = record.to_wire_message()
 
             if isinstance(wire_msg, TurnBegin):
+                if _is_clear_command_input(wire_msg.user_input):
+                    turns.clear()
+                    continue
                 turns.append(
                     _ReplayTurn(
                         user_message=Message(role="user", content=wire_msg.user_input),
@@ -112,6 +116,17 @@ async def _build_replay_turns_from_wire(wire_file: WireFile | None) -> list[_Rep
         logger.exception("Failed to build replay turns from wire file {file}:", file=wire_file.path)
         return []
     return list(turns)
+
+
+def _is_clear_command_input(user_input: str | list[ContentPart]) -> bool:
+    if isinstance(user_input, list):
+        text = Message(role="user", content=user_input).extract_text(" ").strip()
+    else:
+        text = str(user_input).strip()
+    call = parse_slash_command_call(text)
+    if call is None:
+        return False
+    return call.name in {"clear", "reset"}
 
 
 def _is_user_message(message: Message) -> bool:

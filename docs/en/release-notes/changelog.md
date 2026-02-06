@@ -5,6 +5,11 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
+- Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
+- Core: Preserve session id when reloading configuration so the session resumes correctly
+- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
+- Web: Improve auto-scroll behavior in chat for smoother following of new content
+- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
 - Web: Add session fork feature to branch off a new session from any assistant response
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
 - Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
@@ -20,7 +25,6 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 - Core: Update context token count after compaction completes
 - Build: Fix subprocess library path conflicts in PyInstaller-frozen builds on Linux
-- Core: Use adaptive thinking for Anthropic Opus 4.6+ models instead of budget-based thinking
 
 ## 1.8.0 (2026-02-05)
 
