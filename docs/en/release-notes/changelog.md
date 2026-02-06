@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Remove `Ctrl-/` keyboard shortcut that triggered `/help` command
 - Config: Accept both `max_steps_per_turn` and `max_steps_per_run` as aliases for the loop control setting
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`

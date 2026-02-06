@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：移除 `Ctrl-/` 快捷键（此前用于触发 `/help` 命令）
 - Config：支持 `max_steps_per_turn` 和 `max_steps_per_run` 作为循环控制设置的别名
 - Wire：新增 `replay` 请求，用于回放已记录的 Wire 事件（协议版本 1.3）
 - Shell：修复会话回放时显示已被 `/clear` 或 `/reset` 清除的消息的问题
