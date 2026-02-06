@@ -4,25 +4,25 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
-- Shell: Remove `Ctrl-/` keyboard shortcut that triggered `/help` command
+- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
 - Config: Accept both `max_steps_per_turn` and `max_steps_per_run` as aliases for the loop control setting
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
-- Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
-- Core: Preserve session id when reloading configuration so the session resumes correctly
-- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
-- Web: Improve auto-scroll behavior in chat for smoother following of new content
-- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
 - Web: Add session fork feature to branch off a new session from any assistant response
-- Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
-- Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
-- Web: Add shell command and todo list display components for tool outputs
-- Web: Show compaction indicator when context is being compacted
-- Web: Add error fallback UI when images fail to load
 - Web: Add session archive feature with auto-archive for sessions older than 15 days
 - Web: Add multi-select mode for bulk archive, unarchive, and delete operations
-- Web: Update `last_session_id` for work directory when session stream starts
-- Web: Fix approval request states not updating when session is interrupted or cancelled
+- Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
+- Web: Add shell command and todo list display components for tool outputs
 - Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
+- Web: Add error fallback UI when images fail to load
+- Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
+- Web: Show compaction indicator when context is being compacted
+- Web: Improve auto-scroll behavior in chat for smoother following of new content
+- Web: Update `last_session_id` for work directory when session stream starts
+- Shell: Remove `Ctrl-/` keyboard shortcut that triggered `/help` command
+- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
+- Core: Preserve session id when reloading configuration so the session resumes correctly
+- Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
+- Web: Fix approval request states not updating when session is interrupted or cancelled
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 

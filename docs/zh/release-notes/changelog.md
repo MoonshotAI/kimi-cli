@@ -4,25 +4,25 @@
 
 ## 未发布
 
-- Shell：移除 `Ctrl-/` 快捷键（此前用于触发 `/help` 命令）
+- Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
 - Config：支持 `max_steps_per_turn` 和 `max_steps_per_run` 作为循环控制设置的别名
 - Wire：新增 `replay` 请求，用于回放已记录的 Wire 事件（协议版本 1.3）
-- Shell：修复会话回放时显示已被 `/clear` 或 `/reset` 清除的消息的问题
-- Core：重新加载配置时保留会话 ID，确保会话正确恢复
-- Rust：Rust 版实现迁移到 `MoonshotAI/kimi-agent-rs` 并独立发版；二进制更名为 `kimi-agent`
-- Web：改进聊天中的自动滚动行为，更流畅地跟随新内容
-- Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
 - Web：添加会话分支(fork)功能，可以从任意 Assistant 回复处创建新的分支会话
-- Web：重新设计工具输入 UI，支持可展开参数和长值的语法高亮
-- Web：添加工具结果的媒体预览（ReadMediaFile 的图片/视频），支持可点击缩略图
-- Web：添加 Shell 命令和 Todo 列表的工具输出显示组件
-- Web：上下文压缩时显示压缩指示器
-- Web：添加图片加载失败时的错误回退 UI
 - Web：添加会话归档功能，自动归档超过 15 天的会话
 - Web：添加多选模式，支持批量归档、取消归档和删除操作
-- Web：会话流开始时更新工作目录的最近会话 ID（`last_session_id`）
-- Web：修复会话中断或取消时审批请求状态未更新的问题
+- Web：添加工具结果的媒体预览（ReadMediaFile 的图片/视频），支持可点击缩略图
+- Web：添加 Shell 命令和 Todo 列表的工具输出显示组件
 - Web：添加活动状态指示器，显示 Agent 状态（处理中、等待审批等）
+- Web：添加图片加载失败时的错误回退 UI
+- Web：重新设计工具输入 UI，支持可展开参数和长值的语法高亮
+- Web：上下文压缩时显示压缩指示器
+- Web：改进聊天中的自动滚动行为，更流畅地跟随新内容
+- Web：会话流开始时更新工作目录的最近会话 ID（`last_session_id`）
+- Shell：移除 `Ctrl-/` 快捷键（此前用于触发 `/help` 命令）
+- Rust：Rust 版实现迁移到 `MoonshotAI/kimi-agent-rs` 并独立发版；二进制更名为 `kimi-agent`
+- Core：重新加载配置时保留会话 ID，确保会话正确恢复
+- Shell：修复会话回放时显示已被 `/clear` 或 `/reset` 清除的消息的问题
+- Web：修复会话中断或取消时审批请求状态未更新的问题
 - Web：修复选择斜杠命令时的输入法组合问题
 - Web：修复执行 `/clear`、`/reset` 或 `/compact` 命令后 UI 未清空消息的问题
 
