@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Wire：新增 `replay` 请求，用于回放已记录的 Wire 事件（协议版本 1.3）
 - Shell：修复会话回放时显示已被 `/clear` 或 `/reset` 清除的消息的问题
 - Core：重新加载配置时保留会话 ID，确保会话正确恢复
 - Rust：Rust 版实现迁移到 `MoonshotAI/kimi-agent-rs` 并独立发版；二进制更名为 `kimi-agent`

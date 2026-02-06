@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
 - Core: Preserve session id when reloading configuration so the session resumes correctly
 - Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`

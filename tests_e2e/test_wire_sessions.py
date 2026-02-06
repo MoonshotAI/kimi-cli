@@ -6,6 +6,8 @@ from pathlib import Path
 from inline_snapshot import snapshot
 
 from tests_e2e.wire_helpers import (
+    build_approval_response,
+    build_shell_tool_call,
     collect_until_response,
     make_home_dir,
     make_work_dir,
@@ -258,6 +260,131 @@ def test_manual_compact(tmp_path) -> None:
                     "method": "event",
                     "type": "StatusUpdate",
                     "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
+                },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
+            ]
+        )
+    finally:
+        wire.close()
+
+
+def test_replay_streams_wire_history(tmp_path) -> None:
+    scripts = [
+        "\n".join(
+            [
+                "text: step1",
+                build_shell_tool_call("tc-1", "echo ok"),
+            ]
+        ),
+        "text: done",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+
+    wire = start_wire(
+        config_path=config_path,
+        config_text=None,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        extra_args=["--session", "replay-session"],
+        yolo=False,
+    )
+    try:
+        send_initialize(wire)
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-1",
+                "method": "prompt",
+                "params": {"user_input": "run shell"},
+            }
+        )
+        resp, _ = collect_until_response(
+            wire,
+            "prompt-1",
+            request_handler=lambda msg: build_approval_response(msg, "approve"),
+        )
+        assert resp.get("result", {}).get("status") == "finished"
+
+        wire.send_json({"jsonrpc": "2.0", "id": "replay-1", "method": "replay"})
+        resp, messages = collect_until_response(wire, "replay-1")
+        assert resp.get("result") == snapshot(
+            {
+                "status": "finished",
+                "events": 11,
+                "requests": 1,
+            }
+        )
+        assert summarize_messages(messages) == snapshot(
+            [
+                {
+                    "method": "event",
+                    "type": "TurnBegin",
+                    "payload": {"user_input": "run shell"},
+                },
+                {"method": "event", "type": "StepBegin", "payload": {"n": 1}},
+                {
+                    "method": "event",
+                    "type": "ContentPart",
+                    "payload": {"type": "text", "text": "step1"},
+                },
+                {
+                    "method": "event",
+                    "type": "ToolCall",
+                    "payload": {
+                        "type": "function",
+                        "id": "tc-1",
+                        "function": {"name": "Shell", "arguments": '{"command": "echo ok"}'},
+                        "extras": None,
+                    },
+                },
+                {
+                    "method": "event",
+                    "type": "StatusUpdate",
+                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                },
+                {
+                    "method": "request",
+                    "type": "ApprovalRequest",
+                    "payload": {
+                        "id": "<uuid>",
+                        "tool_call_id": "tc-1",
+                        "sender": "Shell",
+                        "action": "run command",
+                        "description": "Run command `echo ok`",
+                        "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
+                    },
+                },
+                {
+                    "method": "event",
+                    "type": "ApprovalResponse",
+                    "payload": {"request_id": "<uuid>", "response": "approve"},
+                },
+                {
+                    "method": "event",
+                    "type": "ToolResult",
+                    "payload": {
+                        "tool_call_id": "tc-1",
+                        "return_value": {
+                            "is_error": False,
+                            "output": "ok\n",
+                            "message": "Command executed successfully.",
+                            "display": [],
+                            "extras": None,
+                        },
+                    },
+                },
+                {"method": "event", "type": "StepBegin", "payload": {"n": 2}},
+                {
+                    "method": "event",
+                    "type": "ContentPart",
+                    "payload": {"type": "text", "text": "done"},
+                },
+                {
+                    "method": "event",
+                    "type": "StatusUpdate",
+                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
