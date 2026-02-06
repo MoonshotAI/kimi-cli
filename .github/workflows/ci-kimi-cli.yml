@@ -142,14 +142,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: Cache web node_modules
-        uses: actions/cache@v4
-        with:
-          path: web/node_modules
-          key: ${{ runner.os }}-web-node-modules-${{ hashFiles('web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-web-node-modules-
-
       - name: Prepare building environment
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
