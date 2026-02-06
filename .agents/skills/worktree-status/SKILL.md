@@ -16,7 +16,11 @@ dirty state and merge status.
 
 ## Procedure
 
-### 1. Pull latest main
+### 1. Pull latest main (MANDATORY)
+
+You MUST pull latest main before any status checks. Without this, merge
+detection (both ancestry and content diff) will produce stale results and
+you may mistakenly conclude a branch is not merged.
 
 ```bash
 cd "$(git rev-parse --show-toplevel)" && git pull origin main
