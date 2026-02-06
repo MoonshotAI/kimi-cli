@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Web：添加会话分支(fork)功能，可以从任意 Assistant 回复处创建新的分支会话
 - Web：重新设计工具输入 UI，支持可展开参数和长值的语法高亮
 - Web：添加工具结果的媒体预览（ReadMediaFile 的图片/视频），支持可点击缩略图
 - Web：添加 Shell 命令和 Todo 列表的工具输出显示组件
@@ -74,11 +75,11 @@
 
 ## 1.2 (2026-01-27)
 
-- UI: 显示 `kimi-for-coding` 模型的说明
+- UI：显示 `kimi-for-coding` 模型的说明
 
 ## 1.1 (2026-01-27)
 
-- LLM: 修复 `kimi-for-coding` 模型的能力
+- LLM：修复 `kimi-for-coding` 模型的能力
 
 ## 1.0 (2026-01-27)
 

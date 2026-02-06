@@ -4,6 +4,7 @@ import type {
   UploadSessionFileResponse,
   SessionStatus,
 } from "../lib/api/models";
+import { SessionFromJSON } from "../lib/api/models/Session";
 import { apiClient } from "../lib/apiClient";
 import { getAuthHeader, getAuthToken } from "../lib/auth";
 import { formatRelativeTime, getApiBaseUrl } from "./utils";
@@ -96,6 +97,8 @@ type UseSessionsReturn = {
   bulkUnarchiveSessions: (sessionIds: string[]) => Promise<number>;
   /** Bulk delete sessions */
   bulkDeleteSessions: (sessionIds: string[]) => Promise<number>;
+  /** Fork a session at a specific turn index */
+  forkSession: (sessionId: string, turnIndex: number) => Promise<Session>;
 };
 
 const normalizeSessionPath = (value?: string): string => {
@@ -447,16 +450,7 @@ export function useSessions(): UseSessionsReturn {
         }
 
         const sessionData = await response.json();
-        // Convert snake_case to camelCase
-        const session: Session = {
-          sessionId: sessionData.session_id,
-          title: sessionData.title,
-          lastUpdated: new Date(sessionData.last_updated),
-          isRunning: sessionData.is_running,
-          status: sessionData.status,
-          workDir: sessionData.work_dir,
-          sessionDir: sessionData.session_dir,
-        };
+        const session = SessionFromJSON(sessionData);
 
         // Update sessions list (add to beginning)
         setSessions((current) => [session, ...current]);
@@ -1012,6 +1006,51 @@ export function useSessions(): UseSessionsReturn {
     [selectedSessionId],
   );
 
+  /**
+   * Fork a session at a specific turn index
+   * Creates a new session with history up to the specified turn
+   */
+  const forkSession = useCallback(
+    async (sessionId: string, turnIndex: number): Promise<Session> => {
+      try {
+        const basePath = getApiBaseUrl();
+        const response = await fetch(
+          `${basePath}/api/sessions/${encodeURIComponent(sessionId)}/fork`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...getAuthHeader(),
+            },
+            body: JSON.stringify({ turn_index: turnIndex }),
+          },
+        );
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Failed to fork session");
+        }
+
+        const sessionData = await response.json();
+        const session = SessionFromJSON(sessionData);
+
+        // Add to sessions list
+        setSessions((current) => [session, ...current]);
+
+        // Auto-select the new session
+        setSelectedSessionId(session.sessionId);
+
+        return session;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fork session";
+        setError(message);
+        throw err;
+      }
+    },
+    [],
+  );
+
   return {
     sessions,
     archivedSessions,
@@ -1048,5 +1087,6 @@ export function useSessions(): UseSessionsReturn {
     bulkArchiveSessions,
     bulkUnarchiveSessions,
     bulkDeleteSessions,
+    forkSession,
   };
 }

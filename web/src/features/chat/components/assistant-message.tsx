@@ -1,5 +1,18 @@
 import { useMemo } from "react";
+import { GitBranchIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { ApprovalResponseDecision } from "@/hooks/wireTypes";
 import type { LiveMessage } from "@/hooks/types";
 import {
@@ -48,6 +61,8 @@ type AssistantMessageProps = {
   onApprovalAction?: AssistantApprovalHandler;
   canRespondToApproval: boolean;
   blocksExpanded: boolean;
+  /** Callback to fork session from this message's turn */
+  onForkSession?: () => void;
 };
 
 export function AssistantMessage({
@@ -56,6 +71,7 @@ export function AssistantMessage({
   onApprovalAction,
   canRespondToApproval,
   blocksExpanded,
+  onForkSession,
 }: AssistantMessageProps) {
   const content = useMemo(() => {
     switch (message.variant) {
@@ -74,7 +90,7 @@ export function AssistantMessage({
       case "thinking":
         return renderThinkingMessage(message, blocksExpanded);
       default:
-        return renderAssistantText(message);
+        return renderAssistantText(message, onForkSession);
     }
   }, [
     message,
@@ -82,38 +98,79 @@ export function AssistantMessage({
     onApprovalAction,
     canRespondToApproval,
     blocksExpanded,
+    onForkSession,
   ]);
 
   return content;
 }
 
-const renderAssistantText = (message: LiveMessage) => (
-  <MessageContent className={assistantContentClass}>
-    <div className="flex items-start gap-2">
-      <span
-        className={cn(
-          "mt-2 size-2 shrink-0 rounded-full bg-muted-foreground/60",
-          message.isStreaming &&
-            "bg-green-500 animate-[glow-pulse_1.5s_ease-in-out_infinite]",
-        )}
-      />
-      <div className="flex-1 min-w-0">
-        <MessageResponse
-          className="wrap-break-word"
-          mode={message.isStreaming ? "streaming" : "static"}
-          parseIncompleteMarkdown={Boolean(message.isStreaming)}
-        >
-          {message.content || "Thinking through the response..."}
-        </MessageResponse>
-        {message.isStreaming ? (
-          <div className={`mt-2 ${assistantMetaTextClass}`}>
-            Streaming response…
-          </div>
-        ) : null}
+const renderAssistantText = (message: LiveMessage, onForkSession?: () => void) => {
+  const canFork = !message.isStreaming && onForkSession;
+
+  return (
+    <MessageContent className={cn(assistantContentClass, canFork && "overflow-visible")}>
+      <div className="flex items-start gap-2">
+        <div className="relative mt-2 shrink-0 size-2">
+          {/* Gray/green dot indicator */}
+          <span
+            className={cn(
+              "absolute inset-0 rounded-full bg-muted-foreground/60 transition-opacity",
+              message.isStreaming &&
+                "bg-green-500 animate-[glow-pulse_1.5s_ease-in-out_infinite]",
+              canFork && "group-hover:opacity-0",
+            )}
+          />
+          {/* Fork button overlays the dot on hover, opens confirmation dialog */}
+          {canFork && (
+            <AlertDialog>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="cursor-pointer absolute -inset-1.5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                    >
+                      <GitBranchIcon className="size-3.5" />
+                    </button>
+                  </AlertDialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  <p>Fork session from this point</p>
+                </TooltipContent>
+              </Tooltip>
+              <AlertDialogContent size="sm">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Fork Session</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    A new session will be created with the conversation history up to and including this response. The current session will not be affected.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onForkSession}>Fork</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <MessageResponse
+            className="wrap-break-word"
+            mode={message.isStreaming ? "streaming" : "static"}
+            parseIncompleteMarkdown={Boolean(message.isStreaming)}
+          >
+            {message.content || "Thinking through the response..."}
+          </MessageResponse>
+          {message.isStreaming ? (
+            <div className={`mt-2 ${assistantMetaTextClass}`}>
+              Streaming response…
+            </div>
+          ) : null}
+        </div>
       </div>
-    </div>
-  </MessageContent>
-);
+    </MessageContent>
+  );
+};
 
 const renderChainOfThoughtMessage = (message: LiveMessage) => {
   const details = message.chainOfThought;
