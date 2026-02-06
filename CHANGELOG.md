@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
 - Web: Add session archive feature with auto-archive for sessions older than 15 days
 - Web: Add multi-select mode for bulk archive, unarchive, and delete operations
 - Web: Update `last_session_id` for work directory when session stream starts
