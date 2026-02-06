@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 (2026-02-06)
+
 - Add `env` parameter to `exec()` method for passing environment variables to subprocesses
 
 ## 0.6.0 (2026-01-09)

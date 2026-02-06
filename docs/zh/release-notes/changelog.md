@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.9.0 (2026-02-06)
+
 - Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
 - Config：支持 `max_steps_per_turn` 和 `max_steps_per_run` 作为循环控制设置的别名
 - Wire：新增 `replay` 请求，用于回放已记录的 Wire 事件（协议版本 1.3）

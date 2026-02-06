@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.9.0 (2026-02-06)
+
 - Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
 - Config: Accept both `max_steps_per_turn` and `max_steps_per_run` as aliases for the loop control setting
 - Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
