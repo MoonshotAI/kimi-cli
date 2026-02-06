@@ -6,6 +6,7 @@
 
 - Shell：修复会话回放时显示已被 `/clear` 或 `/reset` 清除的消息的问题
 - Core：重新加载配置时保留会话 ID，确保会话正确恢复
+- Rust：Rust 版实现迁移到 `MoonshotAI/kimi-agent-rs` 并独立发版；二进制更名为 `kimi-agent`
 - Web：改进聊天中的自动滚动行为，更流畅地跟随新内容
 - Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
 - Web：添加会话分支(fork)功能，可以从任意 Assistant 回复处创建新的分支会话

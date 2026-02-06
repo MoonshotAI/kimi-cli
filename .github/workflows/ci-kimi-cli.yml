@@ -26,12 +26,78 @@ on:
       - "pyproject.toml"
       - "uv.lock"
 
+env:
+  NO_COLOR: "1"
+  TERM: dumb
+
 jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
+      - name: Run checks
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make check-kimi-cli
+
   test:
+    needs: check
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
+      - name: Run tests
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          PYTHONUTF8: "1"
+        run: make test-kimi-cli
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -57,50 +123,35 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install make -y
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.13
         id: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+          python-version: "3.13"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
 
-      - name: Prepare building environment
-        env:
-          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make prepare
-
-      - name: Run checks
-        env:
-          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make check-kimi-cli
-
-      - name: Run tests
-        env:
-          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-          PYTHONUTF8: "1"
-        run: make test-kimi-cli
-
       - name: Set up Node.js (web build)
-        if: matrix.python-version == '3.13'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
       - name: Build standalone binary
-        if: matrix.python-version == '3.13'
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make build-bin
 
       - name: Smoke test binary --help
-        if: matrix.python-version == '3.13'
         shell: python
         run: |
           import os
@@ -114,7 +165,7 @@ jobs:
           BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
-        if: matrix.python-version == '3.13' && success()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}
@@ -185,13 +236,6 @@ jobs:
         run: |
           python scripts/check_version_tag.py \
             --pyproject packages/kimi-code/pyproject.toml \
-            --expected-version "${{ steps.version.outputs.head_version }}"
-
-      - name: Check kagent version alignment
-        if: steps.version.outputs.bump == 'true'
-        run: |
-          python scripts/check_cargo_version_tag.py \
-            --cargo-toml rust/Cargo.toml \
             --expected-version "${{ steps.version.outputs.head_version }}"
 
       - name: Check kimi-code dependency pin

@@ -671,13 +671,13 @@ interface ShellDisplayBlock {
 }
 ```
 
-## KAgent：Rust 版 Wire Server
+## Kimi Agent（Rust）Wire Server
 
 ::: warning 注意
-KAgent 目前为实验性功能，API 和行为可能在后续版本中发生变化。
+Kimi Agent 目前为实验性功能，API 和行为可能在后续版本中发生变化。
 :::
 
-KAgent 是 Kimi Code CLI 的 Rust 实现，专为 Wire 模式设计。如果你只需要 Wire 协议服务，KAgent 提供了一个更轻量的选择。
+Kimi Agent (Rust) 是 Kimi Code CLI 内核的 Rust 实现，专为 Wire 模式设计。如果你只需要 Wire 协议服务，Kimi Agent (Rust) 提供了一个更轻量的选择。Rust 实现位于 [`MoonshotAI/kimi-agent-rs`](https://github.com/MoonshotAI/kimi-agent-rs)。
 
 ### 特点
 
@@ -693,61 +693,61 @@ KAgent 是 Kimi Code CLI 的 Rust 实现，专为 Wire 模式设计。如果你�
 - **无 Kimi 账号登录功能**：没有 `login`/`logout` 子命令和 `/login`、`/logout` 斜杠命令，需要手动配置 API 密钥
 - **不支持 `--prompt`/`--command`**：Wire 服务器不接受初始提示词
 - **仅支持本地执行**：没有 SSH Kaos 支持
-- **MCP OAuth 存储位置不同**：KAgent 存储在 `~/.kimi/credentials/mcp_auth.json`，Python 版存储在 `~/.fastmcp/oauth-mcp-client-cache/`，两者不兼容
+- **MCP OAuth 存储位置不同**：Kimi Agent 存储在 `~/.kimi/credentials/mcp_auth.json`，Python 版存储在 `~/.fastmcp/oauth-mcp-client-cache/`，两者不兼容
 
 ### 安装
 
-从 [GitHub Releases](https://github.com/MoonshotAI/kimi-cli/releases) 下载预编译的二进制文件：
+从 [GitHub Releases](https://github.com/MoonshotAI/kimi-agent-rs/releases) 下载预编译的二进制文件：
 
 ```sh
 # macOS (Apple Silicon)
-curl -L https://github.com/MoonshotAI/kimi-cli/releases/latest/download/kagent-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv kagent /usr/local/bin/
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
 
 # Linux (x86_64)
-curl -L https://github.com/MoonshotAI/kimi-cli/releases/latest/download/kagent-x86_64-unknown-linux-gnu.tar.gz | tar xz
-sudo mv kagent /usr/local/bin/
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
 ```
 
 ### 使用
 
-KAgent 默认运行 Wire 模式：
+Kimi Agent 默认运行 Wire 模式：
 
 ```sh
-kagent
+kimi-agent
 ```
 
 常用选项与 `kimi` 命令相同：
 
 ```sh
 # 指定工作目录
-kagent --work-dir /path/to/project
+kimi-agent --work-dir /path/to/project
 
 # 继续上一个会话
-kagent --continue
+kimi-agent --continue
 
 # 使用指定会话
-kagent --session <session-id>
+kimi-agent --session <session-id>
 
 # 使用指定模型
-kagent --model k2
+kimi-agent --model k2
 
 # YOLO 模式（跳过审批）
-kagent --yolo
+kimi-agent --yolo
 ```
 
 子命令：
 
 ```sh
 # 显示版本和环境信息
-kagent info
+kimi-agent info
 
 # 管理 MCP 服务器
-kagent mcp list
-kagent mcp add <name> <command> [args...]
-kagent mcp remove <name>
+kimi-agent mcp list
+kimi-agent mcp add <name> <command> [args...]
+kimi-agent mcp remove <name>
 ```
 
 ### 版本同步
 
-KAgent 与 Kimi Code CLI 使用相同的版本号，随每次发布同步更新。两者的 Wire 协议行为保持一致，你可以在它们之间自由切换。
+Kimi Agent 与 Kimi Code CLI 独立发版。兼容性与同步状态以 `MoonshotAI/kimi-agent-rs` 的发布说明为准。

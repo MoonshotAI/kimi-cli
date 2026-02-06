@@ -41,12 +41,6 @@ jobs:
             --kosong-pyproject packages/kosong/pyproject.toml \
             --pykaos-pyproject packages/kaos/pyproject.toml
 
-      - name: Check kagent version tag
-        run: |
-          python scripts/check_cargo_version_tag.py \
-            --cargo-toml rust/Cargo.toml \
-            --expected-version "${GITHUB_REF_NAME}"
-
   build:
     name: Build binaries (${{ matrix.target }})
     needs: validate
@@ -152,10 +146,6 @@ jobs:
           PYINSTALLER_ONEDIR: "1"
         run: make build-bin-onedir
 
-      - name: Build kagent release binary
-        working-directory: rust
-        run: cargo build -p kagent --release
-
       # macOS: Sign onefile binary
       - name: Sign macOS onefile binary
         if: runner.os == 'macOS'
@@ -204,19 +194,6 @@ jobs:
           echo "✅ Onedir binaries signed"
           codesign -dv --verbose=2 dist/onedir/kimi/kimi
           codesign --verify --deep --strict dist/onedir/kimi/kimi && echo "✅ Deep verification passed"
-
-      # macOS: Sign kagent binary
-      - name: Sign macOS kagent binary
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          echo "Signing kagent binary..."
-          codesign --deep --force --options runtime --timestamp \
-            --sign "$APPLE_SIGNING_IDENTITY" \
-            --keychain "$APPLE_KEYCHAIN_PATH" \
-            rust/target/release/kagent
-          echo "✅ kagent binary signed"
-          codesign -dv --verbose=2 rust/target/release/kagent
 
       # macOS: Notarize onefile binary
       - name: Notarize macOS onefile binary
@@ -336,64 +313,6 @@ jobs:
           # Cleanup
           rm -f "$key_path" "$zip_path" /tmp/notarize-onedir.log
 
-      # macOS: Notarize kagent binary
-      - name: Notarize macOS kagent binary
-        if: runner.os == 'macOS'
-        env:
-          APPLE_NOTARIZATION_KEY_P8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
-          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
-        run: |
-          set -euo pipefail
-
-          # Save API key
-          key_path="${RUNNER_TEMP}/AuthKey.p8"
-          echo "$APPLE_NOTARIZATION_KEY_P8" | base64 -d > "$key_path"
-
-          # Create zip for notarization (use --norsrc to avoid ._ AppleDouble files)
-          zip_path="${RUNNER_TEMP}/kagent.zip"
-          ditto -c -k --norsrc --keepParent rust/target/release/kagent "$zip_path"
-
-          echo "Submitting kagent for notarization..."
-
-          # Submit and capture output for status verification
-          xcrun notarytool submit "$zip_path" \
-            --key "$key_path" \
-            --key-id "$APPLE_NOTARIZATION_KEY_ID" \
-            --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
-            --wait \
-            --timeout 15m \
-            2>&1 | tee /tmp/notarize-kagent.log
-
-          # Verify notarization was accepted
-          if ! grep -q "status: Accepted" /tmp/notarize-kagent.log; then
-            echo "❌ kagent notarization failed!"
-            cat /tmp/notarize-kagent.log
-
-            # Get detailed error log from Apple
-            submission_id=$(grep "id:" /tmp/notarize-kagent.log | head -1 | awk '{print $2}')
-            if [[ -n "$submission_id" ]]; then
-              echo "Fetching notarization log for submission: $submission_id"
-              xcrun notarytool log "$submission_id" \
-                --key "$key_path" \
-                --key-id "$APPLE_NOTARIZATION_KEY_ID" \
-                --issuer "$APPLE_NOTARIZATION_ISSUER_ID" 2>&1 || true
-            fi
-            exit 1
-          fi
-
-          echo "✅ kagent notarization completed and accepted"
-
-          # Verify signature and notarization status
-          echo "Verifying kagent signature..."
-          codesign -dv --verbose=2 rust/target/release/kagent
-
-          echo "Verifying kagent notarization (online check)..."
-          spctl -a -vvv -t install rust/target/release/kagent
-
-          # Cleanup
-          rm -f "$key_path" "$zip_path" /tmp/notarize-kagent.log
-
       # macOS: Cleanup keychain
       - name: Cleanup macOS keychain
         if: always() && runner.os == 'macOS'
@@ -490,44 +409,6 @@ jobs:
                       archive_file.add(item, arcname=f"kimi/{item.name}")
 
           print(f"Built onedir artifact: {archive_path}")
-
-      # Package kagent artifact (all platforms)
-      - name: Package kagent artifact
-        shell: python
-        env:
-          TAG: ${{ github.ref_name }}
-          TARGET: ${{ matrix.target }}
-        run: |
-          import os
-          import pathlib
-          import tarfile
-          import zipfile
-
-          tag = os.environ["TAG"]
-          target = os.environ["TARGET"]
-
-          dist_dir = pathlib.Path("rust") / "target" / "release"
-          artifacts_dir = pathlib.Path("artifacts")
-          artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-          is_windows = "windows" in target
-          binary_name = "kagent.exe" if is_windows else "kagent"
-          binary_path = dist_dir / binary_name
-          if not binary_path.exists():
-              raise SystemExit(f"kagent binary not found at {binary_path}")
-
-          if is_windows:
-              archive_name = f"kagent-{tag}-{target}.zip"
-              archive_path = artifacts_dir / archive_name
-              with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
-                  archive_file.write(binary_path, arcname=binary_name)
-          else:
-              archive_name = f"kagent-{tag}-{target}.tar.gz"
-              archive_path = artifacts_dir / archive_name
-              with tarfile.open(archive_path, "w:gz") as archive_file:
-                  archive_file.add(binary_path, arcname="kagent")
-
-          print(f"Built kagent artifact: {archive_path}")
 
       - name: Set artifact name
         id: artifact

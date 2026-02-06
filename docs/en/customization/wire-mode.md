@@ -671,13 +671,13 @@ interface ShellDisplayBlock {
 }
 ```
 
-## KAgent: Rust Wire server
+## Kimi Agent (Rust) Wire server
 
 ::: warning Note
-KAgent is currently experimental. APIs and behavior may change in future releases.
+Kimi Agent is currently experimental. APIs and behavior may change in future releases.
 :::
 
-KAgent is the Rust implementation of Kimi Code CLI, designed specifically for Wire mode. If you only need the Wire protocol service, KAgent offers a more lightweight alternative.
+Kimi Agent (Rust) is the Rust implementation of the Kimi Code CLI kernel, designed specifically for Wire mode. If you only need the Wire protocol service, Kimi Agent (Rust) offers a more lightweight alternative. The Rust implementation lives in [`MoonshotAI/kimi-agent-rs`](https://github.com/MoonshotAI/kimi-agent-rs).
 
 ### Features
 
@@ -693,61 +693,61 @@ KAgent is the Rust implementation of Kimi Code CLI, designed specifically for Wi
 - **No Kimi account login**: No `login`/`logout` subcommands or `/login`, `/logout` slash commands; requires manual API key configuration
 - **No `--prompt`/`--command`**: Wire server does not accept initial prompts
 - **Local execution only**: No SSH Kaos support
-- **Different MCP OAuth storage**: KAgent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while Python version uses `~/.fastmcp/oauth-mcp-client-cache/`; they are incompatible
+- **Different MCP OAuth storage**: Kimi Agent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while Python version uses `~/.fastmcp/oauth-mcp-client-cache/`; they are incompatible
 
 ### Installation
 
-Download pre-built binaries from [GitHub Releases](https://github.com/MoonshotAI/kimi-cli/releases):
+Download pre-built binaries from [GitHub Releases](https://github.com/MoonshotAI/kimi-agent-rs/releases):
 
 ```sh
 # macOS (Apple Silicon)
-curl -L https://github.com/MoonshotAI/kimi-cli/releases/latest/download/kagent-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv kagent /usr/local/bin/
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
 
 # Linux (x86_64)
-curl -L https://github.com/MoonshotAI/kimi-cli/releases/latest/download/kagent-x86_64-unknown-linux-gnu.tar.gz | tar xz
-sudo mv kagent /usr/local/bin/
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
 ```
 
 ### Usage
 
-KAgent runs in Wire mode by default:
+Kimi Agent runs in Wire mode by default:
 
 ```sh
-kagent
+kimi-agent
 ```
 
 Common options are the same as the `kimi` command:
 
 ```sh
 # Specify work directory
-kagent --work-dir /path/to/project
+kimi-agent --work-dir /path/to/project
 
 # Continue previous session
-kagent --continue
+kimi-agent --continue
 
 # Use specific session
-kagent --session <session-id>
+kimi-agent --session <session-id>
 
 # Use specific model
-kagent --model k2
+kimi-agent --model k2
 
 # YOLO mode (skip approvals)
-kagent --yolo
+kimi-agent --yolo
 ```
 
 Subcommands:
 
 ```sh
 # Show version and environment info
-kagent info
+kimi-agent info
 
 # Manage MCP servers
-kagent mcp list
-kagent mcp add <name> <command> [args...]
-kagent mcp remove <name>
+kimi-agent mcp list
+kimi-agent mcp add <name> <command> [args...]
+kimi-agent mcp remove <name>
 ```
 
 ### Version synchronization
 
-KAgent uses the same version number as Kimi Code CLI and is updated with each release. The Wire protocol behavior stays consistent between them, allowing you to switch freely.
+Kimi Agent is released independently from Kimi Code CLI. See `MoonshotAI/kimi-agent-rs` release notes for compatibility and sync status.

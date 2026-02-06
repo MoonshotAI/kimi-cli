@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
 - Core: Preserve session id when reloading configuration so the session resumes correctly
+- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
 - Web: Improve auto-scroll behavior in chat for smoother following of new content
 - Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
 - Web: Add session fork feature to branch off a new session from any assistant response
