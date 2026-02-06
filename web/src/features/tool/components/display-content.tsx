@@ -1047,7 +1047,7 @@ const TodoContent = ({ data }: { data: TodoDisplayData }) => (
       const done = isTodoDone(item.status);
       const inProgress = item.status === "in_progress";
       return (
-        <div key={text} className="flex items-start gap-2 text-sm">
+        <div key={`${index}-${text}`} className="flex items-start gap-2 text-sm">
           <span className="mt-0.5 shrink-0">
             {done ? (
               <span className="text-green-500 dark:text-green-400">&#x2713;</span>
