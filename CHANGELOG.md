@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
 - Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
 - Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
 - Web: Add shell command and todo list display components for tool outputs
