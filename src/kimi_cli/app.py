@@ -140,6 +140,9 @@ class KimiCLI:
         # determine thinking mode
         thinking = config.default_thinking if thinking is None else thinking
 
+        # determine yolo mode
+        yolo = yolo if yolo else config.default_yolo
+
         llm = create_llm(
             provider,
             model,

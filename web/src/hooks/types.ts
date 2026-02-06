@@ -25,6 +25,8 @@ export type LiveMessage = {
   id: string;
   /** Backend message ID from StatusUpdate event (identifies the turn) */
   messageId?: string;
+  /** 0-based turn index, set on user messages at TurnBegin */
+  turnIndex?: number;
   role: "user" | "assistant";
   content?: string;
   attachments?: MessageAttachmentPart[];

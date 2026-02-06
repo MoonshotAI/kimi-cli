@@ -108,7 +108,7 @@ class Anthropic:
         temperature: float | None
         top_k: int | None
         top_p: float | None
-        # e.g., {"type": "enabled", "budget_tokens": 1024}
+        # e.g., {"type": "adaptive"} or {"type": "enabled", "budget_tokens": 1024}
         thinking: ThinkingConfigParam | None
         # e.g., {"type": "auto", "disable_parallel_tool_use": True}
         tool_choice: ToolChoiceParam | None
@@ -149,6 +149,8 @@ class Anthropic:
             return None
         if thinking_config["type"] == "disabled":
             return "off"
+        if thinking_config["type"] == "adaptive":
+            return "high"
         budget = thinking_config["budget_tokens"]
         if budget <= 1024:
             return "low"
@@ -226,19 +228,40 @@ class Anthropic:
         except AnthropicError as e:
             raise _convert_error(e) from e
 
+    def _use_adaptive_thinking(self) -> bool:
+        """Whether to use adaptive thinking (Opus 4.6+) instead of budget-based thinking."""
+        model = self._model.lower()
+        return "opus-4.6" in model or "opus-4-6" in model
+
     def with_thinking(self, effort: "ThinkingEffort") -> Self:
-        # XXX: this is a heuristic mapping based on suggestions given by Claude
         thinking_config: ThinkingConfigParam
-        match effort:
-            case "off":
-                thinking_config = {"type": "disabled"}
-            case "low":
-                thinking_config = {"type": "enabled", "budget_tokens": 1024}
-            case "medium":
-                thinking_config = {"type": "enabled", "budget_tokens": 4096}
-            case "high":
-                thinking_config = {"type": "enabled", "budget_tokens": 32_000}
-        return self.with_generation_kwargs(thinking=thinking_config)
+        if self._use_adaptive_thinking():
+            # Opus 4.6+: use adaptive thinking (budget_tokens is deprecated).
+            # The interleaved-thinking beta header is also not needed with adaptive.
+            match effort:
+                case "off":
+                    thinking_config = {"type": "disabled"}
+                case _:
+                    thinking_config = {"type": "adaptive"}  # type: ignore[typeddict-item]
+            new = self.with_generation_kwargs(thinking=thinking_config)
+            # Remove the now-unnecessary interleaved-thinking beta header.
+            if (
+                beta_features := new._generation_kwargs.get("beta_features")
+            ) and "interleaved-thinking-2025-05-14" in beta_features:
+                beta_features.remove("interleaved-thinking-2025-05-14")
+            return new
+        else:
+            # Pre-4.6 models: use legacy budget-based thinking.
+            match effort:
+                case "off":
+                    thinking_config = {"type": "disabled"}
+                case "low":
+                    thinking_config = {"type": "enabled", "budget_tokens": 1024}
+                case "medium":
+                    thinking_config = {"type": "enabled", "budget_tokens": 4096}
+                case "high":
+                    thinking_config = {"type": "enabled", "budget_tokens": 32_000}
+            return self.with_generation_kwargs(thinking=thinking_config)
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """

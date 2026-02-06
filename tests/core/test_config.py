@@ -5,7 +5,6 @@ from inline_snapshot import snapshot
 
 from kimi_cli.config import (
     Config,
-    Services,
     get_default_config,
     load_config_from_string,
 )
@@ -14,15 +13,7 @@ from kimi_cli.exception import ConfigError
 
 def test_default_config():
     config = get_default_config()
-    assert config == snapshot(
-        Config(
-            default_model="",
-            default_thinking=False,
-            models={},
-            providers={},
-            services=Services(),
-        )
-    )
+    assert config == snapshot(Config())
 
 
 def test_default_config_dump():
@@ -31,6 +22,7 @@ def test_default_config_dump():
         {
             "default_model": "",
             "default_thinking": False,
+            "default_yolo": False,
             "models": {},
             "providers": {},
             "loop_control": {

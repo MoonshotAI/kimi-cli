@@ -26,6 +26,7 @@ The configuration file contains the following top-level configuration items:
 | --- | --- | --- |
 | `default_model` | `string` | Default model name, must be a model defined in `models` |
 | `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
+| `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -37,6 +38,7 @@ The configuration file contains the following top-level configuration items:
 ```toml
 default_model = "kimi-for-coding"
 default_thinking = false
+default_yolo = false
 
 [providers.kimi-for-coding]
 type = "kimi"
