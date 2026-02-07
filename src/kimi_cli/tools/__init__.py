@@ -1,4 +1,5 @@
 import json
+import shutil
 from typing import cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
@@ -7,6 +8,23 @@ from kosong.utils.typing import JsonType
 
 from kimi_cli.utils.string import shorten_middle
 
+# Minimum and maximum width for key argument display
+_MIN_KEY_ARG_WIDTH = 50
+_MAX_KEY_ARG_WIDTH = 120
+# Approximate overhead for "• Used Shell ()" prefix
+_KEY_ARG_OVERHEAD = 20
+
+
+def _get_key_argument_width() -> int:
+    """Get width for key argument based on terminal size."""
+    try:
+        term_width = shutil.get_terminal_size().columns
+    except (ValueError, OSError):
+        return _MIN_KEY_ARG_WIDTH
+    # Leave room for the prefix and some padding
+    available = term_width - _KEY_ARG_OVERHEAD
+    return max(_MIN_KEY_ARG_WIDTH, min(available, _MAX_KEY_ARG_WIDTH))
+
 
 class SkipThisTool(Exception):
     """Raised when a tool decides to skip itself from the loading process."""
@@ -14,7 +32,9 @@ class SkipThisTool(Exception):
     pass
 
 
-def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str) -> str | None:
+def extract_key_argument(
+    json_content: str | streamingjson.Lexer, tool_name: str, *, width: int | None = None
+) -> str | None:
     if isinstance(json_content, streamingjson.Lexer):
         json_str = json_content.complete_json()
     else:
@@ -86,7 +106,9 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
                 key_argument = "".join(content)
             else:
                 key_argument = json_content
-    key_argument = shorten_middle(key_argument, width=50)
+    if width is None:
+        width = _get_key_argument_width()
+    key_argument = shorten_middle(key_argument, width=width)
     return key_argument
 
 
