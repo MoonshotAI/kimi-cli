@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
 
-import scalar_fastapi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -39,11 +38,35 @@ logger.remove()
 logger.enable("kimi_cli")
 logger.add(sys.stderr, level=_log_level)
 
-# scalar-fastapi does not ship typing stubs.
-get_scalar_api_reference = cast(  # pyright: ignore[reportUnknownMemberType]
-    Callable[..., HTMLResponse],
-    scalar_fastapi.get_scalar_api_reference,  # pyright: ignore[reportUnknownMemberType]
-)
+
+def _get_scalar_api_reference() -> Callable[..., HTMLResponse] | None:
+    """Import scalar-fastapi lazily.
+
+    scalar-fastapi does not ship typing stubs, and importing it at module import
+    time makes the whole Web UI fail if that optional dependency is broken.
+
+    Keeping this as a best-effort import keeps `/healthz` and the Web UI working
+    even if the docs UI is unavailable.
+    """
+
+    try:
+        import scalar_fastapi  # type: ignore[import-not-found]
+    except Exception as e:
+        logger.warning(f"Failed to import scalar_fastapi; disabling /docs: {e}")
+        return None
+
+    return cast(  # pyright: ignore[reportUnknownMemberType]
+        Callable[..., HTMLResponse],
+        scalar_fastapi.get_scalar_api_reference,  # pyright: ignore[reportUnknownMemberType]
+    )
+
+
+def _docs_unavailable_response() -> HTMLResponse:
+    return HTMLResponse(
+        "Docs UI is unavailable (failed to import scalar-fastapi).",
+        status_code=503,
+    )
+
 
 # Constants
 STATIC_DIR = Path(__file__).parent / "static"
@@ -228,9 +251,12 @@ def create_app(
     @application.get("/scalar", include_in_schema=False)
     @application.get("/docs", include_in_schema=False)
     async def scalar_html() -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
+        get_scalar_api_reference = _get_scalar_api_reference()
+        if get_scalar_api_reference is None:
+            return _docs_unavailable_response()
+
         return get_scalar_api_reference(
-            openapi_url=application.openapi_url or "",
-            title=application.title,
+            openapi_url=application.openapi_url or "", title=application.title
         )
 
     @application.get("/healthz")
