@@ -62,7 +62,7 @@ async def compact(soul: KimiSoul, args: str):
     wire_send(StatusUpdate(context_usage=soul.status.context_usage))
 
 
-@registry.command(aliases=["reset"])
+@registry.command(aliases=["reset", "new"])
 async def clear(soul: KimiSoul, args: str):
     """Clear the context"""
     logger.info("Running `/clear`")
