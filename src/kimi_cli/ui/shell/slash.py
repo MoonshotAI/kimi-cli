@@ -301,7 +301,7 @@ def feedback(app: Shell, args: str):
     console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
 
 
-@registry.command(aliases=["reset"])
+@registry.command(aliases=["reset", "new"])
 async def clear(app: Shell, args: str):
     """Clear the context"""
     if _ensure_kimi_soul(app) is None:

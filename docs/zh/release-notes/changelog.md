@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：为 `/clear` 命令添加 `new` 别名
+
 ## 1.9.0 (2026-02-06)
 
 - Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
