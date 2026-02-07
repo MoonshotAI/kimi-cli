@@ -106,7 +106,7 @@ Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl
 
 Clear the current session's context and start a new conversation.
 
-Alias: `/reset`
+Aliases: `/reset`, `/new`
 
 ### `/compact`
 
