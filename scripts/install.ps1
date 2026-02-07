@@ -16,4 +16,19 @@ if (-not (Get-Command $uvBin -ErrorAction SilentlyContinue)) {
   exit 1
 }
 
-& $uvBin tool install --python 3.13 kimi-cli
+$installedTools = & $uvBin tool list 2>&1 | Out-String
+
+if ($installedTools -match "kimi-cli") {
+  Write-Host "kimi-cli is already installed." -ForegroundColor Yellow
+  $response = Read-Host "Do you want to check for updates and upgrade? (Y/n)"
+
+  if ($response -eq "" -or $response -match "^[Yy]") {
+    Write-Host "Upgrading kimi-cli..." -ForegroundColor Cyan
+    & $uvBin tool upgrade kimi-cli
+  } else {
+    Write-Host "Upgrade skipped." -ForegroundColor Green
+  }
+} else {
+  Write-Host "kimi-cli not found. Installing..." -ForegroundColor Cyan
+  & $uvBin tool install --python 3.13 kimi-cli
+}
