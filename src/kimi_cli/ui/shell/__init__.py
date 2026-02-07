@@ -46,8 +46,22 @@ class Shell:
 
     @property
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
-        """Get all available slash commands, including shell-level and soul-level commands."""
+        """Get all available slash commands, including shell-level and soul-level commands.
+
+        Returns a dict mapping command names to commands, including both primary names
+        and aliases. Note that the same command may appear multiple times under different keys.
+        """
         return self._available_slash_commands
+
+    def get_unique_slash_commands(self) -> list[SlashCommand[Any]]:
+        """Get unique slash commands (without duplicates from aliases)."""
+        seen: set[str] = set()
+        unique_cmds: list[SlashCommand[Any]] = []
+        for cmd in self._available_slash_commands.values():
+            if cmd.name not in seen:
+                seen.add(cmd.name)
+                unique_cmds.append(cmd)
+        return unique_cmds
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -74,7 +88,7 @@ class Shell:
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=self.soul.model_name,
             thinking=self.soul.thinking or False,
-            agent_mode_slash_commands=list(self._available_slash_commands.values()),
+            agent_mode_slash_commands=self.get_unique_slash_commands(),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
         ) as prompt_session:
             try:

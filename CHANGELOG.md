@@ -11,7 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
-- Shell: Fix slash command aliases (e.g., `/new`, `/reset`) not being recognized in the shell UI
+- Shell: Fix slash command aliases (e.g., `/reset`) not being recognized in the shell UI
 
 ## 1.9.0 (2026-02-06)
 
