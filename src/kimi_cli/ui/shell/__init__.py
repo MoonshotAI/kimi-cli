@@ -37,11 +37,12 @@ class Shell:
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
-        self._available_slash_commands: dict[str, SlashCommand[Any]] = {
-            **{cmd.name: cmd for cmd in soul.available_slash_commands},
-            **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
-        }
+        self._available_slash_commands: dict[str, SlashCommand[Any]] = {}
         """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
+        for cmd in list(soul.available_slash_commands) + list(shell_slash_registry.list_commands()):
+            self._available_slash_commands[cmd.name] = cmd
+            for alias in cmd.aliases:
+                self._available_slash_commands[alias] = cmd
 
     @property
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
