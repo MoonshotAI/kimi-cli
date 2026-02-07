@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix slash command aliases (e.g., `/reset`) not being recognized in the shell UI
+
 ## 1.9.0 (2026-02-06)
 
 - Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default

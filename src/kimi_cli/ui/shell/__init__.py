@@ -37,16 +37,31 @@ class Shell:
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
-        self._available_slash_commands: dict[str, SlashCommand[Any]] = {
-            **{cmd.name: cmd for cmd in soul.available_slash_commands},
-            **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
-        }
+        self._available_slash_commands: dict[str, SlashCommand[Any]] = {}
         """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
+        for cmd in list(soul.available_slash_commands) + list(shell_slash_registry.list_commands()):
+            self._available_slash_commands[cmd.name] = cmd
+            for alias in cmd.aliases:
+                self._available_slash_commands[alias] = cmd
 
     @property
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
-        """Get all available slash commands, including shell-level and soul-level commands."""
+        """Get all available slash commands, including shell-level and soul-level commands.
+
+        Returns a dict mapping command names to commands, including both primary names
+        and aliases. Note that the same command may appear multiple times under different keys.
+        """
         return self._available_slash_commands
+
+    def get_unique_slash_commands(self) -> list[SlashCommand[Any]]:
+        """Get unique slash commands (without duplicates from aliases)."""
+        seen: set[str] = set()
+        unique_cmds: list[SlashCommand[Any]] = []
+        for cmd in self._available_slash_commands.values():
+            if cmd.name not in seen:
+                seen.add(cmd.name)
+                unique_cmds.append(cmd)
+        return unique_cmds
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -73,7 +88,7 @@ class Shell:
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=self.soul.model_name,
             thinking=self.soul.thinking or False,
-            agent_mode_slash_commands=list(self._available_slash_commands.values()),
+            agent_mode_slash_commands=self.get_unique_slash_commands(),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
         ) as prompt_session:
             try:

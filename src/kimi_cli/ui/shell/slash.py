@@ -100,7 +100,7 @@ def help(app: Shell, args: str):
 
     commands: list[SlashCommand[Any]] = []
     skills: list[SlashCommand[Any]] = []
-    for cmd in app.available_slash_commands.values():
+    for cmd in app.get_unique_slash_commands():
         if cmd.name.startswith(SKILL_COMMAND_PREFIX):
             skills.append(cmd)
         else:
