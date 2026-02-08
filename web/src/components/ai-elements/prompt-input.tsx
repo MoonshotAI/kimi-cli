@@ -904,6 +904,7 @@ export const PromptInput = ({
       />
       <form
         className={cn("w-full", className)}
+        autoComplete="off"
         onSubmit={handleSubmit}
         ref={formRef}
         {...props}
@@ -1040,6 +1041,7 @@ export const PromptInputTextarea = forwardRef<
       <InputGroupTextarea
         ref={ref}
         className={cn("field-sizing-content max-h-48 min-h-16", className)}
+        autoComplete="off"
         name="message"
         onBlur={() => setIsComposing(false)}
         onCompositionEnd={() => setIsComposing(false)}

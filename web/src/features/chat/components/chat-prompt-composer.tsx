@@ -220,7 +220,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                   "transition-all duration-200 pr-8",
                   isExpanded
                     ? "min-h-[220px] max-h-[60vh] sm:min-h-[300px]"
-                    : "min-h-[80px] max-h-36 sm:min-h-16 sm:max-h-48",
+                    : "min-h-10 max-h-36 sm:min-h-16 sm:max-h-48",
                 )}
                 placeholder={
                   !currentSession
