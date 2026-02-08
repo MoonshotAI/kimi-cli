@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Web：在 Web Worker 中加载全局 MCP 配置，使 Web 会话可以使用 MCP 工具
 - Web：改进移动端提示输入框体验——缩小 textarea 最小高度、添加 `autoComplete="off"`、在小屏幕上禁用聚焦边框
 
 ## 1.9.0 (2026-02-06)
