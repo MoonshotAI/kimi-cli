@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
+
 ## 1.9.0 (2026-02-06)
 
 - Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
