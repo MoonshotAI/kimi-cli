@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Web：改进移动端提示输入框体验——缩小 textarea 最小高度、添加 `autoComplete="off"`、在小屏幕上禁用聚焦边框
+
 ## 1.9.0 (2026-02-06)
 
 - Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
