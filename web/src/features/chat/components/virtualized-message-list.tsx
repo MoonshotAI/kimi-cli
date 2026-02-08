@@ -75,7 +75,7 @@ function VirtuosoListComponent(
   return (
     <div
       ref={ref}
-      className={cn("flex flex-col px-3 py-4 sm:px-6 lg:px-8", className)}
+      className={cn("flex flex-col py-4 sm:px-3 lg:px-5", className)}
       {...rest}
     />
   );
@@ -287,7 +287,7 @@ function VirtualizedMessageListComponent(
           >
             {message.role === "user" ? (
               message.content ? (
-                <UserMessageContent>{message.content}</UserMessageContent>
+                <UserMessageContent className="mx-3">{message.content}</UserMessageContent>
               ) : null
             ) : (
               <AssistantMessage
@@ -302,7 +302,7 @@ function VirtualizedMessageListComponent(
               />
             )}
             {message.attachments && message.attachments.length > 0 ? (
-              <MessageAttachments>
+              <MessageAttachments className="mx-3">
                 {message.attachments.map((attachment, attIdx) => {
                   const key =
                     "kind" in attachment
