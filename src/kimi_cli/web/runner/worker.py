@@ -10,10 +10,15 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
+from typing import Any
 from uuid import UUID
 
+from loguru import logger
+
 from kimi_cli.app import KimiCLI, enable_logging
+from kimi_cli.cli.mcp import get_global_mcp_config_file
 from kimi_cli.web.store.sessions import load_session_by_id
 
 
@@ -27,8 +32,21 @@ async def run_worker(session_id: UUID) -> None:
     # Get the kimi-cli session object
     session = joint_session.kimi_cli_session
 
-    # Create KimiCLI instance using default configuration
-    kimi_cli = await KimiCLI.create(session)
+    # Load default MCP config file if it exists
+    default_mcp_file = get_global_mcp_config_file()
+    mcp_configs: list[dict[str, Any]] = []
+    if default_mcp_file.exists():
+        raw = default_mcp_file.read_text(encoding="utf-8")
+        try:
+            mcp_configs = [json.loads(raw)]
+        except json.JSONDecodeError:
+            logger.warning(
+                "Invalid JSON in MCP config file: {path}",
+                path=default_mcp_file,
+            )
+
+    # Create KimiCLI instance with MCP configuration
+    kimi_cli = await KimiCLI.create(session, mcp_configs=mcp_configs or None)
 
     # Run in wire stdio mode
     await kimi_cli.run_wire_stdio()
