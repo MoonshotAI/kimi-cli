@@ -49,7 +49,7 @@ export function ChatConversation({
   messages,
   status,
   selectedSessionId,
-  isReplayingHistory: _isReplayingHistory,
+  isReplayingHistory,
   pendingApprovalMap,
   onApprovalAction,
   canRespondToApproval,
@@ -91,6 +91,8 @@ export function ChatConversation({
   const isLoadingResponse =
     messages.length === 0 &&
     (status === "streaming" || status === "submitted");
+  const isStartingEnvironment =
+    isLoadingResponse && status === "submitted" && !isReplayingHistory;
 
   const hasSelectedSession = Boolean(selectedSessionId);
   const emptyNoSessionState =
@@ -120,7 +122,7 @@ export function ChatConversation({
           <ConversationEmptyState
             description=""
             icon={<Loader2Icon className="size-6 animate-spin text-primary" />}
-            title="Connecting to session..."
+            title={isStartingEnvironment ? "Starting environment..." : "Connecting to session..."}
           />
         ) : emptyNoSessionState ? (
           <ConversationEmptyState>

@@ -290,6 +290,10 @@ export function useSessionStream(
    */
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const connectRef = useRef<() => void>(() => {});
+  const disconnectRef = useRef<() => void>(() => {});
+  const reconnectRef = useRef<() => void>(() => {});
+  const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
   const awaitingIdleRef = useRef(false); // Track pending idle after cancel
@@ -759,6 +763,11 @@ export function useSessionStream(
     firstTurnCompleteCalledRef.current = false;
     // Reset turn counter
     turnCounterRef.current = 0;
+    // Clear history_complete timeout
+    if (historyCompleteTimeoutRef.current) {
+      window.clearTimeout(historyCompleteTimeoutRef.current);
+      historyCompleteTimeoutRef.current = null;
+    }
   }, [resetStepState, setAwaitingFirstResponse]);
 
   // Process a single wire event
@@ -1466,6 +1475,10 @@ export function useSessionStream(
         }
 
         if (message.method === "session_status") {
+          if (historyCompleteTimeoutRef.current) {
+            window.clearTimeout(historyCompleteTimeoutRef.current);
+            historyCompleteTimeoutRef.current = null;
+          }
           applySessionStatus(message.params as SessionStatusPayload);
           return;
         }
@@ -1508,6 +1521,20 @@ export function useSessionStream(
           isReplayingRef.current = false;
           // Keep status as "submitted" - input stays disabled until session_status
           setStatus((current) => (current === "ready" ? current : "submitted"));
+
+          // Timeout fallback: reconnect if session_status not received within 15s
+          const currentWs = wsRef.current;
+          if (historyCompleteTimeoutRef.current) {
+            window.clearTimeout(historyCompleteTimeoutRef.current);
+          }
+          historyCompleteTimeoutRef.current = window.setTimeout(() => {
+            if (wsRef.current === currentWs) {
+              console.warn(
+                "[SessionStream] session_status timeout after history_complete, reconnecting...",
+              );
+              reconnectRef.current();
+            }
+          }, 15000);
           return;
         }
 
@@ -1986,6 +2013,11 @@ export function useSessionStream(
     }, 100);
   }, [disconnect, connect]);
 
+  // Keep refs in sync so useLayoutEffect can use stable references
+  connectRef.current = connect;
+  disconnectRef.current = disconnect;
+  reconnectRef.current = reconnect;
+
   // Send message to session (auto-connects if not connected)
   const sendMessage = useCallback(
     async (text: string) => {
@@ -2042,10 +2074,13 @@ export function useSessionStream(
      *
      * Even if a late event slips through, callback identity guards ensure it can't mutate
      * state unless it belongs to the current `wsRef.current`.
+     *
+     * We access connect/disconnect via refs to avoid re-running this effect when their
+     * callback identity changes (which would cause disconnect→connect cycles).
      */
     // When sessionId changes, disconnect from previous session
     if (wsRef.current) {
-      disconnect();
+      disconnectRef.current();
     }
 
     // Reset state for new session
@@ -2056,19 +2091,19 @@ export function useSessionStream(
     if (sessionId) {
       // Small delay to ensure state is settled
       const timeoutId = window.setTimeout(() => {
-        connect();
+        connectRef.current();
       }, 50);
       return () => {
         window.clearTimeout(timeoutId);
-        disconnect();
+        disconnectRef.current();
       };
     }
 
     setIsReplayingHistory(false);
     return () => {
-      disconnect();
+      disconnectRef.current();
     };
-  }, [sessionId, connect, disconnect, resetState, setMessages]); // Only depend on sessionId - connect/disconnect are stable
+  }, [sessionId, resetState, setMessages]);
 
   // Cleanup on unmount
   useEffect(

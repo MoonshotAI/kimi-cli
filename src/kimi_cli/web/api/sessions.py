@@ -35,7 +35,7 @@ from kimi_cli.web.models import (
     SessionStatus,
     UpdateSessionRequest,
 )
-from kimi_cli.web.runner.messages import send_history_complete
+from kimi_cli.web.runner.messages import new_session_status_message, send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
 from kimi_cli.web.store.sessions import (
     JointSession,
@@ -1107,21 +1107,42 @@ async def session_stream(
             logger.debug("WebSocket disconnected during history replay")
             return
 
-        # Ensure work_dir exists
-        work_dir = Path(str(session.kimi_cli_session.work_dir))
-        work_dir.mkdir(parents=True, exist_ok=True)
+        # Start session environment – if anything fails here, send an error
+        # status so the client doesn't hang on "Connecting to environment...".
+        try:
+            # Ensure work_dir exists
+            work_dir = Path(str(session.kimi_cli_session.work_dir))
+            work_dir.mkdir(parents=True, exist_ok=True)
 
-        if not attached:
-            # No history: attach and start worker
-            session_process = await runner.get_or_create_session(session_id)
-            await session_process.add_websocket_and_begin_replay(websocket)
-            attached = True
+            if not attached:
+                # No history: attach and start worker
+                session_process = await runner.get_or_create_session(session_id)
+                await session_process.add_websocket_and_begin_replay(websocket)
+                attached = True
 
-        assert session_process is not None
-        # End replay and start worker
-        await session_process.end_replay(websocket)
-        await session_process.start()
-        await session_process.send_status_snapshot(websocket)
+            assert session_process is not None
+            # End replay and start worker
+            await session_process.end_replay(websocket)
+            await session_process.start()
+            await session_process.send_status_snapshot(websocket)
+        except Exception as e:
+            logger.warning(f"Failed to start session environment: {e}")
+            try:
+                error_status = SessionStatus(
+                    session_id=session_id,
+                    state="error",
+                    seq=0,
+                    worker_id=None,
+                    reason="initialization_failed",
+                    detail=str(e),
+                    updated_at=datetime.now(UTC),
+                )
+                await websocket.send_text(
+                    new_session_status_message(error_status).model_dump_json()
+                )
+            except Exception:
+                pass
+            return
 
         # Update last_session_id for this work directory
         _update_last_session_id(session)

@@ -6,6 +6,9 @@
 
 - Web：在 Web Worker 中加载全局 MCP 配置，使 Web 会话可以使用 MCP 工具
 - Web：改进移动端提示输入框体验——缩小 textarea 最小高度、添加 `autoComplete="off"`、在小屏幕上禁用聚焦边框
+- Web：在会话连接过程中显示更具体的状态信息（"Loading history..."、"Starting environment..." 替代通用的 "Connecting..."）
+- Web：会话环境初始化失败时发送错误状态，而非让 UI 一直处于等待状态
+- Web：历史回放完成后 15 秒内未收到会话状态时自动重连
 
 ## 1.9.0 (2026-02-06)
 
