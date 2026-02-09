@@ -105,13 +105,14 @@ export function ApprovalDialog({
   const { approval, toolCall } = pendingApproval;
 
   const options = [
-    { key: "approve", label: "Approve", index: 1 },
+    { key: "approve", label: "Approve", pendingLabel: "Approving...", index: 1 },
     {
       key: "approve_for_session",
       label: "Approve for session",
+      pendingLabel: "Approving...",
       index: 2,
     },
-    { key: "reject", label: "Decline", index: 3 },
+    { key: "reject", label: "Decline", pendingLabel: "Declining...", index: 3 },
   ] as const;
 
   return (
@@ -195,7 +196,7 @@ export function ApprovalDialog({
                 )}
               >
                 {approvalPending
-                  ? `${option.label}ing...`
+                  ? option.pendingLabel
                   : option.label}
                 {!approvalPending && (
                   <Kbd className="ml-1.5">{option.index}</Kbd>
