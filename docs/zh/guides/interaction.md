@@ -89,6 +89,8 @@ kimi --yolo
 /yolo
 ```
 
+你也可以在配置文件中设置 `default_yolo = true`，每次启动时默认开启 YOLO 模式。详见 [配置文件](../configuration/config-files.md)。
+
 开启 YOLO 模式后，底部状态栏会显示黄色的 YOLO 标识。再次输入 `/yolo` 可关闭。
 
 ::: warning 注意

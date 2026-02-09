@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 // --- Type Definitions ---
 
-export type ActivityStatus = "idle" | "connecting" | "processing" | "waiting_input";
+export type ActivityStatus = "idle" | "connecting" | "processing" | "waiting_input" | "error";
 
 export type ActivityDetail = {
   status: ActivityStatus;
@@ -68,7 +68,7 @@ export function deriveActivityStatus({
   // Handle error state
   if (chatStatus === "error") {
     return {
-      status: "idle",
+      status: "error",
       description: "An error occurred",
     };
   }
@@ -113,7 +113,7 @@ export function deriveActivityStatus({
   // Default idle state
   return {
     status: "idle",
-    description: "Ready",
+    description: "Awaiting input",
   };
 }
 
@@ -182,6 +182,7 @@ const STATUS_COLORS: Record<ActivityStatus, string> = {
   connecting: "bg-blue-500",
   processing: "bg-green-500",
   waiting_input: "bg-yellow-500",
+  error: "bg-red-500",
 };
 
 const STATUS_PULSE_COLORS: Record<ActivityStatus, string> = {
@@ -189,6 +190,7 @@ const STATUS_PULSE_COLORS: Record<ActivityStatus, string> = {
   connecting: "bg-blue-500/50",
   processing: "bg-green-500/50",
   waiting_input: "bg-yellow-500/50",
+  error: "bg-red-500/50",
 };
 
 export const ActivityStatusIndicator = memo(function ActivityStatusIndicatorComponent({
@@ -252,6 +254,81 @@ export const ActivityStatusIndicator = memo(function ActivityStatusIndicatorComp
             {description}
           </motion.span>
         )}
+      </AnimatePresence>
+    </output>
+  );
+});
+
+// --- Toolbar-specific Activity Indicator ---
+
+export const ToolbarActivityIndicator = memo(function ToolbarActivityIndicatorComponent({
+  activity,
+  className,
+}: {
+  activity: ActivityDetail;
+  className?: string;
+}): ReactElement {
+  const { status, description } = activity;
+  const isActive = status !== "idle" && status !== "error";
+  const showSpinner = status === "processing";
+  const isError = status === "error";
+
+  return (
+    <output
+      aria-live="polite"
+      aria-atomic="true"
+      className={cn(
+        "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium border select-none transition-colors",
+        !(isActive || isError ) && "bg-transparent text-muted-foreground border-transparent",
+        isActive && "bg-transparent text-muted-foreground border-border/60",
+        isError && "bg-transparent text-red-500 border-red-500/30",
+        className,
+      )}
+    >
+      {/* Status dot with optional pulse */}
+      <div className="relative flex items-center justify-center">
+        {(isActive || isError) && (
+          <motion.div
+            className={cn(
+              "absolute size-2.5 rounded-full",
+              STATUS_PULSE_COLORS[status],
+            )}
+            animate={{
+              scale: [1, 1.8, 1],
+              opacity: [0.6, 0, 0.6],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Number.POSITIVE_INFINITY,
+              ease: "easeInOut",
+            }}
+          />
+        )}
+        <div
+          className={cn(
+            "size-1.5 rounded-full transition-colors duration-200",
+            STATUS_COLORS[status],
+          )}
+        />
+      </div>
+
+      {/* Spinner for processing */}
+      {showSpinner && (
+        <Loader size={12} className="text-muted-foreground" />
+      )}
+
+      {/* Description text with animated transitions */}
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={description}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 4 }}
+          transition={{ duration: 0.15 }}
+          className="whitespace-nowrap"
+        >
+          {description}
+        </motion.span>
       </AnimatePresence>
     </output>
   );
