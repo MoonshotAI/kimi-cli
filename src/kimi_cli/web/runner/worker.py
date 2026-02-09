@@ -19,6 +19,7 @@ from loguru import logger
 
 from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.cli.mcp import get_global_mcp_config_file
+from kimi_cli.exception import MCPConfigError
 from kimi_cli.web.store.sessions import load_session_by_id
 
 
@@ -46,7 +47,15 @@ async def run_worker(session_id: UUID) -> None:
             )
 
     # Create KimiCLI instance with MCP configuration
-    kimi_cli = await KimiCLI.create(session, mcp_configs=mcp_configs or None)
+    try:
+        kimi_cli = await KimiCLI.create(session, mcp_configs=mcp_configs or None)
+    except MCPConfigError as exc:
+        logger.warning(
+            "Invalid MCP config in {path}: {error}. Starting without MCP.",
+            path=default_mcp_file,
+            error=exc,
+        )
+        kimi_cli = await KimiCLI.create(session, mcp_configs=None)
 
     # Run in wire stdio mode
     await kimi_cli.run_wire_stdio()
