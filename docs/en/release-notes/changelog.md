@@ -10,6 +10,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Show more specific status messages during session connection ("Loading history...", "Starting environment..." instead of generic "Connecting...")
 - Web: Send error status when session environment initialization fails instead of leaving UI in a waiting state
 - Web: Auto-reconnect when no session status received within 15 seconds after history replay completes
+- Web: Use non-blocking file I/O in session streaming to avoid blocking the event loop during history replay
 
 ## 1.9.0 (2026-02-06)
 
