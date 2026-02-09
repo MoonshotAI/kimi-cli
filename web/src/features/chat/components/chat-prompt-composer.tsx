@@ -14,6 +14,7 @@ import {
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import type { GitDiffStats, Session } from "@/lib/api/models";
+import type { ActivityDetail } from "./activity-status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MEDIA_CONFIG } from "@/config/media";
@@ -60,6 +61,7 @@ type ChatPromptComposerProps = {
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
   slashCommands?: SlashCommandDef[];
+  activityStatus?: ActivityDetail;
 };
 
 export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
@@ -76,6 +78,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   gitDiffStats,
   isGitDiffLoading,
   slashCommands = [],
+  activityStatus,
 }: ChatPromptComposerProps): ReactElement {
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
@@ -180,6 +183,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         gitDiffStats={gitDiffStats}
         isGitDiffLoading={isGitDiffLoading}
         workDir={currentSession?.workDir}
+        activityStatus={activityStatus}
       />
 
       <PromptInput
