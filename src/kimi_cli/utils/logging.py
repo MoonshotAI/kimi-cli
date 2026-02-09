@@ -45,6 +45,15 @@ class StderrRedirector:
             self._thread.start()
             self._installed = True
 
+    def uninstall(self) -> None:
+        with self._lock:
+            if not self._installed:
+                return
+            if self._original_fd is not None:
+                with contextlib.suppress(OSError):
+                    os.dup2(self._original_fd, 2)
+            self._installed = False
+
     def _drain(self) -> None:
         buffer = ""
         read_fd = self._read_fd
@@ -92,6 +101,14 @@ def redirect_stderr_to_logger(level: str = "ERROR") -> None:
     if _stderr_redirector is None:
         _stderr_redirector = StderrRedirector(level=level)
     _stderr_redirector.install()
+
+
+def restore_stderr() -> None:
+    """Restore process stderr to its original fd if redirection was installed."""
+    redirector = _stderr_redirector
+    if redirector is None:
+        return
+    redirector.uninstall()
 
 
 @contextlib.contextmanager
