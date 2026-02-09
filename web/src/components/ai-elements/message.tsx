@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import {
@@ -19,8 +30,11 @@ import type { UIMessage } from "ai";
 import type { MessageAttachmentPart, NoPreviewAttachment, VideoNoPreviewAttachment } from "@/hooks/types";
 import { useVideoThumbnail } from "@/hooks/useVideoThumbnail";
 import {
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CopyIcon,
+  GitBranchIcon,
   PaperclipIcon,
   VideoIcon,
   XIcon,
@@ -97,7 +111,7 @@ export const MessageActions = ({
   children,
   ...props
 }: MessageActionsProps) => (
-  <div className={cn("flex items-center gap-1", className)} {...props}>
+  <div className={cn("flex items-center gap-1 ml-4", className)} {...props}>
     {children}
   </div>
 );
@@ -113,10 +127,11 @@ export const MessageAction = ({
   label,
   variant = "ghost",
   size = "icon-sm",
+  className,
   ...props
 }: MessageActionProps) => {
   const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
+    <Button size={size} type="button" variant={variant} className={cn("size-6", className)} {...props}>
       {children}
       <span className="sr-only">{label || tooltip}</span>
     </Button>
@@ -127,8 +142,8 @@ export const MessageAction = ({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
+          <TooltipContent className="px-1.5 py-0.5">
+            <p className="text-[12px]">{tooltip}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -136,6 +151,74 @@ export const MessageAction = ({
   }
 
   return button;
+};
+
+export type MessageCopyButtonProps = {
+  content: string;
+  timeout?: number;
+};
+
+export const MessageCopyButton = ({
+  content,
+  timeout = 2000,
+}: MessageCopyButtonProps) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), timeout);
+    } catch {
+      // Clipboard API not available or write failed
+    }
+  };
+
+  return (
+    <MessageAction tooltip={isCopied ? "Copied!" : "Copy"} onClick={handleCopy}>
+      {isCopied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+    </MessageAction>
+  );
+};
+
+export type MessageForkButtonProps = {
+  onFork: () => void;
+};
+
+export const MessageForkButton = ({ onFork }: MessageForkButtonProps) => {
+  return (
+    <AlertDialog>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <AlertDialogTrigger asChild>
+              <Button size="icon-sm" type="button" variant="ghost" className="size-6">
+                <GitBranchIcon className="size-3" />
+                <span className="sr-only">Fork session</span>
+              </Button>
+            </AlertDialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent className="px-1.5 py-0.5">
+            <p className="text-[12px]">Fork session from this point</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Fork Session</AlertDialogTitle>
+          <AlertDialogDescription>
+            A new session will be created with the conversation history up to
+            and including this response. The current session will not be
+            affected.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onFork}>Fork</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 };
 
 type MessageBranchContextType = {
