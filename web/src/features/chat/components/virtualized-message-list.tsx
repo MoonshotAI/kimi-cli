@@ -1,9 +1,12 @@
 import type { LiveMessage } from "@/hooks/types";
 import {
   Message,
+  MessageActions,
   MessageAttachment,
   MessageAttachments,
   MessageContent,
+  MessageCopyButton,
+  MessageForkButton,
   UserMessageContent,
 } from "@ai-elements";
 import {
@@ -290,16 +293,27 @@ function VirtualizedMessageListComponent(
                 <UserMessageContent>{message.content}</UserMessageContent>
               ) : null
             ) : (
-              <AssistantMessage
-                message={message}
-                pendingApprovalMap={pendingApprovalMap}
-                onApprovalAction={onApprovalAction}
-                canRespondToApproval={canRespondToApproval}
-                blocksExpanded={blocksExpanded}
-                onForkSession={onForkSession && message.turnIndex !== undefined
-                  ? () => onForkSession(message.turnIndex!)
-                  : undefined}
-              />
+              <>
+                <AssistantMessage
+                  message={message}
+                  pendingApprovalMap={pendingApprovalMap}
+                  onApprovalAction={onApprovalAction}
+                  canRespondToApproval={canRespondToApproval}
+                  blocksExpanded={blocksExpanded}
+                />
+                {!message.isStreaming &&
+                  (!message.variant || message.variant === "text") &&
+                  (message.content || (onForkSession && message.turnIndex !== undefined)) && (
+                  <MessageActions className="
+                  hover-reveal
+                   opacity-0 group-hover:opacity-100 transition-opacity mt-1">
+                    {message.content && <MessageCopyButton content={message.content} />}
+                    {onForkSession && message.turnIndex !== undefined && (
+                      <MessageForkButton onFork={() => onForkSession(message.turnIndex!)} />
+                    )}
+                  </MessageActions>
+                )}
+              </>
             )}
             {message.attachments && message.attachments.length > 0 ? (
               <MessageAttachments>
