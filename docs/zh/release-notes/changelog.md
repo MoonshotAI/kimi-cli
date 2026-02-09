@@ -6,6 +6,7 @@
 
 - Web：新增 URL 操作参数（`?action=create` 打开创建会话对话框，`?action=create-in-dir&workDir=xxx` 直接创建会话）用于外部集成，支持 Cmd/Ctrl+点击新建会话按钮在新标签页中打开会话创建
 - Web：在提示输入工具栏中添加待办列表显示——当 `SetTodoList` 工具激活时，显示任务进度并支持展开面板查看详情
+- ACP：为会话操作添加认证检查，未认证时返回 `AUTH_REQUIRED` 错误响应，支持终端登录流程
 
 ## 1.16.0 (2026-02-27)
 
