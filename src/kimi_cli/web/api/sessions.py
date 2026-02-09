@@ -195,40 +195,48 @@ def _ensure_public_file_access_allowed(
         )
 
 
+def _read_wire_lines(wire_file: Path) -> list[str]:
+    """Read and parse wire.jsonl into JSONRPC event strings (runs in thread)."""
+    result: list[str] = []
+    with open(wire_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    continue
+                record = cast(dict[str, Any], record)
+                record_type = record.get("type")
+                if isinstance(record_type, str) and record_type == "metadata":
+                    continue
+                message_raw = record.get("message")
+                if not isinstance(message_raw, dict):
+                    continue
+                message_raw = cast(dict[str, Any], message_raw)
+                message = deserialize_wire_message(message_raw)
+                event_msg: dict[str, Any] = {
+                    "jsonrpc": "2.0",
+                    "method": "request" if is_request(message) else "event",
+                    "params": message_raw,
+                }
+                result.append(json.dumps(event_msg, ensure_ascii=False))
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                continue
+    return result
+
+
 async def replay_history(ws: WebSocket, session_dir: Path) -> None:
     """Replay historical wire messages from wire.jsonl to a WebSocket."""
     wire_file = session_dir / "wire.jsonl"
-    if not wire_file.exists():
+    if not await asyncio.to_thread(wire_file.exists):
         return
 
     try:
-        with open(wire_file, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                    if not isinstance(record, dict):
-                        continue
-                    record = cast(dict[str, Any], record)
-                    record_type = record.get("type")
-                    if isinstance(record_type, str) and record_type == "metadata":
-                        continue
-                    message_raw = record.get("message")
-                    if not isinstance(message_raw, dict):
-                        continue
-                    message_raw = cast(dict[str, Any], message_raw)
-                    message = deserialize_wire_message(message_raw)
-                    # Convert to JSONRPC event format
-                    event_msg: dict[str, Any] = {
-                        "jsonrpc": "2.0",
-                        "method": "request" if is_request(message) else "event",
-                        "params": message_raw,
-                    }
-                    await ws.send_text(json.dumps(event_msg, ensure_ascii=False))
-                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-                    continue
+        lines = await asyncio.to_thread(_read_wire_lines, wire_file)
+        for event_text in lines:
+            await ws.send_text(event_text)
     except Exception:
         pass
 
@@ -1077,7 +1085,7 @@ async def session_stream(
     await websocket.accept()
 
     # Check if session exists
-    session = load_session_by_id(session_id)
+    session = await asyncio.to_thread(load_session_by_id, session_id)
     if session is None:
         await websocket.close(code=4004, reason="Session not found")
         return
@@ -1085,7 +1093,7 @@ async def session_stream(
     # Check if session has history
     session_dir = session.kimi_cli_session.dir
     wire_file = session_dir / "wire.jsonl"
-    has_history = wire_file.exists()
+    has_history = await asyncio.to_thread(wire_file.exists)
 
     session_process = None
     attached = False
@@ -1109,7 +1117,7 @@ async def session_stream(
 
         # Ensure work_dir exists
         work_dir = Path(str(session.kimi_cli_session.work_dir))
-        work_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: work_dir.mkdir(parents=True, exist_ok=True))
 
         if not attached:
             # No history: attach and start worker
@@ -1124,7 +1132,7 @@ async def session_stream(
         await session_process.send_status_snapshot(websocket)
 
         # Update last_session_id for this work directory
-        _update_last_session_id(session)
+        await asyncio.to_thread(_update_last_session_id, session)
 
         # Forward incoming messages to the subprocess
         while True:
