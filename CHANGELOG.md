@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - ACP: Add authentication check for session operations with `AUTH_REQUIRED` error responses for terminal-based login flow
+- Web: Load global MCP configuration in web worker so web sessions can use MCP tools
 - Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
 
 ## 1.9.0 (2026-02-06)
