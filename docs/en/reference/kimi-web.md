@@ -170,23 +170,24 @@ Web UI provides a convenient session management interface:
 - **Session search**: Quickly filter sessions by title or working directory
 - **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory
 - **Switch session**: Switch to different sessions with one click
+- **Session fork**: Create a branching session from any assistant response, exploring different directions without affecting the original session
+- **Session archive**: Sessions older than 15 days are automatically archived. You can also archive manually. Archived sessions don't appear in the main list but can be unarchived at any time
+- **Bulk operations**: Bulk archive, unarchive, or delete sessions in multi-select mode
 
 ::: info Added
-Session search feature added in version 1.5. Directory auto-creation prompt added in version 1.7.
+Session search feature added in version 1.5. Directory auto-creation prompt added in version 1.7. Session fork, archive, and bulk operations added in version 1.9.
 :::
 
-### Git status bar
+### Prompt toolbar
 
-Web UI detects Git repository status in the session working directory and displays uncommitted change statistics at the top of the interface:
+Web UI provides a unified prompt toolbar above the input box, displaying various information in collapsible tabs:
 
-- Number of new files (including staged new files and untracked files)
-- Number of modified files
-- Number of deleted files
+- **Activity status**: Shows the current agent state (processing, waiting for approval, etc.)
+- **Message queue**: Queue follow-up messages while the AI is processing; queued messages are sent automatically when the current response completes
+- **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
 
-Click the status bar to view a detailed list of file changes.
-
-::: info Added
-Git status bar added in version 1.5.
+::: info Changed
+Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Later versions unified it into the prompt toolbar, integrating activity status, message queue, and file changes.
 :::
 
 ### Open-in functionality
@@ -222,6 +223,20 @@ Web UI supports file mentions. Type `@` in the input box to open the file mentio
 - **Workspace files**: Mention existing files in the current session's working directory
 - **Autocomplete**: Filter matching files by name or path as you type
 - **Keyboard navigation**: Use up/down arrow keys to select files, Enter or Tab to confirm, Escape to cancel
+
+### Tool output
+
+Web UI provides rich display for tool call output:
+
+- **Media preview**: Images and videos read by the `ReadMediaFile` tool are displayed as clickable thumbnails
+- **Shell commands**: `Shell` tool commands and output are rendered with dedicated components
+- **Todo list**: `SetTodoList` tool items are displayed as a structured list
+- **Tool input parameters**: Redesigned tool input UI with expandable parameter details and syntax highlighting for long values
+- **Context compaction**: A compaction indicator is shown when context compaction is in progress
+
+::: info Added
+Media preview, shell command, and todo list display components added in version 1.9.
+:::
 
 ### Rich media support
 
