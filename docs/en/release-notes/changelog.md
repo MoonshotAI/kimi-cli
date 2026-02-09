@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Add keyboard shortcuts for approval actions — press `1` to approve, `2` to approve for session, `3` to decline
 - Web: Add message queueing — queue follow-up messages while the AI is processing; queued messages are sent automatically when the response completes
 - Web: Replace Git diff status bar with unified prompt toolbar showing activity status, message queue, and file changes in collapsible tabs
 - Web: Load global MCP configuration in web worker so web sessions can use MCP tools
