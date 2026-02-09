@@ -46,6 +46,7 @@ type ChatPromptComposerProps = {
   isUploading: boolean;
   isStreaming: boolean;
   isAwaitingIdle: boolean;
+  isReplayingHistory: boolean;
   onCancel?: () => void;
   onListSessionDirectory?: (
     sessionId: string,
@@ -64,6 +65,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   isUploading,
   isStreaming,
   isAwaitingIdle,
+  isReplayingHistory,
   onCancel,
   onListSessionDirectory,
   gitDiffStats,
@@ -226,7 +228,9 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                   !currentSession
                     ? "Create a session to start..."
                     : isAwaitingIdle
-                      ? "Connecting to environment..."
+                      ? isReplayingHistory
+                        ? "Connecting..."
+                        : "Starting environment..."
                       : ""
                 }
                 aria-busy={isUploading}
