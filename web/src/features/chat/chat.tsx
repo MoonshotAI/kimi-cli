@@ -124,6 +124,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     const newStatus = deriveActivityStatus({
       chatStatus: status,
       isAwaitingFirstResponse,
+      isReplayingHistory,
       isUploadingFiles,
       messages,
     });
@@ -140,7 +141,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
 
     prevActivityRef.current = newStatus;
     return newStatus;
-  }, [status, isAwaitingFirstResponse, isUploadingFiles, messages]);
+  }, [status, isAwaitingFirstResponse, isReplayingHistory, isUploadingFiles, messages]);
 
   const maxTokens = 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
@@ -238,6 +239,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
               isUploading={isUploading}
               isStreaming={isStreaming}
               isAwaitingIdle={isAwaitingIdle}
+              isReplayingHistory={isReplayingHistory}
               onCancel={onCancel}
               onListSessionDirectory={onListSessionDirectory}
               gitDiffStats={gitDiffStats}
