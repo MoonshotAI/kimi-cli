@@ -1144,8 +1144,10 @@ async def session_stream(
                 pass
             return
 
-        # Update last_session_id for this work directory
-        _update_last_session_id(session)
+        # Track whether we've updated last_session_id for this connection.
+        # We defer the update until the first prompt message is actually forwarded,
+        # so that merely opening/viewing a session does not change last_session_id.
+        last_session_id_updated = False
 
         # Forward incoming messages to the subprocess
         while True:
@@ -1171,6 +1173,16 @@ async def session_stream(
                             ).model_dump_json()
                         )
                         continue
+
+                # Update last_session_id on first successful prompt
+                if not last_session_id_updated:
+                    try:
+                        in_message = JSONRPCInMessageAdapter.validate_json(message)
+                    except ValueError:
+                        in_message = None
+                    if isinstance(in_message, JSONRPCPromptMessage):
+                        _update_last_session_id(session)
+                        last_session_id_updated = True
 
                 logger.debug(f"sending message to session {session_id}")
                 await session_process.send_message(message)
