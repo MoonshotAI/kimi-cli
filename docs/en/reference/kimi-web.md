@@ -224,6 +224,31 @@ Web UI supports file mentions. Type `@` in the input box to open the file mentio
 - **Autocomplete**: Filter matching files by name or path as you type
 - **Keyboard navigation**: Use up/down arrow keys to select files, Enter or Tab to confirm, Escape to cancel
 
+### Message actions
+
+Assistant messages provide the following action buttons:
+
+- **Copy**: Copy message content to clipboard with one click
+- **Fork**: Create a branching session from the current response
+
+::: info Added
+Copy and fork buttons added in version 1.10.
+:::
+
+### Approval keyboard shortcuts
+
+When the agent sends an approval request, you can use keyboard shortcuts to respond quickly:
+
+| Shortcut | Action |
+|----------|--------|
+| `1` | Approve |
+| `2` | Approve for session |
+| `3` | Decline |
+
+::: info Added
+Approval keyboard shortcuts added in version 1.10.
+:::
+
 ### Tool output
 
 Web UI provides rich display for tool call output:
