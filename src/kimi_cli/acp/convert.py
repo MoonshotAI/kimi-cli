@@ -28,6 +28,15 @@ def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPa
                         )
                     )
                 )
+            case acp.schema.EmbeddedResourceContentBlock():
+                # Embedded resources contain content from the Client
+                resource = block.resource
+                if isinstance(resource, acp.schema.TextResourceContents):
+                    content.append(TextPart(text=f"File: {resource.uri}\n\n{resource.text}"))
+                elif resource.__class__.__name__ == "BlobResourceContents":
+                    logger.info("Skipping binary embedded resource: {uri}", uri=resource.uri)
+                else:
+                    logger.warning("Unknown resource type: {resource}", resource=resource)
             case _:
                 logger.warning("Unsupported prompt content block: {block}", block=block)
     return content
