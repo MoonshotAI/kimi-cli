@@ -34,6 +34,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 type DeriveActivityStatusParams = {
   chatStatus: ChatStatus;
   isAwaitingFirstResponse: boolean;
+  isReplayingHistory: boolean;
   isUploadingFiles: boolean;
   messages: LiveMessage[];
 };
@@ -44,6 +45,7 @@ type DeriveActivityStatusParams = {
 export function deriveActivityStatus({
   chatStatus,
   isAwaitingFirstResponse,
+  isReplayingHistory,
   isUploadingFiles,
   messages,
 }: DeriveActivityStatusParams): ActivityDetail {
@@ -81,6 +83,14 @@ export function deriveActivityStatus({
 
   // Handle streaming state
   if (chatStatus === "streaming") {
+    // History replay - not AI thinking
+    if (isReplayingHistory) {
+      return {
+        status: "processing",
+        description: "Loading history...",
+      };
+    }
+
     // Find the most recent in-progress tool call
     const activeToolCall = findActiveToolCall(messages);
 

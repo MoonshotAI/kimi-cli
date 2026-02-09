@@ -14,6 +14,9 @@ Only write entries that are worth mentioning to users.
 - Web: Load global MCP configuration in web worker so web sessions can use MCP tools
 - Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
 - Web: Handle models that stream text before thinking by ensuring thinking messages always appear before text in the message list
+- Web: Show more specific status messages during session connection ("Loading history...", "Starting environment..." instead of generic "Connecting...")
+- Web: Send error status when session environment initialization fails instead of leaving UI in a waiting state
+- Web: Auto-reconnect when no session status received within 15 seconds after history replay completes
 
 ## 1.9.0 (2026-02-06)
 
