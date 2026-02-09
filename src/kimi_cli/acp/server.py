@@ -107,7 +107,7 @@ class ACPServer:
         token = load_tokens(ref)
 
         if token is None or not token.access_token:
-            # Build AUTH_REQUIRED error data per AUTHENTICATION.md spec
+            # Build AUTH_REQUIRED error data for clients
             auth_methods_data: list[dict[str, Any]] = []
             for m in self._auth_methods:
                 if m.field_meta and "terminal-auth" in m.field_meta:
@@ -319,7 +319,10 @@ class ACPServer:
             else:
                 logger.warning("Authentication not complete for method: {id}", id=method_id)
                 raise acp.RequestError.auth_required(
-                    {"message": "Please complete login in terminal first"}
+                    {
+                        "message": "Please complete login in terminal first",
+                        "authMethods": self._auth_methods,
+                    }
                 )
 
         logger.error("Unknown auth method: {method_id}", method_id=method_id)
