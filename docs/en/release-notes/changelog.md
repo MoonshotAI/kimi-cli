@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.10.0 (2026-02-09)
+
 - Web: Add copy and fork action buttons to assistant messages for quick content copying and session forking
 - Web: Add keyboard shortcuts for approval actions — press `1` to approve, `2` to approve for session, `3` to decline
 - Web: Add message queueing — queue follow-up messages while the AI is processing; queued messages are sent automatically when the response completes
