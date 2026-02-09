@@ -170,9 +170,12 @@ Web UI provides a convenient session management interface:
 - **Session search**: Quickly filter sessions by title or working directory
 - **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory
 - **Switch session**: Switch to different sessions with one click
+- **Session fork**: Create a branch session from any assistant message to explore different conversation directions
+- **Session archive**: Support manual archiving and auto-archive (sessions inactive for more than 15 days are automatically archived)
+- **Bulk operations**: Archive, unarchive, or delete multiple sessions at once using multi-select mode
 
 ::: info Added
-Session search feature added in version 1.5. Directory auto-creation prompt added in version 1.7.
+Session search feature added in version 1.5. Directory auto-creation prompt added in version 1.7. Session fork, archive, and bulk operations added in version 1.9.
 :::
 
 ### Git status bar
@@ -228,8 +231,39 @@ Web UI supports file mentions. Type `@` in the input box to open the file mentio
 Web UI supports viewing and pasting various types of rich media content:
 
 - **Images**: Display images directly in the chat interface
+- **Videos**: Support video content preview
 - **Code highlighting**: Automatic code block recognition and highlighting
 - **Markdown rendering**: Support for full Markdown syntax
+- **Media preview**: Images and videos in tool results are displayed as clickable thumbnails with full-screen preview support
+
+::: info Added
+Media preview feature added in version 1.9.
+:::
+
+### Tool output display
+
+Web UI provides rich visualization for tool calls and execution results:
+
+- **Parameter display**: Tool parameters support expand/collapse, with syntax highlighting for long values
+- **Shell commands**: Display executed shell commands as code blocks
+- **Todo lists**: `SetTodoList` tool output is displayed as a task list with status for each task
+- **Media preview**: Images and videos returned by `ReadMediaFile` tool are displayed as clickable thumbnails
+
+::: info Added
+Tool output display enhanced in version 1.9.
+:::
+
+### Activity status indicator
+
+Web UI displays the current agent's activity status in the interface, helping you understand what the agent is doing:
+
+- **Processing**: Agent is thinking or generating a response
+- **Waiting for approval**: Agent is waiting for you to approve an operation
+- **Compacting context**: When context approaches capacity limit, the agent automatically compacts conversation history, and a compaction indicator is displayed
+
+::: info Added
+Activity status indicator added in version 1.9.
+:::
 
 ### Responsive layout
 
