@@ -31,6 +31,8 @@ class StderrRedirector:
             if self._original_fd is None:
                 with contextlib.suppress(OSError):
                     self._original_fd = os.dup(2)
+            if self._original_fd is None:
+                return
             if self._encoding is None:
                 self._encoding = (
                     sys.stderr.encoding or locale.getpreferredencoding(False) or "utf-8"
@@ -49,10 +51,14 @@ class StderrRedirector:
         with self._lock:
             if not self._installed:
                 return
-            if self._original_fd is not None:
-                with contextlib.suppress(OSError):
-                    os.dup2(self._original_fd, 2)
-            self._installed = False
+            if self._original_fd is None:
+                return
+            restored = False
+            with contextlib.suppress(OSError):
+                os.dup2(self._original_fd, 2)
+                restored = True
+            if restored:
+                self._installed = False
 
     def _drain(self) -> None:
         buffer = ""

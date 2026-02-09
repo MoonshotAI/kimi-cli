@@ -460,11 +460,8 @@ def run_web_server(
 
     # Add URLs for each host (nowrap to keep URLs on single line for easy copying)
     for label, host_addr in display_hosts:
-        url, url_with_token = make_url(host_addr)
-        if session_token:
-            banner_lines.append(f"<nowrap>  ➜  {label:8} {url_with_token}")
-        else:
-            banner_lines.append(f"<nowrap>  ➜  {label:8} {url}")
+        _, url_with_token = make_url(host_addr)
+        banner_lines.append(f"<nowrap>  ➜  {label:8} {url_with_token}")
 
     # Auth token or warnings
     if session_token:
