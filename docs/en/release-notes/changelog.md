@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- ACP: Add authentication check for session operations with `AUTH_REQUIRED` error responses for terminal-based login flow
 - Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
 
 ## 1.9.0 (2026-02-06)
