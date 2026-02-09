@@ -826,13 +826,29 @@ export function useSessionStream(
             // Create or update thinking message
             if (!thinkingMessageIdRef.current) {
               thinkingMessageIdRef.current = getNextMessageId("assistant");
-              upsertMessage({
+              const thinkingMsg: LiveMessage = {
                 id: thinkingMessageIdRef.current!,
                 role: "assistant",
                 variant: "thinking",
                 thinking: currentThinkingRef.current,
                 isStreaming: !isReplay,
-              });
+              };
+              if (textMessageIdRef.current) {
+                // Text message already exists, insert thinking before it
+                setMessages((prev) => {
+                  const textIdx = prev.findIndex(
+                    (m) => m.id === textMessageIdRef.current,
+                  );
+                  if (textIdx !== -1) {
+                    const next = [...prev];
+                    next.splice(textIdx, 0, thinkingMsg);
+                    return next;
+                  }
+                  return [...prev, thinkingMsg];
+                });
+              } else {
+                upsertMessage(thinkingMsg);
+              }
             } else {
               setMessages((prev) =>
                 prev.map((msg) =>
