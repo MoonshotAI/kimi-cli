@@ -10,7 +10,7 @@
  * much value since ChatWorkspace receives `messages` as a prop and re-renders
  * on every update anyway.
  */
-import { type ReactElement, useCallback, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
 import type { ChatStatus, FileUIPart } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import type { SessionFileEntry } from "@/hooks/useSessions";
 import { getApiBaseUrl, isMacOS } from "@/hooks/utils";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { useToolEventsStore } from "@/features/tool/store";
+import { useQueueStore } from "./queue-store";
 import { ChatWorkspace } from "./chat";
 
 type PendingMessage = {
@@ -116,11 +117,38 @@ export function ChatWorkspaceContainer({
   } = sessionStream;
 
   const clearNewFiles = useToolEventsStore((state) => state.clearNewFiles);
+  const enqueue = useQueueStore((s) => s.enqueue);
+  const queueLength = useQueueStore((s) => s.queue.length);
+  const dequeue = useQueueStore((s) => s.dequeue);
+  const clearQueue = useQueueStore((s) => s.clearQueue);
+
   useEffect(() => {
     if (status === "streaming") {
       clearNewFiles();
     }
   }, [status, clearNewFiles]);
+
+  // Auto-send next queued message when status becomes ready
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const wasProcessing =
+      prevStatusRef.current === "streaming" ||
+      prevStatusRef.current === "submitted";
+    prevStatusRef.current = status;
+
+    if (status === "ready" && wasProcessing && queueLength > 0) {
+      const next = dequeue();
+      if (next) {
+        sendMessage(next.text);
+      }
+    }
+  }, [status, queueLength, dequeue, sendMessage]);
+
+  // Clear queue when session changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedSessionId triggers queue clear on session switch
+  useEffect(() => {
+    clearQueue();
+  }, [selectedSessionId, clearQueue]);
 
   useEffect(() => {
     onStreamStatusChange?.(status);
@@ -226,14 +254,28 @@ export function ChatWorkspaceContainer({
         return;
       }
 
-      if (
-        status === "streaming" ||
-        status === "submitted" ||
-        isUploadingFiles
-      ) {
-        toast.info("Still processing", {
-          description: "Please wait until uploads and responses finish.",
+      if (isUploadingFiles) {
+        toast.info("Still uploading", {
+          description: "Please wait until file uploads finish.",
         });
+        return;
+      }
+
+      if (status === "streaming" || status === "submitted") {
+        // Queue text-only messages when AI is processing
+        if (message.files.length > 0) {
+          toast.info("Still processing", {
+            description: "File attachments cannot be queued. Please wait.",
+          });
+          return;
+        }
+        const messageText = message.text.trim();
+        if (messageText) {
+          enqueue(messageText);
+          toast.info("Message queued", {
+            description: "It will be sent when the current response finishes.",
+          });
+        }
         return;
       }
 
@@ -254,7 +296,7 @@ export function ChatWorkspaceContainer({
 
       await sendMessage(messageText);
     },
-    [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage],
+    [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage, enqueue],
   );
 
   const handleForkSession = useCallback(
