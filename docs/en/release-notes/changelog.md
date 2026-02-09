@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Add message queueing — queue follow-up messages while the AI is processing; queued messages are sent automatically when the response completes
+- Web: Replace Git diff status bar with unified prompt toolbar showing activity status, message queue, and file changes in collapsible tabs
 - Web: Load global MCP configuration in web worker so web sessions can use MCP tools
 - Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
 - Web: Handle models that stream text before thinking by ensuring thinking messages always appear before text in the message list
