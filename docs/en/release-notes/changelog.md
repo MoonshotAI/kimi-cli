@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Add `$` command to list and select skills
+- Shell: Support `$<skill-name>` syntax in input to pre-select skills (Codex-style)
 ## 1.10.0 (2026-02-09)
 
 - Web: Add copy and fork action buttons to assistant messages for quick content copying and session forking

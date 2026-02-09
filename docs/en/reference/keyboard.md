@@ -81,6 +81,7 @@ In agent mode, a completion menu is automatically displayed while typing:
 |---------|-------------------|
 | `/` | Slash commands |
 | `@` | File paths in working directory |
+| `$` | Available skills |
 
 Completion operations:
 - Arrow keys to select

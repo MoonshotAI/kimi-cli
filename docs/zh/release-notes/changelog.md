@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Shell：添加 `$` 命令来列出和选择 Skills
+- Shell：支持在输入中使用 `$<skill-name>` 语法预选 Skills（Codex 风格）
+- Auth: 修复 Agent 轮次期间的认证问题
 ## 1.10.0 (2026-02-09)
 
 - Web：为 Assistant 消息添加复制和分支(fork)操作按钮，支持快速复制内容和创建分支会话

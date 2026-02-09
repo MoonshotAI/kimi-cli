@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import shlex
 from collections.abc import Awaitable, Coroutine
 from dataclasses import dataclass
@@ -9,11 +10,13 @@ from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from loguru import logger
+from prompt_toolkit import PromptSession
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from kimi_cli.skill import Skill
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
@@ -29,7 +32,7 @@ from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
-from kimi_cli.wire.types import ContentPart, StatusUpdate
+from kimi_cli.wire.types import ContentPart, StatusUpdate, TextPart
 
 
 class Shell:
@@ -68,6 +71,12 @@ class Shell:
                 wire_file=self.soul.wire_file,
             )
 
+        skills: list[Skill] = []
+        if isinstance(self.soul, KimiSoul):
+            skills = [
+                skill for skill in self.soul.runtime.skills.values() if skill.type == "standard"
+            ]
+
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
@@ -75,7 +84,9 @@ class Shell:
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
+            skills=skills,
         ) as prompt_session:
+            pending_skill_names: list[str] | None = None
             try:
                 while True:
                     ensure_tty_sane()
@@ -105,11 +116,19 @@ class Shell:
                         await self._run_shell_command(user_input.command)
                         continue
 
+                    if user_input.command.strip() == "$":
+                        pending_skill_names = await self._select_skills()
+                        continue
+
                     if slash_cmd_call := parse_slash_command_call(user_input.command):
                         await self._run_slash_command(slash_cmd_call)
                         continue
 
-                    await self.run_soul_command(user_input.content)
+                    content: list[ContentPart] | str = user_input.content
+                    if pending_skill_names:
+                        content = self._prepend_skill_tokens(content, pending_skill_names)
+                        pending_skill_names = None
+                    await self.run_soul_command(content)
             finally:
                 ensure_tty_sane()
 
@@ -171,6 +190,72 @@ class Shell:
             console.print(f"[red]Failed to run shell command: {e}[/red]")
         finally:
             remove_sigint()
+
+    async def _select_skills(self) -> list[str] | None:
+        if not isinstance(self.soul, KimiSoul):
+            return None
+
+        skills = [skill for skill in self.soul.runtime.skills.values() if skill.type == "standard"]
+        if not skills:
+            return None
+
+        skills.sort(key=lambda s: s.name.casefold())
+        console.print("Select skills:")
+        for idx, skill in enumerate(skills, 1):
+            if skill.description:
+                console.print(f"{idx}. {skill.name} - {skill.description}")
+            else:
+                console.print(f"{idx}. {skill.name}")
+
+        session = PromptSession[str]()
+        try:
+            raw = await session.prompt_async("Skills (comma/space separated, empty to cancel): ")
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        selected = self._parse_skill_selection(raw, skills)
+        return selected or None
+
+    @staticmethod
+    def _parse_skill_selection(raw: str, skills: list[Skill]) -> list[str]:
+        raw = raw.strip()
+        if not raw:
+            return []
+
+        name_map = {skill.name.casefold(): skill.name for skill in skills}
+        tokens = re.split(r"[,\s]+", raw)
+
+        selected: list[str] = []
+        seen: set[str] = set()
+        for token in tokens:
+            if not token:
+                continue
+            name: str | None = None
+            if token.isdigit():
+                idx = int(token)
+                if 1 <= idx <= len(skills):
+                    name = skills[idx - 1].name
+            else:
+                name = name_map.get(token.casefold())
+            if name and name not in seen:
+                selected.append(name)
+                seen.add(name)
+        return selected
+
+    @staticmethod
+    def _prepend_skill_tokens(
+        content: list[ContentPart] | str, skill_names: list[str]
+    ) -> list[ContentPart]:
+        prefix = " ".join(f"${name}" for name in skill_names).strip()
+        if not prefix:
+            return content if isinstance(content, list) else [TextPart(text=content)]
+        prefix = f"{prefix} "
+
+        parts = content if isinstance(content, list) else [TextPart(text=content)]
+        if parts and isinstance(parts[0], TextPart):
+            first = TextPart(text=prefix + parts[0].text)
+            return [first, *parts[1:]]
+        return [TextPart(text=prefix), *parts]
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
         from kimi_cli.cli import Reload, SwitchToWeb
