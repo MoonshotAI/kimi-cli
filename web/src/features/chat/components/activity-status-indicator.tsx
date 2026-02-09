@@ -279,7 +279,7 @@ export const ToolbarActivityIndicator = memo(function ToolbarActivityIndicatorCo
       aria-atomic="true"
       className={cn(
         "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium border select-none transition-colors",
-        !isActive && !isError && "bg-transparent text-muted-foreground border-transparent",
+        !(isActive || isError ) && "bg-transparent text-muted-foreground border-transparent",
         isActive && "bg-transparent text-muted-foreground border-border/60",
         isError && "bg-transparent text-red-500 border-red-500/30",
         className,

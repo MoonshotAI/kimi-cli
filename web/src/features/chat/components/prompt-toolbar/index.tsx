@@ -59,7 +59,7 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
     setActiveTab((prev) => (prev === tab ? null : tab));
   }, []);
 
-  if (!hasTabs && !activityStatus) return null;
+  if (!(hasTabs || activityStatus)) return null;
 
   return (
     <div className={cn("w-full px-1 sm:px-2 flex flex-col gap-1 mb-2", isGitDiffLoading && "opacity-70")}>
