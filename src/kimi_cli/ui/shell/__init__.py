@@ -30,6 +30,7 @@ from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
 from kimi_cli.wire.types import ContentPart, StatusUpdate, TextPart
 
@@ -182,7 +183,7 @@ class Shell:
                 kwargs: dict[str, Any] = {}
                 if stderr is not None:
                     kwargs["stderr"] = stderr
-                proc = await asyncio.create_subprocess_shell(command, **kwargs)
+                proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
                 await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
@@ -257,7 +258,7 @@ class Shell:
         return [TextPart(text=prefix), *parts]
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
-        from kimi_cli.cli import Reload
+        from kimi_cli.cli import Reload, SwitchToWeb
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
@@ -283,7 +284,7 @@ class Shell:
             ret = command.func(self, command_call.args)
             if isinstance(ret, Awaitable):
                 await ret
-        except Reload:
+        except (Reload, SwitchToWeb):
             # just propagate
             raise
         except (asyncio.CancelledError, KeyboardInterrupt):

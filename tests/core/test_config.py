@@ -5,7 +5,6 @@ from inline_snapshot import snapshot
 
 from kimi_cli.config import (
     Config,
-    Services,
     get_default_config,
     load_config_from_string,
 )
@@ -14,15 +13,7 @@ from kimi_cli.exception import ConfigError
 
 def test_default_config():
     config = get_default_config()
-    assert config == snapshot(
-        Config(
-            default_model="",
-            default_thinking=False,
-            models={},
-            providers={},
-            services=Services(),
-        )
-    )
+    assert config == snapshot(Config())
 
 
 def test_default_config_dump():
@@ -31,6 +22,7 @@ def test_default_config_dump():
         {
             "default_model": "",
             "default_thinking": False,
+            "default_yolo": False,
             "models": {},
             "providers": {},
             "loop_control": {
@@ -68,6 +60,16 @@ def test_load_config_invalid_ralph_iterations():
 def test_load_config_reserved_context_size():
     config = load_config_from_string('{"loop_control": {"reserved_context_size": 30000}}')
     assert config.loop_control.reserved_context_size == 30000
+
+
+def test_load_config_max_steps_per_turn():
+    config = load_config_from_string("[loop_control]\nmax_steps_per_turn = 42\n")
+    assert config.loop_control.max_steps_per_turn == 42
+
+
+def test_load_config_max_steps_per_run():
+    config = load_config_from_string('{"loop_control": {"max_steps_per_run": 7}}')
+    assert config.loop_control.max_steps_per_turn == 7
 
 
 def test_load_config_reserved_context_size_too_low():

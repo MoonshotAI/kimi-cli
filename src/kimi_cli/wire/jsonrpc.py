@@ -106,6 +106,12 @@ class JSONRPCPromptMessage(_MessageBase):
         raise NotImplementedError("Prompt message serialization is not implemented.")
 
 
+class JSONRPCReplayMessage(_MessageBase):
+    method: Literal["replay"] = "replay"
+    id: str
+    params: JsonType | None = None
+
+
 class JSONRPCCancelMessage(_MessageBase):
     method: Literal["cancel"] = "cancel"
     id: str
@@ -154,10 +160,11 @@ type JSONRPCInMessage = (
     | JSONRPCErrorResponse
     | JSONRPCInitializeMessage
     | JSONRPCPromptMessage
+    | JSONRPCReplayMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "replay", "cancel"}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse

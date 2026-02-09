@@ -57,7 +57,7 @@ Image input requires the model to support the `image_in` capability. Video input
 
 ## Slash commands
 
-Slash commands are special instructions starting with `/`, used to execute Kimi Code CLI's built-in features, such as `/help`, `/setup`, `/sessions`, etc. After typing `/`, a list of available commands will automatically appear. For the complete list of slash commands, see the [slash commands reference](../reference/slash-commands.md).
+Slash commands are special instructions starting with `/`, used to execute Kimi Code CLI's built-in features, such as `/help`, `/login`, `/sessions`, etc. After typing `/`, a list of available commands will automatically appear. For the complete list of slash commands, see the [slash commands reference](../reference/slash-commands.md).
 
 ## @ path completion
 
@@ -127,6 +127,8 @@ kimi --yolo
 # Or toggle during runtime
 /yolo
 ```
+
+You can also set `default_yolo = true` in the config file to enable YOLO mode by default on every startup. See [Configuration files](../configuration/config-files.md).
 
 When YOLO mode is enabled, a yellow YOLO badge appears in the status bar at the bottom. Enter `/yolo` again to disable it.
 

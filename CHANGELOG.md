@@ -13,7 +13,95 @@ Only write entries that are worth mentioning to users.
 
 - Shell: Add `$` command to list and select skills
 - Shell: Support `$<skill-name>` syntax in input to pre-select skills (Codex-style)
+## 1.10.0 (2026-02-09)
+
+- Web: Add copy and fork action buttons to assistant messages for quick content copying and session forking
+- Web: Add keyboard shortcuts for approval actions — press `1` to approve, `2` to approve for session, `3` to decline
+- Web: Add message queueing — queue follow-up messages while the AI is processing; queued messages are sent automatically when the response completes
+- Web: Replace Git diff status bar with unified prompt toolbar showing activity status, message queue, and file changes in collapsible tabs
+- Web: Load global MCP configuration in web worker so web sessions can use MCP tools
+- Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
+- Web: Handle models that stream text before thinking by ensuring thinking messages always appear before text in the message list
+- Web: Show more specific status messages during session connection ("Loading history...", "Starting environment..." instead of generic "Connecting...")
+- Web: Send error status when session environment initialization fails instead of leaving UI in a waiting state
+- Web: Auto-reconnect when no session status received within 15 seconds after history replay completes
+- Web: Use non-blocking file I/O in session streaming to avoid blocking the event loop during history replay
+
+## 1.9.0 (2026-02-06)
+
+- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
+- Config: Accept both `max_steps_per_turn` and `max_steps_per_run` as aliases for the loop control setting
+- Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
+- Web: Add session fork feature to branch off a new session from any assistant response
+- Web: Add session archive feature with auto-archive for sessions older than 15 days
+- Web: Add multi-select mode for bulk archive, unarchive, and delete operations
+- Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
+- Web: Add shell command and todo list display components for tool outputs
+- Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
+- Web: Add error fallback UI when images fail to load
+- Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
+- Web: Show compaction indicator when context is being compacted
+- Web: Improve auto-scroll behavior in chat for smoother following of new content
+- Web: Update `last_session_id` for work directory when session stream starts
+- Shell: Remove `Ctrl-/` keyboard shortcut that triggered `/help` command
+- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
+- Core: Preserve session id when reloading configuration so the session resumes correctly
+- Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
+- Web: Fix approval request states not updating when session is interrupted or cancelled
+- Web: Fix IME composition issue when selecting slash commands
+- Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
+
+## 1.8.0 (2026-02-05)
+
+- CLI: Fix startup errors (e.g. invalid config files) being silently swallowed instead of displayed
+
+## 1.7.0 (2026-02-05)
+
+- Rust: Add `kagent`, the Rust implementation of Kimi agent kernel with wire-mode support (experimental)
+- Auth: Fix OAuth token refresh conflicts when running multiple sessions simultaneously
+- Web: Add file mention menu (`@`) to reference uploaded attachments and workspace files with autocomplete
+- Web: Add slash command menu in chat input with autocomplete, keyboard navigation, and alias support
+- Web: Prompt to create directory when specified path doesn't exist during session creation
+- Web: Fix authentication token persistence by switching from sessionStorage to localStorage with 24-hour expiry
+- Web: Add server-side pagination for session list with virtualized scrolling for better performance
+- Web: Improve session and work directories loading with smarter caching and invalidation
+- Web: Fix WebSocket errors during history replay by checking connection state before sending
+- Web: Git diff status bar now shows untracked files (new files not yet added to git)
+- Web: Restrict sensitive APIs only in public mode; update origin enforcement logic
+
+## 1.6 (2026-02-03)
+
+- Web: Add token-based authentication and access control for network mode (`--network`, `--lan-only`, `--public`)
+- Web: Add security options: `--auth-token`, `--allowed-origins`, `--restrict-sensitive-apis`, `--dangerously-omit-auth`
+- Web: Change `--host` option to bind to specific IP address; add automatic network address detection
+- Web: Fix WebSocket disconnect when creating new sessions
+- Web: Increase maximum image dimension from 1024 to 4096 pixels
+- Web: Improve UI responsiveness with enhanced hover effects and better layout handling
+- Wire: Add `TurnEnd` event to signal the completion of an agent turn (protocol version 1.2)
+- Core: Fix custom agent prompt files containing `$` causing silent startup failure
+
+## 1.5 (2026-01-30)
+
+- Web: Add Git diff status bar showing uncommitted changes in session working directory
+- Web: Add "Open in" menu for opening files/directories in Terminal, VS Code, Cursor, or other local applications
+- Web: Add search functionality to filter sessions by title or working directory
+- Web: Improve session title display with proper overflow handling
+
+## 1.4 (2026-01-30)
+
+- Shell: Merge `/login` and `/setup` commands; `/setup` is now an alias for `/login`
+- Shell: `/usage` now shows remaining quota percentage; add `/status` alias
+- Config: Add `KIMI_SHARE_DIR` environment variable to customize the share directory path (default: `~/.kimi`)
+- Web: Add new Web UI for browser-based interaction
+- CLI: Add `kimi web` subcommand to launch the Web UI server
+- Auth: Fix encoding error when device name or OS version contains non-ASCII characters
+- Auth: OAuth credentials are now stored in files instead of keyring; existing tokens are automatically migrated on startup
+- Auth: Fix authorization failure after the system sleeps or hibernates
+
+## 1.3 (2026-01-28)
+
 - Auth: Fix authentication issue during agent turns
+- Tool: Wrap media content with descriptive tags in `ReadMediaFile` for better path traceability
 
 ## 1.2 (2026-01-27)
 

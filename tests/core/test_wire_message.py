@@ -24,6 +24,7 @@ from kimi_cli.wire.types import (
     ToolResult,
     ToolReturnValue,
     TurnBegin,
+    TurnEnd,
     WireMessage,
     WireMessageEnvelope,
     is_event,
@@ -59,6 +60,10 @@ async def test_wire_message_serde():
             },
         }
     )
+    _test_serde(msg)
+
+    msg = TurnEnd()
+    assert serialize_wire_message(msg) == snapshot({"type": "TurnEnd", "payload": {}})
     _test_serde(msg)
 
     msg = StepBegin(n=1)

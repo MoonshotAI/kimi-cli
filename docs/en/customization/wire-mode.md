@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.1`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.3`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -69,11 +69,11 @@ interface JSONRPCError {
 
 ### `initialize`
 
-::: info Added in Wire 1.1
-Legacy clients can skip this request and send `prompt` directly.
+::: info Added
+Added in Wire 1.1. Legacy clients can skip this request and send `prompt` directly.
 :::
 
-- **Direction**: Client → Agent
+- **Direction**: client → agent
 - **Type**: Request (requires response)
 
 Optional handshake request for negotiating protocol version, submitting external tool definitions, and retrieving the slash command list.
@@ -137,13 +137,13 @@ interface ExternalToolsResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.1", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.3", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **Success response example**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.3", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 If the server does not support the `initialize` method, the client will receive a `-32601 method not found` error and should automatically fall back to no-handshake mode.
@@ -196,12 +196,50 @@ interface PromptResult {
 | `-32002` | Specified LLM not supported |
 | `-32003` | LLM service error |
 
+### `replay`
+
+::: info Added
+Added in Wire 1.3.
+:::
+
+- **Direction**: Client → Agent
+- **Type**: Request (requires response)
+
+Trigger a history replay. The server reads `wire.jsonl` from the session directory and re-sends the recorded `event` and `request` messages in order. Replay is read-only; clients should not respond to replayed `request` messages. If there is no history, the server returns `events: 0` and `requests: 0`.
+
+```typescript
+/** replay request has no parameters, params can be empty object or omitted */
+type ReplayParams = Record<string, never>
+
+/** replay response result */
+interface ReplayResult {
+  /** Replay end status */
+  status: "finished" | "cancelled"
+  /** Number of replayed events */
+  events: number
+  /** Number of replayed requests */
+  requests: number
+}
+```
+
+**Request example**
+
+```json
+{"jsonrpc": "2.0", "method": "replay", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8"}
+```
+
+**Success response example**
+
+```json
+{"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
+```
+
 ### `cancel`
 
 - **Direction**: Client → Agent
 - **Type**: Request (requires response)
 
-Cancel the currently running agent turn. After calling, the in-progress `prompt` request will return `{"status": "cancelled"}`.
+Cancel the currently running agent turn or replay. After calling, the in-progress `prompt` request will return `{"status": "cancelled"}`, and replay will return `{"status": "cancelled"}` with the message counts sent so far.
 
 ```typescript
 /** cancel request has no parameters, params can be empty object or omitted */
@@ -233,7 +271,7 @@ If no turn is in progress:
 
 ### `event`
 
-- **Direction**: Agent → Client
+- **Direction**: agent → client
 - **Type**: Notification (no response needed)
 
 Events emitted by the agent during a turn. No `id` field, client doesn't need to respond.
@@ -254,7 +292,7 @@ interface EventParams {
 
 ### `request`
 
-- **Direction**: Agent → Client
+- **Direction**: agent → client
 - **Type**: Request (requires response)
 
 Requests from the agent to the client, used for approval confirmation or external tool calls. The client must respond before the agent can continue execution.
@@ -314,6 +352,7 @@ type WireMessage = Event | Request
 /** Events: sent via event method, no response needed */
 type Event =
   | TurnBegin
+  | TurnEnd
   | StepBegin
   | StepInterrupted
   | CompactionBegin
@@ -338,6 +377,20 @@ Turn started.
 interface TurnBegin {
   /** User input, can be plain text or array of content parts */
   user_input: string | ContentPart[]
+}
+```
+
+### `TurnEnd`
+
+::: info Added
+Added in Wire 1.2.
+:::
+
+Turn ended. This event is sent after all other events in the turn. If the turn is interrupted, this event may be omitted.
+
+```typescript
+interface TurnEnd {
+  // No additional fields
 }
 ```
 
@@ -506,8 +559,8 @@ interface ToolReturnValue {
 
 ### `ApprovalResponse`
 
-::: info Renamed in Wire 1.1
-Formerly `ApprovalRequestResolved`. The old name is still accepted for backwards compatibility.
+::: info Changed
+Renamed in Wire 1.1. Formerly `ApprovalRequestResolved`. The old name is still accepted for backwards compatibility.
 :::
 
 Approval response event, indicates an approval request has been completed.
@@ -655,3 +708,84 @@ interface ShellDisplayBlock {
   command: string
 }
 ```
+
+## Kimi Agent (Rust) Wire server
+
+::: warning Note
+Kimi Agent is currently experimental. APIs and behavior may change in future releases.
+:::
+
+Kimi Agent (Rust) is the Rust implementation of the Kimi Code CLI kernel, designed specifically for Wire mode. If you only need the Wire protocol service, Kimi Agent (Rust) offers a more lightweight alternative. The Rust implementation lives in [`MoonshotAI/kimi-agent-rs`](https://github.com/MoonshotAI/kimi-agent-rs).
+
+### Features
+
+- **Full Wire protocol compatibility**: Uses the same Wire protocol as Python's `kimi --wire`, existing clients need no modifications
+- **Smaller footprint**: Single statically-linked binary, no Python runtime required
+- **Faster startup**: Native compilation provides faster startup times
+- **Same configuration**: Uses the same config file (`~/.kimi/config.toml`) and session directories
+
+### Limitations
+
+- **Wire mode only**: No Shell/Print/ACP UI
+- **Kimi provider only**: Does not support OpenAI, Anthropic, or other providers
+- **No Kimi account login**: No `login`/`logout` subcommands or `/login`, `/logout` slash commands; requires manual API key configuration
+- **No `--prompt`/`--command`**: Wire server does not accept initial prompts
+- **Local execution only**: No SSH Kaos support
+- **Different MCP OAuth storage**: Kimi Agent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while Python version uses `~/.fastmcp/oauth-mcp-client-cache/`; they are incompatible
+
+### Installation
+
+Download pre-built binaries from [GitHub Releases](https://github.com/MoonshotAI/kimi-agent-rs/releases):
+
+```sh
+# macOS (Apple Silicon)
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
+
+# Linux (x86_64)
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
+```
+
+### Usage
+
+Kimi Agent runs in Wire mode by default:
+
+```sh
+kimi-agent
+```
+
+Common options are the same as the `kimi` command:
+
+```sh
+# Specify work directory
+kimi-agent --work-dir /path/to/project
+
+# Continue previous session
+kimi-agent --continue
+
+# Use specific session
+kimi-agent --session <session-id>
+
+# Use specific model
+kimi-agent --model k2
+
+# YOLO mode (skip approvals)
+kimi-agent --yolo
+```
+
+Subcommands:
+
+```sh
+# Show version and environment info
+kimi-agent info
+
+# Manage MCP servers
+kimi-agent mcp list
+kimi-agent mcp add <name> <command> [args...]
+kimi-agent mcp remove <name>
+```
+
+### Version synchronization
+
+Kimi Agent is released independently from Kimi Code CLI. See `MoonshotAI/kimi-agent-rs` release notes for compatibility and sync status.

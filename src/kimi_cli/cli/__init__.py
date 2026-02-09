@@ -12,6 +12,7 @@ from kimi_cli.constant import VERSION
 
 from .info import cli as info_cli
 from .mcp import cli as mcp_cli
+from .web import cli as web_cli
 
 
 class Reload(Exception):
@@ -19,6 +20,14 @@ class Reload(Exception):
 
     def __init__(self, session_id: str | None = None):
         super().__init__("reload")
+        self.session_id = session_id
+
+
+class SwitchToWeb(Exception):
+    """Switch to web interface."""
+
+    def __init__(self, session_id: str | None = None):
+        super().__init__("switch_to_web")
         self.session_id = session_id
 
 
@@ -306,11 +315,24 @@ def kimi(
     from kimi_cli.exception import ConfigError
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
-    from kimi_cli.utils.logging import logger
+    from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 
     from .mcp import get_global_mcp_config_file
 
-    enable_logging(debug)
+    # Don't redirect stderr yet. Our stderr redirector replaces fd=2 with a pipe, which
+    # would swallow Click/Typer startup errors (e.g. config parsing / BadParameter).
+    # We re-enable stderr redirection after KimiCLI.create() succeeds.
+    enable_logging(debug, redirect_stderr=False)
+
+    def _emit_fatal_error(message: str) -> None:
+        # Prefer writing to the original stderr fd even if we later redirect fd=2.
+        # This ensures fatal errors are visible to the user.
+        with open_original_stderr() as stream:
+            if stream is not None:
+                stream.write((message.rstrip() + "\n").encode("utf-8", errors="replace"))
+                stream.flush()
+                return
+        typer.echo(message, err=True)
 
     if session_id is not None:
         session_id = session_id.strip()
@@ -472,26 +494,34 @@ def kimi(
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
         )
-        match ui:
-            case "shell":
-                succeeded = await instance.run_shell(prompt)
-            case "print":
-                succeeded = await instance.run_print(
-                    input_format or "text",
-                    output_format or "text",
-                    prompt,
-                    final_only=final_message_only,
-                )
-            case "acp":
-                if prompt is not None:
-                    logger.warning("ACP server ignores prompt argument")
-                await instance.run_acp()
-                succeeded = True
-            case "wire":
-                if prompt is not None:
-                    logger.warning("Wire server ignores prompt argument")
-                await instance.run_wire_stdio()
-                succeeded = True
+        # Install stderr redirection only after initialization succeeded, so runtime
+        # stderr noise is captured into logs without hiding startup failures.
+        redirect_stderr_to_logger()
+        try:
+            match ui:
+                case "shell":
+                    succeeded = await instance.run_shell(prompt)
+                case "print":
+                    succeeded = await instance.run_print(
+                        input_format or "text",
+                        output_format or "text",
+                        prompt,
+                        final_only=final_message_only,
+                    )
+                case "acp":
+                    if prompt is not None:
+                        logger.warning("ACP server ignores prompt argument")
+                    await instance.run_acp()
+                    succeeded = True
+                case "wire":
+                    if prompt is not None:
+                        logger.warning("Wire server ignores prompt argument")
+                    await instance.run_wire_stdio()
+                    succeeded = True
+        except Reload as e:
+            if e.session_id is None:
+                raise Reload(session_id=session.id) from e
+            raise
 
         return session, succeeded
 
@@ -524,7 +554,11 @@ def kimi(
 
         save_metadata(metadata)
 
-    async def _reload_loop(session_id: str | None):
+    async def _reload_loop(session_id: str | None) -> bool:
+        """
+        Returns:
+            True if should switch to web interface, False otherwise.
+        """
         while True:
             try:
                 last_session, succeeded = await _run(session_id)
@@ -532,9 +566,44 @@ def kimi(
             except Reload as e:
                 session_id = e.session_id
                 continue
+            except SwitchToWeb as e:
+                if e.session_id is not None:
+                    session = await Session.find(work_dir, e.session_id)
+                    if session is not None:
+                        await _post_run(session, True)
+                return True
         await _post_run(last_session, succeeded)
+        return False
 
-    asyncio.run(_reload_loop(session_id))
+    try:
+        switch_to_web = asyncio.run(_reload_loop(session_id))
+    except (typer.BadParameter, typer.Exit):
+        # Let Typer/Click format these errors (rich panel + correct exit code).
+        raise
+    except Exception as exc:
+        import click
+
+        if isinstance(exc, click.ClickException):
+            # ClickException includes the errors Typer knows how to render; don't
+            # wrap them, or we'd lose the standard error UI and exit codes.
+            raise
+        logger.exception("Fatal error when running CLI")
+        if debug:
+            import traceback
+
+            # In debug mode, show full traceback for quick diagnosis.
+            _emit_fatal_error(traceback.format_exc())
+        else:
+            from kimi_cli.share import get_share_dir
+
+            log_path = get_share_dir() / "logs" / "kimi.log"
+            # In non-debug mode, print a concise error and point users to logs.
+            _emit_fatal_error(f"{exc}\nSee logs: {log_path}")
+        raise typer.Exit(code=1) from exc
+    if switch_to_web:
+        from kimi_cli.web.app import run_web_server
+
+        run_web_server(open_browser=True)
 
 
 cli.add_typer(info_cli, name="info")
@@ -657,7 +726,25 @@ def acp():
     acp_main()
 
 
+@cli.command(name="__web-worker", hidden=True)
+def web_worker(session_id: str) -> None:
+    """Run web worker subprocess (internal)."""
+    from uuid import UUID
+
+    from kimi_cli.app import enable_logging
+    from kimi_cli.web.runner.worker import run_worker
+
+    try:
+        parsed_session_id = UUID(session_id)
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid session ID: {session_id}") from exc
+
+    enable_logging(debug=False)
+    asyncio.run(run_worker(parsed_session_id))
+
+
 cli.add_typer(mcp_cli, name="mcp")
+cli.add_typer(web_cli, name="web")
 
 
 if __name__ == "__main__":

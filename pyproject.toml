@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "1.2"
+version = "1.10.0"
 description = "Kimi Code CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,7 +9,7 @@ dependencies = [
     "aiofiles>=24.0,<26.0",
     "aiohttp==3.13.3",
     "typer==0.21.1",
-    "kosong[contrib]==0.41.0",
+    "kosong[contrib]==0.42.0",
     # loguru stays >=0.6.0 because notify-py (via batrachian-toad) caps it at <=0.6.0 on 3.14+.
     "loguru>=0.6.0,<0.8",
     "prompt-toolkit==3.0.52",
@@ -25,11 +25,15 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
-    "pykaos==0.6.0",
+    "pykaos==0.7.0",
     "batrachian-toad==0.5.23; python_version >= \"3.14\"",
     "tomlkit==0.14.0",
     "jinja2==3.1.6",
     "pyobjc-framework-cocoa>=12.1 ; sys_platform == 'darwin'",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "scalar-fastapi>=1.5.0",
+    "websockets>=14.0",
     "keyring>=25.7.0",
 ]
 
@@ -85,6 +89,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["E501"]
 "tests_e2e/**/*.py" = ["E501"]
+"src/kimi_cli/web/api/**/*.py" = ["B008"]  # FastAPI Depends() is standard usage
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -113,3 +118,6 @@ extend-exclude = ["kimi.spec", "pyinstaller.py"]
 
 [tool.typos.default.extend-words]
 datas = "datas"
+Seeked = "Seeked"
+seeked = "seeked"
+iterm = "iterm"

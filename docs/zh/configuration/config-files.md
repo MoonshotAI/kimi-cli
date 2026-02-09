@@ -26,6 +26,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | --- | --- | --- |
 | `default_model` | `string` | 默认使用的模型名称，必须是 `models` 中定义的模型 |
 | `default_thinking` | `boolean` | 默认是否开启 Thinking 模式（默认为 `false`） |
+| `default_yolo` | `boolean` | 默认是否开启 YOLO（自动审批）模式（默认为 `false`） |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -37,6 +38,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 ```toml
 default_model = "kimi-for-coding"
 default_thinking = false
+default_yolo = false
 
 [providers.kimi-for-coding]
 type = "kimi"
@@ -145,7 +147,7 @@ capabilities = ["thinking", "image_in"]
 | `custom_headers` | `table` | 否 | 请求时附加的自定义 HTTP 头 |
 
 ::: tip 提示
-使用 `/setup` 命令配置 Kimi Code 平台时，搜索和抓取服务会自动配置。
+使用 `/login` 命令配置 Kimi Code 平台时，搜索和抓取服务会自动配置。
 :::
 
 ### `mcp`

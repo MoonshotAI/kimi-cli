@@ -7,14 +7,103 @@
 - Shell：添加 `$` 命令来列出和选择 Skills
 - Shell：支持在输入中使用 `$<skill-name>` 语法预选 Skills（Codex 风格）
 - Auth: 修复 Agent 轮次期间的认证问题
+## 1.10.0 (2026-02-09)
+
+- Web：为 Assistant 消息添加复制和分支(fork)操作按钮，支持快速复制内容和创建分支会话
+- Web：为审批操作添加键盘快捷键——按 `1` 批准、`2` 本次会话批准、`3` 拒绝
+- Web：添加消息队列功能——在 AI 处理过程中可排队发送后续消息，待当前回复完成后自动发送
+- Web：将 Git diff 状态栏替换为统一的提示工具栏，以可折叠标签页展示活动状态、消息队列和文件变更
+- Web：在 Web Worker 中加载全局 MCP 配置，使 Web 会话可以使用 MCP 工具
+- Web：改进移动端提示输入框体验——缩小 textarea 最小高度、添加 `autoComplete="off"`、在小屏幕上禁用聚焦边框
+- Web：处理部分模型先输出文本再输出思考过程的情况，确保思考消息始终显示在文本消息之前
+- Web：在会话连接过程中显示更具体的状态信息（"Loading history..."、"Starting environment..." 替代通用的 "Connecting..."）
+- Web：会话环境初始化失败时发送错误状态，而非让 UI 一直处于等待状态
+- Web：历史回放完成后 15 秒内未收到会话状态时自动重连
+- Web：会话流中使用非阻塞文件 I/O，避免历史回放期间阻塞事件循环
+
+## 1.9.0 (2026-02-06)
+
+- Config：添加 `default_yolo` 配置项，支持默认开启 YOLO（自动审批）模式
+- Config：支持 `max_steps_per_turn` 和 `max_steps_per_run` 作为循环控制设置的别名
+- Wire：新增 `replay` 请求，用于回放已记录的 Wire 事件（协议版本 1.3）
+- Web：添加会话分支(fork)功能，可以从任意 Assistant 回复处创建新的分支会话
+- Web：添加会话归档功能，自动归档超过 15 天的会话
+- Web：添加多选模式，支持批量归档、取消归档和删除操作
+- Web：添加工具结果的媒体预览（ReadMediaFile 的图片/视频），支持可点击缩略图
+- Web：添加 Shell 命令和 Todo 列表的工具输出显示组件
+- Web：添加活动状态指示器，显示 Agent 状态（处理中、等待审批等）
+- Web：添加图片加载失败时的错误回退 UI
+- Web：重新设计工具输入 UI，支持可展开参数和长值的语法高亮
+- Web：上下文压缩时显示压缩指示器
+- Web：改进聊天中的自动滚动行为，更流畅地跟随新内容
+- Web：会话流开始时更新工作目录的最近会话 ID（`last_session_id`）
+- Shell：移除 `Ctrl-/` 快捷键（此前用于触发 `/help` 命令）
+- Rust：Rust 版实现迁移到 `MoonshotAI/kimi-agent-rs` 并独立发版；二进制更名为 `kimi-agent`
+- Core：重新加载配置时保留会话 ID，确保会话正确恢复
+- Shell：修复会话回放时显示已被 `/clear` 或 `/reset` 清除的消息的问题
+- Web：修复会话中断或取消时审批请求状态未更新的问题
+- Web：修复选择斜杠命令时的输入法组合问题
+- Web：修复执行 `/clear`、`/reset` 或 `/compact` 命令后 UI 未清空消息的问题
+
+## 1.8.0 (2026-02-05)
+
+- CLI：修复启动错误（如无效的配置文件）被静默吞掉而不显示的问题
+
+## 1.7.0 (2026-02-05)
+
+- Rust：添加 `kagent`，Kimi Agent 内核的 Rust 实现，支持 Wire 模式（实验性）
+- Auth：修复多个会话同时运行时的 OAuth 令牌刷新冲突
+- Web：添加文件提及菜单（`@`），支持引用已上传附件和工作区文件，带自动补全功能
+- Web：添加斜杠命令菜单，支持自动补全、键盘导航和别名匹配
+- Web：修复认证令牌持久化问题，从 sessionStorage 切换到 localStorage 并设置 24 小时过期
+- Web：创建会话时，若指定的路径不存在则提示创建目录
+- Web：为会话列表添加服务端分页和虚拟滚动，提升性能
+- Web：改进会话和工作目录加载，采用更智能的缓存和失效策略
+- Web：修复历史记录回放时的 WebSocket 错误，发送前检查连接状态
+- Web：Git diff 状态栏现在显示未跟踪文件（尚未添加到 git 的新文件）
+- Web：仅在 public 模式下限制敏感 API；更新 origin 执行逻辑
+
+## 1.6 (2026-02-03)
+
+- Web：为网络模式添加基于 Token 的认证和访问控制（`--network`、`--lan-only`、`--public`）
+- Web：添加安全选项：`--auth-token`、`--allowed-origins`、`--restrict-sensitive-apis`、`--dangerously-omit-auth`
+- Web：变更 `--host` 选项，用于绑定到指定 IP 地址；添加自动网络地址检测
+- Web：修复创建新会话时 WebSocket 断开连接的问题
+- Web：将最大图片尺寸从 1024 提升至 4096 像素
+- Web：通过增强的悬停效果和更好的布局处理改进 UI 响应性
+- Wire：添加 `TurnEnd` 事件，用于标识 Agent 轮次的完成（协议版本 1.2）
+- Core：修复包含 `$` 的自定义 Agent 提示词文件导致静默启动失败的问题
+
+## 1.5 (2026-01-30)
+
+- Web：添加 Git diff 状态栏，显示会话工作目录中的未提交更改
+- Web：添加 "Open in" 菜单，用于在终端、VS Code、Cursor 或其他本地应用中打开文件/目录
+- Web：添加会话搜索功能，支持按标题或工作目录过滤会话
+- Web：改进会话标题显示，优化溢出处理
+
+## 1.4 (2026-01-30)
+
+- Shell：合并 `/login` 和 `/setup` 命令，`/setup` 现为 `/login` 的别名
+- Shell：`/usage` 命令现在显示剩余配额百分比；添加 `/status` 别名
+- Config：添加 `KIMI_SHARE_DIR` 环境变量，用于自定义共享目录路径（默认 `~/.kimi`）
+- Web：新增 Web UI，支持基于浏览器的交互
+- CLI：添加 `kimi web` 子命令以启动 Web UI 服务器
+- Auth：修复设备名称或操作系统版本包含非 ASCII 字符时的编码错误
+- Auth：OAuth 凭据现在存储在文件中而非 keyring；启动时自动迁移现有令牌
+- Auth：修复系统休眠或睡眠后的授权失败问题
+
+## 1.3 (2026-01-28)
+
+- Auth：修复 Agent 轮次期间的认证问题
+- Tool：为 `ReadMediaFile` 中的媒体内容添加描述性标签，提高路径可追溯性
 
 ## 1.2 (2026-01-27)
 
-- UI: 显示 `kimi-for-coding` 模型的说明
+- UI：显示 `kimi-for-coding` 模型的说明
 
 ## 1.1 (2026-01-27)
 
-- LLM: 修复 `kimi-for-coding` 模型的能力
+- LLM：修复 `kimi-for-coding` 模型的能力
 
 ## 1.0 (2026-01-27)
 

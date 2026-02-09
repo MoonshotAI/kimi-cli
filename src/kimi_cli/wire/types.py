@@ -42,6 +42,16 @@ class TurnBegin(BaseModel):
     user_input: str | list[ContentPart]
 
 
+class TurnEnd(BaseModel):
+    """
+    Indicates the end of the current agent turn.
+    This event must be sent after all other events in the turn.
+    If the turn is interrupted, this event may be omitted.
+    """
+
+    pass
+
+
 class StepBegin(BaseModel):
     """
     Indicates the beginning of a new agent step.
@@ -247,6 +257,7 @@ class ToolCallRequest(BaseModel):
 
 type Event = (
     TurnBegin
+    | TurnEnd
     | StepBegin
     | StepInterrupted
     | CompactionBegin
