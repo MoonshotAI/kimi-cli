@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Fix stderr not being restored when switching to web mode, which could suppress web server error output
+
 ## 1.10.0 (2026-02-09)
 
 - Web: Add copy and fork action buttons to assistant messages for quick content copying and session forking
