@@ -291,14 +291,142 @@ def changelog(app: Shell, args: str):
 
 @registry.command
 @shell_mode_registry.command
-def feedback(app: Shell, args: str):
+async def feedback(app: Shell, args: str):
     """Submit feedback to make Kimi Code CLI better"""
-    import webbrowser
+    soul = _ensure_kimi_soul(app)
+    if soul is None:
+        import webbrowser
 
-    ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
-    if webbrowser.open(ISSUE_URL):
+        ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
+        if webbrowser.open(ISSUE_URL):
+            return
+        console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
         return
-    console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
+
+    import contextlib
+
+    from kimi_cli.feedback.collector import (
+        collect_phase1,
+        collect_phase2_context,
+        collect_phase2_log_tail,
+        collect_phase2_source_zip,
+        collect_phase2_wire_tail,
+    )
+    from kimi_cli.feedback.display import display_feedback_detail, display_feedback_summary
+    from kimi_cli.feedback.uploader import upload_phase1, upload_phase2
+
+    user_message = args.strip()
+    if not user_message:
+        from prompt_toolkit import PromptSession
+
+        with contextlib.suppress(EOFError, KeyboardInterrupt):
+            raw = await PromptSession().prompt_async(  # pyright: ignore[reportUnknownVariableType]
+                "(Optional) Describe the issue: "
+            )
+            user_message = str(raw).strip()  # pyright: ignore[reportUnknownArgumentType]
+
+    console.print(
+        "\n[dim]Only essential diagnostic info is collected; "
+        "sensitive data (API keys, credentials, file contents) is automatically redacted.[/dim]"
+    )
+    console.print("[cyan]Collecting diagnostic info...[/cyan]")
+    try:
+        phase1_data = await collect_phase1(soul, user_message)
+    except Exception as e:
+        console.print(f"[red]Failed to collect data: {e}[/red]")
+        return
+
+    # Pre-collect Phase 2 sizes for display
+    context_bytes = b""
+    wire_bytes = b""
+    log_bytes = b""
+    try:
+        context_bytes = await collect_phase2_context(soul)
+        wire_bytes = await collect_phase2_wire_tail(soul)
+        log_bytes = await collect_phase2_log_tail()
+    except Exception:
+        pass
+
+    display_feedback_summary(
+        phase1_data,
+        context_size=len(context_bytes),
+        wire_size=len(wire_bytes),
+        log_size=len(log_bytes),
+    )
+
+    # Ask about source code
+    include_source = False
+    try:
+        source_choice = await ChoiceInput(
+            message="Include source code files? (git-tracked only)",
+            options=[("no", "No"), ("yes", "Yes")],
+            default="no",
+        ).prompt_async()
+        include_source = source_choice == "yes"
+    except (EOFError, KeyboardInterrupt):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    source_bytes: bytes | None = None
+    if include_source:
+        with contextlib.suppress(Exception):
+            source_bytes = await collect_phase2_source_zip(str(soul.runtime.session.work_dir))
+
+    # Final confirmation
+    try:
+        action = await ChoiceInput(
+            message="",
+            options=[("submit", "Submit"), ("detail", "View details"), ("cancel", "Cancel")],
+            default="submit",
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    if action == "detail":
+        display_feedback_detail(phase1_data)
+        try:
+            action = await ChoiceInput(
+                message="Confirm?",
+                options=[("submit", "Submit"), ("cancel", "Cancel")],
+                default="submit",
+            ).prompt_async()
+        except (EOFError, KeyboardInterrupt):
+            console.print("[yellow]Cancelled.[/yellow]")
+            return
+
+    if action != "submit":
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    # Phase 1 upload
+    console.print("\n[cyan]Uploading basic info (Phase 1)...[/cyan]")
+    try:
+        phase1_resp = await upload_phase1(phase1_data)
+    except Exception as e:
+        console.print(f"[red]Upload failed: {e}[/red]")
+        return
+
+    report_id = phase1_resp.report_id
+    console.print(f"[green]Report created: {report_id}[/green]")
+
+    # Phase 2 upload
+    has_phase2 = bool(context_bytes or wire_bytes or log_bytes or source_bytes)
+    if has_phase2:
+        console.print("[cyan]Uploading detailed data (Phase 2)...[/cyan]")
+        try:
+            await upload_phase2(report_id, context_bytes, wire_bytes, log_bytes, source_bytes)
+            console.print("[green]Detailed data uploaded successfully.[/green]")
+        except Exception as e:
+            console.print(
+                f"[yellow]Detailed data upload failed ({e}), "
+                f"but basic report {report_id} was submitted successfully.[/yellow]"
+            )
+
+    console.print(
+        f"\n[bold green]Feedback submitted![/bold green] Report ID: [bold]{report_id}[/bold]"
+    )
+    console.print("[grey50]You can share this ID with support for tracking.[/grey50]\n")
 
 
 @registry.command(aliases=["reset"])
