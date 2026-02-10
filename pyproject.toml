@@ -53,7 +53,7 @@ requires = ["uv_build>=0.8.5,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["kimi_cli"]
+module-name = "kimi_cli"
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
 [tool.uv.workspace]
