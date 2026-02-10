@@ -11,9 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.11.0 (2026-02-10)
+
 - Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
 - Web: Add folder indicator with work directory path to the bottom of the file changes panel
 - Web: Fix stderr not being restored when switching to web mode, which could suppress web server error output
+- Web: Fix port availability check by setting SO_REUSEADDR on the test socket
 
 ## 1.10.0 (2026-02-09)
 
