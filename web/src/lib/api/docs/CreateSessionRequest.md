@@ -8,6 +8,7 @@ Create session request.
 Name | Type
 ------------ | -------------
 `workDir` | string
+`createDir` | boolean
 
 ## Example
 
@@ -17,6 +18,7 @@ import type { CreateSessionRequest } from ''
 // TODO: Update the object below with actual values
 const example = {
   "workDir": null,
+  "createDir": null,
 } satisfies CreateSessionRequest
 
 console.log(example)

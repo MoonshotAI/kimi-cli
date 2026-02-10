@@ -27,7 +27,6 @@ import { MessageSearchDialog } from "../message-search-dialog";
 type ChatConversationProps = {
   messages: LiveMessage[];
   status: ChatStatus;
-  isAwaitingFirstResponse?: boolean;
   selectedSessionId?: string;
   currentSession?: Session;
   isReplayingHistory: boolean;
@@ -38,12 +37,12 @@ type ChatConversationProps = {
   onCreateSession?: () => void;
   isSearchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
+  onForkSession?: (turnIndex: number) => void;
 };
 
 export function ChatConversation({
   messages,
   status,
-  isAwaitingFirstResponse = false,
   selectedSessionId,
   isReplayingHistory,
   pendingApprovalMap,
@@ -53,6 +52,7 @@ export function ChatConversation({
   onCreateSession,
   isSearchOpen,
   onSearchOpenChange,
+  onForkSession,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -78,56 +78,25 @@ export function ChatConversation({
     setTimeout(() => setHighlightedIndex(-1), 2000);
   }, []);
 
-  // Auto-scroll to bottom when history replay completes after a session switch
-  const pendingScrollSessionRef = useRef<string | null>(null);
-  const wasReplayingRef = useRef(isReplayingHistory);
-
-  // When session changes, mark that we need to scroll once replay completes
-  useEffect(() => {
-    if (selectedSessionId) {
-      pendingScrollSessionRef.current = selectedSessionId;
-    }
-  }, [selectedSessionId]);
-
-  // When replay completes (transition from true to false), scroll to bottom if pending
-  useEffect(() => {
-    const replayJustCompleted = wasReplayingRef.current && !isReplayingHistory;
-    wasReplayingRef.current = isReplayingHistory;
-
-    if (
-      replayJustCompleted &&
-      selectedSessionId &&
-      pendingScrollSessionRef.current === selectedSessionId
-    ) {
-      pendingScrollSessionRef.current = null;
-      // Delay to ensure Virtuoso has rendered after key change
-      const timeoutId = setTimeout(() => {
-        listRef.current?.scrollToBottom();
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isReplayingHistory, selectedSessionId]);
-
   const handleScrollToBottom = useCallback(() => {
     listRef.current?.scrollToBottom();
   }, []);
 
-  const showLoadingBubble = isAwaitingFirstResponse;
   const isLoadingResponse =
-    !showLoadingBubble &&
     messages.length === 0 &&
     (status === "streaming" || status === "submitted");
+  const isStartingEnvironment =
+    isLoadingResponse && status === "submitted" && !isReplayingHistory;
 
   const hasSelectedSession = Boolean(selectedSessionId);
   const emptyNoSessionState =
-    messages.length === 0 && !hasSelectedSession && !showLoadingBubble;
+    messages.length === 0 && !hasSelectedSession;
   const emptySessionState =
     messages.length === 0 &&
     hasSelectedSession &&
-    !isLoadingResponse &&
-    !showLoadingBubble;
+    !isLoadingResponse;
 
-  const hasMessages = messages.length > 0 || showLoadingBubble;
+  const hasMessages = messages.length > 0;
   const shouldShowScrollButton = hasMessages && !isAtBottom;
   const shouldShowEmptyState =
     isLoadingResponse || emptyNoSessionState || emptySessionState;
@@ -147,7 +116,7 @@ export function ChatConversation({
           <ConversationEmptyState
             description=""
             icon={<Loader2Icon className="size-6 animate-spin text-primary" />}
-            title="Connecting to session..."
+            title={isStartingEnvironment ? "Starting environment..." : "Connecting to session..."}
           />
         ) : emptyNoSessionState ? (
           <ConversationEmptyState>
@@ -199,23 +168,21 @@ export function ChatConversation({
           <VirtualizedMessageList
             ref={listRef}
             messages={messages}
-            status={status}
-            isAwaitingFirstResponse={isAwaitingFirstResponse}
             conversationKey={conversationKey}
-            isReplayingHistory={isReplayingHistory}
             pendingApprovalMap={pendingApprovalMap}
             onApprovalAction={onApprovalAction}
             canRespondToApproval={canRespondToApproval}
             blocksExpanded={blocksExpanded}
             highlightedMessageIndex={highlightedIndex}
             onAtBottomChange={setIsAtBottom}
+            onForkSession={onForkSession}
           />
         </div>
       )}
 
       {shouldShowScrollButton ? (
         <Button
-          className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-[50%] translate-x-[-50%] rounded-full"
+          className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-[50%] -translate-x-1/2 rounded-full"
           onClick={handleScrollToBottom}
           size="icon"
           type="button"

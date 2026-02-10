@@ -27,6 +27,7 @@ import {
   ToolDisplay,
   ToolHeader,
   ToolInput,
+  ToolMediaPreview,
   ToolOutput,
 } from "@ai-elements";
 
@@ -86,33 +87,38 @@ export function AssistantMessage({
   return content;
 }
 
-const renderAssistantText = (message: LiveMessage) => (
-  <MessageContent className={assistantContentClass}>
-    <div className="flex items-start gap-2">
-      <span
-        className={cn(
-          "mt-1.5 size-2 shrink-0 rounded-full bg-muted-foreground/60",
-          message.isStreaming &&
-            "bg-green-500 animate-[glow-pulse_1.5s_ease-in-out_infinite]",
-        )}
-      />
-      <div className="flex-1 min-w-0">
-        <MessageResponse
-          className="wrap-break-word"
-          mode={message.isStreaming ? "streaming" : "static"}
-          parseIncompleteMarkdown={Boolean(message.isStreaming)}
-        >
-          {message.content || "Thinking through the response..."}
-        </MessageResponse>
-        {message.isStreaming ? (
-          <div className={`mt-2 ${assistantMetaTextClass}`}>
-            Streaming response…
-          </div>
-        ) : null}
+const renderAssistantText = (message: LiveMessage) => {
+  return (
+    <MessageContent className={assistantContentClass}>
+      <div className="flex items-start gap-2">
+        <div className="relative mt-2 shrink-0 size-2">
+          {/* Gray/green dot indicator */}
+          <span
+            className={cn(
+              "absolute inset-0 rounded-full bg-muted-foreground/60 transition-opacity",
+              message.isStreaming &&
+                "bg-green-500 animate-[glow-pulse_1.5s_ease-in-out_infinite]",
+            )}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <MessageResponse
+            className="wrap-break-word"
+            mode={message.isStreaming ? "streaming" : "static"}
+            parseIncompleteMarkdown={Boolean(message.isStreaming)}
+          >
+            {message.content || "Thinking through the response..."}
+          </MessageResponse>
+          {message.isStreaming ? (
+            <div className={`mt-2 ${assistantMetaTextClass}`}>
+              Streaming response…
+            </div>
+          ) : null}
+        </div>
       </div>
-    </div>
-  </MessageContent>
-);
+    </MessageContent>
+  );
+};
 
 const renderChainOfThoughtMessage = (message: LiveMessage) => {
   const details = message.chainOfThought;
@@ -211,10 +217,12 @@ const renderToolMessage = ({
         <ToolContent>
           {toolCall.input ? <ToolInput input={toolCall.input} /> : null}
           <ToolDisplay display={toolCall.display} isError={toolCall.isError} />
+          {toolCall.mediaParts ? <ToolMediaPreview mediaParts={toolCall.mediaParts} /> : null}
           {shouldShowOutput ? (
             <ToolOutput
               errorText={toolCall.errorText}
               output={toolCall.output}
+              message={toolCall.message}
             />
           ) : null}
           {approval ? (

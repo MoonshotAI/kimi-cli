@@ -10,7 +10,7 @@
  * much value since ChatWorkspace receives `messages` as a prop and re-renders
  * on every update anyway.
  */
-import { type ReactElement, useCallback, useEffect, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
 import type { ChatStatus, FileUIPart } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import type { SessionFileEntry } from "@/hooks/useSessions";
 import { getApiBaseUrl, isMacOS } from "@/hooks/utils";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { useToolEventsStore } from "@/features/tool/store";
+import { useQueueStore } from "./queue-store";
 import { ChatWorkspace } from "./chat";
 
 type PendingMessage = {
@@ -48,6 +49,9 @@ type ChatWorkspaceContainerProps = {
   onGetSessionFile?: (sessionId: string, path: string) => Promise<Blob>;
   onOpenCreateDialog?: () => void;
   onOpenSidebar?: () => void;
+  generateTitle?: (sessionId: string) => Promise<string | null>;
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
+  onForkSession?: (sessionId: string, turnIndex: number) => Promise<void>;
 };
 
 export function ChatWorkspaceContainer({
@@ -62,6 +66,9 @@ export function ChatWorkspaceContainer({
   onGetSessionFile,
   onOpenCreateDialog,
   onOpenSidebar,
+  generateTitle,
+  onRenameSession,
+  onForkSession,
 }: ChatWorkspaceContainerProps): ReactElement {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   // Pending message state for when we need to create a session first
@@ -76,11 +83,22 @@ export function ChatWorkspaceContainer({
     });
   }, []);
 
+  // Handle first turn completion for auto-rename
+  // Backend reads messages from wire.jsonl automatically
+  const handleFirstTurnComplete = useCallback(async () => {
+    if (!(selectedSessionId && generateTitle)) {
+      return;
+    }
+
+    await generateTitle(selectedSessionId);
+  }, [selectedSessionId, generateTitle]);
+
   const sessionStream = useSessionStream({
     sessionId,
     baseUrl: getApiBaseUrl(),
     onError: handleStreamError,
     onSessionStatus,
+    onFirstTurnComplete: handleFirstTurnComplete,
   });
 
   const {
@@ -95,14 +113,44 @@ export function ChatWorkspaceContainer({
     currentStep,
     isConnected: isStreamConnected,
     isReplayingHistory,
+    slashCommands,
   } = sessionStream;
 
   const clearNewFiles = useToolEventsStore((state) => state.clearNewFiles);
+  const enqueue = useQueueStore((s) => s.enqueue);
+  const queueLength = useQueueStore((s) => s.queue.length);
+  const dequeue = useQueueStore((s) => s.dequeue);
+  const clearQueue = useQueueStore((s) => s.clearQueue);
+
   useEffect(() => {
     if (status === "streaming") {
       clearNewFiles();
     }
   }, [status, clearNewFiles]);
+
+  // Clear queue when session changes (must run before auto-send to prevent
+  // sending stale queued messages to the wrong session)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedSessionId triggers queue clear on session switch
+  useEffect(() => {
+    clearQueue();
+  }, [selectedSessionId, clearQueue]);
+
+  // Auto-send next queued message when status becomes ready
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const wasProcessing =
+      prevStatusRef.current === "streaming" ||
+      prevStatusRef.current === "submitted" ||
+      prevStatusRef.current === "error";
+    prevStatusRef.current = status;
+
+    if (status === "ready" && wasProcessing && queueLength > 0) {
+      const next = dequeue();
+      if (next) {
+        sendMessage(next.text);
+      }
+    }
+  }, [status, queueLength, dequeue, sendMessage]);
 
   useEffect(() => {
     onStreamStatusChange?.(status);
@@ -208,14 +256,28 @@ export function ChatWorkspaceContainer({
         return;
       }
 
-      if (
-        status === "streaming" ||
-        status === "submitted" ||
-        isUploadingFiles
-      ) {
-        toast.info("Still processing", {
-          description: "Please wait until uploads and responses finish.",
+      if (isUploadingFiles) {
+        toast.info("Still uploading", {
+          description: "Please wait until file uploads finish.",
         });
+        return;
+      }
+
+      if (status === "streaming" || status === "submitted") {
+        // Queue text-only messages when AI is processing
+        if (message.files.length > 0) {
+          toast.info("Still processing", {
+            description: "File attachments cannot be queued. Please wait.",
+          });
+          return;
+        }
+        const messageText = message.text.trim();
+        if (messageText) {
+          enqueue(messageText);
+          toast.info("Message queued", {
+            description: "It will be sent when the current response finishes.",
+          });
+        }
         return;
       }
 
@@ -236,7 +298,25 @@ export function ChatWorkspaceContainer({
 
       await sendMessage(messageText);
     },
-    [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage],
+    [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage, enqueue],
+  );
+
+  const handleForkSession = useCallback(
+    async (turnIndex: number) => {
+      if (!(selectedSessionId && onForkSession)) {
+        return;
+      }
+      try {
+        await onForkSession(selectedSessionId, turnIndex);
+        toast.success("Session forked successfully");
+      } catch (error) {
+        toast.error("Fork failed", {
+          description:
+            error instanceof Error ? error.message : "Failed to fork session",
+        });
+      }
+    },
+    [selectedSessionId, onForkSession],
   );
 
   useEffect(() => {
@@ -285,6 +365,9 @@ export function ChatWorkspaceContainer({
       onGetSessionFileUrl={onGetSessionFileUrl}
       onGetSessionFile={onGetSessionFile}
       onOpenSidebar={onOpenSidebar}
+      onRenameSession={onRenameSession}
+      slashCommands={slashCommands}
+      onForkSession={onForkSession ? handleForkSession : undefined}
     />
   );
 }

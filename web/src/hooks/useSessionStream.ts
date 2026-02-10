@@ -131,6 +131,7 @@ import {
   extractEvent,
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
+import { kimiCliVersion } from "@/lib/version";
 import { handleToolResult } from "@/features/tool/store";
 import { v4 as uuidV4 } from "uuid";
 
@@ -144,6 +145,31 @@ const DOCUMENT_TAG_REGEX =
 const LEGACY_UPLOADS_REGEX = /`uploads\/([^`]+)`/;
 const HTTP_TO_WS_REGEX = /^http/;
 const NEWLINE_REGEX = /\r?\n/;
+// Match <image path="..."> or <video path="..."> tags (path attribute only, no content_type required)
+const MEDIA_TAG_PATH_REGEX = /<(?:image|video)\s+[^>]*path="([^"]*\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/uploads\/([^"]+))"/g;
+const BROWSER_URL_PROTOCOLS = new Set(["http:", "https:", "data:", "blob:"]);
+
+/** Extract the URL from a media output part (image_url or video_url) */
+const extractMediaUrl = (part: Record<string, unknown>): string => {
+  const imgUrl = (part.image_url as { url?: string })?.url;
+  const vidUrl = (part.video_url as { url?: string })?.url;
+  return imgUrl ?? vidUrl ?? "";
+};
+
+/** Check if a URL can be rendered in the browser (http/https/data/blob) */
+const isBrowserUrl = (url: string): boolean => {
+  try {
+    return BROWSER_URL_PROTOCOLS.has(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+};
+
+export type SlashCommandDef = {
+  name: string;
+  description: string;
+  aliases: string[];
+};
 
 type UseSessionStreamOptions = {
   /** Session ID to connect to */
@@ -158,6 +184,8 @@ type UseSessionStreamOptions = {
   onError?: (error: Error) => void;
   /** Callback when session status changes */
   onSessionStatus?: (status: SessionStatus) => void;
+  /** Callback when first turn is complete (for auto-renaming) */
+  onFirstTurnComplete?: () => void;
 };
 
 type UseSessionStreamReturn = {
@@ -201,6 +229,8 @@ type UseSessionStreamReturn = {
   clearMessages: () => void;
   /** Connection error if any */
   error: Error | null;
+  /** Available slash commands from the server */
+  slashCommands: SlashCommandDef[];
 };
 
 type PendingApprovalEntry = {
@@ -224,6 +254,7 @@ export function useSessionStream(
     onConnectionChange,
     onError,
     onSessionStatus,
+    onFirstTurnComplete,
   } = options;
 
   const [messages, setMessagesInternal] = useState<LiveMessage[]>([]);
@@ -238,6 +269,7 @@ export function useSessionStream(
   const [error, setError] = useState<Error | null>(null);
   const [isAwaitingFirstResponse, setIsAwaitingFirstResponse] = useState(false);
   const [isReplayingHistory, setIsReplayingHistory] = useState(true);
+  const [slashCommands, setSlashCommands] = useState<SlashCommandDef[]>([]);
 
   // Refs
   /**
@@ -258,11 +290,22 @@ export function useSessionStream(
    */
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const connectRef = useRef<() => void>(() => undefined);
+  const disconnectRef = useRef<() => void>(() => undefined);
+  const reconnectRef = useRef<() => void>(() => undefined);
+  const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
   const awaitingIdleRef = useRef(false); // Track pending idle after cancel
   const awaitingFirstResponseRef = useRef(false); // Track if waiting for first event of a turn
   const lastStatusSeqRef = useRef<number | null>(null);
+
+  // First turn tracking for auto-rename (simplified: backend reads from wire.jsonl)
+  const hasTurnStartedRef = useRef(false); // Whether at least one turn has started
+  const firstTurnCompleteCalledRef = useRef(false); // Whether onFirstTurnComplete was called
+
+  // Initialize message tracking
+  const initializeIdRef = useRef<string | null>(null);
 
   // Current state accumulators
   const currentThinkingRef = useRef("");
@@ -274,6 +317,15 @@ export function useSessionStream(
   const pendingApprovalRequestsRef = useRef<Map<string, PendingApprovalEntry>>(
     new Map(),
   );
+
+  // Track if current turn is a /clear command (needs UI clear on turn end)
+  const pendingClearRef = useRef(false);
+
+  // Turn counter for fork feature
+  const turnCounterRef = useRef(0);
+
+  // Track compaction indicator message so we can remove it on CompactionEnd
+  const compactionMessageIdRef = useRef<string | null>(null);
 
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
@@ -349,6 +401,12 @@ export function useSessionStream(
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
           completeStreamingMessages();
+
+          // Trigger onFirstTurnComplete only after at least one turn has completed
+          if (hasTurnStartedRef.current && !firstTurnCompleteCalledRef.current) {
+            firstTurnCompleteCalledRef.current = true;
+            onFirstTurnComplete?.();
+          }
           break;
         }
       }
@@ -358,6 +416,7 @@ export function useSessionStream(
       normalizeSessionStatus,
       onSessionStatus,
       setAwaitingFirstResponse,
+      onFirstTurnComplete,
     ],
   );
 
@@ -688,6 +747,7 @@ export function useSessionStream(
     currentToolCallsRef.current.clear();
     currentToolCallIdRef.current = null;
     pendingApprovalRequestsRef.current.clear();
+    pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
     setTokenUsage(null);
@@ -697,6 +757,17 @@ export function useSessionStream(
     isReplayingRef.current = true;
     setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
+    setSlashCommands([]);
+    // Reset first turn tracking
+    hasTurnStartedRef.current = false;
+    firstTurnCompleteCalledRef.current = false;
+    // Reset turn counter
+    turnCounterRef.current = 0;
+    // Clear history_complete timeout
+    if (historyCompleteTimeoutRef.current) {
+      window.clearTimeout(historyCompleteTimeoutRef.current);
+      historyCompleteTimeoutRef.current = null;
+    }
   }, [resetStepState, setAwaitingFirstResponse]);
 
   // Process a single wire event
@@ -704,13 +775,31 @@ export function useSessionStream(
     (event: WireEvent, isReplay = false, rpcMessageId?: string | number) => {
       switch (event.type) {
         case "TurnBegin": {
+          // Reset step state to ensure slash commands create new messages
+          resetStepState();
+
           const parsedUserInput = parseUserInput(event.payload.user_input);
+
+          // Track turn index for fork feature
+          const currentTurnIndex = turnCounterRef.current;
+          turnCounterRef.current += 1;
+
+          // Track that at least one turn has started (for auto-rename trigger)
+          if (!isReplay) {
+            hasTurnStartedRef.current = true;
+          }
+
+          // Check if this is a /clear or /reset command (needs UI clear)
+          const userText = parsedUserInput.text.trim();
+          pendingClearRef.current =
+            userText === "/clear" || userText === "/reset";
 
           // Add user message
           const userMessageId = getNextMessageId("user");
           const userMessage: LiveMessage = {
             id: userMessageId,
             role: "user",
+            turnIndex: currentTurnIndex,
             content:
               parsedUserInput.text ||
               (parsedUserInput.attachments.length > 0
@@ -746,13 +835,29 @@ export function useSessionStream(
             // Create or update thinking message
             if (!thinkingMessageIdRef.current) {
               thinkingMessageIdRef.current = getNextMessageId("assistant");
-              upsertMessage({
+              const thinkingMsg: LiveMessage = {
                 id: thinkingMessageIdRef.current!,
                 role: "assistant",
                 variant: "thinking",
                 thinking: currentThinkingRef.current,
                 isStreaming: !isReplay,
-              });
+              };
+              if (textMessageIdRef.current) {
+                // Text message already exists, insert thinking before it
+                setMessages((prev) => {
+                  const textIdx = prev.findIndex(
+                    (m) => m.id === textMessageIdRef.current,
+                  );
+                  if (textIdx !== -1) {
+                    const next = [...prev];
+                    next.splice(textIdx, 0, thinkingMsg);
+                    return next;
+                  }
+                  return [...prev, thinkingMsg];
+                });
+              } else {
+                upsertMessage(thinkingMsg);
+              }
             } else {
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -784,6 +889,7 @@ export function useSessionStream(
                 id: textMessageIdRef.current!,
                 role: "assistant",
                 variant: "text",
+                turnIndex: turnCounterRef.current > 0 ? turnCounterRef.current - 1 : undefined,
                 content: currentTextRef.current,
                 isStreaming: !isReplay,
               });
@@ -901,6 +1007,44 @@ export function useSessionStream(
                 .filter(Boolean)
                 .join("\n")
             : return_value.output;
+
+          // Extract media parts (image_url/video_url) from output array
+          let mediaParts: Array<{ type: "image_url" | "video_url"; url: string }> = [];
+          if (Array.isArray(return_value.output)) {
+            mediaParts = return_value.output
+              .filter((part: Record<string, unknown>) => part.type === "image_url" || part.type === "video_url")
+              .map((part: Record<string, unknown>) => ({
+                type: part.type as "image_url" | "video_url",
+                url: extractMediaUrl(part),
+              }))
+              .filter((p) => p.url);
+
+            // For non-browser-renderable URLs (e.g. ms:// from Kimi model),
+            // try to construct serving URLs from file paths in text output tags
+            const hasNonBrowserUrl = mediaParts.some((p) => !isBrowserUrl(p.url));
+            if (hasNonBrowserUrl) {
+              const textOutput = return_value.output
+                .map((p: Record<string, unknown>) => (p.text as string) ?? "")
+                .filter(Boolean)
+                .join("");
+              // Collect all API URLs from media tags in order
+              const apiUrls: string[] = [];
+              for (const match of textOutput.matchAll(MEDIA_TAG_PATH_REGEX)) {
+                const [, , sid, filename] = match;
+                apiUrls.push(`/api/sessions/${sid}/uploads/${encodeURIComponent(filename)}`);
+              }
+              if (apiUrls.length > 0) {
+                let apiIdx = 0;
+                mediaParts = mediaParts.map((p) => {
+                  if (isBrowserUrl(p.url)) return p;
+                  const url = apiUrls[apiIdx] ?? apiUrls[apiUrls.length - 1];
+                  apiIdx++;
+                  return { ...p, url };
+                });
+              }
+            }
+          }
+
           const messageStr = return_value.message;
 
           if (tc) {
@@ -935,6 +1079,7 @@ export function useSessionStream(
                   errorText: return_value.is_error
                     ? messageStr || undefined
                     : undefined,
+                  mediaParts: mediaParts.length > 0 ? mediaParts : undefined,
                 },
                 isStreaming: false,
               };
@@ -1179,6 +1324,21 @@ export function useSessionStream(
               messageId,
             });
           }
+
+          // Clear UI for /clear command (triggered by StatusUpdate after clear)
+          if (pendingClearRef.current) {
+            pendingClearRef.current = false;
+            setMessages((prev) => {
+              let lastUserMsgIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].role === "user") {
+                  lastUserMsgIndex = i;
+                  break;
+                }
+              }
+              return lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
+            });
+          }
           break;
         }
 
@@ -1201,10 +1361,39 @@ export function useSessionStream(
         }
 
         case "StepInterrupted": {
+          // Clear pending approval requests
+          pendingApprovalRequestsRef.current.clear();
+
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-            ),
+            prev.map((msg) => {
+              let updated = msg;
+              if (msg.isStreaming) {
+                updated = { ...updated, isStreaming: false };
+              }
+              // Update pending approval tool states to denied
+              if (
+                msg.variant === "tool" &&
+                msg.toolCall?.state === "approval-requested"
+              ) {
+                return {
+                  ...updated,
+                  toolCall: {
+                    ...msg.toolCall,
+                    state: "output-denied",
+                    approval: msg.toolCall.approval
+                      ? {
+                          ...msg.toolCall.approval,
+                          submitted: true,
+                          resolved: true,
+                          approved: false,
+                          response: "reject",
+                        }
+                      : undefined,
+                  },
+                };
+              }
+              return updated;
+            }),
           );
           setAwaitingFirstResponse(false);
           if (awaitingIdleRef.current) {
@@ -1215,10 +1404,40 @@ export function useSessionStream(
           break;
         }
 
-        case "CompactionBegin":
-        case "CompactionEnd":
-          // Could show compaction indicator if needed
+        case "CompactionBegin": {
+          const compactionMsgId = getNextMessageId("assistant");
+          compactionMessageIdRef.current = compactionMsgId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: compactionMsgId,
+              role: "assistant",
+              variant: "status",
+              content: "Compacting conversation history…",
+              isStreaming: true,
+            },
+          ]);
           break;
+        }
+
+        case "CompactionEnd": {
+          const compactMsgId = compactionMessageIdRef.current;
+          compactionMessageIdRef.current = null;
+          // Clear old messages after compaction, only keep the current turn
+          // Also remove the compaction indicator message
+          setMessages((prev) => {
+            let lastUserMsgIndex = -1;
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === "user") {
+                lastUserMsgIndex = i;
+                break;
+              }
+            }
+            const kept = lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
+            return compactMsgId ? kept.filter((m) => m.id !== compactMsgId) : kept;
+          });
+          break;
+        }
 
         default:
           break;
@@ -1247,6 +1466,14 @@ export function useSessionStream(
 
         // Check for JSON-RPC error response
         if (message.error) {
+          // Initialize failure during busy session is non-fatal - just skip
+          if (message.id === initializeIdRef.current) {
+            console.warn("[SessionStream] Initialize rejected (session busy), continuing...");
+            initializeIdRef.current = null;
+            return;
+          }
+
+          // Other errors remain fatal
           console.error("[SessionStream] Received error:", message.error);
           const err = new Error(message.error.message || "Unknown error");
           setError(err);
@@ -1264,6 +1491,10 @@ export function useSessionStream(
         }
 
         if (message.method === "session_status") {
+          if (historyCompleteTimeoutRef.current) {
+            window.clearTimeout(historyCompleteTimeoutRef.current);
+            historyCompleteTimeoutRef.current = null;
+          }
           applySessionStatus(message.params as SessionStatusPayload);
           return;
         }
@@ -1306,6 +1537,33 @@ export function useSessionStream(
           isReplayingRef.current = false;
           // Keep status as "submitted" - input stays disabled until session_status
           setStatus((current) => (current === "ready" ? current : "submitted"));
+
+          // Timeout fallback: reconnect if session_status not received within 15s
+          const currentWs = wsRef.current;
+          if (historyCompleteTimeoutRef.current) {
+            window.clearTimeout(historyCompleteTimeoutRef.current);
+          }
+          historyCompleteTimeoutRef.current = window.setTimeout(() => {
+            if (wsRef.current === currentWs) {
+              console.warn(
+                "[SessionStream] session_status timeout after history_complete, reconnecting...",
+              );
+              reconnectRef.current();
+            }
+          }, 15000);
+          return;
+        }
+
+        // Handle initialize response
+        if (message.id && message.id === initializeIdRef.current && message.result) {
+          console.log("[SessionStream] Initialize response received:", message.result);
+          initializeIdRef.current = null;
+
+          // Extract slash commands
+          const { slash_commands } = message.result;
+          if (slash_commands) {
+            setSlashCommands(slash_commands);
+          }
           return;
         }
 
@@ -1398,6 +1656,26 @@ export function useSessionStream(
     },
     [setAwaitingFirstResponse],
   );
+
+  // Helper to send initialize message
+  const sendInitialize = useCallback((ws: WebSocket) => {
+    const id = uuidV4();
+    initializeIdRef.current = id;
+    const message = {
+      jsonrpc: "2.0",
+      method: "initialize",
+      id,
+      params: {
+        protocol_version: "1.3",
+        client: {
+          name: "kiwi",
+          version: kimiCliVersion,
+        },
+      },
+    };
+    ws.send(JSON.stringify(message));
+    console.log("[SessionStream] Sent initialize message");
+  }, []);
 
   const respondToApproval = useCallback(
     async (
@@ -1532,6 +1810,9 @@ export function useSessionStream(
         awaitingIdleRef.current = false;
         setStatus("streaming"); // Will receive replay, then switch to ready
 
+        // Send initialize message to get slash commands
+        sendInitialize(ws);
+
         // Send pending message immediately after connection
         sendPendingMessage(ws);
       };
@@ -1610,6 +1891,7 @@ export function useSessionStream(
     getWebSocketUrl,
     handleMessage,
     onError,
+    sendInitialize,
     sendPendingMessage,
     setAwaitingFirstResponse,
   ]);
@@ -1653,9 +1935,70 @@ export function useSessionStream(
       );
       awaitingIdleRef.current = false;
       pendingMessageRef.current = null;
+      // Clear pending approval requests and update message states
+      pendingApprovalRequestsRef.current.clear();
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (
+            msg.variant === "tool" &&
+            msg.toolCall?.state === "approval-requested"
+          ) {
+            return {
+              ...msg,
+              isStreaming: false,
+              toolCall: {
+                ...msg.toolCall,
+                state: "output-denied",
+                approval: msg.toolCall.approval
+                  ? {
+                      ...msg.toolCall.approval,
+                      submitted: true,
+                      resolved: true,
+                      approved: false,
+                      response: "reject",
+                    }
+                  : undefined,
+              },
+            };
+          }
+          return msg;
+        }),
+      );
       disconnect();
       return;
     }
+
+    // Clear all pending approval requests and update message states
+    pendingApprovalRequestsRef.current.clear();
+
+    // Always update messages (consistent with StepInterrupted handler)
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (
+          msg.variant === "tool" &&
+          msg.toolCall?.state === "approval-requested"
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
+              approval: msg.toolCall.approval
+                ? {
+                    ...msg.toolCall.approval,
+                    submitted: true,
+                    resolved: true,
+                    approved: false,
+                    response: "reject",
+                  }
+                : undefined,
+            },
+          };
+        }
+        return msg;
+      }),
+    );
 
     const cancelMessage: JsonRpcRequest = {
       jsonrpc: "2.0",
@@ -1675,7 +2018,7 @@ export function useSessionStream(
     } catch (err) {
       console.error("[SessionStream] Failed to send cancel request:", err);
     }
-  }, [status, disconnect, setAwaitingFirstResponse]);
+  }, [status, disconnect, setAwaitingFirstResponse, setMessages]);
 
   // Reconnect
   const reconnect = useCallback(() => {
@@ -1685,6 +2028,11 @@ export function useSessionStream(
       connect();
     }, 100);
   }, [disconnect, connect]);
+
+  // Keep refs in sync so useLayoutEffect can use stable references
+  connectRef.current = connect;
+  disconnectRef.current = disconnect;
+  reconnectRef.current = reconnect;
 
   // Send message to session (auto-connects if not connected)
   const sendMessage = useCallback(
@@ -1742,10 +2090,13 @@ export function useSessionStream(
      *
      * Even if a late event slips through, callback identity guards ensure it can't mutate
      * state unless it belongs to the current `wsRef.current`.
+     *
+     * We access connect/disconnect via refs to avoid re-running this effect when their
+     * callback identity changes (which would cause disconnect→connect cycles).
      */
     // When sessionId changes, disconnect from previous session
     if (wsRef.current) {
-      disconnect();
+      disconnectRef.current();
     }
 
     // Reset state for new session
@@ -1756,19 +2107,19 @@ export function useSessionStream(
     if (sessionId) {
       // Small delay to ensure state is settled
       const timeoutId = window.setTimeout(() => {
-        connect();
+        connectRef.current();
       }, 50);
       return () => {
         window.clearTimeout(timeoutId);
-        disconnect();
+        disconnectRef.current();
       };
     }
 
     setIsReplayingHistory(false);
     return () => {
-      disconnect();
+      disconnectRef.current();
     };
-  }, [sessionId, connect, disconnect, resetState, setMessages]); // Only depend on sessionId - connect/disconnect are stable
+  }, [sessionId, resetState, setMessages]);
 
   // Cleanup on unmount
   useEffect(
@@ -1802,5 +2153,6 @@ export function useSessionStream(
     setMessages,
     clearMessages,
     error,
+    slashCommands,
   };
 }

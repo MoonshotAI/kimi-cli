@@ -19,7 +19,14 @@ from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.wire import Wire
-from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, Request, ToolCallRequest
+from kimi_cli.wire.types import (
+    ApprovalRequest,
+    ApprovalResponse,
+    Request,
+    ToolCallRequest,
+    is_event,
+    is_request,
+)
 
 from .jsonrpc import (
     ClientInfo,
@@ -35,6 +42,7 @@ from .jsonrpc import (
     JSONRPCMessage,
     JSONRPCOutMessage,
     JSONRPCPromptMessage,
+    JSONRPCReplayMessage,
     JSONRPCRequestMessage,
     JSONRPCSuccessResponse,
     Statuses,
@@ -272,6 +280,8 @@ class WireServer:
                     resp = await self._handle_initialize(msg)
                 case JSONRPCPromptMessage():
                     resp = await self._handle_prompt(msg)
+                case JSONRPCReplayMessage():
+                    resp = await self._handle_replay(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -290,13 +300,13 @@ class WireServer:
             logger.error("Send queue shut down; dropping message: {msg}", msg=msg)
 
     @property
-    def _soul_is_running(self) -> bool:
+    def _is_streaming(self) -> bool:
         return self._cancel_event is not None
 
     async def _handle_initialize(
         self, msg: JSONRPCInitializeMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if self._soul_is_running:
+        if self._is_streaming:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(
@@ -385,7 +395,7 @@ class WireServer:
     async def _handle_prompt(
         self, msg: JSONRPCPromptMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if self._soul_is_running:
+        if self._is_streaming:
             # TODO: support queueing multiple inputs
             return JSONRPCErrorResponse(
                 id=msg.id,
@@ -435,10 +445,94 @@ class WireServer:
         finally:
             self._cancel_event = None
 
+    async def _handle_replay(
+        self, msg: JSONRPCReplayMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if self._is_streaming:
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE, message="An agent turn is already in progress"
+                ),
+            )
+
+        wire_file = self._soul.wire_file if isinstance(self._soul, KimiSoul) else None
+
+        self._cancel_event = asyncio.Event()
+        events = 0
+        requests = 0
+        try:
+            if wire_file is None or not wire_file.path.exists():
+                return JSONRPCSuccessResponse(
+                    id=msg.id,
+                    result={"status": Statuses.FINISHED, "events": 0, "requests": 0},
+                )
+
+            async for record in wire_file.iter_records():
+                if self._cancel_event.is_set():
+                    return JSONRPCSuccessResponse(
+                        id=msg.id,
+                        result={
+                            "status": Statuses.CANCELLED,
+                            "events": events,
+                            "requests": requests,
+                        },
+                    )
+
+                try:
+                    wire_msg = record.to_wire_message()
+                except Exception:
+                    logger.exception(
+                        "Failed to deserialize wire record for replay: {file}",
+                        file=wire_file.path,
+                    )
+                    continue
+
+                if is_request(wire_msg):
+                    await self._send_msg(JSONRPCRequestMessage(id=wire_msg.id, params=wire_msg))
+                    requests += 1
+                elif is_event(wire_msg):
+                    await self._send_msg(JSONRPCEventMessage(params=wire_msg))
+                    events += 1
+                else:
+                    # Not reachable for valid WireMessage, but keep a guard for corrupted data.
+                    logger.warning(
+                        "Skipping non-wire message during replay: {msg}",
+                        msg=wire_msg,
+                    )
+
+                await asyncio.sleep(0)  # yield control for cancel handling
+
+            if self._cancel_event.is_set():
+                return JSONRPCSuccessResponse(
+                    id=msg.id,
+                    result={
+                        "status": Statuses.CANCELLED,
+                        "events": events,
+                        "requests": requests,
+                    },
+                )
+
+            return JSONRPCSuccessResponse(
+                id=msg.id,
+                result={"status": Statuses.FINISHED, "events": events, "requests": requests},
+            )
+        except Exception:
+            logger.exception("Replay failed:")
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INTERNAL_ERROR,
+                    message="Replay failed",
+                ),
+            )
+        finally:
+            self._cancel_event = None
+
     async def _handle_cancel(
         self, msg: JSONRPCCancelMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if not self._soul_is_running:
+        if not self._is_streaming:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(

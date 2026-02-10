@@ -25,6 +25,7 @@ from starlette.websockets import WebSocket, WebSocketState
 
 from kimi_cli.config import load_config
 from kimi_cli.llm import ModelCapability
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.web.models import (
     SessionNoticeEvent,
     SessionNoticePayload,
@@ -207,6 +208,7 @@ class SessionProcess:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 limit=STREAM_LIMIT,
+                env=get_clean_env(),
             )
 
             self._read_task = asyncio.create_task(self._read_loop())
@@ -381,7 +383,20 @@ class SessionProcess:
         if not uploads_dir.exists():
             return
 
-        all_files = sorted(uploads_dir.iterdir(), key=lambda x: x.name)
+        # Load .sent marker left by fork to avoid re-sending inherited files.
+        # The marker is kept (not deleted) so it survives process restarts.
+        sent_marker = uploads_dir / ".sent"
+        if sent_marker.exists():
+            try:
+                already_sent = json.loads(sent_marker.read_text(encoding="utf-8"))
+                self._sent_files.update(already_sent)
+            except Exception:
+                pass
+
+        all_files = sorted(
+            (f for f in uploads_dir.iterdir() if f.name != ".sent"),
+            key=lambda x: x.name,
+        )
         files = [f for f in all_files if f.name not in self._sent_files]
 
         if not files:

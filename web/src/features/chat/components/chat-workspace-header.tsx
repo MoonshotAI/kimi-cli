@@ -1,27 +1,20 @@
-import {
-  Context,
-  ContextContent,
-  ContextContentBody,
-  ContextRawUsage,
-  ContextTrigger,
-} from "@ai-elements";
+import { useState, useCallback } from "react";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import type { TokenUsage } from "@/hooks/wireTypes";
 import type { Session } from "@/lib/api/models";
 import { shortenTitle } from "@/lib/utils";
 import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
-  InfoIcon,
   PanelLeftOpen,
   SearchIcon,
 } from "lucide-react";
-import { SessionInfoSection } from "./session-info-popover";
+import { SessionInfoPopover } from "./session-info-popover";
 import { OpenInMenu } from "./open-in-menu";
 import { isMacOS } from "@/hooks/utils";
 
@@ -33,11 +26,8 @@ type ChatWorkspaceHeaderProps = {
   blocksExpanded: boolean;
   onToggleBlocks: () => void;
   onOpenSearch: () => void;
-  usedTokens: number;
-  usagePercent: number;
-  maxTokens: number;
-  tokenUsage: TokenUsage | null;
   onOpenSidebar?: () => void;
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
 };
 
 export function ChatWorkspaceHeader({
@@ -48,13 +38,43 @@ export function ChatWorkspaceHeader({
   blocksExpanded,
   onToggleBlocks,
   onOpenSearch,
-  usedTokens,
-  usagePercent,
-  maxTokens,
-  tokenUsage,
   onOpenSidebar,
+  onRenameSession,
 }: ChatWorkspaceHeaderProps) {
   const searchShortcutModifier = isMacOS() ? "Cmd" : "Ctrl";
+
+  // Editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const handleDoubleClick = useCallback(() => {
+    if (!((onRenameSession && selectedSessionId ) && sessionDescription)) return;
+    setIsEditing(true);
+    setEditingTitle(sessionDescription);
+  }, [onRenameSession, selectedSessionId, sessionDescription]);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditingTitle("");
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!(selectedSessionId && onRenameSession)) {
+      handleCancelEdit();
+      return;
+    }
+
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle) {
+      handleCancelEdit();
+      return;
+    }
+
+    const success = await onRenameSession(selectedSessionId, trimmedTitle);
+    if (success) {
+      handleCancelEdit();
+    }
+  }, [selectedSessionId, editingTitle, onRenameSession, handleCancelEdit]);
 
   return (
     <div className="flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3 lg:pl-8">
@@ -70,18 +90,45 @@ export function ChatWorkspaceHeader({
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          {sessionDescription && (
+          {isEditing ? (
+            <Input
+              autoFocus
+              value={editingTitle}
+              onChange={(e) => setEditingTitle(e.target.value)}
+              onBlur={handleSaveEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSaveEdit();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  handleCancelEdit();
+                }
+              }}
+              className="h-7 text-xs font-bold"
+            />
+          ) : sessionDescription ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <p className="truncate text-xs font-bold">
+                <button
+                  type="button"
+                  className="truncate text-xs font-bold cursor-pointer hover:text-primary text-left bg-transparent border-none p-0"
+                  onDoubleClick={handleDoubleClick}
+                >
                   {shortenTitle(sessionDescription, 60)}
-                </p>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-md">
-                {sessionDescription}
+                <div>{sessionDescription}</div>
+                {onRenameSession && (
+                  <div className="text-muted-foreground text-[10px] mt-1">
+                    Double-click to rename
+                  </div>
+                )}
               </TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
         </div>
       </div>
       <div className="flex items-center justify-end gap-2">
@@ -93,28 +140,10 @@ export function ChatWorkspaceHeader({
               </div>
             ) : null}
 
-            <Context
-              maxTokens={maxTokens}
-              usedTokens={usedTokens}
-              tokenUsage={tokenUsage}
-            >
-              <ContextTrigger className="cursor-pointer">
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground select-none">
-                  {usagePercent}% context
-                  <InfoIcon className="size-3" />
-                </span>
-              </ContextTrigger>
-              <ContextContent align="end" sideOffset={16} >
-                <ContextContentBody className="space-y-4">
-                  <ContextRawUsage />
-                  <div className="border-t" />
-                  <SessionInfoSection
-                    sessionId={selectedSessionId}
-                    session={currentSession}
-                  />
-                </ContextContentBody>
-              </ContextContent>
-            </Context>
+            <SessionInfoPopover
+              sessionId={selectedSessionId}
+              session={currentSession}
+            />
 
             <Tooltip>
               <TooltipTrigger asChild>

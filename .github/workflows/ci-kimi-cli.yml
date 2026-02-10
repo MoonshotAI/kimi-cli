@@ -7,7 +7,9 @@ on:
       - "packages/**"
       - "src/**"
       - "tests/**"
+      - "tests_e2e/**"
       - "tests_ai/**"
+      - "web/**"
       - "pyproject.toml"
       - "uv.lock"
   push:
@@ -18,16 +20,86 @@ on:
       - "packages/**"
       - "src/**"
       - "tests/**"
+      - "tests_e2e/**"
       - "tests_ai/**"
+      - "web/**"
       - "pyproject.toml"
       - "uv.lock"
 
+env:
+  NO_COLOR: "1"
+  TERM: dumb
+
 jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
+      - name: Run checks
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make check-kimi-cli
+
   test:
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
+      - name: Run tests
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          PYTHONUTF8: "1"
+        run: make test-kimi-cli
+
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -50,50 +122,37 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install make -y
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.13
         id: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
+          python-version: "3.13"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v1
         with:
           version: "0.8.5"
-
-      - name: Prepare building environment
-        env:
-          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make prepare
-
-      - name: Run checks
-        env:
-          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: make check-kimi-cli
-
-      - name: Run tests
-        env:
-          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-          PYTHONUTF8: "1"
-        run: make test-kimi-cli
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Set up Node.js (web build)
-        if: matrix.python-version == '3.14'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
       - name: Build standalone binary
-        if: matrix.python-version == '3.14'
         env:
           UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: make build-bin
 
       - name: Smoke test binary --help
-        if: matrix.python-version == '3.14'
         shell: python
         run: |
           import os
@@ -107,7 +166,7 @@ jobs:
           BINARY_PATH: ${{ matrix.binary_path }}
 
       - name: Upload binary artifact
-        if: matrix.python-version == '3.14' && success()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kimi-${{ matrix.target }}

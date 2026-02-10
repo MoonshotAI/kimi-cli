@@ -2,6 +2,8 @@ import {
   memo,
   type ReactElement,
   useCallback,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ChatStatus } from "ai";
@@ -9,13 +11,21 @@ import type { PromptInputMessage } from "@ai-elements";
 import type { ApprovalResponseDecision, TokenUsage } from "@/hooks/wireTypes";
 import type { LiveMessage } from "@/hooks/types";
 import type { SessionFileEntry } from "@/hooks/useSessions";
+import type { SlashCommandDef } from "@/hooks/useSessionStream";
 import type { Session } from "@/lib/api/models";
+
+// Re-export SlashCommandDef for convenience
+export type { SlashCommandDef };
 import { toast } from "sonner";
 import { ChatWorkspaceHeader } from "./components/chat-workspace-header";
 import { ChatConversation } from "./components/chat-conversation";
 import { ChatPromptComposer } from "./components/chat-prompt-composer";
 import { ApprovalDialog } from "./components/approval-dialog";
 import { useGitDiffStats } from "@/hooks/useGitDiffStats";
+import {
+  deriveActivityStatus,
+  type ActivityDetail,
+} from "./components/activity-status-indicator";
 
 // Re-export LiveMessage type from hooks for backward compatibility
 export type { LiveMessage } from "@/hooks/types";
@@ -61,6 +71,12 @@ type ChatWorkspaceProps = {
   onCreateSession?: () => void;
   /** Open sessions sidebar (mobile) */
   onOpenSidebar?: () => void;
+  /** Rename session */
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
+  /** Available slash commands */
+  slashCommands?: SlashCommandDef[];
+  /** Fork session at a specific turn */
+  onForkSession?: (turnIndex: number) => void;
 };
 
 type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
@@ -85,6 +101,9 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   isAwaitingFirstResponse = false,
   onCreateSession,
   onOpenSidebar,
+  onRenameSession,
+  slashCommands = [],
+  onForkSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -96,6 +115,33 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   const { stats: gitDiffStats, isLoading: isGitDiffLoading } = useGitDiffStats(
     currentSession?.sessionId ?? null
   );
+
+  // Derive activity status for the header indicator
+  // Use ref to cache the previous result and avoid unnecessary object reference changes
+  const prevActivityRef = useRef<ActivityDetail | null>(null);
+
+  const activityStatus = useMemo(() => {
+    const newStatus = deriveActivityStatus({
+      chatStatus: status,
+      isAwaitingFirstResponse,
+      isReplayingHistory,
+      isUploadingFiles,
+      messages,
+    });
+
+    // If status and description haven't changed, return cached reference
+    // to avoid unnecessary re-renders in downstream components
+    if (
+      prevActivityRef.current &&
+      prevActivityRef.current.status === newStatus.status &&
+      prevActivityRef.current.description === newStatus.description
+    ) {
+      return prevActivityRef.current;
+    }
+
+    prevActivityRef.current = newStatus;
+    return newStatus;
+  }, [status, isAwaitingFirstResponse, isReplayingHistory, isUploadingFiles, messages]);
 
   const maxTokens = 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
@@ -135,6 +181,23 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     [onApprovalResponse],
   );
 
+  // Wrapper for ApprovalDialog that routes through handleApprovalAction
+  // so pendingApprovalMap is properly managed (prevents duplicate requests)
+  const handleDialogApprovalResponse = useCallback(
+    async (requestId: string, decision: ApprovalResponseDecision) => {
+      for (const message of messages) {
+        if (
+          message.variant === "tool" &&
+          message.toolCall?.approval?.id === requestId
+        ) {
+          await handleApprovalAction(message.toolCall.approval, decision);
+          return;
+        }
+      }
+    },
+    [messages, handleApprovalAction],
+  );
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-[560px]">
       <div className="relative flex h-full flex-col">
@@ -146,18 +209,14 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           blocksExpanded={blocksExpanded}
           onToggleBlocks={() => setBlocksExpanded((prev) => !prev)}
           onOpenSearch={() => setIsSearchOpen(true)}
-          usedTokens={usedTokens}
-          usagePercent={usagePercent}
-          maxTokens={maxTokens}
-          tokenUsage={tokenUsage}
           onOpenSidebar={onOpenSidebar}
+          onRenameSession={onRenameSession}
         />
 
         <div className="flex-1 overflow-hidden min-h-0">
           <ChatConversation
             messages={messages}
             status={status}
-            isAwaitingFirstResponse={isAwaitingFirstResponse}
             selectedSessionId={selectedSessionId}
             currentSession={currentSession}
             isReplayingHistory={isReplayingHistory}
@@ -170,19 +229,20 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             onCreateSession={onCreateSession}
             isSearchOpen={isSearchOpen}
             onSearchOpenChange={setIsSearchOpen}
+            onForkSession={onForkSession}
           />
         </div>
 
         {/* Approval Dialog - shows above input when approval is needed */}
         <ApprovalDialog
           messages={messages}
-          onApprovalResponse={onApprovalResponse}
+          onApprovalResponse={handleDialogApprovalResponse}
           pendingApprovalMap={pendingApprovalMap}
           canRespondToApproval={Boolean(onApprovalResponse)}
         />
 
         {currentSession && (
-          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 sm:pt-3">
+          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 ">
             <ChatPromptComposer
               status={status}
               onSubmit={onSubmit}
@@ -191,10 +251,17 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
               isUploading={isUploading}
               isStreaming={isStreaming}
               isAwaitingIdle={isAwaitingIdle}
+              isReplayingHistory={isReplayingHistory}
               onCancel={onCancel}
               onListSessionDirectory={onListSessionDirectory}
               gitDiffStats={gitDiffStats}
               isGitDiffLoading={isGitDiffLoading}
+              slashCommands={slashCommands}
+              activityStatus={activityStatus}
+              usagePercent={usagePercent}
+              usedTokens={usedTokens}
+              maxTokens={maxTokens}
+              tokenUsage={tokenUsage}
             />
           </div>
         )}

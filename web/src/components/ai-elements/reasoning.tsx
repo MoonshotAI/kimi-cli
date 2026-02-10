@@ -157,12 +157,12 @@ export const ReasoningTrigger = memo(
 
     return (
       <CollapsibleTrigger
-        className={cn("flex items-start gap-2 text-sm text-muted-foreground", className)}
+        className={cn("flex items-center gap-2 text-sm text-muted-foreground", className)}
         {...props}
       >
         {children ?? (
           <>
-            <span className="mt-1.5 size-2 shrink-0 rounded-full bg-warning" />
+            <span className="size-2 shrink-0 rounded-full bg-warning" />
             <span className="italic">
               {getThinkingMessage(isStreaming, duration)}
             </span>

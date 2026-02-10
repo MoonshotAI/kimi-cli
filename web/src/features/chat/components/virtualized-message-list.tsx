@@ -1,10 +1,12 @@
-import type { ChatStatus } from "ai";
 import type { LiveMessage } from "@/hooks/types";
 import {
   Message,
+  MessageActions,
   MessageAttachment,
   MessageAttachments,
   MessageContent,
+  MessageCopyButton,
+  MessageForkButton,
   UserMessageContent,
 } from "@ai-elements";
 import {
@@ -12,7 +14,6 @@ import {
   type AssistantApprovalHandler,
 } from "./assistant-message";
 
-import { Loader2Icon } from "lucide-react";
 import type React from "react";
 import {
   forwardRef,
@@ -20,7 +21,6 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
-  useState,
   type ComponentPropsWithoutRef,
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -28,10 +28,7 @@ import { cn } from "@/lib/utils";
 
 export type VirtualizedMessageListProps = {
   messages: LiveMessage[];
-  status: ChatStatus;
-  isAwaitingFirstResponse?: boolean;
   conversationKey: string;
-  isReplayingHistory: boolean;
   pendingApprovalMap: Record<string, boolean>;
   onApprovalAction?: AssistantApprovalHandler;
   canRespondToApproval: boolean;
@@ -40,6 +37,8 @@ export type VirtualizedMessageListProps = {
   highlightedMessageIndex?: number;
   /** Callback when scroll position changes */
   onAtBottomChange?: (atBottom: boolean) => void;
+  /** Callback to fork session from before a specific turn */
+  onForkSession?: (turnIndex: number) => void;
 };
 
 export type VirtualizedMessageListHandle = {
@@ -47,15 +46,10 @@ export type VirtualizedMessageListHandle = {
   scrollToBottom: () => void;
 };
 
-type ConversationListItem =
-  | {
-      kind: "message";
-      message: LiveMessage;
-      index: number;
-    }
-  | {
-      kind: "loading";
-    };
+type ConversationListItem = {
+  message: LiveMessage;
+  index: number;
+};
 
 function VirtuosoScrollerComponent(
   props: ComponentPropsWithoutRef<"div">,
@@ -143,9 +137,9 @@ function getMessageSpacingClass(
     }
   }
 
-  // Add bottom margin for tool messages near end
-  if (isToolMessage && !nextMessage) {
-    classes.push("mb-4");
+  // Add bottom margin for the last message to avoid clashing with UI below
+  if (!nextMessage) {
+    classes.push("mb-30");
   }
 
   return classes.length > 0 ? classes.join(" ") : undefined;
@@ -154,46 +148,62 @@ function getMessageSpacingClass(
 function VirtualizedMessageListComponent(
   {
     messages,
-    isAwaitingFirstResponse = false,
     conversationKey,
-    isReplayingHistory,
     pendingApprovalMap,
     onApprovalAction,
     canRespondToApproval,
     blocksExpanded,
     highlightedMessageIndex = -1,
     onAtBottomChange,
+    onForkSession,
   }: VirtualizedMessageListProps,
   ref: React.Ref<VirtualizedMessageListHandle>,
 ) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const scrollerRef = useRef<HTMLElement | null>(null);
 
-  const showLoadingBubble = isAwaitingFirstResponse;
+  // Filtered messages list (excluding message-id) aligned with listItems indices
+  const filteredMessages = useMemo(
+    () => messages.filter((m) => m.variant !== "message-id"),
+    [messages],
+  );
 
-  const listItems = useMemo<ConversationListItem[]>(() => {
-    // Filter out message-id variants to avoid zero-height elements in virtuoso
-    const items = messages
-      .filter((message) => message.variant !== "message-id")
-      .map<ConversationListItem>((message, index) => ({
-        kind: "message",
-        message,
-        index,
-      }));
-
-    if (showLoadingBubble) {
-      items.push({ kind: "loading" });
-    }
-
-    return items;
-  }, [messages, showLoadingBubble]);
+  const listItems = useMemo<ConversationListItem[]>(
+    () =>
+      filteredMessages.map((message, index) => ({ message, index })),
+    [filteredMessages],
+  );
 
   const handleAtBottomChange = useCallback(
     (atBottom: boolean) => {
-      setIsAtBottom(atBottom);
       onAtBottomChange?.(atBottom);
     },
     [onAtBottomChange],
+  );
+
+  const handleScrollerRef = useCallback(
+    (ref: HTMLElement | Window | null) => {
+      scrollerRef.current = ref instanceof HTMLElement ? ref : null;
+    },
+    [],
+  );
+
+  // Use a generous threshold to tolerate height estimation mismatches
+  // when blocks are expanded (actual heights >> defaultItemHeight).
+  // This is decoupled from atBottomStateChange which uses Virtuoso's
+  // default tight threshold for the scroll-to-bottom button.
+  const handleFollowOutput = useCallback(
+    (isAtBottom: boolean) => {
+      if (isAtBottom) return "auto" as const;
+      const scroller = scrollerRef.current;
+      if (scroller) {
+        const gap =
+          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+        if (gap <= 1500) return "auto" as const;
+      }
+      return false;
+    },
+    [],
   );
 
   useImperativeHandle(
@@ -214,7 +224,7 @@ function VirtualizedMessageListComponent(
           virtuosoRef.current?.scrollToIndex({
             index: listItems.length - 1,
             align: "end",
-            behavior: "smooth",
+            behavior: "auto",
           });
         }
       },
@@ -228,42 +238,25 @@ function VirtualizedMessageListComponent(
       ref={virtuosoRef}
       data={listItems}
       className="h-full"
-      followOutput={!isReplayingHistory && isAtBottom ? "auto" : false}
+      scrollerRef={handleScrollerRef}
+      followOutput={handleFollowOutput}
       defaultItemHeight={160}
       increaseViewportBy={{ top: 400, bottom: 400 }}
       overscan={200}
       minOverscanItemCount={4}
       atBottomStateChange={handleAtBottomChange}
-      initialTopMostItemIndex={
-        isReplayingHistory
-          ? 0
-          : {
-              index: Math.max(0, listItems.length - 1),
-              align: "end",
-            }
-      }
+      initialTopMostItemIndex={{
+        index: Math.max(0, listItems.length - 1),
+        align: "end",
+      }}
       components={{
         Scroller: VirtuosoScroller,
         List: VirtuosoList,
       }}
       computeItemKey={(_index: number, item: ConversationListItem) =>
-        item.kind === "message" ? item.message.id : `loading-${_index}`
+        item.message.id
       }
       itemContent={(_index, item) => {
-        if (item.kind === "loading") {
-          return (
-            <Message
-              className={messages.length > 0 ? "mt-3" : undefined}
-              from="assistant"
-            >
-            <MessageContent className="flex-row items-center justify-start gap-2 text-left text-sm text-muted-foreground">
-              <Loader2Icon className="size-4 animate-spin text-primary" />
-              <span>Waiting for response...</span>
-            </MessageContent>
-          </Message>
-        );
-        }
-
         const message = item.message;
 
         if (message.variant === "status") {
@@ -282,7 +275,7 @@ function VirtualizedMessageListComponent(
         const spacingClass = getMessageSpacingClass(
           message,
           item.index,
-          messages,
+          filteredMessages,
         );
 
         const isHighlighted = item.index === highlightedMessageIndex;
@@ -296,17 +289,31 @@ function VirtualizedMessageListComponent(
             from={message.role}
           >
             {message.role === "user" ? (
-              message.content && (
+              message.content ? (
                 <UserMessageContent>{message.content}</UserMessageContent>
-              )
+              ) : null
             ) : (
-              <AssistantMessage
-                message={message}
-                pendingApprovalMap={pendingApprovalMap}
-                onApprovalAction={onApprovalAction}
-                canRespondToApproval={canRespondToApproval}
-                blocksExpanded={blocksExpanded}
-              />
+              <>
+                <AssistantMessage
+                  message={message}
+                  pendingApprovalMap={pendingApprovalMap}
+                  onApprovalAction={onApprovalAction}
+                  canRespondToApproval={canRespondToApproval}
+                  blocksExpanded={blocksExpanded}
+                />
+                {!message.isStreaming &&
+                  (!message.variant || message.variant === "text") &&
+                  (message.content || (onForkSession && message.turnIndex !== undefined)) && (
+                  <MessageActions className="
+                  hover-reveal
+                   opacity-0 group-hover:opacity-100 transition-opacity mt-1">
+                    {message.content && <MessageCopyButton content={message.content} />}
+                    {onForkSession && message.turnIndex !== undefined && (
+                      <MessageForkButton onFork={() => onForkSession(message.turnIndex!)} />
+                    )}
+                  </MessageActions>
+                )}
+              </>
             )}
             {message.attachments && message.attachments.length > 0 ? (
               <MessageAttachments>

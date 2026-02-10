@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -27,10 +28,26 @@ def main() -> int:
     parser.add_argument("--expected-version", required=True)
     args = parser.parse_args()
 
+    semver_re = re.compile(r"^\d+\.\d+\.\d+$")
+    if not semver_re.match(args.expected_version):
+        print(
+            f"error: expected version must include patch (x.y.z): {args.expected_version}",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         project_version = load_project_version(args.pyproject)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if not semver_re.match(project_version):
+        print(
+            "error: project version must include patch (x.y.z): "
+            f"{args.pyproject} has {project_version}",
+            file=sys.stderr,
+        )
         return 1
 
     if project_version != args.expected_version:

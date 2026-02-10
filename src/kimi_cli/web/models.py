@@ -71,3 +71,28 @@ class Session(BaseModel):
     status: SessionStatus | None = Field(default=None, description="Session runtime status")
     work_dir: str | None = Field(default=None, description="Working directory for the session")
     session_dir: str | None = Field(default=None, description="Session directory path")
+    archived: bool = Field(default=False, description="Whether the session is archived")
+
+
+class UpdateSessionRequest(BaseModel):
+    """Update session request."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    archived: bool | None = Field(default=None, description="Archive or unarchive the session")
+
+
+class GenerateTitleRequest(BaseModel):
+    """Generate title request.
+
+    Parameters are optional - if not provided, the backend will read
+    from wire.jsonl automatically.
+    """
+
+    user_message: str | None = None
+    assistant_response: str | None = None
+
+
+class GenerateTitleResponse(BaseModel):
+    """Generate title response."""
+
+    title: str

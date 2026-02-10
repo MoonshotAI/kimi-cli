@@ -14,18 +14,28 @@ import {
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import type { GitDiffStats, Session } from "@/lib/api/models";
+import type { TokenUsage } from "@/hooks/wireTypes";
+import type { ActivityDetail } from "./activity-status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MEDIA_CONFIG } from "@/config/media";
 
 import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
-import { GitDiffStatusBar } from "./git-diff-status-bar";
-import { Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { SlashCommandMenu } from "../slash-command-menu";
+import { useSlashCommands, type SlashCommandDef } from "../useSlashCommands";
+import { PromptToolbar } from "./prompt-toolbar";
+import { ArrowUpIcon, Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { GlobalConfigControls } from "@/features/chat/global-config-controls";
 import {
   type ChangeEvent,
+  type KeyboardEvent,
   type ReactElement,
   type SyntheticEvent,
   memo,
@@ -43,6 +53,7 @@ type ChatPromptComposerProps = {
   isUploading: boolean;
   isStreaming: boolean;
   isAwaitingIdle: boolean;
+  isReplayingHistory: boolean;
   onCancel?: () => void;
   onListSessionDirectory?: (
     sessionId: string,
@@ -50,6 +61,12 @@ type ChatPromptComposerProps = {
   ) => Promise<SessionFileEntry[]>;
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
+  slashCommands?: SlashCommandDef[];
+  activityStatus?: ActivityDetail;
+  usagePercent?: number;
+  usedTokens?: number;
+  maxTokens?: number;
+  tokenUsage?: TokenUsage | null;
 };
 
 export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
@@ -60,10 +77,17 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   isUploading,
   isStreaming,
   isAwaitingIdle,
+  isReplayingHistory,
   onCancel,
   onListSessionDirectory,
   gitDiffStats,
   isGitDiffLoading,
+  slashCommands = [],
+  activityStatus,
+  usagePercent,
+  usedTokens,
+  maxTokens,
+  tokenUsage,
 }: ChatPromptComposerProps): ReactElement {
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
@@ -94,26 +118,62 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
     listDirectory: onListSessionDirectory,
   });
 
+  const {
+    isOpen: isSlashOpen,
+    query: slashQuery,
+    options: slashOptions,
+    activeIndex: slashActiveIndex,
+    setActiveIndex: setSlashActiveIndex,
+    handleTextChange: handleSlashTextChange,
+    handleCaretChange: handleSlashCaretChange,
+    handleKeyDown: handleSlashKeyDown,
+    selectOption: selectSlashOption,
+    closeMenu: closeSlashMenu,
+  } = useSlashCommands({
+    text: promptController.textInput.value,
+    setText: promptController.textInput.setInput,
+    textareaRef,
+    commands: slashCommands,
+  });
+
   const handleTextareaChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
-      handleMentionTextChange(
-        event.currentTarget.value,
-        event.currentTarget.selectionStart,
-      );
+      const value = event.currentTarget.value;
+      const caret = event.currentTarget.selectionStart;
+      handleMentionTextChange(value, caret);
+      handleSlashTextChange(value, caret);
     },
-    [handleMentionTextChange],
+    [handleMentionTextChange, handleSlashTextChange],
   );
 
   const handleTextareaSelection = useCallback(
     (event: SyntheticEvent<HTMLTextAreaElement>) => {
-      handleMentionCaretChange(event.currentTarget.selectionStart);
+      const caret = event.currentTarget.selectionStart;
+      handleMentionCaretChange(caret);
+      handleSlashCaretChange(caret);
     },
-    [handleMentionCaretChange],
+    [handleMentionCaretChange, handleSlashCaretChange],
   );
 
   const handleTextareaBlur = useCallback(() => {
     closeMentionMenu();
-  }, [closeMentionMenu]);
+    closeSlashMenu();
+  }, [closeMentionMenu, closeSlashMenu]);
+
+  const handleTextareaKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Priority: slash menu first, then mention menu
+      if (isSlashOpen) {
+        handleSlashKeyDown(event);
+        return;
+      }
+      if (isMentionOpen) {
+        handleMentionKeyDown(event);
+        return;
+      }
+    },
+    [isSlashOpen, isMentionOpen, handleSlashKeyDown, handleMentionKeyDown],
+  );
 
   const handleFileError = useCallback(
     (err: { code: string; message: string }) => {
@@ -128,14 +188,16 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
 
   return (
     <div className="w-full">
-      <div className="w-full px-1 sm:px-2">
-        <GitDiffStatusBar
-          stats={gitDiffStats ?? null}
-          isLoading={isGitDiffLoading}
-          workDir={currentSession?.workDir}
-        />
-
-      </div>
+      <PromptToolbar
+        gitDiffStats={gitDiffStats}
+        isGitDiffLoading={isGitDiffLoading}
+        workDir={currentSession?.workDir}
+        activityStatus={activityStatus}
+        usagePercent={usagePercent}
+        usedTokens={usedTokens}
+        maxTokens={maxTokens}
+        tokenUsage={tokenUsage}
+      />
 
       <PromptInput
         accept="*"
@@ -180,26 +242,40 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                   "transition-all duration-200 pr-8",
                   isExpanded
                     ? "min-h-[220px] max-h-[60vh] sm:min-h-[300px]"
-                    : "min-h-[80px] max-h-36 sm:min-h-16 sm:max-h-48",
+                    : "min-h-10 max-h-36 sm:min-h-16 sm:max-h-48",
                 )}
                 placeholder={
                   !currentSession
                     ? "Create a session to start..."
                     : isAwaitingIdle
-                      ? "Connecting to environment..."
-                      : ""
+                      ? isReplayingHistory
+                        ? "Connecting..."
+                        : "Starting environment..."
+                      : isStreaming
+                        ? "Add a follow-up message..."
+                        : ""
                 }
                 aria-busy={isUploading}
-                disabled={!canSendMessage || isUploading || !currentSession}
+                disabled={!canSendMessage || isUploading || !currentSession || isAwaitingIdle}
                 onChange={handleTextareaChange}
                 onSelect={handleTextareaSelection}
                 onKeyUp={handleTextareaSelection}
                 onClick={handleTextareaSelection}
                 onBlur={handleTextareaBlur}
-                onKeyDown={handleMentionKeyDown}
+                onKeyDown={handleTextareaKeyDown}
               />
+              {/* Slash command menu - mutually exclusive with file mention menu */}
+              <SlashCommandMenu
+                open={isSlashOpen && canSendMessage && !isMentionOpen}
+                query={slashQuery}
+                options={slashOptions}
+                activeIndex={slashActiveIndex}
+                onSelect={selectSlashOption}
+                onHover={setSlashActiveIndex}
+              />
+              {/* File mention menu - only show when slash menu is not open */}
               <FileMentionMenu
-                open={isMentionOpen && canSendMessage}
+                open={isMentionOpen && canSendMessage && !isSlashOpen}
                 query={mentionQuery}
                 sections={mentionSections}
                 flatOptions={mentionOptions}
@@ -221,20 +297,36 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
             <GlobalConfigControls />
           </PromptInputTools>
           {isStreaming ? (
-            <PromptInputButton
-              aria-label="Stop generation"
-              disabled={!onCancel}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onCancel?.();
-              }}
-              size="icon-sm"
-              variant="default"
-              className="shrink-0"
-            >
-              <SquareIcon className="size-4" />
-            </PromptInputButton>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <PromptInputButton
+                aria-label="Stop generation"
+                disabled={!onCancel}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onCancel?.();
+                }}
+                size="icon-sm"
+                variant="default"
+                className="shrink-0"
+              >
+                <SquareIcon className="size-4" />
+              </PromptInputButton>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PromptInputSubmit
+                    aria-label="Queue message"
+                    size="icon-sm"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={!(canSendMessage && currentSession)}
+                  >
+                    <ArrowUpIcon className="size-4" />
+                  </PromptInputSubmit>
+                </TooltipTrigger>
+                <TooltipContent>Queue message</TooltipContent>
+              </Tooltip>
+            </div>
           ) : (
             <PromptInputSubmit
               status={isUploading ? "submitted" : status}

@@ -12,6 +12,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import ShellDisplayBlock
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
+from kimi_cli.utils.subprocess_env import get_clean_env
 
 MAX_TIMEOUT = 5 * 60
 
@@ -106,7 +107,7 @@ class Shell(CallableTool2[Params]):
                 else:
                     break
 
-        process = await kaos.exec(*self._shell_args(command))
+        process = await kaos.exec(*self._shell_args(command), env=get_clean_env())
 
         try:
             await asyncio.wait_for(
