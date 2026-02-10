@@ -14,6 +14,7 @@ import {
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import type { GitDiffStats, Session } from "@/lib/api/models";
+import type { TokenUsage } from "@/hooks/wireTypes";
 import type { ActivityDetail } from "./activity-status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -62,6 +63,10 @@ type ChatPromptComposerProps = {
   isGitDiffLoading?: boolean;
   slashCommands?: SlashCommandDef[];
   activityStatus?: ActivityDetail;
+  usagePercent?: number;
+  usedTokens?: number;
+  maxTokens?: number;
+  tokenUsage?: TokenUsage | null;
 };
 
 export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
@@ -79,6 +84,10 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   isGitDiffLoading,
   slashCommands = [],
   activityStatus,
+  usagePercent,
+  usedTokens,
+  maxTokens,
+  tokenUsage,
 }: ChatPromptComposerProps): ReactElement {
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
@@ -184,6 +193,10 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         isGitDiffLoading={isGitDiffLoading}
         workDir={currentSession?.workDir}
         activityStatus={activityStatus}
+        usagePercent={usagePercent}
+        usedTokens={usedTokens}
+        maxTokens={maxTokens}
+        tokenUsage={tokenUsage}
       />
 
       <PromptInput

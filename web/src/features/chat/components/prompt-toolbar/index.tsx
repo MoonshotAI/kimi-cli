@@ -8,10 +8,12 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import type { GitDiffStats } from "@/lib/api/models";
+import type { TokenUsage } from "@/hooks/wireTypes";
 import { useQueueStore } from "../../queue-store";
 import { ToolbarActivityIndicator, type ActivityDetail } from "../activity-status-indicator";
 import { ToolbarQueuePanel, ToolbarQueueTab } from "./toolbar-queue";
 import { ToolbarChangesPanel, ToolbarChangesTab } from "./toolbar-changes";
+import { ToolbarContextIndicator } from "./toolbar-context";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -22,6 +24,10 @@ type PromptToolbarProps = {
   isGitDiffLoading?: boolean;
   workDir?: string | null;
   activityStatus?: ActivityDetail;
+  usagePercent?: number;
+  usedTokens?: number;
+  maxTokens?: number;
+  tokenUsage?: TokenUsage | null;
 };
 
 // ─── Main toolbar ────────────────────────────────────────────
@@ -31,6 +37,10 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
   isGitDiffLoading,
   workDir,
   activityStatus,
+  usagePercent,
+  usedTokens,
+  maxTokens,
+  tokenUsage,
 }: PromptToolbarProps): ReactElement | null {
   const queue = useQueueStore((s) => s.queue);
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
@@ -39,6 +49,7 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
   const stats = gitDiffStats;
   const hasChanges = Boolean(stats?.isGitRepo && stats.hasChanges && stats.files && !stats.error);
   const hasQueue = queue.length > 0;
+  const hasContext = usagePercent !== undefined && usedTokens !== undefined && maxTokens !== undefined;
   const hasTabs = hasQueue || hasChanges;
 
   // Auto-open queue tab when first item is added
@@ -59,7 +70,7 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
     setActiveTab((prev) => (prev === tab ? null : tab));
   }, []);
 
-  if (!(hasTabs || activityStatus)) return null;
+  if (!(hasTabs || activityStatus || hasContext)) return null;
 
   return (
     <div className={cn("w-full px-1 sm:px-2 flex flex-col gap-1 mb-2", isGitDiffLoading && "opacity-70")}>
@@ -93,6 +104,16 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
             workDir={workDir}
             isActive={activeTab === "changes"}
             onToggle={() => toggleTab("changes")}
+          />
+        )}
+
+        {hasContext && (
+          <ToolbarContextIndicator
+            usagePercent={usagePercent!}
+            usedTokens={usedTokens!}
+            maxTokens={maxTokens!}
+            tokenUsage={tokenUsage ?? null}
+            className="ml-auto"
           />
         )}
       </div>

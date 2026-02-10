@@ -209,10 +209,6 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           blocksExpanded={blocksExpanded}
           onToggleBlocks={() => setBlocksExpanded((prev) => !prev)}
           onOpenSearch={() => setIsSearchOpen(true)}
-          usedTokens={usedTokens}
-          usagePercent={usagePercent}
-          maxTokens={maxTokens}
-          tokenUsage={tokenUsage}
           onOpenSidebar={onOpenSidebar}
           onRenameSession={onRenameSession}
         />
@@ -262,6 +258,10 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
               isGitDiffLoading={isGitDiffLoading}
               slashCommands={slashCommands}
               activityStatus={activityStatus}
+              usagePercent={usagePercent}
+              usedTokens={usedTokens}
+              maxTokens={maxTokens}
+              tokenUsage={tokenUsage}
             />
           </div>
         )}
