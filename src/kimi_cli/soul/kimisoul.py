@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -20,6 +21,20 @@ from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.observability import (
+    get_config,
+    record_compaction,
+    record_step,
+    record_token_usage,
+    record_turn,
+    trace_span_async,
+)
+from kimi_cli.observability.attributes import (
+    CommonAttributes,
+    CompactionAttributes,
+    GenAIAttributes,
+    TurnAttributes,
+)
 from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
@@ -214,10 +229,52 @@ class KimiSoul:
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
-        await self._checkpoint()  # this creates the checkpoint 0 on first run
-        await self._context.append_message(user_message)
-        logger.debug("Appended user message to context")
-        return await self._agent_loop()
+        turn_start = time.perf_counter()
+        session_id = self._runtime.session.id
+        agent_name = self._agent.name
+
+        turn_outcome: str = "error"
+        step_count: int = 0
+
+        async with trace_span_async(
+            "kimi.turn",
+            attributes={
+                CommonAttributes.SESSION_ID: session_id,
+                CommonAttributes.AGENT_NAME: agent_name,
+            },
+        ) as span:
+            try:
+                await self._checkpoint()  # this creates the checkpoint 0 on first run
+                await self._context.append_message(user_message)
+                logger.debug("Appended user message to context")
+                outcome = await self._agent_loop()
+
+                turn_outcome = outcome.stop_reason
+                step_count = outcome.step_count
+                span.set_attribute(TurnAttributes.TURN_OUTCOME, turn_outcome)
+                span.set_attribute(TurnAttributes.TURN_STEP_COUNT, step_count)
+                return outcome
+            except MaxStepsReached as e:
+                turn_outcome = "max_steps"
+                step_count = e.n_steps
+                span.set_attribute(TurnAttributes.TURN_OUTCOME, turn_outcome)
+                span.set_attribute(TurnAttributes.TURN_STEP_COUNT, step_count)
+                raise
+            except Exception as e:
+                span.set_attribute(TurnAttributes.TURN_OUTCOME, turn_outcome)
+                span.record_exception(e)
+                raise
+            finally:
+                duration_ms = (time.perf_counter() - turn_start) * 1000
+                span.set_attribute(TurnAttributes.TURN_DURATION_MS, duration_ms)
+
+                record_turn(
+                    session_id=session_id,
+                    agent_name=agent_name,
+                    outcome=turn_outcome,  # type: ignore[arg-type]
+                    step_count=step_count,
+                    duration_ms=duration_ms,
+                )
 
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())
@@ -305,6 +362,9 @@ class KimiSoul:
         if isinstance(self._agent.toolset, KimiToolset):
             await self._agent.toolset.wait_for_mcp_tools()
 
+        session_id = self._runtime.session.id
+        agent_name = self._agent.name
+
         async def _pipe_approval_to_wire():
             while True:
                 request = await self._approval.fetch_request()
@@ -333,34 +393,52 @@ class KimiSoul:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
             wire_send(StepBegin(n=step_no))
+
+            # Record step metric
+            record_step(
+                session_id=session_id,
+                agent_name=agent_name,
+                step_number=step_no,
+            )
+
             approval_task = asyncio.create_task(_pipe_approval_to_wire())
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
-            try:
-                # compact the context if needed
-                reserved = self._loop_control.reserved_context_size
-                if self._context.token_count + reserved >= self._runtime.llm.max_context_size:
-                    logger.info("Context too long, compacting...")
-                    await self.compact_context()
 
-                logger.debug("Beginning step {step_no}", step_no=step_no)
-                await self._checkpoint()
-                self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
-                step_outcome = await self._step()
-            except BackToTheFuture as e:
-                back_to_the_future = e
-            except Exception:
-                # any other exception should interrupt the step
-                wire_send(StepInterrupted())
-                # break the agent loop
-                raise
-            finally:
-                approval_task.cancel()  # stop piping approval requests to the wire
-                with suppress(asyncio.CancelledError):
-                    try:
-                        await approval_task
-                    except Exception:
-                        logger.exception("Approval piping task failed")
+            async with trace_span_async(
+                "kimi.step",
+                attributes={
+                    CommonAttributes.SESSION_ID: session_id,
+                    CommonAttributes.AGENT_NAME: agent_name,
+                    CommonAttributes.STEP_NUMBER: step_no,
+                },
+            ) as span:
+                try:
+                    # compact the context if needed
+                    reserved = self._loop_control.reserved_context_size
+                    if self._context.token_count + reserved >= self._runtime.llm.max_context_size:
+                        logger.info("Context too long, compacting...")
+                        await self.compact_context()
+
+                    logger.debug("Beginning step {step_no}", step_no=step_no)
+                    await self._checkpoint()
+                    self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
+                    step_outcome = await self._step()
+                except BackToTheFuture as e:
+                    back_to_the_future = e
+                    span.add_event("dmail_received", {"checkpoint_id": e.checkpoint_id})
+                except Exception:
+                    # any other exception should interrupt the step
+                    wire_send(StepInterrupted())
+                    # break the agent loop
+                    raise
+                finally:
+                    approval_task.cancel()  # stop piping approval requests to the wire
+                    with suppress(asyncio.CancelledError):
+                        try:
+                            await approval_task
+                        except Exception:
+                            logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
                 final_message = (
@@ -384,6 +462,7 @@ class KimiSoul:
         # already checked in `run`
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
+        model_name = chat_provider.model_name
 
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
@@ -403,7 +482,45 @@ class KimiSoul:
                 on_tool_result=wire_send,
             )
 
-        result = await _kosong_step_with_retry()
+        llm_start = time.perf_counter()
+        async with trace_span_async(
+            "kimi.llm.call",
+            attributes={
+                GenAIAttributes.SYSTEM: "kimi",
+                GenAIAttributes.REQUEST_MODEL: model_name,
+                GenAIAttributes.OPERATION_NAME: "chat",
+            },
+        ) as llm_span:
+            # Optionally log prompt content
+            otel_config = get_config()
+            if otel_config is not None and otel_config.log_content:
+                # Get the last user message from history as prompt
+                prompt_text = self._extract_last_user_prompt()
+                if prompt_text:
+                    llm_span.set_attribute(GenAIAttributes.PROMPT, prompt_text)
+
+            result = await _kosong_step_with_retry()
+            llm_duration_ms = (time.perf_counter() - llm_start) * 1000
+
+            # Optionally log response content
+            if otel_config is not None and otel_config.log_content:
+                response_text = result.message.extract_text(" ")
+                if response_text:
+                    llm_span.set_attribute(GenAIAttributes.COMPLETION, response_text)
+
+            # Record token usage on span and metrics
+            if result.usage is not None:
+                llm_span.set_attribute(GenAIAttributes.USAGE_INPUT_TOKENS, result.usage.input)
+                llm_span.set_attribute(GenAIAttributes.USAGE_OUTPUT_TOKENS, result.usage.output)
+                llm_span.set_attribute(GenAIAttributes.USAGE_TOTAL_TOKENS, result.usage.total)
+
+                record_token_usage(
+                    model=model_name,
+                    input_tokens=result.usage.input,
+                    output_tokens=result.usage.output,
+                    duration_s=llm_duration_ms / 1000,
+                )
+
         logger.debug("Got step result: {result}", result=result)
         status_update = StatusUpdate(token_usage=result.usage, message_id=result.id)
         if result.usage is not None:
@@ -498,12 +615,44 @@ class KimiSoul:
                 raise LLMNotSet()
             return await self._compaction.compact(self._context.history, self._runtime.llm)
 
-        wire_send(CompactionBegin())
-        compacted_messages = await _compact_with_retry()
-        await self._context.clear()
-        await self._checkpoint()
-        await self._context.append_message(compacted_messages)
-        wire_send(CompactionEnd())
+        tokens_before = self._context.token_count
+        agent_name = self._agent.name
+        session_id = self._runtime.session.id
+
+        async with trace_span_async(
+            "kimi.compaction",
+            attributes={
+                CommonAttributes.AGENT_NAME: agent_name,
+                CommonAttributes.SESSION_ID: session_id,
+                CompactionAttributes.TOKENS_BEFORE: tokens_before,
+            },
+        ) as span:
+            wire_send(CompactionBegin())
+            compacted_messages = await _compact_with_retry()
+            await self._context.clear()
+            await self._checkpoint()
+            await self._context.append_message(compacted_messages)
+
+            tokens_after = self._context.token_count
+            span.set_attribute(CompactionAttributes.TOKENS_AFTER, tokens_after)
+            span.set_attribute(CompactionAttributes.TOKENS_SAVED, tokens_before - tokens_after)
+
+            # Record compaction metric
+            record_compaction(
+                agent_name=agent_name,
+                tokens_before=tokens_before,
+                tokens_after=tokens_after,
+                session_id=session_id,
+            )
+
+            wire_send(CompactionEnd())
+
+    def _extract_last_user_prompt(self) -> str:
+        """Extract the last user message from context history as prompt."""
+        for msg in reversed(self._context.history):
+            if msg.role == "user":
+                return msg.extract_text(" ")
+        return ""
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:

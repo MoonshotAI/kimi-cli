@@ -37,6 +37,14 @@ dependencies = [
     "keyring>=25.7.0",
 ]
 
+[project.optional-dependencies]
+observability = [
+    "opentelemetry-api>=1.28.0,<2.0",
+    "opentelemetry-sdk>=1.28.0,<2.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.28.0,<2.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.28.0,<2.0",
+]
+
 [dependency-groups]
 dev = [
     "pyinstaller==6.18.0",

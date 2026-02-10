@@ -1,10 +1,13 @@
 import asyncio
+import time
 from pathlib import Path
 from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
+from kimi_cli.observability import record_subagent_task, trace_span_async
+from kimi_cli.observability.attributes import CommonAttributes, SubagentAttributes
 from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
@@ -89,14 +92,39 @@ class Task(CallableTool2[Params]):
                 brief="Subagent not found",
             )
         agent = subagents[params.subagent_name]
-        try:
-            result = await self._run_subagent(agent, params.prompt)
-            return result
-        except Exception as e:
-            return ToolError(
-                message=f"Failed to run subagent: {e}",
-                brief="Failed to run subagent",
-            )
+
+        # Determine subagent type
+        is_fixed = params.subagent_name in self._labor_market.fixed_subagent_descs
+        subagent_type = "fixed" if is_fixed else "dynamic"
+
+        start_time = time.perf_counter()
+        async with trace_span_async(
+            "kimi.subagent.task",
+            attributes={
+                CommonAttributes.SESSION_ID: self._session.id,
+                SubagentAttributes.SUBAGENT_NAME: params.subagent_name,
+                SubagentAttributes.SUBAGENT_TYPE: subagent_type,
+            },
+        ) as span:
+            try:
+                result = await self._run_subagent(agent, params.prompt)
+                span.set_attribute("subagent.success", not isinstance(result, ToolError))
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                return ToolError(
+                    message=f"Failed to run subagent: {e}",
+                    brief="Failed to run subagent",
+                )
+            finally:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                record_subagent_task(
+                    agent_name=agent.name,
+                    subagent_name=params.subagent_name,
+                    subagent_type=subagent_type,  # type: ignore[arg-type]
+                    duration_ms=duration_ms,
+                    session_id=self._session.id,
+                )
 
     async def _run_subagent(self, agent: Agent, prompt: str) -> ToolReturnValue:
         """Run subagent with optional continuation for task summary."""
