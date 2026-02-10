@@ -14,6 +14,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
@@ -345,7 +346,7 @@ async def feedback(app: Shell, args: str):
         wire_bytes = await collect_phase2_wire_tail(soul)
         log_bytes = await collect_phase2_log_tail()
     except Exception:
-        pass
+        logger.debug("Failed to pre-collect phase2 data sizes")
 
     display_feedback_summary(
         phase1_data,

@@ -72,7 +72,7 @@ def _collect_system_info() -> SystemInfo:
         joined = ".".join(filter(None, raw_loc)) if raw_loc else ""
         loc = joined or None
     except Exception:
-        pass
+        logger.debug("Failed to detect locale")
 
     return SystemInfo(
         os_name=platform.system(),
@@ -113,7 +113,7 @@ def _collect_install_info() -> InstallInfo:
                 direct_url = dist.read_text("direct_url.json")
                 install_method = "editable" if direct_url and '"editable"' in direct_url else "pip"
     except Exception:
-        pass
+        logger.debug("Failed to detect install method")
 
     return InstallInfo(
         install_path=install_path,
@@ -168,7 +168,7 @@ def _collect_error_info() -> ErrorInfo:
         # Find ERROR lines
         for line in content.split("\n"):
             if "| ERROR" in line or "| CRITICAL" in line:
-                last_error = shorten(line.strip(), width=500)
+                last_error = redact_log_content(shorten(line.strip(), width=500))
 
         # Find tracebacks (simplified: look for "Traceback" blocks)
         tb_pattern = re.compile(
@@ -206,7 +206,9 @@ def _collect_chat_summary(soul: KimiSoul) -> ChatSummary:
             for part in msg.content:
                 if hasattr(part, "text"):
                     content_text += getattr(part, "text", "")
-        content_text = shorten(content_text, width=500, placeholder="...(truncated)")
+        content_text = redact_log_content(
+            shorten(content_text, width=500, placeholder="...(truncated)")
+        )
 
         # Extract tool call names
         tool_call_names: list[str] | None = None
@@ -258,7 +260,7 @@ async def _collect_git_info(work_dir: str) -> GitInfo:
         if proc.returncode == 0:
             info.branch = stdout.decode().strip()
     except Exception:
-        pass
+        logger.debug("Failed to get git branch")
 
     # Commit
     try:
@@ -275,7 +277,7 @@ async def _collect_git_info(work_dir: str) -> GitInfo:
         if proc.returncode == 0:
             info.commit = stdout.decode().strip()
     except Exception:
-        pass
+        logger.debug("Failed to get git commit")
 
     # Dirty
     try:
@@ -291,7 +293,7 @@ async def _collect_git_info(work_dir: str) -> GitInfo:
         await proc.communicate()
         info.dirty = proc.returncode != 0
     except Exception:
-        pass
+        logger.debug("Failed to check git dirty state")
 
     # Remote URL (redacted)
     try:
@@ -308,7 +310,7 @@ async def _collect_git_info(work_dir: str) -> GitInfo:
         if proc.returncode == 0:
             info.remote_url = redact_git_url(stdout.decode().strip())
     except Exception:
-        pass
+        logger.debug("Failed to get git remote url")
 
     return info
 
@@ -519,7 +521,7 @@ async def _collect_project_context(work_dir: str) -> ProjectContext:
             lines = stdout.decode().strip().split("\n")
             file_count = len(lines) if lines != [""] else 0
     except Exception:
-        pass
+        logger.debug("Failed to count git tracked files")
 
     return ProjectContext(
         project_markers=markers,
@@ -609,10 +611,27 @@ def _read_file_tail_bytes(path: Path, max_bytes: int) -> bytes:
 
 def _read_file_tail_lines(path: Path, max_lines: int) -> bytes:
     """Read last N lines of a text file (sync helper)."""
-    content = path.read_text(encoding="utf-8", errors="replace")
-    lines = content.strip().split("\n")
+    if max_lines <= 0:
+        return b""
+    file_size = path.stat().st_size
+    if file_size == 0:
+        return b""
+
+    chunk_size = 8192
+    buffer = b""
+    remaining = file_size
+
+    with open(path, "rb") as f:
+        while remaining > 0 and buffer.count(b"\n") <= max_lines:
+            read_size = min(chunk_size, remaining)
+            remaining -= read_size
+            f.seek(remaining)
+            chunk = f.read(read_size)
+            buffer = chunk + buffer
+
+    lines = buffer.splitlines()
     tail_lines = lines[-max_lines:]
-    return "\n".join(tail_lines).encode("utf-8")
+    return b"\n".join(tail_lines)
 
 
 async def collect_phase2_context(soul: KimiSoul) -> bytes:
