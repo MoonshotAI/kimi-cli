@@ -601,6 +601,10 @@ def kimi(
             _emit_fatal_error(f"{exc}\nSee logs: {log_path}")
         raise typer.Exit(code=1) from exc
     if switch_to_web:
+        from kimi_cli.utils.logging import restore_stderr
+
+        restore_stderr()
+
         from kimi_cli.web.app import run_web_server
 
         run_web_server(open_browser=True)

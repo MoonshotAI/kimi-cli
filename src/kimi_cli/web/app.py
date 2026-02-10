@@ -269,6 +269,10 @@ def find_available_port(host: str, start_port: int, max_attempts: int = MAX_PORT
     for offset in range(max_attempts):
         port = start_port + offset
         with socket.socket(family, socket.SOCK_STREAM) as s:
+            # Set SO_REUSEADDR to allow reusing ports in TIME_WAIT state.
+            # This matches uvicorn's behavior and prevents false positives
+            # when checking port availability after a recent shutdown.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((host, port))
                 return port
