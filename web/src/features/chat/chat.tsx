@@ -181,6 +181,23 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     [onApprovalResponse],
   );
 
+  // Wrapper for ApprovalDialog that routes through handleApprovalAction
+  // so pendingApprovalMap is properly managed (prevents duplicate requests)
+  const handleDialogApprovalResponse = useCallback(
+    async (requestId: string, decision: ApprovalResponseDecision) => {
+      for (const message of messages) {
+        if (
+          message.variant === "tool" &&
+          message.toolCall?.approval?.id === requestId
+        ) {
+          await handleApprovalAction(message.toolCall.approval, decision);
+          return;
+        }
+      }
+    },
+    [messages, handleApprovalAction],
+  );
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-[560px]">
       <div className="relative flex h-full flex-col">
@@ -216,7 +233,6 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
             onCreateSession={onCreateSession}
             isSearchOpen={isSearchOpen}
             onSearchOpenChange={setIsSearchOpen}
-            activityStatus={activityStatus}
             onForkSession={onForkSession}
           />
         </div>
@@ -224,13 +240,13 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
         {/* Approval Dialog - shows above input when approval is needed */}
         <ApprovalDialog
           messages={messages}
-          onApprovalResponse={onApprovalResponse}
+          onApprovalResponse={handleDialogApprovalResponse}
           pendingApprovalMap={pendingApprovalMap}
           canRespondToApproval={Boolean(onApprovalResponse)}
         />
 
         {currentSession && (
-          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 sm:pt-3">
+          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 ">
             <ChatPromptComposer
               status={status}
               onSubmit={onSubmit}
@@ -245,6 +261,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
               gitDiffStats={gitDiffStats}
               isGitDiffLoading={isGitDiffLoading}
               slashCommands={slashCommands}
+              activityStatus={activityStatus}
             />
           </div>
         )}

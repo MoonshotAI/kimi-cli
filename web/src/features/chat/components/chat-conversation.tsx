@@ -11,10 +11,6 @@ import {
 import type { Session } from "@/lib/api/models";
 import type { AssistantApprovalHandler } from "./assistant-message";
 import {
-  ActivityStatusIndicator,
-  type ActivityDetail,
-} from "./activity-status-indicator";
-import {
   ArrowDownIcon,
   Loader2Icon,
   PlusIcon,
@@ -41,7 +37,6 @@ type ChatConversationProps = {
   onCreateSession?: () => void;
   isSearchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
-  activityStatus?: ActivityDetail;
   onForkSession?: (turnIndex: number) => void;
 };
 
@@ -57,7 +52,6 @@ export function ChatConversation({
   onCreateSession,
   isSearchOpen,
   onSearchOpenChange,
-  activityStatus,
   onForkSession,
 }: ChatConversationProps) {
   const listRef = useRef<VirtualizedMessageListHandle>(null);
@@ -183,18 +177,6 @@ export function ChatConversation({
             onAtBottomChange={setIsAtBottom}
             onForkSession={onForkSession}
           />
-        </div>
-      )}
-
-      {/* Floating activity status indicator */}
-      {activityStatus && activityStatus.status !== "idle" && (
-        <div className="absolute bottom-[calc(1rem+var(--safe-bottom))] left-4">
-          <div className="rounded-full bg-background/80 backdrop-blur-sm border border-border px-3 py-1.5 shadow-sm">
-            <ActivityStatusIndicator
-              activity={activityStatus}
-              showDescription
-            />
-          </div>
         </div>
       )}
 

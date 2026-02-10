@@ -290,9 +290,9 @@ export function useSessionStream(
    */
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  const connectRef = useRef<() => void>(() => {});
-  const disconnectRef = useRef<() => void>(() => {});
-  const reconnectRef = useRef<() => void>(() => {});
+  const connectRef = useRef<() => void>(() => undefined);
+  const disconnectRef = useRef<() => void>(() => undefined);
+  const reconnectRef = useRef<() => void>(() => undefined);
   const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection

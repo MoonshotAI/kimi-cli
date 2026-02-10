@@ -14,6 +14,7 @@ import {
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import type { GitDiffStats, Session } from "@/lib/api/models";
+import type { ActivityDetail } from "./activity-status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MEDIA_CONFIG } from "@/config/media";
@@ -22,9 +23,14 @@ import { FileMentionMenu } from "../file-mention-menu";
 import { useFileMentions } from "../useFileMentions";
 import { SlashCommandMenu } from "../slash-command-menu";
 import { useSlashCommands, type SlashCommandDef } from "../useSlashCommands";
-import { GitDiffStatusBar } from "./git-diff-status-bar";
-import { Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { PromptToolbar } from "./prompt-toolbar";
+import { ArrowUpIcon, Loader2Icon, SquareIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { GlobalConfigControls } from "@/features/chat/global-config-controls";
 import {
   type ChangeEvent,
@@ -55,6 +61,7 @@ type ChatPromptComposerProps = {
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
   slashCommands?: SlashCommandDef[];
+  activityStatus?: ActivityDetail;
 };
 
 export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
@@ -71,6 +78,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   gitDiffStats,
   isGitDiffLoading,
   slashCommands = [],
+  activityStatus,
 }: ChatPromptComposerProps): ReactElement {
   const promptController = usePromptInputController();
   const attachmentContext = usePromptInputAttachments();
@@ -171,13 +179,12 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
 
   return (
     <div className="w-full">
-      <div className="w-full px-1 sm:px-2">
-        <GitDiffStatusBar
-          stats={gitDiffStats ?? null}
-          isLoading={isGitDiffLoading}
-          workDir={currentSession?.workDir}
-        />
-      </div>
+      <PromptToolbar
+        gitDiffStats={gitDiffStats}
+        isGitDiffLoading={isGitDiffLoading}
+        workDir={currentSession?.workDir}
+        activityStatus={activityStatus}
+      />
 
       <PromptInput
         accept="*"
@@ -231,10 +238,12 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                       ? isReplayingHistory
                         ? "Connecting..."
                         : "Starting environment..."
-                      : ""
+                      : isStreaming
+                        ? "Add a follow-up message..."
+                        : ""
                 }
                 aria-busy={isUploading}
-                disabled={!canSendMessage || isUploading || !currentSession}
+                disabled={!canSendMessage || isUploading || !currentSession || isAwaitingIdle}
                 onChange={handleTextareaChange}
                 onSelect={handleTextareaSelection}
                 onKeyUp={handleTextareaSelection}
@@ -275,20 +284,36 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
             <GlobalConfigControls />
           </PromptInputTools>
           {isStreaming ? (
-            <PromptInputButton
-              aria-label="Stop generation"
-              disabled={!onCancel}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onCancel?.();
-              }}
-              size="icon-sm"
-              variant="default"
-              className="shrink-0"
-            >
-              <SquareIcon className="size-4" />
-            </PromptInputButton>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <PromptInputButton
+                aria-label="Stop generation"
+                disabled={!onCancel}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onCancel?.();
+                }}
+                size="icon-sm"
+                variant="default"
+                className="shrink-0"
+              >
+                <SquareIcon className="size-4" />
+              </PromptInputButton>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PromptInputSubmit
+                    aria-label="Queue message"
+                    size="icon-sm"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={!(canSendMessage && currentSession)}
+                  >
+                    <ArrowUpIcon className="size-4" />
+                  </PromptInputSubmit>
+                </TooltipTrigger>
+                <TooltipContent>Queue message</TooltipContent>
+              </Tooltip>
+            </div>
           ) : (
             <PromptInputSubmit
               status={isUploading ? "submitted" : status}
