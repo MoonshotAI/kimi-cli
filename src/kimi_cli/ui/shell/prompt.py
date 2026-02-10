@@ -693,6 +693,44 @@ class CustomPromptSession:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
 
+                text = buff.text.strip()
+                if text.startswith("/") and not text.startswith("//"):
+                    buff.validate_and_handle()
+
+        @_kb.add("tab", filter=has_completions)
+        def _(event: KeyPressEvent) -> None:
+            """Accept completion and add a space."""
+            buff = event.current_buffer
+            if buff.complete_state and buff.complete_state.completions:
+                completion = buff.complete_state.current_completion
+                if not completion:
+                    completion = buff.complete_state.completions[0]
+                buff.apply_completion(completion)
+                buff.insert_text(" ")
+
+        @_kb.add("down", filter=has_completions)
+        def _(event: KeyPressEvent) -> None:
+            """Navigate completion menu down without updating the buffer."""
+            buff = event.current_buffer
+            if buff.complete_state:
+                state = buff.complete_state
+                if state.complete_index is None:
+                    state.complete_index = 0
+                else:
+                    state.complete_index = (state.complete_index + 1) % len(state.completions)
+
+        @_kb.add("up", filter=has_completions)
+        def _(event: KeyPressEvent) -> None:
+            """Navigate completion menu up without updating the buffer."""
+            buff = event.current_buffer
+            if buff.complete_state:
+                state = buff.complete_state
+                count = len(state.completions)
+                if state.complete_index is None:
+                    state.complete_index = count - 1
+                else:
+                    state.complete_index = (state.complete_index - 1) % count
+
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
             self._mode = self._mode.toggle()
