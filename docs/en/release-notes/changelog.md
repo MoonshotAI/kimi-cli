@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
+- Web: Add folder indicator with work directory path to the bottom of the file changes panel
+
 ## 1.10.0 (2026-02-09)
 
 - Web: Add copy and fork action buttons to assistant messages for quick content copying and session forking
