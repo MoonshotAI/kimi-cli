@@ -34,7 +34,7 @@ const ToolContext = createContext<ToolContextValue>({ isOpen: false });
 export const Tool = ({ className, defaultOpen, ...props }: ToolProps) => (
   <ToolContext.Provider value={{ isOpen: defaultOpen ?? false }}>
     <Collapsible
-      className={cn("not-prose mb-1 w-full text-sm", className)}
+      className={cn("not-prose mb-1 w-full px-3 text-sm", className)}
       defaultOpen={defaultOpen}
       {...props}
     />
@@ -107,7 +107,7 @@ export const ToolHeader = ({
 
   return (
     <CollapsibleTrigger
-      className={cn("flex items-center gap-1.5 text-sm group", className)}
+      className={cn("flex w-full items-center gap-1.5 text-sm group", className)}
       {...props}
     >
       <span className="size-2 rounded-full bg-muted-foreground/60 shrink-0" />

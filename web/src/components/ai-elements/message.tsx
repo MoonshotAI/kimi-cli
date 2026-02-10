@@ -57,7 +57,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
       "group flex w-full flex-col gap-1",
-      from === "user" ? "is-user" : "is-assistant",
+      from === "user" ? "is-user items-end" : "is-assistant",
       className,
     )}
     {...props}
@@ -93,7 +93,7 @@ export const UserMessageContent = ({
   return (
     <div
       className={cn(
-        "w-full rounded-2xl bg-secondary/50 px-4 py-3 text-sm",
+        "max-w-[calc(100%-68px)] rounded-2xl bg-secondary/50 px-4 py-3 text-sm sm:max-w-[calc(100%-88px)]",
         "dark:bg-secondary/30",
         className,
       )}
@@ -679,7 +679,7 @@ export function MessageAttachments({
   return (
     <div
       className={cn(
-        "ml-auto flex w-fit flex-wrap items-start gap-2",
+        "flex w-fit flex-wrap justify-end gap-2",
         className,
       )}
       {...props}
