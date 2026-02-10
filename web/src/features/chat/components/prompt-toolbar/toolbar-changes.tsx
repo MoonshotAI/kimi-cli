@@ -2,6 +2,7 @@ import { type ReactElement, memo, useCallback } from "react";
 import {
   ChevronDownIcon,
   FileIcon,
+  FolderOpenIcon,
   GitBranchIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,14 +48,21 @@ export const ToolbarChangesPanel = memo(function ToolbarChangesPanelComponent({
             {file.path}
           </span>
           {workDir && (
-            <div className="hidden lg:block">
-              <div className="opacity-0 group-hover/file:opacity-100 transition-opacity duration-150 flex-shrink-0">
-                <OpenInButton path={getFilePath(file.path)} />
-              </div>
+            <div className="flex-shrink-0 hidden lg:block opacity-0 group-hover/file:opacity-100 transition-opacity duration-150">
+              <OpenInButton path={getFilePath(file.path)} />
             </div>
           )}
         </div>
       ))}
+      {workDir && (
+        <div className="group/folder sticky bottom-0 flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-t bg-muted/40">
+          <FolderOpenIcon className="size-3 flex-shrink-0 text-muted-foreground/70" />
+          <span className="truncate text-muted-foreground/70">{workDir}</span>
+          <div className="flex-shrink-0 hidden lg:block opacity-0 group-hover/folder:opacity-100 transition-opacity duration-150">
+            <OpenInButton path={workDir} />
+          </div>
+        </div>
+      )}
     </>
   );
 });
@@ -79,7 +87,7 @@ export const ToolbarChangesTab = memo(function ToolbarChangesTabComponent({
       type="button"
       onClick={onToggle}
       className={cn(
-        "group/changes flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium transition-colors cursor-pointer border",
+        "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium transition-colors cursor-pointer border",
         isActive
           ? "bg-secondary text-foreground border-border shadow-sm"
           : "bg-transparent text-muted-foreground border-border/60 hover:text-foreground hover:border-border",
@@ -97,11 +105,6 @@ export const ToolbarChangesTab = memo(function ToolbarChangesTabComponent({
       <span>
         {fileCount} file{fileCount !== 1 ? "s" : ""}
       </span>
-      {workDir && (
-        <span className="hidden lg:inline-flex opacity-0 group-hover/changes:opacity-100 transition-opacity">
-          <OpenInButton path={workDir} />
-        </span>
-      )}
       <ChevronDownIcon
         className={cn(
           "size-3 transition-transform duration-200",

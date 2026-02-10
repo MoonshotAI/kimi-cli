@@ -1,11 +1,4 @@
 import { useState, useCallback } from "react";
-import {
-  Context,
-  ContextContent,
-  ContextContentBody,
-  ContextRawUsage,
-  ContextTrigger,
-} from "@ai-elements";
 import { Input } from "@/components/ui/input";
 import {
   Tooltip,
@@ -13,17 +6,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import type { TokenUsage } from "@/hooks/wireTypes";
 import type { Session } from "@/lib/api/models";
 import { shortenTitle } from "@/lib/utils";
 import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
-  InfoIcon,
   PanelLeftOpen,
   SearchIcon,
 } from "lucide-react";
-import { SessionInfoSection } from "./session-info-popover";
+import { SessionInfoPopover } from "./session-info-popover";
 import { OpenInMenu } from "./open-in-menu";
 import { isMacOS } from "@/hooks/utils";
 
@@ -35,10 +26,6 @@ type ChatWorkspaceHeaderProps = {
   blocksExpanded: boolean;
   onToggleBlocks: () => void;
   onOpenSearch: () => void;
-  usedTokens: number;
-  usagePercent: number;
-  maxTokens: number;
-  tokenUsage: TokenUsage | null;
   onOpenSidebar?: () => void;
   onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
 };
@@ -51,10 +38,6 @@ export function ChatWorkspaceHeader({
   blocksExpanded,
   onToggleBlocks,
   onOpenSearch,
-  usedTokens,
-  usagePercent,
-  maxTokens,
-  tokenUsage,
   onOpenSidebar,
   onRenameSession,
 }: ChatWorkspaceHeaderProps) {
@@ -157,28 +140,10 @@ export function ChatWorkspaceHeader({
               </div>
             ) : null}
 
-            <Context
-              maxTokens={maxTokens}
-              usedTokens={usedTokens}
-              tokenUsage={tokenUsage}
-            >
-              <ContextTrigger className="cursor-pointer">
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground select-none">
-                  {usagePercent}% context
-                  <InfoIcon className="size-3" />
-                </span>
-              </ContextTrigger>
-              <ContextContent align="end" sideOffset={16}>
-                <ContextContentBody className="space-y-4">
-                  <ContextRawUsage />
-                  {tokenUsage && <div className="border-t" />}
-                  <SessionInfoSection
-                    sessionId={selectedSessionId}
-                    session={currentSession}
-                  />
-                </ContextContentBody>
-              </ContextContent>
-            </Context>
+            <SessionInfoPopover
+              sessionId={selectedSessionId}
+              session={currentSession}
+            />
 
             <Tooltip>
               <TooltipTrigger asChild>

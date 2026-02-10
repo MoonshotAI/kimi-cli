@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
+- Web: Add folder indicator with work directory path to the bottom of the file changes panel
 - Web: Fix stderr not being restored when switching to web mode, which could suppress web server error output
 
 ## 1.10.0 (2026-02-09)

@@ -90,20 +90,29 @@ export const Context = ({
   );
 };
 
-const ContextIcon = () => {
-  const { usedTokens, maxTokens } = useContextValue();
+export const ContextProgressIcon = ({
+  usedPercent,
+  size = 20,
+}: {
+  usedPercent: number;
+  size?: number;
+}) => {
+  // Normalize to [0, 1] range and handle NaN/Infinity
+  const normalizedPercent = Number.isFinite(usedPercent)
+    ? Math.max(0, Math.min(1, usedPercent))
+    : 0;
+
   const circumference = 2 * Math.PI * ICON_RADIUS;
-  const usedPercent = usedTokens / maxTokens;
-  const dashOffset = circumference * (1 - usedPercent);
+  const dashOffset = circumference * (1 - normalizedPercent);
 
   return (
     <svg
       aria-label="Model context usage"
-      height="20"
+      height={size}
       role="img"
       style={{ color: "currentcolor" }}
       viewBox={`0 0 ${ICON_VIEWBOX} ${ICON_VIEWBOX}`}
-      width="20"
+      width={size}
     >
       <circle
         cx={ICON_CENTER}
@@ -129,6 +138,12 @@ const ContextIcon = () => {
       />
     </svg>
   );
+};
+
+const ContextIcon = () => {
+  const { usedTokens, maxTokens } = useContextValue();
+  const usedPercent = maxTokens > 0 ? usedTokens / maxTokens : 0;
+  return <ContextProgressIcon usedPercent={usedPercent} />;
 };
 
 export type ContextTriggerProps = {
