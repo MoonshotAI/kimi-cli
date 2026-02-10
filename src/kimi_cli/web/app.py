@@ -9,7 +9,7 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 import scalar_fastapi
 from fastapi import FastAPI
@@ -288,6 +288,7 @@ def run_web_server(
     port: int = DEFAULT_PORT,
     reload: bool = False,
     open_browser: bool = True,
+    initial_session_id: str | None = None,
     auth_token: str | None = None,
     allowed_origins: str | None = None,
     dangerously_omit_auth: bool = False,
@@ -427,7 +428,12 @@ def run_web_server(
     def make_url(host_addr: str) -> tuple[str, str]:
         """Returns (url, browser_url) tuple."""
         url = f"http://{host_addr}:{actual_port}"
-        browser_url = f"{url}/?token={quote(session_token)}" if session_token else url
+        query: dict[str, str] = {}
+        if session_token:
+            query["token"] = session_token
+        if initial_session_id:
+            query["session"] = initial_session_id
+        browser_url = f"{url}/?{urlencode(query)}" if query else url
         return url, browser_url
 
     # For browser opening, prefer localhost, then first network address
@@ -458,11 +464,8 @@ def run_web_server(
 
     # Add URLs for each host (nowrap to keep URLs on single line for easy copying)
     for label, host_addr in display_hosts:
-        url, url_with_token = make_url(host_addr)
-        if session_token:
-            banner_lines.append(f"<nowrap>  ➜  {label:8} {url_with_token}")
-        else:
-            banner_lines.append(f"<nowrap>  ➜  {label:8} {url}")
+        _, url_with_token = make_url(host_addr)
+        banner_lines.append(f"<nowrap>  ➜  {label:8} {url_with_token}")
 
     # Auth token or warnings
     if session_token:

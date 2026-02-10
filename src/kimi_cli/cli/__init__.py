@@ -525,7 +525,12 @@ def kimi(
 
         return session, succeeded
 
-    async def _post_run(last_session: Session, succeeded: bool) -> None:
+    async def _post_run(
+        last_session: Session,
+        succeeded: bool,
+        *,
+        preserve_empty_session: bool = False,
+    ) -> None:
         if not succeeded:
             return
 
@@ -541,7 +546,7 @@ def kimi(
             )
             work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
 
-        if last_session.is_empty():
+        if last_session.is_empty() and not preserve_empty_session:
             logger.info(
                 "Session {session_id} has empty context, removing it",
                 session_id=last_session.id,
@@ -554,10 +559,10 @@ def kimi(
 
         save_metadata(metadata)
 
-    async def _reload_loop(session_id: str | None) -> bool:
+    async def _reload_loop(session_id: str | None) -> tuple[bool, str | None]:
         """
         Returns:
-            True if should switch to web interface, False otherwise.
+            (switch_to_web, initial_session_id)
         """
         while True:
             try:
@@ -570,13 +575,13 @@ def kimi(
                 if e.session_id is not None:
                     session = await Session.find(work_dir, e.session_id)
                     if session is not None:
-                        await _post_run(session, True)
-                return True
+                        await _post_run(session, True, preserve_empty_session=True)
+                return True, e.session_id
         await _post_run(last_session, succeeded)
-        return False
+        return False, None
 
     try:
-        switch_to_web = asyncio.run(_reload_loop(session_id))
+        switch_to_web, web_session_id = asyncio.run(_reload_loop(session_id))
     except (typer.BadParameter, typer.Exit):
         # Let Typer/Click format these errors (rich panel + correct exit code).
         raise
@@ -601,9 +606,11 @@ def kimi(
             _emit_fatal_error(f"{exc}\nSee logs: {log_path}")
         raise typer.Exit(code=1) from exc
     if switch_to_web:
+        from kimi_cli.utils.logging import restore_stderr
         from kimi_cli.web.app import run_web_server
 
-        run_web_server(open_browser=True)
+        restore_stderr()
+        run_web_server(open_browser=True, initial_session_id=web_session_id)
 
 
 cli.add_typer(info_cli, name="info")
