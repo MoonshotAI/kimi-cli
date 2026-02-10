@@ -80,16 +80,6 @@ class WriteFile(CallableTool2[Params]):
                     brief="Parent directory not found",
                 )
 
-            # Validate mode parameter
-            if params.mode not in ["overwrite", "append"]:
-                return ToolError(
-                    message=(
-                        f"Invalid write mode: `{params.mode}`. "
-                        "Mode must be either `overwrite` or `append`."
-                    ),
-                    brief="Invalid write mode",
-                )
-
             file_existed = await p.exists()
             old_text = None
             if file_existed:
