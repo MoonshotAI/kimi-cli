@@ -93,7 +93,7 @@ export const ToolbarContextIndicator = memo(
                   value={tokenUsage.input_cache_creation}
                   description="Tokens written to cache"
                 />
-                <div className="flex items-center justify-between text-xs font-medium pt-0.5 border-t mt-1 pt-1">
+                <div className="flex items-center justify-between text-xs font-medium border-t mt-1 pt-1">
                   <span>Total Input</span>
                   <span>
                     {new Intl.NumberFormat("en-US", { notation: "compact" }).format(

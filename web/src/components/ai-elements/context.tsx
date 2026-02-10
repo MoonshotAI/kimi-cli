@@ -97,8 +97,13 @@ export const ContextProgressIcon = ({
   usedPercent: number;
   size?: number;
 }) => {
+  // Normalize to [0, 1] range and handle NaN/Infinity
+  const normalizedPercent = Number.isFinite(usedPercent)
+    ? Math.max(0, Math.min(1, usedPercent))
+    : 0;
+
   const circumference = 2 * Math.PI * ICON_RADIUS;
-  const dashOffset = circumference * (1 - usedPercent);
+  const dashOffset = circumference * (1 - normalizedPercent);
 
   return (
     <svg
@@ -137,7 +142,8 @@ export const ContextProgressIcon = ({
 
 const ContextIcon = () => {
   const { usedTokens, maxTokens } = useContextValue();
-  return <ContextProgressIcon usedPercent={usedTokens / maxTokens} />;
+  const usedPercent = maxTokens > 0 ? usedTokens / maxTokens : 0;
+  return <ContextProgressIcon usedPercent={usedPercent} />;
 };
 
 export type ContextTriggerProps = {
