@@ -11,6 +11,18 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages
+- Web: Add Think tool rendering as a lightweight reasoning-style block
+- Web: Replace emoji status indicators with Lucide icons for tool states and add category-specific icons for tool names
+- Web: Enhance Reasoning component with improved thinking labels and status icons
+- Web: Enhance Todo component with status icons and improved styling
+- Web: Implement WebSocket reconnection with automatic request resending and stale connection watchdog
+- Web: Enhance session creation dialog with command value handling
+- Web: Support tilde (`~`) expansion in session work directory paths
+- Web: Fix assistant message content overflow clipping
+- Wire: Fix deadlock when multiple subagents run concurrently by not blocking the UI loop on approval and tool-call requests
+- Wire: Clean up stale pending requests after agent turn ends
+
 ## 1.11.0 (2026-02-10)
 
 - Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
