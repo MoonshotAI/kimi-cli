@@ -296,7 +296,7 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
     """Create a new session."""
     # Use provided work_dir or default to user's home directory
     if request and request.work_dir:
-        work_dir_path = Path(request.work_dir)
+        work_dir_path = Path(request.work_dir).expanduser().resolve()
         # Validate the directory exists
         if not work_dir_path.exists():
             if request.create_dir:
@@ -1095,12 +1095,18 @@ async def session_stream(
     wire_file = session_dir / "wire.jsonl"
     has_history = await asyncio.to_thread(wire_file.exists)
 
-    session_process = None
+    session_process = await runner.get_or_create_session(session_id)
     attached = False
     try:
-        if has_history:
+        if session_process.is_alive and session_process.has_stdout_cache:
+            # Process is running and has cached stdout — use cache for replay
+            # as it's more up-to-date than wire.jsonl (includes events still
+            # held in the Wire's merge buffer that haven't been flushed to disk).
+            await session_process.add_websocket_and_begin_replay(websocket)
+            attached = True
+            await session_process.replay_from_stdout_cache(websocket)
+        elif has_history:
             # Attach WebSocket in replay mode before history replay
-            session_process = await runner.get_or_create_session(session_id)
             await session_process.add_websocket_and_begin_replay(websocket)
             attached = True
 
@@ -1123,12 +1129,9 @@ async def session_stream(
             await asyncio.to_thread(lambda: work_dir.mkdir(parents=True, exist_ok=True))
 
             if not attached:
-                # No history: attach and start worker
-                session_process = await runner.get_or_create_session(session_id)
+                # No history and no cache: attach now
                 await session_process.add_websocket_and_begin_replay(websocket)
                 attached = True
-
-            assert session_process is not None
             # End replay and start worker
             await session_process.end_replay(websocket)
             await session_process.start()

@@ -101,6 +101,13 @@ class SessionProcess:
         self._sent_files: set[str] = set()
         self._pending_out_requests: dict[str, str] = {}
         """Maps JSON-RPC message IDs to raw request messages for re-sending on reconnect."""
+        self._stdout_cache: list[str] = []
+        """Accumulated stdout lines for cache-based replay.
+
+        More up-to-date than wire.jsonl because it includes events still held
+        in the Wire's merge buffer that haven't been flushed to disk yet.
+        Persists across worker restarts so full history is available.
+        """
 
     @property
     def is_alive(self) -> bool:
@@ -331,6 +338,7 @@ class SessionProcess:
                         continue
 
                 raw_line = line.decode("utf-8").rstrip("\n")
+                self._stdout_cache.append(raw_line)
                 await self._broadcast(raw_line)
 
                 # Handle out message
@@ -631,6 +639,44 @@ class SessionProcess:
             except Exception as e:
                 logger.warning(f"Failed to re-send pending request {msg_id}: {e}")
                 break
+
+    @property
+    def has_stdout_cache(self) -> bool:
+        """Whether cached stdout lines are available for replay."""
+        return len(self._stdout_cache) > 0
+
+    async def replay_from_stdout_cache(self, ws: WebSocket) -> bool:
+        """Replay cached stdout lines to a WebSocket.
+
+        This is more up-to-date than wire.jsonl because it includes events
+        still held in the Wire's merge buffer.  Request messages have their
+        JSON-RPC ``id`` stripped so the client treats them as display-only
+        (not interactive).
+
+        Returns True if cache replay was performed successfully.
+        """
+        if not self._stdout_cache:
+            return False
+        snapshot = list(self._stdout_cache)
+        for raw_line in snapshot:
+            try:
+                msg = json.loads(raw_line)
+                method = msg.get("method")
+                if method not in ("event", "request"):
+                    continue
+                # Strip id from request messages for history replay so the
+                # client doesn't show them as pending approval.
+                if method == "request" and "id" in msg:
+                    replay_msg = {k: v for k, v in msg.items() if k != "id"}
+                    raw_line = json.dumps(replay_msg, ensure_ascii=False)
+                if ws.client_state != WebSocketState.CONNECTED:
+                    return False
+                await ws.send_text(raw_line)
+            except json.JSONDecodeError:
+                continue
+            except Exception:
+                return False
+        return True
 
     async def _close_all_websockets(self) -> None:
         """Close all connected WebSockets."""
