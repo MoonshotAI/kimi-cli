@@ -76,7 +76,6 @@ type ToolbarChangesTabProps = {
 
 export const ToolbarChangesTab = memo(function ToolbarChangesTabComponent({
   stats,
-  workDir,
   isActive,
   onToggle,
 }: ToolbarChangesTabProps): ReactElement {
