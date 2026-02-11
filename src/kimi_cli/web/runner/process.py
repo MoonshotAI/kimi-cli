@@ -668,6 +668,8 @@ class KimiCLIRunner:
             _, pending = await asyncio.wait(tasks, timeout=5.0)
             for t in pending:
                 t.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await t
 
     async def get_or_create_session(self, session_id: UUID) -> SessionProcess:
         """Get or create a session process."""
