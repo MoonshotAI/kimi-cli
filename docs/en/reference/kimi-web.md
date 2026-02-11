@@ -182,12 +182,13 @@ Session search feature added in version 1.5. Directory auto-creation prompt adde
 
 Web UI provides a unified prompt toolbar above the input box, displaying various information in collapsible tabs:
 
+- **Context usage**: Shows the current context usage percentage. Hover to view detailed token usage breakdown (including input/output tokens, cache read/write, etc.)
 - **Activity status**: Shows the current agent state (processing, waiting for approval, etc.)
 - **Message queue**: Queue follow-up messages while the AI is processing; queued messages are sent automatically when the current response completes
 - **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
 
 ::: info Changed
-Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Later versions unified it into the prompt toolbar, integrating activity status, message queue, and file changes.
+Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar.
 :::
 
 ### Open-in functionality

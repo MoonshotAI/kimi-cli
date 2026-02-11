@@ -14,6 +14,7 @@ from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
+from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
 from kimi_cli.config import LLMModel, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
@@ -29,6 +30,7 @@ class ACPServer:
         self.client_capabilities: acp.schema.ClientCapabilities | None = None
         self.conn: acp.Client | None = None
         self.sessions: dict[str, tuple[ACPSession, _ModelIDConv]] = {}
+        self.negotiated_version: ACPVersionSpec | None = None
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -41,10 +43,13 @@ class ACPServer:
         client_info: acp.schema.Implementation | None = None,
         **kwargs: Any,
     ) -> acp.InitializeResponse:
+        self.negotiated_version = negotiate_version(protocol_version)
         logger.info(
-            "ACP server initialized with protocol version: {version}, "
+            "ACP server initialized with client protocol version: {version}, "
+            "negotiated version: {negotiated}, "
             "client capabilities: {capabilities}, client info: {info}",
             version=protocol_version,
+            negotiated=self.negotiated_version,
             capabilities=client_capabilities,
             info=client_info,
         )
@@ -59,7 +64,7 @@ class ACPServer:
             args = sys.argv[1 : idx + 1]
 
         return acp.InitializeResponse(
-            protocol_version=protocol_version,
+            protocol_version=self.negotiated_version.protocol_version,
             agent_capabilities=acp.schema.AgentCapabilities(
                 load_session=True,
                 prompt_capabilities=acp.schema.PromptCapabilities(
@@ -68,6 +73,7 @@ class ACPServer:
                 mcp_capabilities=acp.schema.McpCapabilities(http=True, sse=False),
                 session_capabilities=acp.schema.SessionCapabilities(
                     list=acp.schema.SessionListCapabilities(),
+                    resume=acp.schema.SessionResumeCapabilities(),
                 ),
             ),
             auth_methods=[
@@ -106,7 +112,7 @@ class ACPServer:
         )
 
     async def new_session(
-        self, cwd: str, mcp_servers: list[MCPServer], **kwargs: Any
+        self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.NewSessionResponse:
         logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
         assert self.conn is not None, "ACP client not connected"
@@ -114,7 +120,7 @@ class ACPServer:
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
@@ -165,16 +171,15 @@ class ACPServer:
             ),
         )
 
-    async def load_session(
-        self, cwd: str, mcp_servers: list[MCPServer], session_id: str, **kwargs: Any
-    ) -> None:
-        logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+    async def _setup_session(
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[MCPServer] | None = None,
+    ) -> tuple[ACPSession, _ModelIDConv]:
+        """Load or resume a session. Shared by load_session and resume_session."""
         assert self.conn is not None, "ACP client not connected"
         assert self.client_capabilities is not None, "ACP connection not initialized"
-
-        if session_id in self.sessions:
-            logger.warning("Session already loaded: {id}", id=session_id)
-            return
 
         work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
         session = await Session.find(work_dir, session_id)
@@ -184,7 +189,7 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
@@ -204,7 +209,51 @@ class ACPServer:
                 cli_instance.soul.runtime,
             )
 
+        return acp_session, model_id_conv
+
+    async def load_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> None:
+        logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        if session_id in self.sessions:
+            logger.warning("Session already loaded: {id}", id=session_id)
+            return
+
+        await self._setup_session(cwd, session_id, mcp_servers)
         # TODO: replay session history?
+
+    async def resume_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.schema.ResumeSessionResponse:
+        logger.info("Resuming session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        if session_id not in self.sessions:
+            await self._setup_session(cwd, session_id, mcp_servers)
+
+        acp_session, model_id_conv = self.sessions[session_id]
+        config = acp_session.cli.soul.runtime.config
+        return acp.schema.ResumeSessionResponse(
+            modes=acp.schema.SessionModeState(
+                available_modes=[
+                    acp.schema.SessionMode(
+                        id="default",
+                        name="Default",
+                        description="The default mode.",
+                    ),
+                ],
+                current_mode_id="default",
+            ),
+            models=acp.schema.SessionModelState(
+                available_models=_expand_llm_models(config.models),
+                current_model_id=model_id_conv.to_acp_model_id(),
+            ),
+        )
+
+    async def fork_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.schema.ForkSessionResponse:
+        raise NotImplementedError
 
     async def list_sessions(
         self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
