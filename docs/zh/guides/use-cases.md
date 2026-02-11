@@ -110,4 +110,3 @@ Kimi Code CLI 可以执行各种重复性的小任务：
 ```
 把 images 目录下的所有 PNG 图片转换为 JPEG 格式，保存到 output 目录
 ```
-
