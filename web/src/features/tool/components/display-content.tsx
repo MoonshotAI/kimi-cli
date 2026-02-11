@@ -4,6 +4,7 @@ import { CodeBlock } from "@/components/ai-elements/code-block";
 import { LazyDiff as Diff, LazyHunk as Hunk } from "@/components/ui/diff/lazy";
 import type { File, Hunk as HunkType, Line } from "@/components/ui/diff/utils";
 import { cn } from "@/lib/utils";
+import { ChevronDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
@@ -611,9 +612,12 @@ const DiffContent = ({ data }: { data: DiffDisplayData }) => {
             {removedLines > 0 && (
               <span className="text-xs text-orange-600 dark:text-orange-400">-{removedLines}</span>
             )}
-            <span className="text-xs text-muted-foreground">
-              {isExpanded ? "▲" : "▼"}
-            </span>
+            <ChevronDownIcon
+              className={cn(
+                "size-3 text-muted-foreground transition-transform duration-200",
+                isExpanded && "rotate-180",
+              )}
+            />
           </div>
         </button>
       ) : (

@@ -16,6 +16,7 @@ import type { ToolUIPart } from "ai";
 import {
   BotIcon,
   BrainIcon,
+  CheckIcon,
   ChevronRightIcon,
   FileIcon,
   FilePenIcon,
@@ -24,11 +25,14 @@ import {
   ImageOffIcon,
   LinkIcon,
   ListChecksIcon,
+  Loader2Icon,
   MailIcon,
+  MinusIcon,
   SearchIcon,
   TerminalIcon,
   ImageIcon,
   WorkflowIcon,
+  XIcon,
 } from "lucide-react";
 import type { ComponentProps, JSX, ReactNode } from "react";
 import { createContext, isValidElement, useCallback, useMemo, useState } from "react";
@@ -65,16 +69,22 @@ export type ToolState =
   | "output-denied";
 
 const getStatusIcon = (status: ToolState): ReactNode => {
-  const icons: Record<ToolState, ReactNode> = {
-    "input-streaming": <span className="text-muted-foreground">⏳</span>,
-    "input-available": <span className="text-muted-foreground">⏳</span>,
-    "approval-requested": <span className="text-warning">⏳</span>,
-    "approval-responded": <span className="text-success">✓</span>,
-    "output-available": <span className="text-success">✓</span>,
-    "output-error": <span className="text-destructive">✗</span>,
-    "output-denied": <span className="text-warning">−</span>,
-  };
-  return icons[status];
+  switch (status) {
+    case "input-streaming":
+    case "input-available":
+      return <Loader2Icon className="size-3 text-muted-foreground animate-spin" />;
+    case "approval-requested":
+      return <Loader2Icon className="size-3 text-warning animate-spin" />;
+    case "approval-responded":
+    case "output-available":
+      return <CheckIcon className="size-3 text-success" />;
+    case "output-error":
+      return <XIcon className="size-3 text-destructive" />;
+    case "output-denied":
+      return <MinusIcon className="size-3 text-warning" />;
+    default:
+      return null;
+  }
 };
 
 /** Get primary parameter value for inline display */

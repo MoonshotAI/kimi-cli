@@ -10,7 +10,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Shimmer } from "./shimmer";
-import { ChevronRightIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  Loader2Icon,
+  XIcon,
+} from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // SubagentActivity — top-level wrapper rendered inside Tool's ToolContent area
@@ -106,17 +111,15 @@ const SubagentStepItem = ({ step }: { step: SubagentStep }) => {
   switch (step.kind) {
     case "thinking":
       return (
-        <div className="text-muted-foreground/60 italic text-xs truncate">
-          {step.text.slice(0, 120)}
-          {step.text.length > 120 ? "…" : ""}
+        <div className="text-muted-foreground/60 italic text-xs line-clamp-2">
+          {step.text}
         </div>
       );
 
     case "text":
       return (
-        <div className="text-foreground/70 text-xs truncate">
-          {step.text.slice(0, 150)}
-          {step.text.length > 150 ? "…" : ""}
+        <div className="text-foreground/70 text-xs line-clamp-2">
+          {step.text}
         </div>
       );
 
@@ -145,10 +148,15 @@ const getPrimaryParam = (input: unknown): string | null => {
   return null;
 };
 
-const STATUS_ICON: Record<string, { icon: string; className: string }> = {
-  running: { icon: "⏳", className: "text-muted-foreground" },
-  success: { icon: "✓", className: "text-success" },
-  error: { icon: "✗", className: "text-destructive" },
+const getSubToolStatusIcon = (status: string) => {
+  switch (status) {
+    case "success":
+      return <CheckIcon className="size-2.5 text-success shrink-0" />;
+    case "error":
+      return <XIcon className="size-2.5 text-destructive shrink-0" />;
+    default:
+      return <Loader2Icon className="size-2.5 text-muted-foreground animate-spin shrink-0" />;
+  }
 };
 
 const SubToolCallItem = ({
@@ -157,7 +165,6 @@ const SubToolCallItem = ({
   step: Extract<SubagentStep, { kind: "tool-call" }>;
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const { icon, className: statusColor } = STATUS_ICON[step.status] ?? STATUS_ICON.running;
   const primaryParam = getPrimaryParam(step.input);
   const hasExpandableContent = Boolean(step.output || step.errorText);
 
@@ -178,7 +185,7 @@ const SubToolCallItem = ({
         role={hasExpandableContent ? "button" : undefined}
         tabIndex={hasExpandableContent ? 0 : undefined}
       >
-        <span className={statusColor}>{icon}</span>
+        {getSubToolStatusIcon(step.status)}
         <span className="text-primary/80 font-medium">{step.toolName}</span>
         {primaryParam && !expanded && (
           <span className="text-muted-foreground truncate">

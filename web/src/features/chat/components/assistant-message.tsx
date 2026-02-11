@@ -93,13 +93,13 @@ const renderAssistantText = (message: LiveMessage) => {
   return (
     <MessageContent className={assistantContentClass}>
       <div className="flex items-start gap-2">
-        <div className="relative mt-2 shrink-0 size-2">
-          {/* Gray/green dot indicator */}
+        <div className="relative mt-1.5 shrink-0 size-2">
           <span
             className={cn(
-              "absolute inset-0 rounded-full bg-muted-foreground/60 transition-opacity",
-              message.isStreaming &&
-                "bg-green-500 animate-[glow-pulse_1.5s_ease-in-out_infinite]",
+              "absolute inset-0 rounded-full transition-all",
+              message.isStreaming
+                ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)] animate-[glow-pulse_1.5s_ease-in-out_infinite]"
+                : "bg-muted-foreground/40",
             )}
           />
         </div>
@@ -111,11 +111,6 @@ const renderAssistantText = (message: LiveMessage) => {
           >
             {message.content || "Thinking through the response..."}
           </MessageResponse>
-          {message.isStreaming ? (
-            <div className={`mt-2 ${assistantMetaTextClass}`}>
-              Streaming response…
-            </div>
-          ) : null}
         </div>
       </div>
     </MessageContent>
