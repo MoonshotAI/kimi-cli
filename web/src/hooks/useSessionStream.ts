@@ -1677,12 +1677,8 @@ export function useSessionStream(
           setStatus("error");
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
-          // Mark all streaming messages as complete
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-            ),
-          );
+          // Mark all streaming/subagent messages as complete
+          completeStreamingMessages();
           return;
         }
 
@@ -1703,11 +1699,7 @@ export function useSessionStream(
           awaitingIdleRef.current = false;
           isReplayingRef.current = false;
           setIsReplayingHistory(false);
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-            ),
-          );
+          completeStreamingMessages();
           return;
         }
 
@@ -1800,10 +1792,10 @@ export function useSessionStream(
     },
     [
       processEvent,
-      setMessages,
       onError,
       setAwaitingFirstResponse,
       applySessionStatus,
+      completeStreamingMessages,
     ],
   );
 
@@ -1978,6 +1970,10 @@ export function useSessionStream(
       wsRef.current.close();
       wsRef.current = null;
     }
+    if (watchdogIntervalRef.current !== null) {
+      window.clearInterval(watchdogIntervalRef.current);
+      watchdogIntervalRef.current = null;
+    }
 
     awaitingIdleRef.current = false;
     resetState();
@@ -2010,10 +2006,15 @@ export function useSessionStream(
         // Start stale-connection watchdog
         if (watchdogIntervalRef.current !== null) {
           window.clearInterval(watchdogIntervalRef.current);
+          watchdogIntervalRef.current = null;
         }
-        watchdogIntervalRef.current = window.setInterval(() => {
+        const watchdogIntervalId = window.setInterval(() => {
           if (!wsRef.current || wsRef.current !== ws) {
-            // This ws is no longer current — stop checking
+            // This ws is no longer current — stop checking this watchdog.
+            window.clearInterval(watchdogIntervalId);
+            if (watchdogIntervalRef.current === watchdogIntervalId) {
+              watchdogIntervalRef.current = null;
+            }
             return;
           }
           if (wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -2025,6 +2026,7 @@ export function useSessionStream(
             reconnectRef.current();
           }
         }, 10_000);
+        watchdogIntervalRef.current = watchdogIntervalId;
 
         // Send initialize message to get slash commands
         sendInitialize(ws);
@@ -2070,6 +2072,10 @@ export function useSessionStream(
         setAwaitingFirstResponse(false);
         setSessionStatus(null);
         lastStatusSeqRef.current = null;
+        if (watchdogIntervalRef.current !== null) {
+          window.clearInterval(watchdogIntervalRef.current);
+          watchdogIntervalRef.current = null;
+        }
 
         // Handle specific close codes
         if (event.code === 4004) {
@@ -2082,12 +2088,8 @@ export function useSessionStream(
           onError?.(err);
         }
 
-        // Mark all streaming messages as complete
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-          ),
-        );
+        // Mark all streaming/subagent messages as complete
+        completeStreamingMessages();
         setStatus("ready");
       };
     } catch (err) {
@@ -2111,6 +2113,7 @@ export function useSessionStream(
     sendInitialize,
     sendPendingMessage,
     setAwaitingFirstResponse,
+    completeStreamingMessages,
   ]);
 
   // Send cancel message to server
@@ -2140,13 +2143,9 @@ export function useSessionStream(
     lastStatusSeqRef.current = null;
     pendingApprovalRequestsRef.current.clear();
 
-    // Mark all streaming messages as complete
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-      ),
-    );
-  }, [setMessages, setAwaitingFirstResponse]);
+    // Mark all streaming/subagent messages as complete
+    completeStreamingMessages();
+  }, [completeStreamingMessages, setAwaitingFirstResponse]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {
