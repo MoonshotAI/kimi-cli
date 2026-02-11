@@ -14,6 +14,7 @@ from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
+from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
 from kimi_cli.config import LLMModel, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
@@ -29,6 +30,7 @@ class ACPServer:
         self.client_capabilities: acp.schema.ClientCapabilities | None = None
         self.conn: acp.Client | None = None
         self.sessions: dict[str, tuple[ACPSession, _ModelIDConv]] = {}
+        self.negotiated_version: ACPVersionSpec | None = None
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -41,10 +43,13 @@ class ACPServer:
         client_info: acp.schema.Implementation | None = None,
         **kwargs: Any,
     ) -> acp.InitializeResponse:
+        self.negotiated_version = negotiate_version(protocol_version)
         logger.info(
-            "ACP server initialized with protocol version: {version}, "
+            "ACP server initialized with client protocol version: {version}, "
+            "negotiated version: {negotiated}, "
             "client capabilities: {capabilities}, client info: {info}",
             version=protocol_version,
+            negotiated=self.negotiated_version,
             capabilities=client_capabilities,
             info=client_info,
         )
@@ -59,7 +64,7 @@ class ACPServer:
             args = sys.argv[1 : idx + 1]
 
         return acp.InitializeResponse(
-            protocol_version=protocol_version,
+            protocol_version=self.negotiated_version.protocol_version,
             agent_capabilities=acp.schema.AgentCapabilities(
                 load_session=True,
                 prompt_capabilities=acp.schema.PromptCapabilities(
