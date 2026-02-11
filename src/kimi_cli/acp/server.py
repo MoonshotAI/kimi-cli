@@ -112,7 +112,7 @@ class ACPServer:
         )
 
     async def new_session(
-        self, cwd: str, mcp_servers: list[MCPServer], **kwargs: Any
+        self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.NewSessionResponse:
         logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
         assert self.conn is not None, "ACP client not connected"
@@ -120,7 +120,7 @@ class ACPServer:
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
@@ -172,7 +172,10 @@ class ACPServer:
         )
 
     async def _setup_session(
-        self, cwd: str, session_id: str, mcp_servers: list[MCPServer]
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[MCPServer] | None = None,
     ) -> tuple[ACPSession, _ModelIDConv]:
         """Load or resume a session. Shared by load_session and resume_session."""
         assert self.conn is not None, "ACP client not connected"
@@ -186,7 +189,7 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
@@ -209,7 +212,7 @@ class ACPServer:
         return acp_session, model_id_conv
 
     async def load_session(
-        self, cwd: str, mcp_servers: list[MCPServer], session_id: str, **kwargs: Any
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> None:
         logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
 
@@ -226,7 +229,7 @@ class ACPServer:
         logger.info("Resuming session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
 
         if session_id not in self.sessions:
-            await self._setup_session(cwd, session_id, mcp_servers or [])
+            await self._setup_session(cwd, session_id, mcp_servers)
 
         acp_session, model_id_conv = self.sessions[session_id]
         config = acp_session.cli.soul.runtime.config
@@ -246,6 +249,11 @@ class ACPServer:
                 current_model_id=model_id_conv.to_acp_model_id(),
             ),
         )
+
+    async def fork_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.schema.ForkSessionResponse:
+        raise NotImplementedError
 
     async def list_sessions(
         self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any

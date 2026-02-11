@@ -35,33 +35,55 @@ class ACPTestClient:
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.updates.append(update)
 
-    async def request_permission(self, **kwargs: Any) -> Any:
+    async def request_permission(
+        self,
+        options: list[acp.schema.PermissionOption],
+        session_id: str,
+        tool_call: acp.schema.ToolCallUpdate,
+        **kwargs: Any,
+    ) -> acp.schema.RequestPermissionResponse:
         return acp.schema.RequestPermissionResponse(
-            result=acp.schema.PermissionDecision(
-                decision="allow",
-                options=[],
+            outcome=acp.schema.AllowedOutcome(
+                outcome="selected",
+                option_id="allow",
             )
         )
 
-    async def read_text_file(self, **kwargs: Any) -> Any:
+    async def read_text_file(
+        self,
+        path: str,
+        session_id: str,
+        limit: int | None = None,
+        line: int | None = None,
+        **kwargs: Any,
+    ) -> Any:
         raise NotImplementedError
 
-    async def write_text_file(self, **kwargs: Any) -> Any:
+    async def write_text_file(self, content: str, path: str, session_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def create_terminal(self, **kwargs: Any) -> Any:
+    async def create_terminal(
+        self,
+        command: str,
+        session_id: str,
+        args: list[str] | None = None,
+        cwd: str | None = None,
+        env: list[acp.schema.EnvVariable] | None = None,
+        output_byte_limit: int | None = None,
+        **kwargs: Any,
+    ) -> Any:
         raise NotImplementedError
 
-    async def terminal_output(self, **kwargs: Any) -> Any:
+    async def terminal_output(self, session_id: str, terminal_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def wait_for_terminal_exit(self, **kwargs: Any) -> Any:
+    async def wait_for_terminal_exit(self, session_id: str, terminal_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def kill_terminal(self, **kwargs: Any) -> Any:
+    async def kill_terminal(self, session_id: str, terminal_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    async def release_terminal(self, **kwargs: Any) -> Any:
+    async def release_terminal(self, session_id: str, terminal_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
