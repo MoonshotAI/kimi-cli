@@ -140,4 +140,3 @@ export KIMI_CLI_NO_AUTO_UPDATE="1"
 ::: tip 提示
 如果你通过 Nix 或其他包管理器安装 Kimi Code CLI，通常会自动设置此环境变量，因为更新由包管理器处理。
 :::
-

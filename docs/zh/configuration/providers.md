@@ -149,4 +149,3 @@ capabilities = ["thinking", "image_in"]
 | `moonshot_fetch` | `FetchURL` | 回退到本地抓取 |
 
 使用其他平台时，`FetchURL` 工具仍可使用，但会回退到本地抓取。
-

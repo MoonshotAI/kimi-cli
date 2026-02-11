@@ -101,7 +101,6 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
         {hasChanges && stats?.files && (
           <ToolbarChangesTab
             stats={stats}
-            workDir={workDir}
             isActive={activeTab === "changes"}
             onToggle={() => toggleTab("changes")}
           />

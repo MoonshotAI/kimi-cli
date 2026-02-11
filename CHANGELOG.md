@@ -11,10 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Show placeholder text in prompt input with hints for slash commands and file mentions
 - Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
 - Web: Improve session stop handling with proper async cleanup and timeout
 - ACP: Add protocol version negotiation framework for client-server compatibility
 - ACP: Add session resume method to restore session state (experimental)
+- ACP: Add session fork method to clone session state (experimental)
 
 ## 1.11.0 (2026-02-10)
 

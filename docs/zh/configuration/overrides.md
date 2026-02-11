@@ -87,4 +87,3 @@ max_context_size = 262144
 | `KIMI_API_KEY=sk-env kimi` | 配置文件 | 环境变量 | 配置文件 |
 | `kimi --model other` | 配置文件 | 配置文件 | CLI 参数 |
 | `KIMI_MODEL_NAME=k2 kimi` | 配置文件 | 配置文件 | 环境变量 |
-
