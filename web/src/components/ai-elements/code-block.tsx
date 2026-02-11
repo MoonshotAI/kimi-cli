@@ -4,10 +4,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   CheckIcon,
+  ChevronDownIcon,
   CopyIcon,
   DownloadIcon,
   ExternalLinkIcon,
+  Maximize2Icon,
+  Minimize2Icon,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   type ComponentProps,
   createContext,
@@ -15,6 +23,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -251,6 +260,8 @@ export async function highlightCode(
   return { light, dark };
 }
 
+const COLLAPSE_THRESHOLD = 300;
+
 export const CodeBlock = ({
   code,
   language,
@@ -262,25 +273,34 @@ export const CodeBlock = ({
   const [html, setHtml] = useState<string>("");
   const [darkHtml, setDarkHtml] = useState<string>("");
   const [isOverflowing, setIsOverflowing] = useState(false);
+  const [isTall, setIsTall] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const checkOverflow = useCallback(() => {
     const el = scrollContainerRef.current;
     if (el) {
+      setIsTall(el.scrollHeight > COLLAPSE_THRESHOLD);
       setIsOverflowing(el.scrollHeight > el.clientHeight);
     }
   }, []);
+
+  // Use useLayoutEffect for the initial measurement to prevent flash
+  // (measure before paint so tall blocks start collapsed).
+  // ResizeObserver handles subsequent size changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: html/darkHtml are intentional triggers to re-measure when highlighted content loads
+  useLayoutEffect(() => {
+    checkOverflow();
+  }, [checkOverflow, html, darkHtml]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
-    checkOverflow();
-
     const observer = new ResizeObserver(checkOverflow);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [checkOverflow, html, darkHtml]);
+  }, [checkOverflow]);
   const {
     code: sanitizedCode,
     hadLineNumbers,
@@ -356,49 +376,114 @@ export const CodeBlock = ({
       >
         {/* Icons fixed at the top right, do not scroll with content */}
         <div className="hover-reveal absolute top-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {language === "html" && <CodeBlockPreviewButton />}
-          <CodeBlockDownloadButton language={language} />
-          <CodeBlockCopyButton />
+          {isTall && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  className="shrink-0"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  {isExpanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="px-1.5 py-0.5">
+                <p className="text-[12px]">{isExpanded ? "Collapse" : "Expand"}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {language === "html" && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <CodeBlockPreviewButton />
+              </TooltipTrigger>
+              <TooltipContent className="px-1.5 py-0.5">
+                <p className="text-[12px]">Preview</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <CodeBlockDownloadButton language={language} />
+            </TooltipTrigger>
+            <TooltipContent className="px-1.5 py-0.5">
+              <p className="text-[12px]">Download</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <CodeBlockCopyButton />
+            </TooltipTrigger>
+            <TooltipContent className="px-1.5 py-0.5">
+              <p className="text-[12px]">Copy</p>
+            </TooltipContent>
+          </Tooltip>
           {children}
         </div>
 
         {/* Scrolling container: only contain overscroll when content overflows */}
-        <div
-          ref={scrollContainerRef}
-          className={cn(
-            "max-h-[60vh] overflow-auto",
-            isOverflowing && "overscroll-contain",
-          )}
-        >
-          <div className="relative">
-            {html ? (
-              <div
-                className={cn("dark:hidden", contentClassName)}
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
-            ) : (
-              <div className={cn("dark:hidden", contentClassName)}>
-                <pre>
-                  <code>{copyText}</code>
-                </pre>
-              </div>
+        <div className="relative">
+          <div
+            ref={scrollContainerRef}
+            className={cn(
+              "overflow-auto",
+              isTall && !isExpanded
+                ? "max-h-[200px] overflow-hidden"
+                : "max-h-[60vh]",
+              isOverflowing && isExpanded && "overscroll-contain",
             )}
-            {darkHtml ? (
-              <div
-                className={cn("hidden dark:block", contentClassName)}
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-                dangerouslySetInnerHTML={{ __html: darkHtml }}
-              />
-            ) : (
-              <div className={cn("hidden dark:block", contentClassName)}>
-                <pre>
-                  <code>{copyText}</code>
-                </pre>
-              </div>
-            )}
+          >
+            <div className="relative">
+              {html ? (
+                <div
+                  className={cn("dark:hidden", contentClassName)}
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+              ) : (
+                <div className={cn("dark:hidden", contentClassName)}>
+                  <pre>
+                    <code>{copyText}</code>
+                  </pre>
+                </div>
+              )}
+              {darkHtml ? (
+                <div
+                  className={cn("hidden dark:block", contentClassName)}
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
+                  dangerouslySetInnerHTML={{ __html: darkHtml }}
+                />
+              ) : (
+                <div className={cn("hidden dark:block", contentClassName)}>
+                  <pre>
+                    <code>{copyText}</code>
+                  </pre>
+                </div>
+              )}
+            </div>
           </div>
+          {/* Gradient fade when collapsed */}
+          {isTall && !isExpanded && (
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+          )}
         </div>
+        {/* Expand/collapse toggle */}
+        {isTall && (
+          <button
+            type="button"
+            className="flex w-full items-center justify-center gap-1 border-t border-term-border py-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground hover:bg-muted/30 transition-colors"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            <ChevronDownIcon
+              className={cn(
+                "size-3 transition-transform duration-200",
+                isExpanded && "rotate-180",
+              )}
+            />
+            {isExpanded ? "Show less" : "Show more"}
+          </button>
+        )}
       </div>
     </CodeBlockContext.Provider>
   );
@@ -411,6 +496,7 @@ export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
 };
 
 export const CodeBlockCopyButton = ({
+  ref,
   onCopy,
   onError,
   timeout = 2000,
@@ -441,13 +527,14 @@ export const CodeBlockCopyButton = ({
 
   return (
     <Button
+      ref={ref}
       className={cn("shrink-0", className)}
       onClick={copyToClipboard}
-      size="icon"
+      size="icon-xs"
       variant="ghost"
       {...props}
     >
-      {children ?? <Icon size={14} />}
+      {children ?? <Icon className="size-3.5" />}
     </Button>
   );
 };
@@ -461,6 +548,7 @@ export type CodeBlockDownloadButtonProps = ComponentProps<typeof Button> & {
 };
 
 export const CodeBlockDownloadButton = ({
+  ref,
   language,
   filename,
   mimeType = "text/plain",
@@ -499,13 +587,14 @@ export const CodeBlockDownloadButton = ({
 
   return (
     <Button
+      ref={ref}
       className={cn("shrink-0", className)}
       onClick={handleDownload}
-      size="icon"
+      size="icon-xs"
       variant="ghost"
       {...props}
     >
-      {children ?? <DownloadIcon size={14} />}
+      {children ?? <DownloadIcon className="size-3.5" />}
     </Button>
   );
 };
@@ -516,6 +605,7 @@ export type CodeBlockPreviewButtonProps = ComponentProps<typeof Button> & {
 };
 
 export const CodeBlockPreviewButton = ({
+  ref,
   onPreview,
   onError,
   children,
@@ -545,14 +635,14 @@ export const CodeBlockPreviewButton = ({
 
   return (
     <Button
+      ref={ref}
       className={cn("shrink-0", className)}
       onClick={handlePreview}
-      size="icon"
+      size="icon-xs"
       variant="ghost"
-      title="Open in new tab"
       {...props}
     >
-      {children ?? <ExternalLinkIcon size={14} />}
+      {children ?? <ExternalLinkIcon className="size-3.5" />}
     </Button>
   );
 };

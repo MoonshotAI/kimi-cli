@@ -75,6 +75,8 @@ type ChatWorkspaceProps = {
   onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
   /** Available slash commands */
   slashCommands?: SlashCommandDef[];
+  /** Maximum context size for the current model (tokens) */
+  maxContextSize?: number;
   /** Fork session at a specific turn */
   onForkSession?: (turnIndex: number) => void;
 };
@@ -102,6 +104,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   onCreateSession,
   onOpenSidebar,
   onRenameSession,
+  maxContextSize,
   slashCommands = [],
   onForkSession,
 }: ChatWorkspaceProps): ReactElement {
@@ -143,7 +146,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     return newStatus;
   }, [status, isAwaitingFirstResponse, isReplayingHistory, isUploadingFiles, messages]);
 
-  const maxTokens = 64000;
+  const maxTokens = maxContextSize ?? 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
   const usagePercent = Math.round(contextUsage * 100);
 

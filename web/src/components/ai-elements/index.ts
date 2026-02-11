@@ -9,4 +9,5 @@ export * from "./model-selector";
 export * from "./prompt-input";
 export * from "./reasoning";
 export * from "./shimmer";
+export * from "./subagent-steps";
 export * from "./tool";

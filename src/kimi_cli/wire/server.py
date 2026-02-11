@@ -443,6 +443,22 @@ class WireServer:
                 result={"status": Statuses.CANCELLED},
             )
         finally:
+            # Clean up any remaining pending requests from this turn.
+            # After run_soul() returns, the soul and all subagents are done,
+            # so any unresolved requests are stale.
+            stale_ids = [k for k, v in self._pending_requests.items() if not v.resolved]
+            for msg_id in stale_ids:
+                request = self._pending_requests.pop(msg_id)
+                match request:
+                    case ApprovalRequest():
+                        request.resolve("reject")
+                    case ToolCallRequest():
+                        request.resolve(
+                            ToolError(
+                                message="Agent turn ended before tool result was received.",
+                                brief="Turn ended",
+                            )
+                        )
             self._cancel_event = None
 
     async def _handle_replay(
@@ -628,10 +644,14 @@ class WireServer:
         msg_id = request.id  # just use the approval request id as message id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
-        await request.wait()
+        # Do NOT await request.wait() here.  The approval future is awaited by
+        # the tool that created the request (inside the soul task).  Blocking the
+        # UI loop would prevent ALL subsequent Wire messages — from every
+        # concurrent subagent — from reaching stdout, causing a cascade deadlock
+        # when the approval response is lost (e.g. no WebSocket connected).
 
     async def _request_external_tool(self, request: ToolCallRequest) -> None:
         msg_id = request.id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
-        await request.wait()
+        # Same rationale as _request_approval: do not block the UI loop.

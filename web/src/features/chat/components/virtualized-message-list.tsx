@@ -119,8 +119,8 @@ function getMessageSpacingClass(
       classes.push("mt-4");
     } else if (isAssistant) {
       if (isToolMessage) {
-        // Tool calls have minimal spacing
-        classes.push(previousIsUser ? "mt-2" : "mt-1");
+        // Tool calls: slightly more breathing room between consecutive calls
+        classes.push(previousIsUser ? "mt-2" : "mt-1.5");
       } else if (isThinkingMessage) {
         // Thinking blocks have minimal spacing
         classes.push(previousIsUser ? "mt-2" : "mt-1");

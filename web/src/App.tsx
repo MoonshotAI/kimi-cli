@@ -273,6 +273,13 @@ function App() {
     [createSession],
   );
 
+  const handleCreateSessionInDir = useCallback(
+    async (workDir: string) => {
+      await createSession(workDir);
+    },
+    [createSession],
+  );
+
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
       await deleteSession(sessionId);
@@ -427,6 +434,7 @@ function App() {
                     onLoadMoreSessions={loadMoreSessions}
                     onLoadMoreArchivedSessions={loadMoreArchivedSessions}
                     onOpenCreateDialog={handleOpenCreateDialog}
+                    onCreateSessionInDir={handleCreateSessionInDir}
                     streamStatus={streamStatus}
                     selectedSessionId={selectedSessionId}
                     sessions={sessionSummaries}
@@ -505,6 +513,7 @@ function App() {
                 onLoadMoreSessions={loadMoreSessions}
                 onLoadMoreArchivedSessions={loadMoreArchivedSessions}
                 onOpenCreateDialog={handleOpenCreateDialog}
+                onCreateSessionInDir={handleCreateSessionInDir}
                 onClose={handleCloseMobileSidebar}
                 streamStatus={streamStatus}
                 selectedSessionId={selectedSessionId}

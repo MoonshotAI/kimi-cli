@@ -4,6 +4,12 @@ import { CodeBlock } from "@/components/ai-elements/code-block";
 import { LazyDiff as Diff, LazyHunk as Hunk } from "@/components/ui/diff/lazy";
 import type { File, Hunk as HunkType, Line } from "@/components/ui/diff/utils";
 import { cn } from "@/lib/utils";
+import {
+  ChevronDownIcon,
+  CircleCheckIcon,
+  CircleDashedIcon,
+  CircleIcon,
+} from "lucide-react";
 import type { ComponentProps } from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
@@ -611,9 +617,12 @@ const DiffContent = ({ data }: { data: DiffDisplayData }) => {
             {removedLines > 0 && (
               <span className="text-xs text-orange-600 dark:text-orange-400">-{removedLines}</span>
             )}
-            <span className="text-xs text-muted-foreground">
-              {isExpanded ? "▲" : "▼"}
-            </span>
+            <ChevronDownIcon
+              className={cn(
+                "size-3 text-muted-foreground transition-transform duration-200",
+                isExpanded && "rotate-180",
+              )}
+            />
           </div>
         </button>
       ) : (
@@ -1041,26 +1050,30 @@ const isTodoDone = (status: string): boolean =>
  * Renders a todo/task list with status icons
  */
 const TodoContent = ({ data }: { data: TodoDisplayData }) => (
-  <div className="my-2 space-y-1">
+  <div className="my-2 divide-y divide-border/40 rounded-md border border-border/50 text-sm">
     {data.items.map((item, index) => {
       const text = item.content || item.title || "";
       const done = isTodoDone(item.status);
       const inProgress = item.status === "in_progress";
       return (
-        <div key={`${index}-${text}`} className="flex items-start gap-2 text-sm">
+        <div
+          key={`${index}-${text}`}
+          className="flex items-start gap-2.5 px-3 py-2"
+        >
           <span className="mt-0.5 shrink-0">
             {done ? (
-              <span className="text-green-500 dark:text-green-400">&#x2713;</span>
+              <CircleCheckIcon className="size-3.5 text-muted-foreground" />
             ) : inProgress ? (
-              <span className="text-blue-500 dark:text-blue-400">&#x25CF;</span>
+              <CircleDashedIcon className="size-3.5 text-muted-foreground/60" />
             ) : (
-              <span className="text-muted-foreground">&#x25CB;</span>
+              <CircleIcon className="size-3.5 text-muted-foreground/30" />
             )}
           </span>
           <span
             className={cn(
-              done && "text-muted-foreground line-through",
-              inProgress && "text-blue-600 dark:text-blue-400",
+              done &&
+                "text-muted-foreground line-through decoration-muted-foreground/40",
+              !done && !inProgress && "text-muted-foreground/70",
             )}
           >
             {text}
