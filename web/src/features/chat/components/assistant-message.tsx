@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ApprovalResponseDecision } from "@/hooks/wireTypes";
 import type { LiveMessage } from "@/hooks/types";
@@ -31,6 +31,7 @@ import {
   ToolMediaPreview,
   ToolOutput,
 } from "@ai-elements";
+import { BrainIcon, ChevronRightIcon } from "lucide-react";
 
 export type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
 
@@ -184,6 +185,11 @@ const renderToolMessage = ({
     return renderAssistantText(message);
   }
 
+  // Think tool: render as lightweight reasoning-style block
+  if (toolCall.title === "Think") {
+    return renderThinkToolMessage(message, blocksExpanded);
+  }
+
   const shouldShowOutput = Boolean(
     toolCall.output ?? toolCall.errorText ?? toolCall.display,
   );
@@ -310,6 +316,68 @@ const renderToolMessage = ({
         <div className={assistantMetaTextClass}>Tool execution cancelled.</div>
       ) : null}
     </>
+  );
+};
+
+const ThinkToolBlock = ({
+  message,
+  defaultOpen,
+}: { message: LiveMessage; defaultOpen: boolean }) => {
+  const toolCall = message.toolCall;
+  const thought =
+    toolCall?.input && typeof toolCall.input === "object"
+      ? (toolCall.input as Record<string, unknown>).thought
+      : undefined;
+  const thoughtText = typeof thought === "string" ? thought : "";
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const isComplete =
+    toolCall?.state === "output-available" ||
+    toolCall?.state === "output-error" ||
+    toolCall?.state === "output-denied";
+
+  return (
+    <MessageContent className={assistantContentClass}>
+      <div className="not-prose">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <BrainIcon className="size-3.5 text-muted-foreground/70 shrink-0" />
+          <span className="italic">
+            {isComplete
+              ? "Thought through the problem"
+              : "Thinking through the problem…"}
+          </span>
+          <ChevronRightIcon
+            className={cn(
+              "size-3 text-muted-foreground/50 transition-transform duration-200",
+              isOpen && "rotate-90",
+            )}
+          />
+        </button>
+        {isOpen && thoughtText && (
+          <div className="mt-1.5 pl-4 border-l-2 border-border text-sm text-muted-foreground italic whitespace-pre-wrap">
+            {thoughtText.length > 500
+              ? `${thoughtText.slice(0, 500)}…`
+              : thoughtText}
+          </div>
+        )}
+      </div>
+    </MessageContent>
+  );
+};
+
+const renderThinkToolMessage = (
+  message: LiveMessage,
+  blocksExpanded: boolean,
+) => {
+  return (
+    <ThinkToolBlock
+      key={`${message.id}-think-${blocksExpanded}`}
+      message={message}
+      defaultOpen={blocksExpanded}
+    />
   );
 };
 

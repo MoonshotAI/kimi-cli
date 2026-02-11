@@ -13,7 +13,23 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ToolUIPart } from "ai";
-import { ChevronRightIcon, ImageOffIcon } from "lucide-react";
+import {
+  BotIcon,
+  BrainIcon,
+  ChevronRightIcon,
+  FileIcon,
+  FilePenIcon,
+  FolderSearchIcon,
+  GlobeIcon,
+  ImageOffIcon,
+  LinkIcon,
+  ListChecksIcon,
+  MailIcon,
+  SearchIcon,
+  TerminalIcon,
+  ImageIcon,
+  WorkflowIcon,
+} from "lucide-react";
 import type { ComponentProps, JSX, ReactNode } from "react";
 import { createContext, isValidElement, useCallback, useMemo, useState } from "react";
 import { useVideoThumbnail } from "@/hooks/useVideoThumbnail";
@@ -86,6 +102,42 @@ const getPrimaryParam = (input: ToolUIPart["input"]): string | null => {
   return null;
 };
 
+/** Map backend tool names to lucide icons */
+const TOOL_ICONS: Record<string, ReactNode> = {
+  ReadFile: <FileIcon className="size-3.5" />,
+  ReadMediaFile: <ImageIcon className="size-3.5" />,
+  WriteFile: <FilePenIcon className="size-3.5" />,
+  StrReplaceFile: <FilePenIcon className="size-3.5" />,
+  Glob: <FolderSearchIcon className="size-3.5" />,
+  Grep: <SearchIcon className="size-3.5" />,
+  Shell: <TerminalIcon className="size-3.5" />,
+  SearchWeb: <GlobeIcon className="size-3.5" />,
+  FetchURL: <LinkIcon className="size-3.5" />,
+  Task: <WorkflowIcon className="size-3.5" />,
+  CreateSubagent: <BotIcon className="size-3.5" />,
+  Think: <BrainIcon className="size-3.5" />,
+  SetTodoList: <ListChecksIcon className="size-3.5" />,
+  SendDMail: <MailIcon className="size-3.5" />,
+};
+
+/** Map backend tool names to human-readable display names */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  ReadFile: "Read",
+  ReadMediaFile: "Read Media",
+  WriteFile: "Write",
+  StrReplaceFile: "Edit",
+  Glob: "Find Files",
+  Grep: "Search",
+  Shell: "Shell",
+  SearchWeb: "Web Search",
+  FetchURL: "Fetch URL",
+  Task: "Agent Task",
+  CreateSubagent: "Create Agent",
+  Think: "Think",
+  SetTodoList: "Todo List",
+  SendDMail: "Send Mail",
+};
+
 export type ToolHeaderProps = {
   title?: string;
   type: ToolUIPart["type"];
@@ -102,7 +154,9 @@ export const ToolHeader = ({
   input,
   ...props
 }: ToolHeaderProps) => {
-  const toolName = title ?? type.split("-").slice(1).join("-");
+  const rawName = title ?? type.split("-").slice(1).join("-");
+  const displayName = TOOL_DISPLAY_NAMES[rawName] ?? rawName;
+  const icon = TOOL_ICONS[rawName];
   const primaryParam = getPrimaryParam(input);
 
   return (
@@ -110,16 +164,19 @@ export const ToolHeader = ({
       className={cn("flex items-center gap-1.5 text-sm group", className)}
       {...props}
     >
-      <span className="size-2 rounded-full bg-muted-foreground/60 shrink-0" />
-      <span className="text-muted-foreground">Used</span>
-      <span className="text-primary font-medium">{toolName}</span>
+      {icon ? (
+        <span className="text-muted-foreground shrink-0">{icon}</span>
+      ) : (
+        <span className="size-2 rounded-full bg-muted-foreground/60 shrink-0" />
+      )}
+      <span className="text-primary font-medium">{displayName}</span>
       {/* Hide params when expanded via CSS data-state selector */}
       {primaryParam && (
         <span className="text-muted-foreground group-data-[state=open]:hidden">
           ({primaryParam})
         </span>
       )}
-      <span className="ml-1">{getStatusIcon(state)}</span>
+      <span className="ml-0.5">{getStatusIcon(state)}</span>
     </CollapsibleTrigger>
   );
 };
