@@ -39,8 +39,7 @@ def negotiate_version(client_protocol_version: int) -> ACPVersionSpec:
     # Find the highest supported version <= client version
     best: ACPVersionSpec | None = None
     for ver, spec in SUPPORTED_VERSIONS.items():
-        if ver <= client_protocol_version:
-            if best is None or ver > best.protocol_version:
-                best = spec
+        if ver <= client_protocol_version and (best is None or ver > best.protocol_version):
+            best = spec
 
     return best if best is not None else CURRENT_VERSION

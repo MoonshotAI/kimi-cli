@@ -53,4 +53,4 @@ def test_supported_versions_contains_current():
 
 def test_min_protocol_version_consistency():
     """MIN_PROTOCOL_VERSION is the smallest key in SUPPORTED_VERSIONS."""
-    assert MIN_PROTOCOL_VERSION == min(SUPPORTED_VERSIONS.keys())
+    assert min(SUPPORTED_VERSIONS.keys()) == MIN_PROTOCOL_VERSION
