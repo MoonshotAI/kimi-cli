@@ -41,7 +41,7 @@ export type AssistantApprovalHandler = (
 ) => void | Promise<void>;
 
 const assistantContentClass =
-  "w-full max-w-full text-sm leading-relaxed";
+  "w-full max-w-full text-sm leading-relaxed overflow-visible";
 const assistantMetaTextClass = "text-xs text-muted-foreground";
 
 type AssistantMessageProps = {
