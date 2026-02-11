@@ -99,6 +99,8 @@ class SessionProcess:
         self._lock = asyncio.Lock()
         self._ws_lock = asyncio.Lock()
         self._sent_files: set[str] = set()
+        self._pending_out_requests: dict[str, str] = {}
+        """Maps JSON-RPC message IDs to raw request messages for re-sending on reconnect."""
 
     @property
     def is_alive(self) -> bool:
@@ -186,6 +188,7 @@ class SessionProcess:
                 return
 
             self._in_flight_prompt_ids.clear()
+            self._pending_out_requests.clear()
             self._expecting_exit = False
             self._worker_id = str(uuid4())
 
@@ -251,6 +254,7 @@ class SessionProcess:
                 self._read_task = None
 
             self._in_flight_prompt_ids.clear()
+            self._pending_out_requests.clear()
             self._worker_id = None
             self._expecting_exit = False
             if emit_status:
@@ -316,6 +320,7 @@ class SessionProcess:
                             f"{stderr.decode('utf-8')}"
                         )
                         self._in_flight_prompt_ids.clear()
+                        self._pending_out_requests.clear()
                         await self._emit_status(
                             "error",
                             reason="process_exit",
@@ -325,7 +330,8 @@ class SessionProcess:
                     else:
                         continue
 
-                await self._broadcast(line.decode("utf-8").rstrip("\n"))
+                raw_line = line.decode("utf-8").rstrip("\n")
+                await self._broadcast(raw_line)
 
                 # Handle out message
                 try:
@@ -335,6 +341,11 @@ class SessionProcess:
                             msg["params"] = deserialize_wire_message(msg["params"])
                             await self._handle_out_message(JSONRPCEventMessage.model_validate(msg))
                         case "request":
+                            # Track outbound requests so we can re-send them
+                            # to newly connected WebSockets after reconnection.
+                            msg_id = msg.get("id")
+                            if msg_id is not None:
+                                self._pending_out_requests[str(msg_id)] = raw_line
                             msg["params"] = deserialize_wire_message(msg["params"])
                             await self._handle_out_message(
                                 JSONRPCRequestMessage.model_validate(msg)
@@ -364,12 +375,15 @@ class SessionProcess:
                 if message.id in self._in_flight_prompt_ids:
                     self._in_flight_prompt_ids.remove(message.id)
                 if was_busy and not self.is_busy:
+                    # Prompt finished — all pending requests are now stale
+                    self._pending_out_requests.clear()
                     await self._emit_status("idle", reason="prompt_complete")
             case JSONRPCErrorResponse():
                 was_busy = self.is_busy
                 if message.id in self._in_flight_prompt_ids:
                     self._in_flight_prompt_ids.remove(message.id)
                 if was_busy and not self.is_busy:
+                    self._pending_out_requests.clear()
                     await self._emit_status("idle", reason="prompt_error")
             case _:
                 return
@@ -553,6 +567,10 @@ class SessionProcess:
                 self._websocket_count = len(self._websockets)
                 for ws in disconnected:
                     self._replay_buffers.pop(ws, None)
+            logger.debug(
+                f"Broadcast: removed {len(disconnected)} disconnected ws, "
+                f"remaining={self._websocket_count}"
+            )
 
     async def add_websocket_and_begin_replay(self, ws: WebSocket) -> None:
         """Atomically attach a WebSocket and enter replay mode for it."""
@@ -561,6 +579,7 @@ class SessionProcess:
                 self._websockets.add(ws)
                 self._websocket_count = len(self._websockets)
             self._replay_buffers.setdefault(ws, [])
+        logger.debug(f"WebSocket added (replay mode), count={self._websocket_count}")
 
     async def end_replay(self, ws: WebSocket) -> None:
         """Flush buffered live messages for a websocket after history replay."""
@@ -576,18 +595,42 @@ class SessionProcess:
                 buffer.clear()
 
             if ws.client_state != WebSocketState.CONNECTED:
+                logger.warning("end_replay: ws not connected, cleaning up replay buffer")
+                async with self._ws_lock:
+                    self._replay_buffers.pop(ws, None)
                 return
             for message in chunk:
                 try:
                     await ws.send_text(message)
-                except Exception:
-                    # WebSocket disconnected during replay - clean up
+                except Exception as e:
+                    # Send failed — pop the replay buffer so _broadcast()
+                    # sends directly (or detects disconnect) on the next call.
+                    # Do NOT remove ws from _websockets here; let _broadcast()
+                    # or session_stream's finally block handle cleanup.
+                    logger.warning(f"end_replay: send_text failed during buffer flush: {e}")
                     async with self._ws_lock:
-                        if ws in self._websockets:
-                            self._websockets.discard(ws)
-                            self._websocket_count = len(self._websockets)
                         self._replay_buffers.pop(ws, None)
                     return
+
+    async def send_pending_requests(self, ws: WebSocket) -> None:
+        """Re-send pending outbound requests to a WebSocket after reconnection.
+
+        When a user switches away from a session while requests (e.g.
+        ApprovalRequests) are pending, the original broadcast may have reached
+        no WebSocket.  After the user switches back, we re-send these requests
+        as live JSON-RPC messages so the client can respond interactively.
+        """
+        if not self._pending_out_requests:
+            return
+        for msg_id, raw_msg in list(self._pending_out_requests.items()):
+            try:
+                if ws.client_state == WebSocketState.CONNECTED:
+                    await ws.send_text(raw_msg)
+                else:
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to re-send pending request {msg_id}: {e}")
+                break
 
     async def _close_all_websockets(self) -> None:
         """Close all connected WebSockets."""
@@ -611,6 +654,7 @@ class SessionProcess:
             if ws in self._websockets:
                 self._websockets.discard(ws)
                 self._websocket_count = len(self._websockets)
+                logger.debug(f"WebSocket removed, count={self._websocket_count}")
             self._replay_buffers.pop(ws, None)
 
     async def send_message(self, message: str) -> None:
@@ -634,6 +678,10 @@ class SessionProcess:
                     JSONRPCSuccessResponse(id=in_message.id, result={}).model_dump_json()
                 )
                 return
+            elif isinstance(in_message, (JSONRPCSuccessResponse, JSONRPCErrorResponse)):
+                # Response to a pending outbound request (e.g. ApprovalRequest) —
+                # remove from tracking so we don't re-send it on reconnect.
+                self._pending_out_requests.pop(str(in_message.id), None)
 
             new_message = await self._handle_in_message(in_message)
             if new_message is not None:

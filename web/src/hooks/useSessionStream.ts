@@ -300,6 +300,9 @@ export function useSessionStream(
   const awaitingIdleRef = useRef(false); // Track pending idle after cancel
   const awaitingFirstResponseRef = useRef(false); // Track if waiting for first event of a turn
   const lastStatusSeqRef = useRef<number | null>(null);
+  const lastWsMessageTimeRef = useRef<number>(0); // Last time a WS message was received
+  const watchdogIntervalRef = useRef<number | null>(null); // Stale connection watchdog
+  const statusRef = useRef<ChatStatus>("ready"); // Synced copy of status for watchdog
 
   // First turn tracking for auto-rename (simplified: backend reads from wire.jsonl)
   const hasTurnStartedRef = useRef(false); // Whether at least one turn has started
@@ -2002,6 +2005,26 @@ export function useSessionStream(
         setError(null);
         awaitingIdleRef.current = false;
         setStatus("streaming"); // Will receive replay, then switch to ready
+        lastWsMessageTimeRef.current = Date.now();
+
+        // Start stale-connection watchdog
+        if (watchdogIntervalRef.current !== null) {
+          window.clearInterval(watchdogIntervalRef.current);
+        }
+        watchdogIntervalRef.current = window.setInterval(() => {
+          if (!wsRef.current || wsRef.current !== ws) {
+            // This ws is no longer current — stop checking
+            return;
+          }
+          if (wsRef.current.readyState !== WebSocket.OPEN) return;
+          const elapsed = Date.now() - lastWsMessageTimeRef.current;
+          if (elapsed > 45_000 && statusRef.current === "streaming") {
+            console.warn(
+              `[SessionStream] Watchdog: no messages for ${Math.round(elapsed / 1000)}s while streaming, reconnecting...`,
+            );
+            reconnectRef.current();
+          }
+        }, 10_000);
 
         // Send initialize message to get slash commands
         sendInitialize(ws);
@@ -2015,6 +2038,7 @@ export function useSessionStream(
           return;
         }
 
+        lastWsMessageTimeRef.current = Date.now();
         handleMessage(event.data);
       };
 
@@ -2095,6 +2119,11 @@ export function useSessionStream(
     if (reconnectTimeoutRef.current !== null) {
       window.clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    if (watchdogIntervalRef.current !== null) {
+      window.clearInterval(watchdogIntervalRef.current);
+      watchdogIntervalRef.current = null;
     }
 
     if (wsRef.current) {
@@ -2226,6 +2255,7 @@ export function useSessionStream(
   connectRef.current = connect;
   disconnectRef.current = disconnect;
   reconnectRef.current = reconnect;
+  statusRef.current = status;
 
   // Send message to session (auto-connects if not connected)
   const sendMessage = useCallback(
@@ -2319,6 +2349,9 @@ export function useSessionStream(
     () => () => {
       if (reconnectTimeoutRef.current !== null) {
         window.clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (watchdogIntervalRef.current !== null) {
+        window.clearInterval(watchdogIntervalRef.current);
       }
       if (wsRef.current) {
         wsRef.current.close();

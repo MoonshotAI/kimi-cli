@@ -1132,6 +1132,9 @@ async def session_stream(
             # End replay and start worker
             await session_process.end_replay(websocket)
             await session_process.start()
+            # Re-send any pending requests (e.g. ApprovalRequests) that were
+            # lost when no WebSocket was connected during a session switch.
+            await session_process.send_pending_requests(websocket)
             await session_process.send_status_snapshot(websocket)
         except Exception as e:
             logger.warning(f"Failed to start session environment: {e}")

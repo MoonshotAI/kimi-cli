@@ -354,6 +354,15 @@ export function parseWireMessages(jsonlContent: string): WireMessage[] {
 }
 
 /**
+ * Normalize wire event type names that differ between server and client.
+ * The Python backend uses class names (e.g. "ApprovalResponse") while
+ * the client expects legacy names (e.g. "ApprovalRequestResolved").
+ */
+const EVENT_TYPE_ALIASES: Record<string, string> = {
+  ApprovalResponse: "ApprovalRequestResolved",
+};
+
+/**
  * Extract event from wire message
  */
 export function extractEvent(message: WireMessage): WireEvent | null {
@@ -362,8 +371,9 @@ export function extractEvent(message: WireMessage): WireEvent | null {
   }
 
   const params = message.params as { type: string; payload: unknown };
+  const type = EVENT_TYPE_ALIASES[params.type] ?? params.type;
   return {
-    type: params.type,
+    type,
     payload: params.payload,
   } as WireEvent;
 }
