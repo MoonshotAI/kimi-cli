@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
+- Web: Improve session stop handling with proper async cleanup and timeout
+
 ## 1.11.0 (2026-02-10)
 
 - Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
