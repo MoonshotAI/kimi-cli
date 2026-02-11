@@ -658,11 +658,16 @@ class KimiCLIRunner:
         """Start the runner (no-op, sessions started on demand)."""
         pass
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop all running sessions."""
+        tasks: list[asyncio.Task[None]] = []
         for session in self._sessions.values():
             if session.is_running:
-                asyncio.create_task(session.stop())
+                tasks.append(asyncio.create_task(session.stop()))
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=5.0)
+            for t in pending:
+                t.cancel()
 
     async def get_or_create_session(self, session_id: UUID) -> SessionProcess:
         """Get or create a session process."""

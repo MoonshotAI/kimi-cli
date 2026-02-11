@@ -605,6 +605,16 @@ def kimi(
 
         restore_stderr()
 
+        # Restore default SIGINT handler and terminal state after the shell's
+        # asyncio.run() to ensure Ctrl+C works in the uvicorn web server.
+        import signal
+
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+
+        from kimi_cli.utils.term import ensure_tty_sane
+
+        ensure_tty_sane()
+
         from kimi_cli.web.app import run_web_server
 
         run_web_server(open_browser=True)
