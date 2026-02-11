@@ -69,7 +69,6 @@ export const ToolbarChangesPanel = memo(function ToolbarChangesPanelComponent({
 
 type ToolbarChangesTabProps = {
   stats: GitDiffStats;
-  workDir?: string | null;
   isActive: boolean;
   onToggle: () => void;
 };
