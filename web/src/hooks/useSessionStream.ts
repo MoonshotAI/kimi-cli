@@ -114,7 +114,7 @@ import {
   useLayoutEffect,
 } from "react";
 import type { ChatStatus, ToolUIPart } from "ai";
-import type { LiveMessage, MessageAttachmentPart } from "./types";
+import type { LiveMessage, MessageAttachmentPart, SubagentStep } from "./types";
 import type { SessionStatus } from "@/lib/api/models";
 import { getAuthToken } from "@/lib/auth";
 import {
@@ -128,6 +128,7 @@ import {
   type ApprovalRequestEvent,
   type ApprovalResponseDecision,
   type SessionStatusPayload,
+  type SubagentEventWire,
   extractEvent,
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
@@ -358,9 +359,19 @@ export function useSessionStream(
 
   const completeStreamingMessages = useCallback(() => {
     setMessages((prev) =>
-      prev.map((msg) =>
-        msg.isStreaming ? { ...msg, isStreaming: false } : msg,
-      ),
+      prev.map((msg) => {
+        let updated = msg;
+        if (msg.isStreaming) {
+          updated = { ...updated, isStreaming: false };
+        }
+        if (msg.toolCall?.subagentRunning) {
+          updated = {
+            ...updated,
+            toolCall: { ...updated.toolCall!, subagentRunning: false },
+          };
+        }
+        return updated;
+      }),
     );
   }, [setMessages]);
 
@@ -770,6 +781,162 @@ export function useSessionStream(
     }
   }, [resetStepState, setAwaitingFirstResponse]);
 
+  // Process a SubagentEvent: accumulate inner events into parent Task tool's subagentSteps
+  const processSubagentEvent = useCallback(
+    (taskToolCallId: string, innerType: string, innerPayload: unknown) => {
+      setMessages((prev) => {
+        // Find the parent Task tool message by toolCallId
+        const parentIdx = prev.findIndex(
+          (msg) => msg.toolCall?.toolCallId === taskToolCallId,
+        );
+        if (parentIdx === -1) return prev;
+
+        const parentMsg = prev[parentIdx];
+        const steps: SubagentStep[] = [
+          ...(parentMsg.toolCall?.subagentSteps ?? []),
+        ];
+
+        switch (innerType) {
+          case "ContentPart": {
+            const cp = innerPayload as {
+              type: string;
+              think?: string;
+              text?: string;
+            };
+            if (cp.type === "think" && cp.think) {
+              const last = steps[steps.length - 1];
+              if (last?.kind === "thinking") {
+                steps[steps.length - 1] = {
+                  ...last,
+                  text: last.text + cp.think,
+                };
+              } else {
+                steps.push({ kind: "thinking", text: cp.think });
+              }
+            } else if (cp.type === "text" && cp.text) {
+              const last = steps[steps.length - 1];
+              if (last?.kind === "text") {
+                steps[steps.length - 1] = {
+                  ...last,
+                  text: last.text + cp.text,
+                };
+              } else {
+                steps.push({ kind: "text", text: cp.text });
+              }
+            }
+            break;
+          }
+
+          case "ToolCall": {
+            const tc = innerPayload as {
+              type: string;
+              id: string;
+              function: { name: string; arguments: string };
+            };
+            const initialArgs = tc.function.arguments || "";
+            let parsedInput: unknown;
+            try {
+              parsedInput = JSON.parse(initialArgs || "{}");
+            } catch {
+              // not valid JSON yet
+            }
+            steps.push({
+              kind: "tool-call",
+              toolCallId: tc.id,
+              toolName: tc.function.name,
+              rawArgs: initialArgs,
+              input: parsedInput,
+              status: "running",
+            });
+            break;
+          }
+
+          case "ToolCallPart": {
+            const tcp = innerPayload as { arguments_part: string };
+            // Find the last running tool-call step and append arguments
+            for (let i = steps.length - 1; i >= 0; i--) {
+              const step = steps[i];
+              if (step.kind === "tool-call" && step.status === "running") {
+                const newArgs = (step.rawArgs ?? "") + tcp.arguments_part;
+                let parsedInput: unknown;
+                try {
+                  parsedInput = JSON.parse(newArgs);
+                } catch {
+                  // not complete JSON yet
+                }
+                steps[i] = {
+                  ...step,
+                  rawArgs: newArgs,
+                  input: parsedInput ?? step.input,
+                };
+                break;
+              }
+            }
+            break;
+          }
+
+          case "ToolResult": {
+            const tr = innerPayload as {
+              tool_call_id: string;
+              return_value: {
+                is_error: boolean;
+                output: Array<{ text?: string }> | string;
+                message: string;
+              };
+            };
+            for (let i = steps.length - 1; i >= 0; i--) {
+              const step = steps[i];
+              if (
+                step.kind === "tool-call" &&
+                step.toolCallId === tr.tool_call_id
+              ) {
+                const outputStr = Array.isArray(tr.return_value.output)
+                  ? tr.return_value.output
+                      .map((p) => p.text ?? "")
+                      .filter(Boolean)
+                      .join("\n")
+                  : tr.return_value.output;
+                steps[i] = {
+                  ...step,
+                  status: tr.return_value.is_error ? "error" : "success",
+                  output: outputStr || undefined,
+                  errorText: tr.return_value.is_error
+                    ? tr.return_value.message || undefined
+                    : undefined,
+                };
+                break;
+              }
+            }
+            break;
+          }
+
+          case "SubagentEvent": {
+            // Nested subagent — deep nesting is rare in practice.
+            // For now we skip nested SubagentEvents; the parent subagent's
+            // direct tool calls/text/thinking are already captured.
+            break;
+          }
+
+          default:
+            // Ignore StepBegin, TurnBegin, TurnEnd, StatusUpdate, etc.
+            break;
+        }
+
+        const next = [...prev];
+        next[parentIdx] = {
+          ...parentMsg,
+          toolCall: {
+            ...parentMsg.toolCall!,
+            subagentSteps: steps,
+            subagentRunning: true,
+          },
+        };
+        return next;
+      });
+    },
+    [setMessages],
+  );
+
   // Process a single wire event
   const processEvent = useCallback(
     (event: WireEvent, isReplay = false, rpcMessageId?: string | number) => {
@@ -1080,6 +1247,10 @@ export function useSessionStream(
                     ? messageStr || undefined
                     : undefined,
                   mediaParts: mediaParts.length > 0 ? mediaParts : undefined,
+                  // Mark subagent as complete when its parent Task tool receives result
+                  subagentRunning: msg.toolCall.subagentSteps
+                    ? false
+                    : msg.toolCall.subagentRunning,
                 },
                 isStreaming: false,
               };
@@ -1302,6 +1473,16 @@ export function useSessionStream(
           break;
         }
 
+        case "SubagentEvent": {
+          const subPayload = (event as SubagentEventWire).payload;
+          processSubagentEvent(
+            subPayload.task_tool_call_id,
+            subPayload.event.type,
+            subPayload.event.payload,
+          );
+          break;
+        }
+
         case "StatusUpdate": {
           const nextContextUsage = event.payload.context_usage;
           if (typeof nextContextUsage === "number") {
@@ -1370,6 +1551,16 @@ export function useSessionStream(
               if (msg.isStreaming) {
                 updated = { ...updated, isStreaming: false };
               }
+              // Mark subagent as no longer running
+              if (msg.toolCall?.subagentRunning) {
+                updated = {
+                  ...updated,
+                  toolCall: {
+                    ...updated.toolCall!,
+                    subagentRunning: false,
+                  },
+                };
+              }
               // Update pending approval tool states to denied
               if (
                 msg.variant === "tool" &&
@@ -1379,6 +1570,7 @@ export function useSessionStream(
                   ...updated,
                   toolCall: {
                     ...msg.toolCall,
+                    ...updated.toolCall,
                     state: "output-denied",
                     approval: msg.toolCall.approval
                       ? {
@@ -1453,6 +1645,7 @@ export function useSessionStream(
       clearAwaitingFirstResponse,
       updateMessageById,
       setAwaitingFirstResponse,
+      processSubagentEvent,
     ],
   );
 

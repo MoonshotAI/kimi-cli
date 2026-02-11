@@ -177,6 +177,19 @@ export type ApprovalResponseDecision =
   | "approve_for_session"
   | "reject";
 
+/**
+ * A SubagentEvent wraps an inner event produced by a subagent (Task tool).
+ * The inner `event` field is a {type, payload} envelope that may itself be
+ * a SubagentEvent (for nested subagents).
+ */
+export type SubagentEventWire = {
+  type: "SubagentEvent";
+  payload: {
+    task_tool_call_id: string;
+    event: { type: string; payload: unknown };
+  };
+};
+
 // Union of all event types
 export type WireEvent =
   | TurnBeginEvent
@@ -191,7 +204,8 @@ export type WireEvent =
   | CompactionBeginEvent
   | CompactionEndEvent
   | ApprovalRequestEvent
-  | ApprovalRequestResolvedEvent;
+  | ApprovalRequestResolvedEvent
+  | SubagentEventWire;
 
 // Parsed wire message
 export type WireMessage = {

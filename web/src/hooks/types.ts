@@ -17,6 +17,25 @@ export type MessageAttachmentPart = FileUIPart | NoPreviewAttachment | VideoNoPr
 export type { Session } from "../lib/api/models";
 
 /**
+ * A single step recorded from a subagent's activity.
+ * Accumulated as SubagentEvents arrive and rendered inside the parent Task tool call.
+ */
+export type SubagentStep =
+  | { kind: "thinking"; text: string }
+  | { kind: "text"; text: string }
+  | {
+      kind: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      /** Raw accumulated arguments string (for streaming ToolCallPart) */
+      rawArgs?: string;
+      input?: unknown;
+      status: "running" | "success" | "error";
+      output?: string;
+      errorText?: string;
+    };
+
+/**
  * Live message in the chat - this is a UI-specific type
  * that extends beyond what the API provides
  */
@@ -93,6 +112,10 @@ export type LiveMessage = {
       reason?: string;
       response?: unknown;
     };
+    /** Steps from a subagent (Task tool) — populated by SubagentEvent processing */
+    subagentSteps?: SubagentStep[];
+    /** Whether the subagent is still actively running */
+    subagentRunning?: boolean;
   };
   codeSnippet?: {
     title: string;

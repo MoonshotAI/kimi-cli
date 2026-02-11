@@ -22,6 +22,7 @@ import {
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
+  SubagentActivity,
   Tool,
   ToolContent,
   ToolDisplay,
@@ -218,6 +219,13 @@ const renderToolMessage = ({
           {toolCall.input ? <ToolInput input={toolCall.input} /> : null}
           <ToolDisplay display={toolCall.display} isError={toolCall.isError} />
           {toolCall.mediaParts ? <ToolMediaPreview mediaParts={toolCall.mediaParts} /> : null}
+          {toolCall.subagentSteps && toolCall.subagentSteps.length > 0 ? (
+            <SubagentActivity
+              steps={toolCall.subagentSteps}
+              isRunning={toolCall.subagentRunning}
+              defaultOpen={blocksExpanded}
+            />
+          ) : null}
           {shouldShowOutput ? (
             <ToolOutput
               errorText={toolCall.errorText}
@@ -298,8 +306,6 @@ const renderToolMessage = ({
       </Tool>
       {isApprovalRequested ? (
         <div className={assistantMetaTextClass}>Waiting for your approval…</div>
-      ) : message.isStreaming && toolCall.state !== "output-available" ? (
-        <div className={assistantMetaTextClass}>Tool call running…</div>
       ) : isApprovalDenied ? (
         <div className={assistantMetaTextClass}>Tool execution cancelled.</div>
       ) : null}
