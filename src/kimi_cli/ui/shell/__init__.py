@@ -259,6 +259,11 @@ class Shell:
                 console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
+            toast(
+                "Encountering issues? Enter /feedback to provide feedback.",
+                topic="feedback-hint",
+                duration=10.0,
+            )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             console.print(f"[yellow]{e}[/yellow]")
@@ -268,6 +273,11 @@ class Shell:
         except Exception as e:
             logger.exception("Unexpected error:")
             console.print(f"[red]Unexpected error: {e}[/red]")
+            toast(
+                "Encountering issues? Enter /feedback to provide feedback.",
+                topic="feedback-hint",
+                duration=10.0,
+            )
             raise  # re-raise unknown error
         finally:
             remove_sigint()
@@ -327,7 +337,9 @@ class WelcomeInfoItem:
 
 def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
     head = Text.from_markup("Welcome to Kimi Code CLI!")
-    help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
+    help_text = Text.from_markup(
+        "[grey50]Send /help for help, /feedback to report issues.[/grey50]"
+    )
 
     # Use Table for precise width control
     logo = Text.from_markup(_LOGO)
