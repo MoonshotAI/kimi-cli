@@ -89,6 +89,7 @@ export function CreateSessionDialog({
   const [showConfirmCreate, setShowConfirmCreate] = useState(false);
   const [pendingPath, setPendingPath] = useState("");
   const [startupDir, setStartupDir] = useState("");
+  const [commandValue, setCommandValue] = useState("");
   const isCreatingRef = useRef(false);
   const commandListRef = useRef<HTMLDivElement>(null);
 
@@ -105,11 +106,12 @@ export function CreateSessionDialog({
       setIsLoading(true);
     }
 
-    // Startup dir resolves fast — show it immediately
+    // Startup dir resolves fast — show it immediately and highlight it
     fetchStartupDir()
       .then((startup) => {
         if (startup) {
           setStartupDir(startup);
+          setCommandValue(startup);
         }
       })
       .catch(() => {});
@@ -132,6 +134,7 @@ export function CreateSessionDialog({
   useEffect(() => {
     if (!open) {
       setInputValue("");
+      setCommandValue("");
       setWorkDirs(cachedWorkDirs ?? []);
       setIsCreating(false);
       setShowConfirmCreate(false);
@@ -242,7 +245,7 @@ export function CreateSessionDialog({
         description="Search directories or type a new path"
         showCloseButton={false}
       >
-        <Command>
+        <Command value={commandValue} onValueChange={setCommandValue}>
           <CommandInput
             placeholder="Search directories or type a path..."
             value={inputValue}
