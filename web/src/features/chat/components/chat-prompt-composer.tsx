@@ -253,7 +253,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                         : "Starting environment..."
                       : isStreaming
                         ? "Add a follow-up message..."
-                        : ""
+                        : "Ask anything, / for commands, @ to mention files"
                 }
                 aria-busy={isUploading}
                 disabled={!canSendMessage || isUploading || !currentSession || isAwaitingIdle}

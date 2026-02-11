@@ -15,6 +15,9 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Fix assistant message content overflow clipping
 - Wire: Fix deadlock when multiple subagents run concurrently by not blocking the UI loop on approval and tool-call requests
 - Wire: Clean up stale pending requests after agent turn ends
+- Web: Show placeholder text in prompt input with hints for slash commands and file mentions
+- Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
+- Web: Improve session stop handling with proper async cleanup and timeout
 
 ## 1.11.0 (2026-02-10)
 
