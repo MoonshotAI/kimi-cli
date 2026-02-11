@@ -1098,14 +1098,7 @@ async def session_stream(
     session_process = await runner.get_or_create_session(session_id)
     attached = False
     try:
-        if session_process.is_alive and session_process.has_stdout_cache:
-            # Process is running and has cached stdout — use cache for replay
-            # as it's more up-to-date than wire.jsonl (includes events still
-            # held in the Wire's merge buffer that haven't been flushed to disk).
-            await session_process.add_websocket_and_begin_replay(websocket)
-            attached = True
-            await session_process.replay_from_stdout_cache(websocket)
-        elif has_history:
+        if has_history:
             # Attach WebSocket in replay mode before history replay
             await session_process.add_websocket_and_begin_replay(websocket)
             attached = True
@@ -1129,15 +1122,15 @@ async def session_stream(
             await asyncio.to_thread(lambda: work_dir.mkdir(parents=True, exist_ok=True))
 
             if not attached:
-                # No history and no cache: attach now
+                # No history: attach and start worker
+                session_process = await runner.get_or_create_session(session_id)
                 await session_process.add_websocket_and_begin_replay(websocket)
                 attached = True
+
+            assert session_process is not None
             # End replay and start worker
             await session_process.end_replay(websocket)
             await session_process.start()
-            # Re-send any pending requests (e.g. ApprovalRequests) that were
-            # lost when no WebSocket was connected during a session switch.
-            await session_process.send_pending_requests(websocket)
             await session_process.send_status_snapshot(websocket)
         except Exception as e:
             logger.warning(f"Failed to start session environment: {e}")
