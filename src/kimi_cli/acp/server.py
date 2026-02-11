@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -72,6 +73,7 @@ class ACPServer:
                 ),
                 mcp_capabilities=acp.schema.McpCapabilities(http=True, sse=False),
                 session_capabilities=acp.schema.SessionCapabilities(
+                    fork=acp.schema.SessionForkCapabilities(),
                     list=acp.schema.SessionListCapabilities(),
                     resume=acp.schema.SessionResumeCapabilities(),
                 ),
@@ -111,14 +113,12 @@ class ACPServer:
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
-    async def new_session(
-        self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
-    ) -> acp.NewSessionResponse:
-        logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
+    async def _init_session(
+        self, session: Session, mcp_servers: list[MCPServer] | None = None
+    ) -> tuple[ACPSession, _ModelIDConv]:
+        """Initialize a KimiCLI instance for a session and register it."""
         assert self.conn is not None, "ACP client not connected"
         assert self.client_capabilities is not None, "ACP connection not initialized"
-
-        session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
@@ -139,6 +139,18 @@ class ACPServer:
                 cli_instance.soul.agent.toolset,
                 cli_instance.soul.runtime,
             )
+
+        return acp_session, model_id_conv
+
+    async def new_session(
+        self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.NewSessionResponse:
+        logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
+        assert self.conn is not None
+
+        session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
+        acp_session, model_id_conv = await self._init_session(session, mcp_servers)
+        config = acp_session.cli.soul.runtime.config
 
         available_commands = [
             acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
@@ -178,9 +190,6 @@ class ACPServer:
         mcp_servers: list[MCPServer] | None = None,
     ) -> tuple[ACPSession, _ModelIDConv]:
         """Load or resume a session. Shared by load_session and resume_session."""
-        assert self.conn is not None, "ACP client not connected"
-        assert self.client_capabilities is not None, "ACP connection not initialized"
-
         work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
         session = await Session.find(work_dir, session_id)
         if session is None:
@@ -189,27 +198,7 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
-        cli_instance = await KimiCLI.create(
-            session,
-            mcp_configs=[mcp_config],
-        )
-        config = cli_instance.soul.runtime.config
-        acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
-        acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
-        model_id_conv = _ModelIDConv(config.default_model, config.default_thinking)
-        self.sessions[session.id] = (acp_session, model_id_conv)
-
-        if isinstance(cli_instance.soul.agent.toolset, KimiToolset):
-            replace_tools(
-                self.client_capabilities,
-                self.conn,
-                session.id,
-                cli_instance.soul.agent.toolset,
-                cli_instance.soul.runtime,
-            )
-
-        return acp_session, model_id_conv
+        return await self._init_session(session, mcp_servers)
 
     async def load_session(
         self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
@@ -253,7 +242,47 @@ class ACPServer:
     async def fork_session(
         self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.schema.ForkSessionResponse:
-        raise NotImplementedError
+        logger.info("Forking session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
+        source_session = await Session.find(work_dir, session_id)
+        if source_session is None:
+            logger.error(
+                "Source session not found: {id} for working directory: {cwd}",
+                id=session_id,
+                cwd=cwd,
+            )
+            raise acp.RequestError.invalid_params({"session_id": "Session not found"})
+
+        new_session = await Session.create(work_dir)
+
+        # Copy context and wire files from source to new session
+        for filename in ("context.jsonl", "wire.jsonl"):
+            src_file = source_session.dir / filename
+            dst_file = new_session.dir / filename
+            if src_file.exists():
+                shutil.copy2(src_file, dst_file)
+
+        acp_session, model_id_conv = await self._init_session(new_session, mcp_servers)
+        config = acp_session.cli.soul.runtime.config
+
+        return acp.schema.ForkSessionResponse(
+            session_id=new_session.id,
+            modes=acp.schema.SessionModeState(
+                available_modes=[
+                    acp.schema.SessionMode(
+                        id="default",
+                        name="Default",
+                        description="The default mode.",
+                    ),
+                ],
+                current_mode_id="default",
+            ),
+            models=acp.schema.SessionModelState(
+                available_models=_expand_llm_models(config.models),
+                current_model_id=model_id_conv.to_acp_model_id(),
+            ),
+        )
 
     async def list_sessions(
         self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any

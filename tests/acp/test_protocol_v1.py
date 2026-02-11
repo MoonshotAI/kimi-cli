@@ -148,6 +148,85 @@ async def test_resume_session_not_found(
         )
 
 
+async def test_fork_session(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """fork_session returns a new session_id with modes and models."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session_resp = await conn.new_session(cwd=str(work_dir))
+
+    # Prompt so the session has history to fork
+    await conn.prompt(
+        prompt=[acp.text_block("Hello")],
+        session_id=session_resp.session_id,
+    )
+
+    fork_resp = await conn.fork_session(
+        cwd=str(work_dir),
+        session_id=session_resp.session_id,
+    )
+
+    assert isinstance(fork_resp.session_id, str)
+    assert fork_resp.session_id != session_resp.session_id
+    assert fork_resp.modes is not None
+    assert fork_resp.models is not None
+
+
+async def test_fork_session_not_found(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """fork_session with a non-existent session_id raises an error."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+
+    with pytest.raises(acp.RequestError):
+        await conn.fork_session(
+            cwd=str(work_dir),
+            session_id="non-existent-session-id",
+        )
+
+
+async def test_fork_session_prompt(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """After forking, the new session can handle prompts normally."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session_resp = await conn.new_session(cwd=str(work_dir))
+
+    # Prompt the original session
+    await conn.prompt(
+        prompt=[acp.text_block("Hello")],
+        session_id=session_resp.session_id,
+    )
+
+    fork_resp = await conn.fork_session(
+        cwd=str(work_dir),
+        session_id=session_resp.session_id,
+    )
+
+    # Prompt on the forked session should work
+    prompt_resp = await conn.prompt(
+        prompt=[acp.text_block("Hi from forked session")],
+        session_id=fork_resp.session_id,
+    )
+
+    assert prompt_resp.stop_reason in ("end_turn", "max_tokens", "max_turn_requests")
+
+
 async def test_cancel_session(
     acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
     tmp_path,
