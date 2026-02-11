@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Show placeholder text in prompt input with hints for slash commands and file mentions
+
 ## 1.11.0 (2026-02-10)
 
 - Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
