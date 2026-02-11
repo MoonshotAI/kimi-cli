@@ -112,7 +112,7 @@ def parse_slash_command_call(user_input: str) -> SlashCommandCall | None:
     if not user_input or not user_input.startswith("/"):
         return None
 
-    name_match = re.match(r"^\/([a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)*)", user_input)
+    name_match = re.match(r"^\/([a-zA-Z0-9_?-]+(?::[a-zA-Z0-9_?-]+)*)", user_input)
 
     if not name_match:
         return None
