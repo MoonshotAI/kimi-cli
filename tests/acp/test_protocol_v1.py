@@ -99,6 +99,55 @@ async def test_list_sessions(
     assert session_resp.session_id in session_ids
 
 
+async def test_resume_session(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """initialize → new_session → prompt → resume_session returns modes and models."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session_resp = await conn.new_session(cwd=str(work_dir))
+
+    # Must prompt first so the session is persisted
+    await conn.prompt(
+        prompt=[acp.text_block("Hello")],
+        session_id=session_resp.session_id,
+    )
+
+    resume_resp = await conn.resume_session(
+        cwd=str(work_dir),
+        session_id=session_resp.session_id,
+    )
+
+    assert resume_resp.modes is not None
+    assert resume_resp.modes.current_mode_id == "default"
+    assert len(resume_resp.modes.available_modes) > 0
+    assert resume_resp.models is not None
+    assert isinstance(resume_resp.models.current_model_id, str)
+    assert len(resume_resp.models.available_models) > 0
+
+
+async def test_resume_session_not_found(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """resume_session with a non-existent session_id raises an error."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+
+    with pytest.raises(acp.RequestError):
+        await conn.resume_session(
+            cwd=str(work_dir),
+            session_id="non-existent-session-id",
+        )
+
+
 async def test_cancel_session(
     acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
     tmp_path,

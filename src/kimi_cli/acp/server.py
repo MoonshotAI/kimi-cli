@@ -73,6 +73,7 @@ class ACPServer:
                 mcp_capabilities=acp.schema.McpCapabilities(http=True, sse=False),
                 session_capabilities=acp.schema.SessionCapabilities(
                     list=acp.schema.SessionListCapabilities(),
+                    resume=acp.schema.SessionResumeCapabilities(),
                 ),
             ),
             auth_methods=[
@@ -170,16 +171,12 @@ class ACPServer:
             ),
         )
 
-    async def load_session(
-        self, cwd: str, mcp_servers: list[MCPServer], session_id: str, **kwargs: Any
-    ) -> None:
-        logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+    async def _setup_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer]
+    ) -> tuple[ACPSession, _ModelIDConv]:
+        """Load or resume a session. Shared by load_session and resume_session."""
         assert self.conn is not None, "ACP client not connected"
         assert self.client_capabilities is not None, "ACP connection not initialized"
-
-        if session_id in self.sessions:
-            logger.warning("Session already loaded: {id}", id=session_id)
-            return
 
         work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
         session = await Session.find(work_dir, session_id)
@@ -209,7 +206,46 @@ class ACPServer:
                 cli_instance.soul.runtime,
             )
 
+        return acp_session, model_id_conv
+
+    async def load_session(
+        self, cwd: str, mcp_servers: list[MCPServer], session_id: str, **kwargs: Any
+    ) -> None:
+        logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        if session_id in self.sessions:
+            logger.warning("Session already loaded: {id}", id=session_id)
+            return
+
+        await self._setup_session(cwd, session_id, mcp_servers)
         # TODO: replay session history?
+
+    async def resume_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.schema.ResumeSessionResponse:
+        logger.info("Resuming session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        if session_id not in self.sessions:
+            await self._setup_session(cwd, session_id, mcp_servers or [])
+
+        acp_session, model_id_conv = self.sessions[session_id]
+        config = acp_session.cli.soul.runtime.config
+        return acp.schema.ResumeSessionResponse(
+            modes=acp.schema.SessionModeState(
+                available_modes=[
+                    acp.schema.SessionMode(
+                        id="default",
+                        name="Default",
+                        description="The default mode.",
+                    ),
+                ],
+                current_mode_id="default",
+            ),
+            models=acp.schema.SessionModelState(
+                available_models=_expand_llm_models(config.models),
+                current_model_id=model_id_conv.to_acp_model_id(),
+            ),
+        )
 
     async def list_sessions(
         self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
