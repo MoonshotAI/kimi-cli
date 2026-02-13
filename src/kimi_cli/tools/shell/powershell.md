@@ -1,6 +1,6 @@
 Execute a ${SHELL} command. Use this tool to explore the filesystem, inspect or edit files, run Windows scripts, collect system information, etc., whenever the agent is running on Windows.
 
-Note that you are running on Windows with **PowerShell**, so make sure to use PowerShell commands, paths, and conventions. Do NOT use CMD-style commands or syntax.
+Note that you are running on Windows, so make sure to use Windows commands, paths, and conventions.
 
 **Output:**
 The stdout and stderr streams are combined and returned as a single string. Extremely long output may be truncated. When a command fails, the exit code is provided in a system tag.
@@ -12,17 +12,14 @@ The stdout and stderr streams are combined and returned as a single string. Extr
 - Never attempt commands that require elevated (Administrator) privileges unless explicitly authorized.
 
 **Guidelines for efficiency:**
-- Chain related commands with `&&` (PS 7+) or use `if ($LASTEXITCODE -eq 0)` to conditionally execute commands based on the success or failure of previous ones.
-- Redirect or pipe output with `>`, `>>`, `|`, and leverage PowerShell cmdlets like `Select-String`, `Where-Object`, `ForEach-Object` to build richer one-liners instead of multiple tool calls.
-- Use native PowerShell parameters (dash-prefixed like `-Name`, `-Path`); do NOT use CMD-style slash parameters (e.g., use `Get-ChildItem -Name` instead of `dir /b`).
+- Chain related commands with `;` and use `if ($?)` or `if (-not $?)` to conditionally execute commands based on the success or failure of previous ones.
+- Redirect or pipe output with `>`, `>>`, `|`, and leverage `for /f`, `if`, and `set` to build richer one-liners instead of multiple tool calls.
+- Reuse built-in utilities (e.g., `findstr`, `where`) to filter, transform, or locate data in a single invocation.
 
-**PowerShell cmdlets available:**
-- File/Directory: `Get-ChildItem` (aliases: dir/ls), `New-Item`, `Copy-Item`, `Move-Item`, `Remove-Item`, `Get-Content` (alias: cat), `Set-Content`, `Add-Content`, `Test-Path`
-- Environment: `$env:VARNAME` syntax, `Set-Variable`, `Get-Variable`
-- Text/Search: `Select-String` (grep-like), `Where-Object`, `Sort-Object`, `Out-File`
-- System info: `Get-ComputerInfo`, `Get-Process`, `Get-Service`, `hostname`, `systeminfo` (external)
-- Archives/Scripts: `tar`, `Compress-Archive`, `Expand-Archive`, `powershell`, `python`, `node`
-- Other: Any other binaries available on the system PATH; run `Get-Command <name>` to verify availability.
-
-**Note on aliases:**
-PowerShell provides aliases like `dir`, `ls`, `cat`, `rm`, `cd` for convenience, but they behave differently from CMD/Unix equivalents. For example, `dir /b` will NOT work in PowerShell. Prefer native cmdlet names with dash-prefixed parameters for predictable behavior.
+**Commands available:**
+- Shell environment: `cd`, `dir`, `set`, `setlocal`, `echo`, `call`, `where`
+- File operations: `type`, `copy`, `move`, `del`, `erase`, `mkdir`, `rmdir`, `attrib`, `mklink`
+- Text/search: `find`, `findstr`, `more`, `sort`, `Get-Content`
+- System info: `ver`, `systeminfo`, `tasklist`, `wmic`, `hostname`
+- Archives/scripts: `tar`, `Compress-Archive`, `powershell`, `python`, `node`
+- Other: Any other binaries available on the system PATH; run `where <command>` first if unsure.
