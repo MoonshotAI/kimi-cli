@@ -36,6 +36,7 @@ dependencies = [
     "websockets>=14.0",
     "keyring>=25.7.0",
     "setproctitle>=1.3.0",
+    "python-frontmatter>=1.1.0",
 ]
 
 [dependency-groups]

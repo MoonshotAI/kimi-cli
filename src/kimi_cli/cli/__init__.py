@@ -310,13 +310,6 @@ def kimi(
             ),
         ),
     ] = None,
-    debug_hooks: Annotated[
-        bool,
-        typer.Option(
-            "--debug-hooks",
-            help="Enable detailed hook execution logging. Default: no.",
-        ),
-    ] = False,
 ):
     """Kimi, your next CLI agent."""
     import asyncio
