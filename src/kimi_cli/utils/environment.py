@@ -96,11 +96,6 @@ async def _get_powershell_version(ps_path: str) -> str:
     Execute a single command to detect PowerShell version.
     Returns major.minor format (e.g., "5.1", "7.4").
     """
-async def _get_powershell_version(ps_path: str) -> str:
-    """
-    Execute a single command to detect PowerShell version.
-    Returns major.minor format (e.g., "5.1", "7.4").
-    """
     try:
         proc = await asyncio.create_subprocess_exec(
             ps_path,
