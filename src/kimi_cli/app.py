@@ -70,6 +70,8 @@ class KimiCLI:
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
         max_ralph_iterations: int | None = None,
+        # Debug
+        debug_hooks: bool = False,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -155,7 +157,7 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             logger.info("Thinking mode: {thinking}", thinking=thinking)
 
-        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir)
+        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir, debug_hooks)
 
         # Execute session_start hooks and collect additional contexts
         hook_contexts = await runtime._execute_session_start_hooks()
