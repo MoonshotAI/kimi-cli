@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import importlib
 import inspect
 import json
+import time
 from contextvars import ContextVar
-from dataclasses import dataclass
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from kosong.tooling import (
@@ -29,6 +31,8 @@ from kosong.utils.typing import JsonType
 from loguru import logger
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.hooks.config import HookEventType
+from kimi_cli.hooks.models import HookDecision, ToolHookEvent
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
@@ -68,11 +72,71 @@ if TYPE_CHECKING:
         _: Toolset = kimi_toolset
 
 
+@dataclass
+class ToolHookCache:
+    """Cache for hook execution results to optimize performance."""
+
+    max_size: int = 100
+    _cache: dict[str, Any] = field(default_factory=dict)
+    _access_times: dict[str, float] = field(default_factory=dict)
+
+    def _make_key(self, event_type: str, tool_name: str, tool_input: dict[str, Any]) -> str:
+        """Generate cache key from event context."""
+        data = f"{event_type}:{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+        return hashlib.md5(data.encode()).hexdigest()
+
+    def get(self, event_type: str, tool_name: str, tool_input: dict[str, Any]) -> Any | None:
+        """Get cached result if exists."""
+        key = self._make_key(event_type, tool_name, tool_input)
+        if key in self._cache:
+            self._access_times[key] = time.monotonic()
+            return self._cache[key]
+        return None
+
+    def set(self, event_type: str, tool_name: str, tool_input: dict[str, Any], result: Any) -> None:
+        """Cache execution result."""
+        # Evict oldest entries if cache is full
+        if len(self._cache) >= self.max_size:
+            oldest_key = min(self._access_times, key=self._access_times.get)
+            del self._cache[oldest_key]
+            del self._access_times[oldest_key]
+
+        key = self._make_key(event_type, tool_name, tool_input)
+        self._cache[key] = result
+        self._access_times[key] = time.monotonic()
+
+    def clear(self) -> None:
+        """Clear all cached entries."""
+        self._cache.clear()
+        self._access_times.clear()
+
+
+@dataclass
+class ToolHookStats:
+    """Statistics for tool hook execution."""
+
+    total_calls: int = 0
+    blocked_calls: int = 0
+    modified_calls: int = 0
+    cache_hits: int = 0
+    total_duration_ms: float = 0.0
+
+    @property
+    def avg_duration_ms(self) -> float:
+        """Average hook execution duration."""
+        if self.total_calls == 0:
+            return 0.0
+        return self.total_duration_ms / self.total_calls
+
+
 class KimiToolset:
-    def __init__(self) -> None:
+    def __init__(self, runtime: Runtime | None = None) -> None:
         self._tool_dict: dict[str, ToolType] = {}
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
+        self._runtime = runtime
+        self._hook_cache = ToolHookCache()
+        self._hook_stats = ToolHookStats()
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
@@ -110,18 +174,213 @@ class KimiToolset:
             except json.JSONDecodeError as e:
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
-            async def _call():
+            # Create async task that handles hooks + tool execution
+            async def _call_with_hooks():
+                start_time = time.monotonic()
+                tool_name = tool_call.function.name
+                tool_use_id = tool_call.id
+                tool_input = arguments
+
                 try:
-                    ret = await tool.call(arguments)
+                    # Execute before_tool hooks
+                    hook_result = await self._execute_before_tool_hooks(
+                        tool_name=tool_name,
+                        tool_input=tool_input,
+                        tool_use_id=tool_use_id,
+                    )
+
+                    if hook_result is not None:
+                        # Hook blocked the tool execution
+                        return hook_result
+
+                    # Execute the actual tool
+                    try:
+                        ret = await tool.call(tool_input)
+                        tool_output = ret
+                        error = None
+                    except Exception as e:
+                        tool_output = None
+                        error = str(e)
+                        ret = ToolRuntimeError(str(e))
+
+                    # Execute after_tool hooks (fire and forget for async hooks)
+                    await self._execute_after_tool_hooks(
+                        tool_name=tool_name,
+                        tool_input=tool_input,
+                        tool_output=tool_output,
+                        error=error,
+                        tool_use_id=tool_use_id,
+                        duration_ms=int((time.monotonic() - start_time) * 1000),
+                    )
+
                     return ToolResult(tool_call_id=tool_call.id, return_value=ret)
+
                 except Exception as e:
+                    logger.exception("Tool execution failed: {error}", error=e)
                     return ToolResult(
                         tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e))
                     )
 
-            return asyncio.create_task(_call())
+            return asyncio.create_task(_call_with_hooks())
         finally:
             current_tool_call.reset(token)
+
+    async def _execute_before_tool_hooks(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        tool_use_id: str,
+    ) -> ToolResult | None:
+        """Execute before_tool hooks and return blocked result or None to continue.
+
+        Returns:
+            ToolResult if tool should be blocked, None to continue execution.
+        """
+        if self._runtime is None:
+            return None
+
+        self._hook_stats.total_calls += 1
+        start_time = time.monotonic()
+
+        # Check cache first
+        cached_result = self._hook_cache.get("before_tool", tool_name, tool_input)
+        if cached_result is not None:
+            self._hook_stats.cache_hits += 1
+            logger.debug("Cache hit for before_tool hook: {tool_name}", tool_name=tool_name)
+            return cached_result
+
+        # Build event context
+        event = ToolHookEvent(
+            event_type=HookEventType.BEFORE_TOOL.value,
+            timestamp=datetime.now(),
+            session_id=self._runtime.session.id,
+            work_dir=str(self._runtime.session.work_dir),
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_use_id=tool_use_id,
+        )
+
+        try:
+            results = await self._runtime.hook_manager.execute(
+                HookEventType.BEFORE_TOOL,
+                event,
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+        except Exception as e:
+            logger.exception("Failed to execute before_tool hooks: {error}", error=e)
+            return None
+        finally:
+            duration_ms = (time.monotonic() - start_time) * 1000
+            self._hook_stats.total_duration_ms += duration_ms
+
+        # Process hook results
+        for result in results:
+            if not result.success:
+                logger.warning(
+                    "before_tool hook {name} failed: {reason}",
+                    name=result.hook_name,
+                    reason=result.reason,
+                )
+                continue
+
+            if result.decision == HookDecision.DENY:
+                self._hook_stats.blocked_calls += 1
+                logger.info(
+                    "Tool {tool_name} blocked by hook {hook_name}: {reason}",
+                    tool_name=tool_name,
+                    hook_name=result.hook_name,
+                    reason=result.reason,
+                )
+                # Cache the block decision
+                block_result = ToolResult(
+                    tool_call_id=tool_use_id,
+                    return_value=ToolError(
+                        message=f"Tool blocked by hook '{result.hook_name}': {result.reason}",
+                        brief="Blocked by hook",
+                    ),
+                )
+                self._hook_cache.set("before_tool", tool_name, tool_input, block_result)
+                return block_result
+
+            if result.decision == HookDecision.ASK:
+                # TODO: Implement interactive approval for hooks
+                logger.warning(
+                    "Hook {hook_name} requested ASK decision but interactive approval not implemented yet",
+                    hook_name=result.hook_name,
+                )
+
+            if result.modified_input is not None:
+                self._hook_stats.modified_calls += 1
+                logger.debug(
+                    "Tool {tool_name} input modified by hook {hook_name}",
+                    tool_name=tool_name,
+                    hook_name=result.hook_name,
+                )
+                # Note: Input modification is tricky because we've already parsed arguments
+                # For now, we log it but don't apply it. Future: pass modified_input back to tool.call()
+
+        return None
+
+    async def _execute_after_tool_hooks(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        tool_output: Any,
+        error: str | None,
+        tool_use_id: str,
+        duration_ms: int,
+    ) -> None:
+        """Execute after_tool hooks (fire and forget for async hooks)."""
+        if self._runtime is None:
+            return
+
+        # Build event context
+        event = ToolHookEvent(
+            event_type=HookEventType.AFTER_TOOL.value,
+            timestamp=datetime.now(),
+            session_id=self._runtime.session.id,
+            work_dir=str(self._runtime.session.work_dir),
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_use_id=tool_use_id,
+            context={
+                "tool_output": tool_output,
+                "error": error,
+                "duration_ms": duration_ms,
+            },
+        )
+
+        try:
+            results = await self._runtime.hook_manager.execute(
+                HookEventType.AFTER_TOOL,
+                event,
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+
+            for result in results:
+                if not result.success:
+                    logger.warning(
+                        "after_tool hook {name} failed: {reason}",
+                        name=result.hook_name,
+                        reason=result.reason,
+                    )
+                else:
+                    logger.debug(
+                        "after_tool hook {name} executed successfully",
+                        name=result.hook_name,
+                    )
+        except Exception as e:
+            logger.exception("Failed to execute after_tool hooks: {error}", error=e)
+
+    def get_hook_stats(self) -> ToolHookStats:
+        """Get hook execution statistics."""
+        return self._hook_stats
+
+    def clear_hook_cache(self) -> None:
+        """Clear the hook cache."""
+        self._hook_cache.clear()
 
     def register_external_tool(
         self,
