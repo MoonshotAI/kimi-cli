@@ -114,6 +114,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
         skills=runtime.skills,
         oauth=runtime.oauth,
         additional_dirs=runtime.additional_dirs,
+        hook_manager=runtime.hook_manager,
     )
 
 

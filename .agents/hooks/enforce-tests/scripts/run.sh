@@ -24,10 +24,10 @@ if [[ ! -d "tests" ]] && [[ ! -d "tests_e2e" ]] && [[ ! -d "tests_ai" ]]; then
     exit 0
 fi
 
-# Run only unit tests (quick check), skip e2e and other packages
-# Full test suite should be run in CI, not on every agent stop
+# Run only core unit tests (quick check)
+# Exclude: e2e tests (slow, spawn subprocess), tools tests (shell, network), ai tests
 echo "HOOK: Running quick unit tests only..." >&2
-test_output=$(uv run pytest tests/ -x -q --tb=short 2>&1)
+test_output=$(uv run pytest tests/core/ tests/utils/ -x -q --tb=short 2>&1)
 test_exit=$?
 
 if [[ $test_exit -ne 0 ]]; then
