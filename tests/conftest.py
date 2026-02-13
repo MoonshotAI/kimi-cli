@@ -23,6 +23,8 @@ from kimi_cli.llm import ALL_MODEL_CAPABILITIES, LLM
 from kimi_cli.metadata import WorkDirMeta
 from kimi_cli.session import Session
 from kimi_cli.session_state import SessionState
+from kimi_cli.hooks.discovery import HookDiscovery
+from kimi_cli.hooks.manager import HookManager
 from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs, LaborMarket, Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -166,6 +168,8 @@ def runtime(
     environment: Environment,
 ) -> Runtime:
     """Create a Runtime instance."""
+    hook_discovery = HookDiscovery(session.work_dir)
+    hook_manager = HookManager(hook_discovery)
     rt = Runtime(
         config=config,
         llm=llm,
@@ -177,6 +181,7 @@ def runtime(
         environment=environment,
         skills={},
         oauth=OAuthManager(config),
+        hook_manager=hook_manager,
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",

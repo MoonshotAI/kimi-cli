@@ -6,7 +6,7 @@ matcher:
   tool: WriteFile
   pattern: "\\.py$"
 timeout: 30000
-async: true
+async: false
 priority: 100
 ---
 
@@ -17,6 +17,7 @@ Automatically formats Python files using `black` after they are written.
 ## Behavior
 
 When a Python file is written (`.py` extension), this hook:
+
 1. Runs `black` on the file
 2. Logs the result to stderr
 3. Does not block (runs asynchronously)
@@ -26,6 +27,7 @@ When a Python file is written (`.py` extension), this hook:
 Entry point: `scripts/run.sh`
 
 The script:
+
 1. Extracts `file_path` from the tool input
 2. Checks if it's a Python file
 3. Runs `black --quiet` if available

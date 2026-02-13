@@ -17,6 +17,7 @@ This hook prevents execution of dangerous system commands that could cause irrev
 ## Behavior
 
 When triggered, this hook will:
+
 1. Check if the command matches dangerous patterns
 2. Block execution with exit code 2 if matched
 3. Log the attempt for audit purposes
@@ -26,6 +27,7 @@ When triggered, this hook will:
 Entry point: `scripts/run.sh`
 
 The script:
+
 1. Reads event data from stdin
 2. Extracts the command from `tool_input.command`
 3. Checks against dangerous patterns
