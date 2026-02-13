@@ -4,9 +4,9 @@ uid: feat0002
 type: feature
 status: closed
 stage: done
-title: "Session 生命周期钩子集成"
+title: Session 生命周期钩子集成
 created_at: '2026-01-15T00:00:00'
-updated_at: '2026-02-13T13:35:00'
+updated_at: '2026-02-13T13:29:51'
 parent: EPIC-0001
 dependencies:
 - FEAT-0001
@@ -22,6 +22,7 @@ files:
 - src/kimi_cli/tools/shell.py
 criticality: high
 solution: implemented
+closed_at: '2026-02-13T13:29:51'
 ---
 
 ## FEAT-0002: Session 生命周期钩子集成
