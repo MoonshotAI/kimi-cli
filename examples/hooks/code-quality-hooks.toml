@@ -1,0 +1,105 @@
+# Code Quality Hooks for Kimi Code CLI
+# 代码质量检查相关的 Hooks 配置示例
+
+# ============================================
+# 1. Python 代码格式化（异步执行）
+# ============================================
+[[hooks.after_tool]]
+name = "auto-format-python"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.py$" }
+command = "black --quiet {{tool_input.path}} 2>/dev/null || true"
+async_ = true  # 异步执行，不阻塞
+timeout = 30000
+
+# ============================================
+# 2. Python 导入排序（异步执行）
+# ============================================
+[[hooks.after_tool]]
+name = "auto-sort-imports"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.py$" }
+command = "isort --quiet {{tool_input.path}} 2>/dev/null || true"
+async_ = true
+timeout = 30000
+
+# ============================================
+# 3. 代码质量分析（Agent Hook）
+# ============================================
+[[hooks.after_tool]]
+name = "code-quality-analysis"
+type = "agent"
+matcher = { tool = "WriteFile", pattern = "\\.(py|js|ts|go|rs)$" }
+task = """
+分析刚写入的代码质量：
+
+文件路径: {{tool_input.path}}
+内容预览（前500字符）: {{tool_input.content[:500]}}
+
+请评估：
+1. 代码风格是否一致
+2. 是否有明显的逻辑错误
+3. 是否有性能问题
+4. 是否遵循该语言的最佳实践
+
+返回 JSON 格式：
+{
+    "decision": "allow",
+    "additional_context": "代码质量评估的简要总结，包括发现的问题和建议"
+}
+"""
+timeout = 60000  # 1分钟
+
+# ============================================
+# 4. 测试运行分析
+# ============================================
+[[hooks.after_tool]]
+name = "test-failure-analysis"
+type = "agent"
+matcher = { tool = "Shell", pattern = "pytest|unittest|test" }
+task = """
+分析测试结果：
+
+命令输出：
+{{tool_output}}
+
+请提供：
+1. 测试统计（通过/失败/跳过数量）
+2. 失败测试的原因分析
+3. 修复建议
+4. 是否需要重新运行测试
+
+返回 JSON：
+{
+    "decision": "allow",
+    "additional_context": "测试分析结果的详细总结"
+}
+"""
+timeout = 120000  # 2分钟
+
+# ============================================
+# 5. 代码复杂度警告
+# ============================================
+[[hooks.after_tool]]
+name = "complexity-check"
+type = "prompt"
+matcher = { tool = "WriteFile", pattern = "\\.(py|js|ts)$" }
+prompt = """
+评估以下代码的复杂度：
+
+文件: {{tool_input.path}}
+代码片段（前800字符）: {{tool_input.content[:800]}}
+
+检查：
+1. 函数/方法是否过长（>50行）
+2. 嵌套层级是否过深（>4层）
+3. 参数数量是否过多（>5个）
+
+返回 JSON：
+{
+    "decision": "allow" | "ask",
+    "reason": "复杂度问题的具体说明",
+    "additional_context": "重构建议"
+}
+"""
+temperature = 0.1

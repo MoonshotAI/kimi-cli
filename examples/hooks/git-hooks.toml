@@ -1,0 +1,90 @@
+# Git Integration Hooks for Kimi Code CLI
+# Git 集成相关的 Hooks 配置示例
+
+# ============================================
+# 1. Git 提交前检查
+# ============================================
+[[hooks.before_tool]]
+name = "pre-commit-validation"
+type = "command"
+matcher = { tool = "Shell", pattern = "git commit" }
+command = """
+if [ -f .pre-commit-config.yaml ]; then
+    pre-commit run --files $(git diff --cached --name-only) 2>&1
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo '{"decision": "deny", "reason": "Pre-commit checks failed. Please fix the issues before committing."}'
+        exit 2
+    fi
+fi
+echo '{"decision": "allow"}'
+"""
+timeout = 60000  # 1分钟
+
+# ============================================
+# 2. 提交信息质量检查
+# ============================================
+[[hooks.before_tool]]
+name = "commit-message-check"
+type = "prompt"
+matcher = { tool = "Shell", pattern = "git commit -m|git commit --message" }
+prompt = """
+检查 Git 提交信息是否符合规范。
+
+命令: {{tool_input.command}}
+
+提取的提交信息: 从命令中解析 -m 或 --message 后面的内容
+
+检查规则：
+1. 提交信息不能为空或太短（少于 10 字符）
+2. 应该使用祈使语气（如 "Add feature" 而非 "Added feature"）
+3. 首字母应该大写
+4. 不应该以句号结尾
+
+返回 JSON：
+{
+    "decision": "allow" | "ask",
+    "reason": "不符合规范的具体原因",
+    "additional_context": "建议的改进"
+}
+"""
+
+# ============================================
+# 3. Git 推送前检查
+# ============================================
+[[hooks.before_tool]]
+name = "pre-push-check"
+type = "command"
+matcher = { tool = "Shell", pattern = "git push" }
+command = """
+# 检查是否有未提交的更改
+if [ -n "$(git status --porcelain)" ]; then
+    echo '{"decision": "ask", "reason": "You have uncommitted changes. Push anyway?"}'
+    exit 0
+fi
+
+# 检查是否落后远程分支
+current_branch=$(git branch --show-current)
+if git fetch origin $current_branch --dry-run 2>&1 | grep -q "up to date"; then
+    echo '{"decision": "allow"}'
+else
+    echo '{"decision": "ask", "reason": "Local branch may be behind remote. Pull first?"}'
+fi
+"""
+
+# ============================================
+# 4. 大文件提交警告
+# ============================================
+[[hooks.before_tool]]
+name = "large-file-warning"
+type = "command"
+matcher = { tool = "Shell", pattern = "git add|git commit" }
+command = """
+# 检查暂存区是否有大文件（>10MB）
+large_files=$(git diff --cached --numstat | awk '$1 > 10000 || $2 > 10000 {print $3}')
+if [ -n "$large_files" ]; then
+    echo "{\"decision\": \"ask\", \"reason\": \"Large files detected (>10MB): $large_files\"}"
+else
+    echo '{"decision": "allow"}'
+fi
+"""

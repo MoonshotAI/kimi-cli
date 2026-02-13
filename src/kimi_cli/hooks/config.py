@@ -35,8 +35,8 @@ class HookType(str, Enum):
     """Hook implementation types."""
 
     COMMAND = "command"
-    # Phase 2: PROMPT = "prompt"
-    # Phase 3: AGENT = "agent"
+    PROMPT = "prompt"
+    AGENT = "agent"
 
 
 class HookMatcher(BaseModel):
@@ -85,7 +85,38 @@ class CommandHookConfig(BaseHookConfig):
     )
 
 
-HookConfig = CommandHookConfig  # Phase 1: 仅支持 Command
+class PromptHookConfig(BaseHookConfig):
+    """Prompt hook configuration - uses LLM for intelligent decision making."""
+
+    model_config = {"populate_by_name": True}
+
+    type: Literal[HookType.PROMPT] = HookType.PROMPT
+    prompt: str = Field(description="Prompt template for LLM decision")
+    system_prompt: str | None = Field(
+        default=None, description="Optional system prompt override"
+    )
+    model: str | None = Field(
+        default=None, description="Model to use (defaults to session model)"
+    )
+    temperature: float = Field(default=0.1, ge=0.0, le=2.0, description="Sampling temperature")
+
+
+class AgentHookConfig(BaseHookConfig):
+    """Agent hook configuration - spawns a subagent for complex validation."""
+
+    model_config = {"populate_by_name": True}
+
+    type: Literal[HookType.AGENT] = HookType.AGENT
+    task: str = Field(description="Task description for the subagent")
+    agent_file: str | None = Field(
+        default=None, description="Custom agent spec file (defaults to built-in validator)"
+    )
+    timeout: int = Field(
+        default=120000, ge=1000, le=600000, description="Timeout in milliseconds (default 2 min)"
+    )
+
+
+HookConfig = CommandHookConfig | PromptHookConfig | AgentHookConfig
 
 
 class HooksConfig(BaseModel):
