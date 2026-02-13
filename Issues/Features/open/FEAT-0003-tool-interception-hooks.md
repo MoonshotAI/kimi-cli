@@ -3,10 +3,10 @@ id: FEAT-0003
 uid: feat0003
 type: feature
 status: open
-stage: doing
-title: "工具拦截钩子 (PreToolUse / PostToolUse)"
+stage: review
+title: 工具拦截钩子 (PreToolUse / PostToolUse)
 created_at: '2026-01-15T00:00:00'
-updated_at: '2026-02-13T13:35:00'
+updated_at: '2026-02-13T13:41:44'
 parent: EPIC-0001
 dependencies:
 - FEAT-0001
@@ -20,7 +20,7 @@ files:
 - src/kimi_cli/soul/toolset.py
 - src/kimi_cli/soul/kimisoul.py
 criticality: high
-solution: null
+solution: null # implemented, cancelled, wontfix, duplicate
 ---
 
 ## FEAT-0003: 工具拦截钩子 (PreToolUse / PostToolUse)
