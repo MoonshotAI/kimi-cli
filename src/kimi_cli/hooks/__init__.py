@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from kimi_cli.hooks.config import (
+    AgentHookConfig,
     BaseHookConfig,
     CommandHookConfig,
     HookConfig,
@@ -8,8 +9,14 @@ from kimi_cli.hooks.config import (
     HookMatcher,
     HooksConfig,
     HookType,
+    PromptHookConfig,
 )
-from kimi_cli.hooks.manager import CommandResult, HookManager
+from kimi_cli.hooks.manager import (
+    CommandResult,
+    HookDebugger,
+    HookExecutionLog,
+    HookManager,
+)
 from kimi_cli.hooks.models import (
     HookDecision,
     HookEvent,
@@ -22,6 +29,7 @@ from kimi_cli.hooks.models import (
 
 __all__ = [
     # Config
+    "AgentHookConfig",
     "BaseHookConfig",
     "CommandHookConfig",
     "HookConfig",
@@ -29,6 +37,7 @@ __all__ = [
     "HookMatcher",
     "HooksConfig",
     "HookType",
+    "PromptHookConfig",
     # Models
     "HookDecision",
     "HookEvent",
@@ -39,5 +48,7 @@ __all__ = [
     "ToolHookEvent",
     # Manager
     "CommandResult",
+    "HookDebugger",
+    "HookExecutionLog",
     "HookManager",
 ]

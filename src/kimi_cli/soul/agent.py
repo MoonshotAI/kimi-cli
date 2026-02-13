@@ -92,6 +92,7 @@ class Runtime:
         session: Session,
         yolo: bool,
         skills_dir: KaosPath | None = None,
+        debug_hooks: bool = False,
     ) -> Runtime:
         from kimi_cli.hooks.config import HookEventType
         from kimi_cli.hooks.models import SessionStartHookEvent
@@ -165,8 +166,8 @@ class Runtime:
             on_change=_on_approval_change,
         )
 
-        # Initialize hook manager
-        hook_manager = HookManager(config.hooks).with_runtime(None)  # Will set runtime later
+        # Initialize hook manager with debug mode
+        hook_manager = HookManager(config.hooks, debug=debug_hooks).with_runtime(None)  # Will set runtime later
 
         session_start_time = datetime.now()
 
