@@ -59,11 +59,12 @@ class Shell(CallableTool2[Params]):
         if environment.os_kind != "Windows":
             return "bash"
         
-        # Windows: distinguish between PowerShell 5.1 and 7+
-        if environment.shell_version.startswith("7"):
+        # Windows: use shell_name to distinguish between PowerShell 7+ and 5.1
+        # shell_name is "PowerShell" for pwsh (7+) and "Windows PowerShell" for 5.1
+        if environment.shell_name == "PowerShell":
             return "powershell7"
         
-        # Default to powershell5 for 5.x or unknown versions
+        # Default to powershell5 for Windows PowerShell 5.x
         return "powershell5"
 
     @override
