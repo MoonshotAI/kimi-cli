@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import re
+import sys
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
@@ -52,9 +53,23 @@ from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
 from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
 
-PROMPT_SYMBOL = "✨"
+_prompt_symbol: str
+_prompt_symbol_thinking: str
+
+
+if sys.platform == "win32":
+    # On Windows terminals, emoji and some wide Unicode symbols can cause
+    # display-width mismatches with prompt-toolkit, leading to visual cursor
+    # shifts. Use plain ASCII / single-width symbols for better compatibility.
+    _prompt_symbol = ">"
+    _prompt_symbol_thinking = "?"
+else:
+    _prompt_symbol = "✨"
+    _prompt_symbol_thinking = "💫"
+
+PROMPT_SYMBOL = _prompt_symbol
 PROMPT_SYMBOL_SHELL = "$"
-PROMPT_SYMBOL_THINKING = "💫"
+PROMPT_SYMBOL_THINKING = _prompt_symbol_thinking
 
 
 class SlashCommandCompleter(Completer):
