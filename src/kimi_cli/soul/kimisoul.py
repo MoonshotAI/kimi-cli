@@ -510,6 +510,7 @@ class KimiSoul:
             )
 
         result = await _kosong_step_with_retry()
+        self._runtime.increment_step_count()
         logger.debug("Got step result: {result}", result=result)
         status_update = StatusUpdate(token_usage=result.usage, message_id=result.id)
         if result.usage is not None:
