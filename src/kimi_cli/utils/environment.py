@@ -96,6 +96,11 @@ async def _get_powershell_version(ps_path: str) -> str:
     Execute a single command to detect PowerShell version.
     Returns major.minor format (e.g., "5.1", "7.4").
     """
+async def _get_powershell_version(ps_path: str) -> str:
+    """
+    Execute a single command to detect PowerShell version.
+    Returns major.minor format (e.g., "5.1", "7.4").
+    """
     try:
         proc = await asyncio.create_subprocess_exec(
             ps_path,
@@ -103,7 +108,12 @@ async def _get_powershell_version(ps_path: str) -> str:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return "unknown"
         version_str = stdout.decode().strip()
         
         # Parse version string like "5.1.22621.4391" to "5.1"
@@ -113,6 +123,7 @@ async def _get_powershell_version(ps_path: str) -> str:
         return version_str
     except Exception:
         return "unknown"
+
 
 
 async def _get_bash_version(bash_path: str) -> str:
