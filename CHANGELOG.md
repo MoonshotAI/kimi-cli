@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.13.0 (2026-02-13)
+
+- Fix bash shell detection to use `shutil.which()` for better compatibility on systems where bash is not at standard paths
+
 ## 1.12.0 (2026-02-11)
 
 - Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages
