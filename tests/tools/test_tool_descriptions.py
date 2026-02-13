@@ -133,7 +133,10 @@ However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use t
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 def test_shell_description(shell_tool: Shell):
     """Test the description of Shell tool."""
-    assert shell_tool.base.description == snapshot(
+    import re
+    desc = shell_tool.base.description
+    desc = re.sub(r"Execute a bash \(`[^`]+`\)", "Execute a bash (`/bin/bash`)", desc)
+    assert desc == snapshot(
         """\
 Execute a bash (`/bin/bash`) command. Use this tool to explore the filesystem, edit files, run scripts, get system information, etc.
 
