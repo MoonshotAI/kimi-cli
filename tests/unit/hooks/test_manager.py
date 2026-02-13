@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from kimi_cli.hooks.config import CommandHookConfig, HookEventType, HooksConfig
+from kimi_cli.hooks.config import HookConfig, HookEventType, HooksConfig
 from kimi_cli.hooks.manager import CommandResult, HookManager
 from kimi_cli.hooks.models import HookDecision, HookEvent, HookResult
 
@@ -15,9 +15,9 @@ from kimi_cli.hooks.models import HookDecision, HookEvent, HookResult
 def sample_config():
     return HooksConfig(
         before_tool=[
-            CommandHookConfig(
+            HookConfig(
                 name="test-hook",
-                command='echo \'{"decision": "allow"}\'',
+                command='echo \'{ "decision": "allow" }\'',
                 timeout=5000,
             ),
         ]
@@ -76,14 +76,14 @@ class TestHookManagerExecute:
     async def test_execute_with_matcher_filter(self, sample_event):
         config = HooksConfig(
             before_tool=[
-                CommandHookConfig(
+                HookConfig(
                     name="shell-hook",
-                    command='echo \'{"decision": "allow"}\'',
+                    command='echo \'{ "decision": "allow" }\'',
                     matcher={"tool": "Shell"},  # Only matches Shell
                 ),
-                CommandHookConfig(
+                HookConfig(
                     name="file-hook",
-                    command='echo \'{"decision": "allow"}\'',
+                    command='echo \'{ "decision": "allow" }\'',
                     matcher={"tool": "WriteFile"},  # Only matches WriteFile
                 ),
             ]
@@ -109,9 +109,9 @@ class TestHookManagerExecute:
     async def test_execute_parallel(self, sample_event):
         config = HooksConfig(
             before_tool=[
-                CommandHookConfig(name="hook1", command="echo 1"),
-                CommandHookConfig(name="hook2", command="echo 2"),
-                CommandHookConfig(name="hook3", command="echo 3"),
+                HookConfig(name="hook1", command="echo 1"),
+                HookConfig(name="hook2", command="echo 2"),
+                HookConfig(name="hook3", command="echo 3"),
             ]
         )
         manager = HookManager(config=config)
@@ -131,7 +131,7 @@ class TestHookManagerExecute:
 class TestHookManagerParseResult:
     def test_parse_exit_code_0_json(self):
         manager = HookManager()
-        hook = CommandHookConfig(command="echo test")
+        hook = HookConfig(command="echo test")
         result = manager._parse_command_result(
             hook,
             CommandResult(exit_code=0, stdout='{"decision": "deny", "reason": "test"}', stderr=""),
@@ -142,7 +142,7 @@ class TestHookManagerParseResult:
 
     def test_parse_exit_code_0_non_json(self):
         manager = HookManager()
-        hook = CommandHookConfig(command="echo test")
+        hook = HookConfig(command="echo test")
         result = manager._parse_command_result(
             hook,
             CommandResult(exit_code=0, stdout="Plain text output", stderr=""),
@@ -152,7 +152,7 @@ class TestHookManagerParseResult:
 
     def test_parse_exit_code_2(self):
         manager = HookManager()
-        hook = CommandHookConfig(command="echo test")
+        hook = HookConfig(command="echo test")
         result = manager._parse_command_result(
             hook,
             CommandResult(exit_code=2, stdout="", stderr="Blocking error"),
@@ -163,7 +163,7 @@ class TestHookManagerParseResult:
 
     def test_parse_other_exit_code(self):
         manager = HookManager()
-        hook = CommandHookConfig(command="echo test")
+        hook = HookConfig(command="echo test")
         result = manager._parse_command_result(
             hook,
             CommandResult(exit_code=1, stdout="", stderr="Some error"),
@@ -185,7 +185,7 @@ class TestHookManagerParseResult:
 class TestHookManagerExecuteCommand:
     async def test_execute_command_basic(self, sample_event):
         manager = HookManager()
-        hook = CommandHookConfig(command="cat")  # Echo stdin back
+        hook = HookConfig(command="cat")  # Echo stdin back
 
         with patch("asyncio.create_subprocess_shell") as mock_create:
             mock_proc = AsyncMock()
@@ -204,7 +204,7 @@ class TestHookManagerExecuteCommand:
         mock_runtime.session.work_dir = "/tmp/test"
 
         manager = HookManager().with_runtime(mock_runtime)
-        hook = CommandHookConfig(command="echo test")
+        hook = HookConfig(command="echo test")
 
         with patch("asyncio.create_subprocess_shell") as mock_create:
             mock_proc = AsyncMock()
@@ -222,10 +222,12 @@ class TestHookManagerExecuteCommand:
 
     async def test_execute_command_timeout(self, sample_event):
         manager = HookManager()
-        hook = CommandHookConfig(command="sleep 10", timeout=100)  # 100ms timeout
+        hook = HookConfig(command="sleep 10", timeout=100)  # 100ms timeout
 
         with patch("asyncio.create_subprocess_shell") as mock_create:
             mock_proc = AsyncMock()
+            # kill() is synchronous in real Popen, use Mock not AsyncMock
+            mock_proc.kill = Mock()
             # Simulate timeout by raising asyncio.TimeoutError
 
             async def slow_communicate(*args, **kwargs):

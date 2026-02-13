@@ -3,13 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from kimi_cli.hooks.config import (
-    CommandHookConfig,
-    HookEventType,
-    HookMatcher,
-    HooksConfig,
-    HookType,
-)
+from kimi_cli.hooks.config import HookConfig, HookEventType, HookMatcher, HooksConfig, HookType
 
 
 class TestHookEventType:
@@ -60,16 +54,16 @@ class TestHookMatcher:
         assert matcher.matches("Shell", {"command": "ls -la"}) is False
 
 
-class TestCommandHookConfig:
+class TestHookConfig:
     def test_basic_creation(self):
-        hook = CommandHookConfig(command="echo hello")
+        hook = HookConfig(command="echo hello")
         assert hook.command == "echo hello"
         assert hook.type == HookType.COMMAND
         assert hook.async_ is False
         assert hook.timeout == 30000
 
     def test_with_all_fields(self):
-        hook = CommandHookConfig(
+        hook = HookConfig(
             name="test-hook",
             command="echo hello",
             timeout=5000,
@@ -87,18 +81,18 @@ class TestCommandHookConfig:
 
     def test_timeout_validation(self):
         with pytest.raises(ValidationError):
-            CommandHookConfig(command="echo hello", timeout=50)  # Too low
+            HookConfig(command="echo hello", timeout=50)  # Too low
 
         with pytest.raises(ValidationError):
-            CommandHookConfig(command="echo hello", timeout=700000)  # Too high
+            HookConfig(command="echo hello", timeout=700000)  # Too high
 
         # Valid boundaries
-        CommandHookConfig(command="echo hello", timeout=100)
-        CommandHookConfig(command="echo hello", timeout=600000)
+        HookConfig(command="echo hello", timeout=100)
+        HookConfig(command="echo hello", timeout=600000)
 
     def test_async_alias(self):
         # Test that 'async' alias works
-        hook = CommandHookConfig(command="echo hello", **{"async": True})
+        hook = HookConfig(command="echo hello", **{"async": True})
         assert hook.async_ is True
 
 
@@ -119,8 +113,8 @@ class TestHooksConfig:
     def test_auto_assign_names(self):
         config = HooksConfig(
             before_tool=[
-                CommandHookConfig(command="echo 1"),
-                CommandHookConfig(command="echo 2"),
+                HookConfig(command="echo 1"),
+                HookConfig(command="echo 2"),
             ]
         )
         assert config.before_tool[0].name == "before_tool_0"
@@ -129,16 +123,16 @@ class TestHooksConfig:
     def test_preserves_custom_names(self):
         config = HooksConfig(
             before_tool=[
-                CommandHookConfig(name="custom-hook", command="echo hello"),
+                HookConfig(name="custom-hook", command="echo hello"),
             ]
         )
         assert config.before_tool[0].name == "custom-hook"
 
     def test_multiple_event_types(self):
         config = HooksConfig(
-            session_start=[CommandHookConfig(command="echo start")],
-            session_end=[CommandHookConfig(command="echo end")],
-            before_tool=[CommandHookConfig(command="echo before")],
+            session_start=[HookConfig(command="echo start")],
+            session_end=[HookConfig(command="echo end")],
+            before_tool=[HookConfig(command="echo before")],
         )
         assert len(config.session_start) == 1
         assert len(config.session_end) == 1
