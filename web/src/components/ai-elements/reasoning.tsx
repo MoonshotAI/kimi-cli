@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
+import { ChevronRightIcon, SparklesIcon } from "lucide-react";
 import { Shimmer } from "./shimmer";
 import {
   escapeHtmlOutsideCodeBlocks,
@@ -134,21 +135,21 @@ export const Reasoning = memo(
 
 export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger>;
 
-const getThinkingMessage = (isStreaming: boolean, duration?: number) => {
+const getThinkingLabel = (isStreaming: boolean, duration?: number) => {
   if (isStreaming || duration === 0) {
     return (
       <>
         Thinking
-        <Shimmer duration={1} className="text-muted-foreground">
+        <Shimmer as="span" duration={1} className="text-muted-foreground ml-0.5">
           ...
         </Shimmer>
       </>
     );
   }
   if (duration === undefined) {
-    return "Thinking";
+    return "Thought";
   }
-  return `Thinking (${duration}s)`;
+  return `Thought for ${duration}s`;
 };
 
 export const ReasoningTrigger = memo(
@@ -157,16 +158,31 @@ export const ReasoningTrigger = memo(
 
     return (
       <CollapsibleTrigger
-        className={cn("flex items-center gap-2 text-sm text-muted-foreground", className)}
+        className={cn(
+          "flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer",
+          className,
+        )}
         {...props}
       >
         {children ?? (
           <>
-            <span className="size-2 shrink-0 rounded-full bg-warning" />
-            <span className="italic">
-              {getThinkingMessage(isStreaming, duration)}
+            <SparklesIcon
+              className={cn(
+                "size-3.5 shrink-0 transition-colors",
+                isStreaming
+                  ? "text-amber-500 dark:text-amber-400 animate-pulse"
+                  : "text-muted-foreground/60",
+              )}
+            />
+            <span className={cn("italic", isStreaming && "text-foreground/70")}>
+              {getThinkingLabel(isStreaming, duration)}
             </span>
-            <span className="text-xs ml-1">{isOpen ? "▼" : "▶"}</span>
+            <ChevronRightIcon
+              className={cn(
+                "size-3 text-muted-foreground/50 transition-transform duration-200",
+                isOpen && "rotate-90",
+              )}
+            />
           </>
         )}
       </CollapsibleTrigger>
@@ -186,7 +202,7 @@ export const ReasoningContent = memo(
     return (
       <CollapsibleContent
         className={cn(
-          "pl-4 mt-2 text-sm text-muted-foreground border-l-2 border-border",
+          "pl-4 mt-1.5 text-sm text-muted-foreground border-l-2 border-border",
           "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-1 data-[state=open]:slide-in-from-top-1 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
           className,
         )}

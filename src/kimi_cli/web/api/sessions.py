@@ -296,7 +296,7 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
     """Create a new session."""
     # Use provided work_dir or default to user's home directory
     if request and request.work_dir:
-        work_dir_path = Path(request.work_dir)
+        work_dir_path = Path(request.work_dir).expanduser().resolve()
         # Validate the directory exists
         if not work_dir_path.exists():
             if request.create_dir:
@@ -1095,12 +1095,11 @@ async def session_stream(
     wire_file = session_dir / "wire.jsonl"
     has_history = await asyncio.to_thread(wire_file.exists)
 
-    session_process = None
+    session_process = await runner.get_or_create_session(session_id)
     attached = False
     try:
         if has_history:
             # Attach WebSocket in replay mode before history replay
-            session_process = await runner.get_or_create_session(session_id)
             await session_process.add_websocket_and_begin_replay(websocket)
             attached = True
 

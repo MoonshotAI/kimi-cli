@@ -111,6 +111,7 @@ type SessionsSidebarProps = {
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   onOpenCreateDialog: () => void;
+  onCreateSessionInDir?: (workDir: string) => void;
   onClose?: () => void;
   streamStatus?: "ready" | "streaming" | "submitted" | "error";
 };
@@ -178,6 +179,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   searchQuery,
   onSearchQueryChange,
   onOpenCreateDialog,
+  onCreateSessionInDir,
   onClose,
 }: SessionsSidebarProps): ReactElement {
   const minimumSpinMs = 600;
@@ -817,28 +819,48 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                 <div className="flex-1 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] px-3 pb-4 pr-1">
                   <ul className="space-y-1">
                     {sessionGroups.map((group) => (
-                      <li key={group.workDir}>
+                      <li key={group.workDir} className="group/dir">
                         <Collapsible defaultOpen={group.sessions.some(s => s.id === selectedSessionId)}>
-                          <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary/50 group">
-                            <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex-1 truncate text-left font-medium">
-                                  {group.displayName}
-                                </span>
-                              </TooltipTrigger>
-                              {group.workDir !== "__other__" && (
-                                <TooltipContent
-                                  side="right"
-                                >
-                                  {group.workDir}
-                                </TooltipContent>
-                              )}
-                            </Tooltip>
-                            <span className="text-[10px] text-muted-foreground">
-                              ({group.sessions.length})
-                            </span>
-                          </CollapsibleTrigger>
+                          <div className="flex items-center">
+                            <CollapsibleTrigger className="flex flex-1 min-w-0 items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary/50 group">
+                              <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex-1 truncate text-left font-medium">
+                                    {group.displayName}
+                                  </span>
+                                </TooltipTrigger>
+                                {group.workDir !== "__other__" && (
+                                  <TooltipContent
+                                    side="right"
+                                  >
+                                    {group.workDir}
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                              <span className="text-[10px] text-muted-foreground">
+                                ({group.sessions.length})
+                              </span>
+                            </CollapsibleTrigger>
+                            {group.workDir !== "__other__" && onCreateSessionInDir && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    aria-label={`New session in ${group.displayName}`}
+                                    className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-0 group-hover/dir:opacity-100 hover:bg-accent hover:text-foreground transition-all"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onCreateSessionInDir(group.workDir);
+                                    }}
+                                  >
+                                    <Plus className="size-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="right">New session here</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                           <CollapsibleContent>
                             <ul className="pl-3 space-y-1 mt-1">
                               {group.sessions.map((session) => {
@@ -905,7 +927,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                           openDeleteConfirm(session);
                                         }}
                                       >
-                                        <Trash2 className="size-4" />
+                                        <Trash2 className="size-3.5" />
                                       </button>
                                     </div>
                                   </li>
@@ -1056,7 +1078,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                 <Collapsible open={isArchivedExpanded} onOpenChange={setIsArchivedExpanded}>
                   <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50 group">
                     <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
-                    <Archive className="size-3" />
+                    <Archive className="size-3.5" />
                     <span className="flex-1 text-left font-medium">Archived</span>
                     <span className="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
                       {archivedSessions.length}

@@ -553,6 +553,10 @@ class SessionProcess:
                 self._websocket_count = len(self._websockets)
                 for ws in disconnected:
                     self._replay_buffers.pop(ws, None)
+            logger.debug(
+                f"Broadcast: removed {len(disconnected)} disconnected ws, "
+                f"remaining={self._websocket_count}"
+            )
 
     async def add_websocket_and_begin_replay(self, ws: WebSocket) -> None:
         """Atomically attach a WebSocket and enter replay mode for it."""
@@ -561,6 +565,7 @@ class SessionProcess:
                 self._websockets.add(ws)
                 self._websocket_count = len(self._websockets)
             self._replay_buffers.setdefault(ws, [])
+        logger.debug(f"WebSocket added (replay mode), count={self._websocket_count}")
 
     async def end_replay(self, ws: WebSocket) -> None:
         """Flush buffered live messages for a websocket after history replay."""
@@ -576,16 +581,20 @@ class SessionProcess:
                 buffer.clear()
 
             if ws.client_state != WebSocketState.CONNECTED:
+                logger.warning("end_replay: ws not connected, cleaning up replay buffer")
+                async with self._ws_lock:
+                    self._replay_buffers.pop(ws, None)
                 return
             for message in chunk:
                 try:
                     await ws.send_text(message)
-                except Exception:
-                    # WebSocket disconnected during replay - clean up
+                except Exception as e:
+                    # Send failed — pop the replay buffer so _broadcast()
+                    # sends directly (or detects disconnect) on the next call.
+                    # Do NOT remove ws from _websockets here; let _broadcast()
+                    # or session_stream's finally block handle cleanup.
+                    logger.warning(f"end_replay: send_text failed during buffer flush: {e}")
                     async with self._ws_lock:
-                        if ws in self._websockets:
-                            self._websockets.discard(ws)
-                            self._websocket_count = len(self._websockets)
                         self._replay_buffers.pop(ws, None)
                     return
 
@@ -611,6 +620,7 @@ class SessionProcess:
             if ws in self._websockets:
                 self._websockets.discard(ws)
                 self._websocket_count = len(self._websockets)
+                logger.debug(f"WebSocket removed, count={self._websocket_count}")
             self._replay_buffers.pop(ws, None)
 
     async def send_message(self, message: str) -> None:
@@ -658,11 +668,18 @@ class KimiCLIRunner:
         """Start the runner (no-op, sessions started on demand)."""
         pass
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Stop all running sessions."""
+        tasks: list[asyncio.Task[None]] = []
         for session in self._sessions.values():
             if session.is_running:
-                asyncio.create_task(session.stop())
+                tasks.append(asyncio.create_task(session.stop()))
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=5.0)
+            for t in pending:
+                t.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await t
 
     async def get_or_create_session(self, session_id: UUID) -> SessionProcess:
         """Get or create a session process."""

@@ -183,7 +183,7 @@ def create_app(
         try:
             yield
         finally:
-            runner.stop()
+            await runner.stop()
 
     application = FastAPI(
         title="Kimi Code CLI Web Interface",
@@ -533,6 +533,7 @@ def run_web_server(
         port=actual_port,
         reload=reload,
         log_level="info",
+        timeout_graceful_shutdown=3,
     )
 
 

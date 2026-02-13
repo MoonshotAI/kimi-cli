@@ -1,11 +1,12 @@
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
   type ReactElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
-import { FolderOpen, Loader2, ChevronDown } from "lucide-react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,20 +18,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { FolderOpen, Home, Loader2 } from "lucide-react";
 
 const HOME_DIR_REGEX = /^(\/Users\/[^/]+|\/home\/[^/]+)/;
 
@@ -48,28 +50,28 @@ type CreateSessionDialogProps = {
  * - For long paths, show ~/.../<last-two-segments>
  */
 function formatPathForDisplay(path: string, maxSegments = 3): string {
-  // Detect home directory prefix (works for most Unix-like systems)
   const homeMatch = path.match(HOME_DIR_REGEX);
   let displayPath = path;
 
   if (homeMatch) {
-    displayPath = "~" + path.slice(homeMatch[1].length);
+    displayPath = `~${path.slice(homeMatch[1].length)}`;
   }
 
   const segments = displayPath.split("/").filter(Boolean);
 
-  // If path is short enough, return as is
   if (segments.length <= maxSegments) {
     return displayPath.startsWith("~")
       ? displayPath
-      : "/" + segments.join("/");
+      : `/${segments.join("/")}`;
   }
 
-  // For long paths, show first segment (~ or root) + ... + last two segments
   const prefix = displayPath.startsWith("~") ? "~" : "";
   const lastSegments = segments.slice(-2).join("/");
   return `${prefix}/.../${lastSegments}`;
 }
+
+// Module-level cache for work dirs (stale-while-revalidate)
+let cachedWorkDirs: string[] | null = null;
 
 export function CreateSessionDialog({
   open,
@@ -78,31 +80,47 @@ export function CreateSessionDialog({
   fetchWorkDirs,
   fetchStartupDir,
 }: CreateSessionDialogProps): ReactElement {
-  const [workDirs, setWorkDirs] = useState<string[]>([]);
-  const [path, setPath] = useState<string>("");
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [workDirs, setWorkDirs] = useState<string[]>(
+    () => cachedWorkDirs ?? [],
+  );
+  const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showConfirmCreate, setShowConfirmCreate] = useState(false);
-  const [pendingPath, setPendingPath] = useState<string>("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [pendingPath, setPendingPath] = useState("");
+  const [startupDir, setStartupDir] = useState("");
+  const [commandValue, setCommandValue] = useState("");
+  const isCreatingRef = useRef(false);
+  const commandListRef = useRef<HTMLDivElement>(null);
 
-
-  // Fetch work directories and startup directory when dialog opens
+  // Fetch startup dir and work dirs independently for progressive loading
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    setIsLoading(true);
-    Promise.all([fetchWorkDirs(), fetchStartupDir()])
-      .then(([dirs, startupDir]) => {
-        setWorkDirs(dirs);
-        // Set the startup directory as the default path
-        if (startupDir) {
-          setPath((current) => (current ? current : startupDir));
+    // Initialize from cache if available, still refresh in background
+    if (cachedWorkDirs) {
+      setWorkDirs(cachedWorkDirs);
+    } else {
+      setIsLoading(true);
+    }
+
+    // Startup dir resolves fast — show it immediately and highlight it
+    fetchStartupDir()
+      .then((startup) => {
+        if (startup) {
+          setStartupDir(startup);
+          setCommandValue(startup);
         }
+      })
+      .catch(() => {});
+
+    // Work dirs may take longer — update cache when done
+    fetchWorkDirs()
+      .then((dirs) => {
+        cachedWorkDirs = dirs;
+        setWorkDirs(dirs);
       })
       .catch((error) => {
         console.error("Failed to fetch directories:", error);
@@ -112,66 +130,50 @@ export function CreateSessionDialog({
       });
   }, [open, fetchWorkDirs, fetchStartupDir]);
 
-  // Reset state when dialog closes
+  // Reset component state when dialog closes (cache persists at module level)
   useEffect(() => {
     if (!open) {
-      setPath("");
-      setIsDropdownOpen(false);
+      setInputValue("");
+      setCommandValue("");
+      setWorkDirs(cachedWorkDirs ?? []);
       setIsCreating(false);
       setShowConfirmCreate(false);
       setPendingPath("");
+      setStartupDir("");
+      isCreatingRef.current = false;
     }
   }, [open]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    if (!isDropdownOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setIsDropdownOpen(false);
+  const handleSelect = useCallback(
+    async (dir: string) => {
+      if (isCreatingRef.current) return;
+      isCreatingRef.current = true;
+      setIsCreating(true);
+      try {
+        await onConfirm(dir);
+        onOpenChange(false);
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          "isDirectoryNotFound" in err &&
+          (err as Error & { isDirectoryNotFound: boolean }).isDirectoryNotFound
+        ) {
+          setPendingPath(dir);
+          setShowConfirmCreate(true);
+        }
+      } finally {
+        setIsCreating(false);
+        isCreatingRef.current = false;
       }
-    };
+    },
+    [onConfirm, onOpenChange],
+  );
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isDropdownOpen]);
-
-  const handleSelectDir = useCallback((dir: string) => {
-    setPath(dir);
-    setIsDropdownOpen(false);
-    inputRef.current?.focus();
-  }, []);
-
-  const handleConfirm = useCallback(async () => {
-    const workDir = path.trim();
-    if (!workDir) {
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      await onConfirm(workDir);
-      onOpenChange(false);
-    } catch (err) {
-      // Check if this is a directory not found error
-      if (
-        err instanceof Error &&
-        "isDirectoryNotFound" in err &&
-        (err as Error & { isDirectoryNotFound: boolean }).isDirectoryNotFound
-      ) {
-        // Show confirmation dialog
-        setPendingPath(workDir);
-        setShowConfirmCreate(true);
-      }
-      // Other errors are handled by the hook
-    } finally {
-      setIsCreating(false);
-    }
-  }, [path, onConfirm, onOpenChange]);
+  const handleInputSubmit = useCallback(() => {
+    const trimmed = inputValue.trim();
+    if (!trimmed || isCreatingRef.current) return;
+    handleSelect(trimmed);
+  }, [inputValue, handleSelect]);
 
   const handleConfirmCreateDir = useCallback(async () => {
     if (!pendingPath) {
@@ -180,14 +182,15 @@ export function CreateSessionDialog({
 
     setShowConfirmCreate(false);
     setIsCreating(true);
+    isCreatingRef.current = true;
     try {
       await onConfirm(pendingPath, true);
       onOpenChange(false);
     } catch (err) {
-      // Other errors are handled by the hook
       console.error("Failed to create directory:", err);
     } finally {
       setIsCreating(false);
+      isCreatingRef.current = false;
       setPendingPath("");
     }
   }, [pendingPath, onConfirm, onOpenChange]);
@@ -197,134 +200,168 @@ export function CreateSessionDialog({
     setPendingPath("");
   }, []);
 
-  const handleCancel = useCallback(() => {
-    onOpenChange(false);
-  }, [onOpenChange]);
-
+  // Tab completion: fill input with first matching item's value
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && path.trim() && !isCreating) {
-        handleConfirm();
-      } else if (e.key === "Escape") {
-        setIsDropdownOpen(false);
-      }
+      if (e.key !== "Tab" || !commandListRef.current) return;
+
+      // Find the currently selected (highlighted) item
+      const selectedItem = commandListRef.current.querySelector<HTMLElement>(
+        "[cmdk-item][data-selected=true]",
+      );
+      if (!selectedItem) return;
+
+      const value = selectedItem.getAttribute("data-value");
+      if (!value || value.startsWith("__custom__")) return;
+
+      e.preventDefault();
+      setInputValue(value);
     },
-    [path, isCreating, handleConfirm],
+    [],
   );
 
-  const isConfirmDisabled = isCreating || !path.trim();
+  // Check if the current input matches any existing work dir
+  const trimmedInput = inputValue.trim();
+  const inputMatchesExisting =
+    trimmedInput !== "" &&
+    workDirs.some(
+      (dir) => dir === trimmedInput || dir === trimmedInput.replace(/\/$/, ""),
+    );
+
+  const showCustomPathOption = trimmedInput !== "" && !inputMatchesExisting;
+
+  // Recent dirs = workDirs excluding startupDir
+  const recentDirs = useMemo(
+    () => (startupDir ? workDirs.filter((d) => d !== startupDir) : workDirs),
+    [workDirs, startupDir],
+  );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg w-[min(calc(100vw-2rem),32rem)]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FolderOpen className="size-5" />
-            Create New Session
-          </DialogTitle>
-          <DialogDescription>
-            Input or select the working directory for this session.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <CommandDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Create New Session"
+        description="Search directories or type a new path"
+        showCloseButton={false}
+      >
+        <Command value={commandValue} onValueChange={setCommandValue}>
+          <CommandInput
+            placeholder="Search directories or type a path..."
+            value={inputValue}
+            onValueChange={setInputValue}
+            onKeyDown={handleKeyDown}
+          />
+          <CommandList ref={commandListRef}>
+            <CommandEmpty>
+              {trimmedInput
+                ? "No matching directories."
+                : isLoading
+                  ? "Loading directories..."
+                  : "Type a path to start a new session."}
+            </CommandEmpty>
 
-        <div className="space-y-2 py-2">
-          <div ref={containerRef} className="relative">
-            {/* Input with dropdown button */}
-            <div className="flex items-center border border-input rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ">
-              <Input
-                ref={inputRef}
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Enter or select a folder..."
-                className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 !bg-background "
-                disabled={isLoading}
-              />
-
-              <div className="mx-0 h-4 w-px bg-border/70 mr-2" />
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 px-2 bg-background"
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    disabled={isLoading}
+            {showCustomPathOption && (
+              <>
+                <CommandGroup heading="Custom Path">
+                  <CommandItem
+                    className="group"
+                    value={`__custom__${trimmedInput}`}
+                    onSelect={handleInputSubmit}
+                    disabled={isCreating}
                   >
-                    {isLoading ? (
-                      <Loader2 className="size-4 animate-spin" />
+                    {isCreating ? (
+                      <Loader2 className="animate-spin" />
                     ) : (
-                      <ChevronDown
-                        className={`size-4 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
-                      />
+                      <FolderOpen />
                     )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  History folders
-                </TooltipContent>
-              </Tooltip>
-            </div>
-
-            {/* Dropdown list */}
-            {isDropdownOpen && !isLoading && (
-              <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg max-h-64 overflow-y-auto [-webkit-overflow-scrolling:touch]">
-                {workDirs.length > 0 ? (
-                  workDirs.map((dir) => (
-                    <button
-                      key={dir}
-                      type="button"
-                      className="w-full px-3 py-2 text-left hover:bg-accent cursor-pointer transition-colors"
-                      onClick={() => handleSelectDir(dir)}
-                    >
-                      <div className="text-sm font-medium truncate">
-                        {formatPathForDisplay(dir, 3)}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {dir}
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-3 py-3 text-sm text-muted-foreground">
-                    No history folders
-                  </div>
+                    <span className="flex-1 truncate">{trimmedInput}</span>
+                    <kbd className="pointer-events-none ml-auto hidden select-none rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground group-data-[selected=true]:inline-flex">
+                      ↵
+                    </kbd>
+                  </CommandItem>
+                </CommandGroup>
+                {(startupDir || recentDirs.length > 0 || isLoading) && (
+                  <CommandSeparator />
                 )}
+              </>
+            )}
+
+            {startupDir && (
+              <>
+                <CommandGroup heading="Current Directory">
+                  <CommandItem
+                    className="group"
+                    value={startupDir}
+                    onSelect={() => handleSelect(startupDir)}
+                    disabled={isCreating}
+                  >
+                    <Home />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="truncate">
+                          {formatPathForDisplay(startupDir, 3)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        {startupDir}
+                      </TooltipContent>
+                    </Tooltip>
+                    <kbd className="pointer-events-none ml-auto hidden select-none rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground group-data-[selected=true]:inline-flex">
+                      ↵
+                    </kbd>
+                  </CommandItem>
+                </CommandGroup>
+                {(recentDirs.length > 0 || isLoading) && <CommandSeparator />}
+              </>
+            )}
+
+            {recentDirs.length > 0 && (
+              <CommandGroup heading="Recent Directories">
+                {recentDirs.map((dir) => (
+                  <CommandItem
+                    className="group"
+                    key={dir}
+                    value={dir}
+                    onSelect={() => handleSelect(dir)}
+                    disabled={isCreating}
+                  >
+                    <FolderOpen />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="truncate">
+                          {formatPathForDisplay(dir, 3)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{dir}</TooltipContent>
+                    </Tooltip>
+                    <kbd className="pointer-events-none ml-auto hidden select-none rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground group-data-[selected=true]:inline-flex">
+                      ↵
+                    </kbd>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {isLoading && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
               </div>
             )}
-          </div>
-        </div>
+          </CommandList>
+        </Command>
+      </CommandDialog>
 
-        <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={isCreating}
-          >
-            Cancel
-          </Button>
-          <Button onClick={handleConfirm} disabled={isConfirmDisabled}>
-            {isCreating ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              "Create"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-
-      {/* Confirmation dialog for creating non-existent directory */}
       <AlertDialog open={showConfirmCreate} onOpenChange={setShowConfirmCreate}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Directory Not Found</AlertDialogTitle>
             <AlertDialogDescription>
-              The directory <code className="bg-muted px-1 py-0.5 rounded text-foreground break-all">{pendingPath}</code> does not exist. Would you like to create it?
+              The directory{" "}
+              <code className="bg-muted px-1 py-0.5 rounded text-foreground break-all">
+                {pendingPath}
+              </code>{" "}
+              does not exist. Would you like to create it?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -337,6 +374,6 @@ export function CreateSessionDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Dialog>
+    </>
   );
 }

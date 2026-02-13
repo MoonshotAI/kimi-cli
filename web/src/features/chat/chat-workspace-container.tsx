@@ -10,7 +10,7 @@
  * much value since ChatWorkspace receives `messages` as a prop and re-renders
  * on every update anyway.
  */
-import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatStatus, FileUIPart } from "ai";
 import type { PromptInputMessage } from "@ai-elements";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ import type {
   SessionStatus,
   UploadSessionFileResponse,
 } from "@/lib/api/models";
+import { useGlobalConfig } from "@/hooks/useGlobalConfig";
 import type { SessionFileEntry } from "@/hooks/useSessions";
 import { getApiBaseUrl, isMacOS } from "@/hooks/utils";
 import { useSessionStream } from "@/hooks/useSessionStream";
@@ -76,6 +77,13 @@ export function ChatWorkspaceContainer({
     null,
   );
   const sessionId = selectedSessionId || null;
+
+  const { config } = useGlobalConfig();
+  const maxContextSize = useMemo(() => {
+    if (!config) return undefined;
+    const model = config.models.find((m) => m.name === config.defaultModel);
+    return model?.maxContextSize;
+  }, [config]);
 
   const handleStreamError = useCallback((error: Error) => {
     toast.error("Connection Error", {
@@ -356,6 +364,7 @@ export function ChatWorkspaceContainer({
       onApprovalResponse={respondToApproval}
       sessionDescription={sessionDescription}
       contextUsage={contextUsage}
+      maxContextSize={maxContextSize}
       tokenUsage={tokenUsage}
       currentStep={currentStep}
       currentSession={currentSession}
