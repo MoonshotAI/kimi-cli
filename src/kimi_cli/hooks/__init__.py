@@ -14,6 +14,8 @@ from kimi_cli.hooks.models import (
     HookDecision,
     HookEvent,
     HookResult,
+    SessionEndHookEvent,
+    SessionStartHookEvent,
     SubagentHookEvent,
     ToolHookEvent,
 )
@@ -31,6 +33,8 @@ __all__ = [
     "HookDecision",
     "HookEvent",
     "HookResult",
+    "SessionEndHookEvent",
+    "SessionStartHookEvent",
     "SubagentHookEvent",
     "ToolHookEvent",
     # Manager

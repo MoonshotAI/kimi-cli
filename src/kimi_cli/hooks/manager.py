@@ -51,6 +51,28 @@ class HookManager:
         env_file.parent.mkdir(parents=True, exist_ok=True)
         return str(env_file)
 
+    def load_env_file(self) -> dict[str, str]:
+        """Load environment variables from KIMI_ENV_FILE."""
+        env_vars: dict[str, str] = {}
+        if not self._env_file or not Path(self._env_file).exists():
+            return env_vars
+
+        try:
+            content = Path(self._env_file).read_text(encoding="utf-8")
+            for line in content.strip().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    # Remove quotes if present
+                    value = value.strip().strip("'\"")
+                    env_vars[key.strip()] = value
+        except Exception:
+            logger.debug("Failed to load env file: {file}", file=self._env_file)
+
+        return env_vars
+
     async def execute(
         self,
         event_type: HookEventType,
