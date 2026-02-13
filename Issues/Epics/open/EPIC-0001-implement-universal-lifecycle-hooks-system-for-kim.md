@@ -3,8 +3,8 @@ id: EPIC-0001
 uid: epic0001
 type: epic
 status: open
-stage: draft
-title: "为 Kimi CLI 引入通用生命周期钩子系统 (Hooks System)"
+stage: doing
+title: 为 Kimi CLI 引入通用生命周期钩子系统 (Hooks System)
 created_at: '2026-01-15T00:00:00'
 updated_at: '2026-02-13T13:20:00'
 parent: EPIC-0000
@@ -17,6 +17,8 @@ tags:
 files: []
 criticality: high
 solution: null
+progress: 2/4
+files_count: 0
 ---
 
 ## EPIC-0001: 为 Kimi CLI 引入通用生命周期钩子系统 (Hooks System)
