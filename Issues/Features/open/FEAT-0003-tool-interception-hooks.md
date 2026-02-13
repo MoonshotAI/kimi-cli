@@ -131,3 +131,12 @@ async = true
 
 - `src/kimi_cli/soul/toolset.py` - 工具调用核心逻辑
 - `src/kimi_cli/soul/kimisoul.py` - Agent 循环
+
+## Review Comments
+
+- [x] Self-Review: Implementation complete with:
+  - before_tool hooks integrated in KimiToolset.handle()
+  - after_tool hooks for post-processing
+  - Hook result caching with LRU eviction
+  - Hook execution statistics
+  - Comprehensive unit tests (25 tests)
