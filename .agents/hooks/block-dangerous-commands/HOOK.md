@@ -49,6 +49,6 @@ The script:
 
 When blocking (exit code 2), outputs reason to stderr:
 
-```
+```bash
 Dangerous command blocked: rm -rf / would destroy the system
 ```
