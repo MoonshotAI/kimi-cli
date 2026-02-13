@@ -73,6 +73,8 @@ class KimiCLI:
         max_ralph_iterations: int | None = None,
         startup_progress: Callable[[str], None] | None = None,
         defer_mcp_loading: bool = False,
+        # Debug
+        debug_hooks: bool = False,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -168,7 +170,7 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
-        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir)
+        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir, debug_hooks)
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
 

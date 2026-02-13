@@ -310,6 +310,13 @@ def kimi(
             ),
         ),
     ] = None,
+    debug_hooks: Annotated[
+        bool,
+        typer.Option(
+            "--debug-hooks",
+            help="Enable detailed hook execution logging. Default: no.",
+        ),
+    ] = False,
 ):
     """Kimi, your next CLI agent."""
     import asyncio
@@ -480,6 +487,70 @@ def kimi(
             The session and whether the run succeeded.
         """
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
+
+        if session_id is not None:
+            session = await Session.find(work_dir, session_id)
+            if session is None:
+                logger.info(
+                    "Session {session_id} not found, creating new session", session_id=session_id
+                )
+                session = await Session.create(work_dir, session_id)
+            logger.info("Switching to session: {session_id}", session_id=session.id)
+        elif continue_:
+            session = await Session.continue_(work_dir)
+            if session is None:
+                raise typer.BadParameter(
+                    "No previous session found for the working directory",
+                    param_hint="--continue",
+                )
+            logger.info("Continuing previous session: {session_id}", session_id=session.id)
+        else:
+            session = await Session.create(work_dir)
+            logger.info("Created new session: {session_id}", session_id=session.id)
+
+        # Add CLI-provided additional directories to session state
+        if local_add_dirs:
+            from kimi_cli.utils.path import is_within_directory
+
+            canonical_work_dir = work_dir.canonical()
+            changed = False
+            for d in local_add_dirs:
+                dir_path = KaosPath.unsafe_from_local_path(d).canonical()
+                dir_str = str(dir_path)
+                # Skip dirs within work_dir (already accessible)
+                if is_within_directory(dir_path, canonical_work_dir):
+                    logger.info(
+                        "Skipping --add-dir {dir}: already within working directory",
+                        dir=dir_str,
+                    )
+                    continue
+                if dir_str not in session.state.additional_dirs:
+                    session.state.additional_dirs.append(dir_str)
+                    changed = True
+            if changed:
+                session.save_state()
+
+        instance = await KimiCLI.create(
+            session,
+            config=config,
+            model_name=model_name,
+            thinking=thinking,
+            yolo=yolo or (ui == "print"),  # print mode implies yolo
+            agent_file=agent_file,
+            mcp_configs=mcp_configs,
+            skills_dir=skills_dir,
+            max_steps_per_turn=max_steps_per_turn,
+            max_retries_per_step=max_retries_per_step,
+            max_ralph_iterations=max_ralph_iterations,
+            startup_progress=startup_progress.update if ui == "shell" else None,
+            defer_mcp_loading=ui == "shell" and prompt is None,
+            debug_hooks=debug_hooks,
+        )
+        startup_progress.stop()
+
+        # Install stderr redirection only after initialization succeeded, so runtime
+        # stderr noise is captured into logs without hiding startup failures.
+        redirect_stderr_to_logger()
         try:
             startup_progress.update("Preparing session...")
 
