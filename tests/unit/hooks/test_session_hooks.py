@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from kimi_cli.hooks.config import CommandHookConfig, HookEventType, HooksConfig
+from kimi_cli.hooks.config import HookConfig, HookEventType, HooksConfig
 from kimi_cli.hooks.manager import HookManager
 from kimi_cli.hooks.models import (
     HookDecision,
-    HookResult,
     SessionEndHookEvent,
     SessionStartHookEvent,
 )
@@ -93,7 +91,7 @@ class TestSessionHooksIntegration:
         """Test that session_start hooks are executed."""
         config = HooksConfig(
             session_start=[
-                CommandHookConfig(
+                HookConfig(
                     name="test_start_hook",
                     command='echo \'{"additional_context": "Git branch: main"}\'',
                 )
@@ -120,7 +118,7 @@ class TestSessionHooksIntegration:
         """Test that session_end hooks are executed."""
         config = HooksConfig(
             session_end=[
-                CommandHookConfig(
+                HookConfig(
                     name="test_end_hook",
                     command='echo \'{"decision": "allow"}\'',
                 )
@@ -149,7 +147,7 @@ class TestSessionHooksIntegration:
         """Test that session_start hooks fail open on error."""
         config = HooksConfig(
             session_start=[
-                CommandHookConfig(
+                HookConfig(
                     name="failing_hook",
                     command="exit 1",  # Command fails
                 )
@@ -177,11 +175,11 @@ class TestSessionHooksIntegration:
         """Test multiple session hooks execution."""
         config = HooksConfig(
             session_start=[
-                CommandHookConfig(
+                HookConfig(
                     name="hook1",
                     command='echo \'{"additional_context": "Context 1"}\'',
                 ),
-                CommandHookConfig(
+                HookConfig(
                     name="hook2",
                     command='echo \'{"additional_context": "Context 2"}\'',
                 ),
@@ -209,7 +207,7 @@ class TestSessionHooksIntegration:
         """Test session hook timeout handling."""
         config = HooksConfig(
             session_start=[
-                CommandHookConfig(
+                HookConfig(
                     name="slow_hook",
                     command="sleep 10",  # Will timeout
                     timeout=100,  # 100ms timeout
@@ -241,7 +239,6 @@ class TestRuntimeSessionHooks:
     async def test_runtime_has_hook_manager(self):
         """Test that Runtime has hook_manager attribute."""
         # Import here to avoid circular imports
-        from dataclasses import dataclass
 
         from kimi_cli.soul.agent import Runtime
 
