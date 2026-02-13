@@ -81,7 +81,7 @@ class ToolHookCache:
 
     def _make_key(self, event_type: str, tool_name: str, tool_input: dict[str, Any]) -> str:
         """Generate cache key from event context."""
-        data = f"{event_type}:{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+        data = f"{event_type}:{tool_name}:{json.dumps(tool_input, sort_keys=True, default=str)}"
         return hashlib.md5(data.encode()).hexdigest()
 
     def get(self, event_type: str, tool_name: str, tool_input: dict[str, Any]) -> Any | None:
@@ -241,12 +241,19 @@ class KimiToolset:
         self._hook_stats.total_calls += 1
         start_time = time.monotonic()
 
-        # Check cache first
-        cached_result = self._hook_cache.get("before_tool", tool_name, tool_input)
-        if cached_result is not None:
+        # Check cache first - cache stores (should_block, block_reason) tuple
+        cached_block_reason = self._hook_cache.get("before_tool", tool_name, tool_input)
+        if cached_block_reason is not None:
             self._hook_stats.cache_hits += 1
             logger.debug("Cache hit for before_tool hook: {tool_name}", tool_name=tool_name)
-            return cached_result
+            # Construct ToolResult with the correct tool_call_id (not the cached one)
+            return ToolResult(
+                tool_call_id=tool_use_id,
+                return_value=ToolError(
+                    message=f"Tool blocked: {cached_block_reason}",
+                    brief="Blocked by hook",
+                ),
+            )
 
         # Build event context
         event = {
@@ -281,16 +288,17 @@ class KimiToolset:
                 tool_name=tool_name,
                 reason=exec_result.block_reason,
             )
-            # Cache the block decision
-            block_result = ToolResult(
+            # Cache only the block reason (not the full ToolResult with tool_call_id)
+            self._hook_cache.set(
+                "before_tool", tool_name, tool_input, exec_result.block_reason
+            )
+            return ToolResult(
                 tool_call_id=tool_use_id,
                 return_value=ToolError(
                     message=f"Tool blocked: {exec_result.block_reason}",
                     brief="Blocked by hook",
                 ),
             )
-            self._hook_cache.set("before_tool", tool_name, tool_input, block_result)
-            return block_result
 
         # Process individual results for logging and stats
         for result in exec_result.results:

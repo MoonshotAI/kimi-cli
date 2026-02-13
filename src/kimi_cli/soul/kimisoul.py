@@ -383,6 +383,8 @@ class KimiSoul:
                 wire_send(ApprovalResponse(request_id=request.id, response=resp))
 
         step_no = 0
+        before_stop_block_count = 0
+        max_before_stop_blocks = 3  # Limit to prevent unbounded LLM calls
         while True:
             step_no += 1
             if step_no > self._loop_control.max_steps_per_turn:
@@ -427,16 +429,32 @@ class KimiSoul:
                 )
                 
                 if should_continue:
-                    # Hook requested to continue working - add feedback and continue loop
-                    feedback = (
-                        f"The before_stop hook has requested that you continue working. "
-                        f"Reason: {should_continue}"
-                    )
-                    await self._context.append_message(
-                        Message(role="system", content=feedback)
-                    )
-                    wire_send(TextPart(text=f"\n[Hook blocked stop: {should_continue}]\n"))
-                    continue  # Continue the agent loop instead of stopping
+                    before_stop_block_count += 1
+                    if before_stop_block_count > max_before_stop_blocks:
+                        # Exceeded max blocks, allow stop with warning
+                        logger.warning(
+                            "before_stop hook blocked stop {count} times, exceeding limit of {limit}. "
+                            "Allowing stop to proceed.",
+                            count=before_stop_block_count,
+                            limit=max_before_stop_blocks,
+                        )
+                        wire_send(
+                            TextPart(
+                                text=f"\n[Warning: before_stop hook blocked stop {before_stop_block_count} times, "
+                                f"exceeding limit. Allowing stop to proceed.]\n"
+                            )
+                        )
+                    else:
+                        # Hook requested to continue working - add feedback and continue loop
+                        feedback = (
+                            f"The before_stop hook has requested that you continue working. "
+                            f"Reason: {should_continue}"
+                        )
+                        await self._context.append_message(
+                            Message(role="system", content=feedback)
+                        )
+                        wire_send(TextPart(text=f"\n[Hook blocked stop: {should_continue}]\n"))
+                        continue  # Continue the agent loop instead of stopping
                 
                 has_steers = await self._consume_pending_steers()
                 if step_outcome.stop_reason == "no_tool_calls" and has_steers:
