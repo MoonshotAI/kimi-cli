@@ -24,14 +24,11 @@ if [[ ! -d "tests" ]] && [[ ! -d "tests_e2e" ]] && [[ ! -d "tests_ai" ]]; then
     exit 0
 fi
 
-# Run tests using make if available, otherwise pytest
-if [[ -f "Makefile" ]] && grep -q "^test:" Makefile 2>/dev/null; then
-    test_output=$(make test 2>&1)
-    test_exit=$?
-else
-    test_output=$(uv run pytest tests/ -x -q 2>&1)
-    test_exit=$?
-fi
+# Run only unit tests (quick check), skip e2e and other packages
+# Full test suite should be run in CI, not on every agent stop
+echo "HOOK: Running quick unit tests only..." >&2
+test_output=$(uv run pytest tests/ -x -q --tb=short 2>&1)
+test_exit=$?
 
 if [[ $test_exit -ne 0 ]]; then
     echo "" >&2

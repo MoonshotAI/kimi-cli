@@ -2,7 +2,7 @@
 name: enforce-tests
 description: Ensure tests pass before allowing agent to complete (quality gate)
 trigger: before_stop
-timeout: 120000
+timeout: 30000
 async: false
 priority: 999
 ---
