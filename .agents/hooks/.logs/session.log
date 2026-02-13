@@ -1,0 +1,16 @@
+[2026-02-13T10:10:26Z] session_start
+  Session ID: test-123
+  Work Dir: /Users/indenscale/Documents/Projects/kimi-cli
+  Event Time: 2024-01-15T10:30:00Z
+---
+[2026-02-13T10:10:28Z] session_end
+  Session ID: test-123
+  Work Dir: /Users/indenscale/Documents/Projects/kimi-cli
+  Duration: 3600s
+  Exit Reason: user_exit
+---
+[2026-02-13T10:19:23Z] session_start
+  Session ID: dc053239-b134-443b-8fae-818b2661d1a1
+  Work Dir: /Users/indenscale/Documents/Projects/kimi-cli
+  Event Time: 2026-02-13T18:19:22.977864
+---
