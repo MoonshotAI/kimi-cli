@@ -145,7 +145,7 @@ function SessionsListComponent(
 ) {
   const { className, ...rest } = props;
   return (
-    <div ref={ref} className={cn("flex flex-col space-y-0.5 w-full px-2 mt-1", className)} {...rest} />
+    <div ref={ref} className={cn("flex flex-col gap-1 w-full px-3 pt-px!", className)} {...rest} />
   );
 }
 
@@ -612,7 +612,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     <>
       <aside className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-          <div className="flex items-center justify-between px-3 pt-2">
+          <div className="flex items-center justify-between p-3">
             <KimiCliBrand size="sm" showVersion={true} />
             {onClose && (
               <button
@@ -627,7 +627,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
           </div>
 
           {/* Sessions */}
-          <div className="flex items-center justify-between px-3 pt-3">
+          <div className="flex items-center justify-between px-3">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sessions</h4>
             <div className="flex items-center gap-1">
               <button
@@ -668,7 +668,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
 
           {/* Multi-select action bar */}
           {isMultiSelectMode && (
-            <div className="mx-2 flex items-center justify-between gap-2 rounded-md bg-secondary/80 px-2 py-1.5">
+            <div className="mx-3 flex items-center justify-between gap-2 rounded-md bg-secondary/80 pl-2 pr-0.5 py-0.5">
               {/* Left: checkbox toggle and count */}
               <div className="flex items-center gap-1.5">
                 <button
@@ -774,7 +774,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
 
           {/* Session search and view toggle */}
           {!isMultiSelectMode && (
-          <div className="px-2 flex items-center gap-2">
+          <div className="px-3 flex items-center gap-2">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -816,7 +816,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
             <div className="flex-1 min-h-0">
             {viewMode === "grouped" ? (
               <div className="flex h-full flex-col">
-                <div className="flex-1 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] px-3 pb-4 pr-1">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] px-3 pb-4">
                   <ul className="space-y-1">
                     {sessionGroups.map((group) => (
                       <li key={group.workDir} className="group/dir">
@@ -1074,7 +1074,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
 
             {/* Archived Sessions Section */}
             {(onArchiveSession || onUnarchiveSession) && (
-              <div className="mx-2 mb-2 shrink-0 rounded-lg border border-border bg-muted/30">
+              <div className="mx-3 mb-2 shrink-0 rounded-md border border-border bg-muted/30">
                 <Collapsible open={isArchivedExpanded} onOpenChange={setIsArchivedExpanded}>
                   <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50 group">
                     <ChevronDown className="size-3 transition-transform group-data-[state=closed]:-rotate-90" />
@@ -1092,7 +1092,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     ) : archivedSessions.length === 0 ? (
                       <p className="px-3 py-3 text-xs text-muted-foreground">No archived sessions</p>
                     ) : (
-                      <div className="space-y-1 px-1 pb-2 max-h-[50vh] overflow-y-auto">
+                      <div className="space-y-1 px-1 pb-1 max-h-[50vh] overflow-y-auto">
                         <ul className="space-y-1">
                           {archivedSessions.map((session) => {
                             const isActive = session.id === selectedSessionId;
