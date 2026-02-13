@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -37,6 +38,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
+# Hooks are handled externally via AgentHooks standard
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
@@ -417,6 +419,25 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
+                # Execute before_stop hooks to enforce quality gates
+                should_continue = await self._execute_before_stop_hooks(
+                    stop_reason=step_outcome.stop_reason,
+                    step_count=step_no,
+                    final_message=step_outcome.assistant_message,
+                )
+                
+                if should_continue:
+                    # Hook requested to continue working - add feedback and continue loop
+                    feedback = (
+                        f"The before_stop hook has requested that you continue working. "
+                        f"Reason: {should_continue}"
+                    )
+                    await self._context.append_message(
+                        Message(role="system", content=feedback)
+                    )
+                    wire_send(TextPart(text=f"\n[Hook blocked stop: {should_continue}]\n"))
+                    continue  # Continue the agent loop instead of stopping
+                
                 has_steers = await self._consume_pending_steers()
                 if step_outcome.stop_reason == "no_tool_calls" and has_steers:
                     continue  # steers injected, force another LLM step
@@ -520,6 +541,61 @@ class KimiSoul:
         if result.tool_calls:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+
+    async def _execute_before_stop_hooks(
+        self,
+        stop_reason: str,
+        step_count: int,
+        final_message: Message | None,
+    ) -> str | None:
+        """Execute before_stop hooks and return block reason or None to allow stop.
+
+        Returns:
+            str: Block reason if should continue working, None to allow stop.
+        """
+        if self._runtime is None or self._runtime.hook_manager is None:
+            return None
+
+        # Convert final message to dict for JSON serialization
+        final_message_dict = None
+        if final_message is not None:
+            final_message_dict = {
+                "role": final_message.role,
+                "content": final_message.content,
+            }
+
+        event = {
+            "event_type": "before_stop",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self._runtime.session.id,
+            "work_dir": str(self._runtime.session.work_dir),
+            "stop_reason": stop_reason,
+            "step_count": step_count,
+            "final_message": final_message_dict,
+        }
+
+        try:
+            exec_result = await self._runtime.hook_manager.execute(
+                "before_stop",
+                event,
+            )
+        except Exception as e:
+            logger.exception("Failed to execute before_stop hooks: {error}", error=e)
+            return None
+
+        # Check if any hook blocked the stop
+        if exec_result.should_block:
+            reason = exec_result.block_reason or "Blocked by before_stop hook"
+            logger.info("Stop blocked by hook: {reason}", reason=reason)
+            return reason
+
+        # Check for ASK decision
+        for result in exec_result.results:
+            if result.decision == "ask":
+                # For now, treat ASK as block with the reason
+                return result.reason or "Hook requested confirmation"
+
+        return None
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)

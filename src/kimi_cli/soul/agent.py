@@ -17,10 +17,9 @@ from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError, SystemPromptTemplateError
+from kimi_cli.hooks import HookDiscovery, HookManager
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
-from kimi_cli.hooks import HookManager
-from kimi_cli.hooks.config import HooksConfig
 from kimi_cli.skill import Skill, discover_skills_from_roots, index_skills, resolve_skills_roots
 from kimi_cli.soul.approval import Approval, ApprovalState
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -79,7 +78,7 @@ class Runtime:
     hook_manager: HookManager
     _session_start_time: datetime = field(default_factory=datetime.now)
     _total_steps: int = 0
-    _hook_env_vars: dict[str, str] = field(default_factory=dict)
+    _hook_env_vars: dict[str, str] = field(default_factory=dict[str, str])
 
     @staticmethod
     async def create(
@@ -91,9 +90,6 @@ class Runtime:
         skills_dir: KaosPath | None = None,
         debug_hooks: bool = False,
     ) -> Runtime:
-        from kimi_cli.hooks.config import HookEventType
-        from kimi_cli.hooks.models import SessionStartHookEvent
-
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
@@ -129,8 +125,9 @@ class Runtime:
             on_change=_on_approval_change,
         )
 
-        # Initialize hook manager with debug mode
-        hook_manager = HookManager(config.hooks, debug=debug_hooks).with_runtime(None)  # Will set runtime later
+        # Initialize hook discovery and manager (AgentHooks standard)
+        hook_discovery = HookDiscovery(session.work_dir)
+        hook_manager = HookManager(hook_discovery, None, debug_hooks)
 
         session_start_time = datetime.now()
 
@@ -201,38 +198,36 @@ class Runtime:
 
     async def _execute_session_start_hooks(self) -> list[str]:
         """Execute session_start hooks and return additional_contexts from results."""
-        from kimi_cli.hooks.config import HookEventType
-        from kimi_cli.hooks.models import SessionStartHookEvent
+        event = {
+            "event_type": "session_start",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self.session.id,
+            "work_dir": str(self.session.work_dir),
+            "model": self.llm.chat_provider.model_name if self.llm else None,
+            "args": {},
+        }
 
-        event = SessionStartHookEvent(
-            event_type=HookEventType.SESSION_START.value,
-            timestamp=datetime.now(),
-            session_id=self.session.id,
-            work_dir=str(self.session.work_dir),
-            model=self.llm.chat_provider.model_name if self.llm else None,
-            args={},
-        )
+        exec_result = await self.hook_manager.execute("session_start", event)
 
-        results = await self.hook_manager.execute(HookEventType.SESSION_START, event)
+        # Check if any hook blocked the session start
+        if exec_result.should_block:
+            logger.warning(
+                "Session start blocked by hook: {reason}",
+                reason=exec_result.block_reason,
+            )
+            # Session start hooks typically shouldn't block, but log it
 
-        additional_contexts: list[str] = []
-        for result in results:
-            if result.additional_context:
-                additional_contexts.append(result.additional_context)
+        # Collect additional contexts from all hooks
+        additional_contexts = exec_result.additional_contexts.copy()
+
+        # Log any failures
+        for result in exec_result.results:
             if not result.success:
                 logger.warning(
                     "Session start hook {name} failed: {reason}",
                     name=result.hook_name,
                     reason=result.reason,
                 )
-
-        # Load environment variables from KIMI_ENV_FILE
-        self._hook_env_vars = self.hook_manager.load_env_file()
-        if self._hook_env_vars:
-            logger.debug(
-                "Loaded {count} env vars from hook env file",
-                count=len(self._hook_env_vars),
-            )
 
         return additional_contexts
 
@@ -242,24 +237,29 @@ class Runtime:
 
     async def execute_session_end_hooks(self, exit_reason: str = "user_exit") -> None:
         """Execute session_end hooks."""
-        from kimi_cli.hooks.config import HookEventType
-        from kimi_cli.hooks.models import SessionEndHookEvent
-
         duration = int((datetime.now() - self._session_start_time).total_seconds())
 
-        event = SessionEndHookEvent(
-            event_type=HookEventType.SESSION_END.value,
-            timestamp=datetime.now(),
-            session_id=self.session.id,
-            work_dir=str(self.session.work_dir),
-            duration_seconds=duration,
-            total_steps=self._total_steps,
-            exit_reason=exit_reason,
-        )
+        event = {
+            "event_type": "session_end",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self.session.id,
+            "work_dir": str(self.session.work_dir),
+            "duration_seconds": duration,
+            "total_steps": self._total_steps,
+            "exit_reason": exit_reason,
+        }
 
-        results = await self.hook_manager.execute(HookEventType.SESSION_END, event)
+        exec_result = await self.hook_manager.execute("session_end", event)
 
-        for result in results:
+        # Check if any hook blocked the session end
+        if exec_result.should_block:
+            logger.warning(
+                "Session end blocked by hook: {reason}",
+                reason=exec_result.block_reason,
+            )
+            # Session end hooks typically shouldn't block, but log it
+
+        for result in exec_result.results:
             if not result.success:
                 logger.warning(
                     "Session end hook {name} failed: {reason}",

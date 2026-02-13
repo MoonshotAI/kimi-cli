@@ -39,7 +39,7 @@ criticality: medium
 
 实现 hooks 调试功能和完整的示例集：
 
-1. `--debug-hooks` 钩子执行日志
+1. ~~`--debug-hooks`~~（已合并到 `--debug`）钩子执行日志
 2. 钩子执行统计
 3. 官方文档与示例集
 
@@ -47,7 +47,7 @@ criticality: medium
 
 ### 1. 调试能力
 
-- [x] 实现 `--debug-hooks` 命令行参数
+- [x] ~~实现 `--debug-hooks`~~（已合并到 `--debug`）命令行参数
 - [x] 记录每个钩子的执行日志：
   - 触发事件类型
   - 钩子名称和类型
@@ -69,7 +69,7 @@ criticality: medium
 ### 调试模式
 
 ```bash
-kimi --debug-hooks
+kimi --debug  # 包含 hooks 调试日志
 ```
 
 ### Command 类型钩子
@@ -84,7 +84,7 @@ command = "echo '{\"decision\": \"deny\", \"reason\": \"Dangerous command\"}'"
 
 ## 验收标准
 
-- [x] `--debug-hooks` 参数能输出详细的钩子执行日志
+- [x] ~~`--debug-hooks`~~ `--debug` 参数能输出详细的钩子执行日志
 - [x] 提供完整的用户文档和示例
 - [x] 示例钩子覆盖常见使用场景
 
@@ -95,7 +95,7 @@ command = "echo '{\"decision\": \"deny\", \"reason\": \"Dangerous command\"}'"
 - `src/kimi_cli/hooks/config.py` - HookConfig 配置类
 - `src/kimi_cli/hooks/manager.py` - HookExecutor 和 HookDebugger
 - `src/kimi_cli/hooks/__init__.py` - 导出类型
-- `src/kimi_cli/cli/__init__.py` - 添加 `--debug-hooks` CLI 参数
+- `src/kimi_cli/cli/__init__.py` - ~~添加 `--debug-hooks`~~ 使用 `--debug` 启用 CLI 参数
 - `src/kimi_cli/app.py` - 传递 `debug_hooks` 参数
 - `src/kimi_cli/soul/agent.py` - 在 Runtime 中启用 hook 调试
 
@@ -119,7 +119,7 @@ command = "echo '{\"decision\": \"deny\", \"reason\": \"Dangerous command\"}'"
 - [x] HookConfig 配置类已实现
 - [x] HookExecutor 支持命令执行
 - [x] HookDebugger 提供详细的执行日志和统计
-- [x] --debug-hooks CLI 参数已添加
+- [x] ~~`--debug-hooks`~~ `--debug` CLI 参数已添加（已合并）
 - [x] 文档已更新（中英文）
 - [x] 示例 hooks 已提供（安全、Git、代码质量、通知）
 - [x] 所有现有测试通过

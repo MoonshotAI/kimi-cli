@@ -1,0 +1,19 @@
+# Agent Hooks
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
