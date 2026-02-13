@@ -17,6 +17,7 @@ from pydantic import (
 from tomlkit.exceptions import TOMLKitError
 
 from kimi_cli.exception import ConfigError
+from kimi_cli.hooks import HooksConfig
 from kimi_cli.llm import ModelCapability, ProviderType
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
@@ -159,6 +160,7 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    hooks: HooksConfig = Field(default_factory=HooksConfig, description="Hooks configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

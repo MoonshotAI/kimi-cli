@@ -1,0 +1,89 @@
+# Productivity Hooks Example
+# Place this in ~/.kimi/config.toml to enhance your workflow
+
+[hooks]
+
+# Inject git info on session start
+[[hooks.session_start]]
+name = "inject-git-info"
+type = "Command"
+command = """
+git_info=$(git log -1 --oneline 2>/dev/null || echo "Not a git repo")
+branch=$(git branch --show-current 2>/dev/null || echo "N/A")
+echo "{\"additional_context\": \"Git: $branch - $git_info\"}"
+"""
+description = "Inject recent git commit info into context"
+
+# Auto-format Python files after editing
+[[hooks.after_tool]]
+name = "auto-format-python"
+type = "Command"
+matcher = { tool = "WriteFile|StrReplaceFile", pattern = "\.py$" }
+command = """
+read input
+file_path=$(echo "$input" | jq -r '.tool_input.path // .tool_input.file // empty')
+if [ -n "$file_path" ] && [ -f "$file_path" ]; then
+    ruff format "$file_path" 2>/dev/null || true
+fi
+echo '{"decision": "allow"}'
+"""
+async = true
+description = "Auto-format Python files after editing"
+
+# Run tests after file modifications in test directories
+[[hooks.after_tool]]
+name = "auto-test"
+type = "Command"
+matcher = { tool = "WriteFile|StrReplaceFile", pattern = "test.*\.py$|_test\.py$" }
+command = """
+read input
+file_path=$(echo "$input" | jq -r '.tool_input.path // .tool_input.file // empty')
+if [ -n "$file_path" ]; then
+    # Run related tests
+    pytest "$file_path" -v --tb=short 2>&1 | head -50
+fi
+echo '{"decision": "allow"}'
+"""
+async = true
+timeout = 60000
+description = "Run tests automatically after modifying test files"
+
+# Generate commit message suggestion before agent completes
+[[hooks.before_agent]]
+name = "suggest-commit"
+type = "Command"
+command = """
+if git diff --cached --quiet 2>/dev/null; then
+    echo '{"decision": "allow"}'
+else
+    diff_summary=$(git diff --cached --stat | tail -1)
+    echo "{\"additional_context\": \"Staged changes: $diff_summary\"}"
+fi
+"""
+description = "Show staged changes before agent turn"
+
+# Log session end with summary
+[[hooks.session_end]]
+name = "session-summary"
+type = "Command"
+command = """
+read input
+session_id=$(echo "$input" | jq -r '.session_id')
+echo "Session $session_id ended at $(date)" >> ~/.kimi/sessions.log
+"""
+async = true
+description = "Log session end time"
+
+# Pre-compact notification
+[[hooks.pre_compact]]
+name = "compact-notify"
+type = "Command"
+command = "echo '{\"additional_context\": \"Context is being compacted to save tokens\"}'"
+description = "Notify when context compaction occurs"
+
+# Welcome message on subagent start
+[[hooks.subagent_start]]
+name = "subagent-welcome"
+type = "Command"
+command = 'echo "{\"additional_context\": \"Subagent is starting with your task\"}"'
+description = "Add context when subagent starts"
