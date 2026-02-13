@@ -11,6 +11,8 @@ from typing import IO
 
 from loguru import logger
 
+__all__ = ["logger", "redirect_stderr_to_logger", "restore_stderr", "open_original_stderr"]
+
 
 class StderrRedirector:
     def __init__(self, level: str = "ERROR") -> None:

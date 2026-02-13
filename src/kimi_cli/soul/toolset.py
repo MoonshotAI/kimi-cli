@@ -31,8 +31,7 @@ from kosong.utils.typing import JsonType
 from loguru import logger
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
-from kimi_cli.hooks.config import HookEventType
-from kimi_cli.hooks.models import HookDecision, ToolHookEvent
+# Hooks are handled externally via AgentHooks standard
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
@@ -250,19 +249,19 @@ class KimiToolset:
             return cached_result
 
         # Build event context
-        event = ToolHookEvent(
-            event_type=HookEventType.BEFORE_TOOL.value,
-            timestamp=datetime.now(),
-            session_id=self._runtime.session.id,
-            work_dir=str(self._runtime.session.work_dir),
-            tool_name=tool_name,
-            tool_input=tool_input,
-            tool_use_id=tool_use_id,
-        )
+        event = {
+            "event_type": "before_tool",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self._runtime.session.id,
+            "work_dir": str(self._runtime.session.work_dir),
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+            "tool_use_id": tool_use_id,
+        }
 
         try:
-            results = await self._runtime.hook_manager.execute(
-                HookEventType.BEFORE_TOOL,
+            exec_result = await self._runtime.hook_manager.execute(
+                "before_tool",
                 event,
                 tool_name=tool_name,
                 tool_input=tool_input,
@@ -274,8 +273,27 @@ class KimiToolset:
             duration_ms = (time.monotonic() - start_time) * 1000
             self._hook_stats.total_duration_ms += duration_ms
 
-        # Process hook results
-        for result in results:
+        # Check if any hook blocked the execution
+        if exec_result.should_block:
+            self._hook_stats.blocked_calls += 1
+            logger.info(
+                "Tool {tool_name} blocked: {reason}",
+                tool_name=tool_name,
+                reason=exec_result.block_reason,
+            )
+            # Cache the block decision
+            block_result = ToolResult(
+                tool_call_id=tool_use_id,
+                return_value=ToolError(
+                    message=f"Tool blocked: {exec_result.block_reason}",
+                    brief="Blocked by hook",
+                ),
+            )
+            self._hook_cache.set("before_tool", tool_name, tool_input, block_result)
+            return block_result
+
+        # Process individual results for logging and stats
+        for result in exec_result.results:
             if not result.success:
                 logger.warning(
                     "before_tool hook {name} failed: {reason}",
@@ -284,26 +302,7 @@ class KimiToolset:
                 )
                 continue
 
-            if result.decision == HookDecision.DENY:
-                self._hook_stats.blocked_calls += 1
-                logger.info(
-                    "Tool {tool_name} blocked by hook {hook_name}: {reason}",
-                    tool_name=tool_name,
-                    hook_name=result.hook_name,
-                    reason=result.reason,
-                )
-                # Cache the block decision
-                block_result = ToolResult(
-                    tool_call_id=tool_use_id,
-                    return_value=ToolError(
-                        message=f"Tool blocked by hook '{result.hook_name}': {result.reason}",
-                        brief="Blocked by hook",
-                    ),
-                )
-                self._hook_cache.set("before_tool", tool_name, tool_input, block_result)
-                return block_result
-
-            if result.decision == HookDecision.ASK:
+            if result.decision == "ask":
                 # TODO: Implement interactive approval for hooks
                 logger.warning(
                     "Hook {hook_name} requested ASK decision but interactive approval not implemented yet",
@@ -336,30 +335,29 @@ class KimiToolset:
             return
 
         # Build event context
-        event = ToolHookEvent(
-            event_type=HookEventType.AFTER_TOOL.value,
-            timestamp=datetime.now(),
-            session_id=self._runtime.session.id,
-            work_dir=str(self._runtime.session.work_dir),
-            tool_name=tool_name,
-            tool_input=tool_input,
-            tool_use_id=tool_use_id,
-            context={
-                "tool_output": tool_output,
-                "error": error,
-                "duration_ms": duration_ms,
-            },
-        )
+        event = {
+            "event_type": "after_tool",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self._runtime.session.id,
+            "work_dir": str(self._runtime.session.work_dir),
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+            "tool_use_id": tool_use_id,
+            "tool_output": tool_output,
+            "error": error,
+            "duration_ms": duration_ms,
+        }
 
         try:
-            results = await self._runtime.hook_manager.execute(
-                HookEventType.AFTER_TOOL,
+            exec_result = await self._runtime.hook_manager.execute(
+                "after_tool",
                 event,
                 tool_name=tool_name,
                 tool_input=tool_input,
             )
 
-            for result in results:
+            # Log results from sync hooks
+            for result in exec_result.results:
                 if not result.success:
                     logger.warning(
                         "after_tool hook {name} failed: {reason}",
@@ -371,6 +369,13 @@ class KimiToolset:
                         "after_tool hook {name} executed successfully",
                         name=result.hook_name,
                     )
+
+            # Async hooks are tracked but not awaited here
+            if exec_result.async_tasks:
+                logger.debug(
+                    "{count} async after_tool hooks fired",
+                    count=len(exec_result.async_tasks),
+                )
         except Exception as e:
             logger.exception("Failed to execute after_tool hooks: {error}", error=e)
 

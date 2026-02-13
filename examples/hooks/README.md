@@ -9,9 +9,9 @@
    cat examples/hooks/security-hooks.toml >> ~/.kimi/config.toml
    ```
 
-2. 使用 `--debug-hooks` 测试：
+2. 使用 `--debug` 测试：
    ```bash
-   kimi --debug-hooks
+   kimi --debug
    ```
 
 ## 示例列表
