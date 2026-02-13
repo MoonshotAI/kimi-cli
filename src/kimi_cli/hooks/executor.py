@@ -91,7 +91,7 @@ class HookExecutor:
         input_data = json.dumps(event, default=str)
 
         try:
-            proc = await asyncio.create_subprocess_shell(
+            proc = await asyncio.create_subprocess_exec(
                 str(entry_point),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
