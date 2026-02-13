@@ -43,3 +43,7 @@ static/
 .entire
 .claude
 .references/
+
+# monoco workspace files
+.monoco/
+Issues/

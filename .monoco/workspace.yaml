@@ -1,5 +1,0 @@
-hooks:
-  pre-commit: monoco issue lint --recursive
-paths:
-  issues: Issues
-  spikes: .references
