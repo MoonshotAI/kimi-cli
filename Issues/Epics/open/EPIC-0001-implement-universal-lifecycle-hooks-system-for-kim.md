@@ -6,7 +6,7 @@ status: open
 stage: draft
 title: "为 Kimi CLI 引入通用生命周期钩子系统 (Hooks System)"
 created_at: '2026-01-15T00:00:00'
-updated_at: '2026-02-13T13:00:00'
+updated_at: '2026-02-13T13:20:00'
 parent: EPIC-0000
 dependencies: []
 related: []
@@ -83,7 +83,7 @@ Start  End  Before    After   BeforeTool  AfterTool      Subagent
 
 ## 子任务 (Features)
 
-- [x] **FEAT-0001**: Hooks 系统核心架构 (配置层扩展、HookManager、Command 执行引擎)
+- [x] **FEAT-0001**: Hooks 系统核心架构 (配置层扩展、HookManager、Command 执行引擎) - ✅ Completed
 - [ ] **FEAT-0002**: Session 生命周期钩子集成 (SessionStart, SessionEnd)
 - [ ] **FEAT-0003**: 工具拦截钩子 (PreToolUse / PostToolUse)
 - [ ] **FEAT-0004**: 高级钩子类型与调试能力 (Prompt/Agent 类型、--debug 日志)
