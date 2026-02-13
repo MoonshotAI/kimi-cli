@@ -213,7 +213,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
             type="button"
             onClick={handleToggleExpand}
             disabled={!(canSendMessage && currentSession)}
-            className="absolute top-2 right-2 z-10 p-1 cursor-pointer rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            className="absolute top-2 right-2 z-10 p-1 cursor-pointer rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:pointer-events-none size-8 flex items-center justify-center"
             aria-label={isExpanded ? "Collapse input" : "Expand input"}
           >
             {isExpanded ? (
@@ -292,7 +292,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
             </div>
           </div>
         </PromptInputBody>
-        <PromptInputFooter className="w-full gap-2 py-1 border-none bg-transparent shadow-none">
+        <PromptInputFooter className="w-full gap-2 pb-2 border-none bg-transparent shadow-none">
           <PromptInputTools className="flex-1 min-w-0 flex-wrap">
             <GlobalConfigControls />
           </PromptInputTools>

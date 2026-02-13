@@ -200,8 +200,8 @@ export function GlobalConfigControls({
     <div className={cn("flex items-center gap-1", className)}>
       <Button
         variant="ghost"
-        size="icon"
-        className="size-9 border-0"
+        size="icon-sm"
+        className="border-0 rounded-full"
         aria-label="Attach files"
         onClick={() => attachments.openFileDialog()}
       >
@@ -215,7 +215,7 @@ export function GlobalConfigControls({
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 max-w-[160px] justify-start gap-2 border-0"
+            className="max-w-40 justify-start gap-2 border-0 rounded-full"
             aria-label="Change global model"
             disabled={isLoading || isUpdating || !config}
           >

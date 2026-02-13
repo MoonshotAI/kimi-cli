@@ -39,7 +39,7 @@ export const SlashCommandMenu = ({
 
   return (
     <div className="absolute left-0 right-0 bottom-[calc(100%+0.75rem)] z-30">
-      <div className="rounded-xl border border-border/80 bg-popover/95 p-2 px-1 shadow-xl backdrop-blur supports-backdrop-filter:bg-popover/80">
+      <div className="rounded-2xl border border-border/80 bg-popover/95 p-2 px-1 shadow-xl backdrop-blur supports-backdrop-filter:bg-popover/80">
         {options.length > 0 ? (
           <>
             <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">

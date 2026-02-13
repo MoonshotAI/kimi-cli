@@ -245,7 +245,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
         />
 
         {currentSession && (
-          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 ">
+          <div className="mt-auto shrink-0 px-3 pb-3 ">
             <ChatPromptComposer
               status={status}
               onSubmit={onSubmit}

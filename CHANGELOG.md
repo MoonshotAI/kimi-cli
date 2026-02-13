@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Refine UI details including rounded corners, spacing, and layout adjustments across input group, slash command menu, and session sidebar
+
 ## 1.12.0 (2026-02-11)
 
 - Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages
