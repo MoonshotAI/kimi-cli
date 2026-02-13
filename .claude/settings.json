@@ -1,0 +1,52 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "monoco hook run agent before-tool"
+          }
+        ],
+        "matcher": "Bash",
+        "_monoco_managed": true,
+        "_monoco_hook_id": "browser_availability"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "monoco hook run agent before-tool"
+          }
+        ],
+        "matcher": "Bash",
+        "_monoco_managed": true,
+        "_monoco_hook_id": "before-tool"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "monoco hook run agent session-end"
+          }
+        ],
+        "_monoco_managed": true,
+        "_monoco_hook_id": "browser_cleanup"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "monoco hook run agent session-start"
+          }
+        ],
+        "_monoco_managed": true,
+        "_monoco_hook_id": "session-start"
+      }
+    ]
+  }
+}

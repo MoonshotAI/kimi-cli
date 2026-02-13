@@ -2,11 +2,11 @@
 id: FEAT-0001
 uid: feat0001
 type: feature
-status: open
-stage: draft
+status: closed
+stage: done
 title: "Hooks 系统核心架构 (基于现有配置层扩展)"
 created_at: '2026-01-15T00:00:00'
-updated_at: '2026-02-13T13:00:00'
+updated_at: '2026-02-13T13:20:00'
 parent: EPIC-0001
 dependencies: []
 related: []
@@ -26,7 +26,7 @@ files:
 - examples/hooks/security.toml
 - examples/hooks/productivity.toml
 criticality: high
-solution: null
+solution: implemented
 ---
 
 ## FEAT-0001: Hooks 系统核心架构 (基于现有配置层扩展)
@@ -214,3 +214,7 @@ examples/hooks/
 ├── security.toml
 └── productivity.toml
 ```
+
+## Review Comments
+
+- [x] Self-Review
