@@ -44,6 +44,23 @@ class SubagentHookEvent(HookEvent):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class SessionStartHookEvent(HookEvent):
+    """Session start hook event."""
+
+    model: str | None = None
+    args: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SessionEndHookEvent(HookEvent):
+    """Session end hook event."""
+
+    duration_seconds: int = 0
+    total_steps: int = 0
+    exit_reason: str = "user_exit"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class HookResult:
     """Result of hook execution."""
 
