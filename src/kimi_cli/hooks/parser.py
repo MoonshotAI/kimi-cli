@@ -165,13 +165,12 @@ class Matcher:
 
     def matches(self, tool_name: str | None = None, arguments: dict[str, Any] | None = None) -> bool:
         """Check if the matcher matches the given context."""
-        if self.tool_pattern is not None and tool_name is not None:
-            if not self.tool_pattern.search(tool_name):
+        if self.tool_pattern is not None:
+            if tool_name is None or not self.tool_pattern.search(tool_name):
                 return False
 
-        if self.arg_pattern is not None and arguments is not None:
-            args_str = str(arguments)
-            if not self.arg_pattern.search(args_str):
+        if self.arg_pattern is not None:
+            if arguments is None or not self.arg_pattern.search(str(arguments)):
                 return False
 
         return True
