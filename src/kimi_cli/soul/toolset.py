@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import importlib
 import inspect
 import json
 import time
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, overload
 
@@ -72,52 +71,13 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class ToolHookCache:
-    """Cache for hook execution results to optimize performance."""
-
-    max_size: int = 100
-    _cache: dict[str, Any] = field(default_factory=dict)
-    _access_times: dict[str, float] = field(default_factory=dict)
-
-    def _make_key(self, event_type: str, tool_name: str, tool_input: dict[str, Any]) -> str:
-        """Generate cache key from event context."""
-        data = f"{event_type}:{tool_name}:{json.dumps(tool_input, sort_keys=True, default=str)}"
-        return hashlib.md5(data.encode()).hexdigest()
-
-    def get(self, event_type: str, tool_name: str, tool_input: dict[str, Any]) -> Any | None:
-        """Get cached result if exists."""
-        key = self._make_key(event_type, tool_name, tool_input)
-        if key in self._cache:
-            self._access_times[key] = time.monotonic()
-            return self._cache[key]
-        return None
-
-    def set(self, event_type: str, tool_name: str, tool_input: dict[str, Any], result: Any) -> None:
-        """Cache execution result."""
-        # Evict oldest entries if cache is full
-        if len(self._cache) >= self.max_size:
-            oldest_key = min(self._access_times, key=self._access_times.get)
-            del self._cache[oldest_key]
-            del self._access_times[oldest_key]
-
-        key = self._make_key(event_type, tool_name, tool_input)
-        self._cache[key] = result
-        self._access_times[key] = time.monotonic()
-
-    def clear(self) -> None:
-        """Clear all cached entries."""
-        self._cache.clear()
-        self._access_times.clear()
-
-
-@dataclass
 class ToolHookStats:
     """Statistics for tool hook execution."""
 
     total_calls: int = 0
     blocked_calls: int = 0
     modified_calls: int = 0
-    cache_hits: int = 0
+
     total_duration_ms: float = 0.0
 
     @property
@@ -134,7 +94,6 @@ class KimiToolset:
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._runtime = runtime
-        self._hook_cache = ToolHookCache()
         self._hook_stats = ToolHookStats()
 
     def add(self, tool: ToolType) -> None:
@@ -241,20 +200,6 @@ class KimiToolset:
         self._hook_stats.total_calls += 1
         start_time = time.monotonic()
 
-        # Check cache first - cache stores (should_block, block_reason) tuple
-        cached_block_reason = self._hook_cache.get("before_tool", tool_name, tool_input)
-        if cached_block_reason is not None:
-            self._hook_stats.cache_hits += 1
-            logger.debug("Cache hit for before_tool hook: {tool_name}", tool_name=tool_name)
-            # Construct ToolResult with the correct tool_call_id (not the cached one)
-            return ToolResult(
-                tool_call_id=tool_use_id,
-                return_value=ToolError(
-                    message=f"Tool blocked: {cached_block_reason}",
-                    brief="Blocked by hook",
-                ),
-            )
-
         # Build event context
         event = {
             "event_type": "before_tool",
@@ -288,10 +233,7 @@ class KimiToolset:
                 tool_name=tool_name,
                 reason=exec_result.block_reason,
             )
-            # Cache only the block reason (not the full ToolResult with tool_call_id)
-            self._hook_cache.set(
-                "before_tool", tool_name, tool_input, exec_result.block_reason
-            )
+
             return ToolResult(
                 tool_call_id=tool_use_id,
                 return_value=ToolError(
@@ -390,10 +332,6 @@ class KimiToolset:
     def get_hook_stats(self) -> ToolHookStats:
         """Get hook execution statistics."""
         return self._hook_stats
-
-    def clear_hook_cache(self) -> None:
-        """Clear the hook cache."""
-        self._hook_cache.clear()
 
     def register_external_tool(
         self,
