@@ -57,6 +57,26 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+#### 推理内容支持
+
+一些兼容 OpenAI 的 API（如 DeepSeek、Venice AI）会在响应中返回推理/思考内容。使用 `reasoning_key` 指定字段名，以便在多轮对话中正确保留：
+
+```toml
+[providers.venice]
+type = "openai_legacy"
+base_url = "https://api.venice.ai/api/v1"
+api_key = "xxx"
+reasoning_key = "reasoning_content"
+
+[providers.deepseek]
+type = "openai_legacy"
+base_url = "https://api.deepseek.com/v1"
+api_key = "sk-xxx"
+reasoning_key = "reasoning_content"
+```
+
+配置后，模型响应中的推理内容将被正确提取，并包含在后续的 API 请求中。这是使用推理模型进行多轮工具调用所必需的。
+
 ### `openai_responses`
 
 用于 OpenAI Responses API（较新的 API 格式）。
