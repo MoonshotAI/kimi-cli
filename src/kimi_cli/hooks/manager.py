@@ -4,19 +4,12 @@ import asyncio
 import json
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kimi_cli.hooks.config import (
-    AgentHookConfig,
-    CommandHookConfig,
-    HookConfig,
-    HookEventType,
-    HooksConfig,
-    HookType,
-    PromptHookConfig,
-)
+from kimi_cli.hooks.config import HookConfig, HookEventType, HooksConfig, HookType
 from kimi_cli.hooks.models import HookDecision, HookEvent, HookResult
 from kimi_cli.utils.logging import logger
 
@@ -62,8 +55,6 @@ class HookDebugger:
         input_context: dict[str, Any],
     ) -> HookExecutionLog:
         """Log the start of hook execution."""
-        from datetime import datetime
-
         log = HookExecutionLog(
             timestamp=datetime.now().isoformat(),
             event_type=event_type.value,
@@ -143,22 +134,19 @@ class HookDebugger:
         }
 
 
-class BaseHookExecutor:
-    """Base class for hook executors."""
-
-    async def execute(self, hook: HookConfig, event: HookEvent, runtime: Runtime | None) -> HookResult:
-        """Execute the hook."""
-        raise NotImplementedError
-
-
-class CommandHookExecutor(BaseHookExecutor):
+class HookExecutor:
     """Executor for command-type hooks."""
 
     def __init__(self, env_file: str | None = None, runtime: Runtime | None = None):
         self.env_file = env_file
         self.runtime = runtime
 
-    async def execute(self, hook: CommandHookConfig, event: HookEvent, runtime: Runtime | None) -> HookResult:  # type: ignore[override]
+    async def execute(
+        self,
+        hook: HookConfig,
+        event: HookEvent,
+        runtime: Runtime | None,
+    ) -> HookResult:
         """Execute a command hook."""
         # Prepare environment
         env = os.environ.copy()
@@ -207,7 +195,7 @@ class CommandHookExecutor(BaseHookExecutor):
             ),
         )
 
-    def _parse_result(self, hook: CommandHookConfig, result: CommandResult) -> HookResult:
+    def _parse_result(self, hook: HookConfig, result: CommandResult) -> HookResult:
         """Parse command execution result."""
         # Exit code 2 = blocking error (System Block)
         if result.exit_code == 2:
@@ -258,221 +246,6 @@ class CommandHookExecutor(BaseHookExecutor):
         )
 
 
-class PromptHookExecutor(BaseHookExecutor):
-    """Executor for prompt-type hooks using LLM."""
-
-    DEFAULT_SYSTEM_PROMPT = """You are a security and quality analyzer. Your task is to analyze the provided context and make a decision.
-
-Respond with a JSON object in this exact format:
-{
-    "decision": "allow" | "deny" | "ask",
-    "reason": "explanation for the decision",
-    "additional_context": "optional additional information"
-}
-
-Rules:
-- "allow": The action is safe to proceed
-- "deny": The action should be blocked (dangerous/unsafe)
-- "ask": The action needs user confirmation
-"""
-
-    async def execute(self, hook: PromptHookConfig, event: HookEvent, runtime: Runtime | None) -> HookResult:  # type: ignore[override]
-        """Execute a prompt hook using LLM."""
-        from kimi_cli.llm import create_llm
-        from kosong.chat import ChatProvider, Message
-
-        if not runtime or not runtime.llm:
-            return HookResult(
-                success=False,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision.ALLOW,
-                reason="No LLM available for prompt hook execution",
-            )
-
-        # Render prompt template with event context
-        prompt = self._render_prompt(hook.prompt, event)
-        system_prompt = hook.system_prompt or self.DEFAULT_SYSTEM_PROMPT
-
-        # Use specified model or fall back to runtime's model
-        llm = runtime.llm
-        if hook.model and hook.model in runtime.config.models:
-            from kimi_cli.config import LLMProvider
-            from pydantic import SecretStr
-
-            model_config = runtime.config.models[hook.model]
-            provider = runtime.config.providers.get(model_config.provider)
-            if provider:
-                llm = create_llm(
-                    provider,
-                    model_config,
-                    session_id=runtime.session.session_id,
-                ) or runtime.llm
-
-        messages = [
-            Message(role="system", content=system_prompt),
-            Message(role="user", content=prompt),
-        ]
-
-        try:
-            response = await llm.chat_provider.chat(
-                messages,
-                temperature=hook.temperature,
-                response_format={"type": "json_object"},
-            )
-
-            content = response.content.strip()
-            result = json.loads(content)
-
-            return HookResult(
-                success=True,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision(result.get("decision", "allow")),
-                reason=result.get("reason"),
-                additional_context=result.get("additional_context"),
-            )
-
-        except json.JSONDecodeError as e:
-            return HookResult(
-                success=False,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision.ALLOW,
-                reason=f"Failed to parse LLM response as JSON: {e}",
-            )
-        except Exception as e:
-            return HookResult(
-                success=False,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision.ALLOW,
-                reason=f"LLM call failed: {e}",
-            )
-
-    def _render_prompt(self, template: str, event: HookEvent) -> str:
-        """Render prompt template with event context."""
-        context = {
-            "event_type": event.event_type,
-            "timestamp": event.timestamp.isoformat(),
-            "session_id": event.session_id,
-            "work_dir": event.work_dir,
-            **event.context,
-        }
-
-        # Simple template substitution
-        result = template
-        for key, value in context.items():
-            placeholder = f"{{{{{key}}}}}"
-            result = result.replace(placeholder, str(value))
-
-        return result
-
-
-class AgentHookExecutor(BaseHookExecutor):
-    """Executor for agent-type hooks using subagent."""
-
-    DEFAULT_SYSTEM_PROMPT = """You are a validation agent. Your task is to analyze the provided context and perform validation.
-
-Respond with a JSON object in this exact format:
-{
-    "decision": "allow" | "deny" | "ask",
-    "reason": "explanation for the decision",
-    "additional_context": "detailed analysis or recommendations",
-    "modified_input": {}  // Optional: modified tool input if needed
-}
-
-Rules:
-- "allow": The action is safe to proceed
-- "deny": The action should be blocked (dangerous/unsafe)
-- "ask": The action needs user confirmation
-"""
-
-    async def execute(self, hook: AgentHookConfig, event: HookEvent, runtime: Runtime | None) -> HookResult:  # type: ignore[override]
-        """Execute an agent hook using subagent."""
-        if not runtime or not runtime.llm:
-            return HookResult(
-                success=False,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision.ALLOW,
-                reason="No LLM available for agent hook execution",
-            )
-
-        # Prepare task context
-        task_context = {
-            "event_type": event.event_type,
-            "timestamp": event.timestamp.isoformat(),
-            "session_id": event.session_id,
-            "work_dir": event.work_dir,
-            **event.context,
-        }
-
-        # Build full task prompt
-        task = f"""{hook.task}
-
-Context:
-```json
-{json.dumps(task_context, indent=2, ensure_ascii=False)}
-```
-
-Analyze the above context and provide your decision in the required JSON format.
-"""
-
-        try:
-            # Run as a simple LLM task since we don't have full subagent infrastructure
-            from kosong.chat import Message
-
-            messages = [
-                Message(role="system", content=self.DEFAULT_SYSTEM_PROMPT),
-                Message(role="user", content=task),
-            ]
-
-            response = await runtime.llm.chat_provider.chat(
-                messages,
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
-
-            content = response.content.strip()
-            result = json.loads(content)
-
-            return HookResult(
-                success=True,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision(result.get("decision", "allow")),
-                reason=result.get("reason"),
-                additional_context=result.get("additional_context"),
-                modified_input=result.get("modified_input"),
-            )
-
-        except json.JSONDecodeError as e:
-            return HookResult(
-                success=False,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision.ALLOW,
-                reason=f"Failed to parse agent response as JSON: {e}",
-            )
-        except Exception as e:
-            return HookResult(
-                success=False,
-                hook_name=hook.name or "unknown",
-                hook_type=hook.type.value,
-                duration_ms=0,
-                decision=HookDecision.ALLOW,
-                reason=f"Agent execution failed: {e}",
-            )
-
-
 class HookManager:
     """Manages hook registration and execution."""
 
@@ -487,17 +260,15 @@ class HookManager:
         self._env_file: str | None = None
         self._debugger = HookDebugger(enabled=debug)
 
-        # Initialize executors
-        self._command_executor: CommandHookExecutor | None = None
-        self._prompt_executor = PromptHookExecutor()
-        self._agent_executor = AgentHookExecutor()
+        # Initialize executor
+        self._executor: HookExecutor | None = None
 
     def with_runtime(self, runtime: Runtime) -> HookManager:
         """Create a new HookManager with runtime context."""
         manager = HookManager(self._config, runtime, self._debugger.enabled)
         if runtime:
             manager._env_file = self._get_env_file_path(runtime)
-            manager._command_executor = CommandHookExecutor(manager._env_file, runtime)
+            manager._executor = HookExecutor(manager._env_file, runtime)
         return manager
 
     def enable_debug(self, enabled: bool = True) -> None:
@@ -525,7 +296,7 @@ class HookManager:
                 if "=" in line:
                     key, value = line.split("=", 1)
                     # Remove quotes if present
-                    value = value.strip().strip("'\"")
+                    value = value.strip().strip('"')
                     env_vars[key.strip()] = value
         except Exception:
             logger.debug("Failed to load env file: {file}", file=self._env_file)
@@ -594,16 +365,6 @@ class HookManager:
                     self._execute_command_hook(hook, event),
                     hook.timeout,
                 )
-            elif hook.type == HookType.PROMPT:
-                result = await self._execute_with_timeout(
-                    self._prompt_executor.execute(hook, event, self._runtime),
-                    hook.timeout,
-                )
-            elif hook.type == HookType.AGENT:
-                result = await self._execute_with_timeout(
-                    self._agent_executor.execute(hook, event, self._runtime),
-                    hook.timeout,
-                )
             else:
                 raise ValueError(f"Unknown hook type: {hook.type}")
 
@@ -652,8 +413,6 @@ class HookManager:
     def _update_duration(self, result: HookResult, duration_ms: int) -> HookResult:
         """Update the duration in a HookResult."""
         # Since HookResult is frozen, we need to create a new one
-        from dataclasses import replace
-
         return replace(result, duration_ms=duration_ms)
 
     def _get_hooks_for_event(self, event_type: HookEventType) -> list[HookConfig]:
@@ -682,21 +441,21 @@ class HookManager:
     # Backwards compatibility methods for tests
     async def _execute_command_hook(
         self,
-        hook: CommandHookConfig,
+        hook: HookConfig,
         event: HookEvent,
     ) -> HookResult:
         """Execute a command hook (backwards compatibility)."""
-        if not self._command_executor:
+        if not self._executor:
             # Create a temporary executor without runtime for tests
-            self._command_executor = CommandHookExecutor(self._env_file, self._runtime)
-        return await self._command_executor.execute(hook, event, self._runtime)
+            self._executor = HookExecutor(self._env_file, self._runtime)
+        return await self._executor.execute(hook, event, self._runtime)
 
     def _parse_command_result(
         self,
-        hook: CommandHookConfig,
+        hook: HookConfig,
         result: CommandResult,
     ) -> HookResult:
         """Parse command execution result (backwards compatibility)."""
-        if not self._command_executor:
-            self._command_executor = CommandHookExecutor(self._env_file, self._runtime)
-        return self._command_executor._parse_result(hook, result)
+        if not self._executor:
+            self._executor = HookExecutor(self._env_file, self._runtime)
+        return self._executor._parse_result(hook, result)

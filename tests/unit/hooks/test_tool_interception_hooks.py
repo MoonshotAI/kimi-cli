@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from kosong.message import ToolCall
 
-from kimi_cli.hooks.config import CommandHookConfig, HookEventType, HooksConfig
+from kimi_cli.hooks.config import HookConfig, HookEventType, HooksConfig
 from kimi_cli.hooks.models import HookDecision, ToolHookEvent
 from kimi_cli.soul.toolset import KimiToolset, ToolHookCache, ToolHookStats
-from kosong.message import ToolCall
 
 
 class TestToolHookCache:
@@ -290,8 +289,9 @@ class TestBeforeToolHooks:
 
         # Pre-populate cache with block result
         toolset = KimiToolset(runtime=mock_runtime)
-        from kimi_cli.wire.types import ToolResult
         from kosong.tooling.error import ToolError
+
+        from kimi_cli.wire.types import ToolResult
 
         cached_result = ToolResult(
             tool_call_id="tool_123",
@@ -407,7 +407,7 @@ class TestToolHooksIntegration:
         # Create a config with a blocking hook
         config = HooksConfig(
             before_tool=[
-                CommandHookConfig(
+                HookConfig(
                     name="block-dangerous",
                     command='echo \'{"decision": "deny", "reason": "Dangerous command"}\'',
                     matcher={"tool": "Shell", "pattern": "rm.*-rf"},
@@ -432,7 +432,7 @@ class TestToolHooksIntegration:
 
         # The handle method should return a blocked result
         with patch.object(toolset, "_tool_dict", {}):  # No actual tools registered
-            result = toolset.handle(tool_call)
+            _result = toolset.handle(tool_call)
             # Since tool is not registered, it returns ToolNotFoundError
             # But hooks would be executed if tool existed
 
