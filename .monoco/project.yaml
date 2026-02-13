@@ -1,8 +1,0 @@
-project:
-  key: kimi-cli
-  name: kimi-cli
-  spike_repos:
-    Codex: https://github.com/Openai/Codex
-    agentskills: https://github.com/agentskills/agentskills.git
-    claude-code-docs: https://github.com/ericbuess/claude-code-docs
-    gemini-cli: https://github.com/google-gemini/gemini-cli
