@@ -17,7 +17,7 @@ tags:
 files: []
 criticality: high
 solution: null
-progress: 2/4
+progress: 3/4
 files_count: 0
 ---
 
@@ -86,8 +86,8 @@ Start  End  Before    After   BeforeTool  AfterTool      Subagent
 ## 子任务 (Features)
 
 - [x] **FEAT-0001**: Hooks 系统核心架构 (配置层扩展、HookManager、Command 执行引擎) - ✅ Completed
-- [ ] **FEAT-0002**: Session 生命周期钩子集成 (SessionStart, SessionEnd)
-- [ ] **FEAT-0003**: 工具拦截钩子 (PreToolUse / PostToolUse)
+- [x] **FEAT-0002**: Session 生命周期钩子集成 (SessionStart, SessionEnd) - ✅ Completed
+- [x] **FEAT-0003**: 工具拦截钩子 (PreToolUse / PostToolUse) - ✅ Completed
 - [ ] **FEAT-0004**: 高级钩子类型与调试能力 (Prompt/Agent 类型、--debug 日志)
 
 ## 验收标准
