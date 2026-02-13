@@ -314,13 +314,6 @@ def kimi(
             ),
         ),
     ] = None,
-    debug_hooks: Annotated[
-        bool,
-        typer.Option(
-            "--debug-hooks",
-            help="Enable detailed hook execution logging. Default: no.",
-        ),
-    ] = False,
 ):
     """Kimi, your next CLI agent."""
     from kimi_cli.utils.proctitle import init_process_name
@@ -540,7 +533,7 @@ def kimi(
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
-            debug_hooks=debug_hooks,
+            debug_hooks=debug,
         )
         # Install stderr redirection only after initialization succeeded, so runtime
         # stderr noise is captured into logs without hiding startup failures.
