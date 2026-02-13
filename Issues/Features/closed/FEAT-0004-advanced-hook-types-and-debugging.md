@@ -21,7 +21,6 @@ files:
 - src/kimi_cli/hooks/
 - docs/hooks.md
 criticality: medium
-solution: null # implemented, cancelled, wontfix, duplicate
 ---
 
 ## FEAT-0004: 高级钩子类型与调试能力
