@@ -113,6 +113,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
         environment=runtime.environment,
         skills=runtime.skills,
         oauth=runtime.oauth,
+        hook_manager=runtime.hook_manager,
     )
 
 
