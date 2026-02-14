@@ -80,3 +80,15 @@ async def yolo(soul: KimiSoul, args: str):
     else:
         soul.runtime.approval.set_yolo(True)
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
+
+
+@registry.command
+async def hooks(soul: KimiSoul, args: str):
+    """List and show information about AgentHooks"""
+    from kimi_cli.hooks.display import build_hooks_display
+
+    output = build_hooks_display(
+        hook_manager=soul.runtime.hook_manager,
+        work_dir=str(soul.runtime.session.work_dir),
+    )
+    wire_send(TextPart(text=output))

@@ -40,3 +40,8 @@ target/
 node_modules/
 static/
 .memo/
+.references/
+
+# monoco workspace files
+.monoco/
+Issues/

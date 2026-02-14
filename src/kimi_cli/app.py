@@ -20,13 +20,14 @@ from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
+from kosong.message import Message
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.types import ContentPart, WireMessage
+from kimi_cli.wire.types import ContentPart, TextPart, WireMessage
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
@@ -70,6 +71,8 @@ class KimiCLI:
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
         max_ralph_iterations: int | None = None,
+        # Debug
+        debug_hooks: bool = False,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -155,7 +158,10 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             logger.info("Thinking mode: {thinking}", thinking=thinking)
 
-        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir)
+        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir, debug_hooks)
+
+        # Execute session_start hooks and collect additional contexts
+        hook_contexts = await runtime._execute_pre_session_hooks()
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
@@ -163,6 +169,13 @@ class KimiCLI:
 
         context = Context(session.context_file)
         await context.restore()
+
+        # Inject hook contexts as system messages
+        for hook_context in hook_contexts:
+            if hook_context.strip():
+                await context.append_message(
+                    Message(role="system", content=[TextPart(text=hook_context)])
+                )
 
         soul = KimiSoul(agent, context=context)
         return KimiCLI(soul, runtime, env_overrides)
@@ -247,6 +260,8 @@ class KimiCLI:
                 stop_ui_loop.set()
                 # wait for the soul task to finish, or raise
                 await soul_task
+                # Execute session_end hooks
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_shell(self, command: str | None = None) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
@@ -324,7 +339,11 @@ class KimiCLI:
         )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
-            return await shell.run(command)
+            try:
+                return await shell.run(command)
+            finally:
+                # Execute session_end hooks
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_print(
         self,
@@ -345,7 +364,11 @@ class KimiCLI:
                 self._runtime.session.context_file,
                 final_only=final_only,
             )
-            return await print_.run(command)
+            try:
+                return await print_.run(command)
+            finally:
+                # Execute session_end hooks
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_acp(self) -> None:
         """Run the Kimi Code CLI instance as ACP server."""
@@ -353,7 +376,11 @@ class KimiCLI:
 
         async with self._env():
             acp = ACP(self._soul)
-            await acp.run()
+            try:
+                await acp.run()
+            finally:
+                # Execute session_end hooks
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_wire_stdio(self) -> None:
         """Run the Kimi Code CLI instance as Wire server over stdio."""
@@ -361,4 +388,8 @@ class KimiCLI:
 
         async with self._env():
             server = WireServer(self._soul)
-            await server.serve()
+            try:
+                await server.serve()
+            finally:
+                # Execute session_end hooks
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")

@@ -493,6 +493,7 @@ def kimi(
             max_steps_per_turn=max_steps_per_turn,
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
+            debug_hooks=debug,
         )
         # Install stderr redirection only after initialization succeeded, so runtime
         # stderr noise is captured into logs without hiding startup failures.
