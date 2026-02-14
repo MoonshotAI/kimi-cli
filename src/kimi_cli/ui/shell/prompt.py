@@ -377,7 +377,18 @@ class LocalFileMentionCompleter(Completer):
                 return (cat,)
 
             candidates.sort(key=_rank)
-            yield from candidates
+            for candidate in candidates:
+                text = candidate.text
+                if not text.endswith("/"):
+                    text = text + " "
+                yield Completion(
+                    text=text,
+                    start_position=candidate.start_position,
+                    display=candidate.display,
+                    display_meta=candidate.display_meta,
+                    style=candidate.style,
+                    selected_style=candidate.selected_style,
+                )
         finally:
             self._fragment_hint = None
 
