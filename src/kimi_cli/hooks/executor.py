@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -142,6 +144,81 @@ class HookExecutor:
                 stderr=str(e),
                 decision="allow",  # Fail open on error
                 reason=str(e),
+            )
+
+    def fire_and_forget(self, hook: ParsedHook, event: dict[str, Any]) -> None:
+        """Fire a hook as an OS-level background process.
+        
+        This method starts the hook process and immediately returns without
+        waiting for it to complete. The process runs independently of Kimi CLI
+        and will continue running even if Kimi CLI is terminated.
+        
+        Args:
+            hook: Parsed hook definition
+            event: Event data to pass via stdin as JSON
+        """
+        entry_point = hook.find_entry_point()
+        if entry_point is None:
+            logger.warning(
+                "Async hook {name} has no entry point, skipping",
+                name=hook.name,
+            )
+            return
+
+        # Prepare environment
+        env = os.environ.copy()
+        if self.runtime:
+            env["KIMI_SESSION_ID"] = self.runtime.session.id
+            env["KIMI_WORK_DIR"] = str(self.runtime.session.work_dir)
+            env["KIMI_PROJECT_DIR"] = str(self.runtime.session.work_dir)
+
+        # Prepare JSON input
+        input_data = json.dumps(event, default=str)
+
+        try:
+            # Start process in background with detached session
+            # This ensures the process survives even if Kimi CLI is killed
+            if sys.platform == "win32":
+                # Windows: CREATE_NEW_PROCESS_GROUP + DETACHED_PROCESS
+                proc = subprocess.Popen(
+                    [str(entry_point)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=env,
+                    cwd=str(hook.path),
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                )
+            else:
+                # Unix: start_new_session=True creates a new session
+                # The process will not receive SIGHUP when parent exits
+                proc = subprocess.Popen(
+                    [str(entry_point)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=env,
+                    cwd=str(hook.path),
+                    start_new_session=True,
+                )
+
+            # Write event data to stdin and close it
+            try:
+                proc.stdin.write(input_data.encode())
+                proc.stdin.close()
+            except Exception:
+                pass  # Ignore write errors for fire-and-forget
+
+            logger.debug(
+                "Started async hook {name} as OS process",
+                name=hook.name,
+            )
+
+        except Exception as e:
+            logger.exception(
+                "Failed to start async hook {name}: {error}",
+                name=hook.name,
+                error=e,
             )
 
     def _parse_result(

@@ -1,7 +1,7 @@
 ---
 name: auto-format-python
 description: Automatically format Python files after they are written using black
-trigger: after_tool
+trigger: post-tool-call
 matcher:
   tool: WriteFile
   pattern: "\\.py$"

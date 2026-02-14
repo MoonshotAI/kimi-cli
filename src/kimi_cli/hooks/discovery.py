@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from kimi_cli.hooks.parser import ParsedHook, HookParser
+from kimi_cli.hooks.parser import ParsedHook, HookParser, normalize_trigger
 from kimi_cli.utils.logging import logger
 
 
@@ -116,13 +116,16 @@ class HookDiscovery:
         """Discover hooks filtered by trigger type.
 
         Args:
-            trigger: Event type (e.g., 'before_tool', 'session_start')
+            trigger: Event type (e.g., 'pre-tool-call', 'session_start')
+                     Both canonical and legacy names are accepted.
 
         Returns:
             List of parsed hooks for the given trigger
         """
         all_hooks = self.discover()
-        return [h for h in all_hooks if h.metadata.trigger == trigger]
+        # Normalize the requested trigger for comparison
+        normalized_trigger = normalize_trigger(trigger)
+        return [h for h in all_hooks if h.metadata.trigger == normalized_trigger]
 
     def invalidate_cache(self) -> None:
         """Invalidate the discovery cache."""

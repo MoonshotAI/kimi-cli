@@ -11,6 +11,58 @@ import frontmatter
 import yaml
 
 
+# Trigger name mapping: legacy names -> canonical names
+TRIGGER_ALIASES: dict[str, str] = {
+    # Legacy -> Canonical
+    "session_start": "pre-session",
+    "session_end": "post-session",
+    "before_agent": "pre-agent-turn",
+    "after_agent": "post-agent-turn",
+    "before_stop": "pre-agent-turn-stop",
+    "before_tool": "pre-tool-call",
+    "after_tool": "post-tool-call",
+    "after_tool_failure": "post-tool-call-failure",
+    "subagent_start": "pre-subagent",
+    "subagent_stop": "post-subagent",
+    "pre_compact": "pre-context-compact",
+}
+
+# Valid canonical trigger names
+VALID_TRIGGERS: set[str] = {
+    # Session lifecycle
+    "pre-session",
+    "post-session",
+    # Agent turn lifecycle
+    "pre-agent-turn",
+    "post-agent-turn",
+    # Agent turn stop (Quality Gate)
+    "pre-agent-turn-stop",
+    "post-agent-turn-stop",
+    # Tool interception
+    "pre-tool-call",
+    "post-tool-call",
+    "post-tool-call-failure",
+    # Subagent lifecycle
+    "pre-subagent",
+    "post-subagent",
+    # Context management
+    "pre-context-compact",
+    "post-context-compact",
+} | set(TRIGGER_ALIASES.keys())
+
+
+def normalize_trigger(trigger: str) -> str:
+    """Normalize trigger name to canonical form.
+
+    Args:
+        trigger: Trigger name (legacy or canonical)
+
+    Returns:
+        Canonical trigger name
+    """
+    return TRIGGER_ALIASES.get(trigger, trigger)
+
+
 @dataclass(frozen=True, slots=True)
 class HookMetadata:
     """Hook metadata parsed from YAML frontmatter."""
@@ -30,9 +82,12 @@ class HookMetadata:
         # Handle 'async' field with alias
         async_value = data.get("async", data.get("async_", False))
 
+        # Normalize trigger name (handle legacy aliases)
+        trigger = normalize_trigger(data["trigger"])
+
         return cls(
             name=data["name"],
-            trigger=data["trigger"],
+            trigger=trigger,
             description=data.get("description", ""),
             matcher=data.get("matcher"),
             timeout=data.get("timeout", 30000),

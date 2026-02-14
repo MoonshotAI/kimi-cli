@@ -1,7 +1,7 @@
 ---
 name: enforce-tests
 description: Check tests exist but does NOT run them (avoid blocking agent)
-trigger: before_stop
+trigger: pre-agent-turn-stop
 timeout: 15000
 async: false
 priority: 999
@@ -14,6 +14,7 @@ Quality gate that ensures core unit tests pass before the agent is allowed to co
 ## Behavior
 
 When the agent attempts to stop, this hook:
+
 1. Runs only core unit tests (`tests/core/` and `tests/utils/`)
 2. Explicitly excludes e2e, tools, UI, AI, and integration tests
 3. If tests fail, blocks completion with feedback
@@ -34,6 +35,7 @@ The script:
 ## Quality Gate Pattern
 
 This hook uses the `before_stop` event to implement a quality gate:
+
 - If tests fail, the agent receives the error message and continues working
 - This ensures code quality standards are met before completion
 

@@ -84,10 +84,10 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - `src/kimi_cli/ui/`: UI frontends (shell/print/acp/wire)
 - `src/kimi_cli/acp/`: ACP server components
 - `packages/kosong/`, `packages/kaos/`: workspace deps
-  + Kosong is an LLM abstraction layer designed for modern AI agent applications.
+  - Kosong is an LLM abstraction layer designed for modern AI agent applications.
     It unifies message structures, asynchronous tool orchestration, and pluggable
     chat providers so you can build agents with ease and avoid vendor lock-in.
-  + PyKAOS is a lightweight Python library providing an abstraction layer for agents
+  - PyKAOS is a lightweight Python library providing an abstraction layer for agents
     to interact with operating systems. File operations and command executions via KAOS
     can be easily switched between local environment and remote systems over SSH.
 - `tests/`, `tests_ai/`: test suites
@@ -139,3 +139,50 @@ and skill workflows.
    - `git tag 0.68` or `git tag pykaos-0.5.3`
    - `git push --tags`
 9. GitHub Actions handles the release after tags are pushed.
+
+<!-- GLOBAL_AGENTS_MD_START -->
+
+## Global Preferences
+
+# Global AGENTS.md
+
+This is your **global** AGENTS.md file. Content here will be automatically injected into every Kimi CLI session across all your projects.
+
+## My Preferences
+
+### Communication Style
+
+- Be concise and direct in responses
+- Use technical terminology appropriate for the context
+- Ask clarifying questions when requirements are ambiguous
+
+### Code Quality
+
+- Always consider edge cases and error handling
+- Write code that is maintainable and follows best practices
+- Include type hints in Python code when possible
+- Add docstrings for public functions and classes
+
+### Workflow Preferences
+
+- When fixing bugs, first write a test to reproduce the issue
+- Prefer small, focused commits over large changes
+- Use conventional commit message format: `type(scope): description`
+
+### Tool Usage
+
+- Use ripgrep (`rg`) for searching instead of `grep` when available
+- Prefer `fd` over `find` for file searching
+- Use `fzf` for interactive selection when appropriate
+
+## Security Reminders
+
+- Never commit API keys, passwords, or secrets to repositories
+- Use environment variables for sensitive configuration
+- Double-check before executing destructive commands (rm, dd, etc.)
+
+---
+
+_This file lives at `~/.config/agents/AGENTS.md` and is automatically loaded by the `global-agents-md` hook._
+
+<!-- GLOBAL_AGENTS_MD_END -->
