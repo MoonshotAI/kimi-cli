@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+import shutil
 from dataclasses import dataclass
 from typing import Literal
 
@@ -34,20 +35,27 @@ class Environment:
             shell_name = "Windows PowerShell"
             shell_path = KaosPath("powershell.exe")
         else:
-            possible_paths = [
-                KaosPath("/bin/bash"),
-                KaosPath("/usr/bin/bash"),
-                KaosPath("/usr/local/bin/bash"),
-            ]
-            fallback_path = KaosPath("/bin/sh")
-            for path in possible_paths:
-                if await path.is_file():
-                    shell_name = "bash"
-                    shell_path = path
-                    break
+            # Use shutil.which first (works on NixOS and other non-FHS systems)
+            bash_in_path = shutil.which("bash")
+            if bash_in_path:
+                shell_name = "bash"
+                shell_path = KaosPath(bash_in_path)
             else:
-                shell_name = "sh"
-                shell_path = fallback_path
+                # Fallback to hardcoded paths for traditional systems
+                possible_paths = [
+                    KaosPath("/bin/bash"),
+                    KaosPath("/usr/bin/bash"),
+                    KaosPath("/usr/local/bin/bash"),
+                ]
+                fallback_path = KaosPath("/bin/sh")
+                for path in possible_paths:
+                    if await path.is_file():
+                        shell_name = "bash"
+                        shell_path = path
+                        break
+                else:
+                    shell_name = "sh"
+                    shell_path = fallback_path
 
         return Environment(
             os_kind=os_kind,

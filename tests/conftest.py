@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -143,12 +144,13 @@ def environment() -> Environment:
             shell_path=KaosPath("powershell.exe"),
         )
     else:
+        bash_path = shutil.which("bash") or "/bin/bash"
         return Environment(
             os_kind="Unix",
             os_arch="aarch64",
             os_version="1.0",
             shell_name="bash",
-            shell_path=KaosPath("/bin/bash"),
+            shell_path=KaosPath(bash_path),
         )
 
 

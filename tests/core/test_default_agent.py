@@ -3,6 +3,7 @@ from __future__ import annotations
 # ruff: noqa
 
 import platform
+import re
 import pytest
 from inline_snapshot import snapshot
 from kosong.tooling import Tool
@@ -10,6 +11,10 @@ from kosong.tooling import Tool
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.soul.agent import load_agent
 from kimi_cli.soul.agent import Runtime
+
+
+def _normalize_bash_path(text: str) -> str:
+    return re.sub(r"Execute a bash \(`[^`]+`\)", "Execute a bash (`/bin/bash`)", text)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
@@ -151,7 +156,16 @@ At any time, you should be HELPFUL and POLITE, CONCISE and ACCURATE, PATIENT and
 - ALWAYS, keep it stupidly simple. Do not overcomplicate things.\
 """
     )
-    assert agent.toolset.tools == snapshot(
+    # Normalize bash path in tool descriptions for cross-platform testing
+    normalized_tools = [
+        Tool(
+            name=tool.name,
+            description=_normalize_bash_path(tool.description),
+            parameters=tool.parameters,
+        )
+        for tool in agent.toolset.tools
+    ]
+    assert normalized_tools == snapshot(
         [
             Tool(
                 name="Task",
