@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.14.0 (2026-02-14)
+
+- Auto-enable print mode when using `-c`/`--command` flag for single-shot command execution
+
 ## 1.13.0 (2026-02-13)
 
 - Fix bash shell detection to use `shutil.which()` for better compatibility on systems where bash is not at standard paths

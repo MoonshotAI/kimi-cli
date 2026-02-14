@@ -40,3 +40,8 @@ target/
 node_modules/
 static/
 .memo/
+.direnv
+.agents
+.claude
+shell.nix
+.envrc
