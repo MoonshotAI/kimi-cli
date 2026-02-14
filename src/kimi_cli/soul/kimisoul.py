@@ -383,8 +383,8 @@ class KimiSoul:
                 wire_send(ApprovalResponse(request_id=request.id, response=resp))
 
         step_no = 0
-        before_stop_block_count = 0
-        max_before_stop_blocks = 3  # Limit to prevent unbounded LLM calls
+        pre_agent_turn_stop_block_count = 0
+        max_pre_agent_turn_stop_blocks = 3  # Limit to prevent unbounded LLM calls
         while True:
             step_no += 1
             if step_no > self._loop_control.max_steps_per_turn:
@@ -421,33 +421,33 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
-                # Execute before_stop hooks to enforce quality gates
-                should_continue = await self._execute_before_stop_hooks(
+                # Execute pre-agent-turn-stop hooks to enforce quality gates
+                should_continue = await self._execute_pre_agent_turn_stop_hooks(
                     stop_reason=step_outcome.stop_reason,
                     step_count=step_no,
                     final_message=step_outcome.assistant_message,
                 )
-                
+
                 if should_continue:
-                    before_stop_block_count += 1
-                    if before_stop_block_count > max_before_stop_blocks:
+                    pre_agent_turn_stop_block_count += 1
+                    if pre_agent_turn_stop_block_count > max_pre_agent_turn_stop_blocks:
                         # Exceeded max blocks, allow stop with warning
                         logger.warning(
-                            "before_stop hook blocked stop {count} times, exceeding limit of {limit}. "
+                            "pre-agent-turn-stop hook blocked stop {count} times, exceeding limit of {limit}. "
                             "Allowing stop to proceed.",
-                            count=before_stop_block_count,
-                            limit=max_before_stop_blocks,
+                            count=pre_agent_turn_stop_block_count,
+                            limit=max_pre_agent_turn_stop_blocks,
                         )
                         wire_send(
                             TextPart(
-                                text=f"\n[Warning: before_stop hook blocked stop {before_stop_block_count} times, "
+                                text=f"\n[Warning: pre-agent-turn-stop hook blocked stop {pre_agent_turn_stop_block_count} times, "
                                 f"exceeding limit. Allowing stop to proceed.]\n"
                             )
                         )
                     else:
                         # Hook requested to continue working - add feedback and continue loop
                         feedback = (
-                            f"The before_stop hook has requested that you continue working. "
+                            f"The pre-agent-turn-stop hook has requested that you continue working. "
                             f"Reason: {should_continue}"
                         )
                         await self._context.append_message(
@@ -561,13 +561,13 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
-    async def _execute_before_stop_hooks(
+    async def _execute_pre_agent_turn_stop_hooks(
         self,
         stop_reason: str,
         step_count: int,
         final_message: Message | None,
     ) -> str | None:
-        """Execute before_stop hooks and return block reason or None to allow stop.
+        """Execute pre-agent-turn-stop hooks and return block reason or None to allow stop.
 
         Returns:
             str: Block reason if should continue working, None to allow stop.
@@ -584,7 +584,7 @@ class KimiSoul:
             }
 
         event = {
-            "event_type": "before_stop",
+            "event_type": "pre-agent-turn-stop",
             "timestamp": datetime.now().isoformat(),
             "session_id": self._runtime.session.id,
             "work_dir": str(self._runtime.session.work_dir),
@@ -595,16 +595,16 @@ class KimiSoul:
 
         try:
             exec_result = await self._runtime.hook_manager.execute(
-                "before_stop",
+                "pre-agent-turn-stop",
                 event,
             )
         except Exception as e:
-            logger.exception("Failed to execute before_stop hooks: {error}", error=e)
+            logger.exception("Failed to execute pre-agent-turn-stop hooks: {error}", error=e)
             return None
 
         # Check if any hook blocked the stop
         if exec_result.should_block:
-            reason = exec_result.block_reason or "Blocked by before_stop hook"
+            reason = exec_result.block_reason or "Blocked by pre-agent-turn-stop hook"
             logger.info("Stop blocked by hook: {reason}", reason=reason)
             return reason
 

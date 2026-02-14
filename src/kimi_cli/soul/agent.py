@@ -196,10 +196,10 @@ class Runtime:
             _hook_env_vars=self._hook_env_vars,
         )
 
-    async def _execute_session_start_hooks(self) -> list[str]:
-        """Execute session_start hooks and return additional_contexts from results."""
+    async def _execute_pre_session_hooks(self) -> list[str]:
+        """Execute pre-session hooks and return additional_contexts from results."""
         event = {
-            "event_type": "session_start",
+            "event_type": "pre-session",
             "timestamp": datetime.now().isoformat(),
             "session_id": self.session.id,
             "work_dir": str(self.session.work_dir),
@@ -207,7 +207,7 @@ class Runtime:
             "args": {},
         }
 
-        exec_result = await self.hook_manager.execute("session_start", event)
+        exec_result = await self.hook_manager.execute("pre-session", event)
 
         # Check if any hook blocked the session start
         if exec_result.should_block:
@@ -224,7 +224,7 @@ class Runtime:
         for result in exec_result.results:
             if not result.success:
                 logger.warning(
-                    "Session start hook {name} failed: {reason}",
+                    "pre-session hook {name} failed: {reason}",
                     name=result.hook_name,
                     reason=result.reason,
                 )
@@ -232,15 +232,15 @@ class Runtime:
         return additional_contexts
 
     def get_hook_env_vars(self) -> dict[str, str]:
-        """Get environment variables set by session_start hooks."""
+        """Get environment variables set by pre-session hooks."""
         return self._hook_env_vars.copy()
 
-    async def execute_session_end_hooks(self, exit_reason: str = "user_exit") -> None:
-        """Execute session_end hooks."""
+    async def execute_post_session_hooks(self, exit_reason: str = "user_exit") -> None:
+        """Execute post-session hooks."""
         duration = int((datetime.now() - self._session_start_time).total_seconds())
 
         event = {
-            "event_type": "session_end",
+            "event_type": "post-session",
             "timestamp": datetime.now().isoformat(),
             "session_id": self.session.id,
             "work_dir": str(self.session.work_dir),
@@ -249,7 +249,7 @@ class Runtime:
             "exit_reason": exit_reason,
         }
 
-        exec_result = await self.hook_manager.execute("session_end", event)
+        exec_result = await self.hook_manager.execute("post-session", event)
 
         # Check if any hook blocked the session end
         if exec_result.should_block:
@@ -262,10 +262,12 @@ class Runtime:
         for result in exec_result.results:
             if not result.success:
                 logger.warning(
-                    "Session end hook {name} failed: {reason}",
+                    "post-session hook {name} failed: {reason}",
                     name=result.hook_name,
                     reason=result.reason,
                 )
+
+        # Note: Async hooks are fire-and-forget, we don't wait for them
 
     def increment_step_count(self) -> None:
         """Increment the total step count."""

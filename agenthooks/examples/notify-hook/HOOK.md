@@ -1,7 +1,7 @@
 ---
 name: session-notify
 description: Send notification when session ends with summary of work completed
-trigger: session_end
+trigger: post-session
 async: true
 timeout: 10000
 priority: 50

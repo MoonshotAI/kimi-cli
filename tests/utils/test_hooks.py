@@ -43,10 +43,10 @@ class TestHookMetadata:
         """Test basic creation of HookMetadata."""
         metadata = HookMetadata(
             name="test-hook",
-            trigger="before_tool",
+            trigger="pre-tool-call",
         )
         assert metadata.name == "test-hook"
-        assert metadata.trigger == "before_tool"
+        assert metadata.trigger == "pre-tool-call"
         assert metadata.description == ""
         assert metadata.matcher is None
         assert metadata.timeout == 30000
@@ -57,7 +57,7 @@ class TestHookMetadata:
         """Test creation with all fields."""
         metadata = HookMetadata(
             name="block-dangerous",
-            trigger="before_tool",
+            trigger="pre-tool-call",
             description="Block dangerous commands",
             matcher={"tool": "Shell", "pattern": "rm -rf"},
             timeout=5000,
@@ -65,7 +65,7 @@ class TestHookMetadata:
             priority=999,
         )
         assert metadata.name == "block-dangerous"
-        assert metadata.trigger == "before_tool"
+        assert metadata.trigger == "pre-tool-call"
         assert metadata.description == "Block dangerous commands"
         assert metadata.matcher == {"tool": "Shell", "pattern": "rm -rf"}
         assert metadata.timeout == 5000
@@ -73,20 +73,30 @@ class TestHookMetadata:
         assert metadata.priority == 999
 
     def test_from_dict(self):
-        """Test creating from dictionary."""
+        """Test creating from dictionary with legacy trigger name normalization."""
         data = {
             "name": "test-hook",
-            "trigger": "session_start",
+            "trigger": "pre-session",  # Legacy name
             "description": "Test hook",
             "async": True,
             "priority": 50,
         }
         metadata = HookMetadata.from_dict(data)
         assert metadata.name == "test-hook"
-        assert metadata.trigger == "session_start"
+        assert metadata.trigger == "pre-session"  # Normalized to canonical name
         assert metadata.description == "Test hook"
         assert metadata.async_ is True
         assert metadata.priority == 50
+
+    def test_from_dict_with_canonical_trigger(self):
+        """Test creating from dictionary with canonical trigger name."""
+        data = {
+            "name": "test-hook",
+            "trigger": "pre-tool-call",  # Canonical name
+            "description": "Test hook",
+        }
+        metadata = HookMetadata.from_dict(data)
+        assert metadata.trigger == "pre-tool-call"  # Stays as-is
 
     def test_from_dict_with_async_alias(self):
         """Test that both 'async' and 'async_' work."""
@@ -137,7 +147,7 @@ class TestHookParser:
         """Test parsing a simple HOOK.md content."""
         content = """---
 name: test-hook
-trigger: before_tool
+trigger: pre-tool-call
 description: A test hook
 ---
 
@@ -148,7 +158,7 @@ This is a test hook.
         hook = HookParser.parse_content(content, "test-hook")
 
         assert hook.name == "test-hook"
-        assert hook.trigger == "before_tool"
+        assert hook.trigger == "pre-tool-call"
         assert hook.metadata.description == "A test hook"
         assert "# Test Hook" in hook.content
 
@@ -156,7 +166,7 @@ This is a test hook.
         """Test parsing hook with matcher."""
         content = """---
 name: block-dangerous
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
   pattern: "rm -rf|mkfs"
@@ -176,7 +186,7 @@ Block dangerous commands.
         """Test parsing async hook."""
         content = """---
 name: async-hook
-trigger: after_tool
+trigger: post-tool-call
 async: true
 ---
 
@@ -320,7 +330,7 @@ class TestHookDiscovery:
 
         (hook_dir / "HOOK.md").write_text("""---
 name: test-hook
-trigger: before_tool
+trigger: pre-tool-call
 ---
 
 Test hook.
@@ -345,7 +355,7 @@ Test hook.
         user_hook.mkdir(parents=True)
         (user_hook / "HOOK.md").write_text("""---
 name: shared-hook
-trigger: before_tool
+trigger: pre-tool-call
 description: User version
 ---
 """)
@@ -356,7 +366,7 @@ description: User version
         project_hook.mkdir(parents=True)
         (project_hook / "HOOK.md").write_text("""---
 name: shared-hook
-trigger: before_tool
+trigger: pre-tool-call
 description: Project version
 ---
 """)
@@ -378,7 +388,7 @@ description: Project version
         hook1.mkdir(parents=True)
         (hook1 / "HOOK.md").write_text("""---
 name: hook1
-trigger: before_tool
+trigger: pre-tool-call
 ---
 """)
 
@@ -387,12 +397,12 @@ trigger: before_tool
         hook2.mkdir(parents=True)
         (hook2 / "HOOK.md").write_text("""---
 name: hook2
-trigger: session_start
+trigger: pre-session
 ---
 """)
 
         discovery = HookDiscovery(tmp_path)
-        before_tool_hooks = discovery.discover_by_trigger("before_tool")
+        before_tool_hooks = discovery.discover_by_trigger("pre-tool-call")
 
         assert len(before_tool_hooks) == 1
         assert before_tool_hooks[0].name == "hook1"
@@ -409,7 +419,7 @@ trigger: session_start
             hook_dir.mkdir(parents=True)
             (hook_dir / "HOOK.md").write_text(f"""---
 name: {name}
-trigger: before_tool
+trigger: pre-tool-call
 priority: {priority}
 ---
 """)
@@ -446,7 +456,7 @@ priority: {priority}
         hook_dir.mkdir(parents=True)
         (hook_dir / "HOOK.md").write_text("""---
 name: specific-hook
-trigger: before_tool
+trigger: pre-tool-call
 ---
 """)
 
@@ -471,7 +481,7 @@ trigger: before_tool
 
         hooks_dir = tmp_path / ".config" / "agents" / "hooks"
 
-        triggers = ["before_tool", "after_tool", "session_start"]
+        triggers = ["pre-tool-call", "post-tool-call", "pre-session"]
         for i, trigger in enumerate(triggers):
             hook_dir = hooks_dir / f"hook{i}"
             hook_dir.mkdir(parents=True)
@@ -500,7 +510,7 @@ trigger: {trigger}
         valid_hook.mkdir(parents=True)
         (valid_hook / "HOOK.md").write_text("""---
 name: valid
-trigger: before_tool
+trigger: pre-tool-call
 ---
 """)
 
@@ -759,7 +769,7 @@ class TestHookExecutorIntegration:
             content="",
         )
 
-        result = await executor.execute(hook, {"event_type": "before_tool", "tool_name": "Shell"})
+        result = await executor.execute(hook, {"event_type": "pre-tool-call", "tool_name": "Shell"})
 
         assert result.success is True
 
@@ -896,13 +906,13 @@ class TestHookDebugger:
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery, debug=True)
         log = manager.debugger.log_start(
-            event_type="before_tool",
+            event_type="pre-tool-call",
             hook_name="test-hook",
             input_context={"tool_name": "Shell"},
             is_async=False,
         )
 
-        assert log.event_type == "before_tool"
+        assert log.event_type == "pre-tool-call"
         assert log.hook_name == "test-hook"
         assert log.is_async is False
         assert len(manager.debugger.logs) == 1
@@ -912,7 +922,7 @@ class TestHookDebugger:
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery, debug=True)
         log = manager.debugger.log_start(
-            event_type="before_tool",
+            event_type="pre-tool-call",
             hook_name="test-hook",
             input_context={},
         )
@@ -937,7 +947,7 @@ class TestHookDebugger:
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery, debug=True)
         log = manager.debugger.log_start(
-            event_type="before_tool",
+            event_type="pre-tool-call",
             hook_name="test-hook",
             input_context={},
         )
@@ -960,7 +970,7 @@ class TestHookDebugger:
         manager = HookManager(discovery, debug=True)
 
         # Log a successful execution
-        log1 = manager.debugger.log_start("before_tool", "hook1", {})
+        log1 = manager.debugger.log_start("pre-tool-call", "hook1", {})
         result1 = ExecutionResult(
             success=True, hook_name="hook1", duration_ms=100,
             exit_code=0, stdout="", stderr="", decision="allow"
@@ -968,7 +978,7 @@ class TestHookDebugger:
         manager.debugger.log_complete(log1, result1)
 
         # Log a blocked execution
-        log2 = manager.debugger.log_start("before_tool", "hook2", {}, is_async=True)
+        log2 = manager.debugger.log_start("pre-tool-call", "hook2", {}, is_async=True)
         result2 = ExecutionResult(
             success=True, hook_name="hook2", duration_ms=200,
             exit_code=2, stdout="", stderr="Blocked", decision="deny", should_block=True
@@ -994,7 +1004,7 @@ class TestHookManager:
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        result = await manager.execute("before_tool", {"event_type": "before_tool"})
+        result = await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         assert result.should_block is False
         assert result.results == []
@@ -1011,7 +1021,7 @@ class TestHookManager:
 
         (hook_dir / "HOOK.md").write_text("""---
 name: test-hook
-trigger: before_tool
+trigger: pre-tool-call
 ---
 
 Test hook.
@@ -1025,7 +1035,7 @@ Test hook.
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        result = await manager.execute("before_tool", {"event_type": "before_tool"})
+        result = await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         assert len(result.results) == 1
         assert result.results[0].hook_name == "test-hook"
@@ -1043,7 +1053,7 @@ Test hook.
 
         (hook_dir / "HOOK.md").write_text("""---
 name: shell-only
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
 ---
@@ -1059,8 +1069,8 @@ matcher:
 
         # Execute with matching tool
         result = await manager.execute(
-            "before_tool",
-            {"event_type": "before_tool"},
+            "pre-tool-call",
+            {"event_type": "pre-tool-call"},
             tool_name="Shell",
             tool_input={"command": "ls"}
         )
@@ -1069,8 +1079,8 @@ matcher:
 
         # Execute with non-matching tool
         result = await manager.execute(
-            "before_tool",
-            {"event_type": "before_tool"},
+            "pre-tool-call",
+            {"event_type": "pre-tool-call"},
             tool_name="WriteFile",
             tool_input={"path": "/tmp/test"}
         )
@@ -1091,7 +1101,7 @@ matcher:
 
             (hook_dir / "HOOK.md").write_text(f"""---
 name: {name}
-trigger: before_tool
+trigger: pre-tool-call
 priority: {999 if name == "blocker" else 10}
 ---
 """)
@@ -1106,7 +1116,7 @@ priority: {999 if name == "blocker" else 10}
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        result = await manager.execute("before_tool", {"event_type": "before_tool"})
+        result = await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         assert result.should_block is True
         assert len(result.results) == 1  # Only blocker ran
@@ -1114,7 +1124,7 @@ priority: {999 if name == "blocker" else 10}
 
     @pytest.mark.asyncio
     async def test_async_hooks_fire_and_forget(self, tmp_path, monkeypatch):
-        """Test that async hooks are fired without waiting."""
+        """Test that async hooks are fired as OS-level background processes."""
         monkeypatch.setenv("HOME", str(tmp_path))
 
         hooks_dir = tmp_path / ".config" / "agents" / "hooks"
@@ -1123,7 +1133,7 @@ priority: {999 if name == "blocker" else 10}
 
         (hook_dir / "HOOK.md").write_text("""---
 name: async-hook
-trigger: after_tool
+trigger: post-tool-call
 async: true
 ---
 """)
@@ -1136,12 +1146,12 @@ async: true
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        result = await manager.execute("after_tool", {"event_type": "after_tool"})
+        result = await manager.execute("post-tool-call", {"event_type": "post-tool-call"})
 
-        # Async hooks don't populate results list
+        # Async hooks don't populate results list (they run as independent OS processes)
         assert len(result.results) == 0
-        # But async tasks are tracked
-        assert len(result.async_tasks) == 1
+        # Async hooks run as OS processes, not asyncio tasks
+        assert result.async_tasks == []
 
     @pytest.mark.asyncio
     async def test_debug_mode(self, tmp_path, monkeypatch):
@@ -1154,7 +1164,7 @@ async: true
 
         (hook_dir / "HOOK.md").write_text("""---
 name: test-hook
-trigger: before_tool
+trigger: pre-tool-call
 ---
 """)
 
@@ -1166,7 +1176,7 @@ trigger: before_tool
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery, debug=True)
 
-        await manager.execute("before_tool", {"event_type": "before_tool"})
+        await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         stats = manager.get_debug_stats()
         assert stats["total_executions"] == 1
@@ -1187,18 +1197,11 @@ trigger: before_tool
 
     @pytest.mark.asyncio
     async def test_cleanup(self, tmp_path):
-        """Test cleanup of async tasks."""
+        """Test cleanup (no-op for OS-level async hooks)."""
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        # Create a mock async task
-        async def mock_task():
-            pass
-
-        task = asyncio.create_task(mock_task())
-        manager._async_tasks.add(task)
-
-        # Cleanup should not raise
+        # Cleanup should not raise (async hooks run as independent OS processes)
         await manager.cleanup()
 
     @pytest.mark.asyncio
@@ -1212,7 +1215,7 @@ trigger: before_tool
 
         (hook_dir / "HOOK.md").write_text("""---
 name: failing-hook
-trigger: before_tool
+trigger: pre-tool-call
 ---
 """)
 
@@ -1225,7 +1228,7 @@ trigger: before_tool
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        result = await manager.execute("before_tool", {"event_type": "before_tool"})
+        result = await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         # Should not raise, should return failure result
         assert len(result.results) == 1
@@ -1253,13 +1256,14 @@ class TestAgentHooksIntegration:
         scripts_dir.mkdir(parents=True)
 
         # Write HOOK.md
+        # Note: matcher.tool filters which tools trigger the hook
+        # The hook script itself checks for dangerous patterns
         (hook_dir / "HOOK.md").write_text("""---
 name: security-check
 description: Security check for dangerous commands
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
-  pattern: "rm -rf|sudo|mkfs"
 timeout: 5000
 priority: 999
 ---
@@ -1297,15 +1301,15 @@ exit 0
 
         assert len(hooks) == 1
         assert hooks[0].name == "security-check"
-        assert hooks[0].metadata.trigger == "before_tool"
+        assert hooks[0].metadata.trigger == "pre-tool-call"
         assert hooks[0].metadata.priority == 999
 
         # Execute with safe command
         manager = HookManager(discovery)
         result = await manager.execute(
-            "before_tool",
+            "pre-tool-call",
             {
-                "event_type": "before_tool",
+                "event_type": "pre-tool-call",
                 "timestamp": "2024-01-01T00:00:00",
                 "session_id": "test-session",
                 "work_dir": str(tmp_path),
@@ -1322,9 +1326,9 @@ exit 0
 
         # Execute with dangerous command
         result = await manager.execute(
-            "before_tool",
+            "pre-tool-call",
             {
-                "event_type": "before_tool",
+                "event_type": "pre-tool-call",
                 "timestamp": "2024-01-01T00:00:00",
                 "session_id": "test-session",
                 "work_dir": str(tmp_path),
@@ -1339,64 +1343,67 @@ exit 0
         assert "Dangerous" in result.block_reason
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_async_hook_execution(self, tmp_path, monkeypatch):
-        """Test async hook execution."""
+        """Test async hook execution as OS-level background process."""
         monkeypatch.setenv("HOME", str(tmp_path))
 
         hooks_dir = tmp_path / ".config" / "agents" / "hooks"
-        hook_dir = hooks_dir / "audit-log"
+        hook_dir = hooks_dir / "async-writer"
         scripts_dir = hook_dir / "scripts"
         scripts_dir.mkdir(parents=True)
 
         # Create an async hook
         (hook_dir / "HOOK.md").write_text("""---
-name: audit-log
-description: Audit logging hook
-trigger: after_tool
+name: async-writer
+description: Async file writer hook
+trigger: post-tool-call
 async: true
 ---
 
-Audit logging.
+Async file writer.
 """)
 
         # Create a script that writes to a log file
-        log_file = tmp_path / "audit.log"
+        log_file = tmp_path / "async_test.log"
         (scripts_dir / "run.sh").write_text(f"""#!/bin/bash
-cat >> {log_file}
-echo "" >> {log_file}
+cat > {log_file}
 """)
         os.chmod(scripts_dir / "run.sh", 0o755)
 
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        # Execute the async hook
+        # Execute the async hook (runs as OS-level background process)
         result = await manager.execute(
-            "after_tool",
+            "post-tool-call",
             {
-                "event_type": "after_tool",
+                "event_type": "post-tool-call",
                 "tool_name": "Shell",
                 "tool_input": {"command": "ls"},
             },
         )
 
-        # Async hooks return immediately
+        # Async hooks return immediately (run as OS processes, not asyncio tasks)
         assert len(result.results) == 0
-        assert len(result.async_tasks) == 1
+        assert result.async_tasks == []
 
-        # Wait for async task to complete
-        await manager.cleanup()
+        # Wait for async process to complete and verify file was written
+        await asyncio.sleep(1.0)
+        assert log_file.exists(), "Async hook should have written the file"
+        content = log_file.read_text()
+        assert "post-tool-call" in content, "Log should contain event data"
 
-        # Verify log was written
-        assert log_file.exists()
+        # Cleanup
+        log_file.unlink()
 
     def test_hook_directory_structure(self, tmp_path):
         """Test typical AgentHooks directory structure."""
         # Create multiple hooks
         hooks = [
-            ("block-dangerous", "before_tool"),
-            ("auto-format", "after_tool"),
-            ("session-logger", "session_start"),
+            ("block-dangerous", "pre-tool-call"),
+            ("auto-format", "post-tool-call"),
+            ("session-logger", "pre-session"),
         ]
 
         hooks_dir = tmp_path / "hooks"
@@ -1426,7 +1433,7 @@ trigger: {trigger}
 
         assert len(discovered) == 3
         triggers = {h.metadata.trigger for h in discovered}
-        assert triggers == {"before_tool", "after_tool", "session_start"}
+        assert triggers == {"pre-tool-call", "post-tool-call", "pre-session"}
 
     @pytest.mark.asyncio
     async def test_project_overrides_user(self, tmp_path, monkeypatch):
@@ -1441,7 +1448,7 @@ trigger: {trigger}
 
         (user_hook / "HOOK.md").write_text("""---
 name: shared
-trigger: before_tool
+trigger: pre-tool-call
 ---
 
 User hook.
@@ -1458,7 +1465,7 @@ User hook.
 
         (project_hook / "HOOK.md").write_text("""---
 name: shared
-trigger: before_tool
+trigger: pre-tool-call
 ---
 
 Project hook.
@@ -1470,7 +1477,7 @@ Project hook.
         discovery = HookDiscovery(work_dir)
         manager = HookManager(discovery)
 
-        result = await manager.execute("before_tool", {"event_type": "before_tool"})
+        result = await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         # Should use project hook
         assert len(result.results) == 1
@@ -1492,7 +1499,7 @@ Project hook.
 
             (hook_dir / "HOOK.md").write_text(f"""---
 name: {name}
-trigger: before_tool
+trigger: pre-tool-call
 priority: {priority}
 ---
 """)
@@ -1507,7 +1514,7 @@ echo '{{"decision": "allow"}}'
         discovery = HookDiscovery(tmp_path)
         manager = HookManager(discovery)
 
-        await manager.execute("before_tool", {"event_type": "before_tool"})
+        await manager.execute("pre-tool-call", {"event_type": "pre-tool-call"})
 
         # Check execution order (high priority first)
         order = order_file.read_text().strip().split("\n")

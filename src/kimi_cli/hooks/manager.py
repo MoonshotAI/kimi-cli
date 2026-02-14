@@ -127,7 +127,6 @@ class HookManager:
         self.runtime = runtime
         self.executor = HookExecutor(runtime)
         self.debugger = HookDebugger(enabled=debug)
-        self._async_tasks: set[asyncio.Task] = set()
 
     def with_runtime(self, runtime: Runtime) -> HookManager:
         """Create a new HookManager with runtime context."""
@@ -194,7 +193,7 @@ class HookManager:
         # Execute sync hooks first
         sync_results: list[ExecutionResult] = []
         for hook in sync_hooks:
-            result = await self._execute_single_hook(hook, event, is_async=False)
+            result = await self._execute_single_hook(hook, event)
             sync_results.append(result)
 
             if result.should_block:
@@ -206,37 +205,29 @@ class HookManager:
                 )
                 break
 
-        # Fire async hooks (these cannot block)
-        async_tasks: list[asyncio.Task] = []
+        # Fire async hooks as OS-level background processes (fire-and-forget)
         if not any(r.should_block for r in sync_results):
             for hook in async_hooks:
-                task = self._fire_async_hook(hook, event)
-                async_tasks.append(task)
+                self._fire_async_hook(hook, event)
 
-        result = HooksExecutionResult(results=sync_results)
-        result.async_tasks = async_tasks
-        return result
+        return HooksExecutionResult(results=sync_results)
 
     async def _execute_single_hook(
         self,
         hook: ParsedHook,
         event: dict[str, Any],
-        is_async: bool = False,
     ) -> ExecutionResult:
-        """Execute a single hook."""
+        """Execute a single sync hook."""
         log = self.debugger.log_start(
             event_type=event.get("event_type", "unknown"),
             hook_name=hook.name,
             input_context=event,
-            is_async=is_async,
+            is_async=False,
         )
 
         try:
             result = await self.executor.execute(hook, event)
-
-            if not is_async:
-                self.debugger.log_complete(log, result)
-
+            self.debugger.log_complete(log, result)
             return result
         except Exception as e:
             logger.exception("Hook {name} failed: {error}", name=hook.name, error=e)
@@ -253,51 +244,35 @@ class HookManager:
                 reason=error_msg,
             )
 
-    def _fire_async_hook(self, hook: ParsedHook, event: dict[str, Any]) -> asyncio.Task:
-        """Fire an async hook without waiting for completion."""
-        log = self.debugger.log_start(
+    def _fire_async_hook(self, hook: ParsedHook, event: dict[str, Any]) -> None:
+        """Fire an async hook as an OS-level background process (fire-and-forget).
+        
+        The hook runs completely independently of Kimi CLI. Even if Kimi CLI
+        is killed with SIGKILL, the hook process will continue to run.
+        """
+        self.debugger.log_start(
             event_type=event.get("event_type", "unknown"),
             hook_name=hook.name,
             input_context=event,
             is_async=True,
         )
 
-        async def run_async():
-            try:
-                result = await self.executor.execute(hook, event)
-                self.debugger.log_complete(log, result)
+        # Fire as OS-level background process - no tracking, no waiting
+        self.executor.fire_and_forget(hook, event)
 
-                if result.should_block:
-                    logger.warning(
-                        "Async hook {name} returned DENY but was not blocking",
-                        name=hook.name,
-                    )
-            except Exception as e:
-                logger.exception("Async hook {name} failed: {error}", name=hook.name, error=e)
-                self.debugger.log_error(log, str(e))
-
-        task = asyncio.create_task(run_async())
-        self._async_tasks.add(task)
-        task.add_done_callback(self._async_tasks.discard)
-
-        logger.debug("Fired async hook: {name}", name=hook.name)
-        return task
+        logger.debug("Fired async hook as OS process: {name}", name=hook.name)
 
     def get_debug_stats(self) -> dict[str, Any]:
         """Get debug statistics."""
         return self.debugger.get_statistics()
 
     async def cleanup(self) -> None:
-        """Clean up async tasks."""
-        if self._async_tasks:
-            logger.debug(
-                "Waiting for {count} async hook tasks to complete", count=len(self._async_tasks)
-            )
-            await asyncio.wait(self._async_tasks, timeout=5.0)
-            for task in self._async_tasks:
-                if not task.done():
-                    task.cancel()
-            self._async_tasks.clear()
+        """Cleanup hook manager resources.
+        
+        Note: Async hooks run as independent OS processes, so there's
+        nothing to cleanup here. The hook processes will continue running
+        even if Kimi CLI exits.
+        """
 
 
 # Backwards compatibility aliases for existing code

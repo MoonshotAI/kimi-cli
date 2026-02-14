@@ -1,7 +1,7 @@
 ---
 name: block-dangerous-commands
 description: Blocks dangerous shell commands like rm -rf /, mkfs, and dd operations that could destroy data
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
   pattern: "rm -rf /|mkfs|dd if=/dev/zero|>:/dev/sda"

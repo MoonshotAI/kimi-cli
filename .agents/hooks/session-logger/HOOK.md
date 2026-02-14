@@ -1,7 +1,7 @@
 ---
 name: session-logger
 description: Log session start and end events for auditing and analytics
-trigger: session_start
+trigger: pre-session
 async: false
 timeout: 10000
 priority: 50
