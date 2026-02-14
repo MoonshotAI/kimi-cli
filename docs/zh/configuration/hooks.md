@@ -79,7 +79,7 @@ Agent Hooks 支持**用户级别**和**项目级别**的分层配置：
 
 应用于所有项目（符合 XDG 规范）：
 
-```
+```text
 ~/.config/agents/hooks/
 ```
 
@@ -102,15 +102,15 @@ Agent Hooks 支持**用户级别**和**项目级别**的分层配置：
 
 ### Frontmatter 字段
 
-| 字段 | 类型 | 必需 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `name` | string | 是 | - | Hook 标识符 (1-64 字符) |
-| `description` | string | 是 | - | Hook 描述 (1-1024 字符) |
-| `trigger` | string | 是 | - | 触发事件类型 |
-| `matcher` | object | 否 | - | 匹配条件 |
-| `timeout` | integer | 否 | 30000 | 超时时间 (毫秒) |
-| `async` | boolean | 否 | false | 是否异步执行 |
-| `priority` | integer | 否 | 100 | 执行优先级 (0-1000) |
+| 字段          | 类型    | 必需 | 默认值 | 说明                    |
+| ------------- | ------- | ---- | ------ | ----------------------- |
+| `name`        | string  | 是   | -      | Hook 标识符 (1-64 字符) |
+| `description` | string  | 是   | -      | Hook 描述 (1-1024 字符) |
+| `trigger`     | string  | 是   | -      | 触发事件类型            |
+| `matcher`     | object  | 否   | -      | 匹配条件                |
+| `timeout`     | integer | 否   | 30000  | 超时时间 (毫秒)         |
+| `async`       | boolean | 否   | false  | 是否异步执行            |
+| `priority`    | integer | 否   | 100    | 执行优先级 (0-1000)     |
 
 ### 匹配器 (Matcher)
 
@@ -121,15 +121,15 @@ Agent Hooks 支持**用户级别**和**项目级别**的分层配置：
 name: block-dangerous-commands
 trigger: before_tool
 matcher:
-  tool: "Shell"                          # 工具名正则匹配
-  pattern: "rm -rf /|mkfs|>:/dev/sda"   # 参数内容正则匹配
+  tool: "Shell" # 工具名正则匹配
+  pattern: "rm -rf /|mkfs|>:/dev/sda" # 参数内容正则匹配
 ---
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `tool` | string | 工具名正则表达式（如 `Shell`, `WriteFile`） |
-| `pattern` | string | 工具输入参数的正则表达式匹配 |
+| 字段      | 类型   | 说明                                        |
+| --------- | ------ | ------------------------------------------- |
+| `tool`    | string | 工具名正则表达式（如 `Shell`, `WriteFile`） |
+| `pattern` | string | 工具输入参数的正则表达式匹配                |
 
 ### 执行模式
 
@@ -139,11 +139,12 @@ matcher:
 ---
 name: security-check
 trigger: before_tool
-async: false  # 默认，可省略
+async: false # 默认，可省略
 ---
 ```
 
 **特点：**
+
 - 等待 hook 完成后再继续
 - **可以阻断操作**（通过 exit code 2）
 - 可以修改输入参数
@@ -160,25 +161,26 @@ async: true
 ```
 
 **特点：**
+
 - 立即返回，不等待 hook 完成
 - **无法阻断操作**
 - 适用于格式化、通知、日志等非关键操作
 
 ## 事件类型与阻断能力
 
-| 事件类型 | 触发时机 | 可阻断 | 推荐模式 |
-|---------|---------|--------|---------|
-| `session_start` | 会话开始时 | ✅ 可以 | 同步 |
-| `session_end` | 会话结束时 | ✅ 可以 | 同步 |
-| `before_agent` | Agent 执行前 | ✅ 可以 | 同步 |
-| `after_agent` | Agent 执行后 | ✅ 可以 | 同步 |
-| `before_tool` | 工具执行前 | ✅ **推荐** | **同步** |
-| `after_tool` | 工具执行后 | ✅ 可以 | 同步 |
-| `after_tool_failure` | 工具执行失败时 | ✅ 可以 | 同步 |
-| `subagent_start` | 子 Agent 启动时 | ✅ 可以 | 同步 |
-| `subagent_stop` | 子 Agent 停止时 | ✅ 可以 | 同步 |
-| `pre_compact` | 上下文压缩前 | ✅ 可以 | 同步 |
-| `before_stop` | Agent 停止响应前 | ✅ **质量门禁** | **同步** |
+| 事件类型             | 触发时机         | 可阻断          | 推荐模式 |
+| -------------------- | ---------------- | --------------- | -------- |
+| `session_start`      | 会话开始时       | ✅ 可以         | 同步     |
+| `session_end`        | 会话结束时       | ✅ 可以         | 同步     |
+| `before_agent`       | Agent 执行前     | ✅ 可以         | 同步     |
+| `after_agent`        | Agent 执行后     | ✅ 可以         | 同步     |
+| `before_tool`        | 工具执行前       | ✅ **推荐**     | **同步** |
+| `after_tool`         | 工具执行后       | ✅ 可以         | 同步     |
+| `after_tool_failure` | 工具执行失败时   | ✅ 可以         | 同步     |
+| `subagent_start`     | 子 Agent 启动时  | ✅ 可以         | 同步     |
+| `subagent_stop`      | 子 Agent 停止时  | ✅ 可以         | 同步     |
+| `pre_compact`        | 上下文压缩前     | ✅ 可以         | 同步     |
+| `before_stop`        | Agent 停止响应前 | ✅ **质量门禁** | **同步** |
 
 ## 命令协议
 
@@ -203,25 +205,26 @@ async: true
 
 脚本通过**退出码**和**输出流**与 Agent 通信：
 
-| 输出流 | 描述 |
-|--------|------|
-| **退出码** | 执行结果信号 |
+| 输出流     | 描述                              |
+| ---------- | --------------------------------- |
+| **退出码** | 执行结果信号                      |
 | **stdout** | 机器可解析的 JSON，用于控制与通信 |
-| **stderr** | 人类可读文本，用于错误与反馈 |
+| **stderr** | 人类可读文本，用于错误与反馈      |
 
 ### 退出码
 
-| 退出码 | 含义 | 行为 |
-|--------|------|------|
-| `0` | 成功 | 解析 stdout JSON 作为结果，操作继续 |
-| `2` | 阻断 | **阻断操作**，stderr 内容作为反馈展示 |
-| 其他 | 异常 | 记录警告，允许操作继续（Fail Open） |
+| 退出码 | 含义 | 行为                                  |
+| ------ | ---- | ------------------------------------- |
+| `0`    | 成功 | 解析 stdout JSON 作为结果，操作继续   |
+| `2`    | 阻断 | **阻断操作**，stderr 内容作为反馈展示 |
+| 其他   | 异常 | 记录警告，允许操作继续（Fail Open）   |
 
 ### stdout (控制与通信)
 
 **触发条件：** 仅在 Exit Code 为 `0`（成功）时生效。
 
 **示例：**
+
 ```bash
 echo '{"decision": "allow", "log": "Command validated"}'
 exit 0
@@ -230,10 +233,12 @@ exit 0
 ### stderr (错误与反馈)
 
 **触发条件：**
+
 - Exit Code `2` (阻断)：stderr 内容作为阻断理由展示给用户
 - 其他非 0 退出码：stderr 仅作为调试/日志文本
 
 **示例：**
+
 ```bash
 echo "Dangerous command blocked: rm -rf / would destroy the system" >&2
 exit 2
@@ -243,11 +248,11 @@ exit 2
 
 每个 hook 必须在标准位置提供可执行脚本：
 
-| 优先级 | 入口点 | 说明 |
-|--------|--------|------|
-| 1 | `scripts/run` | 无扩展名可执行文件 |
-| 2 | `scripts/run.sh` | Shell 脚本 |
-| 3 | `scripts/run.py` | Python 脚本 |
+| 优先级 | 入口点           | 说明               |
+| ------ | ---------------- | ------------------ |
+| 1      | `scripts/run`    | 无扩展名可执行文件 |
+| 2      | `scripts/run.sh` | Shell 脚本         |
+| 3      | `scripts/run.py` | Python 脚本        |
 
 脚本通过 stdin 接收事件数据，使用退出码传递结果：0 表示允许，2 表示阻断。
 
@@ -256,6 +261,7 @@ exit 2
 ### 危险命令拦截
 
 **HOOK.md:**
+
 ```markdown
 ---
 name: block-dangerous-commands
@@ -270,6 +276,7 @@ priority: 999
 ```
 
 **scripts/run.sh:**
+
 ```bash
 #!/bin/bash
 event_data=$(cat)
@@ -289,6 +296,7 @@ exit 0
 ### 代码自动格式化（异步）
 
 **HOOK.md:**
+
 ```markdown
 ---
 name: auto-format-python
@@ -303,6 +311,7 @@ async: true
 ```
 
 **scripts/run.sh:**
+
 ```bash
 #!/bin/bash
 black --quiet .
@@ -311,6 +320,7 @@ black --quiet .
 ### Python Hook 脚本
 
 **scripts/run.py:**
+
 ```python
 #!/usr/bin/env python3
 import json
@@ -320,16 +330,16 @@ def main():
     event = json.load(sys.stdin)
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {})
-    
+
     if tool_name == "Shell":
         command = tool_input.get("command", "")
-        
+
         dangerous = ["rm -rf /", "mkfs", "dd if=/dev/zero"]
         for pattern in dangerous:
             if pattern in command:
                 print(f"Dangerous command detected: {pattern}", file=sys.stderr)
                 sys.exit(2)
-    
+
     print(json.dumps({"decision": "allow"}))
     sys.exit(0)
 
@@ -340,6 +350,7 @@ if __name__ == "__main__":
 ### 质量门禁 Hook（before_stop）
 
 **HOOK.md:**
+
 ```markdown
 ---
 name: enforce-tests
@@ -351,6 +362,7 @@ priority: 999
 ```
 
 **scripts/run.sh:**
+
 ```bash
 #!/bin/bash
 # 在允许 Agent 完成前运行测试
@@ -398,6 +410,7 @@ kimi --debug
 ```
 
 日志输出包括：
+
 - Hook 触发事件
 - 同步/异步模式标识
 - 输入上下文
@@ -405,6 +418,7 @@ kimi --debug
 - 错误信息
 
 示例输出：
+
 ```
 [HOOK DEBUG] [SYNC] Starting hook 'block-dangerous' for event 'before_tool'
 [HOOK DEBUG] [SYNC] Completed hook 'block-dangerous' in 45ms: blocked=True
@@ -415,12 +429,12 @@ kimi --debug
 
 ### 1. 根据场景选择模式
 
-| 场景 | 推荐模式 | 原因 |
-|------|---------|------|
-| 安全检查、权限验证 | 同步 | 需要阻断能力 |
-| 代码格式化 | 异步 | 不需要等待 |
-| 日志记录 | 异步 | 不影响性能 |
-| 通知推送 | 异步 | 即时反馈 |
+| 场景               | 推荐模式 | 原因         |
+| ------------------ | -------- | ------------ |
+| 安全检查、权限验证 | 同步     | 需要阻断能力 |
+| 代码格式化         | 异步     | 不需要等待   |
+| 日志记录           | 异步     | 不影响性能   |
+| 通知推送           | 异步     | 即时反馈     |
 
 ### 2. 设置合理的超时时间
 
