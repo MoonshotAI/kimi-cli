@@ -275,5 +275,4 @@ class HookManager:
         """
 
 
-# Backwards compatibility aliases for existing code
-HooksExecutionResult = HooksExecutionResult
+
