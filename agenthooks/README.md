@@ -35,7 +35,7 @@ block-dangerous-commands/
 ---
 name: block-dangerous-commands
 description: Blocks dangerous shell commands like rm -rf /
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
   pattern: "rm -rf /|mkfs|dd if=/dev/zero"

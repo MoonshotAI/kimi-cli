@@ -140,8 +140,8 @@ class KimiToolset:
                 tool_input = arguments
 
                 try:
-                    # Execute before_tool hooks
-                    hook_result = await self._execute_before_tool_hooks(
+                    # Execute pre-tool-call hooks
+                    hook_result = await self._execute_pre_tool_call_hooks(
                         tool_name=tool_name,
                         tool_input=tool_input,
                         tool_use_id=tool_use_id,
@@ -161,8 +161,8 @@ class KimiToolset:
                         error = str(e)
                         ret = ToolRuntimeError(str(e))
 
-                    # Execute after_tool hooks (fire and forget for async hooks)
-                    await self._execute_after_tool_hooks(
+                    # Execute post-tool-call hooks (fire and forget for async hooks)
+                    await self._execute_post_tool_call_hooks(
                         tool_name=tool_name,
                         tool_input=tool_input,
                         tool_output=tool_output,
@@ -183,13 +183,13 @@ class KimiToolset:
         finally:
             current_tool_call.reset(token)
 
-    async def _execute_before_tool_hooks(
+    async def _execute_pre_tool_call_hooks(
         self,
         tool_name: str,
         tool_input: dict[str, Any],
         tool_use_id: str,
     ) -> ToolResult | None:
-        """Execute before_tool hooks and return blocked result or None to continue.
+        """Execute pre-tool-call hooks and return blocked result or None to continue.
 
         Returns:
             ToolResult if tool should be blocked, None to continue execution.
@@ -202,7 +202,7 @@ class KimiToolset:
 
         # Build event context
         event = {
-            "event_type": "before_tool",
+            "event_type": "pre-tool-call",
             "timestamp": datetime.now().isoformat(),
             "session_id": self._runtime.session.id,
             "work_dir": str(self._runtime.session.work_dir),
@@ -213,13 +213,13 @@ class KimiToolset:
 
         try:
             exec_result = await self._runtime.hook_manager.execute(
-                "before_tool",
+                "pre-tool-call",
                 event,
                 tool_name=tool_name,
                 tool_input=tool_input,
             )
         except Exception as e:
-            logger.exception("Failed to execute before_tool hooks: {error}", error=e)
+            logger.exception("Failed to execute pre-tool-call hooks: {error}", error=e)
             return None
         finally:
             duration_ms = (time.monotonic() - start_time) * 1000
@@ -246,7 +246,7 @@ class KimiToolset:
         for result in exec_result.results:
             if not result.success:
                 logger.warning(
-                    "before_tool hook {name} failed: {reason}",
+                    "pre-tool-call hook {name} failed: {reason}",
                     name=result.hook_name,
                     reason=result.reason,
                 )
@@ -271,7 +271,7 @@ class KimiToolset:
 
         return None
 
-    async def _execute_after_tool_hooks(
+    async def _execute_post_tool_call_hooks(
         self,
         tool_name: str,
         tool_input: dict[str, Any],
@@ -280,13 +280,13 @@ class KimiToolset:
         tool_use_id: str,
         duration_ms: int,
     ) -> None:
-        """Execute after_tool hooks (fire and forget for async hooks)."""
+        """Execute post-tool-call hooks (fire and forget for async hooks)."""
         if self._runtime is None:
             return
 
         # Build event context
         event = {
-            "event_type": "after_tool",
+            "event_type": "post-tool-call",
             "timestamp": datetime.now().isoformat(),
             "session_id": self._runtime.session.id,
             "work_dir": str(self._runtime.session.work_dir),
@@ -300,7 +300,7 @@ class KimiToolset:
 
         try:
             exec_result = await self._runtime.hook_manager.execute(
-                "after_tool",
+                "post-tool-call",
                 event,
                 tool_name=tool_name,
                 tool_input=tool_input,
@@ -310,24 +310,24 @@ class KimiToolset:
             for result in exec_result.results:
                 if not result.success:
                     logger.warning(
-                        "after_tool hook {name} failed: {reason}",
+                        "post-tool-call hook {name} failed: {reason}",
                         name=result.hook_name,
                         reason=result.reason,
                     )
                 else:
                     logger.debug(
-                        "after_tool hook {name} executed successfully",
+                        "post-tool-call hook {name} executed successfully",
                         name=result.hook_name,
                     )
 
             # Async hooks are tracked but not awaited here
             if exec_result.async_tasks:
                 logger.debug(
-                    "{count} async after_tool hooks fired",
+                    "{count} async post-tool-call hooks fired",
                     count=len(exec_result.async_tasks),
                 )
         except Exception as e:
-            logger.exception("Failed to execute after_tool hooks: {error}", error=e)
+            logger.exception("Failed to execute post-tool-call hooks: {error}", error=e)
 
     def get_hook_stats(self) -> ToolHookStats:
         """Get hook execution statistics."""

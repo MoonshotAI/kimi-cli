@@ -14,30 +14,53 @@ class HookDecision(str, Enum):
 
 
 class HookEventType(str, Enum):
-    """Hook event types."""
+    """Hook event types.
+
+    All events follow the pattern: {timing}-{entity}[-qualifier]
+    - timing: pre (before) or post (after)
+    - entity: session, agent-turn, agent-turn-stop, tool-call, subagent, context-compact
+    - qualifier: optional, for special variants (e.g., failure)
+
+    Legacy names (deprecated) are supported as aliases for backward compatibility.
+    """
 
     # Session lifecycle
-    SESSION_START = "session_start"
-    SESSION_END = "session_end"
+    PRE_SESSION = "pre-session"
+    POST_SESSION = "post-session"
 
-    # Agent loop
-    BEFORE_AGENT = "before_agent"
-    AFTER_AGENT = "after_agent"
+    # Agent turn lifecycle
+    PRE_AGENT_TURN = "pre-agent-turn"
+    POST_AGENT_TURN = "post-agent-turn"
+
+    # Agent turn stop (Quality Gate)
+    PRE_AGENT_TURN_STOP = "pre-agent-turn-stop"
+    POST_AGENT_TURN_STOP = "post-agent-turn-stop"
 
     # Tool interception
-    BEFORE_TOOL = "before_tool"
-    AFTER_TOOL = "after_tool"
-    AFTER_TOOL_FAILURE = "after_tool_failure"
+    PRE_TOOL_CALL = "pre-tool-call"
+    POST_TOOL_CALL = "post-tool-call"
+    POST_TOOL_CALL_FAILURE = "post-tool-call-failure"
 
     # Subagent lifecycle
-    SUBAGENT_START = "subagent_start"
-    SUBAGENT_STOP = "subagent_stop"
+    PRE_SUBAGENT = "pre-subagent"
+    POST_SUBAGENT = "post-subagent"
 
     # Context management
-    PRE_COMPACT = "pre_compact"
+    PRE_CONTEXT_COMPACT = "pre-context-compact"
+    POST_CONTEXT_COMPACT = "post-context-compact"
 
-    # Stop/Completion hooks (Quality Gate)
-    BEFORE_STOP = "before_stop"
+    # Legacy aliases (deprecated, for backward compatibility)
+    SESSION_START = "session_start"  # Deprecated: use PRE_SESSION
+    SESSION_END = "session_end"  # Deprecated: use POST_SESSION
+    BEFORE_AGENT = "before_agent"  # Deprecated: use PRE_AGENT_TURN
+    AFTER_AGENT = "after_agent"  # Deprecated: use POST_AGENT_TURN
+    BEFORE_STOP = "before_stop"  # Deprecated: use PRE_AGENT_TURN_STOP
+    BEFORE_TOOL = "before_tool"  # Deprecated: use PRE_TOOL_CALL
+    AFTER_TOOL = "after_tool"  # Deprecated: use POST_TOOL_CALL
+    AFTER_TOOL_FAILURE = "after_tool_failure"  # Deprecated: use POST_TOOL_CALL_FAILURE
+    SUBAGENT_START = "subagent_start"  # Deprecated: use PRE_SUBAGENT
+    SUBAGENT_STOP = "subagent_stop"  # Deprecated: use POST_SUBAGENT
+    PRE_COMPACT = "pre_compact"  # Deprecated: use PRE_CONTEXT_COMPACT
 
 
 class HookType(str, Enum):

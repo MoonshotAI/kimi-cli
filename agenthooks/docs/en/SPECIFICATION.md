@@ -8,43 +8,71 @@ This document defines the complete specification for Agent Hooks format, includi
 
 ## 1. Event Types
 
-Agent Hooks supports 10 event types across 5 categories:
+Agent Hooks supports 14 event types across 6 categories. All entities have both `pre` (before) and `post` (after) variants, even if not currently implemented:
 
 ### 1.1 Session Lifecycle
 
 | Event | Trigger | Blocking | Recommended Mode |
 |-------|---------|----------|------------------|
-| `session_start` | Agent session starts | ✅ Yes | Sync |
-| `session_end` | Agent session ends | ✅ Yes | Sync |
+| `pre-session` | Before agent session starts | ✅ Yes | Sync |
+| `post-session` | After agent session ends | ✅ Yes | Sync |
 
-### 1.2 Agent Loop
-
-| Event | Trigger | Blocking | Recommended Mode |
-|-------|---------|----------|------------------|
-| `before_agent` | Before agent processes user input | ✅ Yes | Sync |
-| `after_agent` | After agent completes processing | ✅ Yes | Sync |
-| `before_stop` | Before agent stops responding | ✅ **Quality Gate** | **Sync** |
-
-### 1.3 Tool Interception (Core)
+### 1.2 Agent Turn Lifecycle
 
 | Event | Trigger | Blocking | Recommended Mode |
 |-------|---------|----------|------------------|
-| `before_tool` | Before tool executes | ✅ **Recommended** | **Sync** |
-| `after_tool` | After tool succeeds | ✅ Yes | Sync |
-| `after_tool_failure` | After tool fails | ✅ Yes | Sync |
+| `pre-agent-turn` | Before agent processes user input | ✅ Yes | Sync |
+| `post-agent-turn` | After agent completes processing | ✅ Yes | Sync |
 
-### 1.4 Subagent Lifecycle
-
-| Event | Trigger | Blocking | Recommended Mode |
-|-------|---------|----------|------------------|
-| `subagent_start` | Subagent starts | ✅ Yes | Sync |
-| `subagent_stop` | Subagent stops | ✅ Yes | Sync |
-
-### 1.5 Context Management
+### 1.3 Agent Turn Stop (Quality Gate)
 
 | Event | Trigger | Blocking | Recommended Mode |
 |-------|---------|----------|------------------|
-| `pre_compact` | Before context compaction | ✅ Yes | Sync |
+| `pre-agent-turn-stop` | Before agent stops responding (Quality Gate) | ✅ **Quality Gate** | **Sync** |
+| `post-agent-turn-stop` | After agent stops responding | ✅ Yes | Sync |
+
+### 1.4 Tool Interception (Core)
+
+| Event | Trigger | Blocking | Recommended Mode |
+|-------|---------|----------|------------------|
+| `pre-tool-call` | Before tool executes | ✅ **Recommended** | **Sync** |
+| `post-tool-call` | After tool succeeds | ✅ Yes | Sync |
+| `post-tool-call-failure` | After tool fails | ✅ Yes | Sync |
+
+### 1.5 Subagent Lifecycle
+
+| Event | Trigger | Blocking | Recommended Mode |
+|-------|---------|----------|------------------|
+| `pre-subagent` | Before subagent starts | ✅ Yes | Sync |
+| `post-subagent` | After subagent stops | ✅ Yes | Sync |
+
+### 1.6 Context Management
+
+| Event | Trigger | Blocking | Recommended Mode |
+|-------|---------|----------|------------------|
+| `pre-context-compact` | Before context compaction | ✅ Yes | Sync |
+| `post-context-compact` | After context compaction | ✅ Yes | Sync |
+
+### Naming Convention
+
+All events follow the pattern: `{timing}-{entity}[-qualifier]`
+
+- **timing**: `pre` (before) or `post` (after)
+- **entity**: `session`, `agent-turn`, `agent-turn-stop`, `tool-call`, `subagent`, `context-compact`
+- **qualifier**: Optional, for special variants (e.g., `failure`)
+
+> **Legacy Names**: The following deprecated names are supported as aliases:
+> - `session_start` → `pre-session`
+> - `session_end` → `post-session`
+> - `before_agent` → `pre-agent-turn`
+> - `after_agent` → `post-agent-turn`
+> - `before_stop` → `pre-agent-turn-stop`
+> - `before_tool` → `pre-tool-call`
+> - `after_tool` → `post-tool-call`
+> - `after_tool_failure` → `post-tool-call-failure`
+> - `subagent_start` → `pre-subagent`
+> - `subagent_stop` → `post-subagent`
+> - `pre_compact` → `pre-context-compact`
 
 ---
 
@@ -236,11 +264,11 @@ All events include these fields:
 | `work_dir` | string | Current working directory |
 | `context` | object | Additional context |
 
-### 5.2 Tool Events (before_tool / after_tool / after_tool_failure)
+### 5.2 Tool Events (pre-tool-call / post-tool-call / post-tool-call-failure)
 
 ```json
 {
-  "event_type": "before_tool",
+  "event_type": "pre-tool-call",
   "timestamp": "2024-01-15T10:30:00Z",
   "session_id": "sess-abc123",
   "work_dir": "/home/user/project",
@@ -258,11 +286,11 @@ All events include these fields:
 | `tool_input` | object | Tool input parameters |
 | `tool_use_id` | string | Tool call unique identifier |
 
-### 5.3 Subagent Events
+### 5.3 Subagent Events (pre-subagent / post-subagent)
 
 ```json
 {
-  "event_type": "subagent_start",
+  "event_type": "pre-subagent",
   "timestamp": "2024-01-15T10:30:00Z",
   "session_id": "sess-abc123",
   "work_dir": "/home/user/project",
@@ -278,13 +306,13 @@ All events include these fields:
 | `subagent_type` | string | Subagent type |
 | `task_description` | string | Task description |
 
-### 5.4 Session Events
+### 5.4 Session Events (pre-session / post-session)
 
-**session_start:**
+**pre-session:**
 
 ```json
 {
-  "event_type": "session_start",
+  "event_type": "pre-session",
   "timestamp": "2024-01-15T10:30:00Z",
   "session_id": "sess-abc123",
   "work_dir": "/home/user/project",
@@ -296,11 +324,11 @@ All events include these fields:
 }
 ```
 
-**session_end:**
+**post-session:**
 
 ```json
 {
-  "event_type": "session_end",
+  "event_type": "post-session",
   "timestamp": "2024-01-15T11:30:00Z",
   "session_id": "sess-abc123",
   "work_dir": "/home/user/project",
@@ -310,13 +338,13 @@ All events include these fields:
 }
 ```
 
-### 5.5 Stop Event (Quality Gate)
+### 5.5 Agent Turn Stop Events (Quality Gate)
 
-**before_stop:**
+**pre-agent-turn-stop:**
 
 ```json
 {
-  "event_type": "before_stop",
+  "event_type": "pre-agent-turn-stop",
   "timestamp": "2024-01-15T10:35:00Z",
   "session_id": "sess-abc123",
   "work_dir": "/home/user/project",
@@ -337,20 +365,20 @@ All events include these fields:
 
 **Use Case: Quality Gates**
 
-The `before_stop` event is designed for enforcing quality standards before allowing the agent to complete:
+The `pre-agent-turn-stop` event is designed for enforcing quality standards before allowing the agent to complete:
 
 ```yaml
 ---
 name: enforce-tests
 description: Ensure all tests pass before completing
-trigger: before_stop
+trigger: pre-agent-turn-stop
 timeout: 60000
 async: false
 priority: 999
 ---
 ```
 
-When a `before_stop` hook blocks (exit 2 or `decision: deny`), the agent receives the feedback and continues working instead of stopping. This creates a powerful quality gate mechanism.
+When a `pre-agent-turn-stop` hook blocks (exit 2 or `decision: deny`), the agent receives the feedback and continues working instead of stopping. This creates a powerful quality gate mechanism.
 
 ---
 
@@ -360,17 +388,19 @@ When a `before_stop` hook blocks (exit 2 or `decision: deny`), the agent receive
 
 | Event Type | Sync/Async | Recommended Use | Example Scenario |
 |------------|------------|-----------------|------------------|
-| `session_start` | Sync | Initialization, logging | Send session start notification, initialize environment |
-| `session_end` | Sync | Cleanup, statistics, notifications | Generate session summary, send Slack notification |
-| `before_agent` | Sync | Input validation, security checks | Filter sensitive words, input review |
-| `after_agent` | Sync | Logging, analysis | Record response time, analyze output quality |
-| `before_tool` | Sync | Security checks, interception | Block dangerous commands, permission validation |
-| `after_tool` | Sync | Formatting, notifications | Auto-format code, send operation notifications |
-| `after_tool_failure` | Sync | Error handling, retry | Log failure, send alerts |
-| `subagent_start` | Sync | Resource limits, approval | Check concurrency limits, task approval |
-| `subagent_stop` | Sync | Result validation, cleanup | Validate output quality, resource reclamation |
-| `pre_compact` | Sync | Backup, analysis | Backup context, analyze compaction |
-| `before_stop` | **Sync** | **Quality gates, completion criteria** | **Enforce tests pass, verify all tasks done** |
+| `pre-session` | Sync | Initialization, logging | Send session start notification, initialize environment |
+| `post-session` | Sync | Cleanup, statistics, notifications | Generate session summary, send Slack notification |
+| `pre-agent-turn` | Sync | Input validation, security checks | Filter sensitive words, input review |
+| `post-agent-turn` | Sync | Logging, analysis | Record response time, analyze output quality |
+| `pre-agent-turn-stop` | **Sync** | **Quality gates, completion criteria** | **Enforce tests pass, verify all tasks done** |
+| `post-agent-turn-stop` | Sync | Cleanup, final logging | Log turn completion, update metrics |
+| `pre-tool-call` | Sync | Security checks, interception | Block dangerous commands, permission validation |
+| `post-tool-call` | Sync | Formatting, notifications | Auto-format code, send operation notifications |
+| `post-tool-call-failure` | Sync | Error handling, retry | Log failure, send alerts |
+| `pre-subagent` | Sync | Resource limits, approval | Check concurrency limits, task approval |
+| `post-subagent` | Sync | Result validation, cleanup | Validate output quality, resource reclamation |
+| `pre-context-compact` | Sync | Backup, analysis | Backup context, analyze compaction |
+| `post-context-compact` | Sync | Post-compact analysis | Verify compaction results, update metrics |
 
 ### 6.2 Common Hook Patterns
 
@@ -380,7 +410,7 @@ When a `before_stop` hook blocks (exit 2 or `decision: deny`), the agent receive
 ---
 name: block-dangerous-commands
 description: Blocks dangerous system commands
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
   pattern: "rm -rf /|mkfs|dd if=/dev/zero"
@@ -404,7 +434,7 @@ exit 2
 ---
 name: auto-format-python
 description: Auto-format Python files after write
-trigger: after_tool
+trigger: post-tool-call
 matcher:
   tool: WriteFile
   pattern: "\.py$"
@@ -419,7 +449,7 @@ async: true
 ---
 name: block-prod-deploy
 description: Block production deployment operations
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
   pattern: "deploy.*prod|kubectl.*production"
@@ -441,18 +471,18 @@ exit 2
 ---
 name: audit-log
 description: Log all session activities
-trigger: session_end
+trigger: post-session
 async: true
 ---
 ```
 
-#### Pattern 5: Quality Gate (Sync + before_stop)
+#### Pattern 5: Quality Gate (Sync + pre-agent-turn-stop)
 
 ```yaml
 ---
 name: enforce-test-coverage
 description: Ensure tests pass before allowing completion
-trigger: before_stop
+trigger: pre-agent-turn-stop
 timeout: 120000
 async: false
 priority: 999
@@ -584,7 +614,7 @@ Agent Hooks uses progressive disclosure design to optimize context usage:
 ---
 name: block-dangerous-commands
 description: Blocks dangerous shell commands that could destroy data
-trigger: before_tool
+trigger: pre-tool-call
 matcher:
   tool: Shell
   pattern: "rm -rf /|mkfs|dd if=/dev/zero|>:/dev/sda"

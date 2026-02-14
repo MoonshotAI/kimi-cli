@@ -1,7 +1,7 @@
 ---
 name: session-logger-end
 description: Log session end events for auditing and analytics
-trigger: session_end
+trigger: post-session
 async: false
 timeout: 10000
 priority: 50

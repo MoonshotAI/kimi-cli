@@ -20,13 +20,14 @@ from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
+from kosong.message import Message
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.types import ContentPart, WireMessage
+from kimi_cli.wire.types import ContentPart, TextPart, WireMessage
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
@@ -160,7 +161,7 @@ class KimiCLI:
         runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir, debug_hooks)
 
         # Execute session_start hooks and collect additional contexts
-        hook_contexts = await runtime._execute_session_start_hooks()
+        hook_contexts = await runtime._execute_pre_session_hooks()
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
@@ -173,7 +174,7 @@ class KimiCLI:
         for hook_context in hook_contexts:
             if hook_context.strip():
                 await context.append_message(
-                    {"role": "system", "content": hook_context}
+                    Message(role="system", content=[TextPart(text=hook_context)])
                 )
 
         soul = KimiSoul(agent, context=context)
@@ -260,7 +261,7 @@ class KimiCLI:
                 # wait for the soul task to finish, or raise
                 await soul_task
                 # Execute session_end hooks
-                await self._runtime.execute_session_end_hooks(exit_reason="user_exit")
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_shell(self, command: str | None = None) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
@@ -342,7 +343,7 @@ class KimiCLI:
                 return await shell.run(command)
             finally:
                 # Execute session_end hooks
-                await self._runtime.execute_session_end_hooks(exit_reason="user_exit")
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_print(
         self,
@@ -367,7 +368,7 @@ class KimiCLI:
                 return await print_.run(command)
             finally:
                 # Execute session_end hooks
-                await self._runtime.execute_session_end_hooks(exit_reason="user_exit")
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_acp(self) -> None:
         """Run the Kimi Code CLI instance as ACP server."""
@@ -379,7 +380,7 @@ class KimiCLI:
                 await acp.run()
             finally:
                 # Execute session_end hooks
-                await self._runtime.execute_session_end_hooks(exit_reason="user_exit")
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
 
     async def run_wire_stdio(self) -> None:
         """Run the Kimi Code CLI instance as Wire server over stdio."""
@@ -391,4 +392,4 @@ class KimiCLI:
                 await server.serve()
             finally:
                 # Execute session_end hooks
-                await self._runtime.execute_session_end_hooks(exit_reason="user_exit")
+                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
