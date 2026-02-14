@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from dataclasses import dataclass
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.utils.aioqueue import Queue
@@ -23,19 +25,73 @@ class Request:
 
 type Response = Literal["approve", "approve_for_session", "reject"]
 
+APPROVAL_STATE_FILE = "approval_state.json"
+
 
 class ApprovalState:
-    def __init__(self, yolo: bool = False):
+    def __init__(self, yolo: bool = False, session_dir: Path | None = None):
         self.yolo = yolo
-        self.auto_approve_actions: set[str] = set()  # TODO: persist across sessions
+        self._session_dir = session_dir
+        self.auto_approve_actions: set[str] = set()
         """Set of action names that should automatically be approved."""
+        self._load()
+
+    def _get_state_file(self) -> Path | None:
+        if self._session_dir is None:
+            return None
+        return self._session_dir / APPROVAL_STATE_FILE
+
+    def _load(self) -> None:
+        """Load approval state from session directory if available."""
+        state_file = self._get_state_file()
+        if state_file is None or not state_file.exists():
+            return
+        try:
+            data: dict[str, Any] = json.loads(state_file.read_text(encoding="utf-8"))
+            actions: list[Any] = data.get("auto_approve_actions", [])
+            self.auto_approve_actions = {a for a in actions if isinstance(a, str)}
+            logger.debug(
+                "Loaded {count} auto-approved actions from {file}",
+                count=len(self.auto_approve_actions),
+                file=state_file,
+            )
+        except Exception:
+            logger.exception("Failed to load approval state from {file}", file=state_file)
+
+    def _save(self) -> None:
+        """Save approval state to session directory if available."""
+        state_file = self._get_state_file()
+        if state_file is None:
+            return
+        try:
+            state_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {"auto_approve_actions": sorted(self.auto_approve_actions)}
+            state_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            logger.debug(
+                "Saved {count} auto-approved actions to {file}",
+                count=len(self.auto_approve_actions),
+                file=state_file,
+            )
+        except Exception:
+            logger.exception("Failed to save approval state to {file}", file=state_file)
+
+    def add_auto_approve_action(self, action: str) -> None:
+        """Add an action to auto-approve and persist the state."""
+        self.auto_approve_actions.add(action)
+        self._save()
 
 
 class Approval:
-    def __init__(self, yolo: bool = False, *, state: ApprovalState | None = None):
+    def __init__(
+        self,
+        yolo: bool = False,
+        *,
+        state: ApprovalState | None = None,
+        session_dir: Path | None = None,
+    ):
         self._request_queue = Queue[Request]()
         self._requests: dict[str, tuple[Request, asyncio.Future[bool]]] = {}
-        self._state = state or ApprovalState(yolo=yolo)
+        self._state = state or ApprovalState(yolo=yolo, session_dir=session_dir)
 
     def share(self) -> Approval:
         """Create a new approval queue that shares state (yolo + auto-approve)."""
@@ -140,7 +196,7 @@ class Approval:
             case "approve":
                 future.set_result(True)
             case "approve_for_session":
-                self._state.auto_approve_actions.add(request.action)
+                self._state.add_auto_approve_action(request.action)
                 future.set_result(True)
             case "reject":
                 future.set_result(False)
