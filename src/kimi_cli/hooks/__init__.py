@@ -5,8 +5,9 @@ define hooks as external scripts in HOOK.md files.
 """
 
 from kimi_cli.hooks.discovery import DiscoveryPaths, HookDiscovery
+from kimi_cli.hooks.display import build_hooks_display
 from kimi_cli.hooks.executor import ExecutionResult, HookExecutor, HooksExecutionResult
-from kimi_cli.hooks.manager import HookDebugLog, HookDebugger, HookManager
+from kimi_cli.hooks.manager import HookDebugger, HookDebugLog, HookManager
 from kimi_cli.hooks.parser import HookMetadata, HookParser, Matcher, ParsedHook
 
 __all__ = [
@@ -26,4 +27,6 @@ __all__ = [
     "HookDebugger",
     "HookDebugLog",
     "HooksExecutionResult",
+    # Display
+    "build_hooks_display",
 ]
