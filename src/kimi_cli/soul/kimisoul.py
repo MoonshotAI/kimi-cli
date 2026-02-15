@@ -421,12 +421,15 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
-                # Execute pre-agent-turn-stop hooks to enforce quality gates
-                should_continue = await self._execute_pre_agent_turn_stop_hooks(
-                    stop_reason=step_outcome.stop_reason,
-                    step_count=step_no,
-                    final_message=step_outcome.assistant_message,
-                )
+                # Only execute pre-agent-turn-stop hooks for 'no_tool_calls' stop reason
+                # Don't override explicit user tool rejection (tool_rejected)
+                should_continue = None
+                if step_outcome.stop_reason == "no_tool_calls":
+                    should_continue = await self._execute_pre_agent_turn_stop_hooks(
+                        stop_reason=step_outcome.stop_reason,
+                        step_count=step_no,
+                        final_message=step_outcome.assistant_message,
+                    )
 
                 if should_continue:
                     pre_agent_turn_stop_block_count += 1
@@ -578,9 +581,20 @@ class KimiSoul:
         # Convert final message to dict for JSON serialization
         final_message_dict = None
         if final_message is not None:
+            # Handle content serialization: ContentPart models need explicit conversion
+            content = final_message.content
+            if isinstance(content, str):
+                content = content
+            else:
+                # ContentPart is a Pydantic model, use model_dump() for proper
+                # JSON serialization
+                content = [
+                    p.model_dump() if hasattr(p, "model_dump") else str(p)
+                    for p in content
+                ]
             final_message_dict = {
                 "role": final_message.role,
-                "content": final_message.content,
+                "content": content,
             }
 
         event = {

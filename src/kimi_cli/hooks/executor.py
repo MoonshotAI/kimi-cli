@@ -121,6 +121,7 @@ class HookExecutor:
 
         except TimeoutError:
             proc.kill()
+            await proc.wait()  # Wait for process to be fully cleaned up, avoiding zombie processes
             duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
             return ExecutionResult(
                 success=False,

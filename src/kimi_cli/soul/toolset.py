@@ -285,8 +285,10 @@ class KimiToolset:
             return
 
         # Build event context
+        # Use "post-tool-call-failure" for errors, "post-tool-call" for success
+        event_type = "post-tool-call-failure" if error else "post-tool-call"
         event = {
-            "event_type": "post-tool-call",
+            "event_type": event_type,
             "timestamp": datetime.now().isoformat(),
             "session_id": self._runtime.session.id,
             "work_dir": str(self._runtime.session.work_dir),
@@ -300,7 +302,7 @@ class KimiToolset:
 
         try:
             exec_result = await self._runtime.hook_manager.execute(
-                "post-tool-call",
+                event_type,
                 event,
                 tool_name=tool_name,
                 tool_input=tool_input,
