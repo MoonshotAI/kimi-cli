@@ -105,7 +105,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 
 Conventional Commits format:
 
-```
+```text
 <type>(<scope>): <subject>
 ```
 
