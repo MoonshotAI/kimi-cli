@@ -473,8 +473,16 @@ class _LiveView:
         live._live_render._shape = None  # type: ignore[reportPrivateUsage]
 
     def _on_terminal_resize(self) -> None:
-        """Handle terminal resize event (SIGWINCH)."""
-        # Force a refresh on next update by setting the recompose flag
+        """Handle terminal resize event (SIGWINCH).
+        
+        Called when terminal size changes. Clears Rich's cached console dimensions
+        so it re-detects terminal size. Needed for proper resize handling in 
+        Hyprland and other window managers.
+        """
+        # Clear Rich's cached console dimensions
+        console._width = None  # type: ignore[reportPrivateUsage]
+        console._height = None  # type: ignore[reportPrivateUsage]
+        # Force a refresh on next update
         self._need_recompose = True
 
     async def visualize_loop(self, wire: WireUISide):
@@ -490,7 +498,17 @@ class _LiveView:
             if hasattr(signal, "SIGWINCH"):
                 loop = asyncio.get_running_loop()
                 try:
-                    loop.add_signal_handler(signal.SIGWINCH, self._on_terminal_resize)
+                    # Define handler inside loop to capture `live` reference
+                    def handle_resize() -> None:
+                        # Clear Rich's cached console dimensions
+                        console._width = None  # type: ignore[reportPrivateUsage]
+                        console._height = None  # type: ignore[reportPrivateUsage]
+                        # Reset Live's cached render shape
+                        live._live_render._shape = None  # type: ignore[reportPrivateUsage]
+                        # Force refresh
+                        self._need_recompose = True
+                    
+                    loop.add_signal_handler(signal.SIGWINCH, handle_resize)
 
                     def remove_sigwinch() -> None:
                         with suppress(RuntimeError):
