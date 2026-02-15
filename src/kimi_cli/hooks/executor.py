@@ -134,6 +134,12 @@ class HookExecutor:
                 reason=f"Timeout ({hook.metadata.timeout}ms)",
             )
         except Exception as e:
+            # Ensure subprocess is cleaned up even on non-timeout errors
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
             duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
             logger.exception("Hook execution failed: {hook}", hook=hook.name)
             return ExecutionResult(

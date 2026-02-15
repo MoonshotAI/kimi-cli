@@ -168,14 +168,16 @@ class KimiCLI:
         agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
 
         context = Context(session.context_file)
-        await context.restore()
+        messages_restored = await context.restore()
 
-        # Inject hook contexts as system messages
-        for hook_context in hook_contexts:
-            if hook_context.strip():
-                await context.append_message(
-                    Message(role="system", content=[TextPart(text=hook_context)])
-                )
+        # Inject hook contexts as system messages only for new sessions
+        # to avoid accumulation on continued sessions
+        if not messages_restored:
+            for hook_context in hook_contexts:
+                if hook_context.strip():
+                    await context.append_message(
+                        Message(role="system", content=[TextPart(text=hook_context)])
+                    )
 
         soul = KimiSoul(agent, context=context)
         return KimiCLI(soul, runtime, env_overrides)
