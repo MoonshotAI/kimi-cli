@@ -207,7 +207,14 @@ class Runtime:
             "args": {},
         }
 
-        exec_result = await self.hook_manager.execute("pre-session", event)
+        try:
+            exec_result = await self.hook_manager.execute("pre-session", event)
+        except Exception as e:
+            logger.exception(
+                "Failed to execute pre-session hooks: {error}",
+                error=e,
+            )
+            return []
 
         # Check if any hook blocked the session start
         if exec_result.should_block:
@@ -249,7 +256,11 @@ class Runtime:
             "exit_reason": exit_reason,
         }
 
-        exec_result = await self.hook_manager.execute("post-session", event)
+        try:
+            exec_result = await self.hook_manager.execute("post-session", event)
+        except Exception as e:
+            logger.exception("Failed to execute post-session hooks: {error}", error=e)
+            return
 
         # Check if any hook blocked the session end
         if exec_result.should_block:
