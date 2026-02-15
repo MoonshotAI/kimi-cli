@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
@@ -471,6 +472,11 @@ class _LiveView:
         # so we reset the private _shape to re-anchor the next refresh.
         live._live_render._shape = None  # type: ignore[reportPrivateUsage]
 
+    def _on_terminal_resize(self) -> None:
+        """Handle terminal resize event (SIGWINCH)."""
+        # Force a refresh on next update by setting the recompose flag
+        self._need_recompose = True
+
     async def visualize_loop(self, wire: WireUISide):
         with Live(
             self.compose(),
@@ -479,6 +485,21 @@ class _LiveView:
             transient=True,
             vertical_overflow="visible",
         ) as live:
+            # Install SIGWINCH handler for terminal resize (Unix only)
+            sigwinch_remove: Callable[[], None] | None = None
+            if hasattr(signal, "SIGWINCH"):
+                loop = asyncio.get_running_loop()
+                try:
+                    loop.add_signal_handler(signal.SIGWINCH, self._on_terminal_resize)
+
+                    def remove_sigwinch() -> None:
+                        with suppress(RuntimeError):
+                            loop.remove_signal_handler(signal.SIGWINCH)
+
+                    sigwinch_remove = remove_sigwinch
+                except (RuntimeError, NotImplementedError):
+                    # Platform doesn't support add_signal_handler, skip
+                    pass
 
             async def keyboard_handler(listener: KeyboardListener, event: KeyEvent) -> None:
                 # Handle Ctrl+E specially - pause Live while the pager is active
@@ -504,24 +525,29 @@ class _LiveView:
                     live.update(self.compose(), refresh=True)
                     self._need_recompose = False
 
-            async with _keyboard_listener(keyboard_handler):
-                while True:
-                    try:
-                        msg = await wire.receive()
-                    except QueueShutDown:
-                        self.cleanup(is_interrupt=False)
-                        live.update(self.compose(), refresh=True)
-                        break
+            try:
+                async with _keyboard_listener(keyboard_handler):
+                    while True:
+                        try:
+                            msg = await wire.receive()
+                        except QueueShutDown:
+                            self.cleanup(is_interrupt=False)
+                            live.update(self.compose(), refresh=True)
+                            break
 
-                    if isinstance(msg, StepInterrupted):
-                        self.cleanup(is_interrupt=True)
-                        live.update(self.compose(), refresh=True)
-                        break
+                        if isinstance(msg, StepInterrupted):
+                            self.cleanup(is_interrupt=True)
+                            live.update(self.compose(), refresh=True)
+                            break
 
-                    self.dispatch_wire_message(msg)
-                    if self._need_recompose:
-                        live.update(self.compose(), refresh=True)
-                        self._need_recompose = False
+                        self.dispatch_wire_message(msg)
+                        if self._need_recompose:
+                            live.update(self.compose(), refresh=True)
+                            self._need_recompose = False
+            finally:
+                # Clean up SIGWINCH handler
+                if sigwinch_remove is not None:
+                    sigwinch_remove()
 
     def refresh_soon(self) -> None:
         self._need_recompose = True
