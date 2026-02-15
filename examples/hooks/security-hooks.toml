@@ -1,0 +1,41 @@
+# Security Hooks for Kimi Code CLI
+# 安全相关的 Hooks 配置示例
+
+# ============================================
+# 1. 危险命令拦截 - 使用脚本检查
+# ============================================
+[[hooks.before_tool]]
+name = "block-dangerous-commands"
+type = "command"
+matcher = { tool = "Shell", pattern = "rm -rf /|mkfs|dd if=/dev/zero" }
+command = """
+echo '{"decision": "deny", "reason": "Dangerous command blocked by security policy"}'
+"""
+timeout = 5000
+description = "Block dangerous system commands"
+
+# ============================================
+# 2. 敏感文件保护
+# ============================================
+[[hooks.before_tool]]
+name = "protect-sensitive-files"
+type = "command"
+matcher = { tool = "Shell", pattern = "\\.env|\\.ssh/id_|/etc/passwd|/etc/shadow" }
+command = """
+echo '{"decision": "ask", "reason": "Access to sensitive file detected"}'
+"""
+timeout = 5000
+description = "Protect sensitive system files"
+
+# ============================================
+# 3. Git 仓库保护 - 防止误删
+# ============================================
+[[hooks.before_tool]]
+name = "protect-git-repo"
+type = "command"
+matcher = { tool = "Shell", pattern = "rm -rf .*\\.git|rm -rf .git" }
+command = """
+echo '{"decision": "deny", "reason": "Deleting .git directory is not allowed"}'
+"""
+timeout = 5000
+description = "Prevent accidental git repo deletion"

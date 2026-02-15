@@ -160,6 +160,7 @@ class Config(BaseModel):
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
 
+
     @model_validator(mode="after")
     def validate_model(self) -> Self:
         if self.default_model and self.default_model not in self.models:
