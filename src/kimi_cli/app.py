@@ -207,19 +207,21 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Restoring conversation...")
         context = Context(session.context_file)
-        await context.restore()
+        messages_restored = await context.restore()
 
         if context.system_prompt is not None:
             agent = dataclasses.replace(agent, system_prompt=context.system_prompt)
         else:
             await context.write_system_prompt(agent.system_prompt)
 
-        # Inject hook contexts as system messages
-        for hook_context in hook_contexts:
-            if hook_context.strip():
-                await context.append_message(
-                    Message(role="system", content=[TextPart(text=hook_context)])
-                )
+        # Inject hook contexts as system messages only for new sessions
+        # to avoid accumulation on continued sessions
+        if not messages_restored:
+            for hook_context in hook_contexts:
+                if hook_context.strip():
+                    await context.append_message(
+                        Message(role="system", content=[TextPart(text=hook_context)])
+                    )
 
         soul = KimiSoul(agent, context=context)
         return KimiCLI(soul, runtime, env_overrides)
