@@ -480,12 +480,15 @@ body {
 /* Add "You" label indicator above user messages */
 .is-user {
   position: relative;
+  /* Use padding-top instead of margin-top to preserve dynamic spacing logic */
+  /* This provides space for the "You" label without overriding spacingClass */
+  padding-top: 20px;
 }
 
 .is-user::before {
   content: "You";
   position: absolute;
-  top: -18px;
+  top: 0;
   right: 12px;
   font-size: 10px;
   font-weight: 600;
@@ -505,11 +508,6 @@ body {
   color: oklch(0.75 0.2 250);
   background: oklch(0.2 0.02 250 / 0.9);
   border-color: oklch(0.4 0.1 250);
-}
-
-/* Add top margin to user message container to accommodate the label */
-.is-user {
-  margin-top: 20px !important;
 }
 
 /* Animation for new user messages */
