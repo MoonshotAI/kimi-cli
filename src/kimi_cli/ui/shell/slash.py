@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from prompt_toolkit.shortcuts.choice_input import ChoiceInput
-
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.cli import Reload, SwitchToWeb
 from kimi_cli.config import load_config, save_config
@@ -12,6 +10,7 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.setup import prompt_choice
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
@@ -179,11 +178,11 @@ async def model(app: Shell, args: str):
         model_choices.append((name, label))
 
     try:
-        selected_model_name = await ChoiceInput(
+        selected_model_name = await prompt_choice(
             message="Select a model (↑↓ navigate, Enter select, Ctrl+C cancel):",
-            options=model_choices,
+            choices=model_choices,
             default=curr_model_name or model_choices[0][0],
-        ).prompt_async()
+        )
     except (EOFError, KeyboardInterrupt):
         return
 
@@ -208,11 +207,11 @@ async def model(app: Shell, args: str):
             ("on", "on" + (" (current)" if curr_thinking else "")),
         ]
         try:
-            thinking_selection = await ChoiceInput(
+            thinking_selection = await prompt_choice(
                 message="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
-                options=thinking_choices,
+                choices=thinking_choices,
                 default="on" if curr_thinking else "off",
-            ).prompt_async()
+            )
         except (EOFError, KeyboardInterrupt):
             return
 
@@ -335,11 +334,11 @@ async def list_sessions(app: Shell, args: str):
         choices.append((session.id, label))
 
     try:
-        selection = await ChoiceInput(
+        selection = await prompt_choice(
             message="Select a session to switch to (↑↓ navigate, Enter select, Ctrl+C cancel):",
-            options=choices,
+            choices=choices,
             default=choices[0][0],
-        ).prompt_async()
+        )
     except (EOFError, KeyboardInterrupt):
         return
 

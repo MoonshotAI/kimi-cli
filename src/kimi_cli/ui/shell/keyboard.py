@@ -19,6 +19,16 @@ class KeyEvent(Enum):
     ESCAPE = auto()
     TAB = auto()
     CTRL_E = auto()
+    K0 = auto()
+    K1 = auto()
+    K2 = auto()
+    K3 = auto()
+    K4 = auto()
+    K5 = auto()
+    K6 = auto()
+    K7 = auto()
+    K8 = auto()
+    K9 = auto()
 
 
 class KeyboardListener:
@@ -179,6 +189,9 @@ def _listen_for_keyboard_unix(
                 emit(KeyEvent.TAB)
             elif c == b"\x05":  # Ctrl+E
                 emit(KeyEvent.CTRL_E)
+            elif b"0" <= c <= b"9":
+                event = getattr(KeyEvent, f"K{c.decode('ascii')}")
+                emit(event)
     finally:
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
 
@@ -235,6 +248,9 @@ def _listen_for_keyboard_windows(
                 emit(KeyEvent.TAB)
             elif c == b"\x05":  # Ctrl+E
                 emit(KeyEvent.CTRL_E)
+            elif b"0" <= c <= b"9":
+                event = getattr(KeyEvent, f"K{c.decode('ascii')}")
+                emit(event)
         else:
             if cancel.is_set():
                 break
