@@ -21,6 +21,7 @@ from typing import Any, Literal, override
 from kaos.path import KaosPath
 from PIL import Image
 from prompt_toolkit import PromptSession
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
@@ -934,3 +935,35 @@ class CustomPromptSession:
         if current_toast.duration <= 0.0:
             _toast_queues["right"].popleft()
         return current_toast.message
+
+async def prompt_choice(
+    *, message: str, choices: list[str] | list[tuple[str, str]], default: str | None = None
+) -> str | None:
+    if not choices:
+        return None
+
+    # Normalize choices to list[tuple[value, label]]
+    options: list[tuple[str, str]] = []
+    for choice in choices:
+        if isinstance(choice, tuple):
+            options.append(choice)
+        else:
+            options.append((choice, choice))
+
+    # Add numeric shortcuts to the header
+    new_lines = [message]
+    for i, (_, label) in enumerate(options):
+        if i < 9:
+            new_lines.append(f"  [{i + 1}] {label}")
+    full_message = "\n".join(new_lines)
+
+    choice_input = ChoiceInput(
+        message=full_message,
+        options=options,
+        default=default or options[0][0],
+    )
+
+    try:
+        return await choice_input.prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        return None
