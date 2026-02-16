@@ -52,6 +52,9 @@ _VIDEO_MIME_BY_SUFFIX = {
     ".3gp": "video/3gpp",
     ".3g2": "video/3gpp2",
 }
+
+# Public export for video extensions mapping
+VIDEO_EXTENSIONS = _VIDEO_MIME_BY_SUFFIX
 _TEXT_MIME_BY_SUFFIX = {
     ".svg": "image/svg+xml",
 }
