@@ -11,6 +11,13 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.14.3 (2026-02-16)
+
+- Add video clipboard paste support (Ctrl-V) in shell mode for video files
+- Add automatic video file detection in print mode (non-interactive)
+- Support all major video formats: MP4, MKV, AVI, MOV, WMV, WebM, M4V, FLV, 3GP, 3G2
+- Update documentation for video input capabilities
+
 ## 1.14.0 (2026-02-14)
 
 - Auto-enable print mode when using `-c`/`--command` flag for single-shot command execution
