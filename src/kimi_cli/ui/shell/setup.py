@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from loguru import logger
 from prompt_toolkit import PromptSession
-from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
 from kimi_cli.auth.platforms import (
@@ -25,6 +24,7 @@ from kimi_cli.config import (
     save_config,
 )
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.prompt import prompt_choice
 from kimi_cli.ui.shell.slash import registry
 
 if TYPE_CHECKING:
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 
 
 async def select_platform() -> Platform | None:
-    platform_name = await _prompt_choice(
-        header="Select a platform (↑↓ navigate, Enter select, Ctrl+C cancel):",
+    platform_name = await prompt_choice(
+        message="Select a platform (↑↓ navigate, Enter select, Ctrl+C cancel):",
         choices=[platform.name for platform in PLATFORMS],
     )
     if not platform_name:
@@ -86,8 +86,8 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
         return None
 
     model_map = {model.id: model for model in models}
-    model_id = await _prompt_choice(
-        header="Select a model (↑↓ navigate, Enter select, Ctrl+C cancel):",
+    model_id = await prompt_choice(
+        message="Select a model (↑↓ navigate, Enter select, Ctrl+C cancel):",
         choices=list(model_map),
     )
     if not model_id:
@@ -103,8 +103,8 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
     if "always_thinking" in capabilities:
         thinking = True
     elif "thinking" in capabilities:
-        thinking_selection = await _prompt_choice(
-            header="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
+        thinking_selection = await prompt_choice(
+            message="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
             choices=["off", "on"],
         )
         if not thinking_selection:
@@ -158,20 +158,6 @@ def _apply_setup_result(result: _SetupResult) -> None:
         )
 
     save_config(config)
-
-
-async def _prompt_choice(*, header: str, choices: list[str]) -> str | None:
-    if not choices:
-        return None
-
-    try:
-        return await ChoiceInput(
-            message=header,
-            options=[(choice, choice) for choice in choices],
-            default=choices[0],
-        ).prompt_async()
-    except (EOFError, KeyboardInterrupt):
-        return None
 
 
 async def _prompt_text(prompt: str, *, is_password: bool = False) -> str | None:

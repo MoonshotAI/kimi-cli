@@ -354,10 +354,11 @@ class _ApprovalRequestPanel:
         if lines:
             lines.append(Text(""))
         for i, (option_text, _) in enumerate(self.options):
+            shortcut = f"[{i + 1}] " if i < 9 else "    "
             if i == self.selected_index:
-                lines.append(Text(f"→ {option_text}", style="cyan"))
+                lines.append(Text(f"→ {shortcut}{option_text}", style="cyan"))
             else:
-                lines.append(Text(f"  {option_text}", style="grey50"))
+                lines.append(Text(f"  {shortcut}{option_text}", style="grey50"))
 
         return Padding(Group(*lines), 1)
 
@@ -630,6 +631,22 @@ class _LiveView:
                         self._approval_request_queue.popleft().resolve("reject")
                     self._reject_all_following = True
                 self.show_next_approval_request()
+            case (
+                KeyEvent.K1
+                | KeyEvent.K2
+                | KeyEvent.K3
+                | KeyEvent.K4
+                | KeyEvent.K5
+                | KeyEvent.K6
+                | KeyEvent.K7
+                | KeyEvent.K8
+                | KeyEvent.K9
+            ):
+                index = int(event.name[1:]) - 1
+                if index < len(self._current_approval_request_panel.options):
+                    self._current_approval_request_panel.selected_index = index
+                    # Auto-submit on numeric key press
+                    self.dispatch_keyboard_event(KeyEvent.ENTER)
             case _:
                 # just ignore any other keyboard event
                 return

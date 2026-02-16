@@ -38,6 +38,7 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from prompt_toolkit.styles import Style
 from pydantic import BaseModel, ValidationError
 
@@ -52,9 +53,9 @@ from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
 from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
 
-PROMPT_SYMBOL = "✨"
+PROMPT_SYMBOL = "Ã¢Å“Â¨"
 PROMPT_SYMBOL_SHELL = "$"
-PROMPT_SYMBOL_THINKING = "💫"
+PROMPT_SYMBOL_THINKING = "Ã°Å¸â€™Â«"
 
 
 class SlashCommandCompleter(Completer):
@@ -934,3 +935,64 @@ class CustomPromptSession:
         if current_toast.duration <= 0.0:
             _toast_queues["right"].popleft()
         return current_toast.message
+
+
+async def prompt_choice(
+    *, message: str, choices: list[str] | list[tuple[str, str]], default: str | None = None
+) -> str | None:
+    if not choices:
+        return None
+
+    # Normalize choices to list[tuple[value, label]]
+    options: list[tuple[str, str]] = []
+    for choice in choices:
+        if isinstance(choice, tuple):
+            options.append(choice)
+        else:
+            options.append((choice, choice))
+
+    # Add numeric shortcuts to the header
+    new_lines = [message]
+    for i, (_, label) in enumerate(options):
+        if i < 9:
+            new_lines.append(f"  [{i + 1}] {label}")
+    full_message = "\n".join(new_lines)
+
+    choice_input = ChoiceInput(
+        message=full_message,
+        options=options,
+        default=default or options[0][0],
+    )
+
+    # Add numeric key bindings
+    from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
+
+    kb = KeyBindings()
+
+    @kb.add("1")
+    @kb.add("2")
+    @kb.add("3")
+    @kb.add("4")
+    @kb.add("5")
+    @kb.add("6")
+    @kb.add("7")
+    @kb.add("8")
+    @kb.add("9")
+    def _(event: KeyPressEvent) -> None:
+        index = int(event.data) - 1
+        if index < len(choice_input.options):
+            # ChoiceInput internals are a bit opaque to Pyright
+            choice_input.control.selected_index = index  # type: ignore
+            event.app.exit(result=choice_input.options[index][0])
+
+    # ChoiceInput has an .app which already has the layout and default key bindings.
+    app = choice_input.app  # type: ignore
+    if app.key_bindings:  # type: ignore
+        app.key_bindings = merge_key_bindings([app.key_bindings, kb])  # type: ignore
+    else:
+        app.key_bindings = kb  # type: ignore
+
+    try:
+        return await app.run_async()  # type: ignore
+    except (EOFError, KeyboardInterrupt):
+        return None
