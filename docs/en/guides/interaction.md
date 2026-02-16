@@ -45,14 +45,30 @@ Sometimes you need to enter multiple lines, such as pasting a code snippet or er
 
 After finishing your input, press `Enter` to send the complete message.
 
-## Clipboard and image paste
+## Clipboard and media paste
 
-Press `Ctrl-V` to paste text or images from the clipboard.
+Press `Ctrl-V` to paste text, images, or video files from the clipboard.
 
-If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
+If the clipboard contains an **image**, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
+
+If the clipboard contains a **video file path**, Kimi Code CLI will insert a reference to the video file. The AI can then use the `ReadMediaFile` tool to read and analyze the video content.
+
+Supported video formats include: MP4, MKV, AVI, MOV, WMV, WebM, M4V, FLV, 3GP, and 3G2.
+
+### Video input in print mode (non-interactive)
+
+When using [print mode](../customization/print-mode.md) with `-c` or `--command`, you can reference video files directly:
+
+```sh
+kimi --print -c "Analyze this video /path/to/video.mp4"
+```
+
+Kimi Code CLI will automatically detect video file paths in your command and make them available to the AI for analysis.
 
 ::: tip
 Image input requires the model to support the `image_in` capability. Video input requires the `video_in` capability.
+
+Models like [Kimi K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) support video understanding with strong performance on benchmarks like VideoMMMU (86.6), VideoMME (87.4), and LongVideoBench (79.8).
 :::
 
 ## Slash commands

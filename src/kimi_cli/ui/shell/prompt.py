@@ -45,7 +45,12 @@ from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
+from kimi_cli.utils.clipboard import (
+    ClipboardVideo,
+    grab_image_from_clipboard,
+    grab_video_from_clipboard,
+    is_clipboard_available,
+)
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.slashcmd import SlashCommand
@@ -518,7 +523,7 @@ def _build_image_part(image_bytes: bytes, mime_type: str) -> ImageURLPart:
     )
 
 
-type CachedAttachmentKind = Literal["image"]
+type CachedAttachmentKind = Literal["image", "video"]
 
 
 @dataclass(slots=True)
@@ -531,8 +536,10 @@ class CachedAttachment:
 class AttachmentCache:
     def __init__(self, root: Path | None = None) -> None:
         self._root = root or Path("/tmp/kimi")
-        self._dir_map: dict[CachedAttachmentKind, str] = {"image": "images"}
+        self._dir_map: dict[CachedAttachmentKind, str] = {"image": "images", "video": "videos"}
         self._payload_map: dict[tuple[CachedAttachmentKind, str, str], CachedAttachment] = {}
+        # For video references, we store path references without copying
+        self._video_refs: dict[str, Path] = {}
 
     def _dir_for(self, kind: CachedAttachmentKind) -> Path:
         return self._root / self._dir_map[kind]
@@ -591,6 +598,34 @@ class AttachmentCache:
         image.save(png_bytes, format="PNG")
         return self.store_bytes("image", ".png", png_bytes.getvalue())
 
+    def store_video_reference(self, video: ClipboardVideo) -> CachedAttachment | None:
+        """Store a video file path reference (does not copy the file).
+
+        Videos are referenced by their original path rather than being copied to cache
+        to avoid unnecessary disk usage for potentially large files.
+        """
+        dir_path = self._ensure_dir("video")
+        if dir_path is None:
+            return None
+
+        # Create a reference file containing the original path
+        attachment_id = self._reserve_id(dir_path, ".ref")
+        ref_path = dir_path / attachment_id
+        try:
+            ref_path.write_text(str(video.path), encoding="utf-8")
+        except OSError as exc:
+            logger.warning(
+                "Failed to write video reference file: {file} ({error})",
+                file=ref_path,
+                error=exc,
+            )
+            return None
+
+        cached = CachedAttachment(kind="video", attachment_id=attachment_id, path=ref_path)
+        # Store the original video path for quick lookup
+        self._video_refs[attachment_id] = video.path
+        return cached
+
     def load_bytes(
         self, kind: CachedAttachmentKind, attachment_id: str
     ) -> tuple[Path, bytes] | None:
@@ -618,12 +653,31 @@ class AttachmentCache:
             mime_type = _guess_image_mime(path)
             part = _build_image_part(image_bytes, mime_type)
             return wrap_media_part(part, tag="image", attrs={"path": str(path)})
+        if kind == "video":
+            # Get the original video path from the reference
+            video_path = self._video_refs.get(attachment_id)
+            if video_path is None:
+                # Try to read from the reference file
+                ref_path = self._dir_for("video") / attachment_id
+                if not ref_path.exists():
+                    return None
+                try:
+                    video_path = Path(ref_path.read_text(encoding="utf-8").strip())
+                    self._video_refs[attachment_id] = video_path
+                except (OSError, ValueError):
+                    return None
+            if not video_path.exists():
+                return None
+            # Return as text part with @ mention for the agent to read via ReadMediaFile
+            return [TextPart(text=f"@{video_path}")]
         return None
 
 
 def _parse_attachment_kind(raw_kind: str) -> CachedAttachmentKind | None:
     if raw_kind == "image":
         return "image"
+    if raw_kind == "video":
+        return "video"
     return None
 
 
@@ -711,7 +765,10 @@ class CustomPromptSession:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
+                # Try to paste image first, then video, then fall back to text
                 if self._try_paste_image(event):
+                    return
+                if self._try_paste_video(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
                 event.current_buffer.paste_clipboard_data(clipboard_data)
@@ -812,6 +869,30 @@ class CustomPromptSession:
         )
 
         placeholder = f"[image:{cached.attachment_id},{image.width}x{image.height}]"
+        event.current_buffer.insert_text(placeholder)
+        event.app.invalidate()
+        return True
+
+    def _try_paste_video(self, event: KeyPressEvent) -> bool:
+        """Try to paste a video file from the clipboard. Return True if successful."""
+        video = grab_video_from_clipboard()
+        if video is None:
+            return False
+
+        if "video_in" not in self._model_capabilities:
+            console.print("[yellow]Video input is not supported by the selected LLM model[/yellow]")
+            return False
+
+        cached = self._attachment_cache.store_video_reference(video)
+        if cached is None:
+            return False
+        logger.debug(
+            "Pasted video from clipboard: {attachment_id}, {video_path}",
+            attachment_id=cached.attachment_id,
+            video_path=video.path,
+        )
+
+        placeholder = f"[video:{cached.attachment_id}]"
         event.current_buffer.insert_text(placeholder)
         event.app.invalidate()
         return True

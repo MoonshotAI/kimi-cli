@@ -45,14 +45,30 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 输入完成后，按 `Enter` 发送整条消息。
 
-## 剪贴板与图片粘贴
+## 剪贴板与媒体粘贴
 
-按 `Ctrl-V` 可以粘贴剪贴板中的文本或图片。
+按 `Ctrl-V` 可以粘贴剪贴板中的文本、图片或视频文件。
 
-如果剪贴板中是图片，Kimi Code CLI 会自动将图片作为附件添加到消息中。发送消息后，AI 可以看到并分析这张图片。
+如果剪贴板中是**图片**，Kimi Code CLI 会自动将图片作为附件添加到消息中。发送消息后，AI 可以看到并分析这张图片。
+
+如果剪贴板中是**视频文件路径**，Kimi Code CLI 会插入该视频文件的引用。AI 随后可以使用 `ReadMediaFile` 工具读取和分析视频内容。
+
+支持的视频格式包括：MP4、MKV、AVI、MOV、WMV、WebM、M4V、FLV、3GP 和 3G2。
+
+### Print 模式（非交互式）中的视频输入
+
+在使用 [Print 模式](../customization/print-mode.md) 配合 `-c` 或 `--command` 时，你可以直接引用视频文件：
+
+```sh
+kimi --print -c "分析这个视频 /path/to/video.mp4"
+```
+
+Kimi Code CLI 会自动检测命令中的视频文件路径，并让 AI 进行分析。
 
 ::: tip 提示
 图片输入需要当前模型支持 `image_in` 能力，视频输入需要支持 `video_in` 能力。
+
+像 [Kimi K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) 这样的模型支持视频理解，在 VideoMMMU (86.6)、VideoMME (87.4) 和 LongVideoBench (79.8) 等基准测试中表现优异。
 :::
 
 ## 斜杠命令
