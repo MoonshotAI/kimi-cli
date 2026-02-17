@@ -1,0 +1,73 @@
+#!/bin/bash
+# kimigas-sync-upstream - Sync main branch from upstream (origin)
+# Runs from kimigas crew workspace
+# Created: 2026-02-17
+
+set -euo pipefail
+
+REPO_DIR="/home/gastown/gt/kimigas/crew/upstream"
+LOG_FILE="/home/gastown/logs/kimigas/sync-$(date +%Y%m%d).log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Ensure log directory exists
+mkdir -p "$(dirname "$LOG_FILE")"
+
+log() {
+    echo "[$TIMESTAMP] $1" | tee -a "$LOG_FILE"
+}
+
+cd "$REPO_DIR" || {
+    log "ERROR: Failed to cd to $REPO_DIR"
+    exit 1
+}
+
+log "=== Starting upstream sync ==="
+
+# Check if we have a clean git state
+if ! git diff --quiet HEAD; then
+    log "WARNING: Working directory has uncommitted changes. Stashing..."
+    git stash push -m "Auto-stash during sync at $TIMESTAMP"
+    STASHED=1
+else
+    STASHED=0
+fi
+
+# Fetch latest from origin
+log "Fetching from origin..."
+if ! git fetch origin main 2>&1 | tee -a "$LOG_FILE"; then
+    log "ERROR: Failed to fetch from origin"
+    exit 1
+fi
+
+# Get current and upstream commit
+LOCAL_COMMIT=$(git rev-parse HEAD)
+UPSTREAM_COMMIT=$(git rev-parse origin/main)
+
+if [ "$LOCAL_COMMIT" = "$UPSTREAM_COMMIT" ]; then
+    log "INFO: Already up to date (commit: ${LOCAL_COMMIT:0:8})"
+else
+    log "INFO: Updates available"
+    log "  Local:  ${LOCAL_COMMIT:0:8}"
+    log "  Upstream: ${UPSTREAM_COMMIT:0:8}"
+
+    # Pull the changes
+    if git pull --rebase origin main 2>&1 | tee -a "$LOG_FILE"; then
+        NEW_COMMIT=$(git rev-parse HEAD)
+        log "SUCCESS: Synced to ${NEW_COMMIT:0:8}"
+
+        # Show commits that were pulled
+        log "Commits synced:"
+        git log --oneline --no-decorate "${LOCAL_COMMIT}..${NEW_COMMIT}" 2>&1 | tee -a "$LOG_FILE"
+    else
+        log "ERROR: Failed to pull changes"
+        exit 1
+    fi
+fi
+
+# Restore stashed changes if any
+if [ "$STASHED" -eq 1 ]; then
+    log "Restoring stashed changes..."
+    git stash pop 2>&1 | tee -a "$LOG_FILE" || true
+fi
+
+log "=== Sync completed ==="

@@ -1,0 +1,26 @@
+#!/bin/bash
+# kimigas-hourly - Hourly automation for kimigas crew upstream
+# Runs sync and release check
+# Created: 2026-02-17
+
+set -euo pipefail
+
+LOG_FILE="/home/gastown/logs/kimigas/hourly-$(date +%Y%m%d).log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+mkdir -p "$(dirname "$LOG_FILE")"
+
+{
+echo "[$TIMESTAMP] === Kimigas Hourly Run Starting ==="
+
+# Step 1: Sync upstream
+echo "[$TIMESTAMP] Step 1: Syncing upstream..."
+/home/gastown/bin/kimigas-sync-upstream 2>&1
+
+# Step 2: Check for release
+echo "[$TIMESTAMP] Step 2: Checking for release..."
+/home/gastown/bin/kimigas-release-check 2>&1
+
+echo "[$TIMESTAMP] === Kimigas Hourly Run Completed ==="
+echo ""
+} >> "$LOG_FILE" 2>&1

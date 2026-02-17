@@ -1,0 +1,154 @@
+#!/bin/bash
+# kimigas-release-check - Check for new commits and prepare release bump
+# Runs from kimigas crew workspace
+# Created: 2026-02-17
+
+set -euo pipefail
+
+REPO_DIR="/home/gastown/gt/kimigas/crew/upstream"
+LOG_FILE="/home/gastown/logs/kimigas/release-$(date +%Y%m%d).log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Ensure log directory exists
+mkdir -p "$(dirname "$LOG_FILE")"
+
+log() {
+    echo "[$TIMESTAMP] $1" | tee -a "$LOG_FILE"
+}
+
+cd "$REPO_DIR" || {
+    log "ERROR: Failed to cd to $REPO_DIR"
+    exit 1
+}
+
+log "=== Starting release check ==="
+
+# Get the latest version tag (numeric only for kimi-cli)
+LATEST_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+
+if [ -z "$LATEST_TAG" ]; then
+    log "ERROR: No version tag found"
+    exit 1
+fi
+
+log "Latest release tag: $LATEST_TAG"
+
+# Get current version from pyproject.toml
+CURRENT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+log "Current pyproject.toml version: $CURRENT_VERSION"
+
+# Get commit of latest tag
+TAG_COMMIT=$(git rev-list -n1 "$LATEST_TAG" 2>/dev/null || echo "")
+if [ -z "$TAG_COMMIT" ]; then
+    log "ERROR: Could not find commit for tag $LATEST_TAG"
+    exit 1
+fi
+
+# Get current HEAD commit
+HEAD_COMMIT=$(git rev-parse HEAD)
+
+# Check if there are commits since the tag
+if [ "$TAG_COMMIT" = "$HEAD_COMMIT" ]; then
+    log "INFO: No new commits since $LATEST_TAG. Nothing to release."
+    exit 0
+fi
+
+NEW_COMMITS=$(git log --oneline "${TAG_COMMIT}..${HEAD_COMMIT}" | wc -l)
+log "INFO: $NEW_COMMITS new commits since $LATEST_TAG"
+
+# Check if a bump branch already exists
+BUMP_BRANCH_PATTERN="bump-*"
+EXISTING_BUMP=$(git branch -r | grep -E "origin/bump-[0-9]+\.[0-9]+" | head -1 || true)
+
+if [ -n "$EXISTING_BUMP" ]; then
+    log "INFO: Bump branch already exists: $EXISTING_BUMP. Skipping."
+    exit 0
+fi
+
+# Calculate next version (minor bump, patch always 0)
+# Current: 1.12.0 -> Next: 1.13.0
+MAJOR=$(echo "$LATEST_TAG" | cut -d. -f1)
+MINOR=$(echo "$LATEST_TAG" | cut -d. -f2)
+NEXT_MINOR=$((MINOR + 1))
+NEXT_VERSION="${MAJOR}.${NEXT_MINOR}.0"
+
+log "Next version will be: $NEXT_VERSION"
+
+# Create bump branch
+BRANCH_NAME="bump-${NEXT_VERSION}"
+log "Creating branch: $BRANCH_NAME"
+
+git checkout -b "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE"
+
+# Update pyproject.toml version
+log "Updating pyproject.toml version to $NEXT_VERSION"
+sed -i "s/^version = \"${CURRENT_VERSION}\"/version = \"${NEXT_VERSION}\"/" pyproject.toml
+
+# Update packages/kimi-code/pyproject.toml version (must stay in sync)
+if [ -f "packages/kimi-code/pyproject.toml" ]; then
+    KIMI_CODE_VERSION=$(grep -E '^version\s*=' packages/kimi-code/pyproject.toml | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+    if [ "$KIMI_CODE_VERSION" != "$NEXT_VERSION" ]; then
+        log "Updating packages/kimi-code/pyproject.toml version to $NEXT_VERSION"
+        sed -i "s/^version = \"${KIMI_CODE_VERSION}\"/version = \"${NEXT_VERSION}\"/" packages/kimi-code/pyproject.toml
+        # Update the dependency version too
+        sed -i "s/kimi-cli==${CURRENT_VERSION}/kimi-cli==${NEXT_VERSION}/g" packages/kimi-code/pyproject.toml
+    fi
+fi
+
+# Update CHANGELOG.md (rename [Unreleased] to [NEXT_VERSION])
+TODAY=$(date +%Y-%m-%d)
+if grep -q "^## \[Unreleased\]" CHANGELOG.md; then
+    log "Updating CHANGELOG.md"
+    # Use sed to replace the Unreleased header with version header
+    sed -i "s/^## \[Unreleased\]/## [Unreleased]\n\n## [${NEXT_VERSION}] - ${TODAY}/" CHANGELOG.md
+else
+    log "WARNING: No [Unreleased] section found in CHANGELOG.md"
+fi
+
+# Sync dependencies with uv
+log "Running uv sync..."
+if command -v uv >/dev/null 2>&1; then
+    uv sync 2>&1 | tee -a "$LOG_FILE" || log "WARNING: uv sync had issues but continuing"
+else
+    log "WARNING: uv not found, skipping uv sync"
+fi
+
+# Commit changes
+log "Committing changes"
+git add pyproject.toml packages/kimi-code/pyproject.toml CHANGELOG.md uv.lock 2>/dev/null || true
+git commit -m "chore: bump version to ${NEXT_VERSION}" 2>&1 | tee -a "$LOG_FILE"
+
+# Push branch
+log "Pushing branch $BRANCH_NAME"
+git push origin "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE"
+
+# Create PR if gh CLI is available
+if command -v gh >/dev/null 2>&1; then
+    log "Creating pull request"
+    PR_BODY=$(cat <<EOF
+Automated version bump to ${NEXT_VERSION}.
+
+Changes since ${LATEST_TAG}:
+$(git log --oneline --no-decorate "${TAG_COMMIT}..${HEAD_COMMIT}" | head -20)
+
+This PR was generated automatically by the release automation script.
+EOF
+)
+    gh pr create \
+        --title "chore: bump version to ${NEXT_VERSION}" \
+        --body "$PR_BODY" \
+        --base main \
+        --head "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE" || log "WARNING: Failed to create PR"
+else
+    log "INFO: gh CLI not found, skipping PR creation"
+fi
+
+# Switch back to main
+git checkout main 2>&1 | tee -a "$LOG_FILE"
+
+log "=== Release check completed ==="
+log "Branch $BRANCH_NAME created and pushed."
+log "Next steps after PR merge:"
+log "  git checkout main && git pull"
+log "  git tag ${NEXT_VERSION}"
+log "  git push --tags"
