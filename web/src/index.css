@@ -429,45 +429,30 @@ body {
 
 /* ==========================================================================
  * 7. User Message Contrast Enhancement
- *    High-contrast styling for user messages to improve visual distinction
  * ========================================================================== */
 
 /* 
- * User messages use the .is-user class (added by Message component in message.tsx)
- * and the bubble is styled with rounded-2xl and bg-secondary classes.
- * These styles enhance the visual distinction between user and assistant messages.
+ * High-contrast styling for user messages to improve visual distinction
+ * from assistant messages in conversation history.
  */
 
-/* Enhanced user message bubble with high contrast */
+/* User message bubble styling */
 .is-user [class*="rounded-2xl"][class*="bg-secondary"] {
-  /* Use a distinctive gradient background instead of subtle gray */
   background: linear-gradient(135deg, 
     oklch(0.55 0.15 250) 0%, 
     oklch(0.65 0.12 250) 100%
   ) !important;
-  
-  /* White text for contrast */
   color: white !important;
-  
-  /* Subtle border */
   border: 1px solid oklch(0.5 0.15 250) !important;
-  
-  /* Soft shadow for depth */
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2) !important;
-  
-  /* Ensure consistent positioning for the label */
-  position: relative !important;
 }
 
 /* Ensure all text inside user message is white */
-.is-user [class*="rounded-2xl"] *,
-.is-user [class*="rounded-2xl"] p,
-.is-user [class*="rounded-2xl"] span,
-.is-user [class*="rounded-2xl"] div {
+.is-user [class*="rounded-2xl"] * {
   color: white !important;
 }
 
-/* Dark mode adjustments for user messages */
+/* Dark mode adjustments */
 .dark .is-user [class*="rounded-2xl"][class*="bg-secondary"] {
   background: linear-gradient(135deg, 
     oklch(0.6 0.18 250) 0%, 
@@ -477,11 +462,9 @@ body {
   box-shadow: 0 2px 12px rgba(37, 99, 235, 0.3) !important;
 }
 
-/* Add "You" label indicator above user messages */
+/* "You" label indicator - uses padding-top to preserve dynamic spacing */
 .is-user {
   position: relative;
-  /* Use padding-top instead of margin-top to preserve dynamic spacing logic */
-  /* This provides space for the "You" label without overriding spacingClass */
   padding-top: 20px;
 }
 
@@ -510,7 +493,7 @@ body {
   border-color: oklch(0.4 0.1 250);
 }
 
-/* Animation for new user messages */
+/* Entrance animation */
 @keyframes user-message-appear {
   from {
     opacity: 0;
