@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.14.4 (2026-02-18)
+
+- Fix shell UI not displaying file diffs after StrReplaceFile/WriteFile tool completion
+
 ## 1.14.3 (2026-02-16)
 
 - Add video clipboard paste support (Ctrl-V) in shell mode for video files
