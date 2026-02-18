@@ -5,6 +5,7 @@ import contextlib
 import importlib
 import inspect
 import json
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
@@ -29,6 +30,8 @@ from kosong.utils.typing import JsonType
 from loguru import logger
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.observability import record_tool_call, trace_span_async
+from kimi_cli.observability.attributes import ToolAttributes
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
@@ -110,13 +113,42 @@ class KimiToolset:
             except json.JSONDecodeError as e:
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
+            # Determine tool type by class name (classes defined later in file)
+            tool_type: Literal["native", "mcp", "external"] = "native"
+            tool_class_name = type(tool).__name__
+            if tool_class_name == "MCPTool":
+                tool_type = "mcp"
+            elif tool_class_name == "WireExternalTool":
+                tool_type = "external"
+
             async def _call():
+                start_time = time.perf_counter()
+                success = False
                 try:
-                    ret = await tool.call(arguments)
-                    return ToolResult(tool_call_id=tool_call.id, return_value=ret)
+                    async with trace_span_async(
+                        "kimi.tool.call",
+                        attributes={
+                            ToolAttributes.TOOL_NAME: tool_call.function.name,
+                            ToolAttributes.TOOL_TYPE: tool_type,
+                        },
+                    ) as span:
+                        ret = await tool.call(arguments)
+                        success = not isinstance(ret, (ToolError, ToolRejectedError))
+                        span.set_attribute(ToolAttributes.TOOL_SUCCESS, success)
+                        if isinstance(ret, ToolRejectedError):
+                            span.set_attribute(ToolAttributes.TOOL_APPROVAL, "rejected")
+                        return ToolResult(tool_call_id=tool_call.id, return_value=ret)
                 except Exception as e:
                     return ToolResult(
                         tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e))
+                    )
+                finally:
+                    duration_ms = (time.perf_counter() - start_time) * 1000
+                    record_tool_call(
+                        tool_name=tool_call.function.name,
+                        tool_type=tool_type,
+                        success=success,
+                        duration_ms=duration_ms,
                     )
 
             return asyncio.create_task(_call())

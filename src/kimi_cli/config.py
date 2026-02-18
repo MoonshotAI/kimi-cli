@@ -141,6 +141,26 @@ class MCPConfig(BaseModel):
     )
 
 
+class ObservabilityConfig(BaseModel):
+    """Observability configuration for tracing and metrics."""
+
+    enabled: bool = Field(default=False, description="Enable observability")
+    export_target: Literal["none", "console", "otlp", "file"] = Field(
+        default="none", description="Export target for telemetry data"
+    )
+    otlp_endpoint: str = Field(default="http://localhost:4317", description="OTLP endpoint URL")
+    otlp_protocol: Literal["grpc", "http"] = Field(
+        default="grpc", description="OTLP protocol (grpc or http)"
+    )
+    otlp_headers: dict[str, str] = Field(default_factory=dict, description="OTLP headers")
+    file_path: str = Field(default="", description="File path for file exporter")
+    sampling_rate: float = Field(
+        default=1.0, ge=0.0, le=1.0, description="Sampling rate (0.0 to 1.0)"
+    )
+    session_based_trace: bool = Field(default=False, description="Use session-based tracing")
+    log_content: bool = Field(default=False, description="Log prompts and responses")
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -159,6 +179,9 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    observability: ObservabilityConfig = Field(
+        default_factory=ObservabilityConfig, description="Observability configuration"
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

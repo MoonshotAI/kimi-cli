@@ -51,6 +51,23 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
         redirect_stderr_to_logger()
 
 
+def _initialize_observability(config: Config) -> None:
+    """Initialize observability (tracing and metrics) based on configuration."""
+    from kimi_cli.observability import initialize
+    from kimi_cli.observability.config import ObservabilityConfig, ObservabilitySettings
+
+    settings = ObservabilitySettings.from_pydantic(config.observability)
+    obs_config = ObservabilityConfig.from_settings(settings)
+    initialize(obs_config)
+
+
+def _record_session_start(session_id: str, agent_name: str) -> None:
+    """Record session start metric."""
+    from kimi_cli.observability import record_session_start
+
+    record_session_start(session_id=session_id, agent_name=agent_name)
+
+
 class KimiCLI:
     @staticmethod
     async def create(
@@ -113,6 +130,9 @@ class KimiCLI:
             config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
+        # Initialize observability (tracing and metrics)
+        _initialize_observability(config)
+
         oauth = OAuthManager(config)
 
         model: LLMModel | None = None
@@ -165,6 +185,10 @@ class KimiCLI:
         await context.restore()
 
         soul = KimiSoul(agent, context=context)
+
+        # Record session start metric
+        _record_session_start(session.id, agent.name)
+
         return KimiCLI(soul, runtime, env_overrides)
 
     def __init__(

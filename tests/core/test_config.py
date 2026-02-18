@@ -33,6 +33,17 @@ def test_default_config_dump():
             },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
+            "observability": {
+                "enabled": False,
+                "export_target": "none",
+                "otlp_endpoint": "http://localhost:4317",
+                "otlp_protocol": "grpc",
+                "otlp_headers": {},
+                "file_path": "",
+                "sampling_rate": 1.0,
+                "session_based_trace": False,
+                "log_content": False,
+            },
         }
     )
 
