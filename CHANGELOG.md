@@ -11,6 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.15.0 (2026-02-19)
+
+- Privacy: Anonymize telemetry headers sent during OAuth login and API requests
+  - Device name, model, OS version, and device ID are no longer transmitted
+  - All HTTP requests now use minimal User-Agent header (KimiCLI/<version>)
+
 ## 1.14.4 (2026-02-18)
 
 - Fix shell UI not displaying file diffs after StrReplaceFile/WriteFile tool completion

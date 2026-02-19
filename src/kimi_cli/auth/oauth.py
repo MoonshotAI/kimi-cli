@@ -3,11 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import platform
-import socket
-import sys
 import time
-import uuid
 import webbrowser
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -139,80 +135,22 @@ def _oauth_host() -> str:
     return os.getenv("KIMI_CODE_OAUTH_HOST") or os.getenv("KIMI_OAUTH_HOST") or DEFAULT_OAUTH_HOST
 
 
-def _device_id_path() -> Path:
-    return get_share_dir() / "device_id"
-
-
 def _ensure_private_file(path: Path) -> None:
     with suppress(OSError):
         os.chmod(path, 0o600)
 
 
-def _device_model() -> str:
-    system = platform.system()
-    arch = platform.machine() or ""
-    if system == "Darwin":
-        version = platform.mac_ver()[0] or platform.release()
-        if version and arch:
-            return f"macOS {version} {arch}"
-        if version:
-            return f"macOS {version}"
-        return f"macOS {arch}".strip()
-    if system == "Windows":
-        release = platform.release()
-        if release == "10":
-            try:
-                build = sys.getwindowsversion().build  # type: ignore[attr-defined]
-            except Exception:
-                build = None
-            if build and build >= 22000:
-                release = "11"
-        if release and arch:
-            return f"Windows {release} {arch}"
-        if release:
-            return f"Windows {release}"
-        return f"Windows {arch}".strip()
-    if system:
-        version = platform.release()
-        if version and arch:
-            return f"{system} {version} {arch}"
-        if version:
-            return f"{system} {version}"
-        return f"{system} {arch}".strip()
-    return "Unknown"
-
-
-def get_device_id() -> str:
-    path = _device_id_path()
-    if path.exists():
-        return path.read_text(encoding="utf-8").strip()
-    device_id = uuid.uuid4().hex
-    path.write_text(device_id, encoding="utf-8")
-    _ensure_private_file(path)
-    return device_id
-
-
-def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
-    try:
-        value.encode("ascii")
-        return value
-    except UnicodeEncodeError:
-        sanitized = value.encode("ascii", errors="ignore").decode("ascii").strip()
-        return sanitized or fallback
-
-
-def _common_headers() -> dict[str, str]:
-    device_name = platform.node() or socket.gethostname()
-    device_model = _device_model()
+def common_headers() -> dict[str, str]:
+    # PRIVACY: Telemetry headers anonymized to prevent device fingerprinting
     headers = {
         "X-Msh-Platform": "kimi_cli",
         "X-Msh-Version": VERSION,
-        "X-Msh-Device-Name": device_name,
-        "X-Msh-Device-Model": device_model,
-        "X-Msh-Os-Version": platform.version(),
-        "X-Msh-Device-Id": get_device_id(),
+        "X-Msh-Device-Name": "anonymous",
+        "X-Msh-Device-Model": "unknown",
+        "X-Msh-Os-Version": "unknown",
+        "X-Msh-Device-Id": "00000000-0000-0000-0000-000000000000",
     }
-    return {key: _ascii_header_value(value) for key, value in headers.items()}
+    return headers
 
 
 def _credentials_dir() -> Path:
@@ -316,7 +254,7 @@ async def request_device_authorization() -> DeviceAuthorization:
         session.post(
             f"{_oauth_host().rstrip('/')}/api/oauth/device_authorization",
             data={"client_id": KIMI_CODE_CLIENT_ID},
-            headers=_common_headers(),
+            headers=common_headers(),
         ) as response,
     ):
         data = await response.json(content_type=None)
@@ -344,7 +282,7 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
                     "device_code": auth.device_code,
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 },
-                headers=_common_headers(),
+                headers=common_headers(),
             ) as response,
         ):
             data_any: Any = await response.json(content_type=None)
@@ -369,7 +307,7 @@ async def refresh_token(refresh_token: str) -> OAuthToken:
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
             },
-            headers=_common_headers(),
+            headers=common_headers(),
         ) as response,
     ):
         data = await response.json(content_type=None)
@@ -644,7 +582,7 @@ class OAuthManager:
         self._access_tokens[ref.key] = token.access_token
 
     def common_headers(self) -> dict[str, str]:
-        return _common_headers()
+        return common_headers()
 
     def resolve_api_key(self, api_key: SecretStr, oauth: OAuthRef | None) -> str:
         if oauth:
@@ -787,4 +725,4 @@ class OAuthManager:
 if __name__ == "__main__":
     from rich import print
 
-    print(_common_headers())
+    print(common_headers())

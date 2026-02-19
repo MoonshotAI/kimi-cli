@@ -196,11 +196,16 @@ async def _list_models(
     base_url: str,
     api_key: str,
 ) -> list[ModelInfo]:
+    from kimi_cli.auth.oauth import common_headers
+
     models_url = f"{base_url.rstrip('/')}/models"
     try:
         async with session.get(
             models_url,
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                **common_headers(),
+            },
             raise_for_status=True,
         ) as response:
             resp_json = await response.json()
