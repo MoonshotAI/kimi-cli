@@ -4,12 +4,14 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
+from urllib.parse import urlparse
 
 from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.exception import ConfigError
 
 if TYPE_CHECKING:
     from kimi_cli.auth.oauth import OAuthManager
@@ -86,8 +88,13 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
         case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
+                applied["OPENAI_BASE_URL"] = base_url
             if api_key := os.getenv("OPENAI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
+                applied["OPENAI_API_KEY"] = "******"
+            elif api_key := os.getenv("AZURE_OPENAI_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["AZURE_OPENAI_API_KEY"] = "******"
         case _:
             pass
 
@@ -101,6 +108,66 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
     if provider.custom_headers:
         headers.update(provider.custom_headers)
     return headers
+
+
+def _is_azure_openai_base_url(base_url: str) -> bool:
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").lower()
+    if not host:
+        return False
+
+    is_azure_cloud = host.endswith((".azure.com", ".azure.us", ".azure.cn"))
+    if not is_azure_cloud:
+        return False
+
+    if host.endswith(".openai.azure.com") or host.endswith(".cognitiveservices.azure.com"):
+        return True
+
+    return "/openai/deployments/" in path
+
+
+def _openai_client_kwargs(provider: LLMProvider, *, resolved_api_key: str) -> dict[str, Any]:
+    """Return kwargs forwarded into `openai.AsyncOpenAI(...)` (via Kosong providers).
+
+    This is used by `openai_legacy` and `openai_responses`.
+
+    Azure OpenAI requires:
+    - `api-version` query parameter
+    - `api-key` header auth
+    """
+    client_kwargs: dict[str, Any] = {}
+
+    default_headers: dict[str, str] = {}
+    if provider.custom_headers:
+        default_headers.update(provider.custom_headers)
+
+    default_query: dict[str, object] = {}
+    if provider.default_query:
+        default_query.update(provider.default_query)
+
+    if provider.base_url and _is_azure_openai_base_url(provider.base_url):
+        if "api-version" not in default_query:
+            api_version = (
+                os.getenv("AZURE_COGNITIVE_SERVICES_API_VERSION")
+                or os.getenv("AZURE_OPENAI_API_VERSION")
+            )
+            if api_version:
+                default_query["api-version"] = api_version
+            else:
+                raise ConfigError(
+                    "Azure AI Foundry / Cognitive Services deployment base_url detected, but no "
+                    "'api-version' was provided. Set it in provider.default_query['api-version'] "
+                    "or via AZURE_COGNITIVE_SERVICES_API_VERSION / AZURE_OPENAI_API_VERSION."
+                )
+        default_headers.setdefault("api-key", resolved_api_key)
+
+    if default_headers:
+        client_kwargs["default_headers"] = default_headers
+    if default_query:
+        client_kwargs["default_query"] = default_query
+
+    return client_kwargs
 
 
 def create_llm(
@@ -152,6 +219,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                **_openai_client_kwargs(provider, resolved_api_key=resolved_api_key),
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -160,6 +228,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                **_openai_client_kwargs(provider, resolved_api_key=resolved_api_key),
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic

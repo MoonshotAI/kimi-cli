@@ -79,6 +79,7 @@ tool_call_timeout_ms = 60000
 | `api_key` | `string` | Yes | API key |
 | `env` | `table` | No | Environment variables to set before creating provider instance |
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
+| `default_query` | `table` | No | Default query parameters to attach to requests |
 
 Example:
 
@@ -88,6 +89,7 @@ type = "kimi"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 custom_headers = { "X-Custom-Header" = "value" }
+default_query = { "foo" = "bar" }
 ```
 
 ### `models`

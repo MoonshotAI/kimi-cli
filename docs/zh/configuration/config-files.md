@@ -79,6 +79,7 @@ tool_call_timeout_ms = 60000
 | `api_key` | `string` | 是 | API 密钥 |
 | `env` | `table` | 否 | 创建供应商实例前设置的环境变量 |
 | `custom_headers` | `table` | 否 | 请求时附加的自定义 HTTP 头 |
+| `default_query` | `table` | 否 | 请求时附加的默认 Query 参数 |
 
 示例：
 
@@ -88,6 +89,7 @@ type = "kimi"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 custom_headers = { "X-Custom-Header" = "value" }
+default_query = { "foo" = "bar" }
 ```
 
 ### `models`

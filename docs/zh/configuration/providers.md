@@ -57,6 +57,33 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+#### Azure OpenAI（Chat Completions）
+
+Azure OpenAI 的请求方式略有不同（需要 `api-version` Query 参数，并使用 `api-key` 头进行鉴权）。
+可以用 `openai_legacy` 来配置：
+
+```toml
+[providers.azure-openai]
+type = "openai_legacy"
+base_url = "https://<resource>.cognitiveservices.azure.com/openai/deployments/<deployment>"
+api_key = "" # 建议通过环境变量 AZURE_OPENAI_API_KEY 设置，避免写入磁盘
+default_query = { "api-version" = "2024-05-01-preview" }
+```
+
+推荐环境变量（Azure）：
+
+```bash
+export AZURE_OPENAI_API_KEY="..."
+export AZURE_COGNITIVE_SERVICES_API_VERSION="2024-05-01-preview"
+```
+
+关于 “Direct from Azure” 的 Moonshot AI 模型说明（参考 Microsoft Learn）：
+
+- `Kimi-K2.5`：chat-completions（包含 `reasoning_content`），支持文本 + 图片输入，支持 tool calling。
+- `Kimi-K2-Thinking`：chat-completions（包含 `reasoning_content`），仅文本输入，支持 tool calling。
+- 文档中两者均标注为 262,144 token 输入与 262,144 token 输出：
+  `https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-direct-others&tabs=global-standard-aoai%2Cglobal-standard#moonshot-ai-models-sold-directly-by-azure`
+
 ### `openai_responses`
 
 用于 OpenAI Responses API（较新的 API 格式）。
@@ -149,4 +176,3 @@ capabilities = ["thinking", "image_in"]
 | `moonshot_fetch` | `FetchURL` | 回退到本地抓取 |
 
 使用其他平台时，`FetchURL` 工具仍可使用，但会回退到本地抓取。
-
