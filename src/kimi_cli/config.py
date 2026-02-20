@@ -44,6 +44,8 @@ class LLMProvider(BaseModel):
     """Environment variables to set before creating the provider instance"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
+    default_query: dict[str, object] | None = None
+    """Default query parameters to include in API requests"""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
 

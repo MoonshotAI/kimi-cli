@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
@@ -86,7 +86,8 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
         case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
-            if api_key := os.getenv("OPENAI_API_KEY"):
+            api_key = os.getenv("OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
+            if api_key:
                 provider.api_key = SecretStr(api_key)
         case _:
             pass
@@ -101,6 +102,54 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
     if provider.custom_headers:
         headers.update(provider.custom_headers)
     return headers
+
+
+def _is_azure_openai_base_url(base_url: str) -> bool:
+    url = base_url.lower()
+    return (
+        ".openai.azure.com" in url
+        or ".cognitiveservices.azure.com" in url
+        or "/openai/deployments/" in url
+        or url.rstrip("/").endswith("/openai")
+    )
+
+
+def _openai_client_kwargs(provider: LLMProvider, *, resolved_api_key: str) -> dict[str, Any]:
+    """Return kwargs forwarded into `openai.AsyncOpenAI(...)` (via Kosong providers).
+
+    This is used by `openai_legacy` and `openai_responses`.
+
+    Azure OpenAI requires:
+    - `api-version` query parameter
+    - `api-key` header auth
+    """
+    client_kwargs: dict[str, Any] = {}
+
+    default_headers: dict[str, str] = {}
+    if provider.custom_headers:
+        default_headers.update(provider.custom_headers)
+
+    default_query: dict[str, object] = {}
+    if provider.default_query:
+        default_query.update(provider.default_query)
+
+    if provider.base_url and _is_azure_openai_base_url(provider.base_url):
+        if "api-version" not in default_query and (
+            api_version := (
+                os.getenv("AZURE_COGNITIVE_SERVICES_API_VERSION")
+                or os.getenv("AZURE_OPENAI_API_VERSION")
+                or os.getenv("OPENAI_API_VERSION")
+            )
+        ):
+            default_query["api-version"] = api_version
+        default_headers.setdefault("api-key", resolved_api_key)
+
+    if default_headers:
+        client_kwargs["default_headers"] = default_headers
+    if default_query:
+        client_kwargs["default_query"] = default_query
+
+    return client_kwargs
 
 
 def create_llm(
@@ -152,6 +201,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                **_openai_client_kwargs(provider, resolved_api_key=resolved_api_key),
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -160,6 +210,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                **_openai_client_kwargs(provider, resolved_api_key=resolved_api_key),
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic

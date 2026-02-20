@@ -57,6 +57,33 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+#### Azure OpenAI (Chat Completions)
+
+Azure OpenAI uses a slightly different request shape (requires an `api-version` query parameter and
+`api-key` header auth). You can configure it using `openai_legacy`:
+
+```toml
+[providers.azure-openai]
+type = "openai_legacy"
+base_url = "https://<resource>.cognitiveservices.azure.com/openai/deployments/<deployment>"
+api_key = "" # recommended: set via env var AZURE_OPENAI_API_KEY instead of saving to disk
+default_query = { "api-version" = "2024-05-01-preview" }
+```
+
+Recommended env vars (Azure):
+
+```bash
+export AZURE_OPENAI_API_KEY="..."
+export AZURE_COGNITIVE_SERVICES_API_VERSION="2024-05-01-preview"
+```
+
+Notes for Moonshot AI “sold directly by Azure” models:
+
+- `Kimi-K2.5`: chat-completions with `reasoning_content`, supports text + image input and tool calling.
+- `Kimi-K2-Thinking`: chat-completions with `reasoning_content`, text-only input, tool calling.
+- Both are documented as 262,144 token input and 262,144 token output. See Microsoft Learn for details:
+  `https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure?view=foundry-classic&pivots=azure-direct-others&tabs=global-standard-aoai%2Cglobal-standard#moonshot-ai-models-sold-directly-by-azure`
+
 ### `openai_responses`
 
 For OpenAI Responses API (newer API format).

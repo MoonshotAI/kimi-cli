@@ -3,6 +3,7 @@ from __future__ import annotations
 from inline_snapshot import snapshot
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
+from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
@@ -93,3 +94,26 @@ def test_create_llm_requires_base_url_for_kimi():
     model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
 
     assert create_llm(provider, model) is None
+
+
+def test_create_llm_openai_legacy_azure_adds_api_key_header_and_api_version(monkeypatch):
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://example.cognitiveservices.azure.com/openai/deployments/test-deployment",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="azure-openai",
+        model="test-deployment",
+        max_context_size=4096,
+        capabilities=None,
+    )
+
+    monkeypatch.setenv("AZURE_COGNITIVE_SERVICES_API_VERSION", "2024-05-01-preview")
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+
+    assert llm.chat_provider.client.default_query == snapshot({"api-version": "2024-05-01-preview"})
+    assert llm.chat_provider.client.default_headers.get("api-key") == snapshot("test-key")
