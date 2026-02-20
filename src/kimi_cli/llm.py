@@ -138,7 +138,6 @@ def _openai_client_kwargs(provider: LLMProvider, *, resolved_api_key: str) -> di
             api_version := (
                 os.getenv("AZURE_COGNITIVE_SERVICES_API_VERSION")
                 or os.getenv("AZURE_OPENAI_API_VERSION")
-                or os.getenv("OPENAI_API_VERSION")
             )
         ):
             default_query["api-version"] = api_version
