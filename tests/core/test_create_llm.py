@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from inline_snapshot import snapshot
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
@@ -7,6 +8,7 @@ from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
+from kimi_cli.exception import ConfigError
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm
 
 
@@ -96,6 +98,29 @@ def test_create_llm_requires_base_url_for_kimi():
     assert create_llm(provider, model) is None
 
 
+def test_augment_provider_with_env_vars_openai_legacy_tracks_applied(monkeypatch):
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://original.test/v1",
+        api_key=SecretStr("orig-key"),
+    )
+    model = LLMModel(provider="openai", model="gpt", max_context_size=4096, capabilities=None)
+
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://env.test/v1")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "env-key")
+
+    applied = augment_provider_with_env_vars(provider, model)
+
+    assert provider == snapshot(
+        LLMProvider(
+            type="openai_legacy",
+            base_url="https://env.test/v1",
+            api_key=SecretStr("env-key"),
+        )
+    )
+    assert applied == snapshot({"OPENAI_BASE_URL": "https://env.test/v1", "AZURE_OPENAI_API_KEY": "******"})
+
+
 def test_create_llm_openai_legacy_azure_adds_api_key_header_and_api_version(monkeypatch):
     provider = LLMProvider(
         type="openai_legacy",
@@ -117,3 +142,23 @@ def test_create_llm_openai_legacy_azure_adds_api_key_header_and_api_version(monk
 
     assert llm.chat_provider.client.default_query == snapshot({"api-version": "2024-05-01-preview"})
     assert llm.chat_provider.client.default_headers.get("api-key") == snapshot("test-key")
+
+
+def test_create_llm_openai_legacy_azure_requires_api_version(monkeypatch):
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://example.cognitiveservices.azure.com/openai/deployments/test-deployment",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="azure-openai",
+        model="test-deployment",
+        max_context_size=4096,
+        capabilities=None,
+    )
+
+    monkeypatch.delenv("AZURE_COGNITIVE_SERVICES_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+
+    with pytest.raises(ConfigError, match=r"api-version"):
+        create_llm(provider, model)
