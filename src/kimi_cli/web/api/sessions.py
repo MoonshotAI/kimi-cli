@@ -517,20 +517,43 @@ async def get_session_file(
     if file_path.is_dir():
         result: list[dict[str, str | int]] = []
         for subpath in file_path.iterdir():
-            if restrict_sensitive_apis:
-                rel_subpath = rel_path / subpath.name
-                if _is_sensitive_relative_path(rel_subpath):
-                    continue
-            if subpath.is_dir():
-                result.append({"name": subpath.name, "type": "directory"})
-            else:
-                result.append(
-                    {
-                        "name": subpath.name,
-                        "type": "file",
-                        "size": subpath.stat().st_size,
-                    }
-                )
+            try:
+                if restrict_sensitive_apis:
+                    rel_subpath = rel_path / subpath.name
+                    if _is_sensitive_relative_path(rel_subpath):
+                        continue
+
+                # Check if it's a symlink first
+                if subpath.is_symlink():
+                    # Try to resolve the symlink
+                    try:
+                        resolved = subpath.resolve(strict=True)
+                        if resolved.is_dir():
+                            result.append({"name": subpath.name, "type": "directory"})
+                        else:
+                            result.append(
+                                {
+                                    "name": subpath.name,
+                                    "type": "file",
+                                    "size": resolved.stat().st_size,
+                                }
+                            )
+                    except (OSError, RuntimeError):
+                        # Broken symlink - skip it to avoid breaking the entire listing
+                        continue
+                elif subpath.is_dir():
+                    result.append({"name": subpath.name, "type": "directory"})
+                else:
+                    result.append(
+                        {
+                            "name": subpath.name,
+                            "type": "file",
+                            "size": subpath.stat().st_size,
+                        }
+                    )
+            except (OSError, PermissionError):
+                # Skip inaccessible files
+                continue
         result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
         return Response(content=json.dumps(result), media_type="application/json")
 
