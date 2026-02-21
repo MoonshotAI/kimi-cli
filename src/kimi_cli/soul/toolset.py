@@ -35,6 +35,7 @@ from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
     ContentPart,
+    TextPart,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -256,7 +257,7 @@ class KimiToolset:
                 ),
             )
 
-        # Process individual results for logging and stats
+        # Process individual results for logging, stats, and additional context
         for result in exec_result.results:
             if not result.success:
                 logger.warning(
@@ -282,6 +283,19 @@ class KimiToolset:
                 )
                 # Note: Input modification is tricky because we've already parsed arguments
                 # For now, we log it but don't apply it. Future: pass modified_input back to tool.call()
+
+        # Display stderr from hooks for debugging
+        for result in exec_result.results:
+            if result.stderr and result.stderr.strip():
+                wire_send(TextPart(text=f"[Hook {result.hook_name}]: {result.stderr.strip()}"))
+
+        # Display additional context from hooks
+        additional_contexts = [
+            r.additional_context for r in exec_result.results if r.additional_context
+        ]
+        for context in additional_contexts:
+            if context.strip():
+                wire_send(TextPart(text=context))
 
         return None
 
@@ -322,7 +336,7 @@ class KimiToolset:
                 tool_input=tool_input,
             )
 
-            # Log results from sync hooks
+            # Process results from sync hooks
             for result in exec_result.results:
                 if not result.success:
                     logger.warning(
@@ -335,6 +349,19 @@ class KimiToolset:
                         "post-tool-call hook {name} executed successfully",
                         name=result.hook_name,
                     )
+
+            # Display stderr from hooks for debugging
+            for result in exec_result.results:
+                if result.stderr and result.stderr.strip():
+                    wire_send(TextPart(text=f"[Hook {result.hook_name}]: {result.stderr.strip()}"))
+
+            # Display additional context from hooks
+            additional_contexts = [
+                r.additional_context for r in exec_result.results if r.additional_context
+            ]
+            for context in additional_contexts:
+                if context.strip():
+                    wire_send(TextPart(text=context))
 
             # Async hooks are tracked but not awaited here
             if exec_result.async_tasks:
