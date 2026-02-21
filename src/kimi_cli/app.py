@@ -160,8 +160,8 @@ class KimiCLI:
 
         runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir, debug_hooks)
 
-        # Execute session_start hooks and collect additional contexts
-        hook_contexts = await runtime._execute_pre_session_hooks()
+        # Execute pre-session hooks and collect additional contexts and stderrs
+        hook_contexts, hook_stderrs = await runtime._execute_pre_session_hooks()
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
@@ -170,13 +170,19 @@ class KimiCLI:
         context = Context(session.context_file)
         messages_restored = await context.restore()
 
-        # Inject hook contexts as system messages only for new sessions
+        # Inject hook contexts and stderrs as system messages only for new sessions
         # to avoid accumulation on continued sessions
         if not messages_restored:
             for hook_context in hook_contexts:
                 if hook_context.strip():
                     await context.append_message(
                         Message(role="system", content=[TextPart(text=hook_context)])
+                    )
+            # Also inject stderr from hooks for debugging
+            for hook_stderr in hook_stderrs:
+                if hook_stderr.strip():
+                    await context.append_message(
+                        Message(role="system", content=[TextPart(text=hook_stderr)])
                     )
 
         soul = KimiSoul(agent, context=context)
@@ -262,8 +268,11 @@ class KimiCLI:
                 stop_ui_loop.set()
                 # wait for the soul task to finish, or raise
                 await soul_task
-                # Execute session_end hooks
-                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                # Execute post-session hooks and log any stderr
+                hook_stderrs = await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                for hook_stderr in hook_stderrs:
+                    if hook_stderr.strip():
+                        logger.info(hook_stderr)
 
     async def run_shell(self, command: str | None = None) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
@@ -344,8 +353,11 @@ class KimiCLI:
             try:
                 return await shell.run(command)
             finally:
-                # Execute session_end hooks
-                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                # Execute post-session hooks and log any stderr
+                hook_stderrs = await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                for hook_stderr in hook_stderrs:
+                    if hook_stderr.strip():
+                        logger.info(hook_stderr)
 
     async def run_print(
         self,
@@ -369,8 +381,11 @@ class KimiCLI:
             try:
                 return await print_.run(command)
             finally:
-                # Execute session_end hooks
-                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                # Execute post-session hooks and log any stderr
+                hook_stderrs = await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                for hook_stderr in hook_stderrs:
+                    if hook_stderr.strip():
+                        logger.info(hook_stderr)
 
     async def run_acp(self) -> None:
         """Run the Kimi Code CLI instance as ACP server."""
@@ -381,8 +396,11 @@ class KimiCLI:
             try:
                 await acp.run()
             finally:
-                # Execute session_end hooks
-                await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                # Execute post-session hooks and log any stderr
+                hook_stderrs = await self._runtime.execute_post_session_hooks(exit_reason="user_exit")
+                for hook_stderr in hook_stderrs:
+                    if hook_stderr.strip():
+                        logger.info(hook_stderr)
 
     async def run_wire_stdio(self) -> None:
         """Run the Kimi Code CLI instance as Wire server over stdio."""
@@ -393,5 +411,5 @@ class KimiCLI:
             try:
                 await server.serve()
             finally:
-                # Execute session_end hooks
+                # Execute post-session hooks
                 await self._runtime.execute_post_session_hooks(exit_reason="user_exit")

@@ -421,17 +421,21 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
-                # Only execute pre-agent-turn-stop hooks for 'no_tool_calls' stop reason
-                # Don't override explicit user tool rejection (tool_rejected)
-                should_continue = None
-                if step_outcome.stop_reason == "no_tool_calls":
-                    should_continue = await self._execute_pre_agent_turn_stop_hooks(
-                        stop_reason=step_outcome.stop_reason,
-                        step_count=step_no,
-                        final_message=step_outcome.assistant_message,
-                    )
+                # Execute pre-agent-turn-stop hooks whenever the agent is about to
+                # relinquish control (end the turn), regardless of stop reason.
+                # This allows quality gates to run for all turn endings.
+                # Note: Only 'no_tool_calls' can be blocked to continue working;
+                # other stop reasons (like tool_rejected) are final.
+                should_continue = await self._execute_pre_agent_turn_stop_hooks(
+                    stop_reason=step_outcome.stop_reason,
+                    step_count=step_no,
+                    final_message=step_outcome.assistant_message,
+                )
 
-                if should_continue:
+                # Only allow hooks to block/continue for 'no_tool_calls' stop reason.
+                # Other stop reasons (e.g., 'tool_rejected') are final and should not
+                # be overridden, even if hooks suggest continuing.
+                if should_continue and step_outcome.stop_reason == "no_tool_calls":
                     pre_agent_turn_stop_block_count += 1
                     if pre_agent_turn_stop_block_count > max_pre_agent_turn_stop_blocks:
                         # Exceeded max blocks, allow stop with warning
@@ -615,6 +619,19 @@ class KimiSoul:
         except Exception as e:
             logger.exception("Failed to execute pre-agent-turn-stop hooks: {error}", error=e)
             return None
+
+        # Display stderr from hooks for debugging
+        for result in exec_result.results:
+            if result.stderr and result.stderr.strip():
+                wire_send(TextPart(text=f"[Hook {result.hook_name}]: {result.stderr.strip()}"))
+
+        # Collect and display additional contexts from hooks
+        additional_contexts = [
+            r.additional_context for r in exec_result.results if r.additional_context
+        ]
+        for context in additional_contexts:
+            if context.strip():
+                wire_send(TextPart(text=context))
 
         # Check if any hook blocked the stop
         if exec_result.should_block:
