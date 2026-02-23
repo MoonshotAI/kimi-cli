@@ -707,7 +707,7 @@ class CustomPromptSession:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
-        @_kb.add('c-l', eager=True)
+        @_kb.add("c-l", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Clear screen while preserving scrollback history (fish-shell behavior)."""
             app = event.app
@@ -720,7 +720,7 @@ class CustomPromptSession:
 
                 # calculate scroll to push content to top; guard against negative
                 scroll = max(0, height - used_lines)
-                output.write('\n' * scroll)
+                output.write("\n" * scroll)
                 output.flush()
 
             app.renderer.clear()
