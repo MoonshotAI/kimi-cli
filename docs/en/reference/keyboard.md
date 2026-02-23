@@ -11,6 +11,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
 | `Ctrl-E` | Expand full approval request content |
+| `Ctrl-L` | Clear screen (preserve scrollback) |
 | `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
 
@@ -60,6 +61,20 @@ Image pasting requires the model to support `image_in` capability.
 When approval request preview content is truncated, press `Ctrl-E` to view the full content in a fullscreen pager. When preview is truncated, a "... (truncated, ctrl-e to expand)" hint is displayed.
 
 Useful for viewing longer shell commands or file diff content.
+
+## Clear screen
+
+### `Ctrl+L`: Clear screen
+
+Press `Ctrl+L` to clear the screen while preserving scrollback history. This behaves similar to fish shell:
+
+- Scrolls the current visible content upward out of view
+- Preserves complete scrollback history, you can scroll up anytime to review
+- Input box remains focused
+
+::: tip
+This differs from traditional terminal `clear` command or `Ctrl+L`, which clears the entire screen. Kimi Code CLI's clear screen operation simply scrolls the current content upward, allowing you to scroll back and review historical messages at any time.
+:::
 
 ## Exit and interrupt
 
