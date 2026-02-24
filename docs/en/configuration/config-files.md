@@ -1,32 +1,33 @@
-# Config Files
+# Config files
 
-Kimi Code CLI uses configuration files to manage API providers, models, services, and runtime parameters, supporting both TOML and JSON formats.
+Kimi Code CLI uses configuration files to manage API providers, models, services, and runtime parameters. Both TOML and JSON formats are supported.
 
-## Config file location
+## Configuration file location
 
-The default configuration file is located at `~/.kimi/config.toml`. On first run, if the configuration file doesn't exist, Kimi Code CLI will automatically create a default configuration file.
+The default configuration file is located at `~/.kimi/config.toml`. On the first run, if the configuration file does not exist, Kimi Code CLI will automatically create a default configuration file.
 
-You can specify a different configuration file (TOML or JSON format) with the `--config-file` flag:
+You can specify a different configuration file (either TOML or JSON format) using the `--config-file` parameter:
 
 ```sh
 kimi --config-file /path/to/config.toml
 ```
 
-When calling Kimi Code CLI programmatically, you can also pass the complete configuration content directly via the `--config` flag:
+When calling Kimi Code CLI programmatically, you can also pass the complete configuration content directly via the `--config` parameter:
 
 ```sh
 kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models": {...}}'
 ```
 
-## Config items
+## Configuration options
 
-The configuration file contains the following top-level configuration items:
+The configuration file contains the following top-level configuration options:
 
-| Item | Type | Description |
+| Configuration Option | Type | Description |
 | --- | --- | --- |
-| `default_model` | `string` | Default model name, must be a model defined in `models` |
-| `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
-| `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
+| `default_model` | `string` | The default model name to use; must be a model defined in `models` |
+| `default_thinking` | `boolean` | Whether to enable thinking mode by default (default is `false`) |
+| `default_yolo` | `boolean` | Whether to enable YOLO (auto-approval) mode by default (default is `false`) |
+| `bell_on_completion` | `boolean` | Whether to play a notification sound when an agent turn completes (default is `true`) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -39,6 +40,7 @@ The configuration file contains the following top-level configuration items:
 default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
+bell_on_completion = true
 
 [providers.kimi-for-coding]
 type = "kimi"
@@ -70,14 +72,14 @@ tool_call_timeout_ms = 60000
 
 ### `providers`
 
-`providers` defines API provider connection information. Each provider uses a unique name as key.
+`providers` defines API provider connection information. Each provider uses a unique name as the key.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` | `string` | Yes | Provider type, see [Providers](./providers.md) for details |
+| `type` | `string` | Yes | Provider type; see [Platforms and models](./providers.md) for details |
 | `base_url` | `string` | Yes | API base URL |
 | `api_key` | `string` | Yes | API key |
-| `env` | `table` | No | Environment variables to set before creating provider instance |
+| `env` | `table` | No | Environment variables to set before creating the provider instance |
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
 
 Example:
@@ -92,14 +94,14 @@ custom_headers = { "X-Custom-Header" = "value" }
 
 ### `models`
 
-`models` defines available models. Each model uses a unique name as key.
+`models` defines the available models. Each model uses a unique name as the key.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `provider` | `string` | Yes | Provider name to use, must be defined in `providers` |
-| `model` | `string` | Yes | Model identifier (model name used in API) |
+| `provider` | `string` | Yes | The provider name to use; must be defined in `providers` |
+| `model` | `string` | Yes | Model identifier (the model name used in the API) |
 | `max_context_size` | `integer` | Yes | Maximum context length (in tokens) |
-| `capabilities` | `array` | No | Model capability list, see [Providers](./providers.md#model-capabilities) for details |
+| `capabilities` | `array` | No | List of model capabilities; see [Platforms and models](./providers.md#model-capabilities) for details |
 
 Example:
 
@@ -113,22 +115,22 @@ capabilities = ["thinking", "image_in"]
 
 ### `loop_control`
 
-`loop_control` controls agent execution loop behavior.
+`loop_control` controls the behavior of the agent execution loop.
 
-| Field | Type | Default | Description |
+| Field | Type | Default Value | Description |
 | --- | --- | --- | --- |
 | `max_steps_per_turn` | `integer` | `100` | Maximum steps per turn (alias: `max_steps_per_run`) |
 | `max_retries_per_step` | `integer` | `3` | Maximum retries per step |
-| `max_ralph_iterations` | `integer` | `0` | Extra iterations after each user message; `0` disables; `-1` is unlimited |
-| `reserved_context_size` | `integer` | `50000` | Reserved token count for LLM response generation; auto-compaction triggers when `context_tokens + reserved_context_size >= max_context_size` |
+| `max_ralph_iterations` | `integer` | `0` | Additional automatic iterations after each user message; `0` means disabled; `-1` means infinite |
+| `reserved_context_size` | `integer` | `50000` | Number of tokens reserved for LLM response generation; automatic compaction is triggered when `context_tokens + reserved_context_size >= max_context_size` |
 
 ### `services`
 
-`services` configures external services used by Kimi Code CLI.
+`services` configures the external services used by Kimi Code CLI.
 
 #### `moonshot_search`
 
-Configures web search service. When enabled, the `SearchWeb` tool becomes available.
+Configures the web search service. When enabled, the `SearchWeb` tool becomes available.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -138,7 +140,7 @@ Configures web search service. When enabled, the `SearchWeb` tool becomes availa
 
 #### `moonshot_fetch`
 
-Configures web fetch service. When enabled, the `FetchURL` tool prioritizes using this service to fetch webpage content.
+Configures the web fetch service. When enabled, the `FetchURL` tool will prioritize using this service to fetch web page content.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -146,20 +148,20 @@ Configures web fetch service. When enabled, the `FetchURL` tool prioritizes usin
 | `api_key` | `string` | Yes | API key |
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
 
-::: tip
-When configuring the Kimi Code platform using the `/login` command, search and fetch services are automatically configured.
+::: tip Tip
+When configuring the Kimi Code platform using the `/login` command, the search and fetch services will be automatically configured.
 :::
 
 ### `mcp`
 
 `mcp` configures MCP client behavior.
 
-| Field | Type | Default | Description |
+| Field | Type | Default Value | Description |
 | --- | --- | --- | --- |
-| `client.tool_call_timeout_ms` | `integer` | `60000` | MCP tool call timeout (milliseconds) |
+| `client.tool_call_timeout_ms` | `integer` | `60000` | MCP tool call timeout (in milliseconds) |
 
 ## JSON configuration migration
 
-If `~/.kimi/config.toml` doesn't exist but `~/.kimi/config.json` exists, Kimi Code CLI will automatically migrate the JSON configuration to TOML format and backup the original file as `config.json.bak`.
+If `~/.kimi/config.toml` does not exist but `~/.kimi/config.json` exists, Kimi Code CLI will automatically migrate the JSON configuration to TOML format and back up the original file as `config.json.bak`.
 
-`--config-file` specified configuration files are parsed based on file extension. `--config` passed configuration content is first attempted as JSON, then falls back to TOML if that fails.
+The configuration file specified by `--config-file` is parsed automatically based on its extension. Configuration content passed via `--config` is first attempted to be parsed as JSON, and if that fails, it will be parsed as TOML.

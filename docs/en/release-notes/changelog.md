@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Config: Add `bell_on_completion` config option to play a notification sound when an agent turn completes (default: true)
+
 ## 1.12.0 (2026-02-11)
 
 - Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages
