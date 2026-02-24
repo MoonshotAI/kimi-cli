@@ -15,6 +15,7 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
+    RetryableChatProvider,
 )
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
@@ -385,14 +386,7 @@ class KimiSoul:
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
-        @tenacity.retry(
-            retry=retry_if_exception(self._is_retryable_error),
-            before_sleep=partial(self._retry_log, "step"),
-            wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
-            stop=stop_after_attempt(self._loop_control.max_retries_per_step),
-            reraise=True,
-        )
-        async def _kosong_step_with_retry() -> StepResult:
+        async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
                 chat_provider,
@@ -401,6 +395,20 @@ class KimiSoul:
                 self._context.history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
+            )
+
+        @tenacity.retry(
+            retry=retry_if_exception(self._is_retryable_error),
+            before_sleep=partial(self._retry_log, "step"),
+            wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
+            stop=stop_after_attempt(self._loop_control.max_retries_per_step),
+            reraise=True,
+        )
+        async def _kosong_step_with_retry() -> StepResult:
+            return await self._run_with_connection_recovery(
+                "step",
+                _run_step_once,
+                chat_provider=chat_provider,
             )
 
         result = await _kosong_step_with_retry()
@@ -486,6 +494,13 @@ class KimiSoul:
             ChatProviderError: When the chat provider returns an error.
         """
 
+        chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+
+        async def _run_compaction_once() -> Sequence[Message]:
+            if self._runtime.llm is None:
+                raise LLMNotSet()
+            return await self._compaction.compact(self._context.history, self._runtime.llm)
+
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
             before_sleep=partial(self._retry_log, "compaction"),
@@ -494,9 +509,11 @@ class KimiSoul:
             reraise=True,
         )
         async def _compact_with_retry() -> Sequence[Message]:
-            if self._runtime.llm is None:
-                raise LLMNotSet()
-            return await self._compaction.compact(self._context.history, self._runtime.llm)
+            return await self._run_with_connection_recovery(
+                "compaction",
+                _run_compaction_once,
+                chat_provider=chat_provider,
+            )
 
         wire_send(CompactionBegin())
         compacted_messages = await _compact_with_retry()
@@ -507,7 +524,9 @@ class KimiSoul:
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
-        if isinstance(exception, (APIConnectionError, APITimeoutError, APIEmptyResponseError)):
+        if isinstance(exception, (APIConnectionError, APITimeoutError)):
+            return not bool(getattr(exception, "_kimi_recovery_exhausted", False))
+        if isinstance(exception, APIEmptyResponseError):
             return True
         return isinstance(exception, APIStatusError) and exception.status_code in (
             429,  # Too Many Requests
@@ -515,6 +534,40 @@ class KimiSoul:
             502,  # Bad Gateway
             503,  # Service Unavailable
         )
+
+    async def _run_with_connection_recovery(
+        self,
+        name: str,
+        operation: Callable[[], Awaitable[Any]],
+        *,
+        chat_provider: object | None = None,
+    ) -> Any:
+        try:
+            return await operation()
+        except (APIConnectionError, APITimeoutError) as error:
+            if not isinstance(chat_provider, RetryableChatProvider):
+                raise
+            try:
+                recovered = chat_provider.on_retryable_error(error)
+            except Exception:
+                logger.exception(
+                    "Failed to recover chat provider during {name} after {error_type}.",
+                    name=name,
+                    error_type=type(error).__name__,
+                )
+                raise
+            if not recovered:
+                raise
+            logger.info(
+                "Recovered chat provider during {name} after {error_type}; retrying once.",
+                name=name,
+                error_type=type(error).__name__,
+            )
+            try:
+                return await operation()
+            except (APIConnectionError, APITimeoutError) as second_error:
+                second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
+                raise
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):

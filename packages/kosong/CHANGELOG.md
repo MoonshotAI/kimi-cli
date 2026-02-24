@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `RetryableChatProvider` protocol for providers that can recover from retryable transport errors
+- Implement `RetryableChatProvider` in Kimi, OpenAI Legacy, and OpenAI Responses providers
+- Add `create_openai_client` and `close_replaced_openai_client` utilities to `openai_common`
+
 ## 0.42.0 (2026-02-06)
 
 - Anthropic: Use adaptive thinking for Opus 4.6+ models instead of budget-based thinking
