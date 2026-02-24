@@ -479,7 +479,7 @@ class WireServer:
         self._soul.steer(msg.params.user_input)
         return JSONRPCSuccessResponse(
             id=msg.id,
-            result={"status": "steered"},
+            result={"status": Statuses.STEERED},
         )
 
     async def _handle_replay(

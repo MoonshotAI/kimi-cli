@@ -350,6 +350,11 @@ class KimiSoul:
     async def _agent_loop(self) -> TurnOutcome:
         """The main agent loop for one run."""
         assert self._runtime.llm is not None
+
+        # Discard any stale steers from a previous turn.
+        while not self._steer_queue.empty():
+            self._steer_queue.get_nowait()
+
         if isinstance(self._agent.toolset, KimiToolset):
             await self._agent.toolset.wait_for_mcp_tools()
 
@@ -411,7 +416,8 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
-                if step_outcome.stop_reason == "no_tool_calls" and await self._consume_pending_steers():
+                has_steers = await self._consume_pending_steers()
+                if step_outcome.stop_reason == "no_tool_calls" and has_steers:
                     continue  # steers injected, force another LLM step
                 final_message = (
                     step_outcome.assistant_message

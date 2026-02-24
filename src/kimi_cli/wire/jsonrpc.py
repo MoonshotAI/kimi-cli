@@ -220,3 +220,5 @@ class Statuses:
     """The agent run was cancelled by the user."""
     MAX_STEPS_REACHED = "max_steps_reached"
     """The agent run reached the maximum number of steps."""
+    STEERED = "steered"
+    """A steer message was queued for injection into the active turn."""
