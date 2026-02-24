@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.43.0 (2026-02-24)
+
 - Add `RetryableChatProvider` protocol for providers that can recover from retryable transport errors
 - Implement `RetryableChatProvider` in Kimi, OpenAI Legacy, and OpenAI Responses providers
 - Add `create_openai_client` and `close_replaced_openai_client` utilities to `openai_common`
