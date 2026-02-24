@@ -16,7 +16,7 @@ from kosong.chat_provider import (
     APIStatusError,
     APITimeoutError,
 )
-from kosong.message import Message
+from kosong.message import Message, ToolCall
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
@@ -117,6 +117,8 @@ class KimiSoul:
         else:
             self._checkpoint_with_user_message = False
 
+        self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
+
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
 
@@ -174,6 +176,52 @@ class KimiSoul:
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
+
+    def steer(self, content: str | list[ContentPart]) -> None:
+        """Queue a steer message for injection into the current turn."""
+        self._steer_queue.put_nowait(content)
+
+    async def _consume_pending_steers(self) -> bool:
+        """Drain the steer queue and inject as synthetic tool results.
+
+        Returns True if any steers were consumed.
+        """
+        consumed = False
+        while not self._steer_queue.empty():
+            content = self._steer_queue.get_nowait()
+            await self._inject_steer(content)
+            consumed = True
+        return consumed
+
+    async def _inject_steer(self, content: str | list[ContentPart]) -> None:
+        """Inject a single steer as a synthetic ``_steer`` tool_call + tool result pair."""
+        from uuid import uuid4
+
+        steer_id = f"steer_{uuid4().hex[:8]}"
+        text = (
+            content
+            if isinstance(content, str)
+            else Message(role="user", content=content).extract_text(" ")
+        )
+        await self._context.append_message(
+            [
+                Message(
+                    role="assistant",
+                    content=[],
+                    tool_calls=[
+                        ToolCall(
+                            id=steer_id,
+                            function=ToolCall.FunctionBody(name="_steer", arguments=None),
+                        )
+                    ],
+                ),
+                Message(
+                    role="tool",
+                    content=[system(f"The user has sent a real-time instruction:\n\n{text}")],
+                    tool_call_id=steer_id,
+                ),
+            ]
+        )
 
     @property
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
@@ -363,6 +411,8 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
+                if step_outcome.stop_reason == "no_tool_calls" and await self._consume_pending_steers():
+                    continue  # steers injected, force another LLM step
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"
@@ -378,6 +428,9 @@ class KimiSoul:
                 await self._context.revert_to(back_to_the_future.checkpoint_id)
                 await self._checkpoint()
                 await self._context.append_message(back_to_the_future.messages)
+
+            # Consume any pending steers between steps
+            await self._consume_pending_steers()
 
     async def _step(self) -> StepOutcome | None:
         """Run a single step and return a stop outcome, or None to continue."""
