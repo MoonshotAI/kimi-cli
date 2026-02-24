@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Config：添加 `bell_on_completion` 配置项，Agent 轮次完成时播放提示音（默认为 `true`）
+
 ## 1.12.0 (2026-02-11)
 
 - Web：添加子 Agent 活动渲染，在 Task 工具消息中展示子 Agent 步骤（思考、工具调用、文本）

@@ -22,6 +22,7 @@ from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.slash import shell_mode_registry
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
+from kimi_cli.config import load_config
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
@@ -230,6 +231,7 @@ class Shell:
         remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
+            config = load_config()
             await run_soul(
                 self.soul,
                 user_input,
@@ -237,6 +239,7 @@ class Shell:
                     wire.ui_side(merge=False),  # shell UI maintain its own merge buffer
                     initial_status=StatusUpdate(context_usage=self.soul.status.context_usage),
                     cancel_event=cancel_event,
+                    bell_on_completion=config.bell_on_completion,
                 ),
                 cancel_event,
                 self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,

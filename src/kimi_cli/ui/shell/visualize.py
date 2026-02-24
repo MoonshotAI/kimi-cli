@@ -65,6 +65,7 @@ async def visualize(
     *,
     initial_status: StatusUpdate,
     cancel_event: asyncio.Event | None = None,
+    bell_on_completion: bool = True,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -74,7 +75,7 @@ async def visualize(
         initial_status: Initial status snapshot
         cancel_event: Event that can be set (e.g., by ESC key) to cancel the run
     """
-    view = _LiveView(initial_status, cancel_event)
+    view = _LiveView(initial_status, cancel_event, bell_on_completion=bell_on_completion)
     await view.visualize_loop(wire)
 
 
@@ -445,8 +446,14 @@ async def _keyboard_listener(
 
 
 class _LiveView:
-    def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
+    def __init__(
+        self,
+        initial_status: StatusUpdate,
+        cancel_event: asyncio.Event | None = None,
+        bell_on_completion: bool = True,
+    ):
         self._cancel_event = cancel_event
+        self._bell_on_completion = bell_on_completion
 
         self._mooning_spinner: Spinner | None = None
         self._compacting_spinner: Spinner | None = None
@@ -568,7 +575,8 @@ class _LiveView:
                     )
                 )
             case TurnEnd():
-                pass
+                if self._bell_on_completion:
+                    console.bell()
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()

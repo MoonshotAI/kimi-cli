@@ -27,6 +27,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `default_model` | `string` | 默认使用的模型名称，必须是 `models` 中定义的模型 |
 | `default_thinking` | `boolean` | 默认是否开启 Thinking 模式（默认为 `false`） |
 | `default_yolo` | `boolean` | 默认是否开启 YOLO（自动审批）模式（默认为 `false`） |
+| `bell_on_completion` | `boolean` | Agent 轮次完成时是否播放提示音（默认为 `true`） |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -39,6 +40,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
+bell_on_completion = true
 
 [providers.kimi-for-coding]
 type = "kimi"
