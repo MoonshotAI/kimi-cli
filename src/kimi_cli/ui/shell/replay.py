@@ -12,6 +12,7 @@ from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
+from kimi_cli.config import load_config
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
@@ -61,11 +62,16 @@ async def replay_recent_history(
     if not turns:
         return
 
+    config = load_config()
     for turn in turns:
         wire = Wire()
         console.print(f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(turn.user_message)}")
         ui_task = asyncio.create_task(
-            visualize(wire.ui_side(merge=False), initial_status=StatusUpdate())
+            visualize(
+                wire.ui_side(merge=False),
+                initial_status=StatusUpdate(),
+                bell_on_completion=config.bell_on_completion,
+            )
         )
         for event in turn.events:
             wire.soul_side.send(event)
