@@ -3,6 +3,8 @@ from __future__ import annotations
 from inline_snapshot import snapshot
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
+from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
@@ -93,3 +95,41 @@ def test_create_llm_requires_base_url_for_kimi():
     model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
 
     assert create_llm(provider, model) is None
+
+
+def test_create_llm_openai_legacy_passes_client_kwargs():
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://openai.example/v1",
+        api_key=SecretStr("test-key"),
+        custom_headers={"x-test": "header"},
+        default_query={"api-version": "2024-05-01-preview"},
+    )
+    model = LLMModel(provider="openai", model="gpt-4o", max_context_size=4096)
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._client_kwargs["default_headers"] == {"x-test": "header"}
+    assert llm.chat_provider._client_kwargs["default_query"] == {
+        "api-version": "2024-05-01-preview"
+    }
+
+
+def test_create_llm_openai_responses_passes_client_kwargs():
+    provider = LLMProvider(
+        type="openai_responses",
+        base_url="https://openai.example/v1",
+        api_key=SecretStr("test-key"),
+        custom_headers={"x-test": "header"},
+        default_query={"api-version": "2024-05-01-preview"},
+    )
+    model = LLMModel(provider="openai-responses", model="gpt-4o", max_context_size=4096)
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAIResponses)
+    assert llm.chat_provider._client_kwargs["default_headers"] == {"x-test": "header"}
+    assert llm.chat_provider._client_kwargs["default_query"] == {
+        "api-version": "2024-05-01-preview"
+    }
