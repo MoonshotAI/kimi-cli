@@ -20,15 +20,25 @@ NAME = "AskUserQuestion"
 
 
 class QuestionOptionParam(BaseModel):
-    label: str = Field(description="The display text for this option (1-5 words).")
-    description: str = Field(default="", description="Explanation of what this option means.")
+    label: str = Field(
+        description="Concise display text (1-5 words). If recommended, append '(Recommended)'."
+    )
+    description: str = Field(
+        default="",
+        description="Brief explanation of trade-offs or implications of choosing this option.",
+    )
 
 
 class QuestionParam(BaseModel):
-    question: str = Field(description="The complete question to ask the user.")
-    header: str = Field(default="", description="Short label displayed as a tag (max 12 chars).")
+    question: str = Field(description="A specific, actionable question. End with '?'.")
+    header: str = Field(
+        default="", description="Short category tag (max 12 chars, e.g. 'Auth', 'Style')."
+    )
     options: list[QuestionOptionParam] = Field(
-        description="The available choices (2-4 options).",
+        description=(
+            "2-4 meaningful, distinct options. Do NOT include an 'Other' option — "
+            "the system adds one automatically."
+        ),
         min_length=2,
         max_length=4,
     )
