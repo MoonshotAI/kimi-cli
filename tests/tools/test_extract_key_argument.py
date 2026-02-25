@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from kimi_cli.tools import extract_key_argument
 
 
