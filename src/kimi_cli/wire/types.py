@@ -234,6 +234,10 @@ class QuestionResponse(BaseModel):
     comma-separated."""
 
 
+class QuestionNotSupported(Exception):
+    """Raised when the connected client does not support interactive questions."""
+
+
 class QuestionRequest(BaseModel):
     """
     A request to ask the user structured questions during execution.
@@ -272,6 +276,12 @@ class QuestionRequest(BaseModel):
         future = self._get_future()
         if not future.done():
             future.set_result(answers)
+
+    def set_exception(self, exc: BaseException) -> None:
+        """Resolve the question request with an exception."""
+        future = self._get_future()
+        if not future.done():
+            future.set_exception(exc)
 
     @property
     def resolved(self) -> bool:
@@ -434,6 +444,7 @@ __all__ = [
     "QuestionItem",
     "QuestionResponse",
     "QuestionRequest",
+    "QuestionNotSupported",
     # helpers
     "WireMessageEnvelope",
     # `StatusUpdate`-related

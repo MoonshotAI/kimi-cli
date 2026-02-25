@@ -224,7 +224,7 @@ export function QuestionDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [pendingQuestion, disableActions, options.length, isMultiSelect, handleSubmitCurrent, handleOptionClick, handleDismiss]);
 
-  if (!pendingQuestion || !currentQuestion) return null;
+  if (!(pendingQuestion && currentQuestion)) return null;
 
   const hasAnswer = getCurrentAnswer() !== null;
   const isLastQuestion = currentQuestionIndex >= totalQuestions - 1;

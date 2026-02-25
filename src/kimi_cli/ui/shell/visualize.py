@@ -970,6 +970,11 @@ class _LiveView:
             self._current_approval_request_panel = _ApprovalRequestPanel(request)
             self.refresh_soon()
             break
+        else:
+            # All queued requests were already resolved
+            if self._current_approval_request_panel is not None:
+                self._current_approval_request_panel = None
+                self.refresh_soon()
 
     def request_question(self, request: QuestionRequest) -> None:
         self._question_request_queue.append(request)
@@ -992,6 +997,11 @@ class _LiveView:
             self._current_question_panel = _QuestionRequestPanel(request)
             self.refresh_soon()
             break
+        else:
+            # All queued requests were already resolved
+            if self._current_question_panel is not None:
+                self._current_question_panel = None
+                self.refresh_soon()
 
     def handle_subagent_event(self, event: SubagentEvent) -> None:
         block = self._tool_call_blocks.get(event.task_tool_call_id)

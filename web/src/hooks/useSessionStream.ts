@@ -1904,7 +1904,6 @@ export function useSessionStream(
 
         // Process event
         const event = extractEvent(message);
-        console.log("[SessionStream] Extracted event:", event);
         if (event) {
           processEvent(event, isReplayingRef.current);
         }

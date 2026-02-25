@@ -22,6 +22,7 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    QuestionNotSupported,
     QuestionRequest,
     QuestionResponse,
     Request,
@@ -720,6 +721,11 @@ class WireServer:
         # Same rationale as _request_approval: do not block the UI loop.
 
     async def _request_question(self, request: QuestionRequest) -> None:
+        if not self._client_supports_question:
+            # Client does not support interactive questions; signal the tool
+            # so it can tell the LLM to use an alternative approach.
+            request.set_exception(QuestionNotSupported())
+            return
         msg_id = request.id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))

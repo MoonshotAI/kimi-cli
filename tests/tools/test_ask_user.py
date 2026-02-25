@@ -11,7 +11,7 @@ from kimi_cli.soul import _current_wire
 from kimi_cli.soul.toolset import current_tool_call
 from kimi_cli.tools.ask_user import AskUserQuestion, Params, QuestionOptionParam, QuestionParam
 from kimi_cli.wire import Wire
-from kimi_cli.wire.types import QuestionRequest, ToolCall
+from kimi_cli.wire.types import QuestionNotSupported, QuestionRequest, ToolCall
 
 
 @pytest.fixture
@@ -72,6 +72,70 @@ async def test_ask_user_basic(ask_user_tool: AskUserQuestion):
         assert isinstance(result.output, str)
         parsed = json.loads(result.output)
         assert parsed == {"answers": {"Which option?": "Option A"}}
+    finally:
+        wire.shutdown()
+        current_tool_call.reset(tc_token)
+        _current_wire.reset(wire_token)
+
+
+async def test_ask_user_dismissed(ask_user_tool: AskUserQuestion):
+    """Test that user dismiss returns a non-error result with dismiss note."""
+    wire = Wire()
+    wire_token = _current_wire.set(wire)
+    tool_call = ToolCall(
+        id="tc-ask-dismiss",
+        function=ToolCall.FunctionBody(name="AskUserQuestion", arguments=None),
+    )
+    tc_token = current_tool_call.set(tool_call)
+
+    try:
+        params = _make_params()
+        tool_task = asyncio.create_task(ask_user_tool(params))
+
+        ui_side = wire.ui_side(merge=False)
+        msg = await asyncio.wait_for(ui_side.receive(), timeout=2.0)
+        assert isinstance(msg, QuestionRequest)
+
+        # Resolve with empty answers (simulating user dismiss)
+        msg.resolve({})
+
+        result = await asyncio.wait_for(tool_task, timeout=2.0)
+        assert not result.is_error
+        assert isinstance(result.output, str)
+        parsed = json.loads(result.output)
+        assert parsed["answers"] == {}
+        assert "dismissed" in parsed.get("note", "").lower()
+    finally:
+        wire.shutdown()
+        current_tool_call.reset(tc_token)
+        _current_wire.reset(wire_token)
+
+
+async def test_ask_user_client_unsupported(ask_user_tool: AskUserQuestion):
+    """Test that QuestionNotSupported returns a hard error telling LLM not to retry."""
+    wire = Wire()
+    wire_token = _current_wire.set(wire)
+    tool_call = ToolCall(
+        id="tc-ask-unsupported",
+        function=ToolCall.FunctionBody(name="AskUserQuestion", arguments=None),
+    )
+    tc_token = current_tool_call.set(tool_call)
+
+    try:
+        params = _make_params()
+        tool_task = asyncio.create_task(ask_user_tool(params))
+
+        ui_side = wire.ui_side(merge=False)
+        msg = await asyncio.wait_for(ui_side.receive(), timeout=2.0)
+        assert isinstance(msg, QuestionRequest)
+
+        # Reject with QuestionNotSupported (simulating unsupported client)
+        msg.set_exception(QuestionNotSupported())
+
+        result = await asyncio.wait_for(tool_task, timeout=2.0)
+        assert result.is_error
+        assert "does not support" in result.message
+        assert "Do NOT call this tool again" in result.message
     finally:
         wire.shutdown()
         current_tool_call.reset(tc_token)

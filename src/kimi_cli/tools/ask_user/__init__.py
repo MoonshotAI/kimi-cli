@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import override
 from uuid import uuid4
@@ -11,7 +12,9 @@ from pydantic import BaseModel, Field
 from kimi_cli.soul import get_wire_or_none, wire_send
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import load_desc
-from kimi_cli.wire.types import QuestionItem, QuestionOption, QuestionRequest
+from kimi_cli.wire.types import QuestionItem, QuestionNotSupported, QuestionOption, QuestionRequest
+
+logger = logging.getLogger(__name__)
 
 NAME = "AskUserQuestion"
 
@@ -86,10 +89,28 @@ class AskUserQuestion(CallableTool2[Params]):
 
         try:
             answers = await request.wait()
+        except QuestionNotSupported:
+            return ToolError(
+                message=(
+                    "The connected client does not support interactive questions. "
+                    "Do NOT call this tool again. "
+                    "Ask the user directly in your text response instead."
+                ),
+                brief="Client unsupported",
+            )
         except Exception:
+            logger.exception("Failed to get user response for question %s", request.id)
             return ToolError(
                 message="Failed to get user response.",
                 brief="Question failed",
+            )
+
+        if not answers:
+            return ToolReturnValue(
+                is_error=False,
+                output='{"answers": {}, "note": "User dismissed the question without answering."}',
+                message="User dismissed the question without answering.",
+                display=[BriefDisplayBlock(text="User dismissed")],
             )
 
         formatted = json.dumps({"answers": answers}, ensure_ascii=False)
