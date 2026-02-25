@@ -117,6 +117,35 @@ export OPENAI_API_KEY="sk-xxx"
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | Character threshold for folding pasted text (default: `1000`) |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | Line threshold for folding pasted text (default: `15`) |
 
+### Proxy environment variables
+
+Kimi Code CLI supports configuring HTTP/HTTPS proxies through standard proxy environment variables. These variables affect all HTTP requests to external APIs (including Kimi API, OAuth services, web scraping, etc.).
+
+| Environment Variable | Description |
+| --- | --- |
+| `http_proxy` / `HTTP_PROXY` | HTTP proxy server address |
+| `https_proxy` / `HTTPS_PROXY` | HTTPS proxy server address |
+| `all_proxy` / `ALL_PROXY` | Proxy server address for all protocols |
+| `no_proxy` / `NO_PROXY` | Comma-separated list of addresses that do not use proxy |
+
+**Proxy configuration examples**
+
+```sh
+# Set HTTPS proxy
+export https_proxy="http://proxy.example.com:8080"
+
+# Set proxy with authentication
+export https_proxy="http://username:password@proxy.example.com:8080"
+
+# Bypass proxy for certain addresses
+export no_proxy="localhost,127.0.0.1,api.moonshot.cn"
+```
+
+::: tip
+- Setting both `http_proxy` and `https_proxy` ensures all types of requests go through the proxy
+- `no_proxy` supports wildcards, e.g., `.example.com` matches all subdomains of `example.com`
+:::
+
 ### `KIMI_SHARE_DIR`
 
 Customize the share directory path for Kimi Code CLI. The default path is `~/.kimi`, where configuration, sessions, logs, and other runtime data are stored.
