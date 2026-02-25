@@ -3,7 +3,7 @@
   "checkpoint_id": "2d58ad9e0d5c",
   "strategy": "manual-commit",
   "branch": "fix/fetchurl-tooltip-platform-key",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "web/src/components/ai-elements/tool.tsx"
   ],
@@ -14,13 +14,20 @@
       "context": "/2d/58ad9e0d5c/0/context.md",
       "content_hash": "/2d/58ad9e0d5c/0/content_hash.txt",
       "prompt": "/2d/58ad9e0d5c/0/prompt.txt"
+    },
+    {
+      "metadata": "/2d/58ad9e0d5c/1/metadata.json",
+      "transcript": "/2d/58ad9e0d5c/1/full.jsonl",
+      "context": "/2d/58ad9e0d5c/1/context.md",
+      "content_hash": "/2d/58ad9e0d5c/1/content_hash.txt",
+      "prompt": "/2d/58ad9e0d5c/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 37,
-    "cache_creation_tokens": 148917,
-    "cache_read_tokens": 1269363,
-    "output_tokens": 4889,
-    "api_call_count": 27
+    "input_tokens": 55,
+    "cache_creation_tokens": 161842,
+    "cache_read_tokens": 1604795,
+    "output_tokens": 6713,
+    "api_call_count": 41
   }
 }

@@ -1,0 +1,33 @@
+Implement the following plan:
+
+# FetchURL Ctrl+Click 打开完整链接 (Kimi Web)
+
+## Context
+
+FetchURL 工具的 URL 在 ToolHeader 中被截断显示（前50字符 + `…`），用户无法点击打开完整链接。需求：仅对 FetchURL，Ctrl/Cmd+Click 截断 URL 时在新标签页打开完整链接，普通点击保持折叠功能不变。
+
+## 修改文件
+
+`web/src/components/ai-elements/tool.tsx` — `ToolHeader` 组件 (line 159-192)
+
+## 实现
+
+1. 从 `input.url` 提取完整 URL（仅当 `rawName === "FetchURL"` 时）
+2. 在 primaryParam 的 `<span>` 上添加 `onClick`：Ctrl/Cmd+Click 时 `stopPropagation` + `window.open(fullUrl)`，否则不处理
+
+## 验证
+
+1. 触发 FetchURL（URL > 50 字符）→ Ctrl+Click 截断 URL → 新标签页打开完整链接
+2. 普通点击截断 URL → 折叠展开不变
+3. 其他工具的 primaryParam 无影响
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+有个细节，在mac上是command+click。能否根据环境动态调整，有什么方案？
+
+---
+
+[Request interrupted by user for tool use]
