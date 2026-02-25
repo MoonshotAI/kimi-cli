@@ -182,7 +182,8 @@ def test_question_request_error_response(tmp_path) -> None:
                 rv = tr["payload"]["return_value"]
                 assert not rv["is_error"]
                 output = json.loads(rv["output"])
-                assert output == {"answers": {}}
+                assert output["answers"] == {}
+                assert "dismissed" in output.get("note", "").lower()
                 break
         else:
             raise AssertionError("ToolResult for tc-q2 not found")
