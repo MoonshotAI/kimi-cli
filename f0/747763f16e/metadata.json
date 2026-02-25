@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "f0747763f16e",
+  "strategy": "manual-commit",
+  "branch": "fix/fetchurl-tooltip-platform-key",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore",
+    "web/.gitignore"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f0/747763f16e/0/metadata.json",
+      "transcript": "/f0/747763f16e/0/full.jsonl",
+      "context": "/f0/747763f16e/0/context.md",
+      "content_hash": "/f0/747763f16e/0/content_hash.txt",
+      "prompt": "/f0/747763f16e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 37,
+    "cache_creation_tokens": 148917,
+    "cache_read_tokens": 1269363,
+    "output_tokens": 4889,
+    "api_call_count": 27
+  }
+}
