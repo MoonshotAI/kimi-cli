@@ -67,7 +67,6 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                     ],
-                    "capabilities": {"supports_question": True},
                 }
             }
         )
@@ -134,7 +133,6 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         "accepted": [],
                         "rejected": [{"name": "Shell", "reason": "conflicts with builtin tool"}],
                     },
-                    "capabilities": {"supports_question": True},
                 }
             }
         )

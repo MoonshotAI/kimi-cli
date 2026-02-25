@@ -82,19 +82,11 @@ class ExternalTool(BaseModel):
     parameters: dict[str, JsonType]
 
 
-class ClientCapabilities(BaseModel):
-    """Capabilities declared by the Wire client during initialization."""
-
-    supports_question: bool = False
-    """Whether the client can handle QuestionRequest messages."""
-
-
 class JSONRPCInitializeMessage(_MessageBase):
     class Params(BaseModel):
         protocol_version: str
         client: ClientInfo | None = None
         external_tools: list[ExternalTool] | None = None
-        capabilities: ClientCapabilities | None = None
 
     method: Literal["initialize"] = "initialize"
     id: str

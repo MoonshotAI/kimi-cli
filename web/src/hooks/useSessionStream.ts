@@ -127,7 +127,6 @@ import {
   type JsonRpcResponse,
   type ApprovalRequestEvent,
   type ApprovalResponseDecision,
-  type QuestionRequestEvent,
   type SessionStatusPayload,
   type SubagentEventWire,
   extractEvent,
@@ -217,11 +216,6 @@ type UseSessionStreamReturn = {
     response: ApprovalResponseDecision,
     reason?: string,
   ) => Promise<void>;
-  /** Respond to a question request */
-  respondToQuestion: (
-    requestId: string,
-    answers: Record<string, string>,
-  ) => Promise<void>;
   /** Send a cancel request for the current turn */
   cancel: () => void;
   /** Disconnect from the stream */
@@ -241,14 +235,6 @@ type UseSessionStreamReturn = {
 };
 
 type PendingApprovalEntry = {
-  requestId: string;
-  toolCallId: string;
-  messageId?: string;
-  rpcId?: string | number;
-  submitted?: boolean;
-};
-
-type PendingQuestionEntry = {
   requestId: string;
   toolCallId: string;
   messageId?: string;
@@ -333,9 +319,6 @@ export function useSessionStream(
   const thinkingMessageIdRef = useRef<string | null>(null);
   const textMessageIdRef = useRef<string | null>(null);
   const pendingApprovalRequestsRef = useRef<Map<string, PendingApprovalEntry>>(
-    new Map(),
-  );
-  const pendingQuestionRequestsRef = useRef<Map<string, PendingQuestionEntry>>(
     new Map(),
   );
 
@@ -778,7 +761,6 @@ export function useSessionStream(
     currentToolCallsRef.current.clear();
     currentToolCallIdRef.current = null;
     pendingApprovalRequestsRef.current.clear();
-    pendingQuestionRequestsRef.current.clear();
     pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
@@ -1494,79 +1476,6 @@ export function useSessionStream(
           break;
         }
 
-        case "QuestionRequest": {
-          if (!isReplay) {
-            clearAwaitingFirstResponse();
-          }
-          const qPayload = (event as QuestionRequestEvent).payload;
-          const qtc = currentToolCallsRef.current.get(qPayload.tool_call_id);
-
-          const questionState = {
-            id: qPayload.id,
-            toolCallId: qPayload.tool_call_id,
-            questions: qPayload.questions,
-            rpcMessageId,
-            submitted: false,
-            resolved: false,
-          };
-
-          let qMessageId = qtc?.messageId;
-
-          if (qMessageId) {
-            updateMessageById(qMessageId, (message) => {
-              if (!message.toolCall) {
-                return message;
-              }
-              return {
-                ...message,
-                isStreaming: false,
-                toolCall: {
-                  ...message.toolCall,
-                  state: "question-requested",
-                  question: questionState,
-                },
-              };
-            });
-          } else {
-            const fallbackMessageId = getNextMessageId("assistant");
-            const questionMessage: LiveMessage = {
-              id: fallbackMessageId,
-              role: "assistant",
-              variant: "tool",
-              isStreaming: false,
-              toolCall: {
-                title: "AskUserQuestion",
-                type: "tool-call" as ToolUIPart["type"],
-                state: "question-requested",
-                question: questionState,
-              },
-            };
-
-            currentToolCallsRef.current.set(qPayload.tool_call_id, {
-              ...(currentToolCallsRef.current.get(qPayload.tool_call_id) ?? {
-                id: qPayload.tool_call_id,
-                name: "AskUserQuestion",
-                arguments: "",
-                argumentsComplete: false,
-              }),
-              messageId: fallbackMessageId,
-            });
-
-            setMessages((prev) => [...prev, questionMessage]);
-            qMessageId = fallbackMessageId;
-          }
-
-          pendingQuestionRequestsRef.current.set(qPayload.id, {
-            requestId: qPayload.id,
-            toolCallId: qPayload.tool_call_id,
-            messageId: qMessageId,
-            rpcId: rpcMessageId,
-            submitted: false,
-          });
-
-          break;
-        }
-
         case "SubagentEvent": {
           const subPayload = (event as SubagentEventWire).payload;
           processSubagentEvent(
@@ -1636,9 +1545,8 @@ export function useSessionStream(
         }
 
         case "StepInterrupted": {
-          // Clear pending approval and question requests
+          // Clear pending approval requests
           pendingApprovalRequestsRef.current.clear();
-          pendingQuestionRequestsRef.current.clear();
 
           setMessages((prev) =>
             prev.map((msg) => {
@@ -1674,27 +1582,6 @@ export function useSessionStream(
                           resolved: true,
                           approved: false,
                           response: "reject",
-                        }
-                      : undefined,
-                  },
-                };
-              }
-              // Update pending question tool states to responded
-              if (
-                msg.variant === "tool" &&
-                msg.toolCall?.state === "question-requested"
-              ) {
-                return {
-                  ...updated,
-                  toolCall: {
-                    ...msg.toolCall,
-                    ...updated.toolCall,
-                    state: "question-responded",
-                    question: msg.toolCall.question
-                      ? {
-                          ...msg.toolCall.question,
-                          submitted: true,
-                          resolved: true,
                         }
                       : undefined,
                   },
@@ -1868,7 +1755,7 @@ export function useSessionStream(
           return;
         }
 
-        // Handle approval/question requests sent as JSON-RPC requests
+        // Handle approval requests sent as JSON-RPC requests
         if (message.method === "request") {
           const params = message.params as {
             type?: string;
@@ -1887,23 +1774,11 @@ export function useSessionStream(
             );
             return;
           }
-
-          if (params?.type === "QuestionRequest") {
-            const questionEvent: QuestionRequestEvent = {
-              type: "QuestionRequest",
-              payload: params.payload as QuestionRequestEvent["payload"],
-            };
-            processEvent(
-              questionEvent,
-              isReplayingRef.current,
-              message.id ?? (questionEvent.payload.id as string | number),
-            );
-            return;
-          }
         }
 
         // Process event
         const event = extractEvent(message);
+        console.log("[SessionStream] Extracted event:", event);
         if (event) {
           processEvent(event, isReplayingRef.current);
         }
@@ -1983,9 +1858,6 @@ export function useSessionStream(
         client: {
           name: "kiwi",
           version: kimiCliVersion,
-        },
-        capabilities: {
-          supports_question: true,
         },
       },
     };
@@ -2084,69 +1956,6 @@ export function useSessionStream(
             };
           });
         }
-      }
-    },
-    [updateMessageById],
-  );
-
-  const respondToQuestion = useCallback(
-    async (requestId: string, answers: Record<string, string>) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        throw new Error("Not connected to session stream");
-      }
-
-      const pending = pendingQuestionRequestsRef.current.get(requestId);
-      if (!pending) {
-        throw new Error("Question request not found");
-      }
-
-      if (pending.submitted) {
-        return;
-      }
-
-      const responseMessage: JsonRpcResponse = {
-        jsonrpc: "2.0",
-        id: pending.rpcId ?? requestId,
-        result: {
-          request_id: pending.requestId ?? requestId,
-          answers,
-        },
-      };
-
-      try {
-        ws.send(JSON.stringify(responseMessage));
-      } catch (err) {
-        throw err instanceof Error ? err : new Error(String(err));
-      }
-
-      pending.submitted = true;
-      pendingQuestionRequestsRef.current.set(requestId, pending);
-
-      const tc = currentToolCallsRef.current.get(pending.toolCallId);
-
-      if (tc?.messageId) {
-        updateMessageById(tc.messageId, (message) => {
-          if (!message.toolCall) {
-            return message;
-          }
-
-          return {
-            ...message,
-            isStreaming: true,
-            toolCall: {
-              ...message.toolCall,
-              state: "question-responded",
-              question: message.toolCall.question
-                ? {
-                    ...message.toolCall.question,
-                    submitted: true,
-                    answers,
-                  }
-                : undefined,
-            },
-          };
-        });
       }
     },
     [updateMessageById],
@@ -2333,7 +2142,6 @@ export function useSessionStream(
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
     pendingApprovalRequestsRef.current.clear();
-    pendingQuestionRequestsRef.current.clear();
 
     // Mark all streaming/subagent messages as complete
     completeStreamingMessages();
@@ -2348,9 +2156,8 @@ export function useSessionStream(
       );
       awaitingIdleRef.current = false;
       pendingMessageRef.current = null;
-      // Clear pending approval/question requests and update message states
+      // Clear pending approval requests and update message states
       pendingApprovalRequestsRef.current.clear();
-      pendingQuestionRequestsRef.current.clear();
       setMessages((prev) =>
         prev.map((msg) => {
           if (
@@ -2375,26 +2182,6 @@ export function useSessionStream(
               },
             };
           }
-          if (
-            msg.variant === "tool" &&
-            msg.toolCall?.state === "question-requested"
-          ) {
-            return {
-              ...msg,
-              isStreaming: false,
-              toolCall: {
-                ...msg.toolCall,
-                state: "question-responded",
-                question: msg.toolCall.question
-                  ? {
-                      ...msg.toolCall.question,
-                      submitted: true,
-                      resolved: true,
-                    }
-                  : undefined,
-              },
-            };
-          }
           return msg;
         }),
       );
@@ -2402,9 +2189,8 @@ export function useSessionStream(
       return;
     }
 
-    // Clear all pending approval/question requests and update message states
+    // Clear all pending approval requests and update message states
     pendingApprovalRequestsRef.current.clear();
-    pendingQuestionRequestsRef.current.clear();
 
     // Always update messages (consistent with StepInterrupted handler)
     setMessages((prev) =>
@@ -2426,26 +2212,6 @@ export function useSessionStream(
                     resolved: true,
                     approved: false,
                     response: "reject",
-                  }
-                : undefined,
-            },
-          };
-        }
-        if (
-          msg.variant === "tool" &&
-          msg.toolCall?.state === "question-requested"
-        ) {
-          return {
-            ...msg,
-            isStreaming: false,
-            toolCall: {
-              ...msg.toolCall,
-              state: "question-responded",
-              question: msg.toolCall.question
-                ? {
-                    ...msg.toolCall.question,
-                    submitted: true,
-                    resolved: true,
                   }
                 : undefined,
             },
@@ -2605,7 +2371,6 @@ export function useSessionStream(
     isReplayingHistory,
     sendMessage,
     respondToApproval,
-    respondToQuestion,
     cancel,
     disconnect,
     reconnect,

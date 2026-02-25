@@ -270,6 +270,7 @@ export const ToolbarActivityIndicator = memo(function ToolbarActivityIndicatorCo
 }): ReactElement {
   const { status, description } = activity;
   const isActive = status !== "idle" && status !== "error";
+  const showSpinner = status === "processing";
   const isError = status === "error";
 
   return (
@@ -311,6 +312,10 @@ export const ToolbarActivityIndicator = memo(function ToolbarActivityIndicatorCo
         />
       </div>
 
+      {/* Spinner for processing */}
+      {showSpinner && (
+        <Loader size={12} className="text-muted-foreground" />
+      )}
 
       {/* Description text with animated transitions */}
       <AnimatePresence mode="wait">

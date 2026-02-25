@@ -115,7 +115,6 @@ export function ChatWorkspaceContainer({
     isAwaitingFirstResponse,
     sendMessage,
     respondToApproval,
-    respondToQuestion,
     cancel: cancelStream,
     contextUsage,
     tokenUsage,
@@ -363,7 +362,6 @@ export function ChatWorkspaceContainer({
       onCreateSession={onOpenCreateDialog}
       onCancel={cancelStream}
       onApprovalResponse={respondToApproval}
-      onQuestionResponse={respondToQuestion}
       sessionDescription={sessionDescription}
       contextUsage={contextUsage}
       maxContextSize={maxContextSize}

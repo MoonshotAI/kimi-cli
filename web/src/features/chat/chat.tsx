@@ -21,7 +21,6 @@ import { ChatWorkspaceHeader } from "./components/chat-workspace-header";
 import { ChatConversation } from "./components/chat-conversation";
 import { ChatPromptComposer } from "./components/chat-prompt-composer";
 import { ApprovalDialog } from "./components/approval-dialog";
-import { QuestionDialog, usePendingQuestion } from "./components/question-dialog";
 import { useGitDiffStats } from "@/hooks/useGitDiffStats";
 import {
   deriveActivityStatus,
@@ -41,10 +40,6 @@ type ChatWorkspaceProps = {
     requestId: string,
     decision: ApprovalResponseDecision,
     reason?: string,
-  ) => Promise<void>;
-  onQuestionResponse?: (
-    requestId: string,
-    answers: Record<string, string>,
   ) => Promise<void>;
   sessionDescription?: string;
   /** Context usage (0-1) */
@@ -94,7 +89,6 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   messages,
   selectedSessionId,
   onApprovalResponse,
-  onQuestionResponse,
   sessionDescription,
   contextUsage = 0,
   tokenUsage = null,
@@ -119,12 +113,6 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   const [pendingApprovalMap, setPendingApprovalMap] = useState<
     Record<string, boolean>
   >({});
-  const [pendingQuestionMap, setPendingQuestionMap] = useState<
-    Record<string, boolean>
-  >({});
-
-  // Check if there's a pending question to replace the prompt composer
-  const hasPendingQuestion = usePendingQuestion(messages) !== null;
 
   // Fetch git diff stats for the current session
   const { stats: gitDiffStats, isLoading: isGitDiffLoading } = useGitDiffStats(
@@ -213,33 +201,6 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     [messages, handleApprovalAction],
   );
 
-  const handleQuestionResponse = useCallback(
-    async (requestId: string, answers: Record<string, string>) => {
-      if (!onQuestionResponse) return;
-
-      setPendingQuestionMap((prev) => ({
-        ...prev,
-        [requestId]: true,
-      }));
-
-      try {
-        await onQuestionResponse(requestId, answers);
-      } catch (error) {
-        console.error("[ChatWorkspace] Failed to respond to question", error);
-        toast.error("Question response failed", {
-          description: error instanceof Error ? error.message : String(error),
-        });
-      } finally {
-        setPendingQuestionMap((prev) => {
-          const next = { ...prev };
-          delete next[requestId];
-          return next;
-        });
-      }
-    },
-    [onQuestionResponse],
-  );
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-[560px]">
       <div className="relative flex h-full flex-col">
@@ -283,39 +244,28 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           canRespondToApproval={Boolean(onApprovalResponse)}
         />
 
-        {/* Bottom area: Question Dialog replaces prompt composer when active */}
         {currentSession && (
-          <div className="mt-auto flex-shrink-0">
-            {hasPendingQuestion ? (
-              <QuestionDialog
-                messages={messages}
-                onQuestionResponse={handleQuestionResponse}
-                pendingQuestionMap={pendingQuestionMap}
-              />
-            ) : (
-              <div className="px-0 pb-0 pt-0 sm:px-3 sm:pb-3">
-                <ChatPromptComposer
-                  status={status}
-                  onSubmit={onSubmit}
-                  canSendMessage={canSendMessage}
-                  currentSession={currentSession}
-                  isUploading={isUploading}
-                  isStreaming={isStreaming}
-                  isAwaitingIdle={isAwaitingIdle}
-                  isReplayingHistory={isReplayingHistory}
-                  onCancel={onCancel}
-                  onListSessionDirectory={onListSessionDirectory}
-                  gitDiffStats={gitDiffStats}
-                  isGitDiffLoading={isGitDiffLoading}
-                  slashCommands={slashCommands}
-                  activityStatus={activityStatus}
-                  usagePercent={usagePercent}
-                  usedTokens={usedTokens}
-                  maxTokens={maxTokens}
-                  tokenUsage={tokenUsage}
-                />
-              </div>
-            )}
+          <div className="mt-auto flex-shrink-0 px-0 pb-0 pt-0 sm:px-3 sm:pb-3 ">
+            <ChatPromptComposer
+              status={status}
+              onSubmit={onSubmit}
+              canSendMessage={canSendMessage}
+              currentSession={currentSession}
+              isUploading={isUploading}
+              isStreaming={isStreaming}
+              isAwaitingIdle={isAwaitingIdle}
+              isReplayingHistory={isReplayingHistory}
+              onCancel={onCancel}
+              onListSessionDirectory={onListSessionDirectory}
+              gitDiffStats={gitDiffStats}
+              isGitDiffLoading={isGitDiffLoading}
+              slashCommands={slashCommands}
+              activityStatus={activityStatus}
+              usagePercent={usagePercent}
+              usedTokens={usedTokens}
+              maxTokens={maxTokens}
+              tokenUsage={tokenUsage}
+            />
           </div>
         )}
       </div>

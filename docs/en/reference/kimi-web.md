@@ -235,14 +235,6 @@ Assistant messages provide the following action buttons:
 Copy and fork buttons added in version 1.10.
 :::
 
-### Structured questions
-
-When the AI uses the `AskUserQuestion` tool, Web UI displays a structured question dialog in the chat area, replacing the input box at the bottom. The question dialog shows the question description and available options, supporting single-select, multi-select, and custom text input. After answering all questions, the dialog closes automatically and the AI continues execution based on your choices.
-
-::: info Added
-Structured questions added in version 1.14.
-:::
-
 ### Approval keyboard shortcuts
 
 When the agent sends an approval request, you can use keyboard shortcuts to respond quickly:

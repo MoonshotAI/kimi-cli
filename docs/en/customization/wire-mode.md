@@ -87,13 +87,6 @@ interface InitializeParams {
   client?: ClientInfo
   /** External tool definitions, optional */
   external_tools?: ExternalTool[]
-  /** Client capabilities, optional */
-  capabilities?: ClientCapabilities
-}
-
-interface ClientCapabilities {
-  /** Whether the client can handle QuestionRequest messages */
-  supports_question?: boolean
 }
 
 interface ClientInfo {
@@ -120,13 +113,6 @@ interface InitializeResult {
   slash_commands: SlashCommandInfo[]
   /** External tool registration result, only returned when request includes external_tools */
   external_tools?: ExternalToolsResult
-  /** Server capabilities */
-  capabilities?: ServerCapabilities
-}
-
-interface ServerCapabilities {
-  /** Whether the server supports sending QuestionRequest messages */
-  supports_question?: boolean
 }
 
 interface ServerInfo {
@@ -151,13 +137,13 @@ interface ExternalToolsResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.4", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.3", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **Success response example**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.4", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.3", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 If the server does not support the `initialize` method, the client will receive a `-32601 method not found` error and should automatically fall back to no-handshake mode.
@@ -359,8 +345,8 @@ Requests from the agent to the client, used for approval confirmation or externa
 ```typescript
 /** request parameters, contains serialized Wire message */
 interface RequestParams {
-  type: "ApprovalRequest" | "ToolCallRequest" | "QuestionRequest"
-  payload: ApprovalRequest | ToolCallRequest | QuestionRequest
+  type: "ApprovalRequest" | "ToolCallRequest"
+  payload: ApprovalRequest | ToolCallRequest
 }
 ```
 
@@ -425,7 +411,7 @@ type Event =
   | SubagentEvent
 
 /** Requests: sent via request method, require response */
-type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
+type Request = ApprovalRequest | ToolCallRequest
 ```
 
 ### `TurnBegin`
@@ -708,76 +694,6 @@ interface ToolResult {
   tool_call_id: string
   return_value: ToolReturnValue
 }
-```
-
-### `QuestionRequest`
-
-::: info Added
-Added in Wire 1.4.
-:::
-
-Structured question request, sent via `request` method. When the agent uses the `AskUserQuestion` tool, this request is sent. The client must respond before the agent can continue execution.
-
-This feature requires capability negotiation: the client must declare `capabilities.supports_question: true` during `initialize` for the agent to send `QuestionRequest`. If the client does not declare support, the agent will ask questions directly in its text response instead.
-
-```typescript
-interface QuestionRequest {
-  /** Request ID, used when responding */
-  id: string
-  /** Associated tool call ID */
-  tool_call_id: string
-  /** Questions list (1–4 questions) */
-  questions: QuestionItem[]
-}
-
-interface QuestionItem {
-  /** Question text */
-  question: string
-  /** Short label, max 12 characters */
-  header?: string
-  /** Available options (2–4) */
-  options: QuestionOption[]
-  /** Whether multiple options can be selected */
-  multi_select?: boolean
-}
-
-interface QuestionOption {
-  /** Option label */
-  label: string
-  /** Option description */
-  description?: string
-}
-```
-
-**Request example**
-
-```json
-{"jsonrpc": "2.0", "method": "request", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "params": {"type": "QuestionRequest", "payload": {"id": "q-1", "tool_call_id": "tc-1", "questions": [{"question": "Which language should I use?", "header": "Lang", "options": [{"label": "Python", "description": "Widely used, large ecosystem"}, {"label": "Rust", "description": "High performance, memory safe"}], "multi_select": false}]}}}
-```
-
-**Response format**
-
-Client needs to return `QuestionResponse` as the response result:
-
-```typescript
-interface QuestionResponse {
-  /** Corresponding request ID */
-  request_id: string
-  /** Answer mapping, key is question text, value is selected option label(s) (comma-separated for multi-select) */
-  answers: Record<string, string>
-}
-```
-
-**Response example**
-
-```json
-{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {"Which language should I use?": "Python"}}}
-```
-
-If the client does not support structured questions or the user dismisses the question panel, return empty `answers`:
-
-```json
-{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {}}}
 ```
 
 ### `DisplayBlock`

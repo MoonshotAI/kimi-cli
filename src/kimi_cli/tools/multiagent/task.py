@@ -16,7 +16,6 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
-    QuestionRequest,
     SubagentEvent,
     ToolCallRequest,
     WireMessage,
@@ -108,11 +107,8 @@ class Task(CallableTool2[Params]):
         current_tool_call_id = current_tool_call.id
 
         def _super_wire_send(msg: WireMessage) -> None:
-            if isinstance(
-                msg,
-                ApprovalRequest | ApprovalResponse | ToolCallRequest | QuestionRequest,
-            ):
-                # Requests (and their resolution signals) should stay at the root wire level.
+            if isinstance(msg, ApprovalRequest | ApprovalResponse | ToolCallRequest):
+                # Requests should stay at the root wire level.
                 super_wire.soul_side.send(msg)
                 return
 

@@ -216,20 +216,11 @@ def _read_wire_lines(wire_file: Path) -> list[str]:
                     continue
                 message_raw = cast(dict[str, Any], message_raw)
                 message = deserialize_wire_message(message_raw)
-                _is_req = is_request(message)
                 event_msg: dict[str, Any] = {
                     "jsonrpc": "2.0",
-                    "method": "request" if _is_req else "event",
+                    "method": "request" if is_request(message) else "event",
                     "params": message_raw,
                 }
-                if _is_req:
-                    # JSON-RPC requests require a top-level ``id`` so the
-                    # client can correlate its response.  Use the request's
-                    # own ``id`` field (e.g. ApprovalRequest.id,
-                    # QuestionRequest.id).  Note: ``message_raw`` wraps data
-                    # as ``{"type": ..., "payload": {...}}`` so the id lives
-                    # on the deserialized object, not at the raw dict top level.
-                    event_msg["id"] = message.id
                 result.append(json.dumps(event_msg, ensure_ascii=False))
             except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 continue
