@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "0860e52c3d41",
+  "session_id": "c7c33335-b4bb-42f9-90a6-9ddaa81066eb",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-25T11:22:41.406417Z",
+  "branch": "fix/fetchurl-osc8-hyperlink",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "web/src/features/chat/components/virtualized-message-list.tsx"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "e98dc75588cd",
+  "checkpoint_transcript_start": 106,
+  "transcript_lines_at_start": 106,
+  "token_usage": {
+    "input_tokens": 1,
+    "cache_creation_tokens": 338,
+    "cache_read_tokens": 40872,
+    "output_tokens": 1,
+    "api_call_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-25T11:22:41.267739Z",
+    "agent_lines": 33,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 33,
+    "agent_percentage": 100
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/c7c33335-b4bb-42f9-90a6-9ddaa81066eb.jsonl"
+}
