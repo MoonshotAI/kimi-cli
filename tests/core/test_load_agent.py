@@ -13,6 +13,7 @@ from inline_snapshot import snapshot
 from kimi_cli.config import Config
 from kimi_cli.exception import InvalidToolError, SystemPromptTemplateError
 from kimi_cli.session import Session
+from kimi_cli.session_state import DynamicSubagentSpec
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -97,6 +98,51 @@ async def test_load_agent_invalid_tools(agent_file_invalid_tools: Path, runtime:
     """Test loading agent with invalid tools raises ValueError."""
     with pytest.raises(ValueError, match="Invalid tools"):
         await load_agent(agent_file_invalid_tools, runtime, mcp_configs=[])
+
+
+async def test_fixed_subagent_does_not_restore_dynamic_subagents(runtime: Runtime):
+    """Fixed subagents should not have dynamic subagents injected into their LaborMarket."""
+    # Inject a dynamic subagent spec into session state
+    runtime.session.state.dynamic_subagents = [
+        DynamicSubagentSpec(name="dynamic-helper", system_prompt="I am dynamic"),
+    ]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Create system prompts
+        (tmpdir / "system.md").write_text("Main agent prompt")
+        (tmpdir / "sub_system.md").write_text("Sub agent prompt")
+
+        # Create sub agent YAML (no subagents, minimal tools)
+        sub_yaml = tmpdir / "sub.yaml"
+        sub_yaml.write_text(
+            'version: 1\nagent:\n  name: "Sub"\n'
+            "  system_prompt_path: ./sub_system.md\n"
+            '  tools: ["kimi_cli.tools.think:Think"]\n'
+        )
+
+        # Create main agent YAML with a fixed subagent
+        agent_yaml = tmpdir / "agent.yaml"
+        agent_yaml.write_text(
+            'version: 1\nagent:\n  name: "Main"\n'
+            "  system_prompt_path: ./system.md\n"
+            '  tools: ["kimi_cli.tools.think:Think"]\n'
+            "  subagents:\n"
+            "    coder:\n"
+            "      path: ./sub.yaml\n"
+            '      description: "A sub agent"\n'
+        )
+
+        agent = await load_agent(agent_yaml, runtime, mcp_configs=[])
+
+    # Main agent should have the dynamic subagent restored
+    assert "dynamic-helper" in agent.runtime.labor_market.dynamic_subagents
+
+    # Fixed subagent should NOT have the dynamic subagent
+    fixed_sub = agent.runtime.labor_market.fixed_subagents["coder"]
+    assert "dynamic-helper" not in fixed_sub.runtime.labor_market.dynamic_subagents
+    assert len(fixed_sub.runtime.labor_market.dynamic_subagents) == 0
 
 
 @pytest.fixture

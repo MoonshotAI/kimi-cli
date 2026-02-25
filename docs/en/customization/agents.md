@@ -144,7 +144,7 @@ Subagents launched via the `Task` tool run in an isolated context and return res
 
 ## Dynamic subagent creation
 
-`CreateSubagent` is an advanced tool that allows AI to dynamically define new subagent types at runtime (not enabled by default). To use it, add to your agent file:
+`CreateSubagent` is an advanced tool that allows AI to dynamically define new subagent types at runtime (not enabled by default). Dynamically created subagents are persisted with the session state and automatically restored when resuming the session. To use it, add to your agent file:
 
 ```yaml
 agent:

@@ -223,12 +223,15 @@ def _ensure_title(entry: SessionIndexEntry, *, refresh: bool) -> None:
 def _build_kimi_session(entry: SessionIndexEntry) -> KimiCLISession:
     from kaos.path import KaosPath
 
+    from kimi_cli.session_state import load_session_state
+
     return KimiCLISession(
         id=str(entry.session_id),
         work_dir=KaosPath.unsafe_from_local_path(Path(entry.work_dir)),
         work_dir_meta=entry.work_dir_meta,
         context_file=entry.context_file,
         wire_file=WireFile(entry.session_dir / "wire.jsonl"),
+        state=load_session_state(entry.session_dir),
         title=entry.title,
         updated_at=entry.last_updated.timestamp(),
     )
