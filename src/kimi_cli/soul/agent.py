@@ -20,7 +20,7 @@ from kimi_cli.exception import MCPConfigError, SystemPromptTemplateError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.skill import Skill, discover_skills_from_roots, index_skills, resolve_skills_roots
-from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.approval import Approval, ApprovalState
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.environment import Environment
@@ -104,6 +104,21 @@ class Runtime:
             for skill in skills
         )
 
+        # Merge CLI flag with persisted session state
+        effective_yolo = yolo or session.state.approval.yolo
+        saved_actions = set(session.state.approval.auto_approve_actions)
+
+        def _on_approval_change() -> None:
+            session.state.approval.yolo = approval_state.yolo
+            session.state.approval.auto_approve_actions = set(approval_state.auto_approve_actions)
+            session.save_state()
+
+        approval_state = ApprovalState(
+            yolo=effective_yolo,
+            auto_approve_actions=saved_actions,
+            on_change=_on_approval_change,
+        )
+
         return Runtime(
             config=config,
             oauth=oauth,
@@ -117,7 +132,7 @@ class Runtime:
                 KIMI_SKILLS=skills_formatted or "No skills found.",
             ),
             denwa_renji=DenwaRenji(),
-            approval=Approval(yolo=yolo),
+            approval=Approval(state=approval_state),
             labor_market=LaborMarket(),
             environment=environment,
             skills=skills_by_name,
@@ -257,6 +272,17 @@ async def load_agent(
                 except pydantic.ValidationError as e:
                     raise MCPConfigError(f"Invalid MCP config: {e}") from e
         await toolset.load_mcp_tools(validated_mcp_configs, runtime)
+
+    # Restore dynamic subagents from persisted session state
+    for subagent_spec in runtime.session.state.dynamic_subagents:
+        if subagent_spec.name not in runtime.labor_market.subagents:
+            subagent = Agent(
+                name=subagent_spec.name,
+                system_prompt=subagent_spec.system_prompt,
+                toolset=toolset,
+                runtime=runtime.copy_for_dynamic_subagent(),
+            )
+            runtime.labor_market.add_dynamic_subagent(subagent_spec.name, subagent)
 
     return Agent(
         name=agent_spec.name,
