@@ -18,7 +18,6 @@ import type React from "react";
 import {
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -232,38 +231,6 @@ function VirtualizedMessageListComponent(
     }),
     [listItems.length],
   );
-
-  // Restore scroll position after tab visibility change.
-  // Chrome throttles rAF/IntersectionObserver in background tabs, which can
-  // cause react-virtuoso to lose track of the scroll offset.
-  useEffect(() => {
-    const savedScrollTopRef = { current: 0 };
-
-    const handleVisibilityChange = () => {
-      const scroller = scrollerRef.current;
-      if (!scroller) return;
-
-      if (document.visibilityState === "hidden") {
-        savedScrollTopRef.current = scroller.scrollTop;
-      } else if (document.visibilityState === "visible") {
-        const savedTop = savedScrollTopRef.current;
-        if (savedTop <= 0) return;
-
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (scrollerRef.current) {
-              scrollerRef.current.scrollTop = savedTop;
-            }
-          });
-        });
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
 
   return (
     <Virtuoso
