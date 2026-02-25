@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "e509137414fa",
+  "session_id": "5da873e1-d952-412e-a236-7a946a9c007e",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-25T08:31:21.923415Z",
+  "branch": "fix/fetchurl-osc8-hyperlink",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/kimi_cli/ui/shell/visualize.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "7ba360c9995a",
+  "token_usage": {
+    "input_tokens": 19,
+    "cache_creation_tokens": 25694,
+    "cache_read_tokens": 593358,
+    "output_tokens": 3394,
+    "api_call_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-25T08:31:21.718611Z",
+    "agent_lines": 45,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 45,
+    "agent_percentage": 100
+  }
+}

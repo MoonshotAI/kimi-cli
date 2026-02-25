@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "e509137414fa",
+  "strategy": "manual-commit",
+  "branch": "fix/fetchurl-osc8-hyperlink",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/kimi_cli/ui/shell/visualize.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e5/09137414fa/0/metadata.json",
+      "transcript": "/e5/09137414fa/0/full.jsonl",
+      "context": "/e5/09137414fa/0/context.md",
+      "content_hash": "/e5/09137414fa/0/content_hash.txt",
+      "prompt": "/e5/09137414fa/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19,
+    "cache_creation_tokens": 25694,
+    "cache_read_tokens": 593358,
+    "output_tokens": 3394,
+    "api_call_count": 17
+  }
+}

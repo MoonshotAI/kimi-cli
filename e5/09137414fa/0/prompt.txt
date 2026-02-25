@@ -1,0 +1,66 @@
+Implement the following plan:
+
+# Fix: CLI FetchURL 截断 URL 支持 Ctrl+Click
+
+## Context
+
+FetchURL 的 URL 被 `shorten_middle(width=50)` 截断显示。需要给截断文本附加 OSC 8 超链接，让用户可以 Ctrl+Click 打开完整 URL。不需要额外显示完整 URL 提示行。
+
+## 方案
+
+**仅修改 `src/kimi_cli/ui/shell/visualize.py`**
+
+### 1. 新增导入
+
+```python
+import json
+from rich.style import Style
+```
+
+### 2. `_ToolCallBlock` 新增静态方法 `_extract_full_url`
+
+从原始 JSON 中提取完整 URL（仅 FetchURL 工具）。
+
+### 3. `__init__` 新增 `self._full_url`，`append_args_part` 同步更新
+
+### 4. `_get_headline_markup()` → `_build_headline_text()` 返回 `Text`
+
+截断文本通过 `Style(color="grey50", link=full_url)` 附加 OSC 8 超链接：
+
+```python
+def _build_headline_text(self) -> Text:
+    text = Text()
+    text.append("Used " if self.finished else "Using ")
+    text.append(self._tool_name, style="blue")
+    if self._argument:
+        text.append(" (", style="grey50")
+        arg_style = Style(color="grey50", link=self._full_url) if self._full_url else "grey50"
+        text.append(self._argument, style=arg_style)
+        text.append(")", style="grey50")
+    return text
+```
+
+### 5. `_compose` 和 `append_args_part` 调用处改为 `_build_headline_text()`
+
+### 6. 子代理 FetchURL 同样处理
+
+`_compose` 中渲染 `_finished_subagent_tool_calls` 的循环也使用 `_extract_full_url` + `Style(link=...)`.
+
+### 不需要的
+
+- 不显示 `↳` 完整 URL 提示行
+- 不修改 `tools/__init__.py`、`acp/session.py`
+
+## 操作
+
+1. 从当前分支 `fix/fetchurl-tooltip-platform-key` 创建新分支
+2. 实施上述修改
+3. 语法验证
+
+## 验证
+
+1. FetchURL 长/短 URL：截断文本可 Ctrl+Click 跳转完整 URL
+2. 非 FetchURL 工具：显示不受影响
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
