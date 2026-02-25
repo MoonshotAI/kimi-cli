@@ -34,8 +34,9 @@ import {
   WorkflowIcon,
   XIcon,
 } from "lucide-react";
-import type { ComponentProps, JSX, ReactNode } from "react";
+import type { ComponentProps, JSX, MouseEvent, ReactNode } from "react";
 import { createContext, isValidElement, useCallback, useMemo, useState } from "react";
+import { isMacOS } from "@/hooks/utils";
 import { useVideoThumbnail } from "@/hooks/useVideoThumbnail";
 import { CodeBlock } from "./code-block";
 import {
@@ -169,6 +170,25 @@ export const ToolHeader = ({
   const icon = TOOL_ICONS[rawName];
   const primaryParam = getPrimaryParam(input);
 
+  const fullUrl =
+    rawName === "FetchURL" &&
+    input &&
+    typeof input === "object" &&
+    typeof (input as Record<string, unknown>).url === "string"
+      ? ((input as Record<string, unknown>).url as string)
+      : null;
+
+  const handleParamClick = useCallback(
+    (e: MouseEvent) => {
+      if (fullUrl && (e.metaKey || e.ctrlKey)) {
+        e.stopPropagation();
+        e.preventDefault();
+        window.open(fullUrl, "_blank", "noopener,noreferrer");
+      }
+    },
+    [fullUrl],
+  );
+
   return (
     <CollapsibleTrigger
       className={cn("flex items-center gap-1.5 text-sm group", className)}
@@ -182,7 +202,14 @@ export const ToolHeader = ({
       <span className="text-primary font-medium">{displayName}</span>
       {/* Hide params when expanded via CSS data-state selector */}
       {primaryParam && (
-        <span className="text-muted-foreground group-data-[state=open]:hidden">
+        <span
+          className={cn(
+            "text-muted-foreground group-data-[state=open]:hidden",
+            fullUrl && "cursor-pointer hover:underline",
+          )}
+          title={fullUrl ? (isMacOS() ? "⌘+Click to open URL" : "Ctrl+Click to open URL") : undefined}
+          onClick={fullUrl ? handleParamClick : undefined}
+        >
           ({primaryParam})
         </span>
       )}
