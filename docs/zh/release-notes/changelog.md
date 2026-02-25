@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.14.0 (2026-02-26)
+
 - Shell：在终端中将 `FetchURL` 工具的 URL 参数显示为可点击的超链接
 - Tool：新增 `AskUserQuestion` 工具，支持在执行过程中向用户展示结构化问题和预定义选项，支持单选、多选和自定义文本输入
 - Wire：新增 `QuestionRequest` / `QuestionResponse` 消息类型和能力协商机制，用于结构化问答交互
