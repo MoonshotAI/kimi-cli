@@ -202,6 +202,93 @@ class ApprovalRequest(BaseModel):
         return self._future is not None and self._future.done()
 
 
+class QuestionOption(BaseModel):
+    """A single option for a question."""
+
+    label: str
+    """The display text for this option."""
+    description: str = ""
+    """Explanation of what this option means."""
+
+
+class QuestionItem(BaseModel):
+    """A single question to ask the user."""
+
+    question: str
+    """The complete question text."""
+    header: str = ""
+    """Short label displayed as a tag (max 12 chars)."""
+    options: list[QuestionOption]
+    """The available choices for this question (2-4 options)."""
+    multi_select: bool = False
+    """Whether multiple options can be selected."""
+
+
+class QuestionResponse(BaseModel):
+    """Response to a question request."""
+
+    request_id: str
+    """The ID of the resolved question request."""
+    answers: dict[str, str]
+    """Mapping from question text to selected option label(s). Multi-select answers are
+    comma-separated."""
+
+
+class QuestionNotSupported(Exception):
+    """Raised when the connected client does not support interactive questions."""
+
+
+class QuestionRequest(BaseModel):
+    """
+    A request to ask the user structured questions during execution.
+    """
+
+    id: str
+    """The unique request ID."""
+    tool_call_id: str
+    """The ID of the tool call that initiated this question."""
+    questions: list[QuestionItem]
+    """The questions to ask the user (1-4 questions)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._future: asyncio.Future[dict[str, str]] | None = None
+
+    def _get_future(self) -> asyncio.Future[dict[str, str]]:
+        if self._future is None:
+            self._future = asyncio.get_event_loop().create_future()
+        return self._future
+
+    async def wait(self) -> dict[str, str]:
+        """
+        Wait for the question to be answered.
+
+        Returns:
+            dict[str, str]: Mapping from question text to answer.
+        """
+        return await self._get_future()
+
+    def resolve(self, answers: dict[str, str]) -> None:
+        """
+        Resolve the question request with the given answers.
+        This will cause the `wait()` method to return the answers.
+        """
+        future = self._get_future()
+        if not future.done():
+            future.set_result(answers)
+
+    def set_exception(self, exc: BaseException) -> None:
+        """Resolve the question request with an exception."""
+        future = self._get_future()
+        if not future.done():
+            future.set_exception(exc)
+
+    @property
+    def resolved(self) -> bool:
+        """Whether the question request is resolved."""
+        return self._future is not None and self._future.done()
+
+
 class ToolCallRequest(BaseModel):
     """
     A tool call request routed to the Wire client for execution.
@@ -273,7 +360,7 @@ type Event = (
 """Any event, including control flow and content/tooling events."""
 
 
-type Request = ApprovalRequest | ToolCallRequest
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
 """Any request. Request is a message that expects a response."""
 
 type WireMessage = Event | Request
@@ -353,6 +440,11 @@ __all__ = [
     "SubagentEvent",
     "ApprovalRequest",
     "ToolCallRequest",
+    "QuestionOption",
+    "QuestionItem",
+    "QuestionResponse",
+    "QuestionRequest",
+    "QuestionNotSupported",
     # helpers
     "WireMessageEnvelope",
     # `StatusUpdate`-related
