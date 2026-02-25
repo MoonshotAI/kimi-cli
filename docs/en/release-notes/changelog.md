@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
 - Tool: Add `AskUserQuestion` tool for presenting structured questions with predefined options during execution, supporting single-select, multi-select, and custom text input
 - Wire: Add `QuestionRequest` / `QuestionResponse` message types and capability negotiation for structured question interactions
 - Shell: Add interactive question panel for `AskUserQuestion` with keyboard-driven option selection
