@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
 - Core: Persist session state across sessions — approval decisions (YOLO mode, auto-approved actions) and dynamic subagents are now saved and restored when resuming a session
 - Core: Use atomic JSON writes for metadata and session state files to prevent data corruption on crash
 - Wire: Add `steer` request to inject user messages into an active agent turn (protocol version 1.4)
