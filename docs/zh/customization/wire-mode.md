@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.3`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.4`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -232,6 +232,51 @@ interface ReplayResult {
 
 ```json
 {"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
+```
+
+### `steer`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+在 Agent 轮次进行中注入用户消息。与 `prompt` 不同，`steer` 不会开始新的轮次，而是将消息注入到当前正在进行的轮次中。注入的消息会作为一个合成的工具调用结果插入上下文，从而在 AI 处理过程中 “引导” 其行为。
+
+```typescript
+/** steer 请求参数 */
+interface SteerParams {
+  /** 用户输入，可以是纯文本或内容片段数组 */
+  user_input: string | ContentPart[]
+}
+
+/** steer 响应结果 */
+interface SteerResult {
+  /** 固定为 "steered" */
+  status: "steered"
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "steer", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "params": {"user_input": "用 Python 实现"}}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "steered"}}
+```
+
+**错误响应示例**
+
+如果当前没有轮次在进行：
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
 ### `cancel`

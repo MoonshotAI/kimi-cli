@@ -112,6 +112,19 @@ class JSONRPCReplayMessage(_MessageBase):
     params: JsonType | None = None
 
 
+class JSONRPCSteerMessage(_MessageBase):
+    class Params(BaseModel):
+        user_input: str | list[ContentPart]
+
+    method: Literal["steer"] = "steer"
+    id: str
+    params: Params
+
+    @model_serializer()
+    def _serialize(self) -> dict[str, Any]:
+        raise NotImplementedError("Steer message serialization is not implemented.")
+
+
 class JSONRPCCancelMessage(_MessageBase):
     method: Literal["cancel"] = "cancel"
     id: str
@@ -160,11 +173,12 @@ type JSONRPCInMessage = (
     | JSONRPCErrorResponse
     | JSONRPCInitializeMessage
     | JSONRPCPromptMessage
+    | JSONRPCSteerMessage
     | JSONRPCReplayMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "replay", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "cancel"}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse
@@ -206,3 +220,5 @@ class Statuses:
     """The agent run was cancelled by the user."""
     MAX_STEPS_REACHED = "max_steps_reached"
     """The agent run reached the maximum number of steps."""
+    STEERED = "steered"
+    """A steer message was queued for injection into the active turn."""

@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.3`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.4`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -232,6 +232,51 @@ interface ReplayResult {
 
 ```json
 {"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
+```
+
+### `steer`
+
+::: info Added
+Added in Wire 1.4.
+:::
+
+- **Direction**: Client → Agent
+- **Type**: Request (requires response)
+
+Inject a user message into an active agent turn. Unlike `prompt`, `steer` does not start a new turn but injects the message into the currently running turn. The injected message is inserted into the context as a synthetic tool call result, allowing you to "steer" the AI's behavior while it is processing.
+
+```typescript
+/** steer request parameters */
+interface SteerParams {
+  /** User input, can be plain text or array of content parts */
+  user_input: string | ContentPart[]
+}
+
+/** steer response result */
+interface SteerResult {
+  /** Fixed as "steered" */
+  status: "steered"
+}
+```
+
+**Request example**
+
+```json
+{"jsonrpc": "2.0", "method": "steer", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "params": {"user_input": "Use Python"}}
+```
+
+**Success response example**
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "steered"}}
+```
+
+**Error response example**
+
+If no turn is in progress:
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
 ### `cancel`
