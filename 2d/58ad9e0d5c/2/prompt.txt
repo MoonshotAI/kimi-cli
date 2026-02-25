@@ -1,0 +1,31 @@
+Implement the following plan:
+
+# FetchURL tooltip 根据平台显示 Cmd/Ctrl
+
+## Context
+
+上一轮已实现 FetchURL 的 Ctrl/Cmd+Click 打开完整链接功能，但 `title` tooltip 硬编码了 `"Ctrl+Click to open URL"`。在 Mac 上应显示 `"Cmd+Click to open URL"`。
+
+## 修改文件
+
+`web/src/components/ai-elements/tool.tsx` — `ToolHeader` 组件
+
+## 实现
+
+1. 导入已有的 `isMacOS` 工具函数（来自 `@/hooks/utils`，项目中已广泛使用）
+2. 将 `title={fullUrl ? "Ctrl+Click to open URL" : undefined}` 改为动态文案：`isMacOS() ? "⌘+Click to open URL" : "Ctrl+Click to open URL"`
+
+仅改动 1 行 import + 1 行 title 文案。
+
+## 验证
+
+1. Mac 上 hover 截断 URL → tooltip 显示 "⌘+Click to open URL"
+2. 非 Mac 上 hover → tooltip 显示 "Ctrl+Click to open URL"
+3. 功能行为不变：Cmd/Ctrl+Click 打开链接，普通点击折叠展开
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+在最新的main分支上开一个分支来提交修改
