@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
@@ -15,6 +16,7 @@ from rich.markup import escape
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.spinner import Spinner
+from rich.style import Style
 from rich.text import Text
 
 from kimi_cli.tools import extract_key_argument
@@ -112,6 +114,9 @@ class _ToolCallBlock:
             self._lexer.append_string(tool_call.function.arguments)
 
         self._argument = extract_key_argument(self._lexer, self._tool_name)
+        self._full_url = self._extract_full_url(
+            tool_call.function.arguments, self._tool_name
+        )
         self._result: ToolReturnValue | None = None
 
         self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
@@ -139,8 +144,11 @@ class _ToolCallBlock:
         argument = extract_key_argument(self._lexer, self._tool_name)
         if argument and argument != self._argument:
             self._argument = argument
+            self._full_url = self._extract_full_url(
+                self._lexer.complete_json(), self._tool_name
+            )
             self._renderable = BulletColumns(
-                Text.from_markup(self._get_headline_markup()),
+                self._build_headline_text(),
                 bullet=self._spinning_dots,
             )
 
@@ -179,7 +187,7 @@ class _ToolCallBlock:
 
     def _compose(self) -> RenderableType:
         lines: list[RenderableType] = [
-            Text.from_markup(self._get_headline_markup()),
+            self._build_headline_text(),
         ]
 
         if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
@@ -197,12 +205,20 @@ class _ToolCallBlock:
             argument = extract_key_argument(
                 sub_call.function.arguments or "", sub_call.function.name
             )
+            sub_url = self._extract_full_url(
+                sub_call.function.arguments, sub_call.function.name
+            )
+            sub_text = Text()
+            sub_text.append("Used ")
+            sub_text.append(sub_call.function.name, style="blue")
+            if argument:
+                sub_text.append(" (", style="grey50")
+                arg_style = Style(color="grey50", link=sub_url) if sub_url else "grey50"
+                sub_text.append(argument, style=arg_style)
+                sub_text.append(")", style="grey50")
             lines.append(
                 BulletColumns(
-                    Text.from_markup(
-                        f"Used [blue]{sub_call.function.name}[/blue]"
-                        + (f" [grey50]({argument})[/grey50]" if argument else "")
-                    ),
+                    sub_text,
                     bullet_style="green" if not sub_result.is_error else "red",
                 )
             )
@@ -230,10 +246,29 @@ class _ToolCallBlock:
                 bullet=self._spinning_dots,
             )
 
-    def _get_headline_markup(self) -> str:
-        return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
-            f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
-        )
+    @staticmethod
+    def _extract_full_url(arguments: str | None, tool_name: str) -> str | None:
+        """Extract the full URL from FetchURL tool arguments."""
+        if tool_name != "FetchURL" or not arguments:
+            return None
+        try:
+            args = json.loads(arguments)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if isinstance(args, dict) and args.get("url"):
+            return str(args["url"])
+        return None
+
+    def _build_headline_text(self) -> Text:
+        text = Text()
+        text.append("Used " if self.finished else "Using ")
+        text.append(self._tool_name, style="blue")
+        if self._argument:
+            text.append(" (", style="grey50")
+            arg_style = Style(color="grey50", link=self._full_url) if self._full_url else "grey50"
+            text.append(self._argument, style=arg_style)
+            text.append(")", style="grey50")
+        return text
 
     def _render_todo_markdown(self, block: TodoDisplayBlock) -> str:
         lines: list[str] = []
