@@ -1,0 +1,98 @@
+Implement the following plan:
+
+# Fix: CLI 中 FetchURL 截断 URL 支持 Ctrl+Click 打开完整链接
+
+## Context
+
+Web 端直接从 `toolCall.input.url` 读取完整 URL 用于超链接，与 `primaryParam`（截断文本）分离。CLI 端应采用相同模式：从 `self._lexer`（原始 JSON）提取完整 URL，不修改 `extract_key_argument`。
+
+## 方案
+
+**仅修改 `src/kimi_cli/ui/shell/visualize.py`**，与 web 端 `tool.tsx` 的模式对齐。
+
+### 修改详情
+
+#### 新增导入
+```python
+import json
+from rich.style import Style
+```
+
+#### `_ToolCallBlock` 新增私有静态方法
+
+```python
+@staticmethod
+def _extract_full_url(json_content: str | streamingjson.Lexer, tool_name: str) -> str | None:
+    if tool_name != "FetchURL":
+        return None
+    json_str = json_content.complete_json() if isinstance(json_content, streamingjson.Lexer) else json_content
+    try:
+        args = json.loads(json_str)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(args, dict) and args.get("url"):
+        return str(args["url"])
+    return None
+```
+
+等价于 web 端的：
+```typescript
+const fullUrl = rawName === "FetchURL" && input?.url ? input.url : null;
+```
+
+#### `__init__` 新增 `self._full_url`
+
+```python
+self._full_url = self._extract_full_url(self._lexer, self._tool_name)
+```
+
+#### `append_args_part` 同步更新
+
+```python
+self._full_url = self._extract_full_url(self._lexer, self._tool_name)
+```
+
+#### `_get_headline_markup()` → `_build_headline_text()` 返回 `Text`
+
+截断文本通过 `Style(link=full_url)` 附加 OSC 8 超链接（仅 FetchURL）：
+
+```python
+def _build_headline_text(self, ...) -> Text:
+    text = Text()
+    text.append("Used " if finished else "Using ")
+    text.append(tool_name, style="blue")
+    if argument:
+        text.append(" (", style="grey50")
+        arg_style = Style(color="grey50", link=full_url) if full_url else "grey50"
+        text.append(argument, style=arg_style)
+        text.append(")", style="grey50")
+    return text
+```
+
+#### `_compose` 中追加完整 URL 提示行
+
+当 URL 被截断时（`full_url != argument`），在 headline 下方显示完整 URL：
+```
+● Used FetchURL (https://example.com/ver.../to/something)
+  ↳ https://full-url-here.com/very/long/path/to/something
+```
+
+#### 子代理工具调用同样处理
+
+### 不修改的文件
+
+- `tools/__init__.py` — 不修改
+- `acp/session.py` — 不修改
+
+## 验证
+
+1. FetchURL 长 URL（>50 字符）：截断文本可 Ctrl+Click，下方显示完整 URL
+2. FetchURL 短 URL（≤50 字符）：无额外提示行
+3. 非 FetchURL 工具：显示不受影响
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+这个效果不太好。不要下边的显示完整url了。仅仅显示缩略url即可，不需要考虑终端不兼容ctrl点击跳转了

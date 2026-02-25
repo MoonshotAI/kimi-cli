@@ -3,7 +3,7 @@
   "checkpoint_id": "3a2e672ecd6a",
   "strategy": "manual-commit",
   "branch": "fix/fetchurl-tooltip-platform-key",
-  "checkpoints_count": 1,
+  "checkpoints_count": 3,
   "files_touched": [
     "src/kimi_cli/ui/shell/visualize.py"
   ],
@@ -28,13 +28,20 @@
       "context": "/3a/2e672ecd6a/2/context.md",
       "content_hash": "/3a/2e672ecd6a/2/content_hash.txt",
       "prompt": "/3a/2e672ecd6a/2/prompt.txt"
+    },
+    {
+      "metadata": "/3a/2e672ecd6a/3/metadata.json",
+      "transcript": "/3a/2e672ecd6a/3/full.jsonl",
+      "context": "/3a/2e672ecd6a/3/context.md",
+      "content_hash": "/3a/2e672ecd6a/3/content_hash.txt",
+      "prompt": "/3a/2e672ecd6a/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 113,
-    "cache_creation_tokens": 291276,
-    "cache_read_tokens": 3559052,
-    "output_tokens": 24822,
-    "api_call_count": 79
+    "input_tokens": 145,
+    "cache_creation_tokens": 349688,
+    "cache_read_tokens": 4493211,
+    "output_tokens": 29077,
+    "api_call_count": 105
   }
 }

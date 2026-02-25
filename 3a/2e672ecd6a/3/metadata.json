@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "3a2e672ecd6a",
+  "session_id": "d2637ab1-8c63-4089-b382-8195dbd85210",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-25T08:19:10.353766Z",
+  "branch": "fix/fetchurl-tooltip-platform-key",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "src/kimi_cli/ui/shell/visualize.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "bf3066f9a3a8",
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 58412,
+    "cache_read_tokens": 934159,
+    "output_tokens": 4255,
+    "api_call_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-25T08:19:10.072651Z",
+    "agent_lines": 57,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 57,
+    "agent_percentage": 100
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/d2637ab1-8c63-4089-b382-8195dbd85210.jsonl"
+}
