@@ -449,10 +449,8 @@ class _QuestionRequestPanel:
 
     def should_prompt_other_input(self) -> bool:
         """Whether pressing ENTER should open free-text input for the current question."""
-        if not self.is_other_selected:
-            return False
         if not self.is_multi_select:
-            return True
+            return self.is_other_selected
         other_idx = len(self._options) - 1
         return other_idx in self._multi_selected
 
@@ -527,7 +525,9 @@ class _QuestionRequestPanel:
             selected_labels = [
                 self._options[i][0] for i in sorted(self._multi_selected) if i < len(q.options)
             ]
-            self._answers[q.question] = ", ".join(selected_labels) if selected_labels else ""
+            if not selected_labels:
+                return False  # don't allow empty multi-select submission
+            self._answers[q.question] = ", ".join(selected_labels)
         else:
             if self.is_other_selected:
                 return False  # caller should handle Other input

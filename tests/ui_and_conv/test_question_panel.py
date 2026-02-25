@@ -160,6 +160,60 @@ def test_multi_question_advance():
     assert answers == {"Q1?": "A1", "Q2?": "B2"}
 
 
+def test_multi_select_other_cursor_not_on_other():
+    """When Other is checked but cursor is elsewhere, should_prompt_other_input() should still return True."""
+    request = _make_request(
+        [
+            {
+                "question": "Features?",
+                "options": [("Auth", ""), ("Cache", "")],
+                "multi_select": True,
+            }
+        ]
+    )
+    panel = _QuestionRequestPanel(request)
+
+    # Toggle Auth (index 0)
+    panel.toggle_select()
+
+    # Move to Other (index 2) and toggle
+    panel.move_down()  # index 1 (Cache)
+    panel.move_down()  # index 2 (Other)
+    panel.toggle_select()
+
+    # Move cursor back to Auth (index 0) — cursor is NOT on Other
+    panel.move_up()  # index 1
+    panel.move_up()  # index 0
+    assert not panel.is_other_selected
+
+    # should_prompt_other_input() must still return True because Other is in _multi_selected
+    assert panel.should_prompt_other_input() is True
+
+    # submit() should return False (Other needs text input)
+    assert panel.submit() is False
+
+
+def test_multi_select_empty_submit_blocked():
+    """Submitting with no options selected in multi-select mode should be blocked."""
+    request = _make_request(
+        [
+            {
+                "question": "Select many?",
+                "options": [("X", ""), ("Y", ""), ("Z", "")],
+                "multi_select": True,
+            }
+        ]
+    )
+    panel = _QuestionRequestPanel(request)
+
+    # Don't select anything, try to submit
+    all_done = panel.submit()
+    assert all_done is False
+
+    # Answers should still be empty (nothing was stored)
+    assert panel.get_answers() == {}
+
+
 def test_wrap_around_navigation():
     """move_up at first option should wrap to the last option (Other)."""
     request = _make_request()

@@ -86,7 +86,7 @@ export function QuestionDialog({
   const getCurrentAnswer = useCallback((): string | null => {
     if (isMultiSelect) {
       const labels: string[] = [];
-      for (const idx of multiSelected) {
+      for (const idx of Array.from(multiSelected).sort((a, b) => a - b)) {
         if (idx === otherIndex) {
           if (otherText.trim()) labels.push(otherText.trim());
         } else if (options[idx]) {
