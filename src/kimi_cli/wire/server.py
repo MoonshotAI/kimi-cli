@@ -44,6 +44,7 @@ from .jsonrpc import (
     JSONRPCPromptMessage,
     JSONRPCReplayMessage,
     JSONRPCRequestMessage,
+    JSONRPCSteerMessage,
     JSONRPCSuccessResponse,
     Statuses,
 )
@@ -282,6 +283,8 @@ class WireServer:
                     resp = await self._handle_prompt(msg)
                 case JSONRPCReplayMessage():
                     resp = await self._handle_replay(msg)
+                case JSONRPCSteerMessage():
+                    resp = await self._handle_steer(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -460,6 +463,24 @@ class WireServer:
                             )
                         )
             self._cancel_event = None
+
+    async def _handle_steer(
+        self, msg: JSONRPCSteerMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if not isinstance(self._soul, KimiSoul) or not self._is_streaming:
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="No agent turn is in progress",
+                ),
+            )
+
+        self._soul.steer(msg.params.user_input)
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result={"status": Statuses.STEERED},
+        )
 
     async def _handle_replay(
         self, msg: JSONRPCReplayMessage
