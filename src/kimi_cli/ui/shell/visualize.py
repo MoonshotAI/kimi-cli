@@ -5,7 +5,7 @@ import json
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kosong.message import Message
@@ -114,9 +114,7 @@ class _ToolCallBlock:
             self._lexer.append_string(tool_call.function.arguments)
 
         self._argument = extract_key_argument(self._lexer, self._tool_name)
-        self._full_url = self._extract_full_url(
-            tool_call.function.arguments, self._tool_name
-        )
+        self._full_url = self._extract_full_url(tool_call.function.arguments, self._tool_name)
         self._result: ToolReturnValue | None = None
 
         self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
@@ -144,9 +142,7 @@ class _ToolCallBlock:
         argument = extract_key_argument(self._lexer, self._tool_name)
         if argument and argument != self._argument:
             self._argument = argument
-            self._full_url = self._extract_full_url(
-                self._lexer.complete_json(), self._tool_name
-            )
+            self._full_url = self._extract_full_url(self._lexer.complete_json(), self._tool_name)
             self._renderable = BulletColumns(
                 self._build_headline_text(),
                 bullet=self._spinning_dots,
@@ -205,9 +201,7 @@ class _ToolCallBlock:
             argument = extract_key_argument(
                 sub_call.function.arguments or "", sub_call.function.name
             )
-            sub_url = self._extract_full_url(
-                sub_call.function.arguments, sub_call.function.name
-            )
+            sub_url = self._extract_full_url(sub_call.function.arguments, sub_call.function.name)
             sub_text = Text()
             sub_text.append("Used ")
             sub_text.append(sub_call.function.name, style="blue")
@@ -255,8 +249,10 @@ class _ToolCallBlock:
             args = json.loads(arguments)
         except (json.JSONDecodeError, TypeError):
             return None
-        if isinstance(args, dict) and args.get("url"):
-            return str(args["url"])
+        if isinstance(args, dict):
+            url = cast(dict[str, Any], args).get("url")
+            if url:
+                return str(url)
         return None
 
     def _build_headline_text(self) -> Text:
