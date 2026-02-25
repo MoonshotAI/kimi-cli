@@ -3,7 +3,7 @@
   "checkpoint_id": "0860e52c3d41",
   "strategy": "manual-commit",
   "branch": "fix/fetchurl-osc8-hyperlink",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "web/src/features/chat/components/virtualized-message-list.tsx"
   ],
@@ -21,13 +21,20 @@
       "context": "/08/60e52c3d41/1/context.md",
       "content_hash": "/08/60e52c3d41/1/content_hash.txt",
       "prompt": "/08/60e52c3d41/1/prompt.txt"
+    },
+    {
+      "metadata": "/08/60e52c3d41/2/metadata.json",
+      "transcript": "/08/60e52c3d41/2/full.jsonl",
+      "context": "/08/60e52c3d41/2/context.md",
+      "content_hash": "/08/60e52c3d41/2/content_hash.txt",
+      "prompt": "/08/60e52c3d41/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 33,
-    "cache_creation_tokens": 99428,
-    "cache_read_tokens": 966391,
-    "output_tokens": 6114,
-    "api_call_count": 27
+    "input_tokens": 61,
+    "cache_creation_tokens": 164557,
+    "cache_read_tokens": 1288472,
+    "output_tokens": 7289,
+    "api_call_count": 41
   }
 }

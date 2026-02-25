@@ -1,0 +1,83 @@
+Implement the following plan:
+
+# Fix: kimi-web 切换标签页后滚动位置丢失
+
+## Context
+
+Chrome 后台标签页会节流 `requestAnimationFrame`、`IntersectionObserver` 和布局计算。react-virtuoso 依赖这些 API 来跟踪滚动位置和元素尺寸。当标签页重新可见时，Virtuoso 内部状态可能已经过期，导致滚动位置重置到顶部。消息本身未丢失（没有 WebSocket 重连），只是滚动位置丢失了。
+
+## 修改方案
+
+仅修改一个文件：`web/src/features/chat/components/virtualized-message-list.tsx`
+
+在 `VirtualizedMessageListComponent` 中新增一个 `useEffect`，监听 `visibilitychange` 事件：
+
+- 标签页隐藏时：保存 `scrollerRef.current.scrollTop` 到一个 ref
+- 标签页重新可见时：通过双层 `requestAnimationFrame` 恢复 `scrollTop`（第一帧让浏览器重新布局，第二帧应用滚动位置）
+
+```typescript
+useEffect(() => {
+  const savedScrollTopRef = { current: 0 };
+
+  const handleVisibilityChange = () => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    if (document.visibilityState === "hidden") {
+      savedScrollTopRef.current = scroller.scrollTop;
+    } else if (document.visibilityState === "visible") {
+      const savedTop = savedScrollTopRef.current;
+      if (savedTop <= 0) return;
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollerRef.current) {
+            scrollerRef.current.scrollTop = savedTop;
+          }
+        });
+      });
+    }
+  };
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  return () => {
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
+}, []);
+```
+
+## 为什么这样做
+
+- **双层 rAF**：Chrome 解除节流后第一帧可能仍用过期布局；第二帧时 `scrollHeight` 和元素尺寸已稳定
+- **不需要改 chat-conversation.tsx**：Virtuoso 在滚动恢复后会自动触发 `atBottomStateChange`，`isAtBottom` 状态会自动同步
+- **不影响 followOutput**：如果用户之前在底部附近，`followOutput` 会在下次追加内容时自动滚到底部；如果用户在上方阅读历史，恢复的位置会被保留
+
+## 验证方式
+
+1. 打开 kimi-web，在一个长对话中滚动到中间位置
+2. 切到另一个 Chrome 标签页，等待 2-3 分钟
+3. 切回来 → 滚动位置应保持不变
+4. 在对话底部重复测试 → 返回后应仍在底部，新消息仍能自动滚动
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+先stash掉这个修改我看看原来的效果
+
+---
+
+怎样能触发一次这个问题？
+
+---
+
+能不能缩短截流策略
+
+---
+
+现在修复
+
+---
+
+git add commit push
