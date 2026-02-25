@@ -137,6 +137,28 @@ def build_set_todo_call(tool_call_id: str, todos: list[dict[str, str]]) -> str:
     return f"tool_call: {json.dumps(payload)}"
 
 
+def build_ask_user_tool_call(tool_call_id: str, questions: list[dict[str, Any]]) -> str:
+    """Build a scripted tool call line for the AskUserQuestion tool."""
+    payload = {
+        "id": tool_call_id,
+        "name": "AskUserQuestion",
+        "arguments": json.dumps({"questions": questions}),
+    }
+    return f"tool_call: {json.dumps(payload)}"
+
+
+def build_question_response(request_msg: dict[str, Any], answers: dict[str, str]) -> dict[str, Any]:
+    """Build a QuestionResponse JSON-RPC response (mirrors build_approval_response)."""
+    request_id = request_msg.get("id")
+    payload = request_msg.get("params", {}).get("payload", {})
+    question_id = payload.get("id")
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {"request_id": question_id, "answers": answers},
+    }
+
+
 class LineReader:
     def __init__(self, stream: IO[str]) -> None:
         # Use a background reader so Windows pipes don't rely on select().
@@ -267,11 +289,16 @@ def start_wire(
 
 
 def send_initialize(
-    wire: WireProcess, *, external_tools: list[dict[str, Any]] | None = None
+    wire: WireProcess,
+    *,
+    external_tools: list[dict[str, Any]] | None = None,
+    capabilities: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {"protocol_version": "1.1"}
     if external_tools:
         params["external_tools"] = external_tools
+    if capabilities is not None:
+        params["capabilities"] = capabilities
     wire.send_json({"jsonrpc": "2.0", "id": "init", "method": "initialize", "params": params})
     return read_response(wire, "init")
 

@@ -18,6 +18,7 @@ class KeyEvent(Enum):
     ENTER = auto()
     ESCAPE = auto()
     TAB = auto()
+    SPACE = auto()
     CTRL_E = auto()
 
 
@@ -175,6 +176,8 @@ def _listen_for_keyboard_unix(
                     emit(KeyEvent.ESCAPE)
             elif c in (b"\r", b"\n"):
                 emit(KeyEvent.ENTER)
+            elif c == b" ":
+                emit(KeyEvent.SPACE)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
             elif c == b"\x05":  # Ctrl+E
@@ -231,6 +234,8 @@ def _listen_for_keyboard_windows(
                     emit(KeyEvent.ESCAPE)
             elif c in (b"\r", b"\n"):
                 emit(KeyEvent.ENTER)
+            elif c == b" ":
+                emit(KeyEvent.SPACE)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
             elif c == b"\x05":  # Ctrl+E
