@@ -792,11 +792,6 @@ class _LiveView:
                 logger.warning("Unexpected ToolCallRequest in shell UI: {msg}", msg=msg)
 
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
-        # handle ESC key to cancel the run
-        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
-            self._cancel_event.set()
-            return
-
         # Handle question panel keyboard events
         if self._current_question_panel is not None:
             match event:
@@ -817,8 +812,17 @@ class _LiveView:
                         self._current_question_panel.request.resolve(answers)
                         self.show_next_question_request()
                     self.refresh_soon()
+                case KeyEvent.ESCAPE:
+                    self._current_question_panel.request.resolve({})
+                    self.show_next_question_request()
+                    self.refresh_soon()
                 case _:
                     pass
+            return
+
+        # handle ESC key to cancel the run
+        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
+            self._cancel_event.set()
             return
 
         # Handle approval panel keyboard events
