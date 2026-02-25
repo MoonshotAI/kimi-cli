@@ -87,6 +87,13 @@ interface InitializeParams {
   client?: ClientInfo
   /** 外部工具定义列表，可选 */
   external_tools?: ExternalTool[]
+  /** Client 能力声明，可选 */
+  capabilities?: ClientCapabilities
+}
+
+interface ClientCapabilities {
+  /** 是否支持处理 QuestionRequest 消息 */
+  supports_question?: boolean
 }
 
 interface ClientInfo {
@@ -113,6 +120,13 @@ interface InitializeResult {
   slash_commands: SlashCommandInfo[]
   /** 外部工具注册结果，仅当请求中包含 external_tools 时返回 */
   external_tools?: ExternalToolsResult
+  /** Server 能力声明 */
+  capabilities?: ServerCapabilities
+}
+
+interface ServerCapabilities {
+  /** 是否支持发送 QuestionRequest 消息 */
+  supports_question?: boolean
 }
 
 interface ServerInfo {
@@ -137,13 +151,13 @@ interface ExternalToolsResult {
 **请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.3", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.4", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.3", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.4", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。
@@ -345,8 +359,8 @@ Agent 向 Client 发出的请求，用于审批确认或外部工具调用。Cli
 ```typescript
 /** request 请求参数，包含序列化后的 Wire 消息 */
 interface RequestParams {
-  type: "ApprovalRequest" | "ToolCallRequest"
-  payload: ApprovalRequest | ToolCallRequest
+  type: "ApprovalRequest" | "ToolCallRequest" | "QuestionRequest"
+  payload: ApprovalRequest | ToolCallRequest | QuestionRequest
 }
 ```
 
@@ -411,7 +425,7 @@ type Event =
   | SubagentEvent
 
 /** 请求：通过 request 方法发送，需要响应 */
-type Request = ApprovalRequest | ToolCallRequest
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
 ```
 
 ### `TurnBegin`
@@ -694,6 +708,76 @@ interface ToolResult {
   tool_call_id: string
   return_value: ToolReturnValue
 }
+```
+
+### `QuestionRequest`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+结构化问答请求，通过 `request` 方法发送。当 Agent 使用 `AskUserQuestion` 工具时，会发送此请求。Client 必须响应后 Agent 才能继续执行。
+
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，Agent 会转而在文本响应中直接提问。
+
+```typescript
+interface QuestionRequest {
+  /** 请求 ID，用于响应时引用 */
+  id: string
+  /** 关联的工具调用 ID */
+  tool_call_id: string
+  /** 问题列表（1–4 个问题） */
+  questions: QuestionItem[]
+}
+
+interface QuestionItem {
+  /** 问题文本 */
+  question: string
+  /** 短标签，最多 12 个字符 */
+  header?: string
+  /** 可选项（2–4 个） */
+  options: QuestionOption[]
+  /** 是否允许多选 */
+  multi_select?: boolean
+}
+
+interface QuestionOption {
+  /** 选项标签 */
+  label: string
+  /** 选项说明 */
+  description?: string
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "request", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "params": {"type": "QuestionRequest", "payload": {"id": "q-1", "tool_call_id": "tc-1", "questions": [{"question": "Which language should I use?", "header": "Lang", "options": [{"label": "Python", "description": "Widely used, large ecosystem"}, {"label": "Rust", "description": "High performance, memory safe"}], "multi_select": false}]}}}
+```
+
+**响应格式**
+
+Client 需要返回 `QuestionResponse` 作为响应结果：
+
+```typescript
+interface QuestionResponse {
+  /** 对应的请求 ID */
+  request_id: string
+  /** 答案映射，键为问题文本，值为选中的选项标签（多选时用逗号分隔） */
+  answers: Record<string, string>
+}
+```
+
+**响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {"Which language should I use?": "Python"}}}
+```
+
+如果 Client 不支持结构化问答或用户关闭了问题面板，可以返回空的 `answers`：
+
+```json
+{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {}}}
 ```
 
 ### `DisplayBlock`

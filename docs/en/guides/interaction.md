@@ -69,6 +69,24 @@ Check if there are any issues with @src/components/Button.tsx
 
 After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
 
+## Structured questions
+
+During execution, the AI may need you to make choices to determine the next direction. In such cases, the AI will use the `AskUserQuestion` tool to present structured questions and options.
+
+The question panel displays the question description and available options. You can select using the keyboard:
+
+- Use arrow keys (up / down) to navigate options
+- Press `Enter` to confirm selection
+- Press `Space` to toggle selection in multi-select mode
+- Select "Other" to enter custom text
+- Press `Esc` to skip the question
+
+Each question supports 2–4 predefined options, and the AI will set appropriate options and descriptions based on the current task context. If there are multiple questions to answer, the panel presents them one by one.
+
+::: tip
+The AI only uses this tool when your choice genuinely affects subsequent actions. For decisions that can be inferred from context, the AI will decide on its own and continue execution.
+:::
+
 ## Approvals
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi Code CLI will request your confirmation.

@@ -61,6 +61,17 @@ When approval request preview content is truncated, press `Ctrl-E` to view the f
 
 Useful for viewing longer shell commands or file diff content.
 
+## Structured question operations
+
+When the AI uses the `AskUserQuestion` tool to ask you a question, the question panel supports the following keyboard operations:
+
+| Shortcut | Function |
+|----------|----------|
+| `↑` / `↓` | Navigate options |
+| `Space` | Toggle selection in multi-select mode |
+| `Enter` | Confirm selection |
+| `Esc` | Skip question |
+
 ## Exit and interrupt
 
 ### `Ctrl-D`: Exit
