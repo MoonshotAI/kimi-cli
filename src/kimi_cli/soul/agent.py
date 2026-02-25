@@ -206,6 +206,7 @@ async def load_agent(
     runtime: Runtime,
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    _restore_dynamic_subagents: bool = True,
 ) -> Agent:
     """
     Load agent from specification file.
@@ -235,6 +236,7 @@ async def load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
             mcp_configs=mcp_configs,
+            _restore_dynamic_subagents=False,
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
@@ -274,15 +276,17 @@ async def load_agent(
         await toolset.load_mcp_tools(validated_mcp_configs, runtime)
 
     # Restore dynamic subagents from persisted session state
-    for subagent_spec in runtime.session.state.dynamic_subagents:
-        if subagent_spec.name not in runtime.labor_market.subagents:
-            subagent = Agent(
-                name=subagent_spec.name,
-                system_prompt=subagent_spec.system_prompt,
-                toolset=toolset,
-                runtime=runtime.copy_for_dynamic_subagent(),
-            )
-            runtime.labor_market.add_dynamic_subagent(subagent_spec.name, subagent)
+    # Skip for fixed subagents — they have their own isolated LaborMarket
+    if _restore_dynamic_subagents:
+        for subagent_spec in runtime.session.state.dynamic_subagents:
+            if subagent_spec.name not in runtime.labor_market.subagents:
+                subagent = Agent(
+                    name=subagent_spec.name,
+                    system_prompt=subagent_spec.system_prompt,
+                    toolset=toolset,
+                    runtime=runtime.copy_for_dynamic_subagent(),
+                )
+                runtime.labor_market.add_dynamic_subagent(subagent_spec.name, subagent)
 
     return Agent(
         name=agent_spec.name,
