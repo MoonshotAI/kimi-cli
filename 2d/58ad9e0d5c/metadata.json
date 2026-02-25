@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "2d58ad9e0d5c",
+  "strategy": "manual-commit",
+  "branch": "fix/fetchurl-tooltip-platform-key",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/components/ai-elements/tool.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2d/58ad9e0d5c/0/metadata.json",
+      "transcript": "/2d/58ad9e0d5c/0/full.jsonl",
+      "context": "/2d/58ad9e0d5c/0/context.md",
+      "content_hash": "/2d/58ad9e0d5c/0/content_hash.txt",
+      "prompt": "/2d/58ad9e0d5c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 37,
+    "cache_creation_tokens": 148917,
+    "cache_read_tokens": 1269363,
+    "output_tokens": 4889,
+    "api_call_count": 27
+  }
+}
