@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "c62f2c94afa1",
+  "strategy": "manual-commit",
+  "branch": "fix/fetchurl-osc8-hyperlink",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "tests/tools/test_extract_key_argument.py",
+    "tests/ui_and_conv/test_tool_call_block.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c6/2f2c94afa1/0/metadata.json",
+      "transcript": "/c6/2f2c94afa1/0/full.jsonl",
+      "context": "/c6/2f2c94afa1/0/context.md",
+      "content_hash": "/c6/2f2c94afa1/0/content_hash.txt",
+      "prompt": "/c6/2f2c94afa1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 99090,
+    "cache_read_tokens": 925519,
+    "output_tokens": 6113,
+    "api_call_count": 26
+  }
+}
