@@ -76,7 +76,7 @@ When the AI needs to perform operations that may have an impact (such as modifyi
 The confirmation prompt will show operation details, including shell command and file diff previews. If the content is long and truncated, you can press `Ctrl-E` to expand and view the full content. You can choose:
 
 - **Allow**: Execute this operation
-- **Allow for this session**: Automatically approve similar operations in the current session
+- **Allow for this session**: Automatically approve similar operations in the current session (this decision is persisted with the session and automatically restored when resuming)
 - **Reject**: Do not execute this operation
 
 If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all requests:
