@@ -13,6 +13,10 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ImageURLPart,
+    QuestionItem,
+    QuestionOption,
+    QuestionRequest,
+    QuestionResponse,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -227,6 +231,43 @@ async def test_wire_message_serde():
     )
     _test_serde(msg)
 
+    msg = QuestionRequest(
+        id="question_001",
+        tool_call_id="call_456",
+        questions=[
+            QuestionItem(
+                question="Which library?",
+                header="Library",
+                options=[
+                    QuestionOption(label="React", description="A JS library"),
+                    QuestionOption(label="Vue", description="A progressive framework"),
+                ],
+                multi_select=False,
+            )
+        ],
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "QuestionRequest",
+            "payload": {
+                "id": "question_001",
+                "tool_call_id": "call_456",
+                "questions": [
+                    {
+                        "question": "Which library?",
+                        "header": "Library",
+                        "options": [
+                            {"label": "React", "description": "A JS library"},
+                            {"label": "Vue", "description": "A progressive framework"},
+                        ],
+                        "multi_select": False,
+                    }
+                ],
+            },
+        }
+    )
+    _test_serde(msg)
+
 
 async def test_approval_request_deserialize_without_display():
     msg = deserialize_wire_message(
@@ -337,17 +378,80 @@ async def test_type_inspection():
     assert not is_event(msg)
     assert is_request(msg)
 
+    msg = QuestionRequest(
+        id="question_001",
+        tool_call_id="call_456",
+        questions=[
+            QuestionItem(
+                question="Pick one?",
+                options=[
+                    QuestionOption(label="A", description=""),
+                    QuestionOption(label="B", description=""),
+                ],
+            )
+        ],
+    )
+    assert is_wire_message(msg)
+    assert not is_event(msg)
+    assert is_request(msg)
+
+
+async def test_question_request_resolve():
+    """Test basic resolve → wait flow for QuestionRequest."""
+    request = QuestionRequest(
+        id="q1",
+        tool_call_id="tc1",
+        questions=[
+            QuestionItem(
+                question="Pick?",
+                options=[
+                    QuestionOption(label="A", description=""),
+                    QuestionOption(label="B", description=""),
+                ],
+            )
+        ],
+    )
+    assert not request.resolved
+    request.resolve({"Pick?": "A"})
+    assert request.resolved
+    result = await request.wait()
+    assert result == {"Pick?": "A"}
+
+
+async def test_question_request_resolve_empty():
+    """Test resolve with empty answers dict."""
+    request = QuestionRequest(
+        id="q2",
+        tool_call_id="tc2",
+        questions=[
+            QuestionItem(
+                question="Pick?",
+                options=[
+                    QuestionOption(label="A", description=""),
+                    QuestionOption(label="B", description=""),
+                ],
+            )
+        ],
+    )
+    request.resolve({})
+    result = await request.wait()
+    assert result == {}
+    assert request.resolved
+
 
 def test_wire_message_type_alias():
     import kimi_cli.wire.types
 
     module = kimi_cli.wire.types
+    # Helper types that are BaseModel subclasses but not WireMessage types
+    _NON_WIRE_TYPES = {WireMessageEnvelope, QuestionOption, QuestionItem, QuestionResponse}
+
     wire_message_types = {
         obj
         for _, obj in inspect.getmembers(module, inspect.isclass)
         if obj.__module__ == module.__name__
         and issubclass(obj, BaseModel)
-        and obj is not WireMessageEnvelope
+        and obj not in _NON_WIRE_TYPES
     }
 
     for type_ in wire_message_types:

@@ -204,6 +204,76 @@ Examples:
                 },
             ),
             Tool(
+                name="AskUserQuestion",
+                description="""\
+Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multi_select to allow multiple answers to be selected for a question
+- Each question should have 2-4 options
+- You can ask 1-4 questions at a time
+- Keep option labels concise (1-5 words) and use descriptions for details
+""",
+                parameters={
+                    "properties": {
+                        "questions": {
+                            "description": "The questions to ask the user (1-4 questions).",
+                            "items": {
+                                "properties": {
+                                    "question": {
+                                        "description": "The complete question to ask the user.",
+                                        "type": "string",
+                                    },
+                                    "header": {
+                                        "default": "",
+                                        "description": "Short label displayed as a tag (max 12 chars).",
+                                        "type": "string",
+                                    },
+                                    "options": {
+                                        "description": "The available choices (2-4 options).",
+                                        "items": {
+                                            "properties": {
+                                                "label": {
+                                                    "description": "The display text for this option (1-5 words).",
+                                                    "type": "string",
+                                                },
+                                                "description": {
+                                                    "default": "",
+                                                    "description": "Explanation of what this option means.",
+                                                    "type": "string",
+                                                },
+                                            },
+                                            "required": ["label"],
+                                            "type": "object",
+                                        },
+                                        "maxItems": 4,
+                                        "minItems": 2,
+                                        "type": "array",
+                                    },
+                                    "multi_select": {
+                                        "default": False,
+                                        "description": "Whether the user can select multiple options.",
+                                        "type": "boolean",
+                                    },
+                                },
+                                "required": ["question", "options"],
+                                "type": "object",
+                            },
+                            "maxItems": 4,
+                            "minItems": 1,
+                            "type": "array",
+                        }
+                    },
+                    "required": ["questions"],
+                    "type": "object",
+                },
+            ),
+            Tool(
                 name="SetTodoList",
                 description="""\
 Update the whole todo list.
@@ -785,6 +855,7 @@ At any time, you should be HELPFUL and POLITE, CONCISE and ACCURATE, PATIENT and
 - ALWAYS, keep it stupidly simple. Do not overcomplicate things.\
 """,
                 [
+                    "AskUserQuestion",
                     "Shell",
                     "ReadFile",
                     "ReadMediaFile",
