@@ -13,6 +13,7 @@ Only write entries that are worth mentioning to users.
 
 - Core: Persist session state across sessions — approval decisions (YOLO mode, auto-approved actions) and dynamic subagents are now saved and restored when resuming a session
 - Core: Use atomic JSON writes for metadata and session state files to prevent data corruption on crash
+- Core: Redact prompt content from process title when using `-p` to prevent accidental process termination via `pkill -f`
 - Wire: Add `steer` request to inject user messages into an active agent turn (protocol version 1.4)
 - Web: Allow Cmd/Ctrl+Click on FetchURL tool's URL parameter to open the link in a new browser tab, with platform-appropriate tooltip hint
 

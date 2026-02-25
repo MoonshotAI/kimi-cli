@@ -400,6 +400,12 @@ def kimi(
         prompt = prompt.strip()
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
+        # Redact prompt from process title to prevent pkill -f from matching it
+        from setproctitle import getproctitle, setproctitle
+
+        current_title = getproctitle()
+        if prompt in current_title:
+            setproctitle(current_title.replace(prompt, "[REDACTED]"))
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
