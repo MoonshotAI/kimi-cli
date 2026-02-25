@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Wire: Add `steer` request to inject user messages into an active agent turn (protocol version 1.4)
+- Web: Allow Cmd/Ctrl+Click on FetchURL tool's URL parameter to open the link in a new browser tab, with platform-appropriate tooltip hint
+
 ## 1.13.0 (2026-02-24)
 
 - Core: Add automatic connection recovery that recreates the HTTP client on connection and timeout errors before retrying, improving resilience against transient network failures
