@@ -67,6 +67,8 @@ export type ToolState =
   | ToolUIPart["state"]
   | "approval-requested"
   | "approval-responded"
+  | "question-requested"
+  | "question-responded"
   | "output-denied";
 
 const getStatusIcon = (status: ToolState): ReactNode => {
@@ -75,8 +77,10 @@ const getStatusIcon = (status: ToolState): ReactNode => {
     case "input-available":
       return <Loader2Icon className="size-3 text-muted-foreground animate-spin" />;
     case "approval-requested":
+    case "question-requested":
       return <Loader2Icon className="size-3 text-warning animate-spin" />;
     case "approval-responded":
+    case "question-responded":
     case "output-available":
       return <CheckIcon className="size-3 text-success" />;
     case "output-error":

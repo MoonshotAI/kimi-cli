@@ -177,6 +177,27 @@ export type ApprovalResponseDecision =
   | "approve_for_session"
   | "reject";
 
+export type QuestionOption = {
+  label: string;
+  description: string;
+};
+
+export type QuestionItem = {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multi_select: boolean;
+};
+
+export type QuestionRequestEvent = {
+  type: "QuestionRequest";
+  payload: {
+    id: string;
+    tool_call_id: string;
+    questions: QuestionItem[];
+  };
+};
+
 /**
  * A SubagentEvent wraps an inner event produced by a subagent (Task tool).
  * The inner `event` field is a {type, payload} envelope that may itself be
@@ -205,6 +226,7 @@ export type WireEvent =
   | CompactionEndEvent
   | ApprovalRequestEvent
   | ApprovalRequestResolvedEvent
+  | QuestionRequestEvent
   | SubagentEventWire;
 
 // Parsed wire message
