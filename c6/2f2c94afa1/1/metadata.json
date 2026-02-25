@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "c62f2c94afa1",
+  "session_id": "c7c33335-b4bb-42f9-90a6-9ddaa81066eb",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-25T09:04:46.702317Z",
+  "branch": "fix/fetchurl-osc8-hyperlink",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "tests/tools/test_extract_key_argument.py",
+    "tests/ui_and_conv/test_tool_call_block.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "51bda3c6a5f0",
+  "token_usage": {
+    "input_tokens": 13,
+    "cache_creation_tokens": 22709,
+    "cache_read_tokens": 270419,
+    "output_tokens": 2243,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-25T09:04:46.597078Z",
+    "agent_lines": 90,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 90,
+    "agent_percentage": 100
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/c7c33335-b4bb-42f9-90a6-9ddaa81066eb.jsonl"
+}
