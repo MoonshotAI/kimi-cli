@@ -15,7 +15,7 @@ dependencies = [
     "prompt-toolkit==3.0.52",
     "pillow==12.1.0",
     "pyyaml==6.0.3",
-    "rich==14.2.0",
+    "rich==14.3.3",
     "ripgrepy==2.2.0",
     "streamingjson==0.0.5",
     "trafilatura==2.0.0",
