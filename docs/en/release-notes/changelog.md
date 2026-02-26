@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Add number key shortcuts (1–5) for quick option selection in question and approval panels, with redesigned bordered panel UI and keyboard hints
 - Shell: Add tab-style navigation for multi-question panels — use Left/Right arrows or Tab to switch between questions, with visual indicators for answered, current, and pending states, and automatic state restoration when revisiting a question
 - Shell: Allow Space key to submit single-select questions in the question panel
 - Web: Add tab-style navigation for multi-question dialogs with clickable tab bar, keyboard navigation, and state restoration when revisiting a question

@@ -357,10 +357,10 @@ class _ApprovalRequestPanel:
         self.has_expandable_content = self._total_lines > MAX_PREVIEW_LINES
 
     def render(self) -> RenderableType:
-        """Render the approval menu as a panel."""
+        """Render the approval menu as a bordered panel."""
         content_lines: list[RenderableType] = [
             Text.from_markup(
-                "[yellow]⚠ "
+                "[yellow]"
                 f"{escape(self.request.sender)} is requesting approval to "
                 f"{escape(self.request.action)}:[/yellow]"
             )
@@ -380,18 +380,32 @@ class _ApprovalRequestPanel:
 
         lines: list[RenderableType] = []
         if content_lines:
-            lines.append(Padding(Group(*content_lines), (0, 0, 0, 2)))
+            lines.append(Padding(Group(*content_lines), (0, 0, 0, 1)))
 
-        # Add menu options
+        # Add menu options with number key labels
         if lines:
             lines.append(Text(""))
         for i, (option_text, _) in enumerate(self.options):
+            num = i + 1
             if i == self.selected_index:
-                lines.append(Text(f"→ {option_text}", style="cyan"))
+                lines.append(Text(f"\u2192 [{num}] {option_text}", style="cyan"))
             else:
-                lines.append(Text(f"  {option_text}", style="grey50"))
+                lines.append(Text(f"  [{num}] {option_text}", style="grey50"))
 
-        return Padding(Group(*lines), 1)
+        # Keyboard hints
+        lines.append(Text(""))
+        hint = "  \u25b2/\u25bc select  1/2/3 choose  \u21b5 confirm"
+        if self.has_expandable_content:
+            hint += "  ctrl-e expand"
+        lines.append(Text(hint, style="dim"))
+
+        return Panel(
+            Group(*lines),
+            border_style="bold yellow",
+            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
+            title_align="left",
+            padding=(0, 1),
+        )
 
     def _render_block(
         self, block: _ApprovalContentBlock, max_lines: int | None = None
@@ -514,6 +528,13 @@ class _QuestionRequestPanel:
         other_idx = len(self._options) - 1
         return other_idx in self._multi_selected
 
+    def select_index(self, index: int) -> bool:
+        """Select an option by index. Returns False when index is out of range."""
+        if not (0 <= index < len(self._options)):
+            return False
+        self._selected_index = index
+        return True
+
     def render(self) -> RenderableType:
         q = self._current_question
         lines: list[RenderableType] = []
@@ -539,8 +560,9 @@ class _QuestionRequestPanel:
             lines.append(Text("  (SPACE to toggle, ENTER to submit)", style="dim italic"))
         lines.append(Text(""))
 
-        # Options
+        # Options with number key labels
         for i, (label, description) in enumerate(self._options):
+            num = i + 1
             if q.multi_select:
                 checked = "\u2713" if i in self._multi_selected else " "
                 prefix = f"\\[{checked}]"
@@ -550,13 +572,13 @@ class _QuestionRequestPanel:
                     option_line = Text.from_markup(f"[grey50]{prefix} {escape(label)}[/grey50]")
             else:
                 if i == self._selected_index:
-                    option_line = Text.from_markup(f"[cyan]\u2192 {escape(label)}[/cyan]")
+                    option_line = Text.from_markup(f"[cyan]\u2192 \\[{num}] {escape(label)}[/cyan]")
                 else:
-                    option_line = Text.from_markup(f"[grey50]  {escape(label)}[/grey50]")
+                    option_line = Text.from_markup(f"[grey50]  \\[{num}] {escape(label)}[/grey50]")
             lines.append(option_line)
 
             if description and label != OTHER_OPTION_LABEL:
-                lines.append(Text(f"    {description}", style="dim"))
+                lines.append(Text(f"      {description}", style="dim"))
 
         # Keyboard hint for multi-question
         if len(self.request.questions) > 1:
@@ -569,7 +591,13 @@ class _QuestionRequestPanel:
                 )
             )
 
-        return Padding(Group(*lines), 1)
+        return Panel(
+            Group(*lines),
+            border_style="bold cyan",
+            title="[bold cyan]? QUESTION[/bold cyan]",
+            title_align="left",
+            padding=(0, 1),
+        )
 
     def go_to(self, index: int) -> None:
         """Jump to a specific question by index, saving current UI state first."""
@@ -929,6 +957,29 @@ class _LiveView:
                 case KeyEvent.ESCAPE:
                     self._current_question_panel.request.resolve({})
                     self.show_next_question_request()
+                case (
+                    KeyEvent.NUM_1
+                    | KeyEvent.NUM_2
+                    | KeyEvent.NUM_3
+                    | KeyEvent.NUM_4
+                    | KeyEvent.NUM_5
+                ):
+                    # Number keys select option in question panel
+                    num_map = {
+                        KeyEvent.NUM_1: 0,
+                        KeyEvent.NUM_2: 1,
+                        KeyEvent.NUM_3: 2,
+                        KeyEvent.NUM_4: 3,
+                        KeyEvent.NUM_5: 4,
+                    }
+                    idx = num_map[event]
+                    panel = self._current_question_panel
+                    if panel.select_index(idx):
+                        if panel.is_multi_select:
+                            panel.toggle_select()
+                        elif not panel.is_other_selected:
+                            # Auto-submit for single-select (unless "Other")
+                            self._try_submit_question()
                 case _:
                     pass
             self.refresh_soon()
@@ -949,29 +1000,42 @@ class _LiveView:
                     self._current_approval_request_panel.move_down()
                     self.refresh_soon()
                 case KeyEvent.ENTER:
-                    resp = self._current_approval_request_panel.get_selected_response()
-                    self._current_approval_request_panel.request.resolve(resp)
-                    if resp == "approve_for_session":
-                        to_remove_from_queue: list[ApprovalRequest] = []
-                        for request in self._approval_request_queue:
-                            # approve all queued requests with the same action
-                            if (
-                                request.action
-                                == self._current_approval_request_panel.request.action
-                            ):
-                                request.resolve("approve_for_session")
-                                to_remove_from_queue.append(request)
-                        for request in to_remove_from_queue:
-                            self._approval_request_queue.remove(request)
-                    elif resp == "reject":
-                        # one rejection should stop the step immediately
-                        while self._approval_request_queue:
-                            self._approval_request_queue.popleft().resolve("reject")
-                        self._reject_all_following = True
-                    self.show_next_approval_request()
+                    self._submit_approval()
+                case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3:
+                    # Number keys directly select and submit approval option
+                    num_map = {
+                        KeyEvent.NUM_1: 0,
+                        KeyEvent.NUM_2: 1,
+                        KeyEvent.NUM_3: 2,
+                    }
+                    idx = num_map[event]
+                    if idx < len(self._current_approval_request_panel.options):
+                        self._current_approval_request_panel.selected_index = idx
+                        self._submit_approval()
                 case _:
                     pass
             return
+
+    def _submit_approval(self) -> None:
+        """Submit the currently selected approval response."""
+        assert self._current_approval_request_panel is not None
+        resp = self._current_approval_request_panel.get_selected_response()
+        self._current_approval_request_panel.request.resolve(resp)
+        if resp == "approve_for_session":
+            to_remove_from_queue: list[ApprovalRequest] = []
+            for request in self._approval_request_queue:
+                # approve all queued requests with the same action
+                if request.action == self._current_approval_request_panel.request.action:
+                    request.resolve("approve_for_session")
+                    to_remove_from_queue.append(request)
+            for request in to_remove_from_queue:
+                self._approval_request_queue.remove(request)
+        elif resp == "reject":
+            # one rejection should stop the step immediately
+            while self._approval_request_queue:
+                self._approval_request_queue.popleft().resolve("reject")
+            self._reject_all_following = True
+        self.show_next_approval_request()
 
     def cleanup(self, is_interrupt: bool) -> None:
         """Cleanup the live view on step end or interruption."""
