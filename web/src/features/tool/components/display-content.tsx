@@ -1073,7 +1073,7 @@ const TodoContent = ({ data }: { data: TodoDisplayData }) => (
             className={cn(
               done &&
                 "text-muted-foreground line-through decoration-muted-foreground/40",
-              !done && !inProgress && "text-muted-foreground/70",
+              !(done || inProgress) && "text-muted-foreground/70",
             )}
           >
             {text}

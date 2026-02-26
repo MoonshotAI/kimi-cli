@@ -235,6 +235,14 @@ Assistant messages provide the following action buttons:
 Copy and fork buttons added in version 1.10.
 :::
 
+### Structured questions
+
+When the AI uses the `AskUserQuestion` tool, Web UI displays a structured question dialog in the chat area, replacing the input box at the bottom. The question dialog shows the question description and available options, supporting single-select, multi-select, and custom text input. After answering all questions, the dialog closes automatically and the AI continues execution based on your choices.
+
+::: info Added
+Structured questions added in version 1.14.
+:::
+
 ### Approval keyboard shortcuts
 
 When the agent sends an approval request, you can use keyboard shortcuts to respond quickly:
@@ -258,9 +266,10 @@ Web UI provides rich display for tool call output:
 - **Todo list**: `SetTodoList` tool items are displayed as a structured list
 - **Tool input parameters**: Redesigned tool input UI with expandable parameter details and syntax highlighting for long values
 - **Context compaction**: A compaction indicator is shown when context compaction is in progress
+- **Quick URL open**: The URL parameter of the `FetchURL` tool supports Cmd/Ctrl+Click to open the link in a new tab
 
 ::: info Added
-Media preview, shell command, and todo list display components added in version 1.9.
+Media preview, shell command, and todo list display components added in version 1.9. Quick URL open added in version 1.14.
 :::
 
 ### Rich media support

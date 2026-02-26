@@ -22,6 +22,9 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    QuestionNotSupported,
+    QuestionRequest,
+    QuestionResponse,
     Request,
     ToolCallRequest,
     is_event,
@@ -44,6 +47,7 @@ from .jsonrpc import (
     JSONRPCPromptMessage,
     JSONRPCReplayMessage,
     JSONRPCRequestMessage,
+    JSONRPCSteerMessage,
     JSONRPCSuccessResponse,
     Statuses,
 )
@@ -74,6 +78,8 @@ class WireServer:
         self._cancel_event: asyncio.Event | None = None
         self._pending_requests: dict[str, Request] = {}
         """Maps JSON RPC message IDs to pending `Request`s."""
+        self._client_supports_question: bool = False
+        """Whether the Wire client supports QuestionRequest."""
 
     async def serve(self) -> None:
         logger.info("Starting Wire server on stdio")
@@ -250,6 +256,8 @@ class WireServer:
                             brief="Wire closed",
                         )
                     )
+                case QuestionRequest():
+                    request.resolve({})
         self._pending_requests.clear()
 
         if self._cancel_event is not None:
@@ -282,6 +290,8 @@ class WireServer:
                     resp = await self._handle_prompt(msg)
                 case JSONRPCReplayMessage():
                     resp = await self._handle_replay(msg)
+                case JSONRPCSteerMessage():
+                    resp = await self._handle_steer(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -364,6 +374,14 @@ class WireServer:
             )
 
         self._apply_wire_client_info(msg.params.client)
+
+        if msg.params.capabilities is not None:
+            self._client_supports_question = msg.params.capabilities.supports_question
+
+        result["capabilities"] = cast(
+            JsonType,
+            {"supports_question": True},
+        )
 
         return JSONRPCSuccessResponse(
             id=msg.id,
@@ -459,7 +477,27 @@ class WireServer:
                                 brief="Turn ended",
                             )
                         )
+                    case QuestionRequest():
+                        request.resolve({})
             self._cancel_event = None
+
+    async def _handle_steer(
+        self, msg: JSONRPCSteerMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if not isinstance(self._soul, KimiSoul) or not self._is_streaming:
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="No agent turn is in progress",
+                ),
+            )
+
+        self._soul.steer(msg.params.user_input)
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result={"status": Statuses.STEERED},
+        )
 
     async def _handle_replay(
         self, msg: JSONRPCReplayMessage
@@ -627,6 +665,30 @@ class WireServer:
                         result_id=tool_result.tool_call_id,
                     )
                 request.resolve(tool_result.return_value)
+            case QuestionRequest():
+                if isinstance(msg, JSONRPCErrorResponse):
+                    request.resolve({})
+                    return
+
+                try:
+                    result = QuestionResponse.model_validate(msg.result)
+                except pydantic.ValidationError as e:
+                    logger.error(
+                        "Invalid question response for request id={id}: {error}",
+                        id=msg.id,
+                        error=e,
+                    )
+                    request.resolve({})
+                    return
+
+                if result.request_id != request.id:
+                    logger.warning(
+                        "Question response id mismatch: request={request_id}, "
+                        "response={response_id}",
+                        request_id=request.id,
+                        response_id=result.request_id,
+                    )
+                request.resolve(result.answers)
 
     async def _stream_wire_messages(self, wire: Wire) -> None:
         wire_ui = wire.ui_side(merge=False)
@@ -637,6 +699,8 @@ class WireServer:
                     await self._request_approval(msg)
                 case ToolCallRequest():
                     await self._request_external_tool(msg)
+                case QuestionRequest():
+                    await self._request_question(msg)
                 case _:
                     await self._send_msg(JSONRPCEventMessage(method="event", params=msg))
 
@@ -651,6 +715,17 @@ class WireServer:
         # when the approval response is lost (e.g. no WebSocket connected).
 
     async def _request_external_tool(self, request: ToolCallRequest) -> None:
+        msg_id = request.id
+        self._pending_requests[msg_id] = request
+        await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
+        # Same rationale as _request_approval: do not block the UI loop.
+
+    async def _request_question(self, request: QuestionRequest) -> None:
+        if not self._client_supports_question:
+            # Client does not support interactive questions; signal the tool
+            # so it can tell the LLM to use an alternative approach.
+            request.set_exception(QuestionNotSupported())
+            return
         msg_id = request.id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))

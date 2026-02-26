@@ -22,6 +22,7 @@ from kimi_cli.config import Config, MoonshotSearchConfig, get_default_config
 from kimi_cli.llm import ALL_MODEL_CAPABILITIES, LLM
 from kimi_cli.metadata import WorkDirMeta
 from kimi_cli.session import Session
+from kimi_cli.session_state import SessionState
 from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs, LaborMarket, Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -114,6 +115,7 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
         work_dir_meta=WorkDirMeta(path=str(temp_work_dir), kaos=get_current_kaos().name),
         context_file=temp_share_dir / "context.jsonl",
         wire_file=WireFile(path=temp_share_dir / "wire.jsonl"),
+        state=SessionState(),
         title="Test Session",
         updated_at=0.0,
     )

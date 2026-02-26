@@ -21,7 +21,8 @@ Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中
 │   └── <work-dir-hash>/
 │       └── <session-id>/
 │           ├── context.jsonl
-│           └── wire.jsonl
+│           ├── wire.jsonl
+│           └── state.json
 ├── user-history/         # 输入历史
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # 日志
@@ -84,6 +85,15 @@ Kimi Code CLI 使用此文件在 `--continue` 或 `--session` 时恢复会话上
 ### `wire.jsonl`
 
 Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用于会话回放和提取会话标题。
+
+### `state.json`
+
+会话状态文件，存储会话的运行状态，包括：
+
+- `approval`：审批决策状态（YOLO 模式开关、已自动批准的操作类型）
+- `dynamic_subagents`：动态创建的子 Agent 定义
+
+恢复会话时，Kimi Code CLI 会读取此文件还原会话状态。此文件使用原子写入，防止崩溃时数据损坏。
 
 ## 输入历史
 

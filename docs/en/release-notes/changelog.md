@@ -6,6 +6,22 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Web: Refine UI details including rounded corners, spacing, and layout adjustments across input group, slash command menu, and session sidebar
 
+## 1.14.0 (2026-02-26)
+
+- Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
+- Tool: Add `AskUserQuestion` tool for presenting structured questions with predefined options during execution, supporting single-select, multi-select, and custom text input
+- Wire: Add `QuestionRequest` / `QuestionResponse` message types and capability negotiation for structured question interactions
+- Shell: Add interactive question panel for `AskUserQuestion` with keyboard-driven option selection
+- Web: Add `QuestionDialog` component for answering structured questions inline, replacing the prompt composer when a question is pending
+- Core: Persist session state across sessions — approval decisions (YOLO mode, auto-approved actions) and dynamic subagents are now saved and restored when resuming a session
+- Core: Use atomic JSON writes for metadata and session state files to prevent data corruption on crash
+- Wire: Add `steer` request to inject user messages into an active agent turn (protocol version 1.4)
+- Web: Allow Cmd/Ctrl+Click on FetchURL tool's URL parameter to open the link in a new browser tab, with platform-appropriate tooltip hint
+
+## 1.13.0 (2026-02-24)
+
+- Core: Add automatic connection recovery that recreates the HTTP client on connection and timeout errors before retrying, improving resilience against transient network failures
+
 ## 1.12.0 (2026-02-11)
 
 - Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages

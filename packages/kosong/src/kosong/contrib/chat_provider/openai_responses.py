@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast, get_args
 
 import httpx
-from openai import AsyncOpenAI, AsyncStream, OpenAIError
+from openai import AsyncStream, OpenAIError
 from openai.types.responses import (
     Response,
     ResponseInputItemParam,
@@ -30,9 +30,17 @@ from openai.types.shared.reasoning import Reasoning
 from openai.types.shared.reasoning_effort import ReasoningEffort
 from openai.types.shared_params.responses_model import ResponsesModel
 
-from kosong.chat_provider import ChatProvider, StreamedMessagePart, ThinkingEffort, TokenUsage
+from kosong.chat_provider import (
+    ChatProvider,
+    RetryableChatProvider,
+    StreamedMessagePart,
+    ThinkingEffort,
+    TokenUsage,
+)
 from kosong.chat_provider.openai_common import (
+    close_replaced_openai_client,
     convert_error,
+    create_openai_client,
     reasoning_effort_to_thinking_effort,
     thinking_effort_to_reasoning_effort,
 )
@@ -53,6 +61,7 @@ if TYPE_CHECKING:
 
     def type_check(openai_responses: "OpenAIResponses"):
         _: ChatProvider = openai_responses
+        _: RetryableChatProvider = openai_responses
 
 
 def get_openai_models_set() -> set[str]:
@@ -119,10 +128,13 @@ class OpenAIResponses:
         self._model = model
         self._stream = stream
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            **client_kwargs,
+        self._api_key: str | None = api_key
+        self._base_url: str | None = base_url
+        self._client_kwargs: dict[str, Any] = dict(client_kwargs)
+        self._client = create_openai_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            client_kwargs=self._client_kwargs,
         )
         self._generation_kwargs: OpenAIResponses.GenerationKwargs = {}
 
@@ -174,6 +186,16 @@ class OpenAIResponses:
             return OpenAIResponsesStreamedMessage(response)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        old_client = self._client
+        self._client = create_openai_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            client_kwargs=self._client_kwargs,
+        )
+        close_replaced_openai_client(old_client, client_kwargs=self._client_kwargs)
+        return True
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
         reasoning_effort = thinking_effort_to_reasoning_effort(effort)

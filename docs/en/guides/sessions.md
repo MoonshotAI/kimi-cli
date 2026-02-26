@@ -36,6 +36,15 @@ The list shows each session's title and last update time, helping you find the c
 
 When you continue an existing session, Kimi Code CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
 
+## Session state persistence
+
+In addition to conversation history, Kimi Code CLI also automatically saves and restores the session's runtime state. When you resume a session, the following states are automatically restored:
+
+- **Approval decisions**: YOLO mode on/off status, operation types approved via "allow for this session"
+- **Dynamic subagents**: Subagent definitions created via the `CreateSubagent` tool during the session
+
+This means you don't need to reconfigure these settings each time you resume a session. For example, if you approved auto-execution of certain shell commands in your previous session, those approvals remain in effect after resuming.
+
 ## Clear and compact
 
 As the conversation progresses, the context grows longer. Kimi Code CLI will automatically compress the context when needed to ensure the conversation can continue.
@@ -64,4 +73,8 @@ Compacting preserves key information while reducing token consumption. This is u
 
 ::: tip
 The bottom status bar displays the current context usage (`context: xx%`), helping you understand when you need to clear or compact.
+:::
+
+::: tip
+`/clear` and `/reset` clear the conversation context but do not reset session state (such as approval decisions and dynamic subagents). To start completely fresh, it's recommended to create a new session.
 :::
