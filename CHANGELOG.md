@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Simplify input prompt by removing username prefix for a cleaner appearance
+- Shell: Add horizontal separator line and expanded keyboard shortcut hints to the toolbar
+
 ## 1.14.0 (2026-02-26)
 
 - Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
