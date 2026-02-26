@@ -21,7 +21,8 @@ Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data lis
 │   └── <work-dir-hash>/
 │       └── <session-id>/
 │           ├── context.jsonl
-│           └── wire.jsonl
+│           ├── wire.jsonl
+│           └── state.json
 ├── user-history/         # Input history
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # Logs
@@ -84,6 +85,15 @@ Kimi Code CLI uses this file to restore session context when using `--continue` 
 ### `wire.jsonl`
 
 Wire message log file, stores Wire events during the session in JSON Lines (JSONL) format. Used for session replay and extracting session titles.
+
+### `state.json`
+
+Session state file, stores the session's runtime state, including:
+
+- `approval`: Approval decision state (YOLO mode on/off, auto-approved operation types)
+- `dynamic_subagents`: Dynamically created subagent definitions
+
+When resuming a session, Kimi Code CLI reads this file to restore the session state. This file uses atomic writes to prevent data corruption on crash.
 
 ## Input history
 

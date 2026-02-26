@@ -144,7 +144,7 @@ agent:
 
 ## 动态创建子 Agent
 
-`CreateSubagent` 是一个高级工具，允许 AI 在运行时动态定义新的子 Agent 类型（默认未启用）。如需使用，在 Agent 文件中添加：
+`CreateSubagent` 是一个高级工具，允许 AI 在运行时动态定义新的子 Agent 类型（默认未启用）。动态创建的子 Agent 会随会话状态持久化，恢复会话时自动还原。如需使用，在 Agent 文件中添加：
 
 ```yaml
 agent:

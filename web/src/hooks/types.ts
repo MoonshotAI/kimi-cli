@@ -1,4 +1,5 @@
 import type { ChatStatus, FileUIPart, ToolUIPart } from "ai";
+import type { QuestionItem } from "./wireTypes";
 
 export type NoPreviewAttachment = {
   kind: "nopreview";
@@ -78,6 +79,8 @@ export type LiveMessage = {
       | ToolUIPart["state"]
       | "approval-requested"
       | "approval-responded"
+      | "question-requested"
+      | "question-responded"
       | "output-denied";
     input?: ToolUIPart["input"];
     /** Tool call ID for tracking */
@@ -111,6 +114,15 @@ export type LiveMessage = {
       approved?: boolean;
       reason?: string;
       response?: unknown;
+    };
+    question?: {
+      id: string;
+      toolCallId: string;
+      questions: QuestionItem[];
+      rpcMessageId?: string | number;
+      submitted?: boolean;
+      resolved?: boolean;
+      answers?: Record<string, string>;
     };
     /** Steps from a subagent (Task tool) — populated by SubagentEvent processing */
     subagentSteps?: SubagentStep[];
