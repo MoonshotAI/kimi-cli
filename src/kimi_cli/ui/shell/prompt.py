@@ -912,7 +912,9 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcuts = "ctrl-x: toggle mode"
+            shortcuts = "ctrl-x: toggle mode  /feedback: report issues"
+            if columns - len(right_text) <= len(shortcuts) + 2:
+                shortcuts = "ctrl-x: toggle mode"
             if columns - len(right_text) > len(shortcuts) + 2:
                 fragments.extend([("", shortcuts), ("", " " * 2)])
                 columns -= len(shortcuts) + 2
