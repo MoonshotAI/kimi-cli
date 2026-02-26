@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add tab-style navigation for multi-question panels — use Left/Right arrows or Tab to switch between questions, with visual indicators for answered, current, and pending states, and automatic state restoration when revisiting a question
+- Shell: Allow Space key to submit single-select questions in the question panel
+- Web: Add tab-style navigation for multi-question dialogs with clickable tab bar, keyboard navigation, and state restoration when revisiting a question
+
 ## 1.14.0 (2026-02-26)
 
 - Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
