@@ -302,6 +302,10 @@ def kimi(
     ] = None,
 ):
     """Kimi, your next CLI agent."""
+    from kimi_cli.utils.proctitle import init_process_name
+
+    init_process_name("Kimi Code")
+
     if ctx.invoked_subcommand is not None:
         return  # skip rest if a subcommand is invoked
 
@@ -744,6 +748,10 @@ def acp():
 def web_worker(session_id: str) -> None:
     """Run web worker subprocess (internal)."""
     from uuid import UUID
+
+    from kimi_cli.utils.proctitle import set_process_title
+
+    set_process_title("kimi-code-worker")
 
     from kimi_cli.app import enable_logging
     from kimi_cli.web.runner.worker import run_worker
