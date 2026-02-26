@@ -99,6 +99,18 @@ export function QuestionDialog({
     : false;
   const disableActions = !onQuestionResponse || questionPending;
 
+  const focusOtherInputAfterToggle = useCallback((wasSelectedBeforeToggle: boolean) => {
+    if (wasSelectedBeforeToggle) {
+      // Unchecking Other: blur to prevent onFocus re-adding
+      if (document.activeElement === otherInputRef.current) {
+        otherInputRef.current?.blur();
+      }
+    } else {
+      // Checking Other: focus input for typing
+      setTimeout(() => otherInputRef.current?.focus(), 0);
+    }
+  }, []);
+
   const getCurrentAnswer = useCallback((): string | null => {
     if (isMultiSelect) {
       const labels: string[] = [];
@@ -178,22 +190,20 @@ export function QuestionDialog({
 
   /** Core advance logic: save state, record answer, advance or submit all. */
   const advanceWithAnswer = useCallback(
-    async (
-      answer: string,
-      stateToSave: { selectedIndex: number; multiSelected: Set<number>; otherText: string },
-    ) => {
+    async (answer: string) => {
       if (disableActions || !currentQuestion || !pendingQuestion) return;
 
       if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
 
-      savedSelectionsRef.current.set(currentQuestionIndex, stateToSave);
-
       const newAnswers = {
         ...answers,
         [currentQuestion.question]: answer,
       };
+      savedSelectionsRef.current.delete(currentQuestionIndex);
+      // Keep local state in sync immediately, even if the final async submit fails.
+      setAnswers(newAnswers);
 
       const allAnswered = questions.every((q) => q.question in newAnswers);
       if (allAnswered) {
@@ -203,7 +213,6 @@ export function QuestionDialog({
           console.error("[QuestionDialog] Failed to respond", error);
         }
       } else {
-        setAnswers(newAnswers);
         for (let offset = 1; offset <= totalQuestions; offset++) {
           const idx = (currentQuestionIndex + offset) % totalQuestions;
           if (!(questions[idx].question in newAnswers)) {
@@ -230,8 +239,8 @@ export function QuestionDialog({
   const handleSubmitCurrent = useCallback(async () => {
     const answer = getCurrentAnswer();
     if (!answer) return;
-    await advanceWithAnswer(answer, { selectedIndex, multiSelected, otherText });
-  }, [getCurrentAnswer, advanceWithAnswer, selectedIndex, multiSelected, otherText]);
+    await advanceWithAnswer(answer);
+  }, [getCurrentAnswer, advanceWithAnswer]);
 
   const handleDismiss = useCallback(async () => {
     if (disableActions || !pendingQuestion) return;
@@ -262,6 +271,7 @@ export function QuestionDialog({
       if (disableActions) return;
 
       if (isMultiSelect) {
+        const wasSelectedBeforeToggle = multiSelected.has(idx);
         setSelectedIndex(idx);
         setMultiSelected((prev) => {
           const next = new Set(prev);
@@ -273,15 +283,7 @@ export function QuestionDialog({
           return next;
         });
         if (idx === otherIndex) {
-          if (multiSelected.has(otherIndex)) {
-            // Unchecking Other: blur to prevent onFocus re-adding
-            if (document.activeElement === otherInputRef.current) {
-              otherInputRef.current?.blur();
-            }
-          } else {
-            // Checking Other: focus input for typing
-            setTimeout(() => otherInputRef.current?.focus(), 0);
-          }
+          focusOtherInputAfterToggle(wasSelectedBeforeToggle);
         }
       } else if (idx === otherIndex) {
         // Other option: focus input for typing
@@ -292,15 +294,11 @@ export function QuestionDialog({
         setSelectedIndex(idx);
         const clickedAnswer = options[idx]?.label;
         if (clickedAnswer) {
-          advanceWithAnswer(clickedAnswer, {
-            selectedIndex: idx,
-            multiSelected,
-            otherText,
-          });
+          advanceWithAnswer(clickedAnswer);
         }
       }
     },
-    [disableActions, isMultiSelect, otherIndex, options, advanceWithAnswer, multiSelected, otherText],
+    [disableActions, isMultiSelect, otherIndex, options, advanceWithAnswer, focusOtherInputAfterToggle, multiSelected],
   );
 
   // Keyboard navigation
@@ -342,6 +340,7 @@ export function QuestionDialog({
       } else if (event.key === " ") {
         event.preventDefault();
         if (isMultiSelect) {
+          const wasSelectedBeforeToggle = multiSelected.has(selectedIndex);
           // Toggle checkbox at focused position
           setMultiSelected((prev) => {
             const next = new Set(prev);
@@ -353,15 +352,7 @@ export function QuestionDialog({
             return next;
           });
           if (selectedIndex === otherIndex) {
-            if (multiSelected.has(otherIndex)) {
-              // Unchecking: blur to prevent onFocus re-adding
-              if (document.activeElement === otherInputRef.current) {
-                otherInputRef.current?.blur();
-              }
-            } else {
-              // Checking: focus input for typing
-              setTimeout(() => otherInputRef.current?.focus(), 0);
-            }
+            focusOtherInputAfterToggle(wasSelectedBeforeToggle);
           }
         } else {
           // Single-select: confirm like Enter
@@ -378,7 +369,7 @@ export function QuestionDialog({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pendingQuestion, disableActions, options.length, isMultiSelect, selectedIndex, otherIndex, handleSubmitCurrent, handleOptionClick, handleDismiss, handleTabClick, currentQuestionIndex, totalQuestions, multiSelected]);
+  }, [pendingQuestion, disableActions, options.length, isMultiSelect, selectedIndex, otherIndex, handleSubmitCurrent, handleOptionClick, handleDismiss, handleTabClick, currentQuestionIndex, totalQuestions, multiSelected, focusOtherInputAfterToggle]);
 
   if (!(pendingQuestion && currentQuestion)) return null;
 
@@ -437,6 +428,11 @@ export function QuestionDialog({
           <span className="font-semibold text-sm text-foreground">
             {currentQuestion.question}
           </span>
+          {totalQuestions === 1 && currentQuestion.header && (
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {currentQuestion.header}
+            </span>
+          )}
         </div>
 
         {/* Options */}

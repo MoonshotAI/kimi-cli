@@ -415,9 +415,8 @@ def test_submit_other_clears_saved_selections():
     # Go back — should restore from answer, not stale draft
     panel.go_to(0)
     # "custom" doesn't match A or B, so it should be recognized as Other text
-    # and Other should be in _multi_selected (if multi) or cursor on index 0 (single-select fallback)
-    # For single-select, answer "custom" matches no label → _selected_index defaults to 0
-    assert panel._selected_index == 0
+    # and cursor should land on the synthetic Other option.
+    assert panel.is_other_selected
 
 
 # ---------------------------------------------------------------------------

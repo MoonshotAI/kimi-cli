@@ -484,7 +484,8 @@ class _QuestionRequestPanel:
                         self._selected_index = i
                         break
                 else:
-                    self._selected_index = 0
+                    # Unknown submitted label should map to the synthetic "Other" option.
+                    self._selected_index = len(self._options) - 1
                 self._multi_selected = set()
         else:
             self._selected_index = 0
