@@ -616,6 +616,18 @@ def test_render_tab_bar_status():
 # ---------------------------------------------------------------------------
 
 
+def test_render_number_labels_in_single_select():
+    """Single-select options should display [1], [2], etc. as literal text."""
+    request = _make_request()
+    panel = _QuestionRequestPanel(request)
+    rendered = _render_to_str(panel)
+
+    # Number labels should appear as literal text, not be consumed as Rich markup
+    assert "[1]" in rendered
+    assert "[2]" in rendered
+    assert "[3]" in rendered
+
+
 def test_single_question_no_tab_bar():
     """Single-question request should not render tab bar."""
     request = _make_request()
