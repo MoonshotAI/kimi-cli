@@ -1,0 +1,78 @@
+# Git Integration Hooks for Kimi Code CLI
+# Git 集成相关的 Hooks 配置示例
+
+# ============================================
+# 1. Git 提交前检查
+# ============================================
+[[hooks.before_tool]]
+name = "pre-commit-validation"
+type = "command"
+matcher = { tool = "Shell", pattern = "git commit" }
+command = """
+if [ -f .pre-commit-config.yaml ]; then
+    pre-commit run --files $(git diff --cached --name-only) 2>&1
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo '{"decision": "deny", "reason": "Pre-commit checks failed. Please fix the issues before committing."}'
+        exit 2
+    fi
+fi
+echo '{"decision": "allow"}'
+"""
+timeout = 60000  # 1分钟
+description = "Run pre-commit hooks before git commit"
+
+# ============================================
+# 2. Git 推送前检查
+# ============================================
+[[hooks.before_tool]]
+name = "pre-push-check"
+type = "command"
+matcher = { tool = "Shell", pattern = "git push" }
+command = """
+# Check for uncommitted changes
+if [ -n "$(git status --porcelain)" ]; then
+    echo '{"decision": "ask", "reason": "You have uncommitted changes. Push anyway?"}'
+    exit 0
+fi
+
+# Check if behind remote
+current_branch=$(git branch --show-current)
+if git fetch origin $current_branch --dry-run 2>&1 | grep -q "up to date"; then
+    echo '{"decision": "allow"}'
+else
+    echo '{"decision": "ask", "reason": "Local branch may be behind remote. Pull first?"}'
+fi
+"""
+description = "Check before git push"
+
+# ============================================
+# 3. 大文件提交警告
+# ============================================
+[[hooks.before_tool]]
+name = "large-file-warning"
+type = "command"
+matcher = { tool = "Shell", pattern = "git add|git commit" }
+command = """
+# Check for large files (>10MB) in staging area
+large_files=$(git diff --cached --numstat | awk '$1 > 10000 || $2 > 10000 {print $3}')
+if [ -n "$large_files" ]; then
+    echo "{\"decision\": \"ask\", \"reason\": \"Large files detected (>10MB): $large_files\"}"
+else
+    echo '{"decision": "allow"}'
+fi
+"""
+description = "Warn about large files in git"
+
+# ============================================
+# 4. Session 启动时显示 Git 状态
+# ============================================
+[[hooks.session_start]]
+name = "show-git-info"
+type = "command"
+command = """
+branch=$(git branch --show-current 2>/dev/null || echo "N/A")
+last_commit=$(git log -1 --oneline 2>/dev/null || echo "N/A")
+echo "{\"additional_context\": \"Git branch: $branch | Last commit: $last_commit\"}"
+"""
+description = "Show git info on session start"

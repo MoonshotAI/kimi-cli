@@ -5,9 +5,10 @@ import contextlib
 import importlib
 import inspect
 import json
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from kosong.tooling import (
@@ -29,10 +30,12 @@ from kosong.utils.typing import JsonType
 from loguru import logger
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+# Hooks are handled externally via AgentHooks standard
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
     ContentPart,
+    TextPart,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -68,11 +71,31 @@ if TYPE_CHECKING:
         _: Toolset = kimi_toolset
 
 
+@dataclass
+class ToolHookStats:
+    """Statistics for tool hook execution."""
+
+    total_calls: int = 0
+    blocked_calls: int = 0
+    modified_calls: int = 0
+
+    total_duration_ms: float = 0.0
+
+    @property
+    def avg_duration_ms(self) -> float:
+        """Average hook execution duration."""
+        if self.total_calls == 0:
+            return 0.0
+        return self.total_duration_ms / self.total_calls
+
+
 class KimiToolset:
-    def __init__(self) -> None:
+    def __init__(self, runtime: Runtime | None = None) -> None:
         self._tool_dict: dict[str, ToolType] = {}
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
+        self._runtime = runtime
+        self._hook_stats = ToolHookStats()
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
@@ -110,18 +133,234 @@ class KimiToolset:
             except json.JSONDecodeError as e:
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
-            async def _call():
+            # Create async task that handles hooks + tool execution
+            async def _call_with_hooks():
+                start_time = time.monotonic()
+                tool_name = tool_call.function.name
+                tool_use_id = tool_call.id
+                tool_input = arguments
+
                 try:
-                    ret = await tool.call(arguments)
+                    # Execute pre-tool-call hooks
+                    hook_result = await self._execute_pre_tool_call_hooks(
+                        tool_name=tool_name,
+                        tool_input=tool_input,
+                        tool_use_id=tool_use_id,
+                    )
+
+                    if hook_result is not None:
+                        # Hook blocked the tool execution
+                        return hook_result
+
+                    # Execute the actual tool
+                    try:
+                        ret = await tool.call(tool_input)
+                        tool_output = ret
+                        error = None
+                    except Exception as e:
+                        tool_output = None
+                        error = str(e)
+                        ret = ToolRuntimeError(str(e))
+
+                    # Execute post-tool-call hooks (fire and forget for async hooks)
+                    await self._execute_post_tool_call_hooks(
+                        tool_name=tool_name,
+                        tool_input=tool_input,
+                        tool_output=tool_output,
+                        error=error,
+                        tool_use_id=tool_use_id,
+                        duration_ms=int((time.monotonic() - start_time) * 1000),
+                    )
+
                     return ToolResult(tool_call_id=tool_call.id, return_value=ret)
+
                 except Exception as e:
+                    logger.exception("Tool execution failed: {error}", error=e)
                     return ToolResult(
                         tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e))
                     )
 
-            return asyncio.create_task(_call())
+            return asyncio.create_task(_call_with_hooks())
         finally:
             current_tool_call.reset(token)
+
+    async def _execute_pre_tool_call_hooks(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        tool_use_id: str,
+    ) -> ToolResult | None:
+        """Execute pre-tool-call hooks and return blocked result or None to continue.
+
+        Returns:
+            ToolResult if tool should be blocked, None to continue execution.
+        """
+        if self._runtime is None:
+            return None
+
+        self._hook_stats.total_calls += 1
+        start_time = time.monotonic()
+
+        # Build event context
+        event = {
+            "event_type": "pre-tool-call",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self._runtime.session.id,
+            "work_dir": str(self._runtime.session.work_dir),
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+            "tool_use_id": tool_use_id,
+        }
+
+        try:
+            exec_result = await self._runtime.hook_manager.execute(
+                "pre-tool-call",
+                event,
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+        except Exception as e:
+            logger.exception("Failed to execute pre-tool-call hooks: {error}", error=e)
+            return None
+        finally:
+            duration_ms = (time.monotonic() - start_time) * 1000
+            self._hook_stats.total_duration_ms += duration_ms
+
+        # Check if any hook blocked the execution
+        if exec_result.should_block:
+            self._hook_stats.blocked_calls += 1
+            logger.info(
+                "Tool {tool_name} blocked: {reason}",
+                tool_name=tool_name,
+                reason=exec_result.block_reason,
+            )
+
+            return ToolResult(
+                tool_call_id=tool_use_id,
+                return_value=ToolError(
+                    message=f"Tool blocked: {exec_result.block_reason}",
+                    brief="Blocked by hook",
+                ),
+            )
+
+        # Process individual results for logging, stats, and additional context
+        for result in exec_result.results:
+            if not result.success:
+                logger.warning(
+                    "pre-tool-call hook {name} failed: {reason}",
+                    name=result.hook_name,
+                    reason=result.reason,
+                )
+                continue
+
+            if result.decision == "ask":
+                # TODO: Implement interactive approval for hooks
+                logger.warning(
+                    "Hook {hook_name} requested ASK decision but interactive approval not implemented yet",
+                    hook_name=result.hook_name,
+                )
+
+            if result.modified_input is not None:
+                self._hook_stats.modified_calls += 1
+                logger.debug(
+                    "Tool {tool_name} input modified by hook {hook_name}",
+                    tool_name=tool_name,
+                    hook_name=result.hook_name,
+                )
+                # Note: Input modification is tricky because we've already parsed arguments
+                # For now, we log it but don't apply it. Future: pass modified_input back to tool.call()
+
+        # Display stderr from hooks for debugging
+        for result in exec_result.results:
+            if result.stderr and result.stderr.strip():
+                wire_send(TextPart(text=f"[Hook {result.hook_name}]: {result.stderr.strip()}"))
+
+        # Display additional context from hooks
+        additional_contexts = [
+            r.additional_context for r in exec_result.results if r.additional_context
+        ]
+        for context in additional_contexts:
+            if context.strip():
+                wire_send(TextPart(text=context))
+
+        return None
+
+    async def _execute_post_tool_call_hooks(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        tool_output: Any,
+        error: str | None,
+        tool_use_id: str,
+        duration_ms: int,
+    ) -> None:
+        """Execute post-tool-call hooks (fire and forget for async hooks)."""
+        if self._runtime is None:
+            return
+
+        # Build event context
+        # Use "post-tool-call-failure" for errors, "post-tool-call" for success
+        event_type = "post-tool-call-failure" if error else "post-tool-call"
+        event = {
+            "event_type": event_type,
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self._runtime.session.id,
+            "work_dir": str(self._runtime.session.work_dir),
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+            "tool_use_id": tool_use_id,
+            "tool_output": tool_output,
+            "error": error,
+            "duration_ms": duration_ms,
+        }
+
+        try:
+            exec_result = await self._runtime.hook_manager.execute(
+                event_type,
+                event,
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+
+            # Process results from sync hooks
+            for result in exec_result.results:
+                if not result.success:
+                    logger.warning(
+                        "post-tool-call hook {name} failed: {reason}",
+                        name=result.hook_name,
+                        reason=result.reason,
+                    )
+                else:
+                    logger.debug(
+                        "post-tool-call hook {name} executed successfully",
+                        name=result.hook_name,
+                    )
+
+            # Display stderr from hooks for debugging
+            for result in exec_result.results:
+                if result.stderr and result.stderr.strip():
+                    wire_send(TextPart(text=f"[Hook {result.hook_name}]: {result.stderr.strip()}"))
+
+            # Display additional context from hooks
+            additional_contexts = [
+                r.additional_context for r in exec_result.results if r.additional_context
+            ]
+            for context in additional_contexts:
+                if context.strip():
+                    wire_send(TextPart(text=context))
+
+            # Async hooks are tracked but not awaited here
+            if exec_result.async_tasks:
+                logger.debug(
+                    "{count} async post-tool-call hooks fired",
+                    count=len(exec_result.async_tasks),
+                )
+        except Exception as e:
+            logger.exception("Failed to execute post-tool-call hooks: {error}", error=e)
+
+    def get_hook_stats(self) -> ToolHookStats:
+        """Get hook execution statistics."""
+        return self._hook_stats
 
     def register_external_tool(
         self,

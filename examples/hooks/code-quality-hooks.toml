@@ -1,0 +1,62 @@
+# Code Quality Hooks for Kimi Code CLI
+# 代码质量相关的 Hooks 配置示例
+
+# ============================================
+# 1. Python 代码格式化（异步执行）
+# ============================================
+[[hooks.after_tool]]
+name = "auto-format-python"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.py$" }
+command = "black --quiet \"$KIMI_WORK_DIR/{{tool_input.file_path}}\" 2>/dev/null || true"
+async_ = true  # 异步执行，不阻塞
+timeout = 30000
+description = "Auto-format Python files with black"
+
+# ============================================
+# 2. Python 导入排序（异步执行）
+# ============================================
+[[hooks.after_tool]]
+name = "auto-sort-imports"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.py$" }
+command = "isort --quiet \"$KIMI_WORK_DIR/{{tool_input.file_path}}\" 2>/dev/null || true"
+async_ = true
+timeout = 30000
+description = "Sort Python imports with isort"
+
+# ============================================
+# 3. JavaScript/TypeScript 格式化
+# ============================================
+[[hooks.after_tool]]
+name = "auto-format-js"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.(js|ts|jsx|tsx)$" }
+command = "prettier --write \"$KIMI_WORK_DIR/{{tool_input.file_path}}\" 2>/dev/null || true"
+async_ = true
+timeout = 30000
+description = "Auto-format JS/TS files with prettier"
+
+# ============================================
+# 4. Go 代码格式化
+# ============================================
+[[hooks.after_tool]]
+name = "auto-format-go"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.go$" }
+command = "gofmt -w \"$KIMI_WORK_DIR/{{tool_input.file_path}}\" 2>/dev/null || true"
+async_ = true
+timeout = 30000
+description = "Auto-format Go files with gofmt"
+
+# ============================================
+# 5. Rust 代码格式化
+# ============================================
+[[hooks.after_tool]]
+name = "auto-format-rust"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.rs$" }
+command = "rustfmt \"$KIMI_WORK_DIR/{{tool_input.file_path}}\" 2>/dev/null || true"
+async_ = true
+timeout = 30000
+description = "Auto-format Rust files with rustfmt"

@@ -1,0 +1,280 @@
+# ============================================
+# Kimi CLI Hooks 同步/异步模式演示配置
+# ============================================
+# 这个文件展示了如何组合使用同步和异步 hooks
+# 同步 hooks：可以阻断操作，但会阻塞主流程
+# 异步 hooks：不能阻断，但不阻塞主流程
+
+[hooks]
+
+# ============================================
+# 1. SESSION 生命周期 HOOKS
+# ============================================
+
+# 会话开始：同步执行，初始化环境
+[[hooks.session_start]]
+name = "sync-init"
+type = "command"
+command = """
+echo "{
+  \"additional_context\": \"🚀 Session started at $(date '+%Y-%m-%d %H:%M:%S')\",
+  \"decision\": \"allow\"
+}"
+"""
+timeout = 5000
+description = "Synchronous session initialization"
+
+# 会话结束：异步执行，清理和日志
+[[hooks.session_end]]
+name = "async-cleanup"
+type = "command"
+command = """
+echo "Session ended, running cleanup..." >&2
+# 这里可以执行清理操作，不会阻塞退出
+sleep 2
+echo "Cleanup done" >&2
+"""
+async_ = true
+timeout = 10000
+description = "Asynchronous cleanup (fire and forget)"
+
+# ============================================
+# 2. BEFORE TOOL HOOKS（同步 - 可阻断）
+# ============================================
+
+# 2.1 危险命令拦截（同步 - 关键安全）
+[[hooks.before_tool]]
+name = "sync-block-dangerous"
+type = "command"
+matcher = { tool = "Shell", pattern = "rm -rf /|mkfs|dd if=/dev/zero" }
+command = """
+# 使用 exit 2 强制阻断，stderr 作为原因
+echo "⛔ BLOCKED: Dangerous command detected!" >&2
+exit 2
+"""
+timeout = 1000
+description = "SYNC: Block dangerous commands (critical security)"
+
+# 2.2 敏感文件保护（同步 - 安全）
+[[hooks.before_tool]]
+name = "sync-protect-sensitive"
+type = "command"
+matcher = { tool = "ReadFile|WriteFile", pattern = "\\.ssh/id_|\\.env$|/etc/shadow" }
+command = """
+input=$(cat)
+file_path=$(echo "$input" | grep -o '"file_path": "[^"]*"' | cut -d'"' -f4)
+
+echo '{
+  "decision": "ask",
+  "reason": "⚠️ Access to sensitive file requires approval: '$file_path'"
+}'
+"""
+timeout = 2000
+description = "SYNC: Ask for sensitive file access"
+
+# 2.3 生产环境检查（同步 - 业务逻辑）
+[[hooks.before_tool]]
+name = "sync-prod-check"
+type = "command"
+matcher = { tool = "Shell", pattern = "deploy|release|push.*prod" }
+command = """
+# 检查是否在正确的分支
+branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+
+if [ "$branch" != "main" ] && [ "$branch" != "master" ]; then
+    echo '{
+      "decision": "deny",
+      "reason": "Production operations must be from main/master branch, current: '$branch'"
+    }'
+    exit 2
+fi
+
+echo '{"decision": "allow", "reason": "Branch check passed"}'
+"""
+timeout = 3000
+description = "SYNC: Production deployment validation"
+
+# ============================================
+# 3. AFTER TOOL HOOKS（异步 - 不阻塞）
+# ============================================
+
+# 3.1 Python 代码格式化（异步）
+[[hooks.after_tool]]
+name = "async-format-python"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.py$" }
+command = """
+# 异步执行，不阻塞编辑流程
+input=$(cat)
+file_path=$(echo "$input" | grep -o '"file_path": "[^"]*"' | cut -d'"' -f4)
+
+# 在后台运行 black
+(black --quiet "$file_path" 2>/dev/null && \
+ echo "✅ Formatted: $file_path" || \
+ echo "❌ Format failed: $file_path") >&2
+
+echo '{"decision": "allow"}'
+"""
+async_ = true
+timeout = 30000
+description = "ASYNC: Auto-format Python files (non-blocking)"
+
+# 3.2 JavaScript 格式化（异步）
+[[hooks.after_tool]]
+name = "async-format-js"
+type = "command"
+matcher = { tool = "WriteFile", pattern = "\\.(js|ts|jsx|tsx)$" }
+command = """
+input=$(cat)
+file_path=$(echo "$input" | grep -o '"file_path": "[^"]*"' | cut -d'"' -f4)
+
+# 异步运行 prettier
+(prettier --write "$file_path" 2>/dev/null || true) >&2
+
+echo '{"decision": "allow"}'
+"""
+async_ = true
+timeout = 30000
+description = "ASYNC: Auto-format JS/TS files"
+
+# 3.3 文件修改通知（异步）
+[[hooks.after_tool]]
+name = "async-notify"
+type = "command"
+matcher = { tool = "WriteFile|Edit|StrReplace" }
+command = """
+input=$(cat)
+tool_name=$(echo "$input" | grep -o '"tool_name": "[^"]*"' | cut -d'"' -f4)
+
+# 发送桌面通知（异步，不阻塞）
+(
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "Kimi" "File modified by $tool_name" 2>/dev/null
+    elif command -v osascript >/dev/null 2>&1; then
+        osascript -e "display notification \"File modified by $tool_name\" with title \"Kimi\"" 2>/dev/null
+    fi
+) >&2
+
+echo '{"decision": "allow"}'
+"""
+async_ = true
+timeout = 5000
+description = "ASYNC: Desktop notification for file changes"
+
+# 3.4 Git 自动提交（异步）
+[[hooks.after_tool]]
+name = "async-git-commit"
+type = "command"
+matcher = { tool = "WriteFile|Edit|StrReplace" }
+command = """
+# 只在启用了自动提交的目录执行
+if [ -f ".kimi/auto-commit" ]; then
+    (
+        git add -A 2>/dev/null
+        git commit -m "Auto: $(date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null
+    ) >&2
+fi
+
+echo '{"decision": "allow"}'
+"""
+async_ = true
+timeout = 10000
+description = "ASYNC: Auto-commit changes (if enabled)"
+
+# ============================================
+# 4. AGENT 循环 HOOKS
+# ============================================
+
+# Agent 执行前：同步验证（可以阻断）
+[[hooks.before_agent]]
+name = "sync-validate-prompt"
+type = "command"
+command = """
+input=$(cat)
+# 可以在这里验证用户输入
+# 如果需要阻断：
+# echo '{"decision": "deny", "reason": "..."}'
+# exit 2
+
+echo '{"decision": "allow"}'
+"""
+timeout = 2000
+description = "SYNC: Validate user prompt before processing"
+
+# Agent 执行后：异步分析（不阻塞）
+[[hooks.after_agent]]
+name = "async-analyze"
+type = "command"
+command = """
+# 异步分析 Agent 输出，例如统计 token、记录响应时间等
+(
+    echo "Agent turn completed at $(date)" >> .kimi/agent.log
+) >&2
+
+echo '{"decision": "allow"}'
+"""
+async_ = true
+timeout = 5000
+description = "ASYNC: Post-agent analysis"
+
+# ============================================
+# 5. 子 AGENT HOOKS
+# ============================================
+
+# 子 Agent 启动：同步检查
+[[hooks.subagent_start]]
+name = "sync-subagent-check"
+type = "command"
+command = """
+input=$(cat)
+subagent_name=$(echo "$input" | grep -o '"subagent_name": "[^"]*"' | cut -d'"' -f4)
+
+echo "{
+  \"additional_context\": \"📎 Subagent started: $subagent_name\",
+  \"decision\": \"allow\"
+}"
+"""
+timeout = 1000
+description = "SYNC: Subagent start tracking"
+
+# 子 Agent 停止：异步处理结果
+[[hooks.subagent_stop]]
+name = "async-subagent-process"
+type = "command"
+command = """
+input=$(cat)
+# 异步处理子 Agent 结果
+(
+    echo "Subagent completed at $(date)" >> .kimi/subagent.log
+) >&2
+
+echo '{"decision": "allow"}'
+"""
+async_ = true
+timeout = 5000
+description = "ASYNC: Process subagent completion"
+
+# ============================================
+# 使用说明
+# ============================================
+# 
+# 1. 将此文件追加到你的配置：
+#    cat sync-async-demo.toml >> ~/.kimi/config.toml
+#
+# 2. 启动调试模式查看执行：
+#    kimi --debug
+#
+# 3. 测试同步阻断：
+#    在 kimi 中输入：请帮我执行 rm -rf /
+#    期望：命令被阻断，显示阻断原因
+#
+# 4. 测试异步执行：
+#    在 kimi 中输入：创建一个 Python 文件 test.py
+#    期望：文件创建后，black 格式化在后台运行
+#
+# 5. 查看日志：
+#    tail -f ~/.kimi/logs/kimi.log | grep "HOOK DEBUG"
+#
+# 同步 vs 异步对比：
+# - 同步：会显示 "[SYNC]"，可能阻断操作
+# - 异步：会显示 "[ASYNC]"，立即返回

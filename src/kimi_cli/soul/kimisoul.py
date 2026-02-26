@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -37,6 +38,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
+# Hooks are handled externally via AgentHooks standard
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
@@ -381,6 +383,8 @@ class KimiSoul:
                 wire_send(ApprovalResponse(request_id=request.id, response=resp))
 
         step_no = 0
+        pre_agent_turn_stop_block_count = 0
+        max_pre_agent_turn_stop_blocks = 3  # Limit to prevent unbounded LLM calls
         while True:
             step_no += 1
             if step_no > self._loop_control.max_steps_per_turn:
@@ -417,6 +421,48 @@ class KimiSoul:
                         logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
+                # Execute pre-agent-turn-stop hooks whenever the agent is about to
+                # relinquish control (end the turn), regardless of stop reason.
+                # This allows quality gates to run for all turn endings.
+                # Note: Only 'no_tool_calls' can be blocked to continue working;
+                # other stop reasons (like tool_rejected) are final.
+                should_continue = await self._execute_pre_agent_turn_stop_hooks(
+                    stop_reason=step_outcome.stop_reason,
+                    step_count=step_no,
+                    final_message=step_outcome.assistant_message,
+                )
+
+                # Only allow hooks to block/continue for 'no_tool_calls' stop reason.
+                # Other stop reasons (e.g., 'tool_rejected') are final and should not
+                # be overridden, even if hooks suggest continuing.
+                if should_continue and step_outcome.stop_reason == "no_tool_calls":
+                    pre_agent_turn_stop_block_count += 1
+                    if pre_agent_turn_stop_block_count > max_pre_agent_turn_stop_blocks:
+                        # Exceeded max blocks, allow stop with warning
+                        logger.warning(
+                            "pre-agent-turn-stop hook blocked stop {count} times, exceeding limit of {limit}. "
+                            "Allowing stop to proceed.",
+                            count=pre_agent_turn_stop_block_count,
+                            limit=max_pre_agent_turn_stop_blocks,
+                        )
+                        wire_send(
+                            TextPart(
+                                text=f"\n[Warning: pre-agent-turn-stop hook blocked stop {pre_agent_turn_stop_block_count} times, "
+                                f"exceeding limit. Allowing stop to proceed.]\n"
+                            )
+                        )
+                    else:
+                        # Hook requested to continue working - add feedback and continue loop
+                        feedback = (
+                            f"The pre-agent-turn-stop hook has requested that you continue working. "
+                            f"Reason: {should_continue}"
+                        )
+                        await self._context.append_message(
+                            Message(role="system", content=feedback)
+                        )
+                        wire_send(TextPart(text=f"\n[Hook blocked stop: {should_continue}]\n"))
+                        continue  # Continue the agent loop instead of stopping
+                
                 has_steers = await self._consume_pending_steers()
                 if step_outcome.stop_reason == "no_tool_calls" and has_steers:
                     continue  # steers injected, force another LLM step
@@ -471,6 +517,7 @@ class KimiSoul:
             )
 
         result = await _kosong_step_with_retry()
+        self._runtime.increment_step_count()
         logger.debug("Got step result: {result}", result=result)
         status_update = StatusUpdate(token_usage=result.usage, message_id=result.id)
         if result.usage is not None:
@@ -520,6 +567,85 @@ class KimiSoul:
         if result.tool_calls:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+
+    async def _execute_pre_agent_turn_stop_hooks(
+        self,
+        stop_reason: str,
+        step_count: int,
+        final_message: Message | None,
+    ) -> str | None:
+        """Execute pre-agent-turn-stop hooks and return block reason or None to allow stop.
+
+        Returns:
+            str: Block reason if should continue working, None to allow stop.
+        """
+        if self._runtime is None or self._runtime.hook_manager is None:
+            return None
+
+        # Convert final message to dict for JSON serialization
+        final_message_dict = None
+        if final_message is not None:
+            # Handle content serialization: ContentPart models need explicit conversion
+            content = final_message.content
+            if isinstance(content, str):
+                content = content
+            else:
+                # ContentPart is a Pydantic model, use model_dump() for proper
+                # JSON serialization
+                content = [
+                    p.model_dump() if hasattr(p, "model_dump") else str(p)
+                    for p in content
+                ]
+            final_message_dict = {
+                "role": final_message.role,
+                "content": content,
+            }
+
+        event = {
+            "event_type": "pre-agent-turn-stop",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self._runtime.session.id,
+            "work_dir": str(self._runtime.session.work_dir),
+            "stop_reason": stop_reason,
+            "step_count": step_count,
+            "final_message": final_message_dict,
+        }
+
+        try:
+            exec_result = await self._runtime.hook_manager.execute(
+                "pre-agent-turn-stop",
+                event,
+            )
+        except Exception as e:
+            logger.exception("Failed to execute pre-agent-turn-stop hooks: {error}", error=e)
+            return None
+
+        # Display stderr from hooks for debugging
+        for result in exec_result.results:
+            if result.stderr and result.stderr.strip():
+                wire_send(TextPart(text=f"[Hook {result.hook_name}]: {result.stderr.strip()}"))
+
+        # Collect and display additional contexts from hooks
+        additional_contexts = [
+            r.additional_context for r in exec_result.results if r.additional_context
+        ]
+        for context in additional_contexts:
+            if context.strip():
+                wire_send(TextPart(text=context))
+
+        # Check if any hook blocked the stop
+        if exec_result.should_block:
+            reason = exec_result.block_reason or "Blocked by pre-agent-turn-stop hook"
+            logger.info("Stop blocked by hook: {reason}", reason=reason)
+            return reason
+
+        # Check for ASK decision
+        for result in exec_result.results:
+            if result.decision == "ask":
+                # For now, treat ASK as block with the reason
+                return result.reason or "Hook requested confirmation"
+
+        return None
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)

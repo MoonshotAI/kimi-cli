@@ -1,0 +1,94 @@
+# Notification Hooks for Kimi Code CLI
+# 通知推送相关的 Hooks 配置示例
+
+# ============================================
+# 1. 会话开始通知（macOS）
+# ============================================
+[[hooks.session_start]]
+name = "session-start-notify-macos"
+type = "command"
+command = """
+osascript -e 'display notification "Kimi session started" with title "Kimi CLI"'
+echo '{"decision": "allow"}'
+"""
+async_ = true
+
+# ============================================
+# 2. 会话开始通知（Linux - notify-send）
+# ============================================
+[[hooks.session_start]]
+name = "session-start-notify-linux"
+type = "command"
+command = """
+if command -v notify-send &> /dev/null; then
+    notify-send "Kimi CLI" "Kimi session started"
+fi
+echo '{"decision": "allow"}'
+"""
+async_ = true
+
+# ============================================
+# 3. 长时间任务完成通知
+# ============================================
+[[hooks.after_tool]]
+name = "long-task-complete"
+type = "command"
+matcher = { tool = "Shell" }
+command = """
+# 如果命令执行时间超过 30 秒，发送通知
+# 注意：实际实现需要记录开始时间
+# 这是一个示例框架
+
+# macOS
+if command -v osascript &> /dev/null; then
+    osascript -e 'display notification "Long running task completed" with title "Kimi CLI"'
+# Linux
+elif command -v notify-send &> /dev/null; then
+    notify-send "Kimi CLI" "Long running task completed"
+fi
+echo '{"decision": "allow"}'
+"""
+async_ = true
+
+# ============================================
+# 4. 错误通知
+# ============================================
+[[hooks.after_tool_failure]]
+name = "tool-failure-notify"
+type = "command"
+command = """
+# macOS
+if command -v osascript &> /dev/null; then
+    osascript -e 'display notification "A tool execution failed" with title "Kimi CLI" sound name "Basso"'
+# Linux
+elif command -v notify-send &> /dev/null; then
+    notify-send --urgency=critical "Kimi CLI" "A tool execution failed"
+fi
+echo '{"decision": "allow"}'
+"""
+async_ = true
+
+# ============================================
+# 5. 会话结束摘要
+# ============================================
+[[hooks.session_end]]
+name = "session-summary"
+type = "command"
+command = """
+duration={{duration_seconds}}
+steps={{total_steps}}
+reason={{exit_reason}}
+
+# 转换为分钟
+minutes=$((duration / 60))
+
+# macOS
+if command -v osascript &> /dev/null; then
+    osascript -e "display notification \"Duration: ${minutes}m | Steps: $steps\" with title \"Kimi Session Ended\""
+# Linux
+elif command -v notify-send &> /dev/null; then
+    notify-send "Kimi Session Ended" "Duration: ${minutes}m | Steps: $steps"
+fi
+echo '{"decision": "allow"}'
+"""
+async_ = true
