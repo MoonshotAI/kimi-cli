@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：将进程标题设置为 "Kimi Code"（在 `ps` / 活动监视器 / 终端标签页标题中可见），并将 Web Worker 子进程标记为 "kimi-code-worker"
+
 ## 1.14.0 (2026-02-26)
 
 - Shell：在终端中将 `FetchURL` 工具的 URL 参数显示为可点击的超链接

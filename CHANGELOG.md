@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Set process title to "Kimi Code" (visible in `ps` / Activity Monitor / terminal tab title) and label web worker subprocesses as "kimi-code-worker"
+
 ## 1.14.0 (2026-02-26)
 
 - Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
