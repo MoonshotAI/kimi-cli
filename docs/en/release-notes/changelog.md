@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.15.0 (2026-02-27)
+
 - Shell: Simplify input prompt by removing username prefix for a cleaner appearance
 - Shell: Add horizontal separator line and expanded keyboard shortcut hints to the toolbar
 - Shell: Add number key shortcuts (1–5) for quick option selection in question and approval panels, with redesigned bordered panel UI and keyboard hints
