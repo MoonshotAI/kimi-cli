@@ -35,6 +35,7 @@ dependencies = [
     "scalar-fastapi>=1.5.0",
     "websockets>=14.0",
     "keyring>=25.7.0",
+    "setproctitle>=1.3.0",
 ]
 
 [dependency-groups]

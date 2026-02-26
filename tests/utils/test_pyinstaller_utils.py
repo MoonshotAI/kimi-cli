@@ -163,5 +163,6 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.web",
             "kimi_cli.tools.web.fetch",
             "kimi_cli.tools.web.search",
+            "setproctitle",
         ]
     )
