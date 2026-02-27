@@ -11,6 +11,14 @@
 
 If running tools directly, use `uv run ...`.
 
+## Running tests
+
+- **Run all tests**: `make test` or `uv run pytest tests tests_e2e -vv`
+- **Run single test file**: `uv run pytest tests/core/test_config.py -vv`
+- **Run single test function**: `uv run pytest tests/core/test_config.py::test_default_config -vv`
+- **Run tests matching pattern**: `uv run pytest -k "test_config" -vv`
+- **Run specific test directory**: `uv run pytest tests/core -vv`
+
 ## Project overview
 
 Kimi Code CLI is a Python CLI agent for software engineering workflows. It supports an interactive
@@ -84,22 +92,97 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - `src/kimi_cli/ui/`: UI frontends (shell/print/acp/wire)
 - `src/kimi_cli/acp/`: ACP server components
 - `packages/kosong/`, `packages/kaos/`: workspace deps
-  + Kosong is an LLM abstraction layer designed for modern AI agent applications.
-    It unifies message structures, asynchronous tool orchestration, and pluggable
-    chat providers so you can build agents with ease and avoid vendor lock-in.
-  + PyKAOS is a lightweight Python library providing an abstraction layer for agents
-    to interact with operating systems. File operations and command executions via KAOS
-    can be easily switched between local environment and remote systems over SSH.
-- `tests/`, `tests_ai/`: test suites
+- `tests/`, `tests_ai/`, `tests_e2e/`: test suites
 - `klips`: Kimi Code CLI Improvement Proposals
 
-## Conventions and quality
+## Code style guidelines
 
-- Python >=3.12 (ty config uses 3.14); line length 100.
-- Ruff handles lint + format (rules: E, F, UP, B, SIM, I); pyright + ty for type checks.
-- Tests use pytest + pytest-asyncio; files are `tests/test_*.py`.
-- CLI entry points: `kimi` / `kimi-cli` -> `src/kimi_cli/cli.py`.
-- User config: `~/.kimi/config.toml`; logs, sessions, and MCP config live in `~/.kimi/`.
+### General conventions
+- **Line length**: 100 characters max
+- **Python version**: 3.12+ (tooling configured for 3.14)
+- **Indentation**: 4 spaces (standard Python)
+
+### Imports
+- Use `from __future__ import annotations` for all files (enables forward references)
+- Sort imports with ruff (isort rules): stdlib → third-party → local
+- Use type imports under `if TYPE_CHECKING:` block to avoid circular imports
+- Example:
+  ```python
+  from __future__ import annotations
+
+  import asyncio
+  from collections.abc import Mapping
+  from typing import TYPE_CHECKING
+
+  import pydantic
+
+  from kimi_cli.config import Config
+
+  if TYPE_CHECKING:
+      from fastmcp.mcp_config import MCPConfig
+  ```
+
+### Types
+- Use Pydantic for data validation (`pydantic.BaseModel`, `pydantic.Field`)
+- Use dataclasses for simple data containers (`@dataclass(slots=True, kw_only=True)`)
+- Use `typing.TYPE_CHECKING` for import-only types
+- Return types: `str | None` (not `Optional[str]`)
+
+### Naming
+- **Modules**: lowercase, snake_case (`soul/agent.py`)
+- **Classes**: PascalCase (`Kimisoul`, `Runtime`)
+- **Functions/variables**: snake_case (`load_agents_md`, `model_name`)
+- **Constants**: UPPER_SNAKE_CASE
+- **Private members**: prefix with underscore (`_internal_method`)
+
+### Error handling
+- Use custom exceptions from `src/kimi_cli/exception.py`
+- Base class: `KimiCLIException(Exception)`
+- Inherit from appropriate built-in: `ConfigError(KimiCLIException, ValueError)`
+- Raise with descriptive messages: `raise ConfigError(f"Invalid model {name}")`
+
+### Logging
+- Use `loguru` via `from kimi_cli.utils.logging import logger`
+- Log levels: `logger.trace()`, `logger.debug()`, `logger.info()`, `logger.warning()`,
+  `logger.error()`, `logger.critical()`
+- Include context in logs: `logger.info("Loaded agents.md: {path}", path=path)`
+
+### Pydantic models
+- Use `Field()` for validation with descriptions
+- Use `@model_validator(mode="after")` for cross-field validation
+- Use `model_dump()` for serialization
+- Example:
+  ```python
+  class Config(BaseModel):
+      default_model: str = Field(default="", description="Default model to use")
+      models: dict[str, LLMModel] = Field(default_factory=dict)
+
+      @model_validator(mode="after")
+      def validate_model(self) -> Self:
+          if self.default_model and self.default_model not in self.models:
+              raise ValueError(f"Default model {self.default_model} not found in models")
+          return self
+  ```
+
+### Async code
+- Use `async`/`await` for I/O operations
+- Prefer `asyncio` over `threading`
+- Use `run_in_executor` for blocking code when needed
+
+### Testing
+- Test files in `tests/test_*.py` or `tests/*/test_*.py`
+- Use `pytest` with `pytest-asyncio` for async tests
+- Use `inline_snapshot` for assertions (auto-updates with `uv run pytest --sync`)
+- Use fixtures from `tests/conftest.py`
+- Example:
+  ```python
+  import pytest
+  from inline_snapshot import snapshot
+
+  def test_default_config():
+      config = get_default_config()
+      assert config == snapshot(Config(...))
+  ```
 
 ## Git commit messages
 

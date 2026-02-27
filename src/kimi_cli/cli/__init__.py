@@ -485,6 +485,10 @@ def kimi(
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
 
+        # Enable stderr redirection before MCP loading to capture verbose debug
+        # messages from mcp-remote library. CLI parsing is done by now, so startup
+        # errors would have already been shown.
+        redirect_stderr_to_logger()
         instance = await KimiCLI.create(
             session,
             config=config,
@@ -498,9 +502,6 @@ def kimi(
             max_retries_per_step=max_retries_per_step,
             max_ralph_iterations=max_ralph_iterations,
         )
-        # Install stderr redirection only after initialization succeeded, so runtime
-        # stderr noise is captured into logs without hiding startup failures.
-        redirect_stderr_to_logger()
         try:
             match ui:
                 case "shell":
