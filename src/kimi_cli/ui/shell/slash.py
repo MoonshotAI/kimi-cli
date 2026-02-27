@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
@@ -51,6 +51,7 @@ SKILL_COMMAND_PREFIX = "skill:"
 
 _KEYBOARD_SHORTCUTS = [
     ("Ctrl-X", "Toggle agent/shell mode"),
+    ("Ctrl-O", "Edit in external editor ($VISUAL/$EDITOR)"),
     ("Ctrl-J / Alt-Enter", "Insert newline"),
     ("Ctrl-V", "Paste (supports images)"),
     ("Ctrl-D", "Exit"),
@@ -256,6 +257,103 @@ async def model(app: Shell, args: str):
         "Reloading...[/green]"
     )
     raise Reload(session_id=soul.runtime.session.id)
+
+
+@registry.command
+@shell_mode_registry.command
+async def editor(app: Shell, args: str):
+    """Set default external editor for Ctrl-O"""
+    from kimi_cli.utils.editor import get_editor_command
+
+    soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
+    config = soul.runtime.config
+    config_file = config.source_file
+    if config_file is None:
+        console.print(
+            "[yellow]Editor switching is unavailable with inline --config; "
+            "use --config-file to persist this setting.[/yellow]"
+        )
+        return
+
+    current_editor = config.default_editor
+
+    # If args provided directly, use as editor command
+    if args.strip():
+        new_editor = args.strip()
+    else:
+        options: list[tuple[str, str]] = [
+            ("code --wait", "VS Code (code --wait)"),
+            ("vim", "Vim"),
+            ("nano", "Nano"),
+            ("", "Auto-detect (use $VISUAL/$EDITOR)"),
+        ]
+        # Mark current selection
+        options = [
+            (val, label + (" ← current" if val == current_editor else "")) for val, label in options
+        ]
+
+        try:
+            choice = cast(
+                str | None,
+                await ChoiceInput(
+                    message="Select an editor (↑↓ navigate, Enter select, Ctrl+C cancel):",
+                    options=options,
+                    default=(
+                        current_editor
+                        if current_editor in {v for v, _ in options}
+                        else "code --wait"
+                    ),
+                ).prompt_async(),
+            )
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if choice is None:
+            return
+        new_editor = choice
+
+    # Validate the editor binary is available
+    if new_editor:
+        import shlex
+        import shutil
+
+        try:
+            parts = shlex.split(new_editor)
+        except ValueError:
+            console.print(f"[red]Invalid editor command: {new_editor}[/red]")
+            return
+
+        binary = parts[0]
+        if not shutil.which(binary):
+            console.print(
+                f"[yellow]Warning: '{binary}' not found in PATH. "
+                f"Saving anyway — make sure it's installed before using Ctrl-O.[/yellow]"
+            )
+
+    if new_editor == current_editor:
+        console.print(f"[yellow]Editor is already set to: {new_editor or 'auto-detect'}[/yellow]")
+        return
+
+    # Save to disk
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.default_editor = new_editor
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    # Sync in-memory config so Ctrl-O picks it up immediately
+    config.default_editor = new_editor
+
+    if new_editor:
+        console.print(f"[green]Editor set to: {new_editor}[/green]")
+    else:
+        resolved = get_editor_command()
+        label = " ".join(resolved) if resolved else "none"
+        console.print(f"[green]Editor set to auto-detect (resolved: {label})[/green]")
 
 
 @registry.command(aliases=["release-notes"])

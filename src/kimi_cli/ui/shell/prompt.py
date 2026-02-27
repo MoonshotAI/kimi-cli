@@ -645,12 +645,14 @@ class CustomPromptSession:
         thinking: bool,
         agent_mode_slash_commands: Sequence[SlashCommand[Any]],
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
+        editor_command_provider: Callable[[], str] = lambda: "",
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
         work_dir_id = md5(str(KaosPath.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
+        self._editor_command_provider = editor_command_provider
         self._model_capabilities = model_capabilities
         self._model_name = model_name
         self._last_history_content: str | None = None
@@ -706,6 +708,11 @@ class CustomPromptSession:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
+        @_kb.add("c-o", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Open current buffer in external editor."""
+            self._open_in_external_editor(event)
+
         if is_clipboard_available():
 
             @_kb.add("c-v", eager=True)
@@ -745,6 +752,30 @@ class CustomPromptSession:
             return FormattedText([("bold", f"{PROMPT_SYMBOL_SHELL} ")])
         symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
         return FormattedText([("", f"{symbol} ")])
+
+    def _open_in_external_editor(self, event: KeyPressEvent) -> None:
+        """Open the current buffer content in an external editor."""
+        from prompt_toolkit.application.run_in_terminal import run_in_terminal
+
+        from kimi_cli.utils.editor import edit_text_in_editor, get_editor_command
+
+        configured = self._editor_command_provider()
+
+        if get_editor_command(configured) is None:
+            toast("No editor found. Set $VISUAL/$EDITOR or run /editor.")
+            return
+
+        buff = event.current_buffer
+        original_text = buff.text
+
+        async def _run_editor() -> None:
+            result = await run_in_terminal(
+                lambda: edit_text_in_editor(original_text, configured), in_executor=True
+            )
+            if result is not None:
+                buff.document = Document(text=result, cursor_position=len(result))
+
+        event.app.create_background_task(_run_editor())
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
@@ -915,7 +946,8 @@ class CustomPromptSession:
                 _toast_queues["left"].popleft()
         else:
             shortcut_candidates = [
-                "ctrl-x: toggle mode | ctrl-j / alt-enter: newline",
+                "ctrl-x: toggle mode | ctrl-o: editor | ctrl-j: newline",
+                "ctrl-o: editor | ctrl-j: newline",
                 "ctrl-j / alt-enter: newline",
             ]
             for shortcuts in shortcut_candidates:

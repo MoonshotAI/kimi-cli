@@ -6,6 +6,7 @@ from inline_snapshot import snapshot
 from kimi_cli.config import (
     Config,
     get_default_config,
+    load_config,
     load_config_from_string,
 )
 from kimi_cli.exception import ConfigError
@@ -23,6 +24,7 @@ def test_default_config_dump():
             "default_model": "",
             "default_thinking": False,
             "default_yolo": False,
+            "default_editor": "",
             "models": {},
             "providers": {},
             "loop_control": {
@@ -45,6 +47,21 @@ def test_load_config_text_toml():
 def test_load_config_text_json():
     config = load_config_from_string('{"default_model": ""}')
     assert config == get_default_config()
+
+
+def test_load_config_sets_source_file(tmp_path):
+    config_file = tmp_path / "custom.toml"
+
+    config = load_config(config_file)
+
+    assert config.source_file == config_file.resolve()
+    assert not config.is_from_default_location
+
+
+def test_load_config_text_has_no_source_file():
+    config = load_config_from_string('{"default_model": ""}')
+
+    assert config.source_file is None
 
 
 def test_load_config_text_invalid():

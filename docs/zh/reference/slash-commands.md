@@ -3,7 +3,7 @@
 斜杠命令是 Kimi Code CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
-部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/changelog` 和 `/feedback`。
+部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog` 和 `/feedback`。
 :::
 
 ## 帮助与信息
@@ -60,6 +60,10 @@
 ::: tip 提示
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
 :::
+
+### `/editor`
+
+设置外部编辑器。不带参数调用时，显示交互式选择界面；也可以直接指定编辑器命令，如 `/editor vim`。配置后按 `Ctrl-O` 会使用此编辑器打开当前输入内容。详见 [键盘快捷键](./keyboard.md#外部编辑器)。
 
 ### `/reload`
 

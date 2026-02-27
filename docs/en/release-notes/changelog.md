@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
+- Shell: Add `/editor` slash command to configure and switch the default external editor, with interactive selection and persistent config storage
 - Shell: Add `/new` slash command to create and switch to a new session without restarting Kimi Code CLI
 - Wire: Auto-hide `AskUserQuestion` tool when the client does not support the `supports_question` capability, preventing the LLM from invoking unsupported interactions
 - Core: Estimate context token count after compaction so context usage percentage is not reported as 0%
