@@ -32,7 +32,7 @@ from kimi_cli.soul import (
     wire_send,
 )
 from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.compaction import SimpleCompaction
+from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
@@ -555,7 +555,7 @@ class KimiSoul:
 
         chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
 
-        async def _run_compaction_once() -> Sequence[Message]:
+        async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
             return await self._compaction.compact(self._context.history, self._runtime.llm)
@@ -567,7 +567,7 @@ class KimiSoul:
             stop=stop_after_attempt(self._loop_control.max_retries_per_step),
             reraise=True,
         )
-        async def _compact_with_retry() -> Sequence[Message]:
+        async def _compact_with_retry() -> CompactionResult:
             return await self._run_with_connection_recovery(
                 "compaction",
                 _run_compaction_once,
@@ -575,10 +575,14 @@ class KimiSoul:
             )
 
         wire_send(CompactionBegin())
-        compacted_messages = await _compact_with_retry()
+        compaction_result = await _compact_with_retry()
         await self._context.clear()
         await self._checkpoint()
-        await self._context.append_message(compacted_messages)
+        await self._context.append_message(compaction_result.messages)
+
+        # Estimate token count so context_usage is not reported as 0%
+        await self._context.update_token_count(compaction_result.estimated_token_count)
+
         wire_send(CompactionEnd())
 
     @staticmethod
