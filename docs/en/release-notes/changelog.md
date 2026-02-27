@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Core: Add `--add-dir` CLI option and `/add-dir` slash command to expand the workspace scope with additional directories — added directories are accessible to all file tools (read, write, glob, replace), persisted across sessions, and shown in the system prompt
+- Core: Fix `CHANGELOG.md` not found error in PyInstaller binary by deferring file read until first access, preventing startup failure when the bundled executable cannot locate the changelog file
 - Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
 - Shell: Add `/editor` slash command to configure and switch the default external editor, with interactive selection and persistent config storage
 - Shell: Add `/new` slash command to create and switch to a new session without restarting Kimi Code CLI
@@ -96,7 +97,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
 - Core: Preserve session id when reloading configuration so the session resumes correctly
 - Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
-- Web: Fix approval request states not updating when session is interrupted or cancelled
+- Web: Fix approval-request states not updating when session is interrupted or cancelled
 - Web: Fix IME composition issue when selecting slash commands
 - Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
 
@@ -114,7 +115,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Fix authentication token persistence by switching from sessionStorage to localStorage with 24-hour expiry
 - Web: Add server-side pagination for session list with virtualized scrolling for better performance
 - Web: Improve session and work directories loading with smarter caching and invalidation
-- Web: Fix WebSocket errors during history replay by checking connection state before sending
+- Web: Fix WebSocket disconnect when creating new sessions
 - Web: Git diff status bar now shows untracked files (new files not yet added to git)
 - Web: Restrict sensitive APIs only in public mode; update origin enforcement logic
 
@@ -164,7 +165,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Shell: Add `/login` and `/logout` slash commands for login and logout
 - CLI: Add `kimi login` and `kimi logout` subcommands
-- Core: Fix subagent approval request handling
+- Core: Fix subagent approval-request handling
 
 ## 0.88 (2026-01-26)
 
@@ -230,7 +231,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Skills: Add project-level skills support, discovered from `.agents/skills/` (or `.kimi/skills/`, `.claude/skills/`)
 - Skills: Unified skills discovery with layered loading (builtin → user → project); user-level skills now prefer `~/.config/agents/skills/`
 - Shell: Support fuzzy matching for slash command autocomplete
-- Shell: Enhanced approval request preview with shell command and diff content display, use `Ctrl-E` to expand full content
+- Shell: Enhanced approval-request preview with shell command and diff content display, use `Ctrl-E` to expand full content
 - Wire: Add `ShellDisplayBlock` type for shell command display in approval requests
 - Shell: Reorder `/help` to show keyboard shortcuts before slash commands
 - Wire: Return proper JSON-RPC 2.0 error responses for invalid requests
@@ -255,7 +256,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Tool: Make `ReadFile` tool description reflect model capabilities for image/video support
 - Tool: Fix TypeScript files (`.ts`, `.tsx`, `.mts`, `.cts`) being misidentified as video files
-- Shell: Allow slash commands (`/help`, `/exit`, `/version`, `/changelog`, `/feedback`) in shell mode
+- Shell: Allow slash commands (`/help`, `/exit`, `/version`, `/changelog`, `/mcp`) in shell mode
 - Shell: Improve `/help` with fullscreen pager, showing slash commands, skills, and keyboard shortcuts
 - Shell: Improve `/changelog` and `/mcp` display with consistent bullet-style formatting
 - Shell: Show current model name in the bottom status bar
@@ -340,7 +341,6 @@ This page documents the changes in each Kimi Code CLI release.
 - Lib: Add `KimiToolset.load_mcp_tools` method to load MCP tools
 - Lib: Move `MCPTool` from `kimi_cli.tools.mcp` to `kimi_cli.soul.toolset`
 - Lib: Add `InvalidToolError`, `MCPConfigError` and `MCPRuntimeError`
-- Lib: Make the detailed Kimi Code CLI exception classes extend `ValueError` or `RuntimeError`
 - Lib: Allow passing validated `list[fastmcp.mcp_config.MCPConfig]` as `mcp_configs` for `KimiCLI.create` and `load_agent`
 - Lib: Fix exception raising for `KimiCLI.create`, `load_agent`, `KimiToolset.load_tools` and `KimiToolset.load_mcp_tools`
 - LLM: Add provider type `vertexai` to support Vertex AI
@@ -431,7 +431,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## 0.57 (2025-11-20)
 
 - LLM: Fix Google GenAI provider when thinking toggle is not on
-- UI: Improve approval request wordings
+- UI: Improve approval-request wordings
 - Tool: Remove `PatchFile` tool
 - Tool: Rename `Bash`/`CMD` tool to `Shell` tool
 - Tool: Move `Task` tool to `kimi_cli.tools.multiagent` module
@@ -582,7 +582,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Add `/debug` meta command to debug the context
 - Add auto context compaction
-- Add approval request mechanism
+- Add approval-request mechanism
 - Add `--yolo` option to automatically approve all actions
 - Render markdown content for better readability
 
@@ -724,7 +724,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Session history file can be specified via `_history_file` parameter when creating a new session
 
-## 0.15.0 (2025-09-26)
+## 0.15.0 (2025-09-29)
 
 - Improve tool robustness
 
