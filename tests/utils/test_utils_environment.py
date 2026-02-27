@@ -1,4 +1,5 @@
 import platform
+import shutil
 
 import pytest
 from kaos.path import KaosPath
@@ -9,6 +10,10 @@ async def test_environment_detection(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(platform, "version", lambda: "5.15.0-123-generic")
+
+    # Mock shutil.which to return None so fallback paths are used
+    import kimi_cli.utils.environment as env_module
+    monkeypatch.setattr(env_module.shutil, "which", lambda _: None)
 
     async def _mock_is_file(self: KaosPath) -> bool:
         return str(self) == "/usr/bin/bash"

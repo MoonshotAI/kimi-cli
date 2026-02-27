@@ -392,18 +392,26 @@ def kimi(
             case "okabe":
                 agent_file = OKABE_AGENT_FILE
 
-    ui: UIMode = "shell"
-    if print_mode:
-        ui = "print"
-    elif acp_mode:
-        ui = "acp"
-    elif wire_mode:
-        ui = "wire"
+    # Track if -c/--command was explicitly used (vs --prompt/-p)
+    # to auto-enable print mode for command-style usage
+    command_mode = False
+    for arg in sys.argv[1:]:
+        if arg in ("-c", "--command"):
+            command_mode = True
+            break
 
     if prompt is not None:
         prompt = prompt.strip()
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
+
+    ui: UIMode = "shell"
+    if print_mode or command_mode:
+        ui = "print"
+    elif acp_mode:
+        ui = "acp"
+    elif wire_mode:
+        ui = "wire"
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
