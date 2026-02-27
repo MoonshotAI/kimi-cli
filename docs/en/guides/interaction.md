@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, and `/feedback`.
 
 ::: warning Note
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.

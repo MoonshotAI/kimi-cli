@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, and `/feedback`.
 :::
 
 ## Help and info
@@ -60,6 +60,10 @@ After selection, Kimi Code CLI will automatically update the configuration file 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
 :::
+
+### `/editor`
+
+Set the default external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
 
 ### `/reload`
 
