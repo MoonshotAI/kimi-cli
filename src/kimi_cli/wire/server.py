@@ -378,6 +378,9 @@ class WireServer:
         if msg.params.capabilities is not None:
             self._client_supports_question = msg.params.capabilities.supports_question
 
+        if toolset is not None:
+            self._sync_ask_user_tool_visibility(toolset)
+
         result["capabilities"] = cast(
             JsonType,
             {"supports_question": True},
@@ -387,6 +390,27 @@ class WireServer:
             id=msg.id,
             result=result,
         )
+
+    def _sync_ask_user_tool_visibility(self, toolset: KimiToolset) -> None:
+        """Hide or unhide the AskUserQuestion tool based on client capabilities."""
+        from kimi_cli.tools.ask_user import NAME as ASK_USER_TOOL_NAME
+
+        all_toolsets = [toolset]
+        if isinstance(self._soul, KimiSoul):
+            for subagent in self._soul.agent.runtime.labor_market.fixed_subagents.values():
+                if isinstance(subagent.toolset, KimiToolset):
+                    all_toolsets.append(subagent.toolset)
+
+        if self._client_supports_question:
+            for ts in all_toolsets:
+                ts.unhide(ASK_USER_TOOL_NAME)
+        else:
+            for ts in all_toolsets:
+                ts.hide(ASK_USER_TOOL_NAME)
+            logger.info(
+                "Hid {tool} tool: client does not support questions",
+                tool=ASK_USER_TOOL_NAME,
+            )
 
     def _apply_wire_client_info(self, client: ClientInfo | None) -> None:
         if not isinstance(self._soul, KimiSoul):

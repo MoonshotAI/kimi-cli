@@ -718,7 +718,7 @@ interface ToolResult {
 
 结构化问答请求，通过 `request` 方法发送。当 Agent 使用 `AskUserQuestion` 工具时，会发送此请求。Client 必须响应后 Agent 才能继续执行。
 
-此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，Agent 会转而在文本响应中直接提问。
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，`AskUserQuestion` 工具会从 LLM 的工具列表中自动隐藏，避免 LLM 调用不受支持的交互。
 
 ```typescript
 interface QuestionRequest {
