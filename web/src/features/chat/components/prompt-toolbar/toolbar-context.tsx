@@ -53,7 +53,7 @@ export const ToolbarContextIndicator = memo(
             )}
           >
             <ContextProgressIcon usedPercent={usedPercent} size={14} />
-            <span>{usagePercent}% context</span>
+            <span>{usagePercent.toFixed(1)}% context</span>
           </button>
         </HoverCardTrigger>
         <HoverCardContent
@@ -64,7 +64,7 @@ export const ToolbarContextIndicator = memo(
         >
           <div className="w-full space-y-2 p-3">
             <div className="flex items-center justify-between gap-3 text-xs">
-              <p>{usagePercent}%</p>
+              <p>{usagePercent.toFixed(1)}%</p>
               <p className="font-mono text-muted-foreground">
                 {used} / {total}
               </p>

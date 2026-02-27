@@ -408,6 +408,24 @@ async def clear(app: Shell, args: str):
     raise Reload()
 
 
+@registry.command
+async def new(app: Shell, args: str):
+    """Start a new session"""
+    soul = _ensure_kimi_soul(app)
+    if soul is None:
+        return
+    current_session = soul.runtime.session
+    work_dir = current_session.work_dir
+    # Clean up the current session if it has no content, so that chaining
+    # /new commands (or switching away before the first message) does not
+    # leave orphan empty session directories on disk.
+    if current_session.is_empty():
+        await current_session.delete()
+    session = await Session.create(work_dir)
+    console.print("[green]New session created. Switching...[/green]")
+    raise Reload(session_id=session.id)
+
+
 @registry.command(name="sessions", aliases=["resume"])
 async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""

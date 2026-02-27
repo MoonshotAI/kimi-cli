@@ -4,7 +4,9 @@ Kimi Code CLI automatically saves your conversation history, allowing you to con
 
 ## Session resuming
 
-Each time you start Kimi Code CLI, a new session is created. If you want to continue a previous conversation, there are several ways:
+Each time you start Kimi Code CLI, a new session is created. While running, you can also enter the `/new` command to create and switch to a new session at any time, without exiting the program.
+
+If you want to continue a previous conversation, there are several ways:
 
 **Continue the most recent session**
 

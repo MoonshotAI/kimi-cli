@@ -81,7 +81,7 @@ The question panel displays the question description and available options. You 
 - Select "Other" to enter custom text
 - Press `Esc` to skip the question
 
-Each question supports 2–4 predefined options, and the AI will set appropriate options and descriptions based on the current task context. If there are multiple questions to answer, the panel presents them one by one.
+Each question supports 2–4 predefined options, and the AI will set appropriate options and descriptions based on the current task context. If there are multiple questions to answer, the panel displays them as tabs — use Left/Right arrow keys or `Tab` to switch between questions. Answered questions are marked as completed, and switching back to an answered question restores the previous selection.
 
 ::: tip
 The AI only uses this tool when your choice genuinely affects subsequent actions. For decisions that can be inferred from context, the AI will decide on its own and continue execution.
