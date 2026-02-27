@@ -12,7 +12,7 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.changelog import CHANGELOG
+from kimi_cli.utils.changelog import get_changelog
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
@@ -366,7 +366,7 @@ def changelog(app: Shell, args: str):
     from kimi_cli.utils.rich.columns import BulletColumns
 
     renderables: list[RenderableType] = []
-    for ver, entry in CHANGELOG.items():
+    for ver, entry in get_changelog().items():
         title = f"[bold]{ver}[/bold]"
         if entry.description:
             title += f": {entry.description}"
