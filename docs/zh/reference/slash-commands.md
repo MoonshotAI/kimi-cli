@@ -155,6 +155,21 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 详见 [Agent Skills](../customization/skills.md#flow-skills)。
 
+## 工作区
+
+### `/add-dir`
+
+将额外目录添加到工作区范围。添加后，该目录对所有文件工具（`ReadFile`、`WriteFile`、`Glob`、`Grep`、`StrReplaceFile` 等）可用，并会在系统提示词中展示目录结构。添加的目录会随会话状态持久化，恢复会话时自动还原。
+
+用法：
+
+- `/add-dir <path>`：添加指定目录到工作区
+- `/add-dir`：不带参数时列出已添加的额外目录
+
+::: tip 提示
+已在工作目录内的目录无需添加，因为它们已经可访问。也可以在启动时通过 `--add-dir` 参数添加，详见 [`kimi` 命令](./kimi-command.md#工作目录)。
+:::
+
 ## 其他
 
 ### `/init`
