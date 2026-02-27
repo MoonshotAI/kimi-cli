@@ -22,7 +22,7 @@ dependencies = [
     # lxml is used by trafilatura/htmldate/justext; keep pinned for binary wheels.
     "lxml==6.0.2",
     "tenacity==9.1.2",
-    "fastmcp==2.12.5",
+    "fastmcp==2.14.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
     "pykaos==0.7.0",
