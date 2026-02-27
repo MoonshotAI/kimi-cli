@@ -120,12 +120,16 @@ class TestEditTextInEditor:
     def _make_fake_editor(self, tmp_path: Path, *, modify: bool = True) -> str:
         """Create a shell script that acts as a fake editor.
 
-        If *modify* is True, the script appends text to the file (simulating a save).
+        If *modify* is True, the script appends text to the file and bumps the
+        mtime to a well-known future timestamp so the mtime check in
+        ``edit_text_in_editor`` reliably detects the change — even on
+        filesystems with only 1-second mtime resolution (e.g. tmpfs in CI).
         If False, it does nothing (simulating :q! without saving).
         """
         script = tmp_path / "fake-editor.sh"
         if modify:
-            script.write_text('#!/bin/sh\necho "edited line" >> "$1"\n')
+            # touch -t YYYYMMDDhhmm is POSIX; guarantees mtime differs.
+            script.write_text('#!/bin/sh\necho "edited line" >> "$1"\ntouch -t 209901010000 "$1"\n')
         else:
             script.write_text("#!/bin/sh\nexit 0\n")
         script.chmod(script.stat().st_mode | stat.S_IEXEC)
@@ -170,8 +174,7 @@ class TestEditTextInEditor:
     def test_trailing_newline_stripped(self, tmp_path: Path):
         """Editors typically add a trailing newline — it should be stripped."""
         script = tmp_path / "newline-editor.sh"
-        # Overwrite file with content that has a trailing newline
-        script.write_text('#!/bin/sh\nprintf "hello world\\n" > "$1"\n')
+        script.write_text('#!/bin/sh\nprintf "hello world\\n" > "$1"\ntouch -t 209901010000 "$1"\n')
         script.chmod(script.stat().st_mode | stat.S_IEXEC)
 
         result = edit_text_in_editor("", configured=str(script))
@@ -180,7 +183,9 @@ class TestEditTextInEditor:
     def test_multiple_trailing_newlines_only_one_stripped(self, tmp_path: Path):
         """Only one trailing newline should be stripped."""
         script = tmp_path / "multi-nl-editor.sh"
-        script.write_text('#!/bin/sh\nprintf "line1\\nline2\\n\\n" > "$1"\n')
+        script.write_text(
+            '#!/bin/sh\nprintf "line1\\nline2\\n\\n" > "$1"\ntouch -t 209901010000 "$1"\n'
+        )
         script.chmod(script.stat().st_mode | stat.S_IEXEC)
 
         result = edit_text_in_editor("", configured=str(script))
@@ -209,7 +214,7 @@ class TestEditTextInEditor:
     def test_empty_input_text(self, tmp_path: Path):
         """Editing empty text should work."""
         script = tmp_path / "write-editor.sh"
-        script.write_text('#!/bin/sh\nprintf "new content" > "$1"\n')
+        script.write_text('#!/bin/sh\nprintf "new content" > "$1"\ntouch -t 209901010000 "$1"\n')
         script.chmod(script.stat().st_mode | stat.S_IEXEC)
 
         result = edit_text_in_editor("", configured=str(script))
