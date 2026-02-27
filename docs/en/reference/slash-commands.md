@@ -155,6 +155,21 @@ Flow skills can also be invoked via `/skill:<name>`, which loads the content as 
 
 See [Agent Skills](../customization/skills.md#flow-skills) for details.
 
+## Workspace
+
+### `/add-dir`
+
+Add an additional directory to the workspace scope. Once added, the directory is accessible to all file tools (`ReadFile`, `WriteFile`, `Glob`, `Grep`, `StrReplaceFile`, etc.) and its directory listing is shown in the system prompt. Added directories are persisted with the session state and automatically restored when resuming.
+
+Usage:
+
+- `/add-dir <path>`: Add the specified directory to the workspace
+- `/add-dir`: Without arguments, list already added additional directories
+
+::: tip
+Directories already within the working directory do not need to be added, as they are already accessible. You can also add directories at startup via the `--add-dir` option. See [`kimi` command](./kimi-command.md#working-directory) for details.
+:::
+
 ## Others
 
 ### `/init`

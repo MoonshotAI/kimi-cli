@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Add `--add-dir` CLI option and `/add-dir` slash command to expand the workspace scope with additional directories — added directories are accessible to all file tools (read, write, glob, replace), persisted across sessions, and shown in the system prompt
 - Core: Fix `CHANGELOG.md` not found error in PyInstaller binary by deferring file read until first access, preventing startup failure when the bundled executable cannot locate the changelog file
 - Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
 - Shell: Add `/editor` slash command to configure and switch the default external editor, with interactive selection and persistent config storage

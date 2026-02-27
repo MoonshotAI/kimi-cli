@@ -13,7 +13,7 @@ from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, FileType, detect_file_type
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.media_tags import wrap_media_part
-from kimi_cli.utils.path import is_within_directory
+from kimi_cli.utils.path import is_within_workspace
 from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 MAX_MEDIA_MEGABYTES = 100
@@ -66,13 +66,17 @@ class ReadMediaFile(CallableTool2[Params]):
 
         self._runtime = runtime
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
         self._capabilities = capabilities
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
         resolved_path = path.canonical()
 
-        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+        if (
+            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+            and not path.is_absolute()
+        ):
             # Outside files can only be read with absolute paths
             return ToolError(
                 message=(
