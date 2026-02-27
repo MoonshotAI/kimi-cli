@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add `/new` slash command to create and switch to a new session without restarting Kimi Code CLI
 - Wire: Auto-hide `AskUserQuestion` tool when the client does not support the `supports_question` capability, preventing the LLM from invoking unsupported interactions
 
 ## 1.15.0 (2026-02-27)

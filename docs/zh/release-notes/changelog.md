@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：新增 `/new` 斜杠命令，无需重启 Kimi Code CLI 即可创建并切换到新会话
 - Wire：当客户端不支持 `supports_question` 能力时，自动隐藏 `AskUserQuestion` 工具，避免 LLM 调用不受支持的交互
 
 ## 1.15.0 (2026-02-27)
