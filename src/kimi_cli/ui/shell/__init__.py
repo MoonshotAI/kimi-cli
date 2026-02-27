@@ -75,6 +75,9 @@ class Shell:
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
+            editor_command_provider=lambda: (
+                self.soul.runtime.config.default_editor if isinstance(self.soul, KimiSoul) else ""
+            ),
         ) as prompt_session:
             try:
                 while True:
