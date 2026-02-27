@@ -237,7 +237,7 @@ Copy and fork buttons added in version 1.10.
 
 ### Structured questions
 
-When the AI uses the `AskUserQuestion` tool, Web UI displays a structured question dialog in the chat area, replacing the input box at the bottom. The question dialog shows the question description and available options, supporting single-select, multi-select, and custom text input. After answering all questions, the dialog closes automatically and the AI continues execution based on your choices.
+When the AI uses the `AskUserQuestion` tool, Web UI displays a structured question dialog in the chat area, replacing the input box at the bottom. The question dialog shows the question description and available options, supporting single-select, multi-select, and custom text input. When the AI asks multiple questions at once, the dialog shows a tab bar at the top listing all questions, with support for click navigation, keyboard navigation, and restoring previous selections when revisiting answered questions. After answering all questions, the dialog closes automatically and the AI continues execution based on your choices.
 
 ::: info Added
 Structured questions added in version 1.14.

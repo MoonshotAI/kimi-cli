@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Wire: Auto-hide `AskUserQuestion` tool when the client does not support the `supports_question` capability, preventing the LLM from invoking unsupported interactions
+
 ## 1.15.0 (2026-02-27)
 
 - Shell: Simplify input prompt by removing username prefix for a cleaner appearance
