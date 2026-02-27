@@ -160,7 +160,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
 
   const maxTokens = maxContextSize ?? 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
-  const usagePercent = Math.round(contextUsage * 100);
+  const usagePercent = Math.round(contextUsage * 1000) / 10;
 
   const canSendMessage = true;
   const isStreaming = status === "streaming";
