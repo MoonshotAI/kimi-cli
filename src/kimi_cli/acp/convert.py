@@ -28,6 +28,23 @@ def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPa
                         )
                     )
                 )
+            case acp.schema.EmbeddedResourceContentBlock():
+                resource = block.resource
+                if isinstance(resource, acp.schema.TextResourceContents):
+                    uri = resource.uri
+                    text = resource.text
+                    content.append(TextPart(text=f"<resource uri={uri!r}>\n{text}\n</resource>"))
+                else:
+                    logger.warning(
+                        "Unsupported embedded resource type: {type}",
+                        type=type(resource).__name__,
+                    )
+            case acp.schema.ResourceContentBlock():
+                # ResourceContentBlock is a link reference without inline content;
+                # include the URI so the model is at least aware of the reference.
+                content.append(
+                    TextPart(text=f"<resource_link uri={block.uri!r} name={block.name!r} />")
+                )
             case _:
                 logger.warning("Unsupported prompt content block: {block}", block=block)
     return content
