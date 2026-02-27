@@ -14,7 +14,7 @@ kimi --agent okabe
 
 默认 Agent，适合通常情况使用。启用的工具：
 
-`Task`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`
+`Task`、`AskUserQuestion`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`
 
 ### `okabe`
 
@@ -166,6 +166,21 @@ agent:
 | `description` | string | 任务简短描述（3-5 词） |
 | `subagent_name` | string | 子 Agent 名称 |
 | `prompt` | string | 任务详细描述 |
+
+### `AskUserQuestion`
+
+- **路径**：`kimi_cli.tools.ask_user:AskUserQuestion`
+- **描述**：在执行过程中向用户展示结构化问题和选项，收集用户偏好或决策。适用于需要用户在多个方案中做出选择、解决模糊指令或收集需求信息的场景。不应过度使用——只在用户的选择真正影响后续操作时才调用。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `questions` | array | 问题列表（1–4 个问题） |
+| `questions[].question` | string | 问题文本，以 `?` 结尾 |
+| `questions[].header` | string | 短标签，最多 12 字符（如 `Auth`、`Style`） |
+| `questions[].options` | array | 可选项（2–4 个），系统会自动添加 "Other" 选项 |
+| `questions[].options[].label` | string | 选项标签（1–5 词），推荐选项可追加 `(Recommended)` |
+| `questions[].options[].description` | string | 选项说明 |
+| `questions[].multi_select` | bool | 是否允许多选，默认 false |
 
 ### `SetTodoList`
 

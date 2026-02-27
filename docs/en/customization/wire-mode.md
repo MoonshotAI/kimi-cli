@@ -718,7 +718,7 @@ Added in Wire 1.4.
 
 Structured question request, sent via `request` method. When the agent uses the `AskUserQuestion` tool, this request is sent. The client must respond before the agent can continue execution.
 
-This feature requires capability negotiation: the client must declare `capabilities.supports_question: true` during `initialize` for the agent to send `QuestionRequest`. If the client does not declare support, the agent will ask questions directly in its text response instead.
+This feature requires capability negotiation: the client must declare `capabilities.supports_question: true` during `initialize` for the agent to send `QuestionRequest`. If the client does not declare support, the `AskUserQuestion` tool is automatically hidden from the LLM's tool list, preventing the LLM from invoking unsupported interactions.
 
 ```typescript
 interface QuestionRequest {
