@@ -35,16 +35,37 @@ class Shell(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self, approval: Approval, environment: Environment):
-        is_powershell = environment.shell_name == "Windows PowerShell"
+        shell_key = self._get_shell_key(environment)
         super().__init__(
             description=load_desc(
-                Path(__file__).parent / ("powershell.md" if is_powershell else "bash.md"),
-                {"SHELL": f"{environment.shell_name} (`{environment.shell_path}`)"},
+                Path(__file__).parent / f"{shell_key}.md",
+                {
+                    "SHELL": f"{environment.shell_name} (`{environment.shell_path}`)",
+                    "SHELL_VERSION": environment.shell_version,
+                },
             )
         )
         self._approval = approval
-        self._is_powershell = is_powershell
+        self._is_powershell = environment.os_kind == "Windows"
         self._shell_path = environment.shell_path
+
+    @staticmethod
+    def _get_shell_key(environment: Environment) -> str:
+        """
+        Return the appropriate shell prompt file key based on environment.
+        
+        Returns one of: "bash", "powershell5", "powershell7"
+        """
+        if environment.os_kind != "Windows":
+            return "bash"
+        
+        # Windows: use shell_name to distinguish between PowerShell 7+ and 5.1
+        # shell_name is "PowerShell" for pwsh (7+) and "Windows PowerShell" for 5.1
+        if environment.shell_name == "PowerShell":
+            return "powershell7"
+        
+        # Default to powershell5 for Windows PowerShell 5.x
+        return "powershell5"
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:

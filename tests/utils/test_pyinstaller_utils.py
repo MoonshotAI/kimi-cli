@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import platform
 import sys
 from pathlib import Path
 
@@ -24,7 +23,7 @@ def test_pyinstaller_datas():
         for path, dst in datas
     ]
 
-    datas = [(p, d) for p, d in datas if "web/static" not in d]
+    datas = [(p, d) for p, d in datas if "web/static" not in d and "deps/bin" not in p]
 
     assert sorted(datas) == snapshot(
         [
@@ -68,10 +67,6 @@ def test_pyinstaller_datas():
             ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
             ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
-            (
-                f"src/kimi_cli/deps/bin/{'rg.exe' if platform.system() == 'Windows' else 'rg'}",
-                "kimi_cli/deps/bin",
-            ),
             ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
             ("src/kimi_cli/prompts/init.md", "kimi_cli/prompts"),
             (
@@ -115,6 +110,8 @@ def test_pyinstaller_datas():
             ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
             ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
             ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/powershell5.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/powershell7.md", "kimi_cli/tools/shell"),
             (
                 "src/kimi_cli/tools/think/think.md",
                 "kimi_cli/tools/think",
