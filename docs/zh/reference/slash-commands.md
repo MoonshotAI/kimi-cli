@@ -167,6 +167,10 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 :::
 
+### `/web`
+
+切换到 Web UI。执行后 Kimi Code CLI 会启动 Web UI 服务器并在浏览器中打开当前会话，你可以在 Web UI 中继续对话。详见 [Web UI](./kimi-web.md)。
+
 ## 命令补全
 
 在输入框中输入 `/` 后，会自动显示可用命令列表。继续输入可过滤命令，支持模糊匹配，按 Enter 选择。

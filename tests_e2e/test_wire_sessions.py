@@ -259,11 +259,76 @@ def test_manual_compact(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
+                    "payload": {"context_usage": 1e-05, "token_usage": None, "message_id": None},
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
+    finally:
+        wire.close()
+
+
+def test_manual_compact_with_usage(tmp_path) -> None:
+    """Compaction with enough messages to trigger an actual LLM call that returns usage."""
+    scripts = [
+        "text: hello\nusage: input_other=10 output=5",
+        "text: I'm good\nusage: input_other=30 output=8",
+        "text: compacted summary\nusage: input_other=50 output=20",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+
+    wire = start_wire(
+        config_path=config_path,
+        config_text=None,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+    try:
+        send_initialize(wire)
+
+        # Two rounds of conversation to build up context beyond max_preserved_messages=2
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-1",
+                "method": "prompt",
+                "params": {"user_input": "hi"},
+            }
+        )
+        resp, _ = collect_until_response(wire, "prompt-1")
+        assert resp.get("result", {}).get("status") == "finished"
+
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-2",
+                "method": "prompt",
+                "params": {"user_input": "how are you"},
+            }
+        )
+        resp, _ = collect_until_response(wire, "prompt-2")
+        assert resp.get("result", {}).get("status") == "finished"
+
+        # Now compact — this triggers a real compaction LLM call (script 3)
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-3",
+                "method": "prompt",
+                "params": {"user_input": "/compact"},
+            }
+        )
+        resp, messages = collect_until_response(wire, "prompt-3")
+        assert resp.get("result", {}).get("status") == "finished"
+
+        # Verify context_usage is non-zero (usage.output=20 + preserved text estimate)
+        status_msg = [m for m in messages if m.get("params", {}).get("type") == "StatusUpdate"]
+        assert len(status_msg) == 1
+        context_usage = status_msg[0]["params"]["payload"]["context_usage"]
+        assert context_usage > 0, "context_usage should be non-zero after compaction with usage"
     finally:
         wire.close()
 
