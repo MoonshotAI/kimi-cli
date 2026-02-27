@@ -57,6 +57,21 @@ class Glob(CallableTool2[Params]):
                 ),
                 brief="Unsafe pattern",
             )
+        
+        # Check for path traversal attempts
+        # We split by both forward and backward slashes to handle all platforms generically,
+        # though glob patterns usually use forward slashes.
+        parts = pattern.replace("\\", "/").split("/")
+        if ".." in parts:
+             return ToolError(
+                message=(
+                    f"Pattern `{pattern}` contains '..' which is not allowed. "
+                    "You cannot traverse up the directory tree directly in the pattern. "
+                    "Please search within a specific directory."
+                ),
+                brief="Invalid pattern",
+            )
+            
         return None
 
     async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
