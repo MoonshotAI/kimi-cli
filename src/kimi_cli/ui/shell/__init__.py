@@ -110,6 +110,7 @@ class Shell:
                         continue
 
                     await self.run_soul_command(user_input.content)
+                    console.print()
             finally:
                 ensure_tty_sane()
 

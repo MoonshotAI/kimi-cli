@@ -94,6 +94,10 @@ Output includes:
 
 ## Session management
 
+### `/new`
+
+Create a new session and switch to it immediately, without exiting Kimi Code CLI. If the current session has no content, the empty session directory is automatically cleaned up.
+
 ### `/sessions`
 
 List all sessions in the current working directory, allowing switching to other sessions.
@@ -162,6 +166,10 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 ::: warning Note
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
+
+### `/web`
+
+Switch to Web UI. Kimi Code CLI will start a Web UI server and open the current session in your browser, allowing you to continue the conversation in the Web UI. See [Web UI](./kimi-web.md) for details.
 
 ## Command completion
 
