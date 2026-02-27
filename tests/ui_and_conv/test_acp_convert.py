@@ -51,6 +51,18 @@ def test_acp_blocks_to_content_parts_handles_resource_link():
     assert "bar.py" in parts[0].text
 
 
+def test_acp_blocks_to_content_parts_skips_blob_resource():
+    block = acp.schema.EmbeddedResourceContentBlock(
+        type="resource",
+        resource=acp.schema.BlobResourceContents(
+            uri="file:///path/to/image.png",
+            blob="iVBORw0KGgo=",
+        ),
+    )
+    parts = acp_blocks_to_content_parts([block])
+    assert len(parts) == 0
+
+
 def test_acp_blocks_to_content_parts_mixed_blocks():
     blocks = [
         acp.schema.TextContentBlock(type="text", text="Check this file:"),
