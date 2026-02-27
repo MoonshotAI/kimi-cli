@@ -92,6 +92,7 @@ Session state file, stores the session's runtime state, including:
 
 - `approval`: Approval decision state (YOLO mode on/off, auto-approved operation types)
 - `dynamic_subagents`: Dynamically created subagent definitions
+- `additional_dirs`: Additional workspace directories added via `--add-dir` or `/add-dir`
 
 When resuming a session, Kimi Code CLI reads this file to restore the session state. This file uses atomic writes to prevent data corruption on crash.
 

@@ -97,6 +97,7 @@ def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
         KIMI_SKILLS="No skills found.",
+        KIMI_ADDITIONAL_DIRS_INFO="",
     )
 
 
@@ -177,6 +178,7 @@ def runtime(
         environment=environment,
         skills={},
         oauth=OAuthManager(config),
+        additional_dirs=[],
     )
     rt.labor_market.add_fixed_subagent(
         "mocker",
@@ -261,9 +263,9 @@ def read_media_file_tool(runtime: Runtime) -> ReadMediaFile:
 
 
 @pytest.fixture
-def glob_tool(builtin_args: BuiltinSystemPromptArgs) -> Glob:
+def glob_tool(runtime: Runtime) -> Glob:
     """Create a Glob tool instance."""
-    return Glob(builtin_args)
+    return Glob(runtime)
 
 
 @pytest.fixture
@@ -273,21 +275,17 @@ def grep_tool() -> Grep:
 
 
 @pytest.fixture
-def write_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
-) -> Generator[WriteFile]:
+def write_file_tool(runtime: Runtime, approval: Approval) -> Generator[WriteFile]:
     """Create a WriteFile tool instance."""
     with tool_call_context("WriteFile"):
-        yield WriteFile(builtin_args, approval)
+        yield WriteFile(runtime, approval)
 
 
 @pytest.fixture
-def str_replace_file_tool(
-    builtin_args: BuiltinSystemPromptArgs, approval: Approval
-) -> Generator[StrReplaceFile]:
+def str_replace_file_tool(runtime: Runtime, approval: Approval) -> Generator[StrReplaceFile]:
     """Create a StrReplaceFile tool instance."""
     with tool_call_context("StrReplaceFile"):
-        yield StrReplaceFile(builtin_args, approval)
+        yield StrReplaceFile(runtime, approval)
 
 
 @pytest.fixture
