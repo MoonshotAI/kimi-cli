@@ -93,6 +93,20 @@ def kimi(
             help="Working directory for the agent. Default: current directory.",
         ),
     ] = None,
+    local_add_dirs: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--add-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help=(
+                "Add an additional directory to the workspace scope. "
+                "Can be specified multiple times."
+            ),
+        ),
+    ] = None,
     session_id: Annotated[
         str | None,
         typer.Option(
@@ -484,6 +498,25 @@ def kimi(
         else:
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
+
+        # Add CLI-provided additional directories to session state
+        if local_add_dirs:
+            work_dir_str = str(work_dir.canonical())
+            changed = False
+            for d in local_add_dirs:
+                dir_str = str(KaosPath.unsafe_from_local_path(d).canonical())
+                # Skip dirs within work_dir (already accessible)
+                if dir_str == work_dir_str or dir_str.startswith(work_dir_str + "/"):
+                    logger.info(
+                        "Skipping --add-dir {dir}: already within working directory",
+                        dir=dir_str,
+                    )
+                    continue
+                if dir_str not in session.state.additional_dirs:
+                    session.state.additional_dirs.append(dir_str)
+                    changed = True
+            if changed:
+                session.save_state()
 
         instance = await KimiCLI.create(
             session,

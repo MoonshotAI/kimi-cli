@@ -5,13 +5,13 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.diff import build_diff_blocks
-from kimi_cli.utils.path import is_within_directory
+from kimi_cli.utils.path import is_within_workspace
 
 
 class Edit(BaseModel):
@@ -40,16 +40,20 @@ class StrReplaceFile(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "replace.md")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval):
+    def __init__(self, runtime: Runtime, approval: Approval):
         super().__init__()
-        self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
         self._approval = approval
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to edit."""
         resolved_path = path.canonical()
 
-        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+        if (
+            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+            and not path.is_absolute()
+        ):
             return ToolError(
                 message=(
                     f"`{path}` is not an absolute path. "
@@ -115,7 +119,7 @@ class StrReplaceFile(CallableTool2[Params]):
 
             action = (
                 FileActions.EDIT
-                if is_within_directory(p, self._work_dir)
+                if is_within_workspace(p, self._work_dir, self._additional_dirs)
                 else FileActions.EDIT_OUTSIDE
             )
 

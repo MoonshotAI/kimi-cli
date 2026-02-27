@@ -70,6 +70,14 @@ ${KIMI_WORK_DIR_LS}
 ```
 
 Use this as your basic understanding of the project structure.
+{% if KIMI_ADDITIONAL_DIRS_INFO %}
+
+## Additional Directories
+
+The following directories have been added to the workspace. You can read, write, search, and glob files in these directories as part of your workspace scope.
+
+${KIMI_ADDITIONAL_DIRS_INFO}
+{% endif %}
 
 # Project Information
 

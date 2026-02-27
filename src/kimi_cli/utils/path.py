@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path, PurePath
 from stat import S_ISDIR
 
@@ -111,3 +112,16 @@ def is_within_directory(path: KaosPath, directory: KaosPath) -> bool:
         return True
     except ValueError:
         return False
+
+
+def is_within_workspace(
+    path: KaosPath,
+    work_dir: KaosPath,
+    additional_dirs: Sequence[KaosPath] = (),
+) -> bool:
+    """
+    Check whether *path* is within the workspace (work_dir or any additional directory).
+    """
+    if is_within_directory(path, work_dir):
+        return True
+    return any(is_within_directory(path, d) for d in additional_dirs)
