@@ -84,9 +84,7 @@ async def yolo(soul: KimiSoul, args: str):
 
 @registry.command(name="add-dir")
 async def add_dir(soul: KimiSoul, args: str):
-    """Add a directory to the workspace.
-
-    Usage: /add-dir <path>. Run without args to list added dirs"""
+    """Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs"""  # noqa: E501
     from kaos.path import KaosPath
 
     from kimi_cli.utils.path import is_within_directory, list_directory
