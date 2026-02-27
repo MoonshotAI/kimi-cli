@@ -215,7 +215,7 @@ def test_question_capability_negotiation(tmp_path) -> None:
 
 
 def test_ask_user_tool_hidden_when_question_not_supported(tmp_path) -> None:
-    """When client does not support questions, AskUserQuestion tool calls should get ToolNotFoundError."""
+    """When question support is disabled, AskUserQuestion should not emit QuestionRequest."""
     question = _make_question()
     scripts = [
         "\n".join(
@@ -256,12 +256,25 @@ def test_ask_user_tool_hidden_when_question_not_supported(tmp_path) -> None:
         )
         assert resp.get("result", {}).get("status") == "finished"
 
-        # The tool should be hidden, so the scripted tool call should produce an error
-        # (ToolNotFoundError) instead of a QuestionRequest to the client.
+        # The client does not support QuestionRequest, so no QuestionRequest should be emitted.
         summary = summarize_messages(messages)
         question_requests = [m for m in summary if m.get("type") == "QuestionRequest"]
         assert len(question_requests) == 0, (
             "AskUserQuestion tool should be hidden when client does not support questions"
         )
+
+        # The scripted AskUserQuestion call should complete with a tool error indicating
+        # the client cannot handle interactive questions.
+        tool_results = [m for m in summary if m.get("type") == "ToolResult"]
+        for tr in tool_results:
+            if tr["payload"]["tool_call_id"] != "tc-q-hidden":
+                continue
+            rv = tr["payload"]["return_value"]
+            assert rv["is_error"] is True
+            assert "does not support interactive questions" in rv["message"]
+            assert "Do NOT call this tool again" in rv["message"]
+            break
+        else:
+            raise AssertionError("ToolResult for tc-q-hidden not found")
     finally:
         wire.close()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 
 from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
@@ -147,6 +148,8 @@ async def test_hidden_tool_still_handled():
     else:
         assert isinstance(result, asyncio.Task)
         result.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await result
 
 
 async def test_nonexistent_tool_returns_not_found():
