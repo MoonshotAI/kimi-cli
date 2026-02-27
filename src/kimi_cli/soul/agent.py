@@ -218,7 +218,9 @@ async def load_agent(
             is invalid.
         InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
         MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
-        MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be connected.
+
+    Note:
+        Failed MCP connections are logged as warnings and do not prevent loading.
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
