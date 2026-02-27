@@ -501,12 +501,15 @@ def kimi(
 
         # Add CLI-provided additional directories to session state
         if local_add_dirs:
-            work_dir_str = str(work_dir.canonical())
+            from kimi_cli.utils.path import is_within_directory
+
+            canonical_work_dir = work_dir.canonical()
             changed = False
             for d in local_add_dirs:
-                dir_str = str(KaosPath.unsafe_from_local_path(d).canonical())
+                dir_path = KaosPath.unsafe_from_local_path(d).canonical()
+                dir_str = str(dir_path)
                 # Skip dirs within work_dir (already accessible)
-                if dir_str == work_dir_str or dir_str.startswith(work_dir_str + "/"):
+                if is_within_directory(dir_path, canonical_work_dir):
                     logger.info(
                         "Skipping --add-dir {dir}: already within working directory",
                         dir=dir_str,
