@@ -44,8 +44,11 @@ kimi [OPTIONS] COMMAND [ARGS]
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--work-dir PATH` | `-w` | Specify working directory (default current directory) |
+| `--add-dir PATH` | | Add an additional directory to the workspace scope, can be specified multiple times |
 
 The working directory determines the root directory for file operations. Relative paths work within the working directory; absolute paths are required to access files outside it.
+
+`--add-dir` expands the workspace scope to include directories outside the working directory, making all file tools able to access files in those directories. Added directories are persisted with the session state. You can also add directories at runtime via the [`/add-dir`](./slash-commands.md#add-dir) slash command.
 
 ## Session management
 

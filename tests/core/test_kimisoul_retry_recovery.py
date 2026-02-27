@@ -192,6 +192,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
         environment=runtime.environment,
         skills=runtime.skills,
         oauth=runtime.oauth,
+        additional_dirs=runtime.additional_dirs,
     )
 
 
