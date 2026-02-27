@@ -212,3 +212,56 @@ def test_question_capability_negotiation(tmp_path) -> None:
         assert caps.get("supports_question") is True
     finally:
         wire.close()
+
+
+def test_ask_user_tool_hidden_when_question_not_supported(tmp_path) -> None:
+    """When client does not support questions, AskUserQuestion tool calls should get ToolNotFoundError."""
+    question = _make_question()
+    scripts = [
+        "\n".join(
+            [
+                "text: asking",
+                build_ask_user_tool_call("tc-q-hidden", [question]),
+            ]
+        ),
+        "text: done",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+
+    wire = start_wire(
+        config_path=config_path,
+        config_text=None,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+    try:
+        # Initialize WITHOUT supports_question (defaults to false)
+        send_initialize(wire, capabilities={"supports_question": False})
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-1",
+                "method": "prompt",
+                "params": {"user_input": "ask me"},
+            }
+        )
+
+        resp, messages = collect_until_response(
+            wire,
+            "prompt-1",
+            request_handler=_question_request_handler({}),
+        )
+        assert resp.get("result", {}).get("status") == "finished"
+
+        # The tool should be hidden, so the scripted tool call should produce an error
+        # (ToolNotFoundError) instead of a QuestionRequest to the client.
+        summary = summarize_messages(messages)
+        question_requests = [m for m in summary if m.get("type") == "QuestionRequest"]
+        assert len(question_requests) == 0, (
+            "AskUserQuestion tool should be hidden when client does not support questions"
+        )
+    finally:
+        wire.close()
