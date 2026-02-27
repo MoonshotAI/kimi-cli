@@ -75,7 +75,7 @@ Enter `/compact` to have the AI summarize the current conversation and replace t
 Compacting preserves key information while reducing token consumption. This is useful when the conversation is long but you still want to retain some context.
 
 ::: tip
-The bottom status bar displays the current context usage (`context: xx%`), helping you understand when you need to clear or compact.
+The bottom status bar displays the current context usage (`context: xx.x%`), helping you understand when you need to clear or compact.
 :::
 
 ::: tip
