@@ -63,7 +63,7 @@ class ACPServer:
             agent_capabilities=acp.schema.AgentCapabilities(
                 load_session=True,
                 prompt_capabilities=acp.schema.PromptCapabilities(
-                    embedded_context=False, image=True, audio=False
+                    embedded_context=True, image=True, audio=False
                 ),
                 mcp_capabilities=acp.schema.McpCapabilities(http=True, sse=False),
                 session_capabilities=acp.schema.SessionCapabilities(
