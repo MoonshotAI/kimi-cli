@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.16.0 (2026-02-27)
+
 - Web: Update ASCII logo banner to a new styled design
 - Core: Add `--add-dir` CLI option and `/add-dir` slash command to expand the workspace scope with additional directories — added directories are accessible to all file tools (read, write, glob, replace), persisted across sessions, and shown in the system prompt
 - Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
