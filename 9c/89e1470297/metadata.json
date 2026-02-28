@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "9c89e1470297",
+  "strategy": "manual-commit",
+  "branch": "feat/web-todo-toolbar-display",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/features/chat/components/prompt-toolbar/index.tsx",
+    "web/src/features/chat/components/prompt-toolbar/toolbar-todo.tsx",
+    "web/src/features/tool/store.ts",
+    "web/src/hooks/useSessionStream.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9c/89e1470297/0/metadata.json",
+      "transcript": "/9c/89e1470297/0/full.jsonl",
+      "context": "/9c/89e1470297/0/context.md",
+      "content_hash": "/9c/89e1470297/0/content_hash.txt",
+      "prompt": "/9c/89e1470297/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2706,
+    "cache_creation_tokens": 111600,
+    "cache_read_tokens": 3897594,
+    "output_tokens": 10824,
+    "api_call_count": 69
+  }
+}
