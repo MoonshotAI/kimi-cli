@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "3dfeb22da51f",
+  "strategy": "manual-commit",
+  "branch": "feat/web-todo-toolbar-display",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CHANGELOG.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/release-notes/changelog.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3d/feb22da51f/0/metadata.json",
+      "transcript": "/3d/feb22da51f/0/full.jsonl",
+      "context": "/3d/feb22da51f/0/context.md",
+      "content_hash": "/3d/feb22da51f/0/content_hash.txt",
+      "prompt": "/3d/feb22da51f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2706,
+    "cache_creation_tokens": 111600,
+    "cache_read_tokens": 3897594,
+    "output_tokens": 10824,
+    "api_call_count": 69
+  }
+}
