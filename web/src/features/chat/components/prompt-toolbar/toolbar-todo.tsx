@@ -20,10 +20,9 @@ export const ToolbarTodoPanel = memo(function ToolbarTodoPanelComponent({
 }: ToolbarTodoPanelProps): ReactElement {
   return (
     <>
-      {items.map((item, i) => (
+      {items.map((item) => (
         <div
-          // eslint-disable-next-line react/no-array-index-key
-          key={i}
+          key={item.title}
           className="flex items-center gap-2 px-3 py-1 text-xs"
         >
           {item.status === "done" && (

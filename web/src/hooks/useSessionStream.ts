@@ -1299,7 +1299,7 @@ export function useSessionStream(
             );
             if (todoBlock) {
               useToolEventsStore.getState().setTodoItems(
-                (todoBlock as { type: string; items: TodoItem[] }).items,
+                (todoBlock as unknown as { type: string; items: TodoItem[] }).items,
               );
             }
           }
