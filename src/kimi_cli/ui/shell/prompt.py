@@ -186,7 +186,7 @@ class PathTrie:
     _all_paths: list[PurePath]
     _collection_queue: deque[tuple[PathTrieNode, int]]
     _max_collected_depth: int
-    _initial_depth: int
+    _first_stage_limit: int  # Min paths to collect for fuzzy matching
 
     def __init__(self, root: Path, check_ignored: Callable[[str], bool], limit: int) -> None:
         self.root = root
@@ -198,7 +198,9 @@ class PathTrie:
         # Queue of (node, depth) tuples for BFS level tracking
         self._collection_queue = deque([(self.root_node, 0)])
         self._max_collected_depth = -1  # No levels collected yet
-        self._initial_depth = 2  # Collect first 2 levels initially
+        # Minimum paths to collect for fuzzy matching. We collect level by level
+        # until we have at least this many paths (or hit the hard limit).
+        self._first_stage_limit = 200
 
     def depth_of(self, path: PurePath) -> int:
         """Calculate depth of a path (root = 0, direct children = 1, etc.)."""
@@ -279,16 +281,35 @@ class PathTrie:
         if min_depth > self._max_collected_depth:
             self.collect_to_depth(min_depth)
 
+    def _ensure_first_stage(self) -> None:
+        """Collect paths until we have at least _first_stage_limit paths.
+
+        Collects level by level (BFS) until the limit is reached.
+        Respects the hard limit (self.limit).
+        """
+        while (
+            self._collection_queue
+            and len(self._all_paths) < self._first_stage_limit
+            and len(self._all_paths) < self.limit
+        ):
+            # Process next level
+            target_depth = self._collection_queue[0][1]
+            self.collect_to_depth(target_depth)
+
     def get_paths(self, max_depth: int | None = None) -> list[PurePath]:
         """Get collected paths up to max_depth.
 
-        If max_depth is None, returns all collected paths.
+        If max_depth is None, collects until _first_stage_limit is reached
+        for fuzzy matching, then returns all collected paths.
         """
-        self.ensure_depth(self._initial_depth)
         if max_depth is None:
+            # Fuzzy matching mode: ensure we have enough paths
+            self._ensure_first_stage()
             return self._all_paths[: self.limit]
-        # Filter paths by depth
-        return [p for p in self._all_paths if self.depth_of(p) <= max_depth][: self.limit]
+        else:
+            # Navigation mode: ensure specific depth
+            self.ensure_depth(max_depth)
+            return [p for p in self._all_paths if self.depth_of(p) <= max_depth][: self.limit]
 
     def get_top_level_paths(self) -> list[PurePath]:
         """Get only top-level paths (direct children of root, depth 1)."""
@@ -454,12 +475,19 @@ class LocalFileMentionCompleter(Completer):
         trie = self._get_or_create_trie()
 
         # Calculate required depth from fragment
-        # fragment "src" -> depth 2 (initial), fragment "src/" -> depth 3, etc.
+        # When user types "/", they are navigating into a directory,
+        # so we need to ensure deeper paths are collected
         frag_path = PurePath(fragment)
         frag_depth = len(frag_path.parts) if frag_path.parts else 0
-        required_depth = 2 + frag_depth  # Start with depth 2, add for each path component
 
-        paths = trie.get_paths(max_depth=required_depth)
+        if "/" in fragment:
+            # User is navigating: expand to include deeper paths
+            required_depth = 2 + frag_depth
+            paths = trie.get_paths(max_depth=required_depth)
+        else:
+            # Fuzzy matching mode: return all collected paths
+            paths = trie.get_paths()
+
         self._cached_paths = self._format_paths(paths)
         self._cached_fragment = fragment
         self._cache_time = now
