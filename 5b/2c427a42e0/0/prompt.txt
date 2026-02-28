@@ -1,0 +1,110 @@
+Implement the following plan:
+
+# Plan: Cmd+Click "+" 按钮在新标签页创建会话
+
+## Context
+
+当前侧边栏 "+" 按钮点击后在当前页面打开 CreateSessionDialog。用户需求：按住 Cmd(Mac)/Ctrl(Windows) 点击 "+" 按钮时，在新浏览器标签页中打开并自动弹出创建会话对话框。Tooltip 需要根据平台动态显示正确的修饰键提示。
+
+## 修改文件
+
+### 1. `web/src/App.tsx` — 识别 URL 参数自动打开创建对话框
+
+- 新增 URL 参数检测：页面加载时检查 `?action=create`
+- 如果存在该参数，自动设置 `showCreateDialog = true`
+- 消费参数后从 URL 中移除，避免刷新重复触发
+
+```typescript
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("action") === "create") {
+    setShowCreateDialog(true);
+    params.delete("action");
+    const url = new URL(window.location.href);
+    url.search = params.toString();
+    window.history.replaceState({}, "", url.toString());
+  }
+}, []);
+```
+
+### 2. `web/src/features/sessions/sessions.tsx` (line ~649) — "+" 按钮添加 Cmd+Click 处理 + Tooltip 更新
+
+- 修改 `onClick` handler，检测 `metaKey`(Mac) 或 `ctrlKey`(非Mac)
+- 有修饰键时 `window.open` 打开新标签页（URL 带 `?action=create`）
+- 无修饰键时保持原有 `onOpenCreateDialog()` 逻辑
+- **更新 Tooltip**：增加第二行提示 `⌘+Click open in new tab`（Mac）或 `Ctrl+Click open in new tab`（Windows/Linux），使用已有的 `newSessionShortcutModifier` 变量动态显示
+
+```tsx
+<Tooltip>
+  <TooltipTrigger asChild>
+    <button
+      aria-label="New Session"
+      className="..."
+      onClick={(e) => {
+        const isNewTab = isMacOS() ? e.metaKey : e.ctrlKey;
+        if (isNewTab) {
+          const url = new URL(window.location.origin + window.location.pathname);
+          url.searchParams.set("action", "create");
+          window.open(url.toString(), "_blank");
+        } else {
+          onOpenCreateDialog?.();
+        }
+      }}
+      type="button"
+    >
+      <Plus className="size-4" />
+    </button>
+  </TooltipTrigger>
+  <TooltipContent className="flex flex-col items-center gap-1" side="bottom">
+    <div className="flex items-center gap-2">
+      <span>New session</span>
+      <KbdGroup>
+        <Kbd>Shift</Kbd><span>+</span><Kbd>{newSessionShortcutModifier}</Kbd><span>+</span><Kbd>O</Kbd>
+      </KbdGroup>
+    </div>
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span>{newSessionShortcutModifier}+Click open in new tab</span>
+    </div>
+  </TooltipContent>
+</Tooltip>
+```
+
+### 3. `web/src/features/chat/components/chat-conversation.tsx` (line ~140) — 空状态按钮同步支持
+
+- 对 "Create new session" 按钮同样添加 Cmd+Click 新标签页逻辑
+- 更新 Tooltip 增加修饰键+Click 提示，使用已有的 `newSessionShortcutModifier` 动态显示
+
+## 不修改
+
+- 键盘快捷键 `Shift+Cmd+O`：保持原有行为（在当前页面打开对话框）
+
+## 验证
+
+1. 正常点击 "+" → 在当前页打开 CreateSessionDialog（行为不变）
+2. Cmd+Click（Mac）/ Ctrl+Click（非Mac）"+" → 打开新标签页，新标签页自动弹出 CreateSessionDialog
+3. 新标签页刷新后不会再自动弹出对话框（action 参数已被消费）
+4. 空状态 "Create new session" 按钮同样支持 Cmd+Click
+5. Tooltip 在 Mac 显示 "⌘+Click open in new tab"，在 Windows 显示 "Ctrl+Click open in new tab"
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+[Request interrupted by user]
+
+---
+
+在另外的分支实现这个
+
+---
+
+这个加号也支持一下
+
+---
+
+细粒度提交推送
+
+---
+
+也要加上相应的tooltip
