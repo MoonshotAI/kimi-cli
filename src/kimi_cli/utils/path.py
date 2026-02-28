@@ -171,11 +171,15 @@ class PathTrie:
     """A trie data structure for storing and incrementally collecting file paths.
 
     The trie is built lazily by depth levels:
-    - Initially collects paths up to _first_stage_limit (to ensure shallow files are included)
+    - Initially collects paths up to FIRST_STAGE_LIMIT (to ensure shallow files are included)
     - When user types "/", deeper levels are scanned on demand
     - BFS ensures shallow paths are collected before deep-nested ones, preventing
       shallow files from being missed due to slot limits
     """
+
+    # Number of paths to collect initially: ensures shallow files are included while
+    # still collecting deep enough to provide a pool for fuzzy matching.
+    FIRST_STAGE_LIMIT: int = 200
 
     root: Path
     check_ignored: Callable[[str], bool]
@@ -184,9 +188,6 @@ class PathTrie:
     _all_paths: list[PurePath]
     _collection_queue: deque[tuple[PathTrieNode, int]]
     _max_collected_depth: int
-    # Number of paths to collect initially: ensures shallow files are included while
-    # still collecting deep enough to provide a pool for fuzzy matching.
-    _first_stage_limit: int
 
     def __init__(self, root: Path, check_ignored: Callable[[str], bool], limit: int) -> None:
         self.root = root
@@ -198,9 +199,6 @@ class PathTrie:
         # Queue of (node, depth) tuples for BFS level tracking
         self._collection_queue = deque([(self.root_node, 0)])
         self._max_collected_depth = -1  # No levels collected yet
-        # Number of paths to collect initially: ensures shallow files are included
-        # while still collecting deep enough to provide a pool for fuzzy matching.
-        self._first_stage_limit = 200
 
     def depth_of(self, path: PurePath) -> int:
         """Calculate depth of a path (root = 0, direct children = 1, etc.)."""
@@ -302,40 +300,42 @@ class PathTrie:
         if min_depth > self._max_collected_depth:
             self.collect_to_depth(min_depth)
 
-    def _ensure_first_stage(self) -> None:
-        """Collect paths until we have at least _first_stage_limit paths.
+    def collect_first_stage(self) -> None:
+        """Collect paths until we have at least FIRST_STAGE_LIMIT paths.
 
         Collects level by level (BFS) until the limit is reached.
         Respects the hard limit (self.limit).
         """
         while (
             self._collection_queue
-            and len(self._all_paths) < self._first_stage_limit
+            and len(self._all_paths) < self.FIRST_STAGE_LIMIT
             and len(self._all_paths) < self.limit
         ):
             # Process next level
             target_depth = self._collection_queue[0][1]
             self.collect_to_depth(target_depth)
 
-    def get_paths(self, max_depth: int | None = None) -> list[PurePath]:
+    def get_paths(self, max_depth: int | None = None) -> tuple[PurePath, ...]:
         """Get collected paths up to max_depth.
 
-        If max_depth is None, collects until _first_stage_limit is reached
+        If max_depth is None, collects until FIRST_STAGE_LIMIT is reached
         (to ensure shallow files are included), then returns all collected paths.
         """
         if max_depth is None:
             # No specific depth required: ensure shallow files are included
-            self._ensure_first_stage()
-            return self._all_paths[: self.limit]
+            self.collect_first_stage()
+            return tuple(self._all_paths[: self.limit])
         else:
             # Navigation mode: ensure specific depth
             self.ensure_depth(max_depth)
-            return [p for p in self._all_paths if self.depth_of(p) <= max_depth][: self.limit]
+            filtered = [p for p in self._all_paths if self.depth_of(p) <= max_depth]
+            return tuple(filtered[: self.limit])
 
-    def get_top_level_paths(self) -> list[PurePath]:
+    def get_top_level_paths(self) -> tuple[PurePath, ...]:
         """Get only top-level paths (direct children of root, depth 1)."""
         self.ensure_depth(1)
-        return [p for p in self._all_paths if self.depth_of(p) == 1][: self.limit]
+        filtered = [p for p in self._all_paths if self.depth_of(p) == 1]
+        return tuple(filtered[: self.limit])
 
     def is_directory(self, path: PurePath) -> bool:
         """Check if a path is a directory by looking it up in the trie."""

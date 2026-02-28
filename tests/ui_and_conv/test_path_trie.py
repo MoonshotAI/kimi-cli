@@ -61,7 +61,7 @@ def test_empty_directory(tmp_path: Path):
     """Trie works with empty root directory."""
     trie = PathTrie(tmp_path, _is_ignored, limit=100)
     paths = trie.get_paths()
-    assert paths == []
+    assert paths == ()
 
 
 def test_single_file(tmp_path: Path):
@@ -80,8 +80,7 @@ def test_single_directory(tmp_path: Path):
     trie = PathTrie(tmp_path, _is_ignored, limit=100)
     paths = trie.get_paths()
 
-    assert len(paths) == 1
-    assert paths[0] == PurePath("src")
+    assert paths == (PurePath("src"),)
 
 
 # =============================================================================
@@ -98,16 +97,14 @@ def test_shallow_paths_first(tmp_path: Path):
     trie = PathTrie(tmp_path, _is_ignored, limit=100)
     paths = trie.get_paths()
 
-    # Get depth of each path
-    depths = [len(p.parts) for p in paths]
-
-    # Verify BFS: shallower paths should appear before deeper ones
-    max_depth_so_far = 0
-    for i, depth in enumerate(depths):
-        assert depth <= max_depth_so_far + 1, (
-            f"Path at index {i} has depth {depth}, but max depth so far was {max_depth_so_far}"
-        )
-        max_depth_so_far = max(max_depth_so_far, depth)
+    # Verify BFS order: depth 1 (a, x) before depth 2 (a/b, x/y)
+    expected = (
+        PurePath("a"),
+        PurePath("x"),
+        PurePath("a/b"),
+        PurePath("x/y"),
+    )
+    assert paths[:4] == expected
 
 
 def test_breadth_before_depth(tmp_path: Path):
