@@ -62,7 +62,7 @@ def web(
     # Determine bind address
     if host:
         bind_host = host
-    elif network:
+    elif network or not lan_only:
         bind_host = "0.0.0.0"
     else:
         bind_host = "127.0.0.1"
