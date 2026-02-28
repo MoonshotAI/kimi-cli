@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "cb947d4bc3b3",
+  "strategy": "manual-commit",
+  "branch": "feat/cmd-click-new-tab-create-session",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CHANGELOG.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/release-notes/changelog.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/cb/947d4bc3b3/0/metadata.json",
+      "transcript": "/cb/947d4bc3b3/0/full.jsonl",
+      "context": "/cb/947d4bc3b3/0/context.md",
+      "content_hash": "/cb/947d4bc3b3/0/content_hash.txt",
+      "prompt": "/cb/947d4bc3b3/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2702,
+    "cache_creation_tokens": 111027,
+    "cache_read_tokens": 3746743,
+    "output_tokens": 10688,
+    "api_call_count": 67
+  }
+}
