@@ -120,9 +120,10 @@ function App() {
       setShowCreateDialog(true);
     } else if (action === "create-in-dir") {
       const workDir = params.get("workDir");
-      if (workDir) {
-        createSession(workDir);
-      }
+      if (!workDir) return; // invalid params, ignore silently
+      createSession(workDir).catch(() => {
+        // Errors are already handled globally via sessionsError → toast
+      });
     } else {
       return;
     }
