@@ -11,7 +11,6 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
-- Web: Refine UI details including rounded corners, spacing, and layout adjustments across input group, slash command menu, and session sidebar
 
 ## 1.14.0 (2026-02-26)
 
