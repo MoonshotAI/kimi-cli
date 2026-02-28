@@ -360,7 +360,7 @@ function App() {
 
   return (
     <PromptInputProvider>
-      <div className="box-border flex h-[100dvh] flex-col bg-background text-foreground px-[calc(0.75rem+var(--safe-left))] pr-[calc(0.75rem+var(--safe-right))] pt-[calc(0.75rem+var(--safe-top))] pb-1 lg:pb-[calc(0.75rem+var(--safe-bottom))] max-lg:h-[100svh] max-lg:overflow-hidden">
+      <div className="box-border flex h-dvh flex-col bg-background text-foreground px-(--safe-left) pr-(--safe-right) pt-(--safe-top) pb-1 lg:pb-(--safe-bottom) max-lg:h-svh max-lg:overflow-hidden">
         <div className="mx-auto flex h-full min-h-0 w-full flex-1 flex-col gap-2 max-w-none">
           {isDesktop ? (
             <ResizablePanelGroup
@@ -447,7 +447,7 @@ function App() {
                     searchQuery={searchQuery}
                     onSearchQueryChange={handleSearchQueryChange}
                   />
-                  <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
+                  <div className="mt-auto flex items-center justify-between px-3 pb-3">
                     <div className="flex items-center gap-2">
                       <ThemeToggle />
                     </div>

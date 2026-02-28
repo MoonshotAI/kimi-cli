@@ -285,7 +285,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
 
         {/* Bottom area: Question Dialog replaces prompt composer when active */}
         {currentSession && (
-          <div className="mt-auto flex-shrink-0">
+          <div className="mt-auto shrink-0">
             {hasPendingQuestion ? (
               <QuestionDialog
                 messages={messages}
@@ -293,7 +293,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
                 pendingQuestionMap={pendingQuestionMap}
               />
             ) : (
-              <div className="px-0 pb-0 pt-0 sm:px-3 sm:pb-3">
+              <div className="px-3 pb-3">
                 <ChatPromptComposer
                   status={status}
                   onSubmit={onSubmit}
