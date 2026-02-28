@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import mimetypes
-import os
 import re
 import time
 from collections import deque
@@ -14,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from hashlib import md5, sha256
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Literal, override
 
 from kaos.path import KaosPath
@@ -47,6 +46,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.media_tags import wrap_media_part
+from kimi_cli.utils.path import PathTrie
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.utils.string import random_string
 from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
@@ -220,10 +220,10 @@ class LocalFileMentionCompleter(Completer):
         self._refresh_interval = refresh_interval
         self._limit = limit
         self._cache_time: float = 0.0
-        self._cached_paths: list[str] = []
-        self._top_cache_time: float = 0.0
-        self._top_cached_paths: list[str] = []
+        self._cached_paths: tuple[str, ...] = ()
+        self._cached_fragment: str = ""  # Track which fragment was used for cache
         self._fragment_hint: str | None = None
+        self._trie: PathTrie | None = None
 
         self._word_completer = WordCompleter(
             self._get_paths,
@@ -245,75 +245,68 @@ class LocalFileMentionCompleter(Completer):
             return True
         return bool(cls._IGNORED_PATTERNS.fullmatch(name))
 
-    def _get_paths(self) -> list[str]:
+    def _get_or_create_trie(self, refresh: bool = False) -> PathTrie:
+        """Get or create the path trie.
+
+        Args:
+            refresh: If True, recreate the trie to pick up filesystem changes.
+        """
+        if self._trie is None or refresh:
+            self._trie = PathTrie(self._root, self._is_ignored, self._limit)
+        return self._trie
+
+    def _get_paths(self) -> tuple[str, ...]:
+        """Get paths based on cached fragment depth.
+
+        If fragment contains "/", we collect deeper paths.
+        """
+        now = time.monotonic()
         fragment = self._fragment_hint or ""
-        if "/" not in fragment and len(fragment) < 3:
-            return self._get_top_level_paths()
-        return self._get_deep_paths()
 
-    def _get_top_level_paths(self) -> list[str]:
-        now = time.monotonic()
-        if now - self._top_cache_time <= self._refresh_interval:
-            return self._top_cached_paths
-
-        entries: list[str] = []
-        try:
-            for entry in sorted(self._root.iterdir(), key=lambda p: p.name):
-                name = entry.name
-                if self._is_ignored(name):
-                    continue
-                entries.append(f"{name}/" if entry.is_dir() else name)
-                if len(entries) >= self._limit:
-                    break
-        except OSError:
-            return self._top_cached_paths
-
-        self._top_cached_paths = entries
-        self._top_cache_time = now
-        return self._top_cached_paths
-
-    def _get_deep_paths(self) -> list[str]:
-        now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval:
+        # Invalidate cache if fragment changed (depth requirement changed)
+        # or if cache expired
+        cache_expired = now - self._cache_time > self._refresh_interval
+        cache_valid = not cache_expired and fragment == self._cached_fragment
+        if cache_valid:
             return self._cached_paths
 
-        paths: list[str] = []
-        try:
-            for current_root, dirs, files in os.walk(self._root):
-                relative_root = Path(current_root).relative_to(self._root)
+        # Refresh trie if cache expired to pick up filesystem changes
+        trie = self._get_or_create_trie(refresh=cache_expired)
 
-                # Prevent descending into ignored directories.
-                dirs[:] = sorted(d for d in dirs if not self._is_ignored(d))
+        # Calculate required depth from fragment
+        # When user types "/", they are navigating into a directory,
+        # so we need to ensure deeper paths are collected
+        frag_path = PurePath(fragment)
+        frag_depth = len(frag_path.parts) if frag_path.parts else 0
 
-                if relative_root.parts and any(
-                    self._is_ignored(part) for part in relative_root.parts
-                ):
-                    dirs[:] = []
-                    continue
+        if "/" in fragment:
+            # User is navigating: expand to include deeper paths
+            required_depth = 2 + frag_depth
+            paths = trie.get_paths(max_depth=required_depth)
+        else:
+            # No specific depth required: return all collected paths
+            paths = trie.get_paths()
 
-                if relative_root.parts:
-                    paths.append(relative_root.as_posix() + "/")
-                    if len(paths) >= self._limit:
-                        break
-
-                for file_name in sorted(files):
-                    if self._is_ignored(file_name):
-                        continue
-                    relative = (relative_root / file_name).as_posix()
-                    if not relative:
-                        continue
-                    paths.append(relative)
-                    if len(paths) >= self._limit:
-                        break
-
-                if len(paths) >= self._limit:
-                    break
-        except OSError:
-            return self._cached_paths
-
-        self._cached_paths = paths
+        self._cached_paths = self._format_paths(paths)
+        self._cached_fragment = fragment
         self._cache_time = now
         return self._cached_paths
+
+    def _format_paths(self, paths: Iterable[PurePath]) -> tuple[str, ...]:
+        """Format Path objects as strings, adding trailing slash for directories.
+
+        The result is meant for completer. Uses forward slashes for cross-platform
+        consistency since users type "/" even on Windows.
+        """
+        trie = self._trie
+        result: list[str] = []
+        for p in paths:
+            path_str = p.as_posix()
+            # Check if it's a directory by looking up in the trie
+            if trie is not None and trie.is_directory(p):
+                path_str += "/"
+            result.append(path_str)
+        return tuple(result)
 
     @staticmethod
     def _extract_fragment(text: str) -> str | None:
@@ -361,14 +354,16 @@ class LocalFileMentionCompleter(Completer):
             candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
 
             # re-rank: prefer basename matches
-            frag_lower = fragment.lower()
+            frag_path = Path(fragment)
+            frag_name = frag_path.name.lower()
 
             def _rank(c: Completion) -> tuple[int, ...]:
-                path = c.text
-                base = path.rstrip("/").split("/")[-1].lower()
-                if base.startswith(frag_lower):
+                # Completion text uses forward slashes, create Path for parsing
+                path = Path(c.text)
+                base = path.name.lower()
+                if base.startswith(frag_name):
                     cat = 0
-                elif frag_lower in base:
+                elif frag_name in base:
                     cat = 1
                 else:
                     cat = 2

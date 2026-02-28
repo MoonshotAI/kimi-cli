@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix file path completion missing shallow files due to slot limits by using a trie data structure with BFS traversal, prioritizing shallow paths
+
 ## 1.16.0 (2026-02-27)
 
 - Web: Update ASCII logo banner to a new styled design
