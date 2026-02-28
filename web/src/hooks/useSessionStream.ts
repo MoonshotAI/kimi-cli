@@ -134,7 +134,7 @@ import {
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
 import { kimiCliVersion } from "@/lib/version";
-import { handleToolResult } from "@/features/tool/store";
+import { handleToolResult, useToolEventsStore, type TodoItem } from "@/features/tool/store";
 import { v4 as uuidV4 } from "uuid";
 
 // Regex patterns moved to top level for performance
@@ -1290,6 +1290,18 @@ export function useSessionStream(
               return_value.is_error,
               isReplay,
             );
+          }
+
+          // Extract todo list from display blocks
+          if (!isReplay && Array.isArray(return_value.display)) {
+            const todoBlock = return_value.display.find(
+              (d: { type: string }) => d.type === "todo",
+            );
+            if (todoBlock) {
+              useToolEventsStore.getState().setTodoItems(
+                (todoBlock as unknown as { type: string; items: TodoItem[] }).items,
+              );
+            }
           }
           break;
         }
@@ -2558,6 +2570,7 @@ export function useSessionStream(
     // Reset state for new session
     resetState();
     setMessages([]);
+    useToolEventsStore.getState().clearTodoItems();
 
     // Auto-connect if we have a valid sessionId
     if (sessionId) {
