@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import pytest
 from inline_snapshot import snapshot
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
+from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
@@ -93,3 +95,43 @@ def test_create_llm_requires_base_url_for_kimi():
     model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
 
     assert create_llm(provider, model) is None
+
+
+def test_create_llm_openai_legacy_passes_reasoning_key():
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="http://localhost:8000/v1",
+        api_key=SecretStr("dummy"),
+        reasoning_key="reasoning_content",
+    )
+    model = LLMModel(provider="vllm", model="some-model", max_context_size=8192)
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == "reasoning_content"
+
+
+def test_create_llm_openai_legacy_reasoning_key_default_none():
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="http://localhost:8000/v1",
+        api_key=SecretStr("dummy"),
+    )
+    model = LLMModel(provider="vllm", model="some-model", max_context_size=8192)
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key is None
+
+
+@pytest.mark.parametrize("value", ["", "  ", "\t\n"])
+def test_reasoning_key_blank_normalized_to_none(value):
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="http://localhost:8000/v1",
+        api_key=SecretStr("dummy"),
+        reasoning_key=value,
+    )
+    assert provider.reasoning_key is None
