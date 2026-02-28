@@ -879,7 +879,10 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                     <Plus className="size-3.5" />
                                   </button>
                                 </TooltipTrigger>
-                                <TooltipContent side="right">New session here</TooltipContent>
+                                <TooltipContent className="flex flex-col items-center gap-1" side="right">
+                                  <span>New session here</span>
+                                  <span className="text-xs text-muted-foreground">{newSessionShortcutModifier}+Click open in new tab</span>
+                                </TooltipContent>
                               </Tooltip>
                             )}
                           </div>
