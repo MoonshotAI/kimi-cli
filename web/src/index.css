@@ -1,14 +1,5 @@
 /* ==========================================================================
  * Kimi Code CLI Web UI - Design System
- *
- *
- * Structure:
- *  1) Tailwind & plugins
- *  2) Custom variant (dark mode)
- *  3) Design Tokens (CSS variables)
- *  4) @theme inline: Token → Tailwind mapping
- *  5) @layer base: Semantic HTML defaults
- *  6) @layer components: Reusable UI patterns
  * ========================================================================== */
 
 /* 1. Tailwind & Plugins */
@@ -434,4 +425,86 @@ body {
   .hover-reveal {
     opacity: 1 !important;
   }
+}
+
+/* ==========================================================================
+ * 7. User Message Contrast Enhancement
+ * ========================================================================== */
+
+/* 
+ * High-contrast styling for user messages to improve visual distinction
+ * from assistant messages in conversation history.
+ */
+
+/* User message bubble styling */
+.is-user [class*="rounded-2xl"][class*="bg-secondary"] {
+  background: linear-gradient(135deg, 
+    oklch(0.55 0.15 250) 0%, 
+    oklch(0.65 0.12 250) 100%
+  ) !important;
+  color: white !important;
+  border: 1px solid oklch(0.5 0.15 250) !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2) !important;
+}
+
+/* Ensure all text inside user message is white */
+.is-user [class*="rounded-2xl"] * {
+  color: white !important;
+}
+
+/* Dark mode adjustments */
+.dark .is-user [class*="rounded-2xl"][class*="bg-secondary"] {
+  background: linear-gradient(135deg, 
+    oklch(0.6 0.18 250) 0%, 
+    oklch(0.7 0.15 250) 100%
+  ) !important;
+  border-color: oklch(0.55 0.18 250) !important;
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.3) !important;
+}
+
+/* "You" label indicator - uses padding-top to preserve dynamic spacing */
+.is-user {
+  position: relative;
+  padding-top: 20px;
+}
+
+.is-user::before {
+  content: "You";
+  position: absolute;
+  top: 0;
+  right: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: oklch(0.55 0.15 250);
+  background: oklch(0.95 0.01 250 / 0.9);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  border: 1px solid oklch(0.8 0.05 250);
+}
+
+.dark .is-user::before {
+  color: oklch(0.75 0.2 250);
+  background: oklch(0.2 0.02 250 / 0.9);
+  border-color: oklch(0.4 0.1 250);
+}
+
+/* Entrance animation */
+@keyframes user-message-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.is-user {
+  animation: user-message-appear 200ms ease-out;
 }
