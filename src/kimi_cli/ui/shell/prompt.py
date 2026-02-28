@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import mimetypes
-import os.path
 import re
 import time
 from collections import deque
@@ -259,8 +258,6 @@ class LocalFileMentionCompleter(Completer):
         """
         now = time.monotonic()
         fragment = self._fragment_hint or ""
-        # Normalize fragment: replace backslashes with forward slashes
-        fragment = fragment.replace("\\", "/")
 
         # Invalidate cache if fragment changed (depth requirement changed)
         # or if cache expired
@@ -328,7 +325,7 @@ class LocalFileMentionCompleter(Completer):
         return fragment
 
     def _is_completed_file(self, fragment: str) -> bool:
-        candidate = fragment.rstrip(os.path.sep)
+        candidate = fragment.rstrip("/")
         if not candidate:
             return False
         try:
