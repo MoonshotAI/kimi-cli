@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "5cb94db2865a",
+  "strategy": "manual-commit",
+  "branch": "feat/cmd-click-new-tab-create-session",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/features/chat/components/chat-conversation.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5c/b94db2865a/0/metadata.json",
+      "transcript": "/5c/b94db2865a/0/full.jsonl",
+      "context": "/5c/b94db2865a/0/context.md",
+      "content_hash": "/5c/b94db2865a/0/content_hash.txt",
+      "prompt": "/5c/b94db2865a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2672,
+    "cache_creation_tokens": 103332,
+    "cache_read_tokens": 2179385,
+    "output_tokens": 8767,
+    "api_call_count": 45
+  }
+}
