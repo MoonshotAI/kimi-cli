@@ -3,7 +3,7 @@
   "checkpoint_id": "c0496aeaab22",
   "strategy": "manual-commit",
   "branch": "feat/cmd-click-new-tab-create-session",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "web/src/App.tsx"
   ],
@@ -14,13 +14,20 @@
       "context": "/c0/496aeaab22/0/context.md",
       "content_hash": "/c0/496aeaab22/0/content_hash.txt",
       "prompt": "/c0/496aeaab22/0/prompt.txt"
+    },
+    {
+      "metadata": "/c0/496aeaab22/1/metadata.json",
+      "transcript": "/c0/496aeaab22/1/full.jsonl",
+      "context": "/c0/496aeaab22/1/context.md",
+      "content_hash": "/c0/496aeaab22/1/content_hash.txt",
+      "prompt": "/c0/496aeaab22/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2670,
-    "cache_creation_tokens": 102826,
-    "cache_read_tokens": 2044389,
-    "output_tokens": 8425,
-    "api_call_count": 43
+    "input_tokens": 2702,
+    "cache_creation_tokens": 201916,
+    "cache_read_tokens": 2969908,
+    "output_tokens": 14538,
+    "api_call_count": 69
   }
 }
