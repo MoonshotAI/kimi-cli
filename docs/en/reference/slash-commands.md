@@ -94,6 +94,10 @@ Output includes:
 
 ## Session management
 
+### `/new`
+
+Create a new session and switch to it immediately, without exiting Kimi Code CLI. If the current session has no content, the empty session directory is automatically cleaned up.
+
 ### `/sessions`
 
 List all sessions in the current working directory, allowing switching to other sessions.

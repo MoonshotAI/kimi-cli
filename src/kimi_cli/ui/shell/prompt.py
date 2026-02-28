@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import getpass
 import json
 import mimetypes
 import os
@@ -742,10 +741,10 @@ class CustomPromptSession:
         self._status_refresh_task: asyncio.Task[None] | None = None
 
     def _render_message(self) -> FormattedText:
-        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
-        if self._mode == PromptMode.AGENT and self._thinking:
-            symbol = PROMPT_SYMBOL_THINKING
-        return FormattedText([("bold", f"{getpass.getuser()}@{KaosPath.cwd().name}{symbol} ")])
+        if self._mode == PromptMode.SHELL:
+            return FormattedText([("bold", f"{PROMPT_SYMBOL_SHELL} ")])
+        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
+        return FormattedText([("", f"{symbol} ")])
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
@@ -883,6 +882,9 @@ class CustomPromptSession:
 
         fragments: list[tuple[str, str]] = []
 
+        fragments.append(("fg:#4d4d4d", "─" * columns))
+        fragments.append(("", "\n"))
+
         now_text = datetime.now().strftime("%H:%M")
         fragments.extend([("", now_text), ("", " " * 2)])
         columns -= len(now_text) + 2
@@ -912,10 +914,15 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcuts = "ctrl-x: toggle mode"
-            if columns - len(right_text) > len(shortcuts) + 2:
-                fragments.extend([("", shortcuts), ("", " " * 2)])
-                columns -= len(shortcuts) + 2
+            shortcut_candidates = [
+                "ctrl-x: toggle mode | ctrl-j / alt-enter: newline",
+                "ctrl-j / alt-enter: newline",
+            ]
+            for shortcuts in shortcut_candidates:
+                if columns - len(right_text) > len(shortcuts) + 2:
+                    fragments.extend([("", shortcuts), ("", " " * 2)])
+                    columns -= len(shortcuts) + 2
+                    break
 
         padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))

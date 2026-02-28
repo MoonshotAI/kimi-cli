@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import getpass
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -63,7 +62,7 @@ async def replay_recent_history(
 
     for turn in turns:
         wire = Wire()
-        console.print(f"{getpass.getuser()}{PROMPT_SYMBOL} {message_stringify(turn.user_message)}")
+        console.print(f"{PROMPT_SYMBOL} {message_stringify(turn.user_message)}")
         ui_task = asyncio.create_task(
             visualize(wire.ui_side(merge=False), initial_status=StatusUpdate())
         )
