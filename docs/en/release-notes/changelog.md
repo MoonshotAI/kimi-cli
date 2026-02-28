@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Add todo list display in prompt toolbar — shows task progress with expandable panel when the `SetTodoList` tool is active
+
 ## 1.16.0 (2026-02-27)
 
 - Web: Update ASCII logo banner to a new styled design
