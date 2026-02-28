@@ -174,9 +174,10 @@ class PathTrie:
     """A trie data structure for storing and incrementally collecting file paths.
 
     The trie is built lazily by depth levels:
-    - Initially collects depth 0-2 (root's direct children and grandchildren)
+    - Initially collects paths up to _first_stage_limit (to ensure shallow files are included)
     - When user types "/", deeper levels are scanned on demand
-    - BFS ensures shallow paths are collected before deep-nested ones
+    - BFS ensures shallow paths are collected before deep-nested ones, preventing
+      shallow files from being missed due to slot limits
     """
 
     root: Path
@@ -186,7 +187,9 @@ class PathTrie:
     _all_paths: list[PurePath]
     _collection_queue: deque[tuple[PathTrieNode, int]]
     _max_collected_depth: int
-    _first_stage_limit: int  # Min paths to collect for fuzzy matching
+    # Number of paths to collect initially: ensures shallow files are included while
+    # still collecting deep enough to provide a pool for fuzzy matching.
+    _first_stage_limit: int
 
     def __init__(self, root: Path, check_ignored: Callable[[str], bool], limit: int) -> None:
         self.root = root
@@ -198,8 +201,8 @@ class PathTrie:
         # Queue of (node, depth) tuples for BFS level tracking
         self._collection_queue = deque([(self.root_node, 0)])
         self._max_collected_depth = -1  # No levels collected yet
-        # Minimum paths to collect for fuzzy matching. We collect level by level
-        # until we have at least this many paths (or hit the hard limit).
+        # Number of paths to collect initially: ensures shallow files are included
+        # while still collecting deep enough to provide a pool for fuzzy matching.
         self._first_stage_limit = 200
 
     def depth_of(self, path: PurePath) -> int:
@@ -212,7 +215,7 @@ class PathTrie:
             return  # Already scanned
 
         # Build the absolute path for this node (use Path for filesystem access)
-        # _root is Path, full_path is PurePath, / operator handles the conversion
+        # root is Path, full_path is PurePath, / operator handles the conversion
         abs_path = self.root / node.full_path
 
         try:
@@ -300,10 +303,10 @@ class PathTrie:
         """Get collected paths up to max_depth.
 
         If max_depth is None, collects until _first_stage_limit is reached
-        for fuzzy matching, then returns all collected paths.
+        (to ensure shallow files are included), then returns all collected paths.
         """
         if max_depth is None:
-            # Fuzzy matching mode: ensure we have enough paths
+            # No specific depth required: ensure shallow files are included
             self._ensure_first_stage()
             return self._all_paths[: self.limit]
         else:
@@ -485,7 +488,7 @@ class LocalFileMentionCompleter(Completer):
             required_depth = 2 + frag_depth
             paths = trie.get_paths(max_depth=required_depth)
         else:
-            # Fuzzy matching mode: return all collected paths
+            # No specific depth required: return all collected paths
             paths = trie.get_paths()
 
         self._cached_paths = self._format_paths(paths)
