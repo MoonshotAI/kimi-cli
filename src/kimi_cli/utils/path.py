@@ -228,7 +228,15 @@ class PathTrie:
             if self.check_ignored(name):
                 continue
 
-            is_dir = entry.is_dir()
+            # Check limit before processing more entries
+            if len(self._all_paths) >= self.limit:
+                break
+
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                continue  # Skip entries we can't stat
+
             child = node.get_or_create_child(name, is_dir)
             child.is_dir = is_dir
 
@@ -247,7 +255,14 @@ class PathTrie:
                 break
 
             # Collect all nodes at this depth level
-            level_size = len([1 for _, d in self._collection_queue if d == current_depth])
+            # Count nodes at current depth (stop early if limit already reached)
+            level_size = 0
+            for _, d in self._collection_queue:
+                if d != current_depth:
+                    break
+                if len(self._all_paths) >= self.limit:
+                    return
+                level_size += 1
 
             for _ in range(level_size):
                 if not self._collection_queue:
@@ -257,6 +272,9 @@ class PathTrie:
                 if depth == 0:
                     # Root node - scan it directly (depth 0 is root, children will be depth 1)
                     self.scan_node(node)
+                    # Check limit after scanning to stop early
+                    if len(self._all_paths) >= self.limit:
+                        break
                     if node.children:
                         for child in sorted(node.children.values(), key=lambda c: c.name):
                             if child.is_dir:
@@ -264,6 +282,9 @@ class PathTrie:
                 elif node.is_dir and not node.visited:
                     node.visited = True
                     self.scan_node(node)
+                    # Check limit after scanning to stop early
+                    if len(self._all_paths) >= self.limit:
+                        break
                     # Add subdirectories to the queue for next BFS level
                     if node.children:
                         for child in sorted(node.children.values(), key=lambda c: c.name):

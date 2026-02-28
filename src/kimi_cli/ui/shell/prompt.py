@@ -245,9 +245,13 @@ class LocalFileMentionCompleter(Completer):
             return True
         return bool(cls._IGNORED_PATTERNS.fullmatch(name))
 
-    def _get_or_create_trie(self) -> PathTrie:
-        """Get or create the path trie."""
-        if self._trie is None:
+    def _get_or_create_trie(self, refresh: bool = False) -> PathTrie:
+        """Get or create the path trie.
+
+        Args:
+            refresh: If True, recreate the trie to pick up filesystem changes.
+        """
+        if self._trie is None or refresh:
             self._trie = PathTrie(self._root, self._is_ignored, self._limit)
         return self._trie
 
@@ -261,13 +265,13 @@ class LocalFileMentionCompleter(Completer):
 
         # Invalidate cache if fragment changed (depth requirement changed)
         # or if cache expired
-        cache_valid = (
-            now - self._cache_time <= self._refresh_interval and fragment == self._cached_fragment
-        )
+        cache_expired = now - self._cache_time > self._refresh_interval
+        cache_valid = not cache_expired and fragment == self._cached_fragment
         if cache_valid:
             return self._cached_paths
 
-        trie = self._get_or_create_trie()
+        # Refresh trie if cache expired to pick up filesystem changes
+        trie = self._get_or_create_trie(refresh=cache_expired)
 
         # Calculate required depth from fragment
         # When user types "/", they are navigating into a directory,
