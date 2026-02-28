@@ -673,7 +673,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     </KbdGroup>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{newSessionShortcutModifier}+Click open in new tab</span>
+                    <span>{newSessionShortcutModifier}+Click to open in new tab</span>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -881,7 +881,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                 </TooltipTrigger>
                                 <TooltipContent className="flex flex-col items-center gap-1" side="right">
                                   <span>New session here</span>
-                                  <span className="text-xs text-muted-foreground">{newSessionShortcutModifier}+Click open in new tab</span>
+                                  <span className="text-xs text-muted-foreground">{newSessionShortcutModifier}+Click to open in new tab</span>
                                 </TooltipContent>
                               </Tooltip>
                             )}

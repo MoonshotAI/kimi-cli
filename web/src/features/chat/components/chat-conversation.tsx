@@ -164,7 +164,7 @@ export function ChatConversation({
                     </KbdGroup>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{newSessionShortcutModifier}+Click open in new tab</span>
+                    <span>{newSessionShortcutModifier}+Click to open in new tab</span>
                   </div>
                 </TooltipContent>
               </Tooltip>
