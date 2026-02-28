@@ -185,9 +185,9 @@ class PathTrie:
     check_ignored: Callable[[str], bool]
     limit: int
     root_node: PathTrieNode
-    _all_paths: list[PurePath]
-    _collection_queue: deque[tuple[PathTrieNode, int]]
-    _max_collected_depth: int
+    collected_paths: list[PurePath]  # All paths collected so far via BFS traversal
+    _dirs_to_scan: deque[tuple[PathTrieNode, int]]  # (node, depth) queue for BFS traversal
+    reach_depth: int  # Maximum depth level that has been completely collected
 
     def __init__(self, root: Path, check_ignored: Callable[[str], bool], limit: int) -> None:
         self.root = root
@@ -195,10 +195,12 @@ class PathTrie:
         self.limit = limit
         self.root_node = PathTrieNode("", PurePath(""), is_dir=True)
         self.root_node.visited = True  # Root is always "visited"
-        self._all_paths = []
-        # Queue of (node, depth) tuples for BFS level tracking
-        self._collection_queue = deque([(self.root_node, 0)])
-        self._max_collected_depth = -1  # No levels collected yet
+        self.collected_paths = []
+        # BFS queue of (node, depth) tuples for incremental directory scanning.
+        # Front: directories at the current depth being processed.
+        # Back: deeper directories discovered from scanning the front.
+        self._dirs_to_scan = deque([(self.root_node, 0)])
+        self.reach_depth = -1  # No levels collected yet
 
     def depth_of(self, path: PurePath) -> int:
         """Calculate depth of a path (root = 0, direct children = 1, etc.)."""
@@ -214,12 +216,10 @@ class PathTrie:
         abs_path = self.root / node.full_path
 
         try:
-            entries = list(abs_path.iterdir())
+            # Sort entries for deterministic ordering
+            entries = tuple(sorted(abs_path.iterdir(), key=lambda p: p.name))
         except OSError:
             return
-
-        # Sort entries for deterministic ordering
-        entries.sort(key=lambda p: p.name)
 
         for entry in entries:
             name = entry.name
@@ -227,7 +227,7 @@ class PathTrie:
                 continue
 
             # Check limit before processing more entries
-            if len(self._all_paths) >= self.limit:
+            if len(self.collected_paths) >= self.limit:
                 break
 
             try:
@@ -236,68 +236,67 @@ class PathTrie:
                 continue  # Skip entries we can't stat
 
             child = node.get_or_create_child(name, is_dir)
-            child.is_dir = is_dir
 
             # Add to collection
-            self._all_paths.append(child.full_path)
+            self.collected_paths.append(child.full_path)
 
     def collect_to_depth(self, target_depth: int) -> None:
         """Collect all paths up to and including target_depth.
 
         Each call processes one BFS level at a time.
         """
-        while self._collection_queue and self._max_collected_depth < target_depth:
+        while self._dirs_to_scan and self.reach_depth < target_depth:
             # Process all nodes at the current front depth level
-            current_depth = self._collection_queue[0][1]
+            _n, current_depth = self._dirs_to_scan[0]
             if current_depth > target_depth:
                 break
 
             # Collect all nodes at this depth level
             # Count nodes at current depth (stop early if limit already reached)
             level_size = 0
-            for _, d in self._collection_queue:
+            for _n, d in self._dirs_to_scan:
                 if d != current_depth:
                     break
-                if len(self._all_paths) >= self.limit:
+                if len(self.collected_paths) >= self.limit:
                     return
                 level_size += 1
 
-            for _ in range(level_size):
-                if not self._collection_queue:
+            for _i in range(level_size):
+                if not self._dirs_to_scan:
                     break
-                node, depth = self._collection_queue.popleft()
+                node, depth = self._dirs_to_scan.popleft()
 
                 if depth == 0:
                     # Root node - scan it directly (depth 0 is root, children will be depth 1)
                     self.scan_node(node)
                     # Check limit after scanning to stop early
-                    if len(self._all_paths) >= self.limit:
+                    if len(self.collected_paths) >= self.limit:
                         break
                     if node.children:
                         for child in sorted(node.children.values(), key=lambda c: c.name):
                             if child.is_dir:
-                                self._collection_queue.append((child, depth + 1))
+                                self._dirs_to_scan.append((child, depth + 1))
                 elif node.is_dir and not node.visited:
                     node.visited = True
                     self.scan_node(node)
                     # Check limit after scanning to stop early
-                    if len(self._all_paths) >= self.limit:
+                    if len(self.collected_paths) >= self.limit:
                         break
                     # Add subdirectories to the queue for next BFS level
                     if node.children:
                         for child in sorted(node.children.values(), key=lambda c: c.name):
                             if child.is_dir:
-                                self._collection_queue.append((child, depth + 1))
+                                self._dirs_to_scan.append((child, depth + 1))
 
-            self._max_collected_depth = current_depth
+            self.reach_depth = current_depth
 
             # Check limit after each level
-            if len(self._all_paths) >= self.limit:
+            if len(self.collected_paths) >= self.limit:
                 break
 
     def ensure_depth(self, min_depth: int) -> None:
         """Ensure paths are collected up to min_depth."""
-        if min_depth > self._max_collected_depth:
+        if min_depth > self.reach_depth:
             self.collect_to_depth(min_depth)
 
     def collect_first_stage(self) -> None:
@@ -307,12 +306,12 @@ class PathTrie:
         Respects the hard limit (self.limit).
         """
         while (
-            self._collection_queue
-            and len(self._all_paths) < self.FIRST_STAGE_LIMIT
-            and len(self._all_paths) < self.limit
+            self._dirs_to_scan
+            and len(self.collected_paths) < self.FIRST_STAGE_LIMIT
+            and len(self.collected_paths) < self.limit
         ):
             # Process next level
-            target_depth = self._collection_queue[0][1]
+            _n, target_depth = self._dirs_to_scan[0]
             self.collect_to_depth(target_depth)
 
     def get_paths(self, max_depth: int | None = None) -> tuple[PurePath, ...]:
@@ -324,18 +323,33 @@ class PathTrie:
         if max_depth is None:
             # No specific depth required: ensure shallow files are included
             self.collect_first_stage()
-            return tuple(self._all_paths[: self.limit])
-        else:
-            # Navigation mode: ensure specific depth
-            self.ensure_depth(max_depth)
-            filtered = [p for p in self._all_paths if self.depth_of(p) <= max_depth]
-            return tuple(filtered[: self.limit])
+            return tuple(self.collected_paths[: self.limit])
+        # Navigation mode: ensure specific depth
+        self.ensure_depth(max_depth)
+        # Collect paths up to max_depth, breaking early when limit is reached
+        # BFS orders paths by depth, so we stop when depth exceeds max_depth
+        result: list[PurePath] = []
+        for p in self.collected_paths:
+            if self.depth_of(p) > max_depth:
+                break  # BFS guarantees deeper paths come after; we're done
+            result.append(p)
+            if len(result) >= self.limit:
+                break
+        return tuple(result)
 
     def get_top_level_paths(self) -> tuple[PurePath, ...]:
         """Get only top-level paths (direct children of root, depth 1)."""
         self.ensure_depth(1)
-        filtered = [p for p in self._all_paths if self.depth_of(p) == 1]
-        return tuple(filtered[: self.limit])
+        # Collect depth-1 paths only, breaking early when limit is reached
+        # Since BFS orders paths by depth, depth-1 paths are contiguous at the start
+        result: list[PurePath] = []
+        for p in self.collected_paths:
+            if self.depth_of(p) != 1:
+                break  # BFS guarantees depth-1 paths come first; we're done
+            result.append(p)
+            if len(result) >= self.limit:
+                break
+        return tuple(result)
 
     def is_directory(self, path: PurePath) -> bool:
         """Check if a path is a directory by looking it up in the trie."""
