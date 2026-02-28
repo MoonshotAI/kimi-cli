@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import Enum
 from hashlib import md5, sha256
 from io import BytesIO
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 from typing import Any, Literal, override
 
 from kaos.path import KaosPath
@@ -136,19 +136,25 @@ class PathTrieNode:
 
     Each node tracks:
     - name: the entry name (basename, used as dict key in parent)
-    - full_path: the relative path from root to this node (as Path)
+    - full_path: the relative path from root to this node (as PurePath)
     - is_dir: whether this is a directory
     - children: child nodes (lazily populated)
     - visited: whether this node's children have been scanned
     """
 
+    name: str
+    full_path: PurePath
+    is_dir: bool
+    children: dict[str, PathTrieNode] | None
+    visited: bool
+
     __slots__ = ("name", "full_path", "is_dir", "children", "visited")
 
-    def __init__(self, name: str, full_path: Path, is_dir: bool = False) -> None:
+    def __init__(self, name: str, full_path: PurePath, is_dir: bool = False) -> None:
         self.name = name
         self.full_path = full_path
         self.is_dir = is_dir
-        self.children: dict[str, PathTrieNode] | None = None
+        self.children = None
         self.visited = False
 
     def get_or_create_child(self, name: str, is_dir: bool = False) -> PathTrieNode:
@@ -173,29 +179,39 @@ class PathTrie:
     - BFS ensures shallow paths are collected before deep-nested ones
     """
 
+    root: Path
+    check_ignored: Callable[[str], bool]
+    limit: int
+    root_node: PathTrieNode
+    _all_paths: list[PurePath]
+    _collection_queue: deque[tuple[PathTrieNode, int]]
+    _max_collected_depth: int
+    _initial_depth: int
+
     def __init__(self, root: Path, check_ignored: Callable[[str], bool], limit: int) -> None:
-        self._root = root
-        self._check_ignored = check_ignored
-        self._limit = limit
-        self._root_node = PathTrieNode("", Path(""), is_dir=True)
-        self._root_node.visited = True  # Root is always "visited"
-        self._all_paths: list[Path] = []
+        self.root = root
+        self.check_ignored = check_ignored
+        self.limit = limit
+        self.root_node = PathTrieNode("", PurePath(""), is_dir=True)
+        self.root_node.visited = True  # Root is always "visited"
+        self._all_paths = []
         # Queue of (node, depth) tuples for BFS level tracking
-        self._collection_queue: deque[tuple[PathTrieNode, int]] = deque([(self._root_node, 0)])
+        self._collection_queue = deque([(self.root_node, 0)])
         self._max_collected_depth = -1  # No levels collected yet
         self._initial_depth = 2  # Collect first 2 levels initially
 
-    def _depth_of(self, path: Path) -> int:
+    def depth_of(self, path: PurePath) -> int:
         """Calculate depth of a path (root = 0, direct children = 1, etc.)."""
         return len(path.parts)
 
-    def _scan_node(self, node: PathTrieNode) -> None:
+    def scan_node(self, node: PathTrieNode) -> None:
         """Scan a directory node and populate its children."""
         if node.children is not None:
             return  # Already scanned
 
-        # Build the absolute path for this node
-        abs_path = self._root / node.full_path
+        # Build the absolute path for this node (use Path for filesystem access)
+        # _root is Path, full_path is PurePath, / operator handles the conversion
+        abs_path = self.root / node.full_path
 
         try:
             entries = list(abs_path.iterdir())
@@ -207,7 +223,7 @@ class PathTrie:
 
         for entry in entries:
             name = entry.name
-            if self._check_ignored(name):
+            if self.check_ignored(name):
                 continue
 
             is_dir = entry.is_dir()
@@ -217,7 +233,7 @@ class PathTrie:
             # Add to collection
             self._all_paths.append(child.full_path)
 
-    def _collect_to_depth(self, target_depth: int) -> None:
+    def collect_to_depth(self, target_depth: int) -> None:
         """Collect all paths up to and including target_depth.
 
         Each call processes one BFS level at a time.
@@ -238,14 +254,14 @@ class PathTrie:
 
                 if depth == 0:
                     # Root node - scan it directly (depth 0 is root, children will be depth 1)
-                    self._scan_node(node)
+                    self.scan_node(node)
                     if node.children:
                         for child in sorted(node.children.values(), key=lambda c: c.name):
                             if child.is_dir:
                                 self._collection_queue.append((child, depth + 1))
                 elif node.is_dir and not node.visited:
                     node.visited = True
-                    self._scan_node(node)
+                    self.scan_node(node)
                     # Add subdirectories to the queue for next BFS level
                     if node.children:
                         for child in sorted(node.children.values(), key=lambda c: c.name):
@@ -255,42 +271,42 @@ class PathTrie:
             self._max_collected_depth = current_depth
 
             # Check limit after each level
-            if len(self._all_paths) >= self._limit:
+            if len(self._all_paths) >= self.limit:
                 break
 
     def ensure_depth(self, min_depth: int) -> None:
         """Ensure paths are collected up to min_depth."""
         if min_depth > self._max_collected_depth:
-            self._collect_to_depth(min_depth)
+            self.collect_to_depth(min_depth)
 
-    def get_paths(self, max_depth: int | None = None) -> list[Path]:
+    def get_paths(self, max_depth: int | None = None) -> list[PurePath]:
         """Get collected paths up to max_depth.
 
         If max_depth is None, returns all collected paths.
         """
         self.ensure_depth(self._initial_depth)
         if max_depth is None:
-            return self._all_paths[: self._limit]
+            return self._all_paths[: self.limit]
         # Filter paths by depth
-        return [p for p in self._all_paths if self._depth_of(p) <= max_depth][: self._limit]
+        return [p for p in self._all_paths if self.depth_of(p) <= max_depth][: self.limit]
 
-    def get_top_level_paths(self) -> list[Path]:
+    def get_top_level_paths(self) -> list[PurePath]:
         """Get only top-level paths (direct children of root, depth 1)."""
         self.ensure_depth(1)
-        return [p for p in self._all_paths if self._depth_of(p) == 1][: self._limit]
+        return [p for p in self._all_paths if self.depth_of(p) == 1][: self.limit]
 
-    def is_directory(self, path: Path) -> bool:
+    def is_directory(self, path: PurePath) -> bool:
         """Check if a path is a directory by looking it up in the trie."""
         if not path.parts:
             return True  # Root is a directory
 
         # Navigate the trie to find the node
-        node = self._root_node
+        node = self.root_node
         for part in path.parts:
             if node.children is None or part not in node.children:
                 # Not found in trie, fall back to filesystem check
                 try:
-                    return (self._root / path).is_dir()
+                    return (self.root / path).is_dir()
                 except OSError:
                     return False
             node = node.children[part]
@@ -439,7 +455,7 @@ class LocalFileMentionCompleter(Completer):
 
         # Calculate required depth from fragment
         # fragment "src" -> depth 2 (initial), fragment "src/" -> depth 3, etc.
-        frag_path = PurePosixPath(fragment)
+        frag_path = PurePath(fragment)
         frag_depth = len(frag_path.parts) if frag_path.parts else 0
         required_depth = 2 + frag_depth  # Start with depth 2, add for each path component
 
@@ -449,7 +465,7 @@ class LocalFileMentionCompleter(Completer):
         self._cache_time = now
         return self._cached_paths
 
-    def _format_paths(self, paths: Iterable[Path]) -> tuple[str, ...]:
+    def _format_paths(self, paths: Iterable[PurePath]) -> tuple[str, ...]:
         """Format Path objects as strings, adding trailing slash for directories.
 
         The result is meant for completer. Uses forward slashes for cross-platform
@@ -511,14 +527,12 @@ class LocalFileMentionCompleter(Completer):
             candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
 
             # re-rank: prefer basename matches
-            # Normalize fragment and use PurePosixPath for consistent handling
-            fragment = fragment.replace("\\", "/")
-            frag_path = PurePosixPath(fragment)
+            frag_path = Path(fragment)
             frag_name = frag_path.name.lower()
 
             def _rank(c: Completion) -> tuple[int, ...]:
-                # Completion text uses forward slashes, use PurePosixPath for parsing
-                path = PurePosixPath(c.text)
+                # Completion text uses forward slashes, create Path for parsing
+                path = Path(c.text)
                 base = path.name.lower()
                 if base.startswith(frag_name):
                     cat = 0
