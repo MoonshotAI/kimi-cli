@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path, PurePath
 
-from kimi_cli.ui.shell.prompt import PathTrie, PathTrieNode
+from kimi_cli.utils.path import PathTrie, PathTrieNode
 
 
 def _is_ignored(name: str) -> bool:
