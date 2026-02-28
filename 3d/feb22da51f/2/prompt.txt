@@ -1,0 +1,95 @@
+Implement the following plan:
+
+# 为 FetchURL OSC8 超链接功能添加单元测试
+
+## Context
+
+FetchURL OSC8 超链接功能已实现（`visualize.py` 中的 `_extract_full_url` 和 `_build_headline_text`）。涉及的纯函数目前没有测试覆盖，需要补充。
+
+重点测试两个纯函数：
+- `_ToolCallBlock._extract_full_url` — 新增的静态方法
+- `extract_key_argument` — `tools/__init__.py` 中已有函数，无测试
+
+## 方案
+
+### 1. 新建 `tests/ui_and_conv/test_tool_call_block.py`
+
+测试 `_extract_full_url`：
+
+| 场景 | arguments | tool_name | 期望 |
+|------|-----------|-----------|------|
+| FetchURL 正常 URL | `'{"url": "https://example.com/very/long/path"}'` | `"FetchURL"` | `"https://example.com/very/long/path"` |
+| FetchURL 短 URL | `'{"url": "https://x.co"}'` | `"FetchURL"` | `"https://x.co"` |
+| 非 FetchURL 工具 | `'{"url": "https://example.com"}'` | `"ReadFile"` | `None` |
+| arguments=None | `None` | `"FetchURL"` | `None` |
+| 无效 JSON | `'not json'` | `"FetchURL"` | `None` |
+| 缺少 url 字段 | `'{"query": "hello"}'` | `"FetchURL"` | `None` |
+| 空字符串 | `''` | `"FetchURL"` | `None` |
+
+### 2. 新建 `tests/tools/test_extract_key_argument.py`
+
+测试 `extract_key_argument`（字符串输入）：
+
+| 场景 | tool_name | json_content | 期望包含 |
+|------|-----------|-------------|---------|
+| FetchURL | `"FetchURL"` | `'{"url": "https://example.com/a/b/c"}'` | URL（可能被 shorten_middle 截断） |
+| Shell | `"Shell"` | `'{"command": "ls -la"}'` | `"ls -la"` |
+| ReadFile | `"ReadFile"` | `'{"path": "foo/bar.py"}'` | `"foo/bar.py"` |
+| Grep | `"Grep"` | `'{"pattern": "hello"}'` | `"hello"` |
+| 无效 JSON | `"Shell"` | `'invalid'` | `None` |
+| 空内容 | `"Shell"` | `'{}'` | `None` |
+| SendDMail 返回 None | `"SendDMail"` | `'{"to": "x"}'` | `None` |
+| 长内容被截断 | `"FetchURL"` | 超长 URL | 长度 ≤ 53 (`width//2 + "..." + width//2`) |
+| 未知工具返回原始内容 | `"UnknownTool"` | `'{"a": 1}'` | 原始 JSON 字符串（截断后） |
+
+## 文件
+
+- 新建：`tests/ui_and_conv/test_tool_call_block.py`
+- 新建：`tests/tools/test_extract_key_argument.py`
+
+## 验证
+
+```bash
+uv run pytest tests/ui_and_conv/test_tool_call_block.py tests/tools/test_extract_key_argument.py -v
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+add commit push
+
+---
+
+0s
+Run make check-kimi-cli
+==> Checking Kimi Code CLI (ruff + pyright + ty; ty is non-blocking)
+F401 [*] `pytest` imported but unused
+ --> tests/tools/test_extract_key_argument.py:3:8
+  |
+1 | from __future__ import annotations
+2 |
+3 | import pytest
+  |        ^^^^^^
+4 |
+5 | from kimi_cli.tools import extract_key_argument
+  |
+help: Remove unused import: `pytest`
+
+F401 [*] `pytest` imported but unused
+ --> tests/ui_and_conv/test_tool_call_block.py:3:8
+  |
+1 | from __future__ import annotations
+2 |
+3 | import pytest
+  |        ^^^^^^
+4 |
+5 | from kimi_cli.ui.shell.visualize import _ToolCallBlock
+  |
+help: Remove unused import: `pytest`
+
+Found 2 errors.
+[*] 2 fixable with the `--fix` option.
+make: *** [Makefile:62: check-kimi-cli] Error 1
+Error: Process completed with exit code 2.
