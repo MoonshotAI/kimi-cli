@@ -3,7 +3,7 @@
   "checkpoint_id": "f598a8c28cfd",
   "strategy": "manual-commit",
   "branch": "feat/web-todo-toolbar-display",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "web/src/features/chat/components/prompt-toolbar/toolbar-todo.tsx"
   ],
@@ -14,13 +14,20 @@
       "context": "/f5/98a8c28cfd/0/context.md",
       "content_hash": "/f5/98a8c28cfd/0/content_hash.txt",
       "prompt": "/f5/98a8c28cfd/0/prompt.txt"
+    },
+    {
+      "metadata": "/f5/98a8c28cfd/1/metadata.json",
+      "transcript": "/f5/98a8c28cfd/1/full.jsonl",
+      "context": "/f5/98a8c28cfd/1/context.md",
+      "content_hash": "/f5/98a8c28cfd/1/content_hash.txt",
+      "prompt": "/f5/98a8c28cfd/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2706,
-    "cache_creation_tokens": 111600,
-    "cache_read_tokens": 3897594,
-    "output_tokens": 10824,
-    "api_call_count": 69
+    "input_tokens": 2717,
+    "cache_creation_tokens": 119191,
+    "cache_read_tokens": 4049355,
+    "output_tokens": 11570,
+    "api_call_count": 76
   }
 }
