@@ -646,21 +646,35 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                   <button
                     aria-label="New Session"
                     className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={onOpenCreateDialog}
+                    onClick={(e) => {
+                      const isNewTab = isMacOS() ? e.metaKey : e.ctrlKey;
+                      if (isNewTab) {
+                        const url = new URL(window.location.origin + window.location.pathname);
+                        url.searchParams.set("action", "create");
+                        window.open(url.toString(), "_blank");
+                      } else {
+                        onOpenCreateDialog?.();
+                      }
+                    }}
                     type="button"
                   >
                     <Plus className="size-4" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-2" side="bottom">
-                  <span>New session</span>
-                  <KbdGroup>
-                    <Kbd>Shift</Kbd>
-                    <span className="text-muted-foreground">+</span>
-                    <Kbd>{newSessionShortcutModifier}</Kbd>
-                    <span className="text-muted-foreground">+</span>
-                    <Kbd>O</Kbd>
-                  </KbdGroup>
+                <TooltipContent className="flex flex-col items-center gap-1" side="bottom">
+                  <div className="flex items-center gap-2">
+                    <span>New session</span>
+                    <KbdGroup>
+                      <Kbd>Shift</Kbd>
+                      <span className="text-muted-foreground">+</span>
+                      <Kbd>{newSessionShortcutModifier}</Kbd>
+                      <span className="text-muted-foreground">+</span>
+                      <Kbd>O</Kbd>
+                    </KbdGroup>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{newSessionShortcutModifier}+Click open in new tab</span>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -851,7 +865,15 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                     className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-0 group-hover/dir:opacity-100 hover:bg-accent hover:text-foreground transition-all"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      onCreateSessionInDir(group.workDir);
+                                      const isNewTab = isMacOS() ? e.metaKey : e.ctrlKey;
+                                      if (isNewTab) {
+                                        const url = new URL(window.location.origin + window.location.pathname);
+                                        url.searchParams.set("action", "create-in-dir");
+                                        url.searchParams.set("workDir", group.workDir);
+                                        window.open(url.toString(), "_blank");
+                                      } else {
+                                        onCreateSessionInDir(group.workDir);
+                                      }
                                     }}
                                   >
                                     <Plus className="size-3.5" />
