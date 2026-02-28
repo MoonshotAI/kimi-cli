@@ -112,6 +112,28 @@ function App() {
   // Create session dialog state (lifted to App for unified access)
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
+  // Auto-open create dialog or create session directly from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get("action");
+    if (action === "create") {
+      setShowCreateDialog(true);
+    } else if (action === "create-in-dir") {
+      const workDir = params.get("workDir");
+      if (!workDir) return; // invalid params, ignore silently
+      createSession(workDir).catch(() => {
+        // Errors are already handled globally via sessionsError → toast
+      });
+    } else {
+      return;
+    }
+    params.delete("action");
+    params.delete("workDir");
+    const url = new URL(window.location.href);
+    url.search = params.toString();
+    window.history.replaceState({}, "", url.toString());
+  }, [createSession]);
+
   const handleOpenCreateDialog = useCallback(() => {
     setShowCreateDialog(true);
     setIsMobileSidebarOpen(false);

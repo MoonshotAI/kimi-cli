@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Web：新增 URL 操作参数（`?action=create` 打开创建会话对话框，`?action=create-in-dir&workDir=xxx` 直接创建会话）用于外部集成，支持 Cmd/Ctrl+点击新建会话按钮在新标签页中打开会话创建
+
 ## 1.16.0 (2026-02-27)
 
 - Web：更新 ASCII Logo 横幅为新的样式设计
