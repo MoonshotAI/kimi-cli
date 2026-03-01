@@ -25,6 +25,7 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    QuestionRequest,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -37,6 +38,7 @@ from kimi_cli.wire.types import (
     ToolCallRequest,
     ToolResult,
     TurnBegin,
+    TurnEnd,
 )
 
 _current_turn_id = ContextVar[str | None]("current_turn_id", default=None)
@@ -146,6 +148,8 @@ class ACPSession:
                 match msg:
                     case TurnBegin():
                         pass
+                    case TurnEnd():
+                        pass
                     case StepBegin():
                         pass
                     case StepInterrupted():
@@ -177,6 +181,11 @@ class ACPSession:
                         await self._handle_approval_request(msg)
                     case ToolCallRequest():
                         logger.warning("Unexpected ToolCallRequest in ACP session: {msg}", msg=msg)
+                    case QuestionRequest():
+                        logger.warning(
+                            "QuestionRequest is unsupported in ACP session; resolving empty answer."
+                        )
+                        msg.resolve({})
         except LLMNotSet as e:
             logger.exception("LLM not set:")
             raise acp.RequestError.auth_required() from e

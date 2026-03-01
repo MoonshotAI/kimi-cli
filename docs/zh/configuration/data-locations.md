@@ -2,6 +2,12 @@
 
 Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中。本页介绍各类数据文件的位置和用途。
 
+::: tip 提示
+可以通过设置 `KIMI_SHARE_DIR` 环境变量来自定义共享目录路径。详见 [环境变量](./env-vars.md#kimi-share-dir)。
+
+注意：`KIMI_SHARE_DIR` 仅影响上述运行时数据的存储位置，不影响 [Agent Skills](../customization/skills.md) 的搜索路径。Skills 作为跨工具共享的能力扩展，与运行时数据是不同类型的数据。
+:::
+
 ## 目录结构
 
 ```
@@ -9,11 +15,14 @@ Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中
 ├── config.toml           # 主配置文件
 ├── kimi.json             # 元数据
 ├── mcp.json              # MCP 服务器配置
+├── credentials/          # OAuth 凭据
+│   └── <provider>.json
 ├── sessions/             # 会话数据
 │   └── <work-dir-hash>/
 │       └── <session-id>/
 │           ├── context.jsonl
-│           └── wire.jsonl
+│           ├── wire.jsonl
+│           └── state.json
 ├── user-history/         # 输入历史
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # 日志
@@ -57,6 +66,12 @@ MCP 服务器配置文件，存储通过 `kimi mcp add` 命令添加的 MCP 服�
 }
 ```
 
+## 凭据
+
+OAuth 凭据存储在 `~/.kimi/credentials/` 目录下。通过 `/login` 登录 Kimi 账号后，OAuth token 会保存在此目录中。
+
+此目录中的文件权限设置为仅当前用户可读写（600），以保护敏感信息。
+
 ## 会话数据
 
 会话数据按工作目录分组存储在 `~/.kimi/sessions/` 下。每个工作目录对应一个以路径 MD5 哈希命名的子目录，每个会话对应一个以会话 ID 命名的子目录。
@@ -70,6 +85,16 @@ Kimi Code CLI 使用此文件在 `--continue` 或 `--session` 时恢复会话上
 ### `wire.jsonl`
 
 Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用于会话回放和提取会话标题。
+
+### `state.json`
+
+会话状态文件，存储会话的运行状态，包括：
+
+- `approval`：审批决策状态（YOLO 模式开关、已自动批准的操作类型）
+- `dynamic_subagents`：动态创建的子 Agent 定义
+- `additional_dirs`：通过 `--add-dir` 或 `/add-dir` 添加的额外工作区目录
+
+恢复会话时，Kimi Code CLI 会读取此文件还原会话状态。此文件使用原子写入，防止崩溃时数据损坏。
 
 ## 输入历史
 
@@ -85,7 +110,7 @@ Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用�
 
 ## 清理数据
 
-删除 `~/.kimi/` 目录可以完全清理 Kimi Code CLI 的所有数据，包括配置、会话和历史。
+删除共享目录（默认 `~/.kimi/`，或 `KIMI_SHARE_DIR` 指定的路径）可以完全清理 Kimi Code CLI 的所有数据，包括配置、会话和历史。
 
 如只需清理部分数据：
 
@@ -97,4 +122,5 @@ Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用�
 | 清理输入历史 | 删除 `~/.kimi/user-history/` 目录 |
 | 清理日志 | 删除 `~/.kimi/logs/` 目录 |
 | 清理 MCP 配置 | 删除 `~/.kimi/mcp.json` 或使用 `kimi mcp remove` |
+| 清理登录凭据 | 删除 `~/.kimi/credentials/` 目录或使用 `/logout` |
 

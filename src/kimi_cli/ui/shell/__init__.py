@@ -27,6 +27,7 @@ from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 
@@ -74,6 +75,9 @@ class Shell:
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
+            editor_command_provider=lambda: (
+                self.soul.runtime.config.default_editor if isinstance(self.soul, KimiSoul) else ""
+            ),
         ) as prompt_session:
             try:
                 while True:
@@ -109,6 +113,7 @@ class Shell:
                         continue
 
                     await self.run_soul_command(user_input.content)
+                    console.print()
             finally:
                 ensure_tty_sane()
 
@@ -163,7 +168,7 @@ class Shell:
                 kwargs: dict[str, Any] = {}
                 if stderr is not None:
                     kwargs["stderr"] = stderr
-                proc = await asyncio.create_subprocess_shell(command, **kwargs)
+                proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
                 await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
@@ -172,7 +177,7 @@ class Shell:
             remove_sigint()
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
-        from kimi_cli.cli import Reload
+        from kimi_cli.cli import Reload, SwitchToWeb
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
@@ -198,7 +203,7 @@ class Shell:
             ret = command.func(self, command_call.args)
             if isinstance(ret, Awaitable):
                 await ret
-        except Reload:
+        except (Reload, SwitchToWeb):
             # just propagate
             raise
         except (asyncio.CancelledError, KeyboardInterrupt):

@@ -5,8 +5,8 @@ from inline_snapshot import snapshot
 
 from kimi_cli.config import (
     Config,
-    Services,
     get_default_config,
+    load_config,
     load_config_from_string,
 )
 from kimi_cli.exception import ConfigError
@@ -14,15 +14,7 @@ from kimi_cli.exception import ConfigError
 
 def test_default_config():
     config = get_default_config()
-    assert config == snapshot(
-        Config(
-            default_model="",
-            default_thinking=False,
-            models={},
-            providers={},
-            services=Services(),
-        )
-    )
+    assert config == snapshot(Config())
 
 
 def test_default_config_dump():
@@ -31,6 +23,8 @@ def test_default_config_dump():
         {
             "default_model": "",
             "default_thinking": False,
+            "default_yolo": False,
+            "default_editor": "",
             "models": {},
             "providers": {},
             "loop_control": {
@@ -55,6 +49,21 @@ def test_load_config_text_json():
     assert config == get_default_config()
 
 
+def test_load_config_sets_source_file(tmp_path):
+    config_file = tmp_path / "custom.toml"
+
+    config = load_config(config_file)
+
+    assert config.source_file == config_file.resolve()
+    assert not config.is_from_default_location
+
+
+def test_load_config_text_has_no_source_file():
+    config = load_config_from_string('{"default_model": ""}')
+
+    assert config.source_file is None
+
+
 def test_load_config_text_invalid():
     with pytest.raises(ConfigError, match="Invalid configuration text"):
         load_config_from_string("not valid {")
@@ -68,6 +77,16 @@ def test_load_config_invalid_ralph_iterations():
 def test_load_config_reserved_context_size():
     config = load_config_from_string('{"loop_control": {"reserved_context_size": 30000}}')
     assert config.loop_control.reserved_context_size == 30000
+
+
+def test_load_config_max_steps_per_turn():
+    config = load_config_from_string("[loop_control]\nmax_steps_per_turn = 42\n")
+    assert config.loop_control.max_steps_per_turn == 42
+
+
+def test_load_config_max_steps_per_run():
+    config = load_config_from_string('{"loop_control": {"max_steps_per_run": 7}}')
+    assert config.loop_control.max_steps_per_turn == 7
 
 
 def test_load_config_reserved_context_size_too_low():

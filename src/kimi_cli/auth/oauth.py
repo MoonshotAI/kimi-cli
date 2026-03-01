@@ -192,10 +192,19 @@ def get_device_id() -> str:
     return device_id
 
 
+def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
+    try:
+        value.encode("ascii")
+        return value
+    except UnicodeEncodeError:
+        sanitized = value.encode("ascii", errors="ignore").decode("ascii").strip()
+        return sanitized or fallback
+
+
 def _common_headers() -> dict[str, str]:
     device_name = platform.node() or socket.gethostname()
     device_model = _device_model()
-    return {
+    headers = {
         "X-Msh-Platform": "kimi_cli",
         "X-Msh-Version": VERSION,
         "X-Msh-Device-Name": device_name,
@@ -203,6 +212,7 @@ def _common_headers() -> dict[str, str]:
         "X-Msh-Os-Version": platform.version(),
         "X-Msh-Device-Id": get_device_id(),
     }
+    return {key: _ascii_header_value(value) for key, value in headers.items()}
 
 
 def _credentials_dir() -> Path:
@@ -232,15 +242,6 @@ def _load_from_keyring(key: str) -> OAuthToken | None:
         return None
     payload = cast(dict[str, Any], payload)
     return OAuthToken.from_dict(payload)
-
-
-def _save_to_keyring(key: str, token: OAuthToken) -> bool:
-    try:
-        keyring.set_password(KEYRING_SERVICE, key, json.dumps(token.to_dict()))
-        return True
-    except Exception as exc:
-        logger.warning("Failed to write token to keyring: {error}", error=exc)
-        return False
 
 
 def _delete_from_keyring(key: str) -> None:
@@ -277,18 +278,27 @@ def _delete_from_file(key: str) -> None:
 
 
 def load_tokens(ref: OAuthRef) -> OAuthToken | None:
-    if ref.storage == "keyring":
-        token = _load_from_keyring(ref.key)
-        if token is not None:
-            return token
-    return _load_from_file(ref.key)
+    file_token = _load_from_file(ref.key)
+    if file_token is not None:
+        return file_token
+    if ref.storage != "keyring":
+        return None
+    token = _load_from_keyring(ref.key)
+    if token is None:
+        return None
+    try:
+        _save_to_file(ref.key, token)
+    except OSError as exc:
+        logger.warning("Failed to migrate token from keyring to file: {error}", error=exc)
+    else:
+        with suppress(Exception):
+            _delete_from_keyring(ref.key)
+    return token
 
 
 def save_tokens(ref: OAuthRef, token: OAuthToken) -> OAuthRef:
     if ref.storage == "keyring":
-        if _save_to_keyring(ref.key, token):
-            return ref
-        logger.warning("Keyring unavailable, falling back to file storage.")
+        logger.warning("Keyring storage is deprecated; saving OAuth tokens to file.")
         ref = OAuthRef(storage="file", key=ref.key)
     _save_to_file(ref.key, token)
     return ref
@@ -506,7 +516,7 @@ async def login_kimi_code(
 
     assert token is not None
 
-    oauth_ref = OAuthRef(storage="keyring", key=KIMI_CODE_OAUTH_KEY)
+    oauth_ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
     oauth_ref = save_tokens(oauth_ref, token)
 
     try:
@@ -574,8 +584,10 @@ async def logout_kimi_code(config: Config) -> AsyncIterator[OAuthEvent]:
 class OAuthManager:
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._tokens: dict[str, OAuthToken] = {}
+        # Cache access tokens only; refresh tokens are always read from persisted storage.
+        self._access_tokens: dict[str, str] = {}
         self._refresh_lock = asyncio.Lock()
+        self._migrate_oauth_storage()
         self._load_initial_tokens()
 
     def _iter_oauth_refs(self) -> list[OAuthRef]:
@@ -591,24 +603,59 @@ class OAuthManager:
                 refs.append(service.oauth)
         return refs
 
+    def _migrate_oauth_storage(self) -> None:
+        migrated_keys: set[str] = set()
+        changed = False
+
+        def _migrate_ref(ref: OAuthRef) -> OAuthRef:
+            nonlocal changed
+            if ref.storage != "keyring":
+                return ref
+            if ref.key not in migrated_keys:
+                load_tokens(ref)
+                migrated_keys.add(ref.key)
+            changed = True
+            return OAuthRef(storage="file", key=ref.key)
+
+        for provider in self._config.providers.values():
+            if provider.oauth:
+                provider.oauth = _migrate_ref(provider.oauth)
+
+        for service in (
+            self._config.services.moonshot_search,
+            self._config.services.moonshot_fetch,
+        ):
+            if service and service.oauth:
+                service.oauth = _migrate_ref(service.oauth)
+
+        if changed and self._config.is_from_default_location:
+            save_config(self._config)
+
     def _load_initial_tokens(self) -> None:
         for ref in self._iter_oauth_refs():
             token = load_tokens(ref)
             if token:
-                self._tokens[ref.key] = token
+                self._cache_access_token(ref, token)
+
+    def _cache_access_token(self, ref: OAuthRef, token: OAuthToken) -> None:
+        if not token.access_token:
+            self._access_tokens.pop(ref.key, None)
+            return
+        self._access_tokens[ref.key] = token.access_token
 
     def common_headers(self) -> dict[str, str]:
         return _common_headers()
 
     def resolve_api_key(self, api_key: SecretStr, oauth: OAuthRef | None) -> str:
         if oauth:
-            token = self._tokens.get(oauth.key)
+            token = self._access_tokens.get(oauth.key)
             if token is None:
-                token = load_tokens(oauth)
-                if token:
-                    self._tokens[oauth.key] = token
-            if token and token.access_token:
-                return token.access_token
+                persisted = load_tokens(oauth)
+                if persisted:
+                    self._cache_access_token(oauth, persisted)
+                    token = self._access_tokens.get(oauth.key)
+            if token:
+                return token
         return api_key.get_secret_value()
 
     def _kimi_code_ref(self) -> OAuthRef | None:
@@ -628,10 +675,11 @@ class OAuthManager:
         ref = self._kimi_code_ref()
         if ref is None:
             return
-        token = self._tokens.get(ref.key) or load_tokens(ref)
+        token = load_tokens(ref)
         if token is None:
             return
-        self._tokens[ref.key] = token
+        self._cache_access_token(ref, token)
+        self._apply_access_token(runtime, token.access_token)
         await self._refresh_tokens(ref, token, runtime)
 
     @asynccontextmanager
@@ -675,11 +723,20 @@ class OAuthManager:
         token: OAuthToken,
         runtime: Runtime,
     ) -> None:
-        current_token = self._tokens.get(ref.key) or token
+        # Always prefer persisted tokens before refresh to avoid stale cache
+        # when multiple sessions might have already rotated the refresh token.
+        persisted = load_tokens(ref)
+        if persisted:
+            self._cache_access_token(ref, persisted)
+        current_token = persisted or token
         if not current_token.refresh_token:
             return
         async with self._refresh_lock:
-            current = self._tokens.get(ref.key) or current_token
+            # Re-check persisted token inside the lock to reduce races.
+            persisted = load_tokens(ref)
+            if persisted:
+                self._cache_access_token(ref, persisted)
+            current = persisted or current_token
             now = time.time()
             if (
                 current.expires_at
@@ -693,19 +750,26 @@ class OAuthManager:
             try:
                 refreshed = await refresh_token(refresh_token_value)
             except OAuthUnauthorized as exc:
+                # If another session refreshed and persisted a new token,
+                # do not delete it. Just sync memory and exit.
+                latest = load_tokens(ref)
+                if latest and latest.refresh_token != refresh_token_value:
+                    self._cache_access_token(ref, latest)
+                    self._apply_access_token(runtime, latest.access_token)
+                    return
                 logger.warning(
                     "OAuth credentials rejected, deleting stored tokens: {error}",
                     error=exc,
                 )
-                self._tokens.pop(ref.key, None)
+                self._access_tokens.pop(ref.key, None)
                 delete_tokens(ref)
                 self._apply_access_token(runtime, "")
                 return
             except Exception as exc:
                 logger.warning("Failed to refresh OAuth token: {error}", error=exc)
                 return
-            self._tokens[ref.key] = refreshed
             save_tokens(ref, refreshed)
+            self._cache_access_token(ref, refreshed)
             self._apply_access_token(runtime, refreshed.access_token)
 
     def _apply_access_token(self, runtime: Runtime, access_token: str) -> None:

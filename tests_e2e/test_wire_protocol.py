@@ -36,12 +36,12 @@ def test_initialize_handshake(tmp_path) -> None:
     try:
         resp = send_initialize(wire)
         result = _as_dict(resp.get("result"))
-        assert result.get("protocol_version") == "1.1"
+        assert result.get("protocol_version") == "1.3"
         assert "slash_commands" in result
         assert normalize_response(resp) == snapshot(
             {
                 "result": {
-                    "protocol_version": "1.1",
+                    "protocol_version": "1.3",
                     "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
@@ -57,6 +57,11 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                         {
+                            "name": "add-dir",
+                            "description": "Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs",
+                            "aliases": [],
+                        },
+                        {
                             "name": "skill:kimi-cli-help",
                             "description": "Answer Kimi Code CLI usage, configuration, and troubleshooting questions. Use when user asks about Kimi Code CLI installation, setup, configuration, slash commands, keyboard shortcuts, MCP integration, providers, environment variables, how something works internally, or any questions about Kimi Code CLI itself.",
                             "aliases": [],
@@ -67,6 +72,7 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                     ],
+                    "capabilities": {"supports_question": True},
                 }
             }
         )
@@ -103,7 +109,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
         assert normalize_response(resp) == snapshot(
             {
                 "result": {
-                    "protocol_version": "1.1",
+                    "protocol_version": "1.3",
                     "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
@@ -116,6 +122,11 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         {
                             "name": "yolo",
                             "description": "Toggle YOLO mode (auto-approve all actions)",
+                            "aliases": [],
+                        },
+                        {
+                            "name": "add-dir",
+                            "description": "Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs",
                             "aliases": [],
                         },
                         {
@@ -133,6 +144,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         "accepted": [],
                         "rejected": [{"name": "Shell", "reason": "conflicts with builtin tool"}],
                     },
+                    "capabilities": {"supports_question": True},
                 }
             }
         )
@@ -268,6 +280,7 @@ def test_external_tool_call(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {"context_usage": None, "token_usage": None, "message_id": None},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -311,6 +324,7 @@ def test_prompt_without_initialize(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {"context_usage": None, "token_usage": None, "message_id": None},
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

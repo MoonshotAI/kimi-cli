@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
-from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
@@ -15,6 +15,7 @@ from rich.markup import escape
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.spinner import Spinner
+from rich.style import Style
 from rich.text import Text
 
 from kimi_cli.tools import extract_key_argument
@@ -23,7 +24,6 @@ from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.diff import format_unified_diff
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.utils.rich.syntax import KimiSyntax
@@ -36,6 +36,7 @@ from kimi_cli.wire.types import (
     CompactionEnd,
     ContentPart,
     DiffDisplayBlock,
+    QuestionRequest,
     ShellDisplayBlock,
     StatusUpdate,
     StepBegin,
@@ -50,6 +51,7 @@ from kimi_cli.wire.types import (
     ToolResult,
     ToolReturnValue,
     TurnBegin,
+    TurnEnd,
     WireMessage,
 )
 
@@ -111,6 +113,7 @@ class _ToolCallBlock:
             self._lexer.append_string(tool_call.function.arguments)
 
         self._argument = extract_key_argument(self._lexer, self._tool_name)
+        self._full_url = self._extract_full_url(tool_call.function.arguments, self._tool_name)
         self._result: ToolReturnValue | None = None
 
         self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
@@ -138,8 +141,9 @@ class _ToolCallBlock:
         argument = extract_key_argument(self._lexer, self._tool_name)
         if argument and argument != self._argument:
             self._argument = argument
+            self._full_url = self._extract_full_url(self._lexer.complete_json(), self._tool_name)
             self._renderable = BulletColumns(
-                Text.from_markup(self._get_headline_markup()),
+                self._build_headline_text(),
                 bullet=self._spinning_dots,
             )
 
@@ -178,7 +182,7 @@ class _ToolCallBlock:
 
     def _compose(self) -> RenderableType:
         lines: list[RenderableType] = [
-            Text.from_markup(self._get_headline_markup()),
+            self._build_headline_text(),
         ]
 
         if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
@@ -196,12 +200,18 @@ class _ToolCallBlock:
             argument = extract_key_argument(
                 sub_call.function.arguments or "", sub_call.function.name
             )
+            sub_url = self._extract_full_url(sub_call.function.arguments, sub_call.function.name)
+            sub_text = Text()
+            sub_text.append("Used ")
+            sub_text.append(sub_call.function.name, style="blue")
+            if argument:
+                sub_text.append(" (", style="grey50")
+                arg_style = Style(color="grey50", link=sub_url) if sub_url else "grey50"
+                sub_text.append(argument, style=arg_style)
+                sub_text.append(")", style="grey50")
             lines.append(
                 BulletColumns(
-                    Text.from_markup(
-                        f"Used [blue]{sub_call.function.name}[/blue]"
-                        + (f" [grey50]({argument})[/grey50]" if argument else "")
-                    ),
+                    sub_text,
                     bullet_style="green" if not sub_result.is_error else "red",
                 )
             )
@@ -229,10 +239,31 @@ class _ToolCallBlock:
                 bullet=self._spinning_dots,
             )
 
-    def _get_headline_markup(self) -> str:
-        return f"{'Used' if self.finished else 'Using'} [blue]{self._tool_name}[/blue]" + (
-            f" [grey50]({escape(self._argument)})[/grey50]" if self._argument else ""
-        )
+    @staticmethod
+    def _extract_full_url(arguments: str | None, tool_name: str) -> str | None:
+        """Extract the full URL from FetchURL tool arguments."""
+        if tool_name != "FetchURL" or not arguments:
+            return None
+        try:
+            args = json.loads(arguments)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if isinstance(args, dict):
+            url = cast(dict[str, Any], args).get("url")
+            if url:
+                return str(url)
+        return None
+
+    def _build_headline_text(self) -> Text:
+        text = Text()
+        text.append("Used " if self.finished else "Using ")
+        text.append(self._tool_name, style="blue")
+        if self._argument:
+            text.append(" (", style="grey50")
+            arg_style = Style(color="grey50", link=self._full_url) if self._full_url else "grey50"
+            text.append(self._argument, style=arg_style)
+            text.append(")", style="grey50")
+        return text
 
     def _render_todo_markdown(self, block: TodoDisplayBlock) -> str:
         lines: list[str] = []
@@ -324,10 +355,10 @@ class _ApprovalRequestPanel:
         self.has_expandable_content = self._total_lines > MAX_PREVIEW_LINES
 
     def render(self) -> RenderableType:
-        """Render the approval menu as a panel."""
+        """Render the approval menu as a bordered panel."""
         content_lines: list[RenderableType] = [
             Text.from_markup(
-                "[yellow]⚠ "
+                "[yellow]"
                 f"{escape(self.request.sender)} is requesting approval to "
                 f"{escape(self.request.action)}:[/yellow]"
             )
@@ -347,18 +378,32 @@ class _ApprovalRequestPanel:
 
         lines: list[RenderableType] = []
         if content_lines:
-            lines.append(Padding(Group(*content_lines), (0, 0, 0, 2)))
+            lines.append(Padding(Group(*content_lines), (0, 0, 0, 1)))
 
-        # Add menu options
+        # Add menu options with number key labels
         if lines:
             lines.append(Text(""))
         for i, (option_text, _) in enumerate(self.options):
+            num = i + 1
             if i == self.selected_index:
-                lines.append(Text(f"→ {option_text}", style="cyan"))
+                lines.append(Text(f"\u2192 [{num}] {option_text}", style="cyan"))
             else:
-                lines.append(Text(f"  {option_text}", style="grey50"))
+                lines.append(Text(f"  [{num}] {option_text}", style="grey50"))
 
-        return Padding(Group(*lines), 1)
+        # Keyboard hints
+        lines.append(Text(""))
+        hint = "  \u25b2/\u25bc select  1/2/3 choose  \u21b5 confirm"
+        if self.has_expandable_content:
+            hint += "  ctrl-e expand"
+        lines.append(Text(hint, style="dim"))
+
+        return Panel(
+            Group(*lines),
+            border_style="bold yellow",
+            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
+            title_align="left",
+            padding=(0, 1),
+        )
 
     def _render_block(
         self, block: _ApprovalContentBlock, max_lines: int | None = None
@@ -406,6 +451,260 @@ def _show_approval_in_pager(panel: _ApprovalRequestPanel) -> None:
         # Render full content (no truncation)
         for renderable in panel.render_full():
             console.print(renderable)
+
+
+OTHER_OPTION_LABEL = "Other"
+
+
+class _QuestionRequestPanel:
+    """Renders structured questions for the user to answer interactively."""
+
+    def __init__(self, request: QuestionRequest):
+        self.request = request
+        self._current_question_index = 0
+        self._answers: dict[str, str] = {}
+        self._saved_selections: dict[int, tuple[int, set[int]]] = {}
+        self._selected_index = 0
+        self._multi_selected: set[int] = set()
+        self._setup_current_question()
+
+    def _setup_current_question(self) -> None:
+        q = self._current_question
+        self._options = [(o.label, o.description) for o in q.options]
+        self._options.append((OTHER_OPTION_LABEL, "Provide custom text input"))
+        idx = self._current_question_index
+        if idx in self._saved_selections:
+            saved_idx, saved_multi = self._saved_selections[idx]
+            self._selected_index = min(saved_idx, len(self._options) - 1)
+            self._multi_selected = saved_multi
+        elif q.question in self._answers:
+            answer = self._answers[q.question]
+            if q.multi_select:
+                answer_labels = [a.strip() for a in answer.split(", ")]
+                known_labels = {label for label, _ in self._options[:-1]}
+                self._multi_selected = set()
+                for i, (label, _) in enumerate(self._options[:-1]):
+                    if label in answer_labels:
+                        self._multi_selected.add(i)
+                # Unmatched labels = Other text
+                if any(answer_label not in known_labels for answer_label in answer_labels):
+                    self._multi_selected.add(len(self._options) - 1)
+                self._selected_index = min(self._multi_selected) if self._multi_selected else 0
+            else:
+                for i, (label, _) in enumerate(self._options):
+                    if label == answer:
+                        self._selected_index = i
+                        break
+                else:
+                    # Unknown submitted label should map to the synthetic "Other" option.
+                    self._selected_index = len(self._options) - 1
+                self._multi_selected = set()
+        else:
+            self._selected_index = 0
+            self._multi_selected = set()
+
+    @property
+    def _current_question(self):
+        return self.request.questions[self._current_question_index]
+
+    @property
+    def is_other_selected(self) -> bool:
+        return self._selected_index == len(self._options) - 1
+
+    @property
+    def is_multi_select(self) -> bool:
+        return self._current_question.multi_select
+
+    @property
+    def current_question_text(self) -> str:
+        return self._current_question.question
+
+    def should_prompt_other_input(self) -> bool:
+        """Whether pressing ENTER should open free-text input for the current question."""
+        if not self.is_multi_select:
+            return self.is_other_selected
+        other_idx = len(self._options) - 1
+        return other_idx in self._multi_selected
+
+    def select_index(self, index: int) -> bool:
+        """Select an option by index. Returns False when index is out of range."""
+        if not (0 <= index < len(self._options)):
+            return False
+        self._selected_index = index
+        return True
+
+    def render(self) -> RenderableType:
+        q = self._current_question
+        lines: list[RenderableType] = []
+
+        # Tab bar for multi-question navigation
+        if len(self.request.questions) > 1:
+            tab_parts: list[str] = []
+            for i, qi in enumerate(self.request.questions):
+                label = escape(qi.header or f"Q{i + 1}")
+                if i == self._current_question_index:
+                    icon, style = "\u25cf", "bold cyan"
+                elif qi.question in self._answers:
+                    icon, style = "\u2713", "green"
+                else:
+                    icon, style = "\u25cb", "grey50"
+                tab_parts.append(f"[{style}]({icon}) {label}[/{style}]")
+            lines.append(Text.from_markup("  ".join(tab_parts)))
+            lines.append(Text(""))
+
+        # Question text (header is now shown in the tab bar)
+        lines.append(Text.from_markup(f"[yellow]? {escape(q.question)}[/yellow]"))
+        if q.multi_select:
+            lines.append(Text("  (SPACE to toggle, ENTER to submit)", style="dim italic"))
+        lines.append(Text(""))
+
+        # Options with number key labels
+        for i, (label, description) in enumerate(self._options):
+            num = i + 1
+            if q.multi_select:
+                checked = "\u2713" if i in self._multi_selected else " "
+                prefix = f"\\[{checked}]"
+                if i == self._selected_index:
+                    option_line = Text.from_markup(f"[cyan]{prefix} {escape(label)}[/cyan]")
+                else:
+                    option_line = Text.from_markup(f"[grey50]{prefix} {escape(label)}[/grey50]")
+            else:
+                if i == self._selected_index:
+                    option_line = Text.from_markup(f"[cyan]\u2192 \\[{num}] {escape(label)}[/cyan]")
+                else:
+                    option_line = Text.from_markup(f"[grey50]  \\[{num}] {escape(label)}[/grey50]")
+            lines.append(option_line)
+
+            if description and label != OTHER_OPTION_LABEL:
+                lines.append(Text(f"      {description}", style="dim"))
+
+        # Keyboard hint for multi-question
+        if len(self.request.questions) > 1:
+            lines.append(Text(""))
+            lines.append(
+                Text(
+                    "  \u25c4/\u25ba switch question  "
+                    "\u25b2/\u25bc select  \u21b5 submit  esc exit",
+                    style="dim",
+                )
+            )
+
+        return Panel(
+            Group(*lines),
+            border_style="bold cyan",
+            title="[bold cyan]? QUESTION[/bold cyan]",
+            title_align="left",
+            padding=(0, 1),
+        )
+
+    def go_to(self, index: int) -> None:
+        """Jump to a specific question by index, saving current UI state first."""
+        if index == self._current_question_index:
+            return
+        if not (0 <= index < len(self.request.questions)):
+            return
+        # Save current cursor state (not as an answer — only submit() writes answers)
+        self._saved_selections[self._current_question_index] = (
+            self._selected_index,
+            set(self._multi_selected),
+        )
+        self._current_question_index = index
+        self._setup_current_question()
+
+    def next_tab(self) -> None:
+        """Switch to the next question tab (no wrap)."""
+        if self._current_question_index < len(self.request.questions) - 1:
+            self.go_to(self._current_question_index + 1)
+
+    def prev_tab(self) -> None:
+        """Switch to the previous question tab (no wrap)."""
+        if self._current_question_index > 0:
+            self.go_to(self._current_question_index - 1)
+
+    def move_up(self) -> None:
+        self._selected_index = (self._selected_index - 1) % len(self._options)
+
+    def move_down(self) -> None:
+        self._selected_index = (self._selected_index + 1) % len(self._options)
+
+    def toggle_select(self) -> None:
+        """Toggle selection for multi-select mode."""
+        if not self.is_multi_select:
+            return
+        if self._selected_index in self._multi_selected:
+            self._multi_selected.discard(self._selected_index)
+        else:
+            self._multi_selected.add(self._selected_index)
+
+    def submit(self) -> bool:
+        """Submit the current answer and advance. Returns True if all questions are answered."""
+        q = self._current_question
+        if q.multi_select:
+            # Check if "Other" is among the selected
+            other_idx = len(self._options) - 1
+            if other_idx in self._multi_selected:
+                return False  # caller should handle Other input
+            selected_labels = [
+                self._options[i][0] for i in sorted(self._multi_selected) if i < len(q.options)
+            ]
+            if not selected_labels:
+                return False  # don't allow empty multi-select submission
+            self._answers[q.question] = ", ".join(selected_labels)
+        else:
+            if self.is_other_selected:
+                return False  # caller should handle Other input
+            self._answers[q.question] = self._options[self._selected_index][0]
+        # Clear stale draft so returning to this question uses the submitted answer
+        self._saved_selections.pop(self._current_question_index, None)
+        return self._advance()
+
+    def submit_other(self, text: str) -> bool:
+        """Submit 'Other' text for the current question. Returns True if all done."""
+        q = self._current_question
+        if q.multi_select:
+            # Include both selected options and the custom text
+            other_idx = len(self._options) - 1
+            selected_labels = [
+                self._options[i][0]
+                for i in sorted(self._multi_selected)
+                if i < len(q.options) and i != other_idx
+            ]
+            if text:
+                selected_labels.append(text)
+            self._answers[q.question] = ", ".join(selected_labels) if selected_labels else text
+        else:
+            self._answers[q.question] = text
+        # Clear stale draft so returning to this question uses the submitted answer
+        self._saved_selections.pop(self._current_question_index, None)
+        return self._advance()
+
+    def _advance(self) -> bool:
+        """Move to the next unanswered question. Returns True if all questions are done."""
+        total = len(self.request.questions)
+        # Check if all questions have been answered
+        if len(self._answers) >= total:
+            return True
+        # Find the next unanswered question (starting from current + 1, wrapping)
+        for offset in range(1, total + 1):
+            idx = (self._current_question_index + offset) % total
+            if self.request.questions[idx].question not in self._answers:
+                self._current_question_index = idx
+                self._setup_current_question()
+                return False
+        return True
+
+    def get_answers(self) -> dict[str, str]:
+        return self._answers
+
+
+def _prompt_other_input(question_text: str) -> str:
+    """Prompt the user for free-text input when 'Other' is selected."""
+    console.print(Text.from_markup(f"\n[yellow]? {escape(question_text)}[/yellow]"))
+    console.print(Text("  Enter your answer:", style="dim"))
+    try:
+        return input("  > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return ""
 
 
 class _StatusBlock:
@@ -460,6 +759,8 @@ class _LiveView:
         """
         self._current_approval_request_panel: _ApprovalRequestPanel | None = None
         self._reject_all_following = False
+        self._question_request_queue = deque[QuestionRequest]()
+        self._current_question_panel: _QuestionRequestPanel | None = None
         self._status_block = _StatusBlock(initial_status)
 
         self._need_recompose = False
@@ -496,6 +797,29 @@ class _LiveView:
                             live.start()
                             live.update(self.compose(), refresh=True)
                             await listener.resume()
+                    return
+
+                # Handle ENTER/SPACE on question panel when "Other" is selected
+                panel = self._current_question_panel
+                _is_submit_key = event == KeyEvent.ENTER or (
+                    event == KeyEvent.SPACE and panel is not None and not panel.is_multi_select
+                )
+                if _is_submit_key and panel is not None and panel.should_prompt_other_input():
+                    question_text = panel.current_question_text
+                    await listener.pause()
+                    live.stop()
+                    try:
+                        text = _prompt_other_input(question_text)
+                    finally:
+                        self._reset_live_shape(live)
+                        live.start()
+                        await listener.resume()
+
+                    all_done = panel.submit_other(text)
+                    if all_done:
+                        panel.request.resolve(panel.get_answers())
+                        self.show_next_question_request()
+                    live.update(self.compose(), refresh=True)
                     return
 
                 self.dispatch_keyboard_event(event)
@@ -539,6 +863,9 @@ class _LiveView:
                 blocks.append(tool_call.compose())
         if self._current_approval_request_panel:
             blocks.append(self._current_approval_request_panel.render())
+        if self._current_question_panel:
+            blocks.append(self._current_question_panel.render())
+
         blocks.append(self._status_block.render())
         return Group(*blocks)
 
@@ -560,12 +887,8 @@ class _LiveView:
         match msg:
             case TurnBegin():
                 self.flush_content()
-                console.print(
-                    Panel(
-                        Text(message_stringify(Message(role="user", content=msg.user_input))),
-                        padding=(0, 1),
-                    )
-                )
+            case TurnEnd():
+                pass
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
@@ -589,47 +912,123 @@ class _LiveView:
                 self.handle_subagent_event(msg)
             case ApprovalRequest():
                 self.request_approval(msg)
+            case QuestionRequest():
+                self.request_question(msg)
             case ToolCallRequest():
                 logger.warning("Unexpected ToolCallRequest in shell UI: {msg}", msg=msg)
 
+    def _try_submit_question(self) -> None:
+        """Submit the current question answer; if all done, resolve and advance."""
+        panel = self._current_question_panel
+        if panel is None:
+            return
+        all_done = panel.submit()
+        if all_done:
+            panel.request.resolve(panel.get_answers())
+            self.show_next_question_request()
+
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
+        # Handle question panel keyboard events
+        if self._current_question_panel is not None:
+            match event:
+                case KeyEvent.UP:
+                    self._current_question_panel.move_up()
+                case KeyEvent.DOWN:
+                    self._current_question_panel.move_down()
+                case KeyEvent.LEFT:
+                    self._current_question_panel.prev_tab()
+                case KeyEvent.RIGHT | KeyEvent.TAB:
+                    self._current_question_panel.next_tab()
+                case KeyEvent.SPACE:
+                    if self._current_question_panel.is_multi_select:
+                        self._current_question_panel.toggle_select()
+                    else:
+                        self._try_submit_question()
+                case KeyEvent.ENTER:
+                    # "Other" is handled in keyboard_handler (async context)
+                    self._try_submit_question()
+                case KeyEvent.ESCAPE:
+                    self._current_question_panel.request.resolve({})
+                    self.show_next_question_request()
+                case (
+                    KeyEvent.NUM_1
+                    | KeyEvent.NUM_2
+                    | KeyEvent.NUM_3
+                    | KeyEvent.NUM_4
+                    | KeyEvent.NUM_5
+                ):
+                    # Number keys select option in question panel
+                    num_map = {
+                        KeyEvent.NUM_1: 0,
+                        KeyEvent.NUM_2: 1,
+                        KeyEvent.NUM_3: 2,
+                        KeyEvent.NUM_4: 3,
+                        KeyEvent.NUM_5: 4,
+                    }
+                    idx = num_map[event]
+                    panel = self._current_question_panel
+                    if panel.select_index(idx):
+                        if panel.is_multi_select:
+                            panel.toggle_select()
+                        elif not panel.is_other_selected:
+                            # Auto-submit for single-select (unless "Other")
+                            self._try_submit_question()
+                case _:
+                    pass
+            self.refresh_soon()
+            return
+
         # handle ESC key to cancel the run
         if event == KeyEvent.ESCAPE and self._cancel_event is not None:
             self._cancel_event.set()
             return
 
-        if not self._current_approval_request_panel:
-            # just ignore any keyboard event when there's no approval request
+        # Handle approval panel keyboard events
+        if self._current_approval_request_panel is not None:
+            match event:
+                case KeyEvent.UP:
+                    self._current_approval_request_panel.move_up()
+                    self.refresh_soon()
+                case KeyEvent.DOWN:
+                    self._current_approval_request_panel.move_down()
+                    self.refresh_soon()
+                case KeyEvent.ENTER:
+                    self._submit_approval()
+                case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3:
+                    # Number keys directly select and submit approval option
+                    num_map = {
+                        KeyEvent.NUM_1: 0,
+                        KeyEvent.NUM_2: 1,
+                        KeyEvent.NUM_3: 2,
+                    }
+                    idx = num_map[event]
+                    if idx < len(self._current_approval_request_panel.options):
+                        self._current_approval_request_panel.selected_index = idx
+                        self._submit_approval()
+                case _:
+                    pass
             return
 
-        match event:
-            case KeyEvent.UP:
-                self._current_approval_request_panel.move_up()
-                self.refresh_soon()
-            case KeyEvent.DOWN:
-                self._current_approval_request_panel.move_down()
-                self.refresh_soon()
-            case KeyEvent.ENTER:
-                resp = self._current_approval_request_panel.get_selected_response()
-                self._current_approval_request_panel.request.resolve(resp)
-                if resp == "approve_for_session":
-                    to_remove_from_queue: list[ApprovalRequest] = []
-                    for request in self._approval_request_queue:
-                        # approve all queued requests with the same action
-                        if request.action == self._current_approval_request_panel.request.action:
-                            request.resolve("approve_for_session")
-                            to_remove_from_queue.append(request)
-                    for request in to_remove_from_queue:
-                        self._approval_request_queue.remove(request)
-                elif resp == "reject":
-                    # one rejection should stop the step immediately
-                    while self._approval_request_queue:
-                        self._approval_request_queue.popleft().resolve("reject")
-                    self._reject_all_following = True
-                self.show_next_approval_request()
-            case _:
-                # just ignore any other keyboard event
-                return
+    def _submit_approval(self) -> None:
+        """Submit the currently selected approval response."""
+        assert self._current_approval_request_panel is not None
+        resp = self._current_approval_request_panel.get_selected_response()
+        self._current_approval_request_panel.request.resolve(resp)
+        if resp == "approve_for_session":
+            to_remove_from_queue: list[ApprovalRequest] = []
+            for request in self._approval_request_queue:
+                # approve all queued requests with the same action
+                if request.action == self._current_approval_request_panel.request.action:
+                    request.resolve("approve_for_session")
+                    to_remove_from_queue.append(request)
+            for request in to_remove_from_queue:
+                self._approval_request_queue.remove(request)
+        elif resp == "reject":
+            # one rejection should stop the step immediately
+            while self._approval_request_queue:
+                self._approval_request_queue.popleft().resolve("reject")
+            self._reject_all_following = True
+        self.show_next_approval_request()
 
     def cleanup(self, is_interrupt: bool) -> None:
         """Cleanup the live view on step end or interruption."""
@@ -651,6 +1050,10 @@ class _LiveView:
             self._approval_request_queue.popleft().resolve("reject")
         self._current_approval_request_panel = None
         self._reject_all_following = False
+
+        while self._question_request_queue:
+            self._question_request_queue.popleft().resolve({})
+        self._current_question_panel = None
 
     def flush_content(self) -> None:
         """Flush the current content block."""
@@ -742,6 +1145,38 @@ class _LiveView:
             self._current_approval_request_panel = _ApprovalRequestPanel(request)
             self.refresh_soon()
             break
+        else:
+            # All queued requests were already resolved
+            if self._current_approval_request_panel is not None:
+                self._current_approval_request_panel = None
+                self.refresh_soon()
+
+    def request_question(self, request: QuestionRequest) -> None:
+        self._question_request_queue.append(request)
+        if self._current_question_panel is None:
+            console.bell()
+            self.show_next_question_request()
+
+    def show_next_question_request(self) -> None:
+        """Show the next question request from the queue."""
+        if not self._question_request_queue:
+            if self._current_question_panel is not None:
+                self._current_question_panel = None
+                self.refresh_soon()
+            return
+
+        while self._question_request_queue:
+            request = self._question_request_queue.popleft()
+            if request.resolved:
+                continue
+            self._current_question_panel = _QuestionRequestPanel(request)
+            self.refresh_soon()
+            break
+        else:
+            # All queued requests were already resolved
+            if self._current_question_panel is not None:
+                self._current_question_panel = None
+                self.refresh_soon()
 
     def handle_subagent_event(self, event: SubagentEvent) -> None:
         block = self._tool_call_blocks.get(event.task_tool_call_id)

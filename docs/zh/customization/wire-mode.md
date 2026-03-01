@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.1`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.4`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -69,8 +69,8 @@ interface JSONRPCError {
 
 ### `initialize`
 
-::: info 新增于 Wire 1.1
-旧版 Client 可跳过此请求，直接发送 `prompt`。
+::: info 新增
+新增于 Wire 1.1。旧版 Client 可跳过此请求，直接发送 `prompt`。
 :::
 
 - **方向**：Client → Agent
@@ -87,6 +87,13 @@ interface InitializeParams {
   client?: ClientInfo
   /** 外部工具定义列表，可选 */
   external_tools?: ExternalTool[]
+  /** Client 能力声明，可选 */
+  capabilities?: ClientCapabilities
+}
+
+interface ClientCapabilities {
+  /** 是否支持处理 QuestionRequest 消息 */
+  supports_question?: boolean
 }
 
 interface ClientInfo {
@@ -113,6 +120,13 @@ interface InitializeResult {
   slash_commands: SlashCommandInfo[]
   /** 外部工具注册结果，仅当请求中包含 external_tools 时返回 */
   external_tools?: ExternalToolsResult
+  /** Server 能力声明 */
+  capabilities?: ServerCapabilities
+}
+
+interface ServerCapabilities {
+  /** 是否支持发送 QuestionRequest 消息 */
+  supports_question?: boolean
 }
 
 interface ServerInfo {
@@ -137,13 +151,13 @@ interface ExternalToolsResult {
 **请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.1", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.4", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.1", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.4", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。
@@ -196,12 +210,95 @@ interface PromptResult {
 | `-32002` | 不支持指定的 LLM |
 | `-32003` | LLM 服务错误 |
 
+### `replay`
+
+::: info 新增
+新增于 Wire 1.3。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+触发历史回放。Server 读取会话目录中的 `wire.jsonl`，按顺序重新发送已记录的 `event` 和 `request` 消息。回放是只读的，Client 不应对回放中的 `request` 消息作出响应。如果没有历史记录，Server 直接返回 `events: 0`、`requests: 0`。
+
+```typescript
+/** replay 请求无参数，params 可以是空对象或省略 */
+type ReplayParams = Record<string, never>
+
+/** replay 响应结果 */
+interface ReplayResult {
+  /** 回放结束状态 */
+  status: "finished" | "cancelled"
+  /** 回放的 event 数量 */
+  events: number
+  /** 回放的 request 数量 */
+  requests: number
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "replay", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8"}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
+```
+
+### `steer`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+在 Agent 轮次进行中注入用户消息。与 `prompt` 不同，`steer` 不会开始新的轮次，而是将消息注入到当前正在进行的轮次中。注入的消息会作为一个合成的工具调用结果插入上下文，从而在 AI 处理过程中 “引导” 其行为。
+
+```typescript
+/** steer 请求参数 */
+interface SteerParams {
+  /** 用户输入，可以是纯文本或内容片段数组 */
+  user_input: string | ContentPart[]
+}
+
+/** steer 响应结果 */
+interface SteerResult {
+  /** 固定为 "steered" */
+  status: "steered"
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "steer", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "params": {"user_input": "用 Python 实现"}}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "steered"}}
+```
+
+**错误响应示例**
+
+如果当前没有轮次在进行：
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
+```
+
 ### `cancel`
 
 - **方向**：Client → Agent
 - **类型**：Request（需要响应）
 
-取消当前正在进行的 Agent 轮次。调用后，正在进行的 `prompt` 请求会返回 `{"status": "cancelled"}`。
+取消当前正在进行的 Agent 轮次或回放。调用后，正在进行的 `prompt` 请求会返回 `{"status": "cancelled"}`，回放会返回 `{"status": "cancelled"}` 及已发送的消息计数。
 
 ```typescript
 /** cancel 请求无参数，params 可以是空对象或省略 */
@@ -262,8 +359,8 @@ Agent 向 Client 发出的请求，用于审批确认或外部工具调用。Cli
 ```typescript
 /** request 请求参数，包含序列化后的 Wire 消息 */
 interface RequestParams {
-  type: "ApprovalRequest" | "ToolCallRequest"
-  payload: ApprovalRequest | ToolCallRequest
+  type: "ApprovalRequest" | "ToolCallRequest" | "QuestionRequest"
+  payload: ApprovalRequest | ToolCallRequest | QuestionRequest
 }
 ```
 
@@ -314,6 +411,7 @@ type WireMessage = Event | Request
 /** 事件：通过 event 方法发送，无需响应 */
 type Event =
   | TurnBegin
+  | TurnEnd
   | StepBegin
   | StepInterrupted
   | CompactionBegin
@@ -327,7 +425,7 @@ type Event =
   | SubagentEvent
 
 /** 请求：通过 request 方法发送，需要响应 */
-type Request = ApprovalRequest | ToolCallRequest
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
 ```
 
 ### `TurnBegin`
@@ -338,6 +436,20 @@ type Request = ApprovalRequest | ToolCallRequest
 interface TurnBegin {
   /** 用户输入，可以是纯文本或内容片段数组 */
   user_input: string | ContentPart[]
+}
+```
+
+### `TurnEnd`
+
+::: info 新增
+新增于 Wire 1.2。
+:::
+
+轮次结束。此事件在轮次的所有其他事件之后发送。如果轮次被中断，此事件可能不会发送。
+
+```typescript
+interface TurnEnd {
+  // 无额外字段
 }
 ```
 
@@ -506,8 +618,8 @@ interface ToolReturnValue {
 
 ### `ApprovalResponse`
 
-::: info 重命名于 Wire 1.1
-原名 `ApprovalRequestResolved`，旧名称仍可使用以保持向后兼容。
+::: info 变更
+重命名于 Wire 1.1。原名 `ApprovalRequestResolved`，旧名称仍可使用以保持向后兼容。
 :::
 
 审批响应事件，表示审批请求已完成。
@@ -598,6 +710,76 @@ interface ToolResult {
 }
 ```
 
+### `QuestionRequest`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+结构化问答请求，通过 `request` 方法发送。当 Agent 使用 `AskUserQuestion` 工具时，会发送此请求。Client 必须响应后 Agent 才能继续执行。
+
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，`AskUserQuestion` 工具会从 LLM 的工具列表中自动隐藏，避免 LLM 调用不受支持的交互。
+
+```typescript
+interface QuestionRequest {
+  /** 请求 ID，用于响应时引用 */
+  id: string
+  /** 关联的工具调用 ID */
+  tool_call_id: string
+  /** 问题列表（1–4 个问题） */
+  questions: QuestionItem[]
+}
+
+interface QuestionItem {
+  /** 问题文本 */
+  question: string
+  /** 短标签，最多 12 个字符 */
+  header?: string
+  /** 可选项（2–4 个） */
+  options: QuestionOption[]
+  /** 是否允许多选 */
+  multi_select?: boolean
+}
+
+interface QuestionOption {
+  /** 选项标签 */
+  label: string
+  /** 选项说明 */
+  description?: string
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "request", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "params": {"type": "QuestionRequest", "payload": {"id": "q-1", "tool_call_id": "tc-1", "questions": [{"question": "Which language should I use?", "header": "Lang", "options": [{"label": "Python", "description": "Widely used, large ecosystem"}, {"label": "Rust", "description": "High performance, memory safe"}], "multi_select": false}]}}}
+```
+
+**响应格式**
+
+Client 需要返回 `QuestionResponse` 作为响应结果：
+
+```typescript
+interface QuestionResponse {
+  /** 对应的请求 ID */
+  request_id: string
+  /** 答案映射，键为问题文本，值为选中的选项标签（多选时用逗号分隔） */
+  answers: Record<string, string>
+}
+```
+
+**响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {"Which language should I use?": "Python"}}}
+```
+
+如果 Client 不支持结构化问答或用户关闭了问题面板，可以返回空的 `answers`：
+
+```json
+{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {}}}
+```
+
 ### `DisplayBlock`
 
 `ToolResult` 和 `ApprovalRequest` 的 `display` 字段使用的显示块类型。
@@ -655,3 +837,84 @@ interface ShellDisplayBlock {
   command: string
 }
 ```
+
+## Kimi Agent（Rust）Wire Server
+
+::: warning 注意
+Kimi Agent 目前为实验性功能，API 和行为可能在后续版本中发生变化。
+:::
+
+Kimi Agent (Rust) 是 Kimi Code CLI 内核的 Rust 实现，专为 Wire 模式设计。如果你只需要 Wire 协议服务，Kimi Agent (Rust) 提供了一个更轻量的选择。Rust 实现位于 [`MoonshotAI/kimi-agent-rs`](https://github.com/MoonshotAI/kimi-agent-rs)。
+
+### 特点
+
+- **Wire 协议完全兼容**：与 Python 版 `kimi --wire` 使用相同的 Wire 协议，现有客户端无需修改
+- **更小的体积**：单一静态链接二进制，无需 Python 运行时
+- **更快的启动**：原生编译，启动速度更快
+- **相同的配置**：使用相同的配置文件（`~/.kimi/config.toml`）和会话目录
+
+### 限制
+
+- **仅支持 Wire 模式**：没有 Shell/Print/ACP UI
+- **仅支持 Kimi 供应商**：不支持 OpenAI、Anthropic 等其他供应商
+- **无 Kimi 账号登录功能**：没有 `login`/`logout` 子命令和 `/login`、`/logout` 斜杠命令，需要手动配置 API 密钥
+- **不支持 `--prompt`/`--command`**：Wire 服务器不接受初始提示词
+- **仅支持本地执行**：没有 SSH Kaos 支持
+- **MCP OAuth 存储位置不同**：Kimi Agent 存储在 `~/.kimi/credentials/mcp_auth.json`，Python 版存储在 `~/.fastmcp/oauth-mcp-client-cache/`，两者不兼容
+
+### 安装
+
+从 [GitHub Releases](https://github.com/MoonshotAI/kimi-agent-rs/releases) 下载预编译的二进制文件：
+
+```sh
+# macOS (Apple Silicon)
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
+
+# Linux (x86_64)
+curl -L https://github.com/MoonshotAI/kimi-agent-rs/releases/latest/download/kimi-agent-x86_64-unknown-linux-gnu.tar.gz | tar xz
+sudo mv kimi-agent /usr/local/bin/
+```
+
+### 使用
+
+Kimi Agent 默认运行 Wire 模式：
+
+```sh
+kimi-agent
+```
+
+常用选项与 `kimi` 命令相同：
+
+```sh
+# 指定工作目录
+kimi-agent --work-dir /path/to/project
+
+# 继续上一个会话
+kimi-agent --continue
+
+# 使用指定会话
+kimi-agent --session <session-id>
+
+# 使用指定模型
+kimi-agent --model k2
+
+# YOLO 模式（跳过审批）
+kimi-agent --yolo
+```
+
+子命令：
+
+```sh
+# 显示版本和环境信息
+kimi-agent info
+
+# 管理 MCP 服务器
+kimi-agent mcp list
+kimi-agent mcp add <name> <command> [args...]
+kimi-agent mcp remove <name>
+```
+
+### 版本同步
+
+Kimi Agent 与 Kimi Code CLI 独立发版。兼容性与同步状态以 `MoonshotAI/kimi-agent-rs` 的发布说明为准。

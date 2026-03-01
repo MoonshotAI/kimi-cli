@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, Unpack, cast
 
 import httpx
-from openai import AsyncOpenAI, AsyncStream, Omit, OpenAIError, omit
+from openai import AsyncStream, Omit, OpenAIError, omit
 from openai.types import CompletionUsage, ReasoningEffort
 from openai.types.chat import (
     ChatCompletion,
@@ -14,9 +14,17 @@ from openai.types.chat import (
 )
 from typing_extensions import TypedDict
 
-from kosong.chat_provider import ChatProvider, StreamedMessagePart, ThinkingEffort, TokenUsage
+from kosong.chat_provider import (
+    ChatProvider,
+    RetryableChatProvider,
+    StreamedMessagePart,
+    ThinkingEffort,
+    TokenUsage,
+)
 from kosong.chat_provider.openai_common import (
+    close_replaced_openai_client,
     convert_error,
+    create_openai_client,
     reasoning_effort_to_thinking_effort,
     thinking_effort_to_reasoning_effort,
     tool_to_openai,
@@ -29,6 +37,7 @@ if TYPE_CHECKING:
 
     def type_check(openai_legacy: "OpenAILegacy"):
         _: ChatProvider = openai_legacy
+        _: RetryableChatProvider = openai_legacy
 
 
 class OpenAILegacy:
@@ -78,10 +87,13 @@ class OpenAILegacy:
         """
         self.model = model
         self.stream = stream
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            **client_kwargs,
+        self._api_key: str | None = api_key
+        self._base_url: str | None = base_url
+        self._client_kwargs: dict[str, Any] = dict(client_kwargs)
+        self.client = create_openai_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            client_kwargs=self._client_kwargs,
         )
         """The underlying `AsyncOpenAI` client."""
         self._reasoning_effort: ReasoningEffort | Omit = omit
@@ -127,6 +139,16 @@ class OpenAILegacy:
             return OpenAILegacyStreamedMessage(response, self._reasoning_key)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        old_client = self.client
+        self.client = create_openai_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            client_kwargs=self._client_kwargs,
+        )
+        close_replaced_openai_client(old_client, client_kwargs=self._client_kwargs)
+        return True
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
         new_self = copy.copy(self)

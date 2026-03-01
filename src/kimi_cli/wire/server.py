@@ -19,7 +19,17 @@ from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.wire import Wire
-from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, Request, ToolCallRequest
+from kimi_cli.wire.types import (
+    ApprovalRequest,
+    ApprovalResponse,
+    QuestionNotSupported,
+    QuestionRequest,
+    QuestionResponse,
+    Request,
+    ToolCallRequest,
+    is_event,
+    is_request,
+)
 
 from .jsonrpc import (
     ClientInfo,
@@ -35,7 +45,9 @@ from .jsonrpc import (
     JSONRPCMessage,
     JSONRPCOutMessage,
     JSONRPCPromptMessage,
+    JSONRPCReplayMessage,
     JSONRPCRequestMessage,
+    JSONRPCSteerMessage,
     JSONRPCSuccessResponse,
     Statuses,
 )
@@ -66,6 +78,8 @@ class WireServer:
         self._cancel_event: asyncio.Event | None = None
         self._pending_requests: dict[str, Request] = {}
         """Maps JSON RPC message IDs to pending `Request`s."""
+        self._client_supports_question: bool = False
+        """Whether the Wire client supports QuestionRequest."""
 
     async def serve(self) -> None:
         logger.info("Starting Wire server on stdio")
@@ -242,6 +256,8 @@ class WireServer:
                             brief="Wire closed",
                         )
                     )
+                case QuestionRequest():
+                    request.resolve({})
         self._pending_requests.clear()
 
         if self._cancel_event is not None:
@@ -272,6 +288,10 @@ class WireServer:
                     resp = await self._handle_initialize(msg)
                 case JSONRPCPromptMessage():
                     resp = await self._handle_prompt(msg)
+                case JSONRPCReplayMessage():
+                    resp = await self._handle_replay(msg)
+                case JSONRPCSteerMessage():
+                    resp = await self._handle_steer(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -290,13 +310,13 @@ class WireServer:
             logger.error("Send queue shut down; dropping message: {msg}", msg=msg)
 
     @property
-    def _soul_is_running(self) -> bool:
+    def _is_streaming(self) -> bool:
         return self._cancel_event is not None
 
     async def _handle_initialize(
         self, msg: JSONRPCInitializeMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if self._soul_is_running:
+        if self._is_streaming:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(
@@ -355,10 +375,42 @@ class WireServer:
 
         self._apply_wire_client_info(msg.params.client)
 
+        if msg.params.capabilities is not None:
+            self._client_supports_question = msg.params.capabilities.supports_question
+
+        if toolset is not None:
+            self._sync_ask_user_tool_visibility(toolset)
+
+        result["capabilities"] = cast(
+            JsonType,
+            {"supports_question": True},
+        )
+
         return JSONRPCSuccessResponse(
             id=msg.id,
             result=result,
         )
+
+    def _sync_ask_user_tool_visibility(self, toolset: KimiToolset) -> None:
+        """Hide or unhide the AskUserQuestion tool based on client capabilities."""
+        from kimi_cli.tools.ask_user import NAME as ASK_USER_TOOL_NAME
+
+        all_toolsets = [toolset]
+        if isinstance(self._soul, KimiSoul):
+            for subagent in self._soul.agent.runtime.labor_market.fixed_subagents.values():
+                if isinstance(subagent.toolset, KimiToolset):
+                    all_toolsets.append(subagent.toolset)
+
+        if self._client_supports_question:
+            for ts in all_toolsets:
+                ts.unhide(ASK_USER_TOOL_NAME)
+        else:
+            for ts in all_toolsets:
+                ts.hide(ASK_USER_TOOL_NAME)
+            logger.info(
+                "Hid {tool} tool: client does not support questions",
+                tool=ASK_USER_TOOL_NAME,
+            )
 
     def _apply_wire_client_info(self, client: ClientInfo | None) -> None:
         if not isinstance(self._soul, KimiSoul):
@@ -385,7 +437,7 @@ class WireServer:
     async def _handle_prompt(
         self, msg: JSONRPCPromptMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if self._soul_is_running:
+        if self._is_streaming:
             # TODO: support queueing multiple inputs
             return JSONRPCErrorResponse(
                 id=msg.id,
@@ -433,12 +485,132 @@ class WireServer:
                 result={"status": Statuses.CANCELLED},
             )
         finally:
+            # Clean up any remaining pending requests from this turn.
+            # After run_soul() returns, the soul and all subagents are done,
+            # so any unresolved requests are stale.
+            stale_ids = [k for k, v in self._pending_requests.items() if not v.resolved]
+            for msg_id in stale_ids:
+                request = self._pending_requests.pop(msg_id)
+                match request:
+                    case ApprovalRequest():
+                        request.resolve("reject")
+                    case ToolCallRequest():
+                        request.resolve(
+                            ToolError(
+                                message="Agent turn ended before tool result was received.",
+                                brief="Turn ended",
+                            )
+                        )
+                    case QuestionRequest():
+                        request.resolve({})
+            self._cancel_event = None
+
+    async def _handle_steer(
+        self, msg: JSONRPCSteerMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if not isinstance(self._soul, KimiSoul) or not self._is_streaming:
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="No agent turn is in progress",
+                ),
+            )
+
+        self._soul.steer(msg.params.user_input)
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result={"status": Statuses.STEERED},
+        )
+
+    async def _handle_replay(
+        self, msg: JSONRPCReplayMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if self._is_streaming:
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE, message="An agent turn is already in progress"
+                ),
+            )
+
+        wire_file = self._soul.wire_file if isinstance(self._soul, KimiSoul) else None
+
+        self._cancel_event = asyncio.Event()
+        events = 0
+        requests = 0
+        try:
+            if wire_file is None or not wire_file.path.exists():
+                return JSONRPCSuccessResponse(
+                    id=msg.id,
+                    result={"status": Statuses.FINISHED, "events": 0, "requests": 0},
+                )
+
+            async for record in wire_file.iter_records():
+                if self._cancel_event.is_set():
+                    return JSONRPCSuccessResponse(
+                        id=msg.id,
+                        result={
+                            "status": Statuses.CANCELLED,
+                            "events": events,
+                            "requests": requests,
+                        },
+                    )
+
+                try:
+                    wire_msg = record.to_wire_message()
+                except Exception:
+                    logger.exception(
+                        "Failed to deserialize wire record for replay: {file}",
+                        file=wire_file.path,
+                    )
+                    continue
+
+                if is_request(wire_msg):
+                    await self._send_msg(JSONRPCRequestMessage(id=wire_msg.id, params=wire_msg))
+                    requests += 1
+                elif is_event(wire_msg):
+                    await self._send_msg(JSONRPCEventMessage(params=wire_msg))
+                    events += 1
+                else:
+                    # Not reachable for valid WireMessage, but keep a guard for corrupted data.
+                    logger.warning(
+                        "Skipping non-wire message during replay: {msg}",
+                        msg=wire_msg,
+                    )
+
+                await asyncio.sleep(0)  # yield control for cancel handling
+
+            if self._cancel_event.is_set():
+                return JSONRPCSuccessResponse(
+                    id=msg.id,
+                    result={
+                        "status": Statuses.CANCELLED,
+                        "events": events,
+                        "requests": requests,
+                    },
+                )
+
+            return JSONRPCSuccessResponse(
+                id=msg.id,
+                result={"status": Statuses.FINISHED, "events": events, "requests": requests},
+            )
+        except Exception:
+            logger.exception("Replay failed:")
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INTERNAL_ERROR,
+                    message="Replay failed",
+                ),
+            )
+        finally:
             self._cancel_event = None
 
     async def _handle_cancel(
         self, msg: JSONRPCCancelMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if not self._soul_is_running:
+        if not self._is_streaming:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(
@@ -517,6 +689,30 @@ class WireServer:
                         result_id=tool_result.tool_call_id,
                     )
                 request.resolve(tool_result.return_value)
+            case QuestionRequest():
+                if isinstance(msg, JSONRPCErrorResponse):
+                    request.resolve({})
+                    return
+
+                try:
+                    result = QuestionResponse.model_validate(msg.result)
+                except pydantic.ValidationError as e:
+                    logger.error(
+                        "Invalid question response for request id={id}: {error}",
+                        id=msg.id,
+                        error=e,
+                    )
+                    request.resolve({})
+                    return
+
+                if result.request_id != request.id:
+                    logger.warning(
+                        "Question response id mismatch: request={request_id}, "
+                        "response={response_id}",
+                        request_id=request.id,
+                        response_id=result.request_id,
+                    )
+                request.resolve(result.answers)
 
     async def _stream_wire_messages(self, wire: Wire) -> None:
         wire_ui = wire.ui_side(merge=False)
@@ -527,6 +723,8 @@ class WireServer:
                     await self._request_approval(msg)
                 case ToolCallRequest():
                     await self._request_external_tool(msg)
+                case QuestionRequest():
+                    await self._request_question(msg)
                 case _:
                     await self._send_msg(JSONRPCEventMessage(method="event", params=msg))
 
@@ -534,10 +732,25 @@ class WireServer:
         msg_id = request.id  # just use the approval request id as message id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
-        await request.wait()
+        # Do NOT await request.wait() here.  The approval future is awaited by
+        # the tool that created the request (inside the soul task).  Blocking the
+        # UI loop would prevent ALL subsequent Wire messages — from every
+        # concurrent subagent — from reaching stdout, causing a cascade deadlock
+        # when the approval response is lost (e.g. no WebSocket connected).
 
     async def _request_external_tool(self, request: ToolCallRequest) -> None:
         msg_id = request.id
         self._pending_requests[msg_id] = request
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
-        await request.wait()
+        # Same rationale as _request_approval: do not block the UI loop.
+
+    async def _request_question(self, request: QuestionRequest) -> None:
+        if not self._client_supports_question:
+            # Client does not support interactive questions; signal the tool
+            # so it can tell the LLM to use an alternative approach.
+            request.set_exception(QuestionNotSupported())
+            return
+        msg_id = request.id
+        self._pending_requests[msg_id] = request
+        await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
+        # Same rationale as _request_approval: do not block the UI loop.

@@ -1,10 +1,10 @@
 # Providers and Models
 
-Kimi Code CLI supports multiple LLM platforms, which can be configured via configuration files or the `/setup` command.
+Kimi Code CLI supports multiple LLM platforms, which can be configured via configuration files or the `/login` command.
 
 ## Platform selection
 
-The easiest way to configure is to run the `/setup` command in shell mode and follow the wizard to select platform and model:
+The easiest way to configure is to run the `/login` command (alias `/setup`) in shell mode and follow the wizard to select platform and model:
 
 1. Select an API platform
 2. Enter your API key
@@ -12,7 +12,7 @@ The easiest way to configure is to run the `/setup` command in shell mode and fo
 
 After configuration, Kimi Code CLI will automatically save settings to `~/.kimi/config.toml` and reload.
 
-`/setup` currently supports the following platforms:
+`/login` currently supports the following platforms:
 
 | Platform | Description |
 | --- | --- |
@@ -141,7 +141,7 @@ When video input capability is enabled, you can send video content in conversati
 
 The `SearchWeb` and `FetchURL` tools depend on external services, currently only provided by the Kimi Code platform.
 
-When selecting the Kimi Code platform using `/setup`, search and fetch services are automatically configured.
+When selecting the Kimi Code platform using `/login`, search and fetch services are automatically configured.
 
 | Service | Corresponding tool | Behavior when not configured |
 | --- | --- | --- |

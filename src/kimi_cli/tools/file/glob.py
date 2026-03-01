@@ -7,9 +7,9 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import load_desc
-from kimi_cli.utils.path import is_within_directory, list_directory
+from kimi_cli.utils.path import is_within_workspace, list_directory
 
 MAX_MATCHES = 1000
 
@@ -38,9 +38,10 @@ class Glob(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
+    def __init__(self, runtime: Runtime) -> None:
         super().__init__()
-        self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
 
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
@@ -63,14 +64,15 @@ class Glob(CallableTool2[Params]):
         """Validate that the directory is safe to search."""
         resolved_dir = directory.canonical()
 
-        # Ensure the directory is within work directory
-        if not is_within_directory(resolved_dir, self._work_dir):
+        # Ensure the directory is within the workspace (work_dir or additional dirs)
+        if not is_within_workspace(resolved_dir, self._work_dir, self._additional_dirs):
             return ToolError(
                 message=(
-                    f"`{directory}` is outside the working directory. "
-                    "You can only search within the working directory."
+                    f"`{directory}` is outside the workspace. "
+                    "You can only search within the working directory "
+                    "and additional directories."
                 ),
-                brief="Directory outside working directory",
+                brief="Directory outside workspace",
             )
         return None
 

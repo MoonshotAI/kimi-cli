@@ -11,6 +11,154 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.16.0 (2026-02-27)
+
+- Web: Update ASCII logo banner to a new styled design
+- Core: Add `--add-dir` CLI option and `/add-dir` slash command to expand the workspace scope with additional directories — added directories are accessible to all file tools (read, write, glob, replace), persisted across sessions, and shown in the system prompt
+- Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
+- Shell: Add `/editor` slash command to configure and switch the default external editor, with interactive selection and persistent config storage
+- Shell: Add `/new` slash command to create and switch to a new session without restarting Kimi Code CLI
+- Wire: Auto-hide `AskUserQuestion` tool when the client does not support the `supports_question` capability, preventing the LLM from invoking unsupported interactions
+- Core: Estimate context token count after compaction so context usage percentage is not reported as 0%
+- Web: Show context usage percentage with one decimal place for better precision
+
+## 1.15.0 (2026-02-27)
+
+- Shell: Simplify input prompt by removing username prefix for a cleaner appearance
+- Shell: Add horizontal separator line and expanded keyboard shortcut hints to the toolbar
+- Shell: Add number key shortcuts (1–5) for quick option selection in question and approval panels, with redesigned bordered panel UI and keyboard hints
+- Shell: Add tab-style navigation for multi-question panels — use Left/Right arrows or Tab to switch between questions, with visual indicators for answered, current, and pending states, and automatic state restoration when revisiting a question
+- Shell: Allow Space key to submit single-select questions in the question panel
+- Web: Add tab-style navigation for multi-question dialogs with clickable tab bar, keyboard navigation, and state restoration when revisiting a question
+- Core: Set process title to "Kimi Code" (visible in `ps` / Activity Monitor / terminal tab title) and label web worker subprocesses as "kimi-code-worker"
+
+## 1.14.0 (2026-02-26)
+
+- Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
+- Tool: Add `AskUserQuestion` tool for presenting structured questions with predefined options during execution, supporting single-select, multi-select, and custom text input
+- Wire: Add `QuestionRequest` / `QuestionResponse` message types and capability negotiation for structured question interactions
+- Shell: Add interactive question panel for `AskUserQuestion` with keyboard-driven option selection
+- Web: Add `QuestionDialog` component for answering structured questions inline, replacing the prompt composer when a question is pending
+- Core: Persist session state across sessions — approval decisions (YOLO mode, auto-approved actions) and dynamic subagents are now saved and restored when resuming a session
+- Core: Use atomic JSON writes for metadata and session state files to prevent data corruption on crash
+- Wire: Add `steer` request to inject user messages into an active agent turn (protocol version 1.4)
+- Web: Allow Cmd/Ctrl+Click on FetchURL tool's URL parameter to open the link in a new browser tab, with platform-appropriate tooltip hint
+
+## 1.13.0 (2026-02-24)
+
+- Core: Add automatic connection recovery that recreates the HTTP client on connection and timeout errors before retrying, improving resilience against transient network failures
+
+## 1.12.0 (2026-02-11)
+
+- Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages
+- Web: Add Think tool rendering as a lightweight reasoning-style block
+- Web: Replace emoji status indicators with Lucide icons for tool states and add category-specific icons for tool names
+- Web: Enhance Reasoning component with improved thinking labels and status icons
+- Web: Enhance Todo component with status icons and improved styling
+- Web: Implement WebSocket reconnection with automatic request resending and stale connection watchdog
+- Web: Enhance session creation dialog with command value handling
+- Web: Support tilde (`~`) expansion in session work directory paths
+- Web: Fix assistant message content overflow clipping
+- Wire: Fix deadlock when multiple subagents run concurrently by not blocking the UI loop on approval and tool-call requests
+- Wire: Clean up stale pending requests after agent turn ends
+- Web: Show placeholder text in prompt input with hints for slash commands and file mentions
+- Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
+- Web: Improve session stop handling with proper async cleanup and timeout
+
+## 1.11.0 (2026-02-10)
+
+- Web: Move context usage indicator from workspace header to prompt toolbar with a hover card showing detailed token usage breakdown
+- Web: Add folder indicator with work directory path to the bottom of the file changes panel
+- Web: Fix stderr not being restored when switching to web mode, which could suppress web server error output
+- Web: Fix port availability check by setting SO_REUSEADDR on the test socket
+
+## 1.10.0 (2026-02-09)
+
+- Web: Add copy and fork action buttons to assistant messages for quick content copying and session forking
+- Web: Add keyboard shortcuts for approval actions — press `1` to approve, `2` to approve for session, `3` to decline
+- Web: Add message queueing — queue follow-up messages while the AI is processing; queued messages are sent automatically when the response completes
+- Web: Replace Git diff status bar with unified prompt toolbar showing activity status, message queue, and file changes in collapsible tabs
+- Web: Load global MCP configuration in web worker so web sessions can use MCP tools
+- Web: Improve mobile prompt input UX — reduce textarea min-height, add `autoComplete="off"`, and disable focus ring on small screens
+- Web: Handle models that stream text before thinking by ensuring thinking messages always appear before text in the message list
+- Web: Show more specific status messages during session connection ("Loading history...", "Starting environment..." instead of generic "Connecting...")
+- Web: Send error status when session environment initialization fails instead of leaving UI in a waiting state
+- Web: Auto-reconnect when no session status received within 15 seconds after history replay completes
+- Web: Use non-blocking file I/O in session streaming to avoid blocking the event loop during history replay
+
+## 1.9.0 (2026-02-06)
+
+- Config: Add `default_yolo` config option to enable YOLO (auto-approve) mode by default
+- Config: Accept both `max_steps_per_turn` and `max_steps_per_run` as aliases for the loop control setting
+- Wire: Add `replay` request to stream recorded Wire events (protocol version 1.3)
+- Web: Add session fork feature to branch off a new session from any assistant response
+- Web: Add session archive feature with auto-archive for sessions older than 15 days
+- Web: Add multi-select mode for bulk archive, unarchive, and delete operations
+- Web: Add media preview for tool results (images/videos from ReadMediaFile) with clickable thumbnails
+- Web: Add shell command and todo list display components for tool outputs
+- Web: Add activity status indicator showing agent state (processing, waiting for approval, etc.)
+- Web: Add error fallback UI when images fail to load
+- Web: Redesign tool input UI with expandable parameters and syntax highlighting for long values
+- Web: Show compaction indicator when context is being compacted
+- Web: Improve auto-scroll behavior in chat for smoother following of new content
+- Web: Update `last_session_id` for work directory when session stream starts
+- Shell: Remove `Ctrl-/` keyboard shortcut that triggered `/help` command
+- Rust: Move the Rust implementation to `MoonshotAI/kimi-agent-rs` with independent releases; binary renamed to `kimi-agent`
+- Core: Preserve session id when reloading configuration so the session resumes correctly
+- Shell: Fix session replay showing messages that were cleared by `/clear` or `/reset`
+- Web: Fix approval request states not updating when session is interrupted or cancelled
+- Web: Fix IME composition issue when selecting slash commands
+- Web: Fix UI not clearing messages after `/clear`, `/reset`, or `/compact` commands
+
+## 1.8.0 (2026-02-05)
+
+- CLI: Fix startup errors (e.g. invalid config files) being silently swallowed instead of displayed
+
+## 1.7.0 (2026-02-05)
+
+- Rust: Add `kagent`, the Rust implementation of Kimi agent kernel with wire-mode support (experimental)
+- Auth: Fix OAuth token refresh conflicts when running multiple sessions simultaneously
+- Web: Add file mention menu (`@`) to reference uploaded attachments and workspace files with autocomplete
+- Web: Add slash command menu in chat input with autocomplete, keyboard navigation, and alias support
+- Web: Prompt to create directory when specified path doesn't exist during session creation
+- Web: Fix authentication token persistence by switching from sessionStorage to localStorage with 24-hour expiry
+- Web: Add server-side pagination for session list with virtualized scrolling for better performance
+- Web: Improve session and work directories loading with smarter caching and invalidation
+- Web: Fix WebSocket errors during history replay by checking connection state before sending
+- Web: Git diff status bar now shows untracked files (new files not yet added to git)
+- Web: Restrict sensitive APIs only in public mode; update origin enforcement logic
+
+## 1.6 (2026-02-03)
+
+- Web: Add token-based authentication and access control for network mode (`--network`, `--lan-only`, `--public`)
+- Web: Add security options: `--auth-token`, `--allowed-origins`, `--restrict-sensitive-apis`, `--dangerously-omit-auth`
+- Web: Change `--host` option to bind to specific IP address; add automatic network address detection
+- Web: Fix WebSocket disconnect when creating new sessions
+- Web: Increase maximum image dimension from 1024 to 4096 pixels
+- Web: Improve UI responsiveness with enhanced hover effects and better layout handling
+- Wire: Add `TurnEnd` event to signal the completion of an agent turn (protocol version 1.2)
+- Core: Fix custom agent prompt files containing `$` causing silent startup failure
+
+## 1.5 (2026-01-30)
+
+- Web: Add Git diff status bar showing uncommitted changes in session working directory
+- Web: Add "Open in" menu for opening files/directories in Terminal, VS Code, Cursor, or other local applications
+- Web: Add search functionality to filter sessions by title or working directory
+- Web: Improve session title display with proper overflow handling
+
+## 1.4 (2026-01-30)
+
+- Shell: Merge `/login` and `/setup` commands; `/setup` is now an alias for `/login`
+- Shell: `/usage` now shows remaining quota percentage; add `/status` alias
+- Config: Add `KIMI_SHARE_DIR` environment variable to customize the share directory path (default: `~/.kimi`)
+- Web: Add new Web UI for browser-based interaction
+- CLI: Add `kimi web` subcommand to launch the Web UI server
+- Auth: Fix encoding error when device name or OS version contains non-ASCII characters
+- Auth: OAuth credentials are now stored in files instead of keyring; existing tokens are automatically migrated on startup
+- Auth: Fix authorization failure after the system sleeps or hibernates
+
+## 1.3 (2026-01-28)
+
 - Auth: Fix authentication issue during agent turns
 - Tool: Wrap media content with descriptive tags in `ReadMediaFile` for better path traceability
 

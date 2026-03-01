@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, and `/feedback`.
 
 ::: warning Note
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
@@ -57,7 +57,7 @@ Image input requires the model to support the `image_in` capability. Video input
 
 ## Slash commands
 
-Slash commands are special instructions starting with `/`, used to execute Kimi Code CLI's built-in features, such as `/help`, `/setup`, `/sessions`, etc. After typing `/`, a list of available commands will automatically appear. For the complete list of slash commands, see the [slash commands reference](../reference/slash-commands.md).
+Slash commands are special instructions starting with `/`, used to execute Kimi Code CLI's built-in features, such as `/help`, `/login`, `/sessions`, etc. After typing `/`, a list of available commands will automatically appear. For the complete list of slash commands, see the [slash commands reference](../reference/slash-commands.md).
 
 ## @ path completion
 
@@ -69,6 +69,24 @@ Check if there are any issues with @src/components/Button.tsx
 
 After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
 
+## Structured questions
+
+During execution, the AI may need you to make choices to determine the next direction. In such cases, the AI will use the `AskUserQuestion` tool to present structured questions and options.
+
+The question panel displays the question description and available options. You can select using the keyboard:
+
+- Use arrow keys (up / down) to navigate options
+- Press `Enter` to confirm selection
+- Press `Space` to toggle selection in multi-select mode
+- Select "Other" to enter custom text
+- Press `Esc` to skip the question
+
+Each question supports 2–4 predefined options, and the AI will set appropriate options and descriptions based on the current task context. If there are multiple questions to answer, the panel displays them as tabs — use Left/Right arrow keys or `Tab` to switch between questions. Answered questions are marked as completed, and switching back to an answered question restores the previous selection.
+
+::: tip
+The AI only uses this tool when your choice genuinely affects subsequent actions. For decisions that can be inferred from context, the AI will decide on its own and continue execution.
+:::
+
 ## Approvals
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi Code CLI will request your confirmation.
@@ -76,7 +94,7 @@ When the AI needs to perform operations that may have an impact (such as modifyi
 The confirmation prompt will show operation details, including shell command and file diff previews. If the content is long and truncated, you can press `Ctrl-E` to expand and view the full content. You can choose:
 
 - **Allow**: Execute this operation
-- **Allow for this session**: Automatically approve similar operations in the current session
+- **Allow for this session**: Automatically approve similar operations in the current session (this decision is persisted with the session and automatically restored when resuming)
 - **Reject**: Do not execute this operation
 
 If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all requests:
@@ -88,6 +106,8 @@ kimi --yolo
 # Or toggle during runtime
 /yolo
 ```
+
+You can also set `default_yolo = true` in the config file to enable YOLO mode by default on every startup. See [Configuration files](../configuration/config-files.md).
 
 When YOLO mode is enabled, a yellow YOLO badge appears in the status bar at the bottom. Enter `/yolo` again to disable it.
 

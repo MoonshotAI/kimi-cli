@@ -14,7 +14,7 @@ kimi --agent okabe
 
 The default agent, suitable for general use. Enabled tools:
 
-`Task`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`
+`Task`, `AskUserQuestion`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`
 
 ### `okabe`
 
@@ -80,6 +80,7 @@ The system prompt file is a Markdown template that can use `${VAR}` syntax to re
 | `${KIMI_WORK_DIR_LS}` | Working directory file list |
 | `${KIMI_AGENTS_MD}` | AGENTS.md file content (if exists) |
 | `${KIMI_SKILLS}` | Loaded skills list |
+| `${KIMI_ADDITIONAL_DIRS_INFO}` | Information about additional directories added via `--add-dir` or `/add-dir` |
 
 You can also define custom parameters via `system_prompt_args`:
 
@@ -144,7 +145,7 @@ Subagents launched via the `Task` tool run in an isolated context and return res
 
 ## Dynamic subagent creation
 
-`CreateSubagent` is an advanced tool that allows AI to dynamically define new subagent types at runtime (not enabled by default). To use it, add to your agent file:
+`CreateSubagent` is an advanced tool that allows AI to dynamically define new subagent types at runtime (not enabled by default). Dynamically created subagents are persisted with the session state and automatically restored when resuming the session. To use it, add to your agent file:
 
 ```yaml
 agent:
@@ -166,6 +167,21 @@ The following are all built-in tools in Kimi Code CLI.
 | `description` | string | Short task description (3-5 words) |
 | `subagent_name` | string | Subagent name |
 | `prompt` | string | Detailed task description |
+
+### `AskUserQuestion`
+
+- **Path**: `kimi_cli.tools.ask_user:AskUserQuestion`
+- **Description**: Present structured questions and options to the user during execution, collecting preferences or decisions. Suitable for scenarios where the user needs to choose between approaches, resolve ambiguous instructions, or provide requirements. Should not be overused — only call when the user's choice genuinely affects subsequent actions.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `questions` | array | Questions list (1–4 questions) |
+| `questions[].question` | string | Question text, ending with `?` |
+| `questions[].header` | string | Short label, max 12 characters (e.g., `Auth`, `Style`) |
+| `questions[].options` | array | Available options (2–4), the system adds an "Other" option automatically |
+| `questions[].options[].label` | string | Option label (1–5 words), append `(Recommended)` for recommended options |
+| `questions[].options[].description` | string | Option description |
+| `questions[].multi_select` | bool | Allow multiple selections, default false |
 
 ### `SetTodoList`
 
@@ -314,11 +330,11 @@ The following are all built-in tools in Kimi Code CLI.
 
 ## Tool security boundaries
 
-**Working directory restrictions**
+**Workspace scope**
 
-- File reading and writing are typically done within the working directory
-- Absolute paths are required when reading files outside the working directory
-- Write and edit operations require user approval; absolute paths are required when operating on files outside the working directory
+- File reading and writing are typically done within the working directory (and additional directories added via `--add-dir` or `/add-dir`)
+- Absolute paths are required when reading files outside the workspace
+- Write and edit operations require user approval; absolute paths are required when operating on files outside the workspace
 
 **Approval mechanism**
 

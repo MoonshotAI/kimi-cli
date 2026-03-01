@@ -34,7 +34,7 @@ class UsageRow:
     reset_hint: str | None = None
 
 
-@registry.command
+@registry.command(aliases=["/status"])
 async def usage(app: Shell, args: str):
     """Display API usage and quota information"""
     assert isinstance(app.soul, KimiSoul)
@@ -110,7 +110,7 @@ def _parse_usage_payload(
     usage = payload.get("usage")
     if isinstance(usage, Mapping):
         usage_map: Mapping[str, Any] = cast(Mapping[str, Any], usage)
-        summary = _to_usage_row(usage_map, default_label="Total quota")
+        summary = _to_usage_row(usage_map, default_label="Weekly limit")
 
     raw_limits_obj = payload.get("limits")
     if isinstance(raw_limits_obj, Sequence):
@@ -250,16 +250,15 @@ def _build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Pane
 
 
 def _format_row(row: UsageRow, label_width: int) -> RenderableType:
-    ratio = row.used / row.limit if row.limit > 0 else 0
+    ratio = (row.limit - row.used) / row.limit if row.limit > 0 else 0
     color = _ratio_color(ratio)
 
     label = Text(f"{row.label:<{label_width}}  ", style="cyan")
     bar = ProgressBar(total=row.limit or 1, completed=row.used, width=20, complete_style=color)
 
     detail = Text()
-    detail.append(
-        f"  {row.used:,} / {row.limit:,}" if row.limit else f"  {row.used:,}", style="bold"
-    )
+    percent = ratio * 100
+    detail.append(f"  {percent:.0f}% left", style="bold")
     if row.reset_hint:
         detail.append(f"  ({row.reset_hint})", style="grey50")
 

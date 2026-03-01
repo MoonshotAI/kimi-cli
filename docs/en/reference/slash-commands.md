@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, and `/feedback`.
 :::
 
 ## Help and info
@@ -32,7 +32,14 @@ Open the GitHub Issues page to submit feedback.
 
 ### `/login`
 
-Log in to your Kimi account. This automatically opens a browser; complete account authorization and available models will be automatically configured. After successful login, Kimi Code CLI will automatically reload the configuration.
+Log in or configure an API platform. After execution, first select a platform:
+
+- **Kimi Code**: Automatically opens a browser for OAuth authorization
+- **Other platforms**: Enter an API key, then select an available model
+
+After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
+
+Alias: `/setup`
 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
@@ -40,18 +47,7 @@ This command is only available when using the default configuration file. If a c
 
 ### `/logout`
 
-Log out from your Kimi account. This clears stored OAuth credentials and removes related configuration from the config file. After logout, Kimi Code CLI will automatically reload the configuration.
-
-### `/setup`
-
-Start the configuration wizard to set up API platform and model using an API key.
-
-Configuration flow:
-1. Select an API platform (Kimi Code, Moonshot AI Open Platform, etc.)
-2. Enter your API key
-3. Select an available model
-
-After configuration, settings are automatically saved to `~/.kimi/config.toml` and reloaded. See [Providers](../configuration/providers.md) for details.
+Log out from the current platform. This clears stored credentials and removes related configuration from the config file. After logout, Kimi Code CLI will automatically reload the configuration.
 
 ### `/model`
 
@@ -64,6 +60,10 @@ After selection, Kimi Code CLI will automatically update the configuration file 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
 :::
+
+### `/editor`
+
+Set the default external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
 
 ### `/reload`
 
@@ -80,7 +80,9 @@ Debug information is displayed in a pager, press `q` to exit.
 
 ### `/usage`
 
-Display API usage and quota information.
+Display API usage and quota information, showing quota usage with progress bars and remaining percentages.
+
+Aliases: `/status`
 
 ::: tip
 This command only works with the Kimi Code platform.
@@ -95,6 +97,10 @@ Output includes:
 - List of tools provided by each server
 
 ## Session management
+
+### `/new`
+
+Create a new session and switch to it immediately, without exiting Kimi Code CLI. If the current session has no content, the empty session directory is automatically cleaned up.
 
 ### `/sessions`
 
@@ -149,6 +155,21 @@ Flow skills can also be invoked via `/skill:<name>`, which loads the content as 
 
 See [Agent Skills](../customization/skills.md#flow-skills) for details.
 
+## Workspace
+
+### `/add-dir`
+
+Add an additional directory to the workspace scope. Once added, the directory is accessible to all file tools (`ReadFile`, `WriteFile`, `Glob`, `Grep`, `StrReplaceFile`, etc.) and its directory listing is shown in the system prompt. Added directories are persisted with the session state and automatically restored when resuming.
+
+Usage:
+
+- `/add-dir <path>`: Add the specified directory to the workspace
+- `/add-dir`: Without arguments, list already added additional directories
+
+::: tip
+Directories already within the working directory do not need to be added, as they are already accessible. You can also add directories at startup via the `--add-dir` option. See [`kimi` command](./kimi-command.md#working-directory) for details.
+:::
+
 ## Others
 
 ### `/init`
@@ -164,6 +185,10 @@ Toggle YOLO mode. When enabled, all operations are automatically approved and a 
 ::: warning Note
 YOLO mode skips all confirmations. Make sure you understand the potential risks.
 :::
+
+### `/web`
+
+Switch to Web UI. Kimi Code CLI will start a Web UI server and open the current session in your browser, allowing you to continue the conversation in the Web UI. See [Web UI](./kimi-web.md) for details.
 
 ## Command completion
 

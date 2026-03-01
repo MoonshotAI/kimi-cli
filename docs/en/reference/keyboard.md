@@ -7,11 +7,13 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
-| `Ctrl-/` | Show help |
+| `Ctrl-O` | Edit in external editor (`$VISUAL`/`$EDITOR`) |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
 | `Ctrl-E` | Expand full approval request content |
+| `1`–`3` | Quick select approval option |
+| `1`–`5` | Select question option by number |
 | `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
 
@@ -28,9 +30,22 @@ The prompt changes based on current mode:
 - Agent mode: `✨` (normal) or `💫` (thinking mode)
 - Shell mode: `$`
 
-### `Ctrl-/`: Show help
+## External editor
 
-Press `Ctrl-/` in the input box to quickly display help information, equivalent to entering the `/help` command.
+### `Ctrl-O`: Edit in external editor
+
+Press `Ctrl-O` to open an external editor (e.g., VS Code, Vim) to edit the current input content. The editor is selected in the following priority:
+
+1. Editor configured via `/editor` command
+2. `$VISUAL` environment variable
+3. `$EDITOR` environment variable
+4. Auto-detect: `code --wait` (VS Code) → `vim` → `vi` → `nano`
+
+Use the `/editor` command to interactively switch editors, or specify directly, e.g., `/editor vim`.
+
+After saving and exiting the editor, the edited content replaces the current input. If you quit without saving (e.g., `:q!` in Vim), the input remains unchanged.
+
+Useful for writing multi-line prompts, complex code snippets, etc.
 
 ## Multi-line input
 
@@ -65,6 +80,25 @@ Image pasting requires the model to support `image_in` capability.
 When approval request preview content is truncated, press `Ctrl-E` to view the full content in a fullscreen pager. When preview is truncated, a "... (truncated, ctrl-e to expand)" hint is displayed.
 
 Useful for viewing longer shell commands or file diff content.
+
+### Number key quick selection
+
+In the approval panel, press `1`–`3` to directly select and submit the corresponding approval option without navigating with arrow keys first.
+
+## Structured question operations
+
+When the AI uses the `AskUserQuestion` tool to ask you a question, the question panel supports the following keyboard operations:
+
+| Shortcut | Function |
+|----------|----------|
+| `↑` / `↓` | Navigate options |
+| `←` / `→` / `Tab` | Switch between questions (multi-question mode) |
+| `1`–`5` | Select option by number (auto-submits for single-select, toggles for multi-select) |
+| `Space` | Submit selection in single-select mode, toggle selection in multi-select mode |
+| `Enter` | Confirm selection |
+| `Esc` | Skip question |
+
+When the AI asks multiple questions at once, the question panel displays them as tabs. Use `←` / `→` or `Tab` to switch between questions. Answered questions are marked as complete, and switching back to a previously answered question restores your earlier selection.
 
 ## Exit and interrupt
 

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.43.0 (2026-02-24)
+
+- Add `RetryableChatProvider` protocol for providers that can recover from retryable transport errors
+- Implement `RetryableChatProvider` in Kimi, OpenAI Legacy, and OpenAI Responses providers
+- Add `create_openai_client` and `close_replaced_openai_client` utilities to `openai_common`
+
+## 0.42.0 (2026-02-06)
+
+- Anthropic: Use adaptive thinking for Opus 4.6+ models instead of budget-based thinking
+
+## 0.41.1 (2026-02-05)
+
+- Handle string annotations in `SimpleToolset` return type check (supports `from __future__ import annotations`)
+
 ## 0.41.0 (2026-01-27)
 
 - Remove default temperature setting in Kimi chat provider based on model name

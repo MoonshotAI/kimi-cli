@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, detect_file_type
-from kimi_cli.tools.utils import load_desc_jinja, truncate_line
-from kimi_cli.utils.path import is_within_directory
+from kimi_cli.tools.utils import load_desc, truncate_line
+from kimi_cli.utils.path import is_within_workspace
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
@@ -47,7 +47,7 @@ class ReadFile(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime) -> None:
-        description = load_desc_jinja(
+        description = load_desc(
             Path(__file__).parent / "read.md",
             {
                 "MAX_LINES": MAX_LINES,
@@ -58,12 +58,16 @@ class ReadFile(CallableTool2[Params]):
         super().__init__(description=description)
         self._runtime = runtime
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
         resolved_path = path.canonical()
 
-        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+        if (
+            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+            and not path.is_absolute()
+        ):
             # Outside files can only be read with absolute paths
             return ToolError(
                 message=(

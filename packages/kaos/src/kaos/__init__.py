@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextvars
-from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
@@ -216,9 +216,14 @@ class Kaos(Protocol):
         """Create a directory at the given path."""
         ...
 
-    async def exec(self, *args: str) -> KaosProcess:
+    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
         """
         Execute a command with arguments and return the running process.
+
+        Args:
+            *args: Command and its arguments.
+            env: Environment variables for the subprocess. If None, inherits
+                 from the parent process.
         """
         ...
 
@@ -337,5 +342,5 @@ async def mkdir(path: StrOrKaosPath, parents: bool = False, exist_ok: bool = Fal
     return await get_current_kaos().mkdir(path, parents=parents, exist_ok=exist_ok)
 
 
-async def exec(*args: str) -> KaosProcess:
-    return await get_current_kaos().exec(*args)
+async def exec(*args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
+    return await get_current_kaos().exec(*args, env=env)

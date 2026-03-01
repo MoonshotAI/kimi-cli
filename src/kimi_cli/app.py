@@ -32,7 +32,10 @@ if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
 
 
-def enable_logging(debug: bool = False) -> None:
+def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None:
+    # NOTE: stderr redirection is implemented by swapping the process-level fd=2 (dup2).
+    # That can hide Click/Typer error output during CLI startup, so some entrypoints delay
+    # installing it until after critical initialization succeeds.
     logger.remove()  # Remove default stderr handler
     logger.enable("kimi_cli")
     if debug:
@@ -44,7 +47,8 @@ def enable_logging(debug: bool = False) -> None:
         rotation="06:00",
         retention="10 days",
     )
-    redirect_stderr_to_logger()
+    if redirect_stderr:
+        redirect_stderr_to_logger()
 
 
 class KimiCLI:
@@ -93,6 +97,8 @@ class KimiCLI:
             FileNotFoundError: When the agent file is not found.
             ConfigError(KimiCLIException, ValueError): When the configuration is invalid.
             AgentSpecError(KimiCLIException, ValueError): When the agent specification is invalid.
+            SystemPromptTemplateError(KimiCLIException, ValueError): When the system prompt
+                template is invalid.
             InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
             MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
@@ -133,6 +139,9 @@ class KimiCLI:
 
         # determine thinking mode
         thinking = config.default_thinking if thinking is None else thinking
+
+        # determine yolo mode
+        yolo = yolo if yolo else config.default_yolo
 
         llm = create_llm(
             provider,
@@ -302,6 +311,17 @@ class KimiCLI:
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )
+        welcome_info.append(
+            WelcomeInfoItem(
+                name="\nTip",
+                value=(
+                    "Kimi Code Web UI, a GUI version of Kimi Code, is now in technical preview."
+                    "\n"
+                    "     Type /web to switch, or next time run `kimi web` directly."
+                ),
+                level=WelcomeInfoItem.Level.INFO,
+            )
+        )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info)
             return await shell.run(command)

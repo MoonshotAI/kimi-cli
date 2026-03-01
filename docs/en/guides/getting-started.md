@@ -10,10 +10,14 @@ Kimi Code CLI is suited for:
 - **Understanding projects**: Exploring unfamiliar codebases, answering architecture and implementation questions
 - **Automating tasks**: Batch processing files, running builds and tests, executing scripts
 
-Kimi Code CLI provides a shell-like interactive experience in the terminal. You can describe your needs in natural language or switch to shell mode at any time to execute commands directly. Beyond terminal usage, Kimi Code CLI also supports integration with [IDEs](./ides.md) and other local agent clients via the [Agent Client Protocol].
+Kimi Code CLI supports the following usage modes:
 
-::: warning Note
-Kimi Code CLI is currently in technical preview. Features and APIs may change. If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
+- **[Interactive CLI (`kimi`)](../reference/kimi-command.md)**: Chat with AI in the terminal using natural language or execute shell commands directly
+- **[Browser UI (`kimi web`)](../reference/kimi-web.md)**: Open a graphical interface in your local browser, with session management, file references, code highlighting, and more
+- **[Agent integration (`kimi acp`)](../reference/kimi-acp.md)**: Run as a service and integrate with [IDEs](./ides.md) and other local agent clients via the [Agent Client Protocol]
+
+::: info Tip
+If you encounter issues or have suggestions, please provide feedback on [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues).
 :::
 
 [Agent Client Protocol]: https://agentclientprotocol.com/
@@ -75,21 +79,13 @@ cd your-project
 kimi
 ```
 
-On first launch, you need to configure your API source. The recommended approach is to use the `/login` command to log in to your Kimi account, which automatically configures available models:
+On first launch, you need to configure your API source. Enter the `/login` command to start configuration:
 
 ```
 /login
 ```
 
-This will automatically open a browser. Complete the Kimi account authorization and you're ready to go. After successful login, Kimi Code CLI will automatically reload the configuration.
-
-If you prefer using an API key instead, enter the `/setup` command to start the configuration wizard:
-
-1. Select an API platform (e.g., Kimi Code, Moonshot AI Open Platform)
-2. Enter your API key
-3. Select the model to use
-
-After configuration, Kimi Code CLI will automatically save the settings and reload. See [Providers](../configuration/providers.md) for details.
+After execution, first select a platform. We recommend **Kimi Code**, which automatically opens a browser for OAuth authorization; selecting other platforms requires entering an API key. After configuration, Kimi Code CLI will automatically save the settings and reload. See [Providers](../configuration/providers.md) for details.
 
 Now you can chat with Kimi Code CLI directly using natural language. Try describing a task you want to complete, for example:
 

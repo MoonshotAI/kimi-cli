@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from kosong.chat_provider import (
     ChatProvider,
     ChatProviderError,
+    RetryableChatProvider,
     StreamedMessage,
     StreamedMessagePart,
     ThinkingEffort,
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
         chaos: "ChaosChatProvider",
     ):
         _: ChatProvider = chaos
+        _: RetryableChatProvider = chaos
 
 
 class ChaosConfig(BaseModel):
@@ -178,6 +180,14 @@ class ChaosChatProvider:
     @property
     def thinking_effort(self) -> ThinkingEffort | None:
         return self._provider.thinking_effort
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        if not isinstance(self._provider, RetryableChatProvider):
+            return False
+        recovered = self._provider.on_retryable_error(error)
+        if recovered:
+            self._monkey_patch_client()
+        return recovered
 
     def with_thinking(self, effort: ThinkingEffort) -> "ChaosChatProvider":
         return ChaosChatProvider(self._provider.with_thinking(effort), self._chaos_config)

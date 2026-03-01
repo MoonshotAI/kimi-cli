@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import string
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -9,17 +8,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pydantic
+from jinja2 import Environment as JinjaEnvironment
+from jinja2 import StrictUndefined, TemplateError, UndefinedError
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.config import Config
-from kimi_cli.exception import MCPConfigError
+from kimi_cli.exception import MCPConfigError, SystemPromptTemplateError
 from kimi_cli.llm import LLM
 from kimi_cli.session import Session
 from kimi_cli.skill import Skill, discover_skills_from_roots, index_skills, resolve_skills_roots
-from kimi_cli.soul.approval import Approval
+from kimi_cli.soul.approval import Approval, ApprovalState
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.environment import Environment
@@ -44,6 +45,8 @@ class BuiltinSystemPromptArgs:
     """The content of AGENTS.md."""
     KIMI_SKILLS: str
     """Formatted information about available skills."""
+    KIMI_ADDITIONAL_DIRS_INFO: str
+    """Formatted information about additional directories in the workspace."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -73,6 +76,7 @@ class Runtime:
     labor_market: LaborMarket
     environment: Environment
     skills: dict[str, Skill]
+    additional_dirs: list[KaosPath]
 
     @staticmethod
     async def create(
@@ -103,6 +107,55 @@ class Runtime:
             for skill in skills
         )
 
+        # Restore additional directories from session state, pruning stale entries
+        additional_dirs: list[KaosPath] = []
+        pruned = False
+        valid_dir_strs: list[str] = []
+        for dir_str in session.state.additional_dirs:
+            d = KaosPath(dir_str).canonical()
+            if await d.is_dir():
+                additional_dirs.append(d)
+                valid_dir_strs.append(dir_str)
+            else:
+                logger.warning(
+                    "Additional directory no longer exists, removing from state: {dir}",
+                    dir=dir_str,
+                )
+                pruned = True
+        if pruned:
+            session.state.additional_dirs = valid_dir_strs
+            session.save_state()
+
+        # Format additional dirs info for system prompt
+        additional_dirs_info = ""
+        if additional_dirs:
+            parts: list[str] = []
+            for d in additional_dirs:
+                try:
+                    dir_ls = await list_directory(d)
+                except OSError:
+                    logger.warning(
+                        "Cannot list additional directory, skipping listing: {dir}", dir=d
+                    )
+                    dir_ls = "[directory not readable]"
+                parts.append(f"### `{d}`\n\n```\n{dir_ls}\n```")
+            additional_dirs_info = "\n\n".join(parts)
+
+        # Merge CLI flag with persisted session state
+        effective_yolo = yolo or session.state.approval.yolo
+        saved_actions = set(session.state.approval.auto_approve_actions)
+
+        def _on_approval_change() -> None:
+            session.state.approval.yolo = approval_state.yolo
+            session.state.approval.auto_approve_actions = set(approval_state.auto_approve_actions)
+            session.save_state()
+
+        approval_state = ApprovalState(
+            yolo=effective_yolo,
+            auto_approve_actions=saved_actions,
+            on_change=_on_approval_change,
+        )
+
         return Runtime(
             config=config,
             oauth=oauth,
@@ -114,12 +167,14 @@ class Runtime:
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
                 KIMI_SKILLS=skills_formatted or "No skills found.",
+                KIMI_ADDITIONAL_DIRS_INFO=additional_dirs_info,
             ),
             denwa_renji=DenwaRenji(),
-            approval=Approval(yolo=yolo),
+            approval=Approval(state=approval_state),
             labor_market=LaborMarket(),
             environment=environment,
             skills=skills_by_name,
+            additional_dirs=additional_dirs,
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -135,6 +190,8 @@ class Runtime:
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
             skills=self.skills,
+            # Share the same list reference so /add-dir mutations propagate to all agents
+            additional_dirs=self.additional_dirs,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -150,6 +207,8 @@ class Runtime:
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
             skills=self.skills,
+            # Share the same list reference so /add-dir mutations propagate to all agents
+            additional_dirs=self.additional_dirs,
         )
 
 
@@ -190,6 +249,7 @@ async def load_agent(
     runtime: Runtime,
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    _restore_dynamic_subagents: bool = True,
 ) -> Agent:
     """
     Load agent from specification file.
@@ -197,6 +257,8 @@ async def load_agent(
     Raises:
         FileNotFoundError: When the agent file is not found.
         AgentSpecError(KimiCLIException, ValueError): When the agent specification is invalid.
+        SystemPromptTemplateError(KimiCLIException, ValueError): When the system prompt template
+            is invalid.
         InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
         MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
         MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be connected.
@@ -217,6 +279,7 @@ async def load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
             mcp_configs=mcp_configs,
+            _restore_dynamic_subagents=False,
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
 
@@ -255,6 +318,19 @@ async def load_agent(
                     raise MCPConfigError(f"Invalid MCP config: {e}") from e
         await toolset.load_mcp_tools(validated_mcp_configs, runtime)
 
+    # Restore dynamic subagents from persisted session state
+    # Skip for fixed subagents — they have their own isolated LaborMarket
+    if _restore_dynamic_subagents:
+        for subagent_spec in runtime.session.state.dynamic_subagents:
+            if subagent_spec.name not in runtime.labor_market.subagents:
+                subagent = Agent(
+                    name=subagent_spec.name,
+                    system_prompt=subagent_spec.system_prompt,
+                    toolset=toolset,
+                    runtime=runtime.copy_for_dynamic_subagent(),
+                )
+                runtime.labor_market.add_dynamic_subagent(subagent_spec.name, subagent)
+
     return Agent(
         name=agent_spec.name,
         system_prompt=system_prompt,
@@ -273,4 +349,18 @@ def _load_system_prompt(
         builtin_args=builtin_args,
         spec_args=args,
     )
-    return string.Template(system_prompt).substitute(asdict(builtin_args), **args)
+    env = JinjaEnvironment(
+        keep_trailing_newline=True,
+        lstrip_blocks=True,
+        trim_blocks=True,
+        variable_start_string="${",
+        variable_end_string="}",
+        undefined=StrictUndefined,
+    )
+    try:
+        template = env.from_string(system_prompt)
+        return template.render(asdict(builtin_args), **args)
+    except UndefinedError as exc:
+        raise SystemPromptTemplateError(f"Missing system prompt arg in {path}: {exc}") from exc
+    except TemplateError as exc:
+        raise SystemPromptTemplateError(f"Invalid system prompt template: {path}: {exc}") from exc

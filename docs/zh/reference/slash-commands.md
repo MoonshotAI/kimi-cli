@@ -3,7 +3,7 @@
 斜杠命令是 Kimi Code CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
-部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/changelog` 和 `/feedback`。
+部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog` 和 `/feedback`。
 :::
 
 ## 帮助与信息
@@ -32,7 +32,14 @@
 
 ### `/login`
 
-登录 Kimi 账号。执行后会自动打开浏览器，完成账号授权后自动配置可用的模型。登录成功后 Kimi Code CLI 会自动重新加载配置。
+登录或配置 API 平台。执行后首先选择平台：
+
+- **Kimi Code**：自动打开浏览器进行 OAuth 授权登录
+- **其他平台**：输入 API 密钥，然后选择可用模型
+
+配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
+
+别名：`/setup`
 
 ::: tip 提示
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
@@ -40,18 +47,7 @@
 
 ### `/logout`
 
-登出 Kimi 账号。会清理存储的 OAuth 凭据并移除配置文件中的相关配置。登出后 Kimi Code CLI 会自动重新加载配置。
-
-### `/setup`
-
-启动配置向导，通过 API 密钥配置平台和模型。
-
-配置流程：
-1. 选择 API 平台（Kimi Code、Moonshot AI 开放平台等）
-2. 输入 API 密钥
-3. 选择可用模型
-
-配置完成后自动保存到 `~/.kimi/config.toml` 并重新加载。详见 [平台与模型](../configuration/providers.md)。
+登出当前平台。会清理存储的凭据并移除配置文件中的相关配置。登出后 Kimi Code CLI 会自动重新加载配置。
 
 ### `/model`
 
@@ -64,6 +60,10 @@
 ::: tip 提示
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
 :::
+
+### `/editor`
+
+设置外部编辑器。不带参数调用时，显示交互式选择界面；也可以直接指定编辑器命令，如 `/editor vim`。配置后按 `Ctrl-O` 会使用此编辑器打开当前输入内容。详见 [键盘快捷键](./keyboard.md#外部编辑器)。
 
 ### `/reload`
 
@@ -80,7 +80,9 @@
 
 ### `/usage`
 
-显示 API 用量和配额信息。
+显示 API 用量和配额信息，以进度条和剩余百分比的形式展示各类配额的使用情况。
+
+别名：`/status`
 
 ::: tip 提示
 此命令仅适用于 Kimi Code 平台。
@@ -95,6 +97,10 @@
 - 每个服务器提供的工具列表
 
 ## 会话管理
+
+### `/new`
+
+创建一个新会话并立即切换过去，无需退出 Kimi Code CLI。如果当前会话没有任何内容，会自动清理空会话目录。
 
 ### `/sessions`
 
@@ -149,6 +155,21 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 详见 [Agent Skills](../customization/skills.md#flow-skills)。
 
+## 工作区
+
+### `/add-dir`
+
+将额外目录添加到工作区范围。添加后，该目录对所有文件工具（`ReadFile`、`WriteFile`、`Glob`、`Grep`、`StrReplaceFile` 等）可用，并会在系统提示词中展示目录结构。添加的目录会随会话状态持久化，恢复会话时自动还原。
+
+用法：
+
+- `/add-dir <path>`：添加指定目录到工作区
+- `/add-dir`：不带参数时列出已添加的额外目录
+
+::: tip 提示
+已在工作目录内的目录无需添加，因为它们已经可访问。也可以在启动时通过 `--add-dir` 参数添加，详见 [`kimi` 命令](./kimi-command.md#工作目录)。
+:::
+
 ## 其他
 
 ### `/init`
@@ -164,6 +185,10 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 ::: warning 注意
 YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 :::
+
+### `/web`
+
+切换到 Web UI。执行后 Kimi Code CLI 会启动 Web UI 服务器并在浏览器中打开当前会话，你可以在 Web UI 中继续对话。详见 [Web UI](./kimi-web.md)。
 
 ## 命令补全
 

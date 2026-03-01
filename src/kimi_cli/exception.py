@@ -25,6 +25,12 @@ class InvalidToolError(KimiCLIException, ValueError):
     pass
 
 
+class SystemPromptTemplateError(KimiCLIException, ValueError):
+    """System prompt template error."""
+
+    pass
+
+
 class MCPConfigError(KimiCLIException, ValueError):
     """MCP config error."""
 
