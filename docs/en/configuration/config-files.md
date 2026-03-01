@@ -1,4 +1,4 @@
-# Config Files
+# Config files
 
 Kimi Code CLI uses configuration files to manage API providers, models, services, and runtime parameters, supporting both TOML and JSON formats.
 
