@@ -290,7 +290,11 @@ def test_ignored_names_not_collected(tmp_path: Path):
 
 def test_ignored_patterns_not_descended(tmp_path: Path):
     """Ignored directories are not scanned for children."""
-    (tmp_path / "node_modules" / "package" / "file.js").mkdir(parents=True)
+    pkg_name = "elephant"
+    js_pkg_dir = tmp_path / "node_modules" / pkg_name
+    js_pkg_dir.mkdir(parents=True)
+    sample_code = "console.log('Hello')"
+    (js_pkg_dir / "file.js").write_text(sample_code)
 
     def ignore_node_modules(name: str) -> bool:
         return name == "node_modules"
@@ -298,5 +302,5 @@ def test_ignored_patterns_not_descended(tmp_path: Path):
     trie = PathTrie(tmp_path, ignore_node_modules, limit=100)
     paths = trie.get_paths()
 
-    assert PurePath("node_modules/package") not in paths
-    assert PurePath("node_modules/package/file.js") not in paths
+    assert PurePath(f"node_modules/{pkg_name}") not in paths
+    assert PurePath(f"node_modules/{pkg_name}/file.js") not in paths

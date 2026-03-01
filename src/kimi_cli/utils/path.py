@@ -231,7 +231,7 @@ class PathTrie:
                 break
 
             try:
-                is_dir = entry.is_dir()
+                is_dir = entry.is_dir(follow_symlinks=False)
             except OSError:
                 continue  # Skip entries we can't stat
 
