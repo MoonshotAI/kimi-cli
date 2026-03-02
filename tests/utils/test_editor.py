@@ -76,6 +76,17 @@ class TestGetEditorCommand:
         with patch("kimi_cli.utils.editor.shutil.which", side_effect=fake_which):
             assert get_editor_command() == ["vim"]
 
+    def test_auto_detect_prefers_trae(self, monkeypatch: pytest.MonkeyPatch):
+        """Auto-detect should prefer 'trae --wait' when available."""
+        monkeypatch.delenv("VISUAL", raising=False)
+        monkeypatch.delenv("EDITOR", raising=False)
+
+        def fake_which(binary: str) -> str | None:
+            return f"/usr/bin/{binary}" if binary in ("trae", "code") else None
+
+        with patch("kimi_cli.utils.editor.shutil.which", side_effect=fake_which):
+            assert get_editor_command() == ["trae", "--wait"]
+
     def test_auto_detect_prefers_code(self, monkeypatch: pytest.MonkeyPatch):
         """Auto-detect should prefer 'code --wait' when available."""
         monkeypatch.delenv("VISUAL", raising=False)
