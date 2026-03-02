@@ -53,7 +53,7 @@ _KEYBOARD_SHORTCUTS = [
     ("Ctrl-X", "Toggle agent/shell mode"),
     ("Ctrl-O", "Edit in external editor ($VISUAL/$EDITOR)"),
     ("Ctrl-J / Alt-Enter", "Insert newline"),
-    ("Ctrl-V", "Paste (supports images)"),
+    ("Ctrl-V / Alt-V", "Paste (supports images)"),
     ("Ctrl-D", "Exit"),
     ("Ctrl-C", "Interrupt"),
 ]
