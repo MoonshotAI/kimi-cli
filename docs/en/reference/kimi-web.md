@@ -168,7 +168,7 @@ Web UI provides a convenient session management interface:
 
 - **Session list**: View all historical sessions, including session title and working directory
 - **Session search**: Quickly filter sessions by title or working directory
-- **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory
+- **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory. Supports Cmd/Ctrl+Click on new-session buttons to open session creation in a new tab
 - **Switch session**: Switch to different sessions with one click
 - **Session fork**: Create a branching session from any assistant response, exploring different directions without affecting the original session
 - **Session archive**: Sessions older than 15 days are automatically archived. You can also archive manually. Archived sessions don't appear in the main list but can be unarchived at any time
@@ -186,6 +186,7 @@ Web UI provides a unified prompt toolbar above the input box, displaying various
 - **Activity status**: Shows the current agent state (processing, waiting for approval, etc.)
 - **Message queue**: Queue follow-up messages while the AI is processing; queued messages are sent automatically when the current response completes
 - **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
+- **Todo list**: When the `SetTodoList` tool is active, shows task progress with an expandable panel for details
 
 ::: info Changed
 Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar.
@@ -291,6 +292,22 @@ Web UI uses responsive design and displays well on screens of different sizes:
 ::: info Changed
 Responsive layout improved in version 1.6 with enhanced hover effects and better layout handling.
 :::
+
+### URL action parameters
+
+Web UI supports URL parameters to trigger specific actions, making it easy to integrate from external tools or scripts:
+
+| Parameter | Description |
+|-----------|-------------|
+| `?action=create` | Open the create-session dialog |
+| `?action=create-in-dir&workDir=<path>` | Directly create a session in the specified working directory |
+
+Examples:
+
+```
+http://127.0.0.1:5494?action=create
+http://127.0.0.1:5494?action=create-in-dir&workDir=/path/to/project
+```
 
 ## Examples
 
