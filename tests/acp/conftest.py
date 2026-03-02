@@ -133,6 +133,28 @@ def acp_share_dir(tmp_path: Path) -> Path:
 
     config_path = share_dir / "config.toml"
     config_path.write_text(tomlkit.dumps(config_data), encoding="utf-8")
+
+    # Provide pre-authenticated credentials for integration tests.
+    # _check_auth() only verifies token file exists with non-empty access_token —
+    # no network validation. Auth logic is unit-tested separately via mocks in
+    # test_acp_server_auth.py. These tests target protocol behavior, not auth.
+    import time as _time
+
+    credentials_dir = share_dir / "credentials"
+    credentials_dir.mkdir(parents=True, exist_ok=True)
+    (credentials_dir / "kimi-code.json").write_text(
+        json.dumps(
+            {
+                "access_token": "test-token-for-ci",
+                "refresh_token": "test-refresh-token",
+                "expires_at": _time.time()
+                + 86400 * 365,  # 1 year, _check_auth doesn't check expiry
+                "scope": "openid",
+                "token_type": "Bearer",
+            }
+        ),
+        encoding="utf-8",
+    )
     return share_dir
 
 
