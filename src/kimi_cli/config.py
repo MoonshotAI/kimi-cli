@@ -81,6 +81,9 @@ class LoopControl(BaseModel):
     reserved_context_size: int = Field(default=50_000, ge=1000)
     """Reserved token count for LLM response generation. Auto-compaction triggers when
     context_tokens + reserved_context_size >= max_context_size. Default is 50000."""
+    compaction_trigger_ratio: float = Field(default=0.85, ge=0.5, le=0.99)
+    """Context usage ratio that triggers auto-compaction. Default is 0.85 (85%).
+    Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio."""
 
 
 class MoonshotSearchConfig(BaseModel):

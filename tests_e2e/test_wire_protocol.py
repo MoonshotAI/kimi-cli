@@ -49,7 +49,11 @@ def test_initialize_handshake(tmp_path) -> None:
                             "description": "Analyze the codebase and generate an `AGENTS.md` file",
                             "aliases": [],
                         },
-                        {"name": "compact", "description": "Compact the context", "aliases": []},
+                        {
+                            "name": "compact",
+                            "description": "Compact the context (optionally with a custom focus, e.g. /compact keep db discussions)",
+                            "aliases": [],
+                        },
                         {"name": "clear", "description": "Clear the context", "aliases": ["reset"]},
                         {
                             "name": "yolo",
@@ -117,7 +121,11 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                             "description": "Analyze the codebase and generate an `AGENTS.md` file",
                             "aliases": [],
                         },
-                        {"name": "compact", "description": "Compact the context", "aliases": []},
+                        {
+                            "name": "compact",
+                            "description": "Compact the context (optionally with a custom focus, e.g. /compact keep db discussions)",
+                            "aliases": [],
+                        },
                         {"name": "clear", "description": "Clear the context", "aliases": ["reset"]},
                         {
                             "name": "yolo",
