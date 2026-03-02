@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "635c578dec40",
+  "strategy": "manual-commit",
+  "branch": "fix/toolbar-overlap",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/features/chat/components/prompt-toolbar/toolbar-changes.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/63/5c578dec40/0/metadata.json",
+      "transcript": "/63/5c578dec40/0/full.jsonl",
+      "context": "/63/5c578dec40/0/context.md",
+      "content_hash": "/63/5c578dec40/0/content_hash.txt",
+      "prompt": "/63/5c578dec40/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1375,
+    "cache_creation_tokens": 25349,
+    "cache_read_tokens": 229394,
+    "output_tokens": 7830,
+    "api_call_count": 9
+  }
+}

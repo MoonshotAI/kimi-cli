@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "635c578dec40",
+  "session_id": "4ab5b6c5-4396-4172-9671-a8aa5fb4bb58",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-02T08:08:51.643027Z",
+  "branch": "fix/toolbar-overlap",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/features/chat/components/prompt-toolbar/toolbar-changes.tsx"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "1a894396a830",
+  "token_usage": {
+    "input_tokens": 1375,
+    "cache_creation_tokens": 25349,
+    "cache_read_tokens": 229394,
+    "output_tokens": 7830,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-02T08:08:51.504923Z",
+    "agent_lines": 26,
+    "human_added": 4,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 30,
+    "agent_percentage": 86.66666666666667
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/4ab5b6c5-4396-4172-9671-a8aa5fb4bb58.jsonl"
+}
