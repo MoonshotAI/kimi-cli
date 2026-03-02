@@ -38,7 +38,7 @@ type OpenTarget = {
   id: string;
   label: string;
   icon: ReactNode;
-  backendApp: "finder" | "cursor" | "vscode" | "iterm" | "terminal" | "antigravity";
+  backendApp: "finder" | "cursor" | "vscode" | "trae" | "iterm" | "terminal" | "antigravity";
   macOnly?: boolean;
   shortcut?: string;
 };
@@ -118,6 +118,12 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
         label: "VS Code",
         icon: <CodeIcon className="size-4" />,
         backendApp: "vscode",
+      },
+      {
+        id: "trae",
+        label: "Trae",
+        icon: <CodeIcon className="size-4" />,
+        backendApp: "trae",
       },
       {
         id: "antigravity",

@@ -15,11 +15,11 @@ from kimi_cli.utils.subprocess_env import get_clean_env
 
 # VSCode needs --wait to block until the file is closed.
 _EDITOR_CANDIDATES = [
-    (["trae", "--wait"], "trae"),
     (["code", "--wait"], "code"),
     (["vim"], "vim"),
     (["vi"], "vi"),
     (["nano"], "nano"),
+    (["trae", "--wait"], "trae"),
 ]
 
 
