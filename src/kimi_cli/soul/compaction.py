@@ -53,15 +53,37 @@ def _estimate_text_tokens(messages: Sequence[Message]) -> int:
     return total_chars // 4
 
 
+def should_auto_compact(
+    token_count: int,
+    max_context_size: int,
+    *,
+    trigger_ratio: float,
+    reserved_context_size: int,
+) -> bool:
+    """Determine whether auto-compaction should be triggered.
+
+    Returns True when either condition is met (whichever fires first):
+    - Ratio-based: token_count >= max_context_size * trigger_ratio
+    - Reserved-based: token_count + reserved_context_size >= max_context_size
+    """
+    return (
+        token_count >= max_context_size * trigger_ratio
+        or token_count + reserved_context_size >= max_context_size
+    )
+
+
 @runtime_checkable
 class Compaction(Protocol):
-    async def compact(self, messages: Sequence[Message], llm: LLM) -> CompactionResult:
+    async def compact(
+        self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
+    ) -> CompactionResult:
         """
         Compact a sequence of messages into a new sequence of messages.
 
         Args:
             messages (Sequence[Message]): The messages to compact.
             llm (LLM): The LLM to use for compaction.
+            custom_instruction: Optional user instruction to guide compaction focus.
 
         Returns:
             CompactionResult: The compacted messages and token usage from the compaction LLM call.
@@ -82,8 +104,10 @@ class SimpleCompaction:
     def __init__(self, max_preserved_messages: int = 2) -> None:
         self.max_preserved_messages = max_preserved_messages
 
-    async def compact(self, messages: Sequence[Message], llm: LLM) -> CompactionResult:
-        compact_message, to_preserve = self.prepare(messages)
+    async def compact(
+        self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
+    ) -> CompactionResult:
+        compact_message, to_preserve = self.prepare(messages, custom_instruction=custom_instruction)
         if compact_message is None:
             return CompactionResult(messages=to_preserve, usage=None)
 
@@ -118,7 +142,9 @@ class SimpleCompaction:
         compact_message: Message | None
         to_preserve: Sequence[Message]
 
-    def prepare(self, messages: Sequence[Message]) -> PrepareResult:
+    def prepare(
+        self, messages: Sequence[Message], *, custom_instruction: str = ""
+    ) -> PrepareResult:
         if not messages or self.max_preserved_messages <= 0:
             return self.PrepareResult(compact_message=None, to_preserve=messages)
 
@@ -151,5 +177,13 @@ class SimpleCompaction:
             compact_message.content.extend(
                 part for part in msg.content if not isinstance(part, ThinkPart)
             )
-        compact_message.content.append(TextPart(text="\n" + prompts.COMPACT))
+        prompt_text = "\n" + prompts.COMPACT
+        if custom_instruction:
+            prompt_text += (
+                "\n\n**User's Custom Compaction Instruction:**\n"
+                "The user has specifically requested the following focus during compaction. "
+                "You MUST prioritize this instruction above the default compression priorities:\n"
+                f"{custom_instruction}"
+            )
+        compact_message.content.append(TextPart(text=prompt_text))
         return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)

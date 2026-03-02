@@ -3,7 +3,7 @@
 斜杠命令是 Kimi Code CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
-部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/changelog` 和 `/feedback`。
+部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog` 和 `/feedback`。
 :::
 
 ## 帮助与信息
@@ -61,6 +61,10 @@
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
 :::
 
+### `/editor`
+
+设置外部编辑器。不带参数调用时，显示交互式选择界面；也可以直接指定编辑器命令，如 `/editor vim`。配置后按 `Ctrl-O` 会使用此编辑器打开当前输入内容。详见 [键盘快捷键](./keyboard.md#外部编辑器)。
+
 ### `/reload`
 
 重新加载配置文件，无需退出 Kimi Code CLI。
@@ -114,7 +118,7 @@
 
 ### `/compact`
 
-手动压缩上下文，减少 token 使用。
+手动压缩上下文，减少 token 使用。可以在命令后附带自定义指引，告诉 AI 在压缩时优先保留哪些信息，例如 `/compact 保留数据库相关的讨论`。
 
 当上下文过长时，Kimi Code CLI 会自动触发压缩。此命令可手动触发压缩过程。
 
@@ -150,6 +154,21 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 :::
 
 详见 [Agent Skills](../customization/skills.md#flow-skills)。
+
+## 工作区
+
+### `/add-dir`
+
+将额外目录添加到工作区范围。添加后，该目录对所有文件工具（`ReadFile`、`WriteFile`、`Glob`、`Grep`、`StrReplaceFile` 等）可用，并会在系统提示词中展示目录结构。添加的目录会随会话状态持久化，恢复会话时自动还原。
+
+用法：
+
+- `/add-dir <path>`：添加指定目录到工作区
+- `/add-dir`：不带参数时列出已添加的额外目录
+
+::: tip 提示
+已在工作目录内的目录无需添加，因为它们已经可访问。也可以在启动时通过 `--add-dir` 参数添加，详见 [`kimi` 命令](./kimi-command.md#工作目录)。
+:::
 
 ## 其他
 

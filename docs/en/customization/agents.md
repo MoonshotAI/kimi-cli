@@ -80,6 +80,7 @@ The system prompt file is a Markdown template that can use `${VAR}` syntax to re
 | `${KIMI_WORK_DIR_LS}` | Working directory file list |
 | `${KIMI_AGENTS_MD}` | AGENTS.md file content (if exists) |
 | `${KIMI_SKILLS}` | Loaded skills list |
+| `${KIMI_ADDITIONAL_DIRS_INFO}` | Information about additional directories added via `--add-dir` or `/add-dir` |
 
 You can also define custom parameters via `system_prompt_args`:
 
@@ -329,11 +330,11 @@ The following are all built-in tools in Kimi Code CLI.
 
 ## Tool security boundaries
 
-**Working directory restrictions**
+**Workspace scope**
 
-- File reading and writing are typically done within the working directory
-- Absolute paths are required when reading files outside the working directory
-- Write and edit operations require user approval; absolute paths are required when operating on files outside the working directory
+- File reading and writing are typically done within the working directory (and additional directories added via `--add-dir` or `/add-dir`)
+- Absolute paths are required when reading files outside the workspace
+- Write and edit operations require user approval; absolute paths are required when operating on files outside the workspace
 
 **Approval mechanism**
 

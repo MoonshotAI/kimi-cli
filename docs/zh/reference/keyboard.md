@@ -7,6 +7,7 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl-X` | 切换 Agent/Shell 模式 |
+| `Ctrl-O` | 在外部编辑器中编辑（`$VISUAL`/`$EDITOR`） |
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
 | `Ctrl-V` | 粘贴（支持图片） |
@@ -28,6 +29,23 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 提示符会根据当前模式变化：
 - Agent 模式：`✨`（普通）或 `💫`（Thinking 模式）
 - Shell 模式：`$`
+
+## 外部编辑器
+
+### `Ctrl-O`：在外部编辑器中编辑
+
+按 `Ctrl-O` 会打开外部编辑器（如 VS Code、Vim）编辑当前输入内容。编辑器按以下优先级选择：
+
+1. `/editor` 命令配置的编辑器
+2. `$VISUAL` 环境变量
+3. `$EDITOR` 环境变量
+4. 自动检测：`code --wait`（VS Code）→ `vim` → `vi` → `nano`
+
+使用 `/editor` 命令可交互式切换编辑器，也可直接指定，如 `/editor vim`。
+
+在编辑器中保存退出后，编辑后的内容会替换当前输入框内容。如果不保存退出（如 Vim 中 `:q!`），输入框内容保持不变。
+
+适用于编写多行 prompt、复杂代码片段等场景。
 
 ## 多行输入
 

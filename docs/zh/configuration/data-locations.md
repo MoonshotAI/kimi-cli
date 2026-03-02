@@ -92,6 +92,7 @@ Wire 消息记录文件，以 JSONL 格式存储会话中的 Wire 事件。用�
 
 - `approval`：审批决策状态（YOLO 模式开关、已自动批准的操作类型）
 - `dynamic_subagents`：动态创建的子 Agent 定义
+- `additional_dirs`：通过 `--add-dir` 或 `/add-dir` 添加的额外工作区目录
 
 恢复会话时，Kimi Code CLI 会读取此文件还原会话状态。此文件使用原子写入，防止崩溃时数据损坏。
 

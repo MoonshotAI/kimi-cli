@@ -10,14 +10,16 @@ import { cn } from "@/lib/utils";
 import type { GitDiffStats } from "@/lib/api/models";
 import type { TokenUsage } from "@/hooks/wireTypes";
 import { useQueueStore } from "../../queue-store";
+import { useToolEventsStore } from "@/features/tool/store";
 import { ToolbarActivityIndicator, type ActivityDetail } from "../activity-status-indicator";
 import { ToolbarQueuePanel, ToolbarQueueTab } from "./toolbar-queue";
 import { ToolbarChangesPanel, ToolbarChangesTab } from "./toolbar-changes";
+import { ToolbarTodoPanel, ToolbarTodoTab } from "./toolbar-todo";
 import { ToolbarContextIndicator } from "./toolbar-context";
 
 // ─── Types ───────────────────────────────────────────────────
 
-type TabId = "queue" | "changes";
+type TabId = "queue" | "changes" | "todo";
 
 type PromptToolbarProps = {
   gitDiffStats?: GitDiffStats | null;
@@ -43,14 +45,16 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
   tokenUsage,
 }: PromptToolbarProps): ReactElement | null {
   const queue = useQueueStore((s) => s.queue);
+  const todoItems = useToolEventsStore((s) => s.todoItems);
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const prevQueueLenRef = useRef(0);
 
   const stats = gitDiffStats;
   const hasChanges = Boolean(stats?.isGitRepo && stats.hasChanges && stats.files && !stats.error);
   const hasQueue = queue.length > 0;
+  const hasTodo = todoItems.length > 0;
   const hasContext = usagePercent !== undefined && usedTokens !== undefined && maxTokens !== undefined;
-  const hasTabs = hasQueue || hasChanges;
+  const hasTabs = hasQueue || hasChanges || hasTodo;
 
   // Auto-open queue tab when first item is added
   useEffect(() => {
@@ -64,7 +68,8 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
   useEffect(() => {
     if (activeTab === "queue" && !hasQueue) setActiveTab(null);
     if (activeTab === "changes" && !hasChanges) setActiveTab(null);
-  }, [activeTab, hasQueue, hasChanges]);
+    if (activeTab === "todo" && !hasTodo) setActiveTab(null);
+  }, [activeTab, hasQueue, hasChanges, hasTodo]);
 
   const toggleTab = useCallback((tab: TabId) => {
     setActiveTab((prev) => (prev === tab ? null : tab));
@@ -80,6 +85,9 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
           {activeTab === "queue" && <ToolbarQueuePanel queue={queue} />}
           {activeTab === "changes" && stats && (
             <ToolbarChangesPanel stats={stats} workDir={workDir} />
+          )}
+          {activeTab === "todo" && (
+            <ToolbarTodoPanel items={todoItems} />
           )}
         </div>
       )}
@@ -103,6 +111,14 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
             stats={stats}
             isActive={activeTab === "changes"}
             onToggle={() => toggleTab("changes")}
+          />
+        )}
+
+        {hasTodo && (
+          <ToolbarTodoTab
+            items={todoItems}
+            isActive={activeTab === "todo"}
+            onToggle={() => toggleTab("todo")}
           />
         )}
 

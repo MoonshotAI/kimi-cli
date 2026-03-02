@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, and `/feedback`.
 
 ::: warning Note
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
@@ -87,7 +87,7 @@ Each question supports 2–4 predefined options, and the AI will set appropriate
 The AI only uses this tool when your choice genuinely affects subsequent actions. For decisions that can be inferred from context, the AI will decide on its own and continue execution.
 :::
 
-## Approvals
+## Approvals and confirmations
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi Code CLI will request your confirmation.
 

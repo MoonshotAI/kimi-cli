@@ -7,6 +7,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
+| `Ctrl-O` | Edit in external editor (`$VISUAL`/`$EDITOR`) |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images) |
@@ -28,6 +29,23 @@ Press `Ctrl-X` in the input box to switch between two modes:
 The prompt changes based on current mode:
 - Agent mode: `✨` (normal) or `💫` (thinking mode)
 - Shell mode: `$`
+
+## External editor
+
+### `Ctrl-O`: Edit in external editor
+
+Press `Ctrl-O` to open an external editor (e.g., VS Code, Vim) to edit the current input content. The editor is selected in the following priority:
+
+1. Editor configured via `/editor` command
+2. `$VISUAL` environment variable
+3. `$EDITOR` environment variable
+4. Auto-detect: `code --wait` (VS Code) → `vim` → `vi` → `nano`
+
+Use the `/editor` command to interactively switch editors, or specify directly, e.g., `/editor vim`.
+
+After saving and exiting the editor, the edited content replaces the current input. If you quit without saving (e.g., `:q!` in Vim), the input remains unchanged.
+
+Useful for writing multi-line prompts, complex code snippets, etc.
 
 ## Multi-line input
 

@@ -4,6 +4,18 @@
 
 ## 未发布
 
+- Core：新增 `compaction_trigger_ratio` 配置项（默认 `0.85`），用于控制自动压缩的触发时机——当上下文用量达到配置比例或剩余空间低于 `reserved_context_size` 时触发压缩，以先满足的条件为准
+- Core：`/compact` 命令支持自定义指令（如 `/compact keep database discussions`），可指导压缩时重点保留的内容
+- Web：新增 URL 操作参数（`?action=create` 打开创建会话对话框，`?action=create-in-dir&workDir=xxx` 直接创建会话）用于外部集成，支持 Cmd/Ctrl+点击新建会话按钮在新标签页中打开会话创建
+- Web：在提示输入工具栏中添加待办列表显示——当 `SetTodoList` 工具激活时，显示任务进度并支持展开面板查看详情
+- ACP：为会话操作添加认证检查，未认证时返回 `AUTH_REQUIRED` 错误响应，支持终端登录流程
+
+## 1.16.0 (2026-02-27)
+
+- Web：更新 ASCII Logo 横幅为新的样式设计
+- Core：新增 `--add-dir` CLI 选项和 `/add-dir` 斜杠命令，支持将额外目录添加到工作区范围——添加的目录可被所有文件工具（读取、写入、glob、替换）访问，跨会话持久化保存，并在系统提示词中展示
+- Shell：新增 `Ctrl-O` 快捷键，在外部编辑器中编辑当前输入内容（`$VISUAL`/`$EDITOR`），支持自动检测 VS Code、Vim、Vi 或 Nano
+- Shell：新增 `/editor` 斜杠命令，可交互式配置和切换默认外部编辑器，设置持久保存到配置文件
 - Shell：新增 `/new` 斜杠命令，无需重启 Kimi Code CLI 即可创建并切换到新会话
 - Wire：当客户端不支持 `supports_question` 能力时，自动隐藏 `AskUserQuestion` 工具，避免 LLM 调用不受支持的交互
 - Core：在压缩后估算上下文 Token 数量，使上下文用量百分比不再显示为 0%
@@ -51,6 +63,8 @@
 - Web：在提示输入框中显示引导占位文本，提示可使用斜杠命令和 @ 引用文件
 - Web：修复在 uvicorn Web 服务器中 Ctrl+C 无法使用的问题，在 Shell 模式退出后恢复默认的 SIGINT 信号处理程序和终端状态
 - Web：改进会话停止处理，使用正确的异步清理和超时机制
+- ACP：添加协议版本协商框架，用于客户端与服务端之间的兼容性校验
+- ACP：添加会话恢复方法，用于恢复会话状态（实验性）
 
 ## 1.11.0 (2026-02-10)
 

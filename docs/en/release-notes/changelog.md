@@ -4,6 +4,18 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Add `compaction_trigger_ratio` config option (default `0.85`) to control when auto-compaction triggers — compaction now fires when context usage reaches the configured ratio or when remaining space falls below `reserved_context_size`, whichever comes first
+- Core: Support custom instructions in `/compact` command (e.g., `/compact keep database discussions`) to guide what the compaction preserves
+- Web: Add URL action parameters (`?action=create` to open create-session dialog, `?action=create-in-dir&workDir=xxx` to create a session directly) for external integrations, and support Cmd/Ctrl+Click on new-session buttons to open session creation in a new browser tab
+- Web: Add todo list display in prompt toolbar — shows task progress with expandable panel when the `SetTodoList` tool is active
+- ACP: Add authentication check for session operations with `AUTH_REQUIRED` error responses for terminal-based login flow
+
+## 1.16.0 (2026-02-27)
+
+- Web: Update ASCII logo banner to a new styled design
+- Core: Add `--add-dir` CLI option and `/add-dir` slash command to expand the workspace scope with additional directories — added directories are accessible to all file tools (read, write, glob, replace), persisted across sessions, and shown in the system prompt
+- Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
+- Shell: Add `/editor` slash command to configure and switch the default external editor, with interactive selection and persistent config storage
 - Shell: Add `/new` slash command to create and switch to a new session without restarting Kimi Code CLI
 - Wire: Auto-hide `AskUserQuestion` tool when the client does not support the `supports_question` capability, preventing the LLM from invoking unsupported interactions
 - Core: Estimate context token count after compaction so context usage percentage is not reported as 0%
@@ -51,6 +63,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Show placeholder text in prompt input with hints for slash commands and file mentions
 - Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
 - Web: Improve session stop handling with proper async cleanup and timeout
+- ACP: Add protocol version negotiation framework for client-server compatibility
+- ACP: Add session resume method to restore session state (experimental)
 
 ## 1.11.0 (2026-02-10)
 
