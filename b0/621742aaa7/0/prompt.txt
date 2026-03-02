@@ -1,0 +1,97 @@
+Implement the following plan:
+
+# 修复 ToolbarChangesPanel 滚动布局
+
+## Context
+
+当前 `fix/toolbar-overlap` 分支已修复了 `sticky bottom-0` 导致 workDir 底部栏与文件列表重叠的问题，改为 flex 列布局 + `flex-shrink-0`。
+
+但存在一个遗留的 flexbox 隐患：可滚动的文件列表 div 缺少 `min-h-0`，导致 `overflow-y-auto` 在 Firefox 等严格遵循规范的浏览器中不会生效，面板会突破 `max-h-32`（128px）限制无限延伸。
+
+## 修改目标
+
+在 `toolbar-changes.tsx` 的可滚动文件列表 div 上补加 `flex-1 min-h-0`，确保跨浏览器一致的滚动行为。
+
+## 修改内容
+
+**文件：** `web/src/features/chat/components/prompt-toolbar/toolbar-changes.tsx`
+
+**位置：** 第 35 行
+
+```tsx
+// 修改前
+<div className="overflow-y-auto py-1 px-0.5">
+
+// 修改后
+<div className="overflow-y-auto py-1 px-0.5 flex-1 min-h-0">
+```
+
+- `flex-1`：让文件列表占满父容器除底部栏以外的所有剩余高度
+- `min-h-0`：覆盖 flex 子元素默认的 `min-height: auto`，允许布局真正压缩该元素，从而使 `overflow-y-auto` 生效
+
+## 验证
+
+1. 打开有大量 git 变更文件的会话
+2. 点击 toolbar 的 changes 标签展开面板
+3. 确认文件列表在 128px 以内滚动，workDir 底部栏始终可见
+4. 在 Firefox 中重复以上验证
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+# Simplify: Code Review and Cleanup
+
+Review all changed files for reuse, quality, and efficiency. Fix any issues found.
+
+## Phase 1: Identify Changes
+
+Run `git diff` (or `git diff HEAD` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.
+
+## Phase 2: Launch Three Review Agents in Parallel
+
+Use the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.
+
+### Agent 1: Code Reuse Review
+
+For each change:
+
+1. **Search for existing utilities and helpers** that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.
+2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.
+3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.
+
+### Agent 2: Code Quality Review
+
+Review the same changes for hacky patterns:
+
+1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls
+2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones
+3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction
+4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries
+5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase
+
+### Agent 3: Efficiency Review
+
+Review the same changes for efficiency:
+
+1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns
+2. **Missed concurrency**: independent operations run sequentially when they could run in parallel
+3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths
+4. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error
+5. **Memory**: unbounded data structures, missing cleanup, event listener leaks
+6. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one
+
+## Phase 3: Fix Issues
+
+Wait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.
+
+When done, briefly summarize what was fixed (or confirm the code was already clean).
+
+---
+
+除了用来测试的文档，add commit push
+
+---
+
+make check、make gen-doc、make gen-changelog

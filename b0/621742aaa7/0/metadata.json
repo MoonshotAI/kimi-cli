@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "b0621742aaa7",
+  "session_id": "4ab5b6c5-4396-4172-9671-a8aa5fb4bb58",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-02T08:18:59.033152Z",
+  "branch": "fix/toolbar-overlap",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/en/reference/kimi-web.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/reference/kimi-web.md",
+    "docs/zh/release-notes/changelog.md",
+    "CHANGELOG.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "0436f7f56019",
+  "token_usage": {
+    "input_tokens": 2821,
+    "cache_creation_tokens": 44346,
+    "cache_read_tokens": 665208,
+    "output_tokens": 9759,
+    "api_call_count": 20
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-02T08:18:58.818342Z",
+    "agent_lines": 0,
+    "human_added": 37,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 37,
+    "agent_percentage": 0
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/4ab5b6c5-4396-4172-9671-a8aa5fb4bb58.jsonl"
+}

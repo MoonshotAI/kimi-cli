@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "b0621742aaa7",
+  "strategy": "manual-commit",
+  "branch": "fix/toolbar-overlap",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CHANGELOG.md",
+    "docs/en/reference/kimi-web.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/reference/kimi-web.md",
+    "docs/zh/release-notes/changelog.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b0/621742aaa7/0/metadata.json",
+      "transcript": "/b0/621742aaa7/0/full.jsonl",
+      "context": "/b0/621742aaa7/0/context.md",
+      "content_hash": "/b0/621742aaa7/0/content_hash.txt",
+      "prompt": "/b0/621742aaa7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2821,
+    "cache_creation_tokens": 44346,
+    "cache_read_tokens": 665208,
+    "output_tokens": 9759,
+    "api_call_count": 20
+  }
+}
