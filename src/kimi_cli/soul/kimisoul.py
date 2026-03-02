@@ -32,7 +32,7 @@ from kimi_cli.soul import (
     wire_send,
 )
 from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction
+from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
@@ -392,8 +392,12 @@ class KimiSoul:
             step_outcome: StepOutcome | None = None
             try:
                 # compact the context if needed
-                reserved = self._loop_control.reserved_context_size
-                if self._context.token_count + reserved >= self._runtime.llm.max_context_size:
+                if should_auto_compact(
+                    self._context.token_count,
+                    self._runtime.llm.max_context_size,
+                    trigger_ratio=self._loop_control.compaction_trigger_ratio,
+                    reserved_context_size=self._loop_control.reserved_context_size,
+                ):
                     logger.info("Context too long, compacting...")
                     await self.compact_context()
 
@@ -544,7 +548,7 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self) -> None:
+    async def compact_context(self, custom_instruction: str = "") -> None:
         """
         Compact the context.
 
@@ -558,7 +562,9 @@ class KimiSoul:
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
-            return await self._compaction.compact(self._context.history, self._runtime.llm)
+            return await self._compaction.compact(
+                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+            )
 
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),

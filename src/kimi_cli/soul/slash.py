@@ -51,13 +51,13 @@ async def init(soul: KimiSoul, args: str):
 
 @registry.command
 async def compact(soul: KimiSoul, args: str):
-    """Compact the context"""
+    """Compact the context (optionally with a custom focus, e.g. /compact keep db discussions)"""
     if soul.context.n_checkpoints == 0:
         wire_send(TextPart(text="The context is empty."))
         return
 
     logger.info("Running `/compact`")
-    await soul.compact_context()
+    await soul.compact_context(custom_instruction=args.strip())
     wire_send(TextPart(text="The context has been compacted."))
     wire_send(StatusUpdate(context_usage=soul.status.context_usage))
 
