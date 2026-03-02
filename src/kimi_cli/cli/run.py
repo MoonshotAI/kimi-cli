@@ -11,6 +11,7 @@ from typing import Annotated, Any
 
 import typer
 
+from kimi_cli.cli.key_rotation import select_best_key
 from kimi_cli.utils.subprocess_env import get_clean_env
 
 cli = typer.Typer(help="Run other CLI tools with Kimi backend.")
@@ -23,6 +24,20 @@ _CLAUDE_CONFIG_DIR = Path.home() / ".claude-kimigas"
 
 # Path to the bundled CLAUDE.md system prompt
 _CLAUDE_SYSTEM_PROMPT_PATH = Path(__file__).parent.parent / "agents" / "claude" / "CLAUDE.md"
+
+# Plugins to pre-install in the kimigas config
+_REQUIRED_PLUGINS = {
+    "superpowers@claude-plugins-official": True,
+    "playwright@claude-plugins-official": True,
+    "code-review@claude-plugins-official": True,
+    "code-simplifier@claude-plugins-official": True,
+    "context7@claude-plugins-official": True,
+    "pr-review-toolkit@claude-plugins-official": True,
+    "claude-code-setup@claude-plugins-official": True,
+    "claude-md-management@claude-plugins-official": True,
+    "ralph-loop@claude-plugins-official": True,
+    "frontend-design@claude-plugins-official": True,
+}
 
 
 def _setup_kimigas_config(api_key: str) -> None:
@@ -79,6 +94,20 @@ def _setup_kimigas_config(api_key: str) -> None:
     cfg["customApiKeyResponses"] = custom_responses
 
     cfg_file.write_text(json.dumps(cfg))
+
+    # Merge required plugins into settings.json (additive only)
+    settings_file = config_dir / "settings.json"
+    settings: dict[str, Any] = {}
+    if settings_file.exists():
+        with contextlib.suppress(json.JSONDecodeError):
+            settings = json.loads(settings_file.read_text())
+
+    plugins: dict[str, bool] = settings.get("plugins", {})
+    for plugin_id, enabled in _REQUIRED_PLUGINS.items():
+        if plugin_id not in plugins:
+            plugins[plugin_id] = enabled
+    settings["plugins"] = plugins
+    settings_file.write_text(json.dumps(settings, indent=2))
 
 
 def _find_claude_binary() -> str | None:
@@ -152,6 +181,13 @@ def claude(
             help="Kimi API key. Defaults to KIMI_API_KEY env var.",
         ),
     ] = None,
+    rotate: Annotated[
+        bool | None,
+        typer.Option(
+            "--rotate/--no-rotate",
+            help="Enable multi-key rotation. Default: auto (rotate when multiple keys found).",
+        ),
+    ] = None,
 ):
     """Run Claude Code with Kimi K2.5 backend.
 
@@ -178,16 +214,22 @@ def claude(
         )
         raise typer.Exit(code=1)
 
-    # Get API key from option or environment
-    kimi_api_key = api_key or os.getenv("KIMI_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-    if not kimi_api_key:
-        typer.echo(
-            "Error: KIMI_API_KEY not set. Provide it via:\n"
-            "  --api-key flag, or\n"
-            "  KIMI_API_KEY environment variable",
-            err=True,
+    # Resolve API key — with rotation if multiple keys available
+    try:
+        kimi_api_key, num_keys = select_best_key(
+            explicit_key=api_key,
+            state_dir=_CLAUDE_CONFIG_DIR,
         )
-        raise typer.Exit(code=1)
+    except RuntimeError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+    # Report rotation status
+    use_rotation = rotate if rotate is not None else (num_keys > 1)
+    if use_rotation and num_keys > 1:
+        typer.echo(f"Key rotation: using 1 of {num_keys} available keys")
+    elif num_keys == 1 and rotate is True:
+        typer.echo("Key rotation: only 1 key found, rotation disabled")
 
     # Set up isolated config dir for API key auth
     _setup_kimigas_config(kimi_api_key)
