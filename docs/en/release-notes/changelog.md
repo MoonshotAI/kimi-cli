@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Web: Add URL action parameters (`?action=create` to open create-session dialog, `?action=create-in-dir&workDir=xxx` to create a session directly) for external integrations, and support Cmd/Ctrl+Click on new-session buttons to open session creation in a new browser tab
+- Web: Add todo list display in prompt toolbar — shows task progress with expandable panel when the `SetTodoList` tool is active
 
 ## 1.16.0 (2026-02-27)
 
@@ -59,6 +60,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Show placeholder text in prompt input with hints for slash commands and file mentions
 - Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
 - Web: Improve session stop handling with proper async cleanup and timeout
+- ACP: Add protocol version negotiation framework for client-server compatibility
+- ACP: Add session resume method to restore session state (experimental)
 
 ## 1.11.0 (2026-02-10)
 
