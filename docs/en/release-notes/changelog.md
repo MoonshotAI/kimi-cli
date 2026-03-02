@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Add `compaction_trigger_ratio` config option (default `0.85`) to control when auto-compaction triggers — compaction now fires when context usage reaches the configured ratio or when remaining space falls below `reserved_context_size`, whichever comes first
+- Core: Support custom instructions in `/compact` command (e.g., `/compact keep database discussions`) to guide what the compaction preserves
 - Web: Add todo list display in prompt toolbar — shows task progress with expandable panel when the `SetTodoList` tool is active
 
 ## 1.16.0 (2026-02-27)

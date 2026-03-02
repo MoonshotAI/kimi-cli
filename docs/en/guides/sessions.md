@@ -72,6 +72,12 @@ Enter `/compact` to have the AI summarize the current conversation and replace t
 /compact
 ```
 
+You can also append custom instructions after the command to tell the AI what content to prioritize preserving during compaction:
+
+```
+/compact keep the database-related discussion
+```
+
 Compacting preserves key information while reducing token consumption. This is useful when the conversation is long but you still want to retain some context.
 
 ::: tip

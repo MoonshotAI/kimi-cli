@@ -87,7 +87,7 @@ Each question supports 2–4 predefined options, and the AI will set appropriate
 The AI only uses this tool when your choice genuinely affects subsequent actions. For decisions that can be inferred from context, the AI will decide on its own and continue execution.
 :::
 
-## Approvals
+## Approvals and confirmations
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi Code CLI will request your confirmation.
 

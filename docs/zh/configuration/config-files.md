@@ -57,6 +57,7 @@ max_steps_per_turn = 100
 max_retries_per_step = 3
 max_ralph_iterations = 0
 reserved_context_size = 50000
+compaction_trigger_ratio = 0.85
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -123,6 +124,7 @@ capabilities = ["thinking", "image_in"]
 | `max_retries_per_step` | `integer` | `3` | 单步最大重试次数 |
 | `max_ralph_iterations` | `integer` | `0` | 每个 User 消息后额外自动迭代次数；`0` 表示关闭；`-1` 表示无限 |
 | `reserved_context_size` | `integer` | `50000` | 预留给 LLM 响应生成的 token 数量；当 `context_tokens + reserved_context_size >= max_context_size` 时自动触发压缩 |
+| `compaction_trigger_ratio` | `float` | `0.85` | 触发自动压缩的上下文使用率阈值（0.5–0.99）；当 `context_tokens >= max_context_size * compaction_trigger_ratio` 时自动触发压缩，与 `reserved_context_size` 条件取先触发者 |
 
 ### `services`
 
