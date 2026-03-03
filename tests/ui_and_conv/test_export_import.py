@@ -825,6 +825,30 @@ class TestResolveImportSource:
         assert isinstance(result, str)
         assert "too large" in result.lower()
 
+    async def test_session_restore_failure_returns_error(self, tmp_path: Path, monkeypatch) -> None:
+        from kimi_cli.session import Session
+        from kimi_cli.soul import context as context_mod
+
+        fake_session = type("FakeSession", (), {"context_file": tmp_path / "ctx.jsonl"})()
+
+        async def fake_find(_work_dir, _target):
+            return fake_session
+
+        monkeypatch.setattr(Session, "find", fake_find)
+
+        class FailingContext:
+            def __init__(self, _path):
+                self.history = []
+
+            async def restore(self):
+                raise RuntimeError("corrupt context file")
+
+        monkeypatch.setattr(context_mod, "Context", FailingContext)
+
+        result = await resolve_import_source("other-id", "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "Failed to load source session" in result
+
     async def test_successful_file_import(self, tmp_path: Path) -> None:
         src = tmp_path / "context.md"
         src.write_text("some important context", encoding="utf-8")
@@ -833,6 +857,36 @@ class TestResolveImportSource:
         content, source_desc = result
         assert content == "some important context"
         assert "context.md" in source_desc
+
+
+# ---------------------------------------------------------------------------
+# perform_export — edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestPerformExportEdgeCases:
+    async def test_checkpoint_only_history_still_exports(self, tmp_path: Path) -> None:
+        """History with only checkpoint messages should still export (they are filtered in turns)."""
+        from kimi_cli.soul.message import system as sys_msg
+
+        history = [
+            Message(role="user", content=[sys_msg("CHECKPOINT 0")]),
+            Message(role="user", content=[sys_msg("CHECKPOINT 1")]),
+        ]
+        result = await perform_export(
+            history=history,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=0,
+            args="",
+            default_dir=tmp_path,
+        )
+        # Not empty (history has 2 messages), but turns will be empty
+        assert isinstance(result, tuple)
+        path, count = result
+        assert count == 2
+        content = path.read_text()
+        assert "# Kimi Session Export" in content
 
 
 # ---------------------------------------------------------------------------

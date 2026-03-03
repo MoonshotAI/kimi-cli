@@ -95,7 +95,7 @@ async def import_context(app: Shell, args: str):
         f"[green]Imported context from {source_desc} "
         f"({len(content)} chars) into current session.[/green]"
     )
-    if Path(target).suffix.lower() == ".env":
+    if Path(target).name.lower() == ".env":
         console.print(
             "[yellow]Warning: .env files may contain secrets (API keys, tokens). "
             "The content is now part of your session context.[/yellow]"

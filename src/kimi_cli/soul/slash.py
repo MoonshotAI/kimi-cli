@@ -218,7 +218,7 @@ async def import_context(soul: KimiSoul, args: str):
     await soul.wire_file.append_message(TurnEnd())
 
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
-    if Path(target).suffix.lower() == ".env":
+    if Path(target).name.lower() == ".env":
         wire_send(
             TextPart(
                 text="Warning: .env files may contain secrets (API keys, tokens). "
