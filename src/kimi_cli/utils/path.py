@@ -100,6 +100,19 @@ def shorten_home(path: KaosPath) -> KaosPath:
         return path
 
 
+def sanitize_cli_path(raw: str) -> str:
+    """Strip surrounding quotes from a CLI path argument.
+
+    On macOS, dragging a file into the terminal wraps the path in single
+    quotes (e.g. ``'/path/to/file'``).  This helper strips matching outer
+    quotes (single or double) so downstream path handling works correctly.
+    """
+    raw = raw.strip()
+    if len(raw) >= 2 and ((raw[0] == "'" and raw[-1] == "'") or (raw[0] == '"' and raw[-1] == '"')):
+        raw = raw[1:-1]
+    return raw
+
+
 def is_within_directory(path: KaosPath, directory: KaosPath) -> bool:
     """
     Check whether *path* is contained within *directory* using pure path semantics.

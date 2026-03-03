@@ -32,11 +32,15 @@ registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 shell_mode_registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 
 
-def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
+def ensure_kimi_soul(app: Shell) -> KimiSoul | None:
     if not isinstance(app.soul, KimiSoul):
         console.print("[red]KimiSoul required[/red]")
         return None
     return app.soul
+
+
+def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
+    return ensure_kimi_soul(app)
 
 
 @registry.command(aliases=["quit"])
@@ -539,6 +543,7 @@ async def mcp(app: Shell, args: str):
 
 from . import (  # noqa: E402
     debug,  # noqa: F401 # type: ignore[reportUnusedImport]
+    export_import,  # noqa: F401 # type: ignore[reportUnusedImport]
     oauth,  # noqa: F401 # type: ignore[reportUnusedImport]
     setup,  # noqa: F401 # type: ignore[reportUnusedImport]
     update,  # noqa: F401 # type: ignore[reportUnusedImport]

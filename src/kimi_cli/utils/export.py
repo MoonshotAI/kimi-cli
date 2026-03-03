@@ -1,0 +1,462 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Sequence
+from datetime import datetime
+from textwrap import shorten
+from typing import cast
+
+from kosong.message import Message
+
+from kimi_cli.utils.message import message_stringify
+from kimi_cli.wire.types import (
+    AudioURLPart,
+    ContentPart,
+    ImageURLPart,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    VideoURLPart,
+)
+
+# ---------------------------------------------------------------------------
+# Export helpers
+# ---------------------------------------------------------------------------
+
+_HINT_KEYS = ("path", "file_path", "command", "query", "url", "name", "pattern")
+"""Common tool-call argument keys whose values make good one-line hints."""
+
+
+def _is_checkpoint_message(msg: Message) -> bool:
+    """Check if a message is an internal checkpoint marker."""
+    if msg.role != "user" or len(msg.content) != 1:
+        return False
+    part = msg.content[0]
+    return isinstance(part, TextPart) and part.text.strip().startswith("<system>CHECKPOINT")
+
+
+def _extract_tool_call_hint(args_json: str) -> str:
+    """Extract a brief human-readable hint from tool-call arguments.
+
+    Looks for well-known keys (path, command, …) and falls back to the first
+    short string value.  Returns ``""`` when nothing useful is found.
+    """
+    try:
+        parsed: object = json.loads(args_json)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    args = cast(dict[str, object], parsed)
+
+    # Prefer well-known keys
+    for key in _HINT_KEYS:
+        val = args.get(key)
+        if isinstance(val, str) and val.strip():
+            return shorten(val, width=60, placeholder="…")
+
+    # Fallback: first short string value
+    for val in args.values():
+        if isinstance(val, str) and 0 < len(val) <= 80:
+            return shorten(val, width=60, placeholder="…")
+
+    return ""
+
+
+def _format_content_part_md(part: ContentPart) -> str:
+    """Convert a single ContentPart to markdown text."""
+    match part:
+        case TextPart(text=text):
+            return text
+        case ThinkPart(think=think):
+            if not think.strip():
+                return ""
+            return f"<details><summary>Thinking</summary>\n\n{think}\n\n</details>"
+        case ImageURLPart():
+            return "[image]"
+        case AudioURLPart():
+            return "[audio]"
+        case VideoURLPart():
+            return "[video]"
+        case _:
+            return f"[{part.type}]"
+
+
+def _format_tool_call_md(tool_call: ToolCall) -> str:
+    """Convert a ToolCall to a markdown sub-section with a readable title."""
+    args_raw = tool_call.function.arguments or "{}"
+    hint = _extract_tool_call_hint(args_raw)
+    title = f"#### Tool Call: {tool_call.function.name}"
+    if hint:
+        title += f" (`{hint}`)"
+
+    try:
+        args_formatted = json.dumps(json.loads(args_raw), indent=2, ensure_ascii=False)
+    except json.JSONDecodeError:
+        args_formatted = args_raw
+
+    return f"{title}\n<!-- call_id: {tool_call.id} -->\n```json\n{args_formatted}\n```"
+
+
+def _format_tool_result_md(msg: Message, tool_name: str, hint: str) -> str:
+    """Format a tool result message as a collapsible markdown block."""
+    call_id = msg.tool_call_id or "unknown"
+
+    # Use _format_content_part_md for consistency with the rest of the module
+    # (message_stringify loses ThinkPart and leaks <system> tags)
+    result_parts: list[str] = []
+    for part in msg.content:
+        text = _format_content_part_md(part)
+        if text.strip():
+            result_parts.append(text)
+    result_text = "\n".join(result_parts)
+
+    summary = f"Tool Result: {tool_name}"
+    if hint:
+        summary += f" (`{hint}`)"
+
+    return (
+        f"<details><summary>{summary}</summary>\n\n"
+        f"<!-- call_id: {call_id} -->\n"
+        f"{result_text}\n\n"
+        "</details>"
+    )
+
+
+def _group_into_turns(history: Sequence[Message]) -> list[list[Message]]:
+    """Group messages into logical turns, each starting at a real user message."""
+    turns: list[list[Message]] = []
+    current: list[Message] = []
+
+    for msg in history:
+        if _is_checkpoint_message(msg):
+            continue
+        if msg.role == "user" and current:
+            turns.append(current)
+            current = []
+        current.append(msg)
+
+    if current:
+        turns.append(current)
+    return turns
+
+
+def _format_turn_md(messages: list[Message], turn_number: int) -> str:
+    """Format a logical turn as a markdown section.
+
+    A turn typically contains:
+      user message -> assistant (thinking + text + tool_calls) -> tool results
+      -> assistant (more text + tool_calls) -> tool results -> assistant (final)
+    All assistant/tool messages are grouped under a single ``### Assistant`` heading.
+    """
+    lines: list[str] = [f"## Turn {turn_number}", ""]
+
+    # tool_call_id -> (function_name, hint)
+    tool_call_info: dict[str, tuple[str, str]] = {}
+    assistant_header_written = False
+
+    for msg in messages:
+        if _is_checkpoint_message(msg):
+            continue
+
+        if msg.role == "user":
+            lines.append("### User")
+            lines.append("")
+            for part in msg.content:
+                text = _format_content_part_md(part)
+                if text.strip():
+                    lines.append(text)
+                    lines.append("")
+
+        elif msg.role == "assistant":
+            if not assistant_header_written:
+                lines.append("### Assistant")
+                lines.append("")
+                assistant_header_written = True
+
+            # Content parts (thinking, text, media)
+            for part in msg.content:
+                text = _format_content_part_md(part)
+                if text.strip():
+                    lines.append(text)
+                    lines.append("")
+
+            # Tool calls
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    hint = _extract_tool_call_hint(tc.function.arguments or "{}")
+                    tool_call_info[tc.id] = (tc.function.name, hint)
+                    lines.append(_format_tool_call_md(tc))
+                    lines.append("")
+
+        elif msg.role == "tool":
+            tc_id = msg.tool_call_id or ""
+            name, hint = tool_call_info.get(tc_id, ("unknown", ""))
+            lines.append(_format_tool_result_md(msg, name, hint))
+            lines.append("")
+
+        elif msg.role in ("system", "developer"):
+            lines.append(f"### {msg.role.capitalize()}")
+            lines.append("")
+            for part in msg.content:
+                text = _format_content_part_md(part)
+                if text.strip():
+                    lines.append(text)
+                    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _build_overview(
+    history: Sequence[Message],
+    turns: list[list[Message]],
+    token_count: int,
+) -> str:
+    """Build the Overview section from existing data (no LLM call)."""
+    # Topic: first real user message text, truncated
+    topic = ""
+    for msg in history:
+        if msg.role == "user" and not _is_checkpoint_message(msg):
+            topic = shorten(message_stringify(msg), width=80, placeholder="…")
+            break
+
+    # Count tool calls across all messages
+    n_tool_calls = sum(len(msg.tool_calls) for msg in history if msg.tool_calls)
+
+    lines = [
+        "## Overview",
+        "",
+        f"- **Topic**: {topic}" if topic else "- **Topic**: (empty)",
+        f"- **Conversation**: {len(turns)} turns | "
+        f"{n_tool_calls} tool calls | {token_count:,} tokens",
+        "",
+        "---",
+    ]
+    return "\n".join(lines)
+
+
+def _build_export_markdown(
+    session_id: str,
+    work_dir: str,
+    history: Sequence[Message],
+    token_count: int,
+    now: datetime,
+) -> str:
+    """Build the full export markdown string."""
+    lines: list[str] = [
+        "---",
+        f"session_id: {session_id}",
+        f"exported_at: {now.isoformat(timespec='seconds')}",
+        f"work_dir: {work_dir}",
+        f"message_count: {len(history)}",
+        f"token_count: {token_count}",
+        "---",
+        "",
+        "# Kimi Session Export",
+        "",
+    ]
+
+    turns = _group_into_turns(history)
+    lines.append(_build_overview(history, turns, token_count))
+    lines.append("")
+
+    for idx, turn_messages in enumerate(turns):
+        lines.append(_format_turn_md(turn_messages, idx + 1))
+
+    return "\n".join(lines)
+
+
+def build_export_markdown(
+    session_id: str,
+    work_dir: str,
+    history: Sequence[Message],
+    token_count: int,
+    now: datetime,
+) -> str:
+    """Build the full export markdown string."""
+    return _build_export_markdown(
+        session_id=session_id,
+        work_dir=work_dir,
+        history=history,
+        token_count=token_count,
+        now=now,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Import helpers
+# ---------------------------------------------------------------------------
+
+_IMPORTABLE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        # Markdown / plain text
+        ".md",
+        ".markdown",
+        ".txt",
+        ".text",
+        ".rst",
+        # Data / config
+        ".json",
+        ".jsonl",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".csv",
+        ".tsv",
+        ".xml",
+        ".env",
+        ".properties",
+        # Source code
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".java",
+        ".kt",
+        ".go",
+        ".rs",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".scala",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".ps1",
+        ".bat",
+        ".cmd",
+        ".r",
+        ".R",
+        ".lua",
+        ".pl",
+        ".pm",
+        ".ex",
+        ".exs",
+        ".erl",
+        ".hs",
+        ".ml",
+        ".sql",
+        ".graphql",
+        ".proto",
+        # Web
+        ".html",
+        ".htm",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".svg",
+        # Logs
+        ".log",
+        # Documentation
+        ".tex",
+        ".bib",
+        ".org",
+        ".adoc",
+        ".wiki",
+    }
+)
+"""File extensions accepted by ``/import``.  Only text-based formats are
+supported — importing binary files (images, PDFs, archives, …) is rejected
+with a friendly message."""
+
+
+def _is_importable_file(path_str: str) -> bool:
+    """Return True if *path_str* has an extension in the importable whitelist.
+
+    Files with no extension are also accepted (could be READMEs, Makefiles, …).
+    """
+    from pathlib import PurePath
+
+    suffix = PurePath(path_str).suffix.lower()
+    return suffix == "" or suffix in _IMPORTABLE_EXTENSIONS
+
+
+def is_importable_file(path_str: str) -> bool:
+    """Return True if *path_str* has an extension in the importable whitelist."""
+    return _is_importable_file(path_str)
+
+
+def _stringify_content_parts(parts: Sequence[ContentPart]) -> str:
+    """Serialize a list of ContentParts to readable text, preserving ThinkPart."""
+    segments: list[str] = []
+    for part in parts:
+        match part:
+            case TextPart(text=text):
+                if text.strip():
+                    segments.append(text)
+            case ThinkPart(think=think):
+                if think.strip():
+                    segments.append(f"<thinking>\n{think}\n</thinking>")
+            case ImageURLPart():
+                segments.append("[image]")
+            case AudioURLPart():
+                segments.append("[audio]")
+            case VideoURLPart():
+                segments.append("[video]")
+            case _:
+                segments.append(f"[{part.type}]")
+    return "\n".join(segments)
+
+
+def _stringify_tool_calls(tool_calls: Sequence[ToolCall]) -> str:
+    """Serialize tool calls to readable text."""
+    lines: list[str] = []
+    for tc in tool_calls:
+        args_raw = tc.function.arguments or "{}"
+        try:
+            args = json.loads(args_raw)
+            args_str = json.dumps(args, ensure_ascii=False)
+        except (json.JSONDecodeError, TypeError):
+            args_str = args_raw
+        lines.append(f"Tool Call: {tc.function.name}({args_str})")
+    return "\n".join(lines)
+
+
+def _stringify_context_history(history: Sequence[Message]) -> str:
+    """Convert a sequence of Messages to a readable text transcript.
+
+    Preserves ThinkPart content, tool call information, and tool results
+    so that an AI receiving the imported context has a complete picture.
+    """
+    parts: list[str] = []
+    for msg in history:
+        if _is_checkpoint_message(msg):
+            continue
+
+        role_label = msg.role.upper()
+        segments: list[str] = []
+
+        # Content parts (text, thinking, media)
+        content_text = _stringify_content_parts(msg.content)
+        if content_text.strip():
+            segments.append(content_text)
+
+        # Tool calls (only on assistant messages)
+        if msg.tool_calls:
+            segments.append(_stringify_tool_calls(msg.tool_calls))
+
+        if not segments:
+            continue
+
+        header = f"[{role_label}]"
+        if msg.role == "tool" and msg.tool_call_id:
+            header = f"[{role_label}] (call_id: {msg.tool_call_id})"
+
+        parts.append(f"{header}\n" + "\n".join(segments))
+    return "\n\n".join(parts)
+
+
+def stringify_context_history(history: Sequence[Message]) -> str:
+    """Convert a sequence of Messages to a readable text transcript."""
+    return _stringify_context_history(history)
