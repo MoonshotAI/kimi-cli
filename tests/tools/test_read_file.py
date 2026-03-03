@@ -288,8 +288,7 @@ async def test_line_truncation_and_messaging(read_file_tool: ReadFile, temp_work
     assert not result.is_error
     assert isinstance(result.output, str)
     assert result.message == snapshot(
-        "3 lines read from file starting from line 1. End of file reached. "
-        "Lines [1, 3] were truncated."
+        "3 lines read from file starting from line 1. End of file reached. Lines 1, 3 were truncated."
     )
 
     # Verify truncation actually happened for specific lines
