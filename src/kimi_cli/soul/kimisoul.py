@@ -150,9 +150,13 @@ class KimiSoul:
 
     @property
     def status(self) -> StatusSnapshot:
+        token_count = self._context.token_count
+        max_size = self._runtime.llm.max_context_size if self._runtime.llm is not None else 0
         return StatusSnapshot(
             context_usage=self._context_usage,
             yolo_enabled=self._approval.is_yolo(),
+            context_tokens=token_count,
+            max_context_tokens=max_size,
         )
 
     @property
@@ -489,7 +493,10 @@ class KimiSoul:
         if result.usage is not None:
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)
-            status_update.context_usage = self.status.context_usage
+            snap = self.status
+            status_update.context_usage = snap.context_usage
+            status_update.context_tokens = snap.context_tokens
+            status_update.max_context_tokens = snap.max_context_tokens
         wire_send(status_update)
 
         # wait for all tool results (may be interrupted)

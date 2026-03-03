@@ -239,7 +239,11 @@ class Shell:
                 user_input,
                 lambda wire: visualize(
                     wire.ui_side(merge=False),  # shell UI maintain its own merge buffer
-                    initial_status=StatusUpdate(context_usage=self.soul.status.context_usage),
+                    initial_status=StatusUpdate(
+                        context_usage=self.soul.status.context_usage,
+                        context_tokens=self.soul.status.context_tokens,
+                        max_context_tokens=self.soul.status.max_context_tokens,
+                    ),
                     cancel_event=cancel_event,
                 ),
                 cancel_event,

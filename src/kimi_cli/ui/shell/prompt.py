@@ -10,7 +10,6 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from hashlib import md5, sha256
 from io import BytesIO
@@ -42,7 +41,7 @@ from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import StatusSnapshot
+from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
 from kimi_cli.utils.logging import logger
@@ -494,6 +493,16 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
     return queue[0]
 
 
+_ALL_TIPS = [
+    "ctrl-x: toggle mode",
+    "ctrl-o: editor",
+    "ctrl-j: newline",
+    "ctrl-v: paste image",
+    "@: mention files",
+]
+_TIP_SEPARATOR = " | "
+
+
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>[a-zA-Z0-9_\-]+):(?P<id>[a-zA-Z0-9_\-\.]+)"
     r"(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
@@ -659,6 +668,7 @@ class CustomPromptSession:
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = thinking
         self._attachment_cache = AttachmentCache()
+        self._tip_rotation_index: int = 0
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -853,6 +863,7 @@ class CustomPromptSession:
             # Sanitize UTF-16 surrogates that may come from Windows clipboard
             command = _sanitize_surrogates(command)
         self._append_history_entry(command)
+        self._tip_rotation_index += 1
 
         # Parse rich content parts
         content: list[ContentPart] = []
@@ -916,10 +927,6 @@ class CustomPromptSession:
         fragments.append(("fg:#4d4d4d", "─" * columns))
         fragments.append(("", "\n"))
 
-        now_text = datetime.now().strftime("%H:%M")
-        fragments.extend([("", now_text), ("", " " * 2)])
-        columns -= len(now_text) + 2
-
         mode = str(self._mode).lower()
         if self._mode == PromptMode.AGENT:
             mode_details: list[str] = []
@@ -945,16 +952,25 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcut_candidates = [
-                "ctrl-x: toggle mode | ctrl-o: editor | ctrl-j: newline",
-                "ctrl-o: editor | ctrl-j: newline",
-                "ctrl-j / alt-enter: newline",
-            ]
-            for shortcuts in shortcut_candidates:
-                if columns - len(right_text) > len(shortcuts) + 2:
-                    fragments.extend([("", shortcuts), ("", " " * 2)])
-                    columns -= len(shortcuts) + 2
-                    break
+            available = columns - len(right_text) - 2
+            full_text = _TIP_SEPARATOR.join(_ALL_TIPS)
+            if len(full_text) <= available:
+                tip_text: str | None = full_text
+            else:
+                n = len(_ALL_TIPS)
+                offset = self._tip_rotation_index % n
+                rotated = _ALL_TIPS[offset:] + _ALL_TIPS[:offset]
+                selected: list[str] = []
+                total_len = 0
+                for tip in rotated:
+                    needed = len(tip) + (len(_TIP_SEPARATOR) if selected else 0)
+                    if total_len + needed <= available:
+                        selected.append(tip)
+                        total_len += needed
+                tip_text = _TIP_SEPARATOR.join(selected) if selected else None
+            if tip_text:
+                fragments.extend([("", tip_text), ("", " " * 2)])
+                columns -= len(tip_text) + 2
 
         padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))
@@ -966,8 +982,11 @@ class CustomPromptSession:
     def _render_right_span(status: StatusSnapshot) -> str:
         current_toast = _current_toast("right")
         if current_toast is None:
-            bounded = max(0.0, min(status.context_usage, 1.0))
-            return f"context: {bounded:.1%}"
+            return format_context_status(
+                status.context_usage,
+                status.context_tokens,
+                status.max_context_tokens,
+            )
 
         current_toast.duration -= _REFRESH_INTERVAL
         if current_toast.duration <= 0.0:

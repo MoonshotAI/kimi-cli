@@ -18,6 +18,7 @@ from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text
 
+from kimi_cli.soul import format_context_status
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
@@ -712,6 +713,9 @@ def _prompt_other_input(question_text: str) -> str:
 class _StatusBlock:
     def __init__(self, initial: StatusUpdate) -> None:
         self.text = Text("", justify="right")
+        self._context_usage: float = 0.0
+        self._context_tokens: int = 0
+        self._max_context_tokens: int = 0
         self.update(initial)
 
     def render(self) -> RenderableType:
@@ -719,7 +723,17 @@ class _StatusBlock:
 
     def update(self, status: StatusUpdate) -> None:
         if status.context_usage is not None:
-            self.text.plain = f"context: {status.context_usage:.1%}"
+            self._context_usage = status.context_usage
+        if status.context_tokens is not None:
+            self._context_tokens = status.context_tokens
+        if status.max_context_tokens is not None:
+            self._max_context_tokens = status.max_context_tokens
+        if status.context_usage is not None:
+            self.text.plain = format_context_status(
+                self._context_usage,
+                self._context_tokens,
+                self._max_context_tokens,
+            )
 
 
 @asynccontextmanager
