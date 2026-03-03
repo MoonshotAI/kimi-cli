@@ -61,7 +61,7 @@ async def export(app: Shell, args: str):
 @shell_mode_registry.command(name="import")
 async def import_context(app: Shell, args: str):
     """Import context from a file or session ID"""
-    from kimi_cli.utils.export import build_import_message, resolve_import_source
+    from kimi_cli.utils.export import perform_import
 
     soul = ensure_kimi_soul(app)
     if soul is None:
@@ -73,23 +73,26 @@ async def import_context(app: Shell, args: str):
         return
 
     session = soul.runtime.session
-    result = await resolve_import_source(
+    raw_max_context_size = (
+        soul.runtime.llm.max_context_size if soul.runtime.llm is not None else None
+    )
+    max_context_size = (
+        raw_max_context_size
+        if isinstance(raw_max_context_size, int) and raw_max_context_size > 0
+        else None
+    )
+    result = await perform_import(
         target=target,
         current_session_id=session.id,
         work_dir=session.work_dir,
+        context=soul.context,
+        max_context_size=max_context_size,
     )
     if isinstance(result, str):
         console.print(f"[red]{result}[/red]")
         return
 
-    content, source_desc = result
-    message = build_import_message(content, source_desc)
-    await soul.context.append_message(message)
-
-    from kimi_cli.soul.compaction import estimate_text_tokens
-
-    estimated = estimate_text_tokens([message])
-    await soul.context.update_token_count(soul.context.token_count + estimated)
+    source_desc, content_len = result
 
     # Write to wire file so the import appears in session replay
     await soul.wire_file.append_message(
@@ -99,7 +102,7 @@ async def import_context(app: Shell, args: str):
 
     console.print(
         f"[green]Imported context from {source_desc} "
-        f"({len(content)} chars) into current session.[/green]"
+        f"({content_len} chars) into current session.[/green]"
     )
     if source_desc.startswith("file") and is_sensitive_file(Path(target).name):
         console.print(

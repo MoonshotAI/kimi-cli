@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from textwrap import shorten
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import aiofiles
 from kaos.path import KaosPath
@@ -23,6 +23,9 @@ from kimi_cli.wire.types import (
     ToolCall,
     VideoURLPart,
 )
+
+if TYPE_CHECKING:
+    from kimi_cli.soul.context import Context
 
 # ---------------------------------------------------------------------------
 # Export helpers
@@ -465,10 +468,13 @@ async def perform_export(
 
     cleaned = sanitize_cli_path(args)
     if cleaned:
+        # sanitize_cli_path only strips quotes; it preserves trailing separators.
+        directory_hint = cleaned.endswith(("/", "\\"))
         output = Path(cleaned).expanduser()
         if not output.is_absolute():
             output = default_dir / output
-        if output.is_dir():
+        # Keep explicit "directory intent" even when the directory does not exist yet.
+        if directory_hint or output.is_dir():
             output = output / default_name
     else:
         output = default_dir / default_name
@@ -513,12 +519,43 @@ def is_sensitive_file(filename: str) -> bool:
     return any(pat in name for pat in _SENSITIVE_FILE_PATTERNS)
 
 
+def _validate_import_token_budget(
+    estimated_tokens: int,
+    current_token_count: int,
+    max_context_size: int | None,
+) -> str | None:
+    """Return an error if importing would push the session over the context budget.
+
+    *estimated_tokens* is the pre-computed token estimate for the import
+    message.  The check is ``current_token_count + estimated_tokens <=
+    max_context_size``.
+    """
+    if max_context_size is None or max_context_size <= 0:
+        return None
+
+    total_after_import = current_token_count + estimated_tokens
+    if total_after_import <= max_context_size:
+        return None
+
+    return (
+        "Imported content is too large for the current model context "
+        f"(~{estimated_tokens:,} import tokens + {current_token_count:,} existing "
+        f"= ~{total_after_import:,} total > {max_context_size:,} token limit). "
+        "Please import a smaller file or session."
+    )
+
+
 async def resolve_import_source(
     target: str,
     current_session_id: str,
     work_dir: KaosPath,
 ) -> tuple[str, str] | str:
-    """Resolve the import source to ``(content, source_desc)`` or an error message."""
+    """Resolve the import source to ``(content, source_desc)`` or an error message.
+
+    This function handles I/O and source-level validation (file type, encoding,
+    byte-size cap).  Session-level concerns like token budget are checked by
+    :func:`perform_import`.
+    """
     from kimi_cli.session import Session
     from kimi_cli.soul.context import Context
 
@@ -607,3 +644,42 @@ def build_import_message(content: str, source_desc: str) -> Message:
             TextPart(text=import_text),
         ],
     )
+
+
+async def perform_import(
+    target: str,
+    current_session_id: str,
+    work_dir: KaosPath,
+    context: Context,
+    max_context_size: int | None = None,
+) -> tuple[str, int] | str:
+    """High-level import operation: resolve source, validate, build message, update context.
+
+    Returns ``(source_desc, content_len)`` on success, or an error message
+    string.  *content_len* is the raw imported content length in characters
+    (excluding wrapper markup), suitable for user-facing display.
+    The caller is responsible for any additional side-effects (wire file writes,
+    UI output, etc.).
+    """
+    from kimi_cli.soul.compaction import estimate_text_tokens
+
+    result = await resolve_import_source(
+        target=target,
+        current_session_id=current_session_id,
+        work_dir=work_dir,
+    )
+    if isinstance(result, str):
+        return result
+
+    content, source_desc = result
+    message = build_import_message(content, source_desc)
+
+    # Token budget check — reject before mutating context.
+    estimated = estimate_text_tokens([message])
+    if error := _validate_import_token_budget(estimated, context.token_count, max_context_size):
+        return error
+
+    await context.append_message(message)
+    await context.update_token_count(context.token_count + estimated)
+
+    return (source_desc, len(content))

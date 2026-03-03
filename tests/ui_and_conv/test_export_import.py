@@ -22,6 +22,7 @@ from kimi_cli.utils.export import (
     build_import_message,
     is_importable_file,
     perform_export,
+    perform_import,
     resolve_import_source,
     stringify_context_history,
 )
@@ -701,6 +702,25 @@ class TestPerformExport:
         assert path.parent == tmp_path
         assert path.name.startswith("kimi-export-abc12345")
 
+    async def test_trailing_separator_uses_directory_semantics_when_missing(
+        self, tmp_path: Path
+    ) -> None:
+        export_dir = tmp_path / "exports"
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=100,
+            args=f"{export_dir}/",
+            default_dir=tmp_path,
+        )
+        assert isinstance(result, tuple)
+        path, _ = result
+        assert path.parent == export_dir
+        assert path.name.startswith("kimi-export-abc12345")
+        assert export_dir.exists() and export_dir.is_dir()
+        assert path.exists()
+
     async def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         nested = tmp_path / "a" / "b" / "export.md"
         result = await perform_export(
@@ -974,3 +994,127 @@ class TestBuildImportMessage:
         assert "<imported_context source=\"file 'test.md'\">" in second.text
         assert "hello world" in second.text
         assert "</imported_context>" in second.text
+
+
+# ---------------------------------------------------------------------------
+# perform_import
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_context(token_count: int = 0):
+    """Create a minimal mock context for perform_import tests."""
+    from unittest.mock import AsyncMock
+
+    ctx = AsyncMock()
+    ctx.token_count = token_count
+    return ctx
+
+
+class TestPerformImport:
+    async def test_file_exceeding_model_context_budget_returns_error(self, tmp_path: Path) -> None:
+        src = tmp_path / "context.md"
+        src.write_text("x" * 2000, encoding="utf-8")
+        ctx = _make_mock_context(token_count=0)
+        result = await perform_import(
+            str(src),
+            "curr-id",
+            tmp_path,  # type: ignore[arg-type]
+            context=ctx,
+            max_context_size=128,
+        )
+        assert isinstance(result, str)
+        assert "model context" in result.lower()
+        assert "import tokens" in result.lower()
+        # Context must NOT be mutated on failure.
+        ctx.append_message.assert_not_awaited()
+        ctx.update_token_count.assert_not_awaited()
+
+    async def test_file_within_model_context_budget_succeeds(self, tmp_path: Path) -> None:
+        src = tmp_path / "small.md"
+        src.write_text("small context", encoding="utf-8")
+        ctx = _make_mock_context(token_count=0)
+        result = await perform_import(
+            str(src),
+            "curr-id",
+            tmp_path,  # type: ignore[arg-type]
+            context=ctx,
+            max_context_size=4096,
+        )
+        assert isinstance(result, tuple)
+        source_desc, content_len = result
+        assert source_desc == "file 'small.md'"
+        assert content_len == len("small context")
+        ctx.append_message.assert_awaited_once()
+        ctx.update_token_count.assert_awaited_once()
+
+    async def test_existing_context_pushes_import_over_budget(self, tmp_path: Path) -> None:
+        """Import that fits alone but exceeds budget with existing context tokens."""
+        src = tmp_path / "medium.md"
+        src.write_text("a" * 100, encoding="utf-8")
+        # current_token_count near the limit — should fail.
+        ctx = _make_mock_context(token_count=180)
+        result = await perform_import(
+            str(src),
+            "curr-id",
+            tmp_path,  # type: ignore[arg-type]
+            context=ctx,
+            max_context_size=200,
+        )
+        assert isinstance(result, str)
+        assert "model context" in result.lower()
+        assert "existing" in result.lower()
+        ctx.append_message.assert_not_awaited()
+
+    async def test_session_exceeding_model_context_budget_returns_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Session import that exceeds model context budget is rejected."""
+        from kimi_cli.session import Session
+        from kimi_cli.soul import context as context_mod
+
+        fake_session = type("FakeSession", (), {"context_file": tmp_path / "ctx.jsonl"})()
+
+        async def fake_find(_work_dir, _target):
+            return fake_session
+
+        monkeypatch.setattr(Session, "find", fake_find)
+
+        big_text = "x" * 2000
+        fake_history = [Message(role="user", content=[TextPart(text=big_text)])]
+
+        class FakeContext:
+            def __init__(self, _path):
+                self.history = fake_history
+
+            async def restore(self):
+                return True
+
+        monkeypatch.setattr(context_mod, "Context", FakeContext)
+
+        ctx = _make_mock_context(token_count=0)
+        result = await perform_import(
+            "other-id",
+            "curr-id",
+            tmp_path,  # type: ignore[arg-type]
+            context=ctx,
+            max_context_size=128,
+        )
+        assert isinstance(result, str)
+        assert "model context" in result.lower()
+        ctx.append_message.assert_not_awaited()
+
+    async def test_returns_raw_content_len(self, tmp_path: Path) -> None:
+        """content_len must equal the raw content length, not the wrapped message."""
+        src = tmp_path / "data.txt"
+        raw = "hello world"
+        src.write_text(raw, encoding="utf-8")
+        ctx = _make_mock_context(token_count=0)
+        result = await perform_import(
+            str(src),
+            "curr-id",
+            tmp_path,  # type: ignore[arg-type]
+            context=ctx,
+        )
+        assert isinstance(result, tuple)
+        _desc, content_len = result
+        assert content_len == len(raw)
