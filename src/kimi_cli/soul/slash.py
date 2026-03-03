@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kaos.path import KaosPath
 from kosong.message import Message
 from loguru import logger
 
@@ -13,7 +14,7 @@ from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system
-from kimi_cli.utils.path import sanitize_cli_path
+from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
 from kimi_cli.wire.types import StatusUpdate, TextPart, TurnBegin, TurnEnd
 
@@ -176,7 +177,8 @@ async def export(soul: KimiSoul, args: str):
         wire_send(TextPart(text=result))
         return
     output, count = result
-    wire_send(TextPart(text=f"Exported {count} messages to {output}"))
+    display = shorten_home(KaosPath(str(output)))
+    wire_send(TextPart(text=f"Exported {count} messages to {display}"))
 
 
 @registry.command(name="import")

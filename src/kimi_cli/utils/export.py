@@ -461,7 +461,7 @@ async def perform_export(
     if not history:
         return "No messages to export."
 
-    now = datetime.now()
+    now = datetime.now().astimezone()
     short_id = session_id[:8]
     default_name = f"kimi-export-{short_id}-{now.strftime('%Y%m%d-%H%M%S')}.md"
 

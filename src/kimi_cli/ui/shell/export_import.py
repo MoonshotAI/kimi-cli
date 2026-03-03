@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kaos.path import KaosPath
+
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import ensure_kimi_soul, registry, shell_mode_registry
-from kimi_cli.utils.path import sanitize_cli_path
+from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.wire.types import TurnBegin, TurnEnd
 
 if TYPE_CHECKING:
@@ -41,7 +43,8 @@ async def export(app: Shell, args: str):
         return
 
     output, count = result
-    console.print(f"[green]Exported {count} messages to {output}[/green]")
+    display = shorten_home(KaosPath(str(output)))
+    console.print(f"[green]Exported {count} messages to {display}[/green]")
     console.print(
         "[yellow]Note: The exported file may contain sensitive information. "
         "Please be cautious when sharing it externally.[/yellow]"
