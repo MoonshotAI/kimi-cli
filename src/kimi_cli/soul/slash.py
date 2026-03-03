@@ -213,7 +213,7 @@ async def import_context(soul: KimiSoul, args: str):
     await soul.context.append_message(message)
 
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
-    if is_sensitive_file(Path(target).name):
+    if source_desc.startswith("file") and is_sensitive_file(Path(target).name):
         wire_send(
             TextPart(
                 text="Warning: This file may contain secrets (API keys, tokens, credentials). "
