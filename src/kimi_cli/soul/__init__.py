@@ -49,12 +49,47 @@ class MaxStepsReached(Exception):
         self.n_steps = n_steps
 
 
+def format_token_count(n: int) -> str:
+    """Format token count as compact string, e.g. 28.5k, 128k, 1.2m."""
+    suffix = ""
+    if n >= 1_000_000:
+        value = n / 1_000_000
+        suffix = "m"
+    elif n >= 1_000:
+        value = n / 1_000
+        suffix = "k"
+    else:
+        return str(n)
+
+    # Keep one decimal when needed, but drop trailing ".0".
+    compact = f"{value:.1f}".rstrip("0").rstrip(".")
+    return f"{compact}{suffix}"
+
+
+def format_context_status(
+    context_usage: float,
+    context_tokens: int = 0,
+    max_context_tokens: int = 0,
+) -> str:
+    """Format context status string for display in status bar."""
+    bounded = max(0.0, min(context_usage, 1.0))
+    if max_context_tokens > 0:
+        used = format_token_count(context_tokens)
+        total = format_token_count(max_context_tokens)
+        return f"context: {bounded:.1%} ({used}/{total})"
+    return f"context: {bounded:.1%}"
+
+
 @dataclass(frozen=True, slots=True)
 class StatusSnapshot:
     context_usage: float
     """The usage of the context, in percentage."""
     yolo_enabled: bool = False
     """Whether YOLO (auto-approve) mode is enabled."""
+    context_tokens: int = 0
+    """The number of tokens currently in the context."""
+    max_context_tokens: int = 0
+    """The maximum number of tokens the context can hold."""
 
 
 @runtime_checkable

@@ -112,6 +112,8 @@ def test_skill_prompt_injects_skill_text(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
@@ -198,6 +200,8 @@ def test_flow_skill(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
@@ -310,6 +314,8 @@ def test_mcp_tool_call(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
@@ -356,6 +362,8 @@ def test_mcp_tool_call(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },

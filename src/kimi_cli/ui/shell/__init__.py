@@ -234,12 +234,17 @@ class Shell:
         remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
+            snap = self.soul.status
             await run_soul(
                 self.soul,
                 user_input,
                 lambda wire: visualize(
                     wire.ui_side(merge=False),  # shell UI maintain its own merge buffer
-                    initial_status=StatusUpdate(context_usage=self.soul.status.context_usage),
+                    initial_status=StatusUpdate(
+                        context_usage=snap.context_usage,
+                        context_tokens=snap.context_tokens,
+                        max_context_tokens=snap.max_context_tokens,
+                    ),
                     cancel_event=cancel_event,
                 ),
                 cancel_event,

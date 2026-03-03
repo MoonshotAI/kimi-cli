@@ -108,6 +108,10 @@ class StatusUpdate(BaseModel):
 
     context_usage: float | None = None
     """The usage of the context, in percentage."""
+    context_tokens: int | None = None
+    """The number of tokens currently in the context."""
+    max_context_tokens: int | None = None
+    """The maximum number of tokens the context can hold."""
     token_usage: TokenUsage | None = None
     """The token usage statistics of the current step."""
     message_id: str | None = None

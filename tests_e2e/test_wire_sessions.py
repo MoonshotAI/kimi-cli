@@ -189,7 +189,13 @@ def test_clear_context_rotates(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": 0.0,
+                        "context_tokens": 0,
+                        "max_context_tokens": 100000,
+                        "token_usage": None,
+                        "message_id": None,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -259,7 +265,13 @@ def test_manual_compact(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": 1e-05, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": 1e-05,
+                        "context_tokens": 1,
+                        "max_context_tokens": 100000,
+                        "token_usage": None,
+                        "message_id": None,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -407,7 +419,13 @@ def test_replay_streams_wire_history(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                    },
                 },
                 {
                     "method": "request",
@@ -449,7 +467,13 @@ def test_replay_streams_wire_history(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]

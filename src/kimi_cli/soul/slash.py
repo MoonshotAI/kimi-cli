@@ -59,7 +59,14 @@ async def compact(soul: KimiSoul, args: str):
     logger.info("Running `/compact`")
     await soul.compact_context(custom_instruction=args.strip())
     wire_send(TextPart(text="The context has been compacted."))
-    wire_send(StatusUpdate(context_usage=soul.status.context_usage))
+    snap = soul.status
+    wire_send(
+        StatusUpdate(
+            context_usage=snap.context_usage,
+            context_tokens=snap.context_tokens,
+            max_context_tokens=snap.max_context_tokens,
+        )
+    )
 
 
 @registry.command(aliases=["reset"])
@@ -68,7 +75,14 @@ async def clear(soul: KimiSoul, args: str):
     logger.info("Running `/clear`")
     await soul.context.clear()
     wire_send(TextPart(text="The context has been cleared."))
-    wire_send(StatusUpdate(context_usage=soul.status.context_usage))
+    snap = soul.status
+    wire_send(
+        StatusUpdate(
+            context_usage=snap.context_usage,
+            context_tokens=snap.context_tokens,
+            max_context_tokens=snap.max_context_tokens,
+        )
+    )
 
 
 @registry.command
