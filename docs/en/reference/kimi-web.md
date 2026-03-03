@@ -92,7 +92,7 @@ Use `--auth-token` to set an access token. Clients need to include `Authorizatio
 kimi web --network --auth-token my-secret-token
 ```
 
-::: tip Tip
+::: tip
 The access token should be a randomly generated string with at least 32 characters. You can use `openssl rand -hex 32` to generate a random token.
 :::
 
@@ -104,7 +104,7 @@ Use `--allowed-origins` to restrict the origin domains that can access Web UI:
 kimi web --network --allowed-origins "https://example.com,https://app.example.com"
 ```
 
-::: tip Tip
+::: tip
 When using `--network` or `--host` to enable network access, it is recommended to configure `--allowed-origins` to prevent Cross-Site Request Forgery (CSRF) attacks.
 :::
 
@@ -134,7 +134,7 @@ kimi web --network --restrict-sensitive-apis
 
 In `--public` mode, `--restrict-sensitive-apis` is enabled by default; in `--lan-only` mode (default), it is not enabled.
 
-::: tip Tip
+::: tip
 When you need to expose Web UI to untrusted network environments, it is recommended to enable the `--restrict-sensitive-apis` option.
 :::
 
