@@ -15,7 +15,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system
 from kimi_cli.utils.path import sanitize_cli_path
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
-from kimi_cli.wire.types import StatusUpdate, TextPart
+from kimi_cli.wire.types import StatusUpdate, TextPart, TurnBegin, TurnEnd
 
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
@@ -202,4 +202,11 @@ async def import_context(soul: KimiSoul, args: str):
     content, source_desc = result
     message = build_import_message(content, source_desc)
     await soul.context.append_message(message)
+
+    # Write wire markers so the import appears in session replay
+    await soul.wire_file.append_message(
+        TurnBegin(user_input=f"[Imported context from {source_desc}]")
+    )
+    await soul.wire_file.append_message(TurnEnd())
+
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
