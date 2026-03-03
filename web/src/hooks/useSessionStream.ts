@@ -348,6 +348,9 @@ export function useSessionStream(
   // Track compaction indicator message so we can remove it on CompactionEnd
   const compactionMessageIdRef = useRef<string | null>(null);
 
+  // Track MCP loading indicator message so we can remove it on MCPLoadingEnd
+  const mcpLoadingMessageIdRef = useRef<string | null>(null);
+
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
     setMessagesInternal(action);
@@ -1759,6 +1762,31 @@ export function useSessionStream(
           break;
         }
 
+        case "MCPLoadingBegin": {
+          const mcpMsgId = getNextMessageId("assistant");
+          mcpLoadingMessageIdRef.current = mcpMsgId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: mcpMsgId,
+              role: "assistant",
+              variant: "status",
+              content: "Connecting to MCP servers…",
+              isStreaming: true,
+            },
+          ]);
+          break;
+        }
+
+        case "MCPLoadingEnd": {
+          const mcpMsgId = mcpLoadingMessageIdRef.current;
+          mcpLoadingMessageIdRef.current = null;
+          if (mcpMsgId) {
+            setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+          }
+          break;
+        }
+
         default:
           break;
       }
@@ -2347,9 +2375,16 @@ export function useSessionStream(
     pendingApprovalRequestsRef.current.clear();
     pendingQuestionRequestsRef.current.clear();
 
+    // Remove lingering MCP loading indicator (e.g. MCPLoadingEnd was never received)
+    const mcpMsgId = mcpLoadingMessageIdRef.current;
+    if (mcpMsgId) {
+      mcpLoadingMessageIdRef.current = null;
+      setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+    }
+
     // Mark all streaming/subagent messages as complete
     completeStreamingMessages();
-  }, [completeStreamingMessages, setAwaitingFirstResponse]);
+  }, [completeStreamingMessages, setAwaitingFirstResponse, setMessages]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {

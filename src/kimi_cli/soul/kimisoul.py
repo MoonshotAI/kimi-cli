@@ -48,6 +48,8 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    MCPLoadingBegin,
+    MCPLoadingEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -357,7 +359,14 @@ class KimiSoul:
             self._steer_queue.get_nowait()
 
         if isinstance(self._agent.toolset, KimiToolset):
-            await self._agent.toolset.wait_for_mcp_tools()
+            loading = self._agent.toolset.has_pending_mcp_tools()
+            if loading:
+                wire_send(MCPLoadingBegin())
+            try:
+                await self._agent.toolset.wait_for_mcp_tools()
+            finally:
+                if loading:
+                    wire_send(MCPLoadingEnd())
 
         async def _pipe_approval_to_wire():
             while True:

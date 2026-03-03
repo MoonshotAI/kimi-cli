@@ -88,6 +88,18 @@ class CompactionEnd(BaseModel):
     pass
 
 
+class MCPLoadingBegin(BaseModel):
+    """Indicates that MCP tool loading is in progress."""
+
+    pass
+
+
+class MCPLoadingEnd(BaseModel):
+    """Indicates that MCP tool loading has finished."""
+
+    pass
+
+
 class StatusUpdate(BaseModel):
     """
     An update on the current status of the soul.
@@ -349,6 +361,8 @@ type Event = (
     | StepInterrupted
     | CompactionBegin
     | CompactionEnd
+    | MCPLoadingBegin
+    | MCPLoadingEnd
     | StatusUpdate
     | ContentPart
     | ToolCall
@@ -431,6 +445,8 @@ __all__ = [
     "StepInterrupted",
     "CompactionBegin",
     "CompactionEnd",
+    "MCPLoadingBegin",
+    "MCPLoadingEnd",
     "StatusUpdate",
     "ContentPart",
     "ToolCall",
