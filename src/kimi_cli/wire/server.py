@@ -11,7 +11,10 @@ from kosong.chat_provider import ChatProviderError
 from kosong.tooling import ToolError, ToolResult
 from kosong.utils.typing import JsonType
 
+from pathlib import Path
+
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.project_log import SessionLogger
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset, WireExternalTool
@@ -405,6 +408,16 @@ class WireServer:
             )
 
         self._cancel_event = asyncio.Event()
+        
+        # Create session logger for logging to ~/.kimi/sessions/ if KimiSoul
+        session_logger: SessionLogger | None = None
+        if isinstance(self._soul, KimiSoul):
+            session_logger = SessionLogger(
+                work_dir=Path(str(self._soul.runtime.session.work_dir)),
+                session_id=self._soul.runtime.session.id,
+                session_dir=self._soul.runtime.session.dir,
+            )
+        
         try:
             await run_soul(
                 self._soul,
@@ -412,6 +425,7 @@ class WireServer:
                 self._stream_wire_messages,
                 self._cancel_event,
                 self._soul.wire_file if isinstance(self._soul, KimiSoul) else None,
+                session_logger=session_logger,
             )
             return JSONRPCSuccessResponse(
                 id=msg.id,

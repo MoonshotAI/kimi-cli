@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from kimi_cli.project_log import SessionLogRecorder, SessionLogger
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
@@ -124,6 +125,7 @@ async def run_soul(
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,
     wire_file: WireFile | None = None,
+    session_logger: SessionLogger | None = None,
 ) -> None:
     """
     Run the soul with the given user input, connecting it to the UI loop with a `Wire`.
@@ -131,15 +133,30 @@ async def run_soul(
     `cancel_event` is a outside handle that can be used to cancel the run. When the
     event is set, the run will be gracefully stopped and a `RunCancelled` will be raised.
 
+    Args:
+        soul: The soul to run.
+        user_input: The user input to the agent.
+        ui_loop_fn: The UI loop function.
+        cancel_event: The cancel event.
+        wire_file: Optional wire file for recording.
+        session_logger: Optional session logger for logging to ~/.kimi/sessions/.
+
     Raises:
         LLMNotSet: When the LLM is not set.
         LLMNotSupported: When the LLM does not have required capabilities.
-        ChatProviderError: When the LLM provider returns an error.
+        ChatProviderError: When the chat provider returns an error.
         MaxStepsReached: When the maximum number of steps is reached.
         RunCancelled: When the run is cancelled by the cancel event.
     """
     wire = Wire(file_backend=wire_file)
     wire_token = _current_wire.set(wire)
+
+    # Set up session logging if a session logger is provided
+    session_recorder: SessionLogRecorder | None = None
+    if session_logger is not None:
+        session_recorder = SessionLogRecorder(session_logger)
+        session_recorder.start()
+        await session_logger.log_session_start()
 
     logger.debug("Starting UI loop with function: {ui_loop_fn}", ui_loop_fn=ui_loop_fn)
     ui_task = asyncio.create_task(ui_loop_fn(wire))
@@ -153,10 +170,14 @@ async def run_soul(
         return_when=asyncio.FIRST_COMPLETED,
     )
 
+    # Determine the reason for ending
+    end_reason = "completed"
+
     try:
         if cancel_event.is_set():
             logger.debug("Cancelling the run task")
             soul_task.cancel()
+            end_reason = "cancelled"
             try:
                 await soul_task
             except asyncio.CancelledError:
@@ -167,7 +188,16 @@ async def run_soul(
             with contextlib.suppress(asyncio.CancelledError):
                 await cancel_event_task
             soul_task.result()  # this will raise if any exception was raised in the run task
+    except Exception:
+        end_reason = "error"
+        raise
     finally:
+        # Log session end
+        if session_logger is not None:
+            await session_logger.log_session_end(end_reason)
+        if session_recorder is not None:
+            await session_recorder.stop()
+
         logger.debug("Shutting down the UI loop")
         # shutting down the wire should break the UI loop
         wire.shutdown()

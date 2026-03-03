@@ -16,6 +16,7 @@ from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
+from kimi_cli.project_log import SessionLogger
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
@@ -231,8 +232,21 @@ class KimiCLI:
                 wire_future.set_result(wire.ui_side(merge=merge_wire_messages))
                 await stop_ui_loop.wait()
 
+            # Create session logger for logging to ~/.kimi/sessions/
+            session_logger = SessionLogger(
+                work_dir=Path(str(self._runtime.session.work_dir)),
+                session_id=self._runtime.session.id,
+                session_dir=self._runtime.session.dir,
+            )
+
             soul_task = asyncio.create_task(
-                run_soul(self.soul, user_input, _ui_loop_fn, cancel_event)
+                run_soul(
+                    self.soul,
+                    user_input,
+                    _ui_loop_fn,
+                    cancel_event,
+                    session_logger=session_logger,
+                )
             )
 
             try:

@@ -5,6 +5,7 @@ from typing import override
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
+from kimi_cli.project_log import SessionLogger
 from kimi_cli.soul import MaxStepsReached, get_wire_or_none, run_soul
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
@@ -128,8 +129,15 @@ class Task(CallableTool2[Params]):
         context = Context(file_backend=subagent_context_file)
         soul = KimiSoul(agent, context=context)
 
+        # Create session logger for subagent (uses same session info as parent)
+        session_logger = SessionLogger(
+            work_dir=Path(str(self._runtime.session.work_dir)),
+            session_id=self._runtime.session.id,
+            session_dir=self._runtime.session.dir,
+        )
+
         try:
-            await run_soul(soul, prompt, _ui_loop_fn, asyncio.Event())
+            await run_soul(soul, prompt, _ui_loop_fn, asyncio.Event(), session_logger=session_logger)
         except MaxStepsReached as e:
             return ToolError(
                 message=(
@@ -152,7 +160,7 @@ class Task(CallableTool2[Params]):
         # Check if response is too brief, if so, run again with continuation prompt
         n_attempts_remaining = MAX_CONTINUE_ATTEMPTS
         if len(final_response) < 200 and n_attempts_remaining > 0:
-            await run_soul(soul, CONTINUE_PROMPT, _ui_loop_fn, asyncio.Event())
+            await run_soul(soul, CONTINUE_PROMPT, _ui_loop_fn, asyncio.Event(), session_logger=session_logger)
 
             if len(context.history) == 0 or context.history[-1].role != "assistant":
                 return ToolError(message=_error_msg, brief="Failed to run subagent")

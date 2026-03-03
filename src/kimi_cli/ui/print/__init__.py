@@ -12,6 +12,7 @@ from kosong.message import ContentPart, Message, TextPart
 from rich import print
 
 from kimi_cli.cli import InputFormat, OutputFormat
+from kimi_cli.project_log import SessionLogger
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -171,12 +172,23 @@ class Print:
                     
                     if self.output_format == "text" and not self.final_only:
                         print(command)
+                    
+                    # Create session logger for logging to ~/.kimi/sessions/ if KimiSoul
+                    session_logger: SessionLogger | None = None
+                    if isinstance(self.soul, KimiSoul):
+                        session_logger = SessionLogger(
+                            work_dir=Path(str(self.soul.runtime.session.work_dir)),
+                            session_id=self.soul.runtime.session.id,
+                            session_dir=self.soul.runtime.session.dir,
+                        )
+                    
                     await run_soul(
                         self.soul,
                         content_parts,
                         partial(visualize, self.output_format, self.final_only),
                         cancel_event,
                         self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,
+                        session_logger=session_logger,
                     )
                 else:
                     logger.info("Empty command, skipping")

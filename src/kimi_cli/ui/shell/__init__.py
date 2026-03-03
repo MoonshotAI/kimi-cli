@@ -14,6 +14,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from pathlib import Path
+
+from kimi_cli.project_log import SessionLogger
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
@@ -229,6 +232,15 @@ class Shell:
         loop = asyncio.get_running_loop()
         remove_sigint = install_sigint_handler(loop, _handler)
 
+        # Create session logger for logging to ~/.kimi/sessions/ if KimiSoul
+        session_logger: SessionLogger | None = None
+        if isinstance(self.soul, KimiSoul):
+            session_logger = SessionLogger(
+                work_dir=Path(str(self.soul.runtime.session.work_dir)),
+                session_id=self.soul.runtime.session.id,
+                session_dir=self.soul.runtime.session.dir,
+            )
+
         try:
             await run_soul(
                 self.soul,
@@ -240,6 +252,7 @@ class Shell:
                 ),
                 cancel_event,
                 self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,
+                session_logger=session_logger,
             )
             return True
         except LLMNotSet:
