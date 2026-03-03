@@ -466,6 +466,8 @@ async def perform_export(
     cleaned = sanitize_cli_path(args)
     if cleaned:
         output = Path(cleaned).expanduser()
+        if not output.is_absolute():
+            output = default_dir / output
         if output.is_dir():
             output = output / default_name
     else:
@@ -521,6 +523,8 @@ async def resolve_import_source(
     from kimi_cli.soul.context import Context
 
     target_path = Path(target).expanduser()
+    if not target_path.is_absolute():
+        target_path = Path(str(work_dir)) / target_path
 
     if target_path.exists() and target_path.is_dir():
         return "The specified path is a directory; please provide a file to import."

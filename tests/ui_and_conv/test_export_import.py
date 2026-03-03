@@ -864,6 +864,69 @@ class TestResolveImportSource:
 # ---------------------------------------------------------------------------
 
 
+class TestPerformExportRelativePath:
+    async def test_relative_path_anchored_to_default_dir(self, tmp_path: Path) -> None:
+        """A relative output path must resolve against default_dir, not process CWD."""
+        work = tmp_path / "project"
+        work.mkdir()
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir=str(work),
+            token_count=100,
+            args="subdir/my-export.md",
+            default_dir=work,
+        )
+        assert isinstance(result, tuple)
+        path, _ = result
+        assert path == work / "subdir" / "my-export.md"
+        assert path.exists()
+
+    async def test_absolute_path_not_affected(self, tmp_path: Path) -> None:
+        """Absolute paths must not be re-anchored to default_dir."""
+        work = tmp_path / "project"
+        work.mkdir()
+        abs_output = tmp_path / "elsewhere" / "out.md"
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir=str(work),
+            token_count=100,
+            args=str(abs_output),
+            default_dir=work,
+        )
+        assert isinstance(result, tuple)
+        path, _ = result
+        assert path == abs_output
+        assert path.exists()
+
+
+class TestResolveImportRelativePath:
+    async def test_relative_path_anchored_to_work_dir(self, tmp_path: Path) -> None:
+        """A relative import path must resolve against work_dir, not process CWD."""
+        work = tmp_path / "project"
+        work.mkdir()
+        src = work / "notes.md"
+        src.write_text("important notes", encoding="utf-8")
+        result = await resolve_import_source("notes.md", "curr-id", work)  # type: ignore[arg-type]
+        assert isinstance(result, tuple)
+        content, desc = result
+        assert content == "important notes"
+        assert "notes.md" in desc
+
+    async def test_absolute_path_not_affected(self, tmp_path: Path) -> None:
+        """Absolute paths must not be re-anchored to work_dir."""
+        work = tmp_path / "project"
+        work.mkdir()
+        outside = tmp_path / "other" / "data.txt"
+        outside.parent.mkdir(parents=True)
+        outside.write_text("external data", encoding="utf-8")
+        result = await resolve_import_source(str(outside), "curr-id", work)  # type: ignore[arg-type]
+        assert isinstance(result, tuple)
+        content, _ = result
+        assert content == "external data"
+
+
 class TestPerformExportEdgeCases:
     async def test_checkpoint_only_history_still_exports(self, tmp_path: Path) -> None:
         """History with only checkpoint messages should still export (they are filtered in turns)."""
