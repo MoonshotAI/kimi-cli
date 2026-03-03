@@ -5,6 +5,8 @@
 ## 未发布
 
 - Core：新增 `/export` 命令，支持将当前会话上下文（消息、元数据）导出为 Markdown 文件；新增 `/import` 命令，支持从文件或其他会话 ID 导入上下文到当前会话
+- Shell：在状态栏上下文用量旁显示 Token 数量（已用/总量），如 `context: 42.0% (4.2k/10.0k)`
+- Shell：工具栏快捷键提示改为轮转显示——每次提交后循环展示不同快捷键提示，节省横向空间
 - MCP：为 MCP 服务器连接添加加载指示器——Shell 在连接 MCP 服务器时显示 "Connecting to MCP servers..." 加载动画，Web 在 MCP 工具加载期间显示状态消息
 - Web：修复工具栏变更面板中文件列表滚动溢出的问题
 - Core：新增 `compaction_trigger_ratio` 配置项（默认 `0.85`），用于控制自动压缩的触发时机——当上下文用量达到配置比例或剩余空间低于 `reserved_context_size` 时触发压缩，以先满足的条件为准

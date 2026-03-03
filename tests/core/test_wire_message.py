@@ -101,7 +101,13 @@ async def test_wire_message_serde():
     assert serialize_wire_message(msg) == snapshot(
         {
             "type": "StatusUpdate",
-            "payload": {"context_usage": 0.5, "token_usage": None, "message_id": None},
+            "payload": {
+                "context_usage": 0.5,
+                "context_tokens": None,
+                "max_context_tokens": None,
+                "token_usage": None,
+                "message_id": None,
+            },
         }
     )
     _test_serde(msg)
