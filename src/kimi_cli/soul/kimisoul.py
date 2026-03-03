@@ -31,6 +31,7 @@ from kimi_cli.soul import (
     StatusSnapshot,
     wire_send,
 )
+from kimi_cli.soul.acc_tool import AccCompactContextTool
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
 from kimi_cli.soul.context import Context
@@ -112,6 +113,7 @@ class KimiSoul:
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._acc_enabled = False
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -122,6 +124,7 @@ class KimiSoul:
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
 
+        self._setup_acc_tool()
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
 
@@ -155,6 +158,7 @@ class KimiSoul:
         return StatusSnapshot(
             context_usage=self._context_usage,
             yolo_enabled=self._approval.is_yolo(),
+            acc_enabled=self._acc_enabled,
             context_tokens=token_count,
             max_context_tokens=max_size,
         )
@@ -180,6 +184,58 @@ class KimiSoul:
     @property
     def wire_file(self) -> WireFile:
         return self._runtime.session.wire_file
+
+    def is_acc_enabled(self) -> bool:
+        return self._acc_enabled
+
+    def set_acc_enabled(self, enabled: bool) -> None:
+        self._acc_enabled = enabled
+        self._set_acc_tool_visibility(enabled)
+
+    def _setup_acc_tool(self) -> None:
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return
+        toolset = self._agent.toolset
+        tool_name = AccCompactContextTool.name
+        if toolset.find(tool_name) is not None:
+            logger.warning("Skipping ACC tool registration: {name} already exists", name=tool_name)
+            return
+
+        async def _compact_from_tool(task_summary: str) -> None:
+            await self.compact_context(custom_instruction=task_summary, task_summary=task_summary)
+
+        toolset.add(
+            AccCompactContextTool(
+                is_acc_enabled=self.is_acc_enabled,
+                compact_context=_compact_from_tool,
+            )
+        )
+        toolset.hide(tool_name)
+
+    def _set_acc_tool_visibility(self, enabled: bool) -> None:
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return
+        tool_name = AccCompactContextTool.name
+        if enabled:
+            self._agent.toolset.unhide(tool_name)
+        else:
+            self._agent.toolset.hide(tool_name)
+
+    def _build_acc_hint_message(self) -> Message | None:
+        if not self._acc_enabled or self._runtime.llm is None:
+            return None
+        used = self._context.token_count
+        max_size = self._runtime.llm.max_context_size
+        remaining = max(0, max_size - used)
+        safe_remaining = max(0, remaining - self._loop_control.reserved_context_size)
+        hint = (
+            "ACC mode is enabled.\n"
+            f"Current context usage: {used}/{max_size} tokens.\n"
+            f"Remaining capacity: {remaining} tokens.\n"
+            f"Safe remaining capacity (after reserved budget): {safe_remaining} tokens.\n"
+            "You can decide whether to call `AccCompactContext` based on task progress."
+        )
+        return Message(role="user", content=[system(hint)])
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
@@ -405,13 +461,22 @@ class KimiSoul:
             step_outcome: StepOutcome | None = None
             try:
                 # compact the context if needed
-                if should_auto_compact(
-                    self._context.token_count,
-                    self._runtime.llm.max_context_size,
-                    trigger_ratio=self._loop_control.compaction_trigger_ratio,
-                    reserved_context_size=self._loop_control.reserved_context_size,
+                if (
+                    not self._acc_enabled
+                    and should_auto_compact(
+                        self._context.token_count,
+                        self._runtime.llm.max_context_size,
+                        trigger_ratio=self._loop_control.compaction_trigger_ratio,
+                        reserved_context_size=self._loop_control.reserved_context_size,
+                    )
                 ):
                     logger.info("Context too long, compacting...")
+                    await self.compact_context()
+                elif self._acc_enabled and (
+                    self._context.token_count + self._loop_control.reserved_context_size
+                    >= self._runtime.llm.max_context_size
+                ):
+                    logger.info("Context near hard limit in ACC mode, compacting as safeguard...")
                     await self.compact_context()
 
                 logger.debug("Beginning step {step_no}", step_no=step_no)
@@ -464,11 +529,14 @@ class KimiSoul:
 
         async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)
+            history = list(self._context.history)
+            if acc_hint := self._build_acc_hint_message():
+                history.append(acc_hint)
             return await kosong.step(
                 chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
-                self._context.history,
+                history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
             )
@@ -564,7 +632,7 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self, custom_instruction: str = "") -> None:
+    async def compact_context(self, custom_instruction: str = "", task_summary: str = "") -> None:
         """
         Compact the context.
 
@@ -601,9 +669,21 @@ class KimiSoul:
         await self._context.clear()
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
+        estimated_token_count = compaction_result.estimated_token_count
+        if summary := task_summary.strip():
+            summary_text = "Task summary after compaction (continue from here):\n" + summary
+            await self._context.append_message(
+                Message(
+                    role="user",
+                    content=[
+                        system(summary_text)
+                    ],
+                )
+            )
+            estimated_token_count += len(summary_text) // 4
 
         # Estimate token count so context_usage is not reported as 0%
-        await self._context.update_token_count(compaction_result.estimated_token_count)
+        await self._context.update_token_count(estimated_token_count)
 
         wire_send(CompactionEnd())
 

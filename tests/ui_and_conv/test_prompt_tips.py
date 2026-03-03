@@ -58,3 +58,29 @@ def test_bottom_toolbar_no_overflow_when_tip_would_exactly_fill_old_available(mo
     second_line = plain.split("\n", 1)[1]
 
     assert len(second_line) <= width
+
+
+def test_bottom_toolbar_shows_acc_tag(monkeypatch) -> None:
+    width = 80
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._mode = PromptMode.AGENT
+    prompt_session._model_name = None
+    prompt_session._thinking = False
+    prompt_session._status_provider = lambda: StatusSnapshot(context_usage=0.0, acc_enabled=True)
+    prompt_session._tips = []
+    prompt_session._tip_rotation_index = 0
+
+    class _DummyOutput:
+        @staticmethod
+        def get_size():
+            return SimpleNamespace(columns=width)
+
+    dummy_app = SimpleNamespace(output=_DummyOutput())
+    monkeypatch.setattr(shell_prompt, "get_app_or_none", lambda: dummy_app)
+    _toast_queues["left"].clear()
+    _toast_queues["right"].clear()
+
+    rendered = prompt_session._render_bottom_toolbar()
+    plain = "".join(fragment[1] for fragment in rendered)
+    second_line = plain.split("\n", 1)[1]
+    assert "ACC" in second_line

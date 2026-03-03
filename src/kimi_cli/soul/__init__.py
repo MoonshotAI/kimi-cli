@@ -86,6 +86,8 @@ class StatusSnapshot:
     """The usage of the context, in percentage."""
     yolo_enabled: bool = False
     """Whether YOLO (auto-approve) mode is enabled."""
+    acc_enabled: bool = False
+    """Whether ACC mode is enabled."""
     context_tokens: int = 0
     """The number of tokens currently in the context."""
     max_context_tokens: int = 0
