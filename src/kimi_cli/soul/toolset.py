@@ -338,6 +338,10 @@ class KimiToolset:
         else:
             await _connect()
 
+    def has_pending_mcp_tools(self) -> bool:
+        """Check if there are pending MCP tools being loaded."""
+        return self._mcp_loading_task is not None and not self._mcp_loading_task.done()
+
     async def wait_for_mcp_tools(self) -> None:
         """Wait for background MCP tool loading to finish."""
         task = self._mcp_loading_task

@@ -36,6 +36,8 @@ from kimi_cli.wire.types import (
     CompactionEnd,
     ContentPart,
     DiffDisplayBlock,
+    MCPLoadingBegin,
+    MCPLoadingEnd,
     QuestionRequest,
     ShellDisplayBlock,
     StatusUpdate,
@@ -748,6 +750,7 @@ class _LiveView:
 
         self._mooning_spinner: Spinner | None = None
         self._compacting_spinner: Spinner | None = None
+        self._mcp_loading_spinner: Spinner | None = None
 
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
@@ -852,7 +855,9 @@ class _LiveView:
     def compose(self) -> RenderableType:
         """Compose the live view display content."""
         blocks: list[RenderableType] = []
-        if self._mooning_spinner is not None:
+        if self._mcp_loading_spinner is not None:
+            blocks.append(self._mcp_loading_spinner)
+        elif self._mooning_spinner is not None:
             blocks.append(self._mooning_spinner)
         elif self._compacting_spinner is not None:
             blocks.append(self._compacting_spinner)
@@ -875,6 +880,7 @@ class _LiveView:
 
         if isinstance(msg, StepBegin):
             self.cleanup(is_interrupt=False)
+            self._mcp_loading_spinner = None
             self._mooning_spinner = Spinner("moon", "")
             self.refresh_soon()
             return
@@ -894,6 +900,12 @@ class _LiveView:
                 self.refresh_soon()
             case CompactionEnd():
                 self._compacting_spinner = None
+                self.refresh_soon()
+            case MCPLoadingBegin():
+                self._mcp_loading_spinner = Spinner("dots", "Connecting to MCP servers...")
+                self.refresh_soon()
+            case MCPLoadingEnd():
+                self._mcp_loading_spinner = None
                 self.refresh_soon()
             case StatusUpdate():
                 self._status_block.update(msg)

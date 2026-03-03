@@ -348,6 +348,9 @@ export function useSessionStream(
   // Track compaction indicator message so we can remove it on CompactionEnd
   const compactionMessageIdRef = useRef<string | null>(null);
 
+  // Track MCP loading indicator message so we can remove it on MCPLoadingEnd
+  const mcpLoadingMessageIdRef = useRef<string | null>(null);
+
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
     setMessagesInternal(action);
@@ -1756,6 +1759,31 @@ export function useSessionStream(
             const kept = lastUserMsgIndex >= 0 ? prev.slice(lastUserMsgIndex) : [];
             return compactMsgId ? kept.filter((m) => m.id !== compactMsgId) : kept;
           });
+          break;
+        }
+
+        case "MCPLoadingBegin": {
+          const mcpMsgId = getNextMessageId("assistant");
+          mcpLoadingMessageIdRef.current = mcpMsgId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: mcpMsgId,
+              role: "assistant",
+              variant: "status",
+              content: "Connecting to MCP servers…",
+              isStreaming: true,
+            },
+          ]);
+          break;
+        }
+
+        case "MCPLoadingEnd": {
+          const mcpMsgId = mcpLoadingMessageIdRef.current;
+          mcpLoadingMessageIdRef.current = null;
+          if (mcpMsgId) {
+            setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+          }
           break;
         }
 

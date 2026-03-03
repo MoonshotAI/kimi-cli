@@ -14,6 +14,8 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ImageURLPart,
+    MCPLoadingBegin,
+    MCPLoadingEnd,
     QuestionItem,
     QuestionOption,
     QuestionRequest,
@@ -85,6 +87,14 @@ async def test_wire_message_serde():
 
     msg = CompactionEnd()
     assert serialize_wire_message(msg) == snapshot({"type": "CompactionEnd", "payload": {}})
+    _test_serde(msg)
+
+    msg = MCPLoadingBegin()
+    assert serialize_wire_message(msg) == snapshot({"type": "MCPLoadingBegin", "payload": {}})
+    _test_serde(msg)
+
+    msg = MCPLoadingEnd()
+    assert serialize_wire_message(msg) == snapshot({"type": "MCPLoadingEnd", "payload": {}})
     _test_serde(msg)
 
     msg = StatusUpdate(context_usage=0.5)
