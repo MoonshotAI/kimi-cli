@@ -31,31 +31,33 @@ export const ToolbarChangesPanel = memo(function ToolbarChangesPanelComponent({
   );
 
   return (
-    <>
-      {stats.files?.map((file) => (
-        <div
-          key={file.path}
-          className="group/file flex items-center gap-2 px-3 py-1 text-xs hover:bg-muted/50 transition-colors"
-        >
-          <FileIcon className="size-3 flex-shrink-0 text-muted-foreground" />
-          <span className="flex items-center gap-1 flex-shrink-0 text-[11px]">
-            {file.additions > 0 && (
-              <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
+    <div className="flex flex-col max-h-32">
+      <div className="overflow-y-auto py-1 px-0.5 flex-1 min-h-0">
+        {stats.files?.map((file) => (
+          <div
+            key={file.path}
+            className="group/file flex items-center gap-2 px-3 py-1 text-xs hover:bg-muted/50 transition-colors"
+          >
+            <FileIcon className="size-3 flex-shrink-0 text-muted-foreground" />
+            <span className="flex items-center gap-1 flex-shrink-0 text-[11px]">
+              {file.additions > 0 && (
+                <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
+              )}
+              {file.deletions > 0 && <span className="text-destructive">-{file.deletions}</span>}
+            </span>
+            <span className="truncate text-muted-foreground" title={file.path}>
+              {file.path}
+            </span>
+            {workDir && (
+              <div className="flex-shrink-0 hidden lg:block opacity-0 group-hover/file:opacity-100 transition-opacity duration-150">
+                <OpenInButton path={getFilePath(file.path)} />
+              </div>
             )}
-            {file.deletions > 0 && <span className="text-destructive">-{file.deletions}</span>}
-          </span>
-          <span className="truncate text-muted-foreground" title={file.path}>
-            {file.path}
-          </span>
-          {workDir && (
-            <div className="flex-shrink-0 hidden lg:block opacity-0 group-hover/file:opacity-100 transition-opacity duration-150">
-              <OpenInButton path={getFilePath(file.path)} />
-            </div>
-          )}
-        </div>
-      ))}
+          </div>
+        ))}
+      </div>
       {workDir && (
-        <div className="group/folder sticky bottom-0 flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-t bg-muted/40">
+        <div className="group/folder flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-t bg-muted/40 flex-shrink-0">
           <FolderOpenIcon className="size-3 flex-shrink-0 text-muted-foreground/70" />
           <span className="truncate text-muted-foreground/70">{workDir}</span>
           <div className="flex-shrink-0 hidden lg:block opacity-0 group-hover/folder:opacity-100 transition-opacity duration-150">
@@ -63,7 +65,7 @@ export const ToolbarChangesPanel = memo(function ToolbarChangesPanelComponent({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 });
 
