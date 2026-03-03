@@ -3,12 +3,17 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from datetime import datetime
+from pathlib import Path
 from textwrap import shorten
 from typing import cast
 
+import aiofiles
+from kaos.path import KaosPath
 from kosong.message import Message
 
+from kimi_cli.soul.message import system
 from kimi_cli.utils.message import message_stringify
+from kimi_cli.utils.path import sanitize_cli_path
 from kimi_cli.wire.types import (
     AudioURLPart,
     ContentPart,
@@ -460,3 +465,129 @@ def _stringify_context_history(history: Sequence[Message]) -> str:
 def stringify_context_history(history: Sequence[Message]) -> str:
     """Convert a sequence of Messages to a readable text transcript."""
     return _stringify_context_history(history)
+
+
+# ---------------------------------------------------------------------------
+# Shared command logic
+# ---------------------------------------------------------------------------
+
+
+async def perform_export(
+    history: Sequence[Message],
+    session_id: str,
+    work_dir: str,
+    token_count: int,
+    args: str,
+    default_dir: Path,
+) -> tuple[Path, int] | str:
+    """Perform the full export operation.
+
+    Returns ``(output_path, message_count)`` on success, or an error message
+    string on failure.
+    """
+    if not history:
+        return "No messages to export."
+
+    now = datetime.now()
+    short_id = session_id[:8]
+    default_name = f"kimi-export-{short_id}-{now.strftime('%Y%m%d-%H%M%S')}.md"
+
+    cleaned = sanitize_cli_path(args)
+    if cleaned:
+        output = Path(cleaned).expanduser()
+        if output.is_dir():
+            output = output / default_name
+    else:
+        output = default_dir / default_name
+
+    content = build_export_markdown(
+        session_id=session_id,
+        work_dir=work_dir,
+        history=history,
+        token_count=token_count,
+        now=now,
+    )
+
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(output, "w", encoding="utf-8") as f:
+            await f.write(content)
+    except OSError as e:
+        return f"Failed to write export file: {e}"
+
+    return (output, len(history))
+
+
+async def resolve_import_source(
+    target: str,
+    current_session_id: str,
+    work_dir: KaosPath,
+) -> tuple[str, str] | str:
+    """Resolve the import source to ``(content, source_desc)`` or an error message."""
+    from kimi_cli.session import Session
+    from kimi_cli.soul.context import Context
+
+    target_path = Path(target).expanduser()
+
+    if target_path.exists() and target_path.is_dir():
+        return "The specified path is a directory; please provide a file to import."
+
+    if target_path.exists() and target_path.is_file():
+        if not is_importable_file(target_path.name):
+            return (
+                f"Unsupported file type '{target_path.suffix}'. "
+                "/import only supports text-based files "
+                "(e.g. .md, .txt, .json, .py, .log, …)."
+            )
+
+        try:
+            async with aiofiles.open(target_path, encoding="utf-8") as f:
+                content = await f.read()
+        except UnicodeDecodeError:
+            return (
+                f"Cannot import '{target_path.name}': "
+                "the file does not appear to be valid UTF-8 text."
+            )
+        except OSError as e:
+            return f"Failed to read file: {e}"
+
+        if not content.strip():
+            return "The file is empty, nothing to import."
+
+        return (content, f"file '{target_path.name}'")
+
+    # Not a file on disk — try as session ID
+    if target == current_session_id:
+        return "Cannot import the current session into itself."
+
+    source_session = await Session.find(work_dir, target)
+    if source_session is None:
+        return f"'{target}' is not a valid file path or session ID."
+
+    source_context = Context(source_session.context_file)
+    try:
+        restored = await source_context.restore()
+    except Exception as e:
+        return f"Failed to load source session: {e}"
+    if not restored or not source_context.history:
+        return "The source session has no messages."
+
+    content = stringify_context_history(source_context.history)
+    return (content, f"session '{target}'")
+
+
+def build_import_message(content: str, source_desc: str) -> Message:
+    """Build the ``Message`` to append to context for an import operation."""
+    import_text = f'<imported_context source="{source_desc}">\n{content}\n</imported_context>'
+    return Message(
+        role="user",
+        content=[
+            system(
+                f"The user has imported context from {source_desc}. "
+                "This is a prior conversation history that may be relevant "
+                "to the current session. "
+                "Please review this context and use it to inform your responses."
+            ),
+            TextPart(text=import_text),
+        ],
+    )

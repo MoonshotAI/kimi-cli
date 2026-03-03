@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 from kosong.message import Message
 
+from kimi_cli.session import Session
 from kimi_cli.ui.shell import export_import as shell_export_import
 from kimi_cli.wire.types import TextPart, TurnBegin, TurnEnd
 
@@ -88,7 +89,7 @@ async def test_import_from_session_appends_message_and_wire_markers(
     async def fake_find(_work_dir: Path, _target: str) -> SimpleNamespace:
         return SimpleNamespace(context_file=source_context_file)
 
-    monkeypatch.setattr(shell_export_import.Session, "find", fake_find)
+    monkeypatch.setattr(Session, "find", fake_find)
 
     await shell_export_import.import_context(app, "old-session-id")  # type: ignore[reportGeneralTypeIssues]
 

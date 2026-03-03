@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import aiofiles
 from kosong.message import Message
 from loguru import logger
 
 import kimi_cli.prompts as prompts
-from kimi_cli.session import Session
 from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
@@ -164,135 +161,45 @@ async def add_dir(soul: KimiSoul, args: str):
 @registry.command
 async def export(soul: KimiSoul, args: str):
     """Export current session context to a markdown file"""
-    from kimi_cli.utils.export import build_export_markdown
-
-    history = list(soul.context.history)
-    if not history:
-        wire_send(TextPart(text="No messages to export."))
-        return
+    from kimi_cli.utils.export import perform_export
 
     session = soul.runtime.session
-    now = datetime.now()
-    short_id = session.id[:8]
-    default_name = f"kimi-export-{short_id}-{now.strftime('%Y%m%d-%H%M%S')}.md"
-
-    cleaned = sanitize_cli_path(args)
-    if cleaned:
-        output = Path(cleaned).expanduser()
-        if output.is_dir():
-            output = output / default_name
-    else:
-        output = Path(str(session.work_dir)) / default_name
-
-    content = build_export_markdown(
+    result = await perform_export(
+        history=list(soul.context.history),
         session_id=session.id,
         work_dir=str(session.work_dir),
-        history=history,
         token_count=soul.context.token_count,
-        now=now,
+        args=args,
+        default_dir=Path(str(session.work_dir)),
     )
-
-    try:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(output, "w", encoding="utf-8") as f:
-            await f.write(content)
-    except OSError as e:
-        wire_send(TextPart(text=f"Failed to write export file: {e}"))
+    if isinstance(result, str):
+        wire_send(TextPart(text=result))
         return
-
-    wire_send(TextPart(text=f"Exported {len(history)} messages to {output}"))
+    output, count = result
+    wire_send(TextPart(text=f"Exported {count} messages to {output}"))
 
 
 @registry.command(name="import")
 async def import_context(soul: KimiSoul, args: str):
     """Import context from a file or session ID"""
-    from kimi_cli.utils.export import stringify_context_history
+    from kimi_cli.utils.export import build_import_message, resolve_import_source
 
     target = sanitize_cli_path(args)
     if not target:
         wire_send(TextPart(text="Usage: /import <file_path or session_id>"))
         return
 
-    target_path = Path(target).expanduser()
-
-    if target_path.exists() and target_path.is_dir():
-        wire_send(
-            TextPart(text="The specified path is a directory; please provide a file to import.")
-        )
-        return
-    elif target_path.exists() and target_path.is_file():
-        # Check file extension
-        from kimi_cli.utils.export import is_importable_file
-
-        if not is_importable_file(target_path.name):
-            wire_send(
-                TextPart(
-                    text=f"Unsupported file type '{target_path.suffix}'. "
-                    "/import only supports text-based files "
-                    "(e.g. .md, .txt, .json, .py, .log, …)."
-                )
-            )
-            return
-
-        # Import from file
-        try:
-            async with aiofiles.open(target_path, encoding="utf-8") as f:
-                content = await f.read()
-        except UnicodeDecodeError:
-            wire_send(
-                TextPart(
-                    text=f"Cannot import '{target_path.name}': "
-                    "the file does not appear to be valid UTF-8 text."
-                )
-            )
-            return
-        except OSError as e:
-            wire_send(TextPart(text=f"Failed to read file: {e}"))
-            return
-
-        if not content.strip():
-            wire_send(TextPart(text="The file is empty, nothing to import."))
-            return
-
-        source_desc = f"file '{target_path.name}'"
-    else:
-        # Prevent self-import
-        if target == soul.runtime.session.id:
-            wire_send(TextPart(text="Cannot import the current session into itself."))
-            return
-
-        # Try as session ID
-        source_session = await Session.find(soul.runtime.session.work_dir, target)
-        if source_session is None:
-            wire_send(TextPart(text=f"'{target}' is not a valid file path or session ID."))
-            return
-
-        source_context = Context(source_session.context_file)
-        try:
-            restored = await source_context.restore()
-        except Exception as e:
-            wire_send(TextPart(text=f"Failed to load source session: {e}"))
-            return
-        if not restored or not source_context.history:
-            wire_send(TextPart(text="The source session has no messages."))
-            return
-
-        content = stringify_context_history(source_context.history)
-        source_desc = f"session '{target}'"
-
-    # Build and append import message
-    import_text = f'<imported_context source="{source_desc}">\n{content}\n</imported_context>'
-    message = Message(
-        role="user",
-        content=[
-            system(
-                f"The user has imported context from {source_desc}. "
-                "This is a prior conversation history that may be relevant "
-                "to the current session. "
-                "Please review this context and use it to inform your responses."
-            ),
-            TextPart(text=import_text),
-        ],
+    session = soul.runtime.session
+    result = await resolve_import_source(
+        target=target,
+        current_session_id=session.id,
+        work_dir=session.work_dir,
     )
+    if isinstance(result, str):
+        wire_send(TextPart(text=result))
+        return
+
+    content, source_desc = result
+    message = build_import_message(content, source_desc)
     await soul.context.append_message(message)
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))

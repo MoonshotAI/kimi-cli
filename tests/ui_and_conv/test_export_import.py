@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 from kosong.message import Message
 
@@ -20,6 +21,9 @@ from kimi_cli.utils.export import (
     _stringify_content_parts,
     _stringify_context_history,
     _stringify_tool_calls,
+    build_import_message,
+    perform_export,
+    resolve_import_source,
 )
 from kimi_cli.wire.types import (
     AudioURLPart,
@@ -625,3 +629,187 @@ class TestIsImportableFile:
 
     def test_importable_extensions_is_frozenset(self) -> None:
         assert isinstance(_IMPORTABLE_EXTENSIONS, frozenset)
+
+
+# ---------------------------------------------------------------------------
+# perform_export
+# ---------------------------------------------------------------------------
+
+_SIMPLE_HISTORY = [
+    Message(role="user", content=[TextPart(text="Hello")]),
+    Message(role="assistant", content=[TextPart(text="Hi!")]),
+]
+
+
+class TestPerformExport:
+    async def test_empty_history_returns_error(self, tmp_path: Path) -> None:
+        result = await perform_export(
+            history=[],
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=0,
+            args="",
+            default_dir=tmp_path,
+        )
+        assert result == "No messages to export."
+
+    async def test_writes_to_specified_file(self, tmp_path: Path) -> None:
+        output = tmp_path / "my-export.md"
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=100,
+            args=str(output),
+            default_dir=tmp_path,
+        )
+        assert isinstance(result, tuple)
+        path, count = result
+        assert path == output
+        assert count == 2
+        assert output.exists()
+        content = output.read_text()
+        assert "# Kimi Session Export" in content
+        assert "Hello" in content
+
+    async def test_uses_default_dir_when_no_args(self, tmp_path: Path) -> None:
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=100,
+            args="",
+            default_dir=tmp_path,
+        )
+        assert isinstance(result, tuple)
+        path, _ = result
+        assert path.parent == tmp_path
+        assert path.name.startswith("kimi-export-abc12345")
+        assert path.name.endswith(".md")
+
+    async def test_dir_arg_appends_default_name(self, tmp_path: Path) -> None:
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=100,
+            args=str(tmp_path),
+            default_dir=tmp_path,
+        )
+        assert isinstance(result, tuple)
+        path, _ = result
+        assert path.parent == tmp_path
+        assert path.name.startswith("kimi-export-abc12345")
+
+    async def test_creates_parent_dirs(self, tmp_path: Path) -> None:
+        nested = tmp_path / "a" / "b" / "export.md"
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=100,
+            args=str(nested),
+            default_dir=tmp_path,
+        )
+        assert isinstance(result, tuple)
+        assert nested.exists()
+
+    async def test_write_error_returns_message(self, tmp_path: Path) -> None:
+        # Point to a path where parent cannot be created (file masquerading as dir)
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x")
+        bad_path = blocker / "sub" / "export.md"
+        result = await perform_export(
+            history=_SIMPLE_HISTORY,
+            session_id="abc12345",
+            work_dir="/tmp",
+            token_count=100,
+            args=str(bad_path),
+            default_dir=tmp_path,
+        )
+        assert isinstance(result, str)
+        assert "Failed to write export file" in result
+
+
+# ---------------------------------------------------------------------------
+# resolve_import_source
+# ---------------------------------------------------------------------------
+
+
+class TestResolveImportSource:
+    async def test_directory_returns_error(self, tmp_path: Path) -> None:
+        target_dir = tmp_path / "some-dir"
+        target_dir.mkdir()
+        result = await resolve_import_source(str(target_dir), "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "directory" in result.lower()
+
+    async def test_unsupported_file_type_returns_error(self, tmp_path: Path) -> None:
+        img = tmp_path / "photo.png"
+        img.write_bytes(b"\x89PNG")
+        result = await resolve_import_source(str(img), "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "Unsupported file type" in result
+
+    async def test_empty_file_returns_error(self, tmp_path: Path) -> None:
+        empty = tmp_path / "empty.md"
+        empty.write_text("   \n  ")
+        result = await resolve_import_source(str(empty), "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "empty" in result.lower()
+
+    async def test_binary_content_returns_error(self, tmp_path: Path) -> None:
+        bad = tmp_path / "data.txt"
+        bad.write_bytes(b"\xff\xfe" + b"\x00" * 100)
+        result = await resolve_import_source(str(bad), "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "UTF-8" in result
+
+    async def test_self_import_returns_error(self, tmp_path: Path) -> None:
+        result = await resolve_import_source("curr-id", "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "Cannot import the current session" in result
+
+    async def test_nonexistent_session_returns_error(self, tmp_path: Path, monkeypatch) -> None:
+        from kimi_cli.session import Session
+
+        async def fake_find(_work_dir, _target):
+            return None
+
+        monkeypatch.setattr(Session, "find", fake_find)
+        result = await resolve_import_source("no-such-id", "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "not a valid file path or session ID" in result
+
+    async def test_successful_file_import(self, tmp_path: Path) -> None:
+        src = tmp_path / "context.md"
+        src.write_text("some important context", encoding="utf-8")
+        result = await resolve_import_source(str(src), "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, tuple)
+        content, source_desc = result
+        assert content == "some important context"
+        assert "context.md" in source_desc
+
+
+# ---------------------------------------------------------------------------
+# build_import_message
+# ---------------------------------------------------------------------------
+
+
+class TestBuildImportMessage:
+    def test_returns_user_message_with_expected_structure(self) -> None:
+        msg = build_import_message("hello world", "file 'test.md'")
+        assert msg.role == "user"
+        assert len(msg.content) == 2
+
+        # First part is a system hint
+        first = msg.content[0]
+        assert isinstance(first, TextPart)
+        assert "imported context" in first.text.lower()
+
+        # Second part contains the wrapped content
+        second = msg.content[1]
+        assert isinstance(second, TextPart)
+        assert "<imported_context source=\"file 'test.md'\">" in second.text
+        assert "hello world" in second.text
+        assert "</imported_context>" in second.text
