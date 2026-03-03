@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from kosong.message import Message
 
 from kimi_cli.soul import slash as soul_slash
-from kimi_cli.wire.types import TextPart, TurnBegin, TurnEnd
+from kimi_cli.wire.types import TextPart
 
 
 def _make_soul(work_dir: Path) -> Mock:
@@ -88,12 +88,8 @@ async def test_import_file_sends_wire_markers(tmp_path: Path, monkeypatch) -> No
     imported_msg = soul.context.append_message.await_args.args[0]
     assert imported_msg.role == "user"
 
-    # Wire markers written
-    wire_calls = soul.wire_file.append_message.await_args_list
-    assert len(wire_calls) == 2
-    assert isinstance(wire_calls[0].args[0], TurnBegin)
-    assert "context.md" in wire_calls[0].args[0].user_input
-    assert isinstance(wire_calls[1].args[0], TurnEnd)
+    # No direct wire_file writes — KimiSoul.run() handles TurnBegin/TurnEnd
+    assert soul.wire_file.append_message.await_count == 0
 
     # Success message sent
     assert len(captured) == 1

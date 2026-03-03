@@ -17,7 +17,7 @@ from kimi_cli.soul.message import system
 from kimi_cli.utils.export import is_sensitive_file
 from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
-from kimi_cli.wire.types import StatusUpdate, TextPart, TurnBegin, TurnEnd
+from kimi_cli.wire.types import StatusUpdate, TextPart
 
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
@@ -182,7 +182,7 @@ async def export(soul: KimiSoul, args: str):
     wire_send(TextPart(text=f"Exported {count} messages to {display}"))
     wire_send(
         TextPart(
-            text="Note: The exported file may contain sensitive information. "
+            text="  Note: The exported file may contain sensitive information. "
             "Please be cautious when sharing it externally."
         )
     )
@@ -211,12 +211,6 @@ async def import_context(soul: KimiSoul, args: str):
     content, source_desc = result
     message = build_import_message(content, source_desc)
     await soul.context.append_message(message)
-
-    # Write wire markers so the import appears in session replay
-    await soul.wire_file.append_message(
-        TurnBegin(user_input=f"[Imported context from {source_desc}]")
-    )
-    await soul.wire_file.append_message(TurnEnd())
 
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
     if is_sensitive_file(Path(target).name):
