@@ -10,20 +10,20 @@ from kosong.message import Message
 from kimi_cli.soul.message import system
 from kimi_cli.utils.export import (
     _IMPORTABLE_EXTENSIONS,
-    _build_export_markdown,
     _extract_tool_call_hint,
     _format_content_part_md,
     _format_tool_call_md,
     _format_tool_result_md,
     _group_into_turns,
     _is_checkpoint_message,
-    _is_importable_file,
     _stringify_content_parts,
-    _stringify_context_history,
     _stringify_tool_calls,
+    build_export_markdown,
     build_import_message,
+    is_importable_file,
     perform_export,
     resolve_import_source,
+    stringify_context_history,
 )
 from kimi_cli.wire.types import (
     AudioURLPart,
@@ -151,7 +151,7 @@ class TestStringifyToolCalls:
 
 
 # ---------------------------------------------------------------------------
-# _stringify_context_history
+# stringify_context_history
 # ---------------------------------------------------------------------------
 
 
@@ -161,7 +161,7 @@ class TestStringifyContextHistory:
             Message(role="user", content=[TextPart(text="What is 1+1?")]),
             Message(role="assistant", content=[TextPart(text="2")]),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "[USER]" in result
         assert "What is 1+1?" in result
         assert "[ASSISTANT]" in result
@@ -179,7 +179,7 @@ class TestStringifyContextHistory:
                 ],
             ),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "Let me reason about X step by step..." in result
         assert "<thinking>" in result
         assert "X is explained as follows..." in result
@@ -195,7 +195,7 @@ class TestStringifyContextHistory:
                 tool_calls=[tc],
             ),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "Tool Call: ReadFile(" in result
         assert "main.py" in result
 
@@ -208,7 +208,7 @@ class TestStringifyContextHistory:
                 tool_call_id="call_001",
             ),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "[TOOL]" in result
         assert "call_id: call_001" in result
         assert "file content here" in result
@@ -221,7 +221,7 @@ class TestStringifyContextHistory:
             Message(role="assistant", content=[TextPart(text="Hi there")]),
             _make_checkpoint_message(1),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "CHECKPOINT" not in result
         assert "Hello" in result
         assert "Hi there" in result
@@ -253,7 +253,7 @@ class TestStringifyContextHistory:
                 content=[TextPart(text="The command output is: hello")],
             ),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
 
         # All key information must be present
         assert "Run echo hello" in result  # user message
@@ -271,7 +271,7 @@ class TestStringifyContextHistory:
             Message(role="assistant", content=[TextPart(text="")]),
             Message(role="user", content=[TextPart(text="Real message")]),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "[ASSISTANT]" not in result
         assert "Real message" in result
 
@@ -279,7 +279,7 @@ class TestStringifyContextHistory:
         history: list[Message] = [
             Message(role="system", content=[TextPart(text="You are a helpful assistant")]),
         ]
-        result = _stringify_context_history(history)
+        result = stringify_context_history(history)
         assert "[SYSTEM]" in result
         assert "You are a helpful assistant" in result
 
@@ -511,7 +511,7 @@ class TestGroupIntoTurns:
 
 
 # ---------------------------------------------------------------------------
-# _build_export_markdown
+# build_export_markdown
 # ---------------------------------------------------------------------------
 
 
@@ -522,7 +522,7 @@ class TestBuildExportMarkdown:
             Message(role="assistant", content=[TextPart(text="Hi")]),
         ]
         now = datetime(2026, 3, 2, 12, 0, 0)
-        result = _build_export_markdown(
+        result = build_export_markdown(
             session_id="test-session",
             work_dir="/tmp/work",
             history=history,
@@ -541,7 +541,7 @@ class TestBuildExportMarkdown:
             Message(role="assistant", content=[TextPart(text="4")]),
         ]
         now = datetime(2026, 1, 1)
-        result = _build_export_markdown(
+        result = build_export_markdown(
             session_id="s1",
             work_dir="/w",
             history=history,
@@ -576,7 +576,7 @@ class TestBuildExportMarkdown:
             ),
         ]
         now = datetime(2026, 1, 1)
-        result = _build_export_markdown(
+        result = build_export_markdown(
             session_id="s1",
             work_dir="/w",
             history=history,
@@ -591,41 +591,41 @@ class TestBuildExportMarkdown:
 
 
 # ---------------------------------------------------------------------------
-# _is_importable_file
+# is_importable_file
 # ---------------------------------------------------------------------------
 
 
 class TestIsImportableFile:
     def test_markdown(self) -> None:
-        assert _is_importable_file("notes.md") is True
+        assert is_importable_file("notes.md") is True
 
     def test_txt(self) -> None:
-        assert _is_importable_file("readme.txt") is True
+        assert is_importable_file("readme.txt") is True
 
     def test_python(self) -> None:
-        assert _is_importable_file("main.py") is True
+        assert is_importable_file("main.py") is True
 
     def test_json(self) -> None:
-        assert _is_importable_file("data.json") is True
+        assert is_importable_file("data.json") is True
 
     def test_log(self) -> None:
-        assert _is_importable_file("server.log") is True
+        assert is_importable_file("server.log") is True
 
     def test_no_extension_accepted(self) -> None:
-        assert _is_importable_file("Makefile") is True
-        assert _is_importable_file("README") is True
+        assert is_importable_file("Makefile") is True
+        assert is_importable_file("README") is True
 
     def test_binary_rejected(self) -> None:
-        assert _is_importable_file("photo.png") is False
-        assert _is_importable_file("archive.zip") is False
-        assert _is_importable_file("document.pdf") is False
-        assert _is_importable_file("binary.exe") is False
-        assert _is_importable_file("image.jpg") is False
+        assert is_importable_file("photo.png") is False
+        assert is_importable_file("archive.zip") is False
+        assert is_importable_file("document.pdf") is False
+        assert is_importable_file("binary.exe") is False
+        assert is_importable_file("image.jpg") is False
 
     def test_case_insensitive(self) -> None:
-        assert _is_importable_file("README.MD") is True
-        assert _is_importable_file("config.YAML") is True
-        assert _is_importable_file("style.CSS") is True
+        assert is_importable_file("README.MD") is True
+        assert is_importable_file("config.YAML") is True
+        assert is_importable_file("style.CSS") is True
 
     def test_importable_extensions_is_frozenset(self) -> None:
         assert isinstance(_IMPORTABLE_EXTENSIONS, frozenset)

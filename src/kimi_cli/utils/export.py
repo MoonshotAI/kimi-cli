@@ -240,7 +240,7 @@ def _build_overview(
     return "\n".join(lines)
 
 
-def _build_export_markdown(
+def build_export_markdown(
     session_id: str,
     work_dir: str,
     history: Sequence[Message],
@@ -269,23 +269,6 @@ def _build_export_markdown(
         lines.append(_format_turn_md(turn_messages, idx + 1))
 
     return "\n".join(lines)
-
-
-def build_export_markdown(
-    session_id: str,
-    work_dir: str,
-    history: Sequence[Message],
-    token_count: int,
-    now: datetime,
-) -> str:
-    """Build the full export markdown string."""
-    return _build_export_markdown(
-        session_id=session_id,
-        work_dir=work_dir,
-        history=history,
-        token_count=token_count,
-        now=now,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +359,7 @@ supported — importing binary files (images, PDFs, archives, …) is rejected
 with a friendly message."""
 
 
-def _is_importable_file(path_str: str) -> bool:
+def is_importable_file(path_str: str) -> bool:
     """Return True if *path_str* has an extension in the importable whitelist.
 
     Files with no extension are also accepted (could be READMEs, Makefiles, …).
@@ -385,11 +368,6 @@ def _is_importable_file(path_str: str) -> bool:
 
     suffix = PurePath(path_str).suffix.lower()
     return suffix == "" or suffix in _IMPORTABLE_EXTENSIONS
-
-
-def is_importable_file(path_str: str) -> bool:
-    """Return True if *path_str* has an extension in the importable whitelist."""
-    return _is_importable_file(path_str)
 
 
 def _stringify_content_parts(parts: Sequence[ContentPart]) -> str:
@@ -428,7 +406,7 @@ def _stringify_tool_calls(tool_calls: Sequence[ToolCall]) -> str:
     return "\n".join(lines)
 
 
-def _stringify_context_history(history: Sequence[Message]) -> str:
+def stringify_context_history(history: Sequence[Message]) -> str:
     """Convert a sequence of Messages to a readable text transcript.
 
     Preserves ThinkPart content, tool call information, and tool results
@@ -460,11 +438,6 @@ def _stringify_context_history(history: Sequence[Message]) -> str:
 
         parts.append(f"{header}\n" + "\n".join(segments))
     return "\n\n".join(parts)
-
-
-def stringify_context_history(history: Sequence[Message]) -> str:
-    """Convert a sequence of Messages to a readable text transcript."""
-    return _stringify_context_history(history)
 
 
 # ---------------------------------------------------------------------------
