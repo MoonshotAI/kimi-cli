@@ -114,6 +114,7 @@ class KimiSoul:
         self._loop_control = agent.runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
         self._acc_enabled = False
+        self._compaction_revision = 0
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -568,11 +569,21 @@ class KimiSoul:
         wire_send(status_update)
 
         # wait for all tool results (may be interrupted)
+        compaction_revision_before_tools = self._compaction_revision
         results = await result.tool_results()
         logger.debug("Got tool results: {results}", results=results)
+        compacted_during_tool_execution = (
+            self._compaction_revision != compaction_revision_before_tools
+        )
 
         # shield the context manipulation from interruption
-        await asyncio.shield(self._grow_context(result, results))
+        await asyncio.shield(
+            self._grow_context(
+                result,
+                results,
+                compacted_during_tool_execution=compacted_during_tool_execution,
+            )
+        )
 
         rejected = any(isinstance(result.return_value, ToolRejectedError) for result in results)
         if rejected:
@@ -609,7 +620,22 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
-    async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
+    @staticmethod
+    def _estimate_text_tokens(messages: Sequence[Message]) -> int:
+        total_chars = 0
+        for msg in messages:
+            for part in msg.content:
+                if isinstance(part, TextPart):
+                    total_chars += len(part.text)
+        return total_chars // 4
+
+    async def _grow_context(
+        self,
+        result: StepResult,
+        tool_results: list[ToolResult],
+        *,
+        compacted_during_tool_execution: bool = False,
+    ):
         logger.debug("Growing context with result: {result}", result=result)
 
         assert self._runtime.llm is not None
@@ -623,8 +649,13 @@ class KimiSoul:
                 raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
         await self._context.append_message(result.message)
-        if result.usage is not None:
+        if result.usage is not None and not compacted_during_tool_execution:
             await self._context.update_token_count(result.usage.total)
+        elif compacted_during_tool_execution:
+            # Compaction may have rewritten context + token count during tool execution.
+            # Keep that baseline and conservatively add newly appended message estimates.
+            estimated_new_tokens = self._estimate_text_tokens([result.message, *tool_messages])
+            await self._context.update_token_count(self._context.token_count + estimated_new_tokens)
 
         logger.debug(
             "Appending tool messages to context: {tool_messages}", tool_messages=tool_messages
@@ -684,6 +715,7 @@ class KimiSoul:
 
         # Estimate token count so context_usage is not reported as 0%
         await self._context.update_token_count(estimated_token_count)
+        self._compaction_revision += 1
 
         wire_send(CompactionEnd())
 
