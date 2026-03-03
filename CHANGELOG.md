@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Core: Add `/export` command to export current session context (messages, metadata) to a Markdown file, and `/import` command to import context from a file or another session ID into the current session
+- Web: Fix scrollable file list overflow in the toolbar changes panel
 - Core: Add `compaction_trigger_ratio` config option (default `0.85`) to control when auto-compaction triggers — compaction now fires when context usage reaches the configured ratio or when remaining space falls below `reserved_context_size`, whichever comes first
 - Core: Support custom instructions in `/compact` command (e.g., `/compact keep database discussions`) to guide what the compaction preserves
 - Web: Add URL action parameters (`?action=create` to open create-session dialog, `?action=create-in-dir&workDir=xxx` to create a session directly) for external integrations, and support Cmd/Ctrl+Click on new-session buttons to open session creation in a new browser tab
