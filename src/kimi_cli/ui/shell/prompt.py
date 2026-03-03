@@ -7,9 +7,11 @@ import json
 import mimetypes
 import os
 import re
+import signal
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -898,11 +900,39 @@ class CustomPromptSession:
         return True
 
     async def prompt(self) -> UserInput:
-        with patch_stdout(raw=True):
-            command = str(await self._session.prompt_async()).strip()
-            command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
-            # Sanitize UTF-16 surrogates that may come from Windows clipboard
-            command = _sanitize_surrogates(command)
+        # Install SIGWINCH handler to handle terminal resize (Unix only)
+        # This prevents duplicate bottom toolbar artifacts when resizing
+        sigwinch_remove: Callable[[], None] | None = None
+        if hasattr(signal, "SIGWINCH"):
+            loop = asyncio.get_running_loop()
+            app = self._session.app
+
+            def handle_resize() -> None:
+                # Invalidate the app to trigger a redraw on resize
+                app.invalidate()
+
+            try:
+                loop.add_signal_handler(signal.SIGWINCH, handle_resize)
+
+                def remove_sigwinch() -> None:
+                    with suppress(RuntimeError):
+                        loop.remove_signal_handler(signal.SIGWINCH)
+
+                sigwinch_remove = remove_sigwinch
+            except (RuntimeError, NotImplementedError):
+                # Platform doesn't support add_signal_handler, skip
+                pass
+
+        try:
+            with patch_stdout(raw=True):
+                command = str(await self._session.prompt_async()).strip()
+                command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
+                # Sanitize UTF-16 surrogates that may come from Windows clipboard
+                command = _sanitize_surrogates(command)
+        finally:
+            # Clean up SIGWINCH handler
+            if sigwinch_remove is not None:
+                sigwinch_remove()
         self._append_history_entry(command)
 
         # Parse rich content parts

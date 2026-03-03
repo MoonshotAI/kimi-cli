@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Fix duplicate bottom toolbar artifacts when terminal is resized (e.g., on Hyprland fullscreen toggle)
+  - Add SIGWINCH signal handler to trigger proper redraw
+
 ## 1.14.5 (2026-02-19)
 
 - Privacy: Anonymize telemetry headers sent during OAuth login and API requests
