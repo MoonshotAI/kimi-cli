@@ -781,6 +781,16 @@ class TestResolveImportSource:
         assert isinstance(result, str)
         assert "not a valid file path or session ID" in result
 
+    async def test_file_too_large_returns_error(self, tmp_path: Path, monkeypatch) -> None:
+        import kimi_cli.utils.export as export_mod
+
+        monkeypatch.setattr(export_mod, "MAX_IMPORT_SIZE", 10)  # 10 bytes
+        big = tmp_path / "big.md"
+        big.write_text("x" * 100, encoding="utf-8")
+        result = await resolve_import_source(str(big), "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "too large" in result.lower()
+
     async def test_successful_file_import(self, tmp_path: Path) -> None:
         src = tmp_path / "context.md"
         src.write_text("some important context", encoding="utf-8")

@@ -491,6 +491,10 @@ async def perform_export(
     return (output, len(history))
 
 
+MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 MB
+"""Maximum size (in bytes) of a file that can be imported via ``/import``."""
+
+
 async def resolve_import_source(
     target: str,
     current_session_id: str,
@@ -511,6 +515,17 @@ async def resolve_import_source(
                 f"Unsupported file type '{target_path.suffix}'. "
                 "/import only supports text-based files "
                 "(e.g. .md, .txt, .json, .py, .log, …)."
+            )
+
+        try:
+            file_size = target_path.stat().st_size
+        except OSError as e:
+            return f"Failed to read file: {e}"
+        if file_size > MAX_IMPORT_SIZE:
+            limit_mb = MAX_IMPORT_SIZE // (1024 * 1024)
+            return (
+                f"File is too large ({file_size / 1024 / 1024:.1f} MB). "
+                f"Maximum import size is {limit_mb} MB."
             )
 
         try:
@@ -546,6 +561,13 @@ async def resolve_import_source(
         return "The source session has no messages."
 
     content = stringify_context_history(source_context.history)
+    if len(content.encode("utf-8")) > MAX_IMPORT_SIZE:
+        limit_mb = MAX_IMPORT_SIZE // (1024 * 1024)
+        actual_mb = len(content.encode("utf-8")) / 1024 / 1024
+        return (
+            f"Session content is too large ({actual_mb:.1f} MB). "
+            f"Maximum import size is {limit_mb} MB."
+        )
     return (content, f"session '{target}'")
 
 
