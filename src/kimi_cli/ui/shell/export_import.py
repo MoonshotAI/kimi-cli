@@ -11,7 +11,7 @@ from kimi_cli.session import Session
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.slash import ensure_kimi_soul, registry
+from kimi_cli.ui.shell.slash import ensure_kimi_soul, registry, shell_mode_registry
 from kimi_cli.utils.export import (
     build_export_markdown,
     is_importable_file,
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 
 @registry.command
+@shell_mode_registry.command
 async def export(app: Shell, args: str):
     """Export current session context to a markdown file"""
     soul = ensure_kimi_soul(app)
@@ -88,6 +89,7 @@ async def export(app: Shell, args: str):
 
 
 @registry.command(name="import")
+@shell_mode_registry.command(name="import")
 async def import_context(app: Shell, args: str):
     """Import context from a file or session ID"""
     soul = ensure_kimi_soul(app)
@@ -101,7 +103,12 @@ async def import_context(app: Shell, args: str):
 
     target_path = Path(target).expanduser()
 
-    if target_path.exists() and target_path.is_file():
+    if target_path.exists() and target_path.is_dir():
+        console.print(
+            "[red]The specified path is a directory; please provide a file to import.[/red]"
+        )
+        return
+    elif target_path.exists() and target_path.is_file():
         # Check file extension
         if not is_importable_file(target_path.name):
             console.print(

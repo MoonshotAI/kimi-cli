@@ -91,7 +91,7 @@ async def add_dir(soul: KimiSoul, args: str):
     """Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs"""  # noqa: E501
     from kaos.path import KaosPath
 
-    from kimi_cli.utils.path import is_within_directory, list_directory, sanitize_cli_path
+    from kimi_cli.utils.path import is_within_directory, list_directory
 
     args = sanitize_cli_path(args)
     if not args:
@@ -215,7 +215,12 @@ async def import_context(soul: KimiSoul, args: str):
 
     target_path = Path(target).expanduser()
 
-    if target_path.exists() and target_path.is_file():
+    if target_path.exists() and target_path.is_dir():
+        wire_send(
+            TextPart(text="The specified path is a directory; please provide a file to import.")
+        )
+        return
+    elif target_path.exists() and target_path.is_file():
         # Check file extension
         from kimi_cli.utils.export import is_importable_file
 
