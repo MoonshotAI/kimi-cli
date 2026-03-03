@@ -63,7 +63,7 @@ This command is only available when using the default configuration file. If a c
 
 ### `/editor`
 
-Set the default external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
+Set the external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
 
 ### `/reload`
 
@@ -82,7 +82,7 @@ Debug information is displayed in a pager, press `q` to exit.
 
 Display API usage and quota information, showing quota usage with progress bars and remaining percentages.
 
-Aliases: `/status`
+Alias: `/status`
 
 ::: tip
 This command only works with the Kimi Code platform.
@@ -118,7 +118,7 @@ Alias: `/reset`
 
 ### `/compact`
 
-Manually compact the context to reduce token usage.
+Manually compact the context to reduce token usage. You can append custom instructions after the command to tell the AI which information to prioritize preserving during compaction, e.g., `/compact preserve database-related discussions`.
 
 When the context is too long, Kimi Code CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
 

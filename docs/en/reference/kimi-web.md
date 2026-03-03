@@ -186,6 +186,7 @@ Web UI provides a unified prompt toolbar above the input box, displaying various
 - **Activity status**: Shows the current agent state (processing, waiting for approval, etc.)
 - **Message queue**: Queue follow-up messages while the AI is processing; queued messages are sent automatically when the current response completes
 - **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
+- **Todo list**: When the `SetTodoList` tool is active, shows task progress with support for expanding to view the detailed list
 
 ::: info Changed
 Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar.

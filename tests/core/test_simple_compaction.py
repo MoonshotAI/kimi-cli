@@ -5,7 +5,7 @@ from kosong.chat_provider import TokenUsage
 from kosong.message import Message
 
 import kimi_cli.prompts as prompts
-from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction
+from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
 from kimi_cli.wire.types import TextPart, ThinkPart
 
 
@@ -126,3 +126,90 @@ def test_estimated_token_count_empty_messages():
     """Empty message list should return 0."""
     result = CompactionResult(messages=[], usage=None)
     assert result.estimated_token_count == 0
+
+
+def test_prepare_appends_custom_instruction():
+    messages = [
+        Message(role="user", content=[TextPart(text="Old question")]),
+        Message(role="assistant", content=[TextPart(text="Old answer")]),
+        Message(role="user", content=[TextPart(text="Latest question")]),
+        Message(role="assistant", content=[TextPart(text="Latest answer")]),
+    ]
+
+    result = SimpleCompaction(max_preserved_messages=2).prepare(
+        messages, custom_instruction="Preserve all discussions about the database"
+    )
+
+    assert result.compact_message is not None
+    parts = result.compact_message.content
+    last_part = parts[-1]
+    assert isinstance(last_part, TextPart)
+    # Custom instruction should be merged into the same TextPart as the COMPACT prompt
+    assert last_part.text.startswith("\n" + prompts.COMPACT)
+    assert "User's Custom Compaction Instruction" in last_part.text
+    assert "Preserve all discussions about the database" in last_part.text
+
+
+def test_prepare_without_custom_instruction_unchanged():
+    """When no custom_instruction is given, the compact message should end with the COMPACT prompt."""
+    messages = [
+        Message(role="user", content=[TextPart(text="Old question")]),
+        Message(role="assistant", content=[TextPart(text="Old answer")]),
+        Message(role="user", content=[TextPart(text="Latest question")]),
+        Message(role="assistant", content=[TextPart(text="Latest answer")]),
+    ]
+
+    result = SimpleCompaction(max_preserved_messages=2).prepare(messages)
+
+    assert result.compact_message is not None
+    parts = result.compact_message.content
+    last_part = parts[-1]
+    assert isinstance(last_part, TextPart)
+    assert last_part.text == "\n" + prompts.COMPACT
+
+
+# --- should_auto_compact tests ---
+
+
+class TestShouldAutoCompact:
+    """Test the auto-compaction trigger logic across different model context sizes."""
+
+    def test_200k_model_triggers_by_reserved(self):
+        """200K model with default config: reserved (50K) fires first at 150K (75%)."""
+        # At 150K tokens: ratio check = 150K >= 170K (False), reserved check = 200K >= 200K (True)
+        assert should_auto_compact(
+            150_000, 200_000, trigger_ratio=0.85, reserved_context_size=50_000
+        )
+
+    def test_200k_model_below_threshold(self):
+        """200K model: 140K tokens should NOT trigger (below both thresholds)."""
+        assert not should_auto_compact(
+            140_000, 200_000, trigger_ratio=0.85, reserved_context_size=50_000
+        )
+
+    def test_1m_model_triggers_by_ratio(self):
+        """1M model with default config: ratio (85%) fires first at 850K."""
+        # At 850K tokens: ratio check = 850K >= 850K (True)
+        assert should_auto_compact(
+            850_000, 1_000_000, trigger_ratio=0.85, reserved_context_size=50_000
+        )
+
+    def test_1m_model_below_ratio_threshold(self):
+        """1M model: 840K tokens should NOT trigger (below 85% ratio, well above reserved)."""
+        assert not should_auto_compact(
+            840_000, 1_000_000, trigger_ratio=0.85, reserved_context_size=50_000
+        )
+
+    def test_custom_ratio_triggers_earlier(self):
+        """Custom ratio=0.7 triggers at 70% of context."""
+        # 200K * 0.7 = 140K
+        assert should_auto_compact(
+            140_000, 200_000, trigger_ratio=0.7, reserved_context_size=50_000
+        )
+        assert not should_auto_compact(
+            139_999, 200_000, trigger_ratio=0.7, reserved_context_size=50_000
+        )
+
+    def test_zero_tokens_never_triggers(self):
+        """Empty context should never trigger compaction."""
+        assert not should_auto_compact(0, 200_000, trigger_ratio=0.85, reserved_context_size=50_000)

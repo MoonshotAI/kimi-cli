@@ -32,6 +32,7 @@ def test_default_config_dump():
                 "max_retries_per_step": 3,
                 "max_ralph_iterations": 0,
                 "reserved_context_size": 50000,
+                "compaction_trigger_ratio": 0.85,
             },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
@@ -92,3 +93,23 @@ def test_load_config_max_steps_per_run():
 def test_load_config_reserved_context_size_too_low():
     with pytest.raises(ConfigError, match="reserved_context_size"):
         load_config_from_string('{"loop_control": {"reserved_context_size": 500}}')
+
+
+def test_load_config_compaction_trigger_ratio():
+    config = load_config_from_string('{"loop_control": {"compaction_trigger_ratio": 0.8}}')
+    assert config.loop_control.compaction_trigger_ratio == 0.8
+
+
+def test_load_config_compaction_trigger_ratio_default():
+    config = load_config_from_string("{}")
+    assert config.loop_control.compaction_trigger_ratio == 0.85
+
+
+def test_load_config_compaction_trigger_ratio_too_low():
+    with pytest.raises(ConfigError, match="compaction_trigger_ratio"):
+        load_config_from_string('{"loop_control": {"compaction_trigger_ratio": 0.3}}')
+
+
+def test_load_config_compaction_trigger_ratio_too_high():
+    with pytest.raises(ConfigError, match="compaction_trigger_ratio"):
+        load_config_from_string('{"loop_control": {"compaction_trigger_ratio": 1.0}}')
