@@ -287,6 +287,8 @@ def test_mcp_tool_call(tmp_path) -> None:
                     "type": "TurnBegin",
                     "payload": {"user_input": "call mcp"},
                 },
+                {"method": "event", "type": "MCPLoadingBegin", "payload": {}},
+                {"method": "event", "type": "MCPLoadingEnd", "payload": {}},
                 {"method": "event", "type": "StepBegin", "payload": {"n": 1}},
                 {
                     "method": "event",
