@@ -2375,9 +2375,16 @@ export function useSessionStream(
     pendingApprovalRequestsRef.current.clear();
     pendingQuestionRequestsRef.current.clear();
 
+    // Remove lingering MCP loading indicator (e.g. MCPLoadingEnd was never received)
+    const mcpMsgId = mcpLoadingMessageIdRef.current;
+    if (mcpMsgId) {
+      mcpLoadingMessageIdRef.current = null;
+      setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+    }
+
     // Mark all streaming/subagent messages as complete
     completeStreamingMessages();
-  }, [completeStreamingMessages, setAwaitingFirstResponse]);
+  }, [completeStreamingMessages, setAwaitingFirstResponse, setMessages]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {
