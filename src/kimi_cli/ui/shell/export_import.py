@@ -7,6 +7,7 @@ from kaos.path import KaosPath
 
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import ensure_kimi_soul, registry, shell_mode_registry
+from kimi_cli.utils.export import is_sensitive_file
 from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.wire.types import TurnBegin, TurnEnd
 
@@ -95,8 +96,8 @@ async def import_context(app: Shell, args: str):
         f"[green]Imported context from {source_desc} "
         f"({len(content)} chars) into current session.[/green]"
     )
-    if Path(target).name.lower() == ".env":
+    if is_sensitive_file(Path(target).name):
         console.print(
-            "[yellow]Warning: .env files may contain secrets (API keys, tokens). "
+            "[yellow]Warning: This file may contain secrets (API keys, tokens, credentials). "
             "The content is now part of your session context.[/yellow]"
         )

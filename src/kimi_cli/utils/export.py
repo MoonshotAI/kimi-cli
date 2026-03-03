@@ -492,6 +492,24 @@ async def perform_export(
 MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 MB
 """Maximum size (in bytes) of a file that can be imported via ``/import``."""
 
+_SENSITIVE_FILE_PATTERNS: tuple[str, ...] = (
+    ".env",
+    "credentials",
+    "secrets",
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".keystore",
+)
+"""File-name substrings that indicate potentially sensitive content."""
+
+
+def is_sensitive_file(filename: str) -> bool:
+    """Return True if *filename* looks like it may contain secrets."""
+    name = filename.lower()
+    return any(pat in name for pat in _SENSITIVE_FILE_PATTERNS)
+
 
 async def resolve_import_source(
     target: str,
@@ -559,9 +577,10 @@ async def resolve_import_source(
         return "The source session has no messages."
 
     content = stringify_context_history(source_context.history)
-    if len(content.encode("utf-8")) > MAX_IMPORT_SIZE:
+    content_bytes = len(content.encode("utf-8"))
+    if content_bytes > MAX_IMPORT_SIZE:
         limit_mb = MAX_IMPORT_SIZE // (1024 * 1024)
-        actual_mb = len(content.encode("utf-8")) / 1024 / 1024
+        actual_mb = content_bytes / 1024 / 1024
         return (
             f"Session content is too large ({actual_mb:.1f} MB). "
             f"Maximum import size is {limit_mb} MB."

@@ -14,6 +14,7 @@ from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system
+from kimi_cli.utils.export import is_sensitive_file
 from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
 from kimi_cli.wire.types import StatusUpdate, TextPart, TurnBegin, TurnEnd
@@ -218,10 +219,10 @@ async def import_context(soul: KimiSoul, args: str):
     await soul.wire_file.append_message(TurnEnd())
 
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
-    if Path(target).name.lower() == ".env":
+    if is_sensitive_file(Path(target).name):
         wire_send(
             TextPart(
-                text="Warning: .env files may contain secrets (API keys, tokens). "
+                text="Warning: This file may contain secrets (API keys, tokens, credentials). "
                 "The content is now part of your session context."
             )
         )
