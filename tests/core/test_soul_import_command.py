@@ -18,6 +18,7 @@ def _make_soul(work_dir: Path) -> Mock:
     soul.context.history = []
     soul.context.token_count = 50
     soul.context.append_message = AsyncMock()
+    soul.context.update_token_count = AsyncMock()
     soul.wire_file.append_message = AsyncMock()
     return soul
 

@@ -226,6 +226,11 @@ async def import_context(soul: KimiSoul, args: str):
     message = build_import_message(content, source_desc)
     await soul.context.append_message(message)
 
+    from kimi_cli.soul.compaction import estimate_text_tokens
+
+    estimated = estimate_text_tokens([message])
+    await soul.context.update_token_count(soul.context.token_count + estimated)
+
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
     if source_desc.startswith("file") and is_sensitive_file(Path(target).name):
         wire_send(

@@ -35,13 +35,13 @@ class CompactionResult(NamedTuple):
         """
         if self.usage is not None and len(self.messages) > 0:
             summary_tokens = self.usage.output
-            preserved_tokens = _estimate_text_tokens(self.messages[1:])
+            preserved_tokens = estimate_text_tokens(self.messages[1:])
             return summary_tokens + preserved_tokens
 
-        return _estimate_text_tokens(self.messages)
+        return estimate_text_tokens(self.messages)
 
 
-def _estimate_text_tokens(messages: Sequence[Message]) -> int:
+def estimate_text_tokens(messages: Sequence[Message]) -> int:
     """Estimate tokens from message text content using a character-based heuristic."""
     total_chars = 0
     for msg in messages:

@@ -86,6 +86,11 @@ async def import_context(app: Shell, args: str):
     message = build_import_message(content, source_desc)
     await soul.context.append_message(message)
 
+    from kimi_cli.soul.compaction import estimate_text_tokens
+
+    estimated = estimate_text_tokens([message])
+    await soul.context.update_token_count(soul.context.token_count + estimated)
+
     # Write to wire file so the import appears in session replay
     await soul.wire_file.append_message(
         TurnBegin(user_input=f"[Imported context from {source_desc}]")
