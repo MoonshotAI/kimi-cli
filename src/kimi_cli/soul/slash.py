@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kaos.path import KaosPath
 from kosong.message import Message
 from loguru import logger
 
@@ -13,6 +14,8 @@ from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import system
+from kimi_cli.utils.export import is_sensitive_file
+from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
 from kimi_cli.wire.types import StatusUpdate, TextPart
 
@@ -103,7 +106,7 @@ async def add_dir(soul: KimiSoul, args: str):
 
     from kimi_cli.utils.path import is_within_directory, list_directory
 
-    args = args.strip()
+    args = sanitize_cli_path(args)
     if not args:
         if not soul.runtime.additional_dirs:
             wire_send(TextPart(text="No additional directories. Usage: /add-dir <path>"))
@@ -169,3 +172,72 @@ async def add_dir(soul: KimiSoul, args: str):
 
     wire_send(TextPart(text=f"Added directory to workspace: {path}"))
     logger.info("Added additional directory: {path}", path=path)
+
+
+@registry.command
+async def export(soul: KimiSoul, args: str):
+    """Export current session context to a markdown file"""
+    from kimi_cli.utils.export import perform_export
+
+    session = soul.runtime.session
+    result = await perform_export(
+        history=list(soul.context.history),
+        session_id=session.id,
+        work_dir=str(session.work_dir),
+        token_count=soul.context.token_count,
+        args=args,
+        default_dir=Path(str(session.work_dir)),
+    )
+    if isinstance(result, str):
+        wire_send(TextPart(text=result))
+        return
+    output, count = result
+    display = shorten_home(KaosPath(str(output)))
+    wire_send(TextPart(text=f"Exported {count} messages to {display}"))
+    wire_send(
+        TextPart(
+            text="  Note: The exported file may contain sensitive information. "
+            "Please be cautious when sharing it externally."
+        )
+    )
+
+
+@registry.command(name="import")
+async def import_context(soul: KimiSoul, args: str):
+    """Import context from a file or session ID"""
+    from kimi_cli.utils.export import perform_import
+
+    target = sanitize_cli_path(args)
+    if not target:
+        wire_send(TextPart(text="Usage: /import <file_path or session_id>"))
+        return
+
+    session = soul.runtime.session
+    raw_max_context_size = (
+        soul.runtime.llm.max_context_size if soul.runtime.llm is not None else None
+    )
+    max_context_size = (
+        raw_max_context_size
+        if isinstance(raw_max_context_size, int) and raw_max_context_size > 0
+        else None
+    )
+    result = await perform_import(
+        target=target,
+        current_session_id=session.id,
+        work_dir=session.work_dir,
+        context=soul.context,
+        max_context_size=max_context_size,
+    )
+    if isinstance(result, str):
+        wire_send(TextPart(text=result))
+        return
+
+    source_desc, content_len = result
+    wire_send(TextPart(text=f"Imported context from {source_desc} ({content_len} chars)."))
+    if source_desc.startswith("file") and is_sensitive_file(Path(target).name):
+        wire_send(
+            TextPart(
+                text="Warning: This file may contain secrets (API keys, tokens, credentials). "
+                "The content is now part of your session context."
+            )
+        )
