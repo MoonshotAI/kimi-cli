@@ -959,7 +959,9 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            available = columns - len(right_text) - 2
+            # Reserve space for right_text, two trailing spaces after tips, and
+            # at least one space of padding before right_text.
+            available = columns - len(right_text) - 3
             full_text = _TIP_SEPARATOR.join(self._tips)
             if len(full_text) <= available:
                 tip_text: str | None = full_text
