@@ -791,6 +791,40 @@ class TestResolveImportSource:
         assert isinstance(result, str)
         assert "too large" in result.lower()
 
+    async def test_session_content_too_large_returns_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import kimi_cli.utils.export as export_mod
+        from kimi_cli.session import Session
+
+        # Mock Session.find to return a fake session
+        fake_session = type("FakeSession", (), {"context_file": tmp_path / "ctx.jsonl"})()
+
+        async def fake_find(_work_dir, _target):
+            return fake_session
+
+        monkeypatch.setattr(Session, "find", fake_find)
+
+        # Mock Context to return a large history
+        big_text = "x" * 200
+        fake_history = [Message(role="user", content=[TextPart(text=big_text)])]
+
+        class FakeContext:
+            def __init__(self, _path):
+                self.history = fake_history
+
+            async def restore(self):
+                return True
+
+        from kimi_cli.soul import context as context_mod
+
+        monkeypatch.setattr(context_mod, "Context", FakeContext)
+        monkeypatch.setattr(export_mod, "MAX_IMPORT_SIZE", 10)  # 10 bytes
+
+        result = await resolve_import_source("other-id", "curr-id", tmp_path)  # type: ignore[arg-type]
+        assert isinstance(result, str)
+        assert "too large" in result.lower()
+
     async def test_successful_file_import(self, tmp_path: Path) -> None:
         src = tmp_path / "context.md"
         src.write_text("some important context", encoding="utf-8")
