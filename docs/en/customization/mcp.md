@@ -106,6 +106,12 @@ Use the `--mcp-config` flag to pass JSON configuration directly:
 kimi --mcp-config '{"mcpServers": {"test": {"url": "https://..."}}}'
 ```
 
+## Loading status
+
+When Kimi Code CLI starts and connects to MCP servers, shell mode displays a "Connecting to MCP servers..." loading indicator before the first response. The web interface also shows a corresponding status message. The indicator disappears automatically once connections are established.
+
+If multiple MCP servers are configured, the loading time may be longer. The loading indicator helps you understand the current status.
+
 ## Security
 
 MCP tools may access and operate external systems. Be aware of security risks.
