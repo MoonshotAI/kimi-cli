@@ -364,9 +364,7 @@ def is_importable_file(path_str: str) -> bool:
 
     Files with no extension are also accepted (could be READMEs, Makefiles, …).
     """
-    from pathlib import PurePath
-
-    suffix = PurePath(path_str).suffix.lower()
+    suffix = Path(path_str).suffix.lower()
     return suffix == "" or suffix in _IMPORTABLE_EXTENSIONS
 
 

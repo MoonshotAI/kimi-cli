@@ -179,6 +179,12 @@ async def export(soul: KimiSoul, args: str):
     output, count = result
     display = shorten_home(KaosPath(str(output)))
     wire_send(TextPart(text=f"Exported {count} messages to {display}"))
+    wire_send(
+        TextPart(
+            text="Note: The exported file may contain sensitive information. "
+            "Please be cautious when sharing it externally."
+        )
+    )
 
 
 @registry.command(name="import")
@@ -212,3 +218,10 @@ async def import_context(soul: KimiSoul, args: str):
     await soul.wire_file.append_message(TurnEnd())
 
     wire_send(TextPart(text=f"Imported context from {source_desc} ({len(content)} chars)."))
+    if Path(target).suffix.lower() == ".env":
+        wire_send(
+            TextPart(
+                text="Warning: .env files may contain secrets (API keys, tokens). "
+                "The content is now part of your session context."
+            )
+        )

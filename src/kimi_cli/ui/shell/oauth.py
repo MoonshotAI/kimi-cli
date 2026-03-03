@@ -13,17 +13,10 @@ from kimi_cli.config import save_config
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.setup import select_platform, setup_platform
-from kimi_cli.ui.shell.slash import registry
+from kimi_cli.ui.shell.slash import ensure_kimi_soul, registry
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
-
-
-def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
-    if not isinstance(app.soul, KimiSoul):
-        console.print("[red]KimiSoul required[/red]")
-        return None
-    return app.soul
 
 
 async def _login_kimi_code(soul: KimiSoul) -> bool:
@@ -68,7 +61,7 @@ def _current_model_key(soul: KimiSoul) -> str | None:
 @registry.command(aliases=["setup"])
 async def login(app: Shell, args: str) -> None:
     """Login or setup a platform."""
-    soul = _ensure_kimi_soul(app)
+    soul = ensure_kimi_soul(app)
     if soul is None:
         return
     platform = await select_platform()
@@ -88,7 +81,7 @@ async def login(app: Shell, args: str) -> None:
 @registry.command
 async def logout(app: Shell, args: str) -> None:
     """Logout from the current platform."""
-    soul = _ensure_kimi_soul(app)
+    soul = ensure_kimi_soul(app)
     if soul is None:
         return
     config = soul.runtime.config
