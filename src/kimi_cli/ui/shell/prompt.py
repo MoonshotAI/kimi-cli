@@ -493,13 +493,18 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
     return queue[0]
 
 
-_ALL_TIPS = [
-    "ctrl-x: toggle mode",
-    "ctrl-o: editor",
-    "ctrl-j: newline",
-    "ctrl-v: paste image",
-    "@: mention files",
-]
+def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
+    tips = [
+        "ctrl-x: toggle mode",
+        "ctrl-o: editor",
+        "ctrl-j: newline",
+    ]
+    if clipboard_available:
+        tips.append("ctrl-v: paste image")
+    tips.append("@: mention files")
+    return tips
+
+
 _TIP_SEPARATOR = " | "
 
 
@@ -669,6 +674,8 @@ class CustomPromptSession:
         self._thinking = thinking
         self._attachment_cache = AttachmentCache()
         self._tip_rotation_index: int = 0
+        clipboard_available = is_clipboard_available()
+        self._tips = _build_toolbar_tips(clipboard_available)
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -723,7 +730,7 @@ class CustomPromptSession:
             """Open current buffer in external editor."""
             self._open_in_external_editor(event)
 
-        if is_clipboard_available():
+        if clipboard_available:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
@@ -953,13 +960,13 @@ class CustomPromptSession:
                 _toast_queues["left"].popleft()
         else:
             available = columns - len(right_text) - 2
-            full_text = _TIP_SEPARATOR.join(_ALL_TIPS)
+            full_text = _TIP_SEPARATOR.join(self._tips)
             if len(full_text) <= available:
                 tip_text: str | None = full_text
             else:
-                n = len(_ALL_TIPS)
+                n = len(self._tips)
                 offset = self._tip_rotation_index % n
-                rotated = _ALL_TIPS[offset:] + _ALL_TIPS[:offset]
+                rotated = self._tips[offset:] + self._tips[:offset]
                 selected: list[str] = []
                 total_len = 0
                 for tip in rotated:

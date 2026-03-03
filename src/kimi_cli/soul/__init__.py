@@ -51,11 +51,19 @@ class MaxStepsReached(Exception):
 
 def format_token_count(n: int) -> str:
     """Format token count as compact string, e.g. 28.5k, 128k, 1.2m."""
+    suffix = ""
     if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}m"
-    if n >= 1_000:
-        return f"{n / 1_000:.1f}k"
-    return str(n)
+        value = n / 1_000_000
+        suffix = "m"
+    elif n >= 1_000:
+        value = n / 1_000
+        suffix = "k"
+    else:
+        return str(n)
+
+    # Keep one decimal when needed, but drop trailing ".0".
+    compact = f"{value:.1f}".rstrip("0").rstrip(".")
+    return f"{compact}{suffix}"
 
 
 def format_context_status(
