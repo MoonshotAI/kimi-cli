@@ -73,11 +73,12 @@ def format_context_status(
 ) -> str:
     """Format context status string for display in status bar."""
     bounded = max(0.0, min(context_usage, 1.0))
-    if max_context_tokens > 0:
-        used = format_token_count(context_tokens)
-        total = format_token_count(max_context_tokens)
-        return f"context: {bounded:.1%} ({used}/{total})"
-    return f"context: {bounded:.1%}"
+    # Create progress bar with 10 blocks
+    filled = int(bounded * 10)
+    empty = 10 - filled
+    bar = "█" * filled + "░" * empty
+    percentage = int(bounded * 100)
+    return f"{bar} {percentage}%"
 
 
 @dataclass(frozen=True, slots=True)
