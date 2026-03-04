@@ -241,3 +241,51 @@ async def import_context(soul: KimiSoul, args: str):
                 "The content is now part of your session context."
             )
         )
+
+
+@registry.command
+async def plan(soul: KimiSoul, args: str):
+    """Generate and select from multiple implementation approaches.
+    Usage: /plan <task description>
+    Example: /plan add authentication to the API
+    """
+    from kimi_cli.plans import PlanGenerator, PlanMenuRenderer, PlanGenerationError
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+
+    if not args.strip():
+        wire_send(TextPart(text="Usage: /plan <task description>\nExample: /plan add authentication"))
+        return
+
+    # Check if LLM is configured
+    if soul.runtime.llm is None:
+        wire_send(TextPart(text="Error: LLM not configured. Cannot generate plans."))
+        return
+
+    # Show "thinking" message
+    wire_send(TextPart(text="🤔 Analyzing your request and generating implementation options..."))
+
+    try:
+        # Generate plan
+        generator = PlanGenerator(soul.runtime.llm)
+        plan = await generator.generate(
+            user_request=args,
+            work_dir=str(soul.runtime.builtin_args.KIMI_WORK_DIR),
+            files=[],  # TODO: Get from context
+            patterns=[],  # TODO: Get from AGENTS.md
+        )
+
+        # Render menu
+        renderer = PlanMenuRenderer()
+        menu_text = renderer.render(plan)
+
+        # Send menu
+        wire_send(TextPart(text=menu_text))
+
+        # TODO: Phase 2 - handle user selection
+        wire_send(TextPart(text="\n💡 Phase 2 will add selection handling. For now, use yolo mode or describe your choice."))
+
+    except PlanGenerationError as e:
+        wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
+    except Exception as e:
+        wire_send(TextPart(text=f"❌ Unexpected error: {e}"))
