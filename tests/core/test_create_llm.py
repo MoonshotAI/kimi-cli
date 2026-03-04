@@ -88,6 +88,46 @@ def test_create_llm_echo_provider():
     assert llm.max_context_size == 1234
 
 
+def test_create_llm_anthropic_with_session_id():
+    from kosong.contrib.chat_provider.anthropic import Anthropic
+
+    provider = LLMProvider(
+        type="anthropic",
+        base_url="https://api.anthropic.com",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="anthropic",
+        model="claude-sonnet-4-20250514",
+        max_context_size=200000,
+    )
+
+    llm = create_llm(provider, model, session_id="sess-abc-123")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Anthropic)
+    assert llm.chat_provider._metadata == snapshot({"user_id": "sess-abc-123"})
+
+
+def test_create_llm_anthropic_without_session_id():
+    from kosong.contrib.chat_provider.anthropic import Anthropic
+
+    provider = LLMProvider(
+        type="anthropic",
+        base_url="https://api.anthropic.com",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="anthropic",
+        model="claude-sonnet-4-20250514",
+        max_context_size=200000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Anthropic)
+    assert llm.chat_provider._metadata is None
+
+
 def test_create_llm_requires_base_url_for_kimi():
     provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr("test-key"))
     model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)

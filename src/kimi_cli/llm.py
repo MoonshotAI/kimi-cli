@@ -169,6 +169,7 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
                 default_max_tokens=50000,
+                metadata={"user_id": session_id} if session_id else None,
             )
         case "google_genai" | "gemini":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI

@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Pass session ID as `user_id` metadata to Anthropic API
+
 ## 1.17.0 (2026-03-03)
 
 - Core: Add `/export` command to export current session context (messages, metadata) to a Markdown file, and `/import` command to import context from a file or another session ID into the current session

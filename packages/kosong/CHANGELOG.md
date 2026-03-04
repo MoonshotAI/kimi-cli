@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Anthropic: Support optional `metadata` parameter in `Anthropic` chat provider for passing metadata (e.g., `user_id`) to the API
+
 ## 0.43.0 (2026-02-24)
 
 - Add `RetryableChatProvider` protocol for providers that can recover from retryable transport errors
