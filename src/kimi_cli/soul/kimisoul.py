@@ -272,7 +272,191 @@ class KimiSoul:
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
+        
+        text_input = user_message.extract_text(" ").strip()
+        
+        # Check for planning
+        plan_outcome = await self._maybe_plan_and_execute(user_message, text_input)
+        if plan_outcome is not None:
+            return plan_outcome
+        
+        # Continue with normal execution
         return await self._agent_loop()
+
+    async def _maybe_plan_and_execute(
+        self, 
+        user_message: Message,
+        text_input: str
+    ) -> TurnOutcome | None:
+        """Check if planning should trigger, execute plan if needed.
+        
+        Returns:
+            TurnOutcome if planning was triggered and handled,
+            None if normal execution should continue
+        """
+        from kimi_cli.plans.mode import ModeManager, PlanMode
+        from kimi_cli.plans.detector import ComplexityDetector
+        from kimi_cli.plans import (
+            PlanGenerator, InteractivePlanMenu, PlanStorage, 
+            PlanDetailView, PlanGenerationError
+        )
+        from kimi_cli.plans.models import PlanStep  # For converting options to steps
+        from kimi_cli.plans.executor import PlanExecutor, ExecutionAborted
+        from kimi_cli.plans.progress import ExecutionProgressUI
+        from kimi_cli.wire.types import TextPart
+        from kimi_cli.soul import wire_send
+        
+        # Check config
+        config = self._runtime.config.plans
+        if config.auto_plan == "never" and not ModeManager.get_instance().is_plan_mode():
+            return None
+        
+        # Analyze complexity
+        detector = ComplexityDetector()
+        complexity_score = detector.analyze(
+            user_request=text_input,
+            predicted_files=[],
+            predicted_tools=[]
+        )
+        
+        # Determine if we should plan
+        should_plan = (
+            ModeManager.get_instance().is_plan_mode() or
+            config.should_auto_plan(complexity_score.total)
+        )
+        
+        if not should_plan:
+            return None
+        
+        # Show complexity info
+        if complexity_score.total >= config.complexity_threshold:
+            wire_send(TextPart(
+                text=f"🤔 This looks complex (score: {complexity_score.total}/100). Generating plans..."
+            ))
+        else:
+            wire_send(TextPart(text="🤔 Generating implementation plans..."))
+        
+        try:
+            # Generate plan
+            if self._runtime.llm is None:
+                wire_send(TextPart(text="⚠️ LLM not configured, skipping planning."))
+                return None
+            
+            generator = PlanGenerator(self._runtime.llm)
+            plan = await generator.generate(
+                user_request=text_input,
+                work_dir=str(self._runtime.builtin_args.KIMI_WORK_DIR),
+                files=[],
+                patterns=[],
+            )
+            
+            # Convert options to steps for execution
+            plan.steps = [
+                PlanStep(
+                    id=f"step_{i}",
+                    name=opt.title,
+                    description=opt.description,
+                    depends_on=[],  # Sequential execution for auto-mode
+                    can_parallel=False,
+                    estimated_duration=opt.estimated_time,
+                )
+                for i, opt in enumerate(plan.options)
+            ]
+            
+            # Show interactive menu
+            menu = InteractivePlanMenu()
+            selected_index = menu.show(plan)
+            
+            if selected_index is None:
+                wire_send(TextPart(text="❌ Planning cancelled."))
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            
+            # Save plan if configured
+            if config.save_plans:
+                storage = PlanStorage()
+                plan_id = storage.save(plan)
+                wire_send(TextPart(text=f"💾 Plan saved (ID: {plan_id})"))
+            
+            # Show detail view for confirmation
+            detail_view = PlanDetailView()
+            if not detail_view.show(plan, selected_index):
+                wire_send(TextPart(text="❌ Execution cancelled."))
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            
+            # ============================================
+            # PHASE 3: Execute selected option using PlanExecutor
+            # ============================================
+            
+            # Filter to only selected option as a single step
+            selected_option = plan.options[selected_index]
+            execution_plan = plan  # Use full plan but we'll execute selected option
+            
+            # For now, execute just the selected approach
+            # In future, could expand selected option into sub-steps
+            wire_send(TextPart(text=f"🚀 Executing: {selected_option.title}"))
+            
+            # Create executor
+            executor = PlanExecutor(
+                llm=self._runtime.llm,
+                max_parallel=1,  # Sequential for auto-mode
+                enable_checkpoints=True,
+            )
+            
+            # Progress UI
+            progress_ui = ExecutionProgressUI()
+            
+            def on_step_update(step_exec):
+                progress_ui.update()
+            
+            executor.add_listener("step_start", on_step_update)
+            executor.add_listener("step_complete", on_step_update)
+            executor.add_listener("step_failed", on_step_update)
+            
+            # Execute
+            progress_ui.start(None)
+            try:
+                execution = await executor.execute(execution_plan, fresh=True)
+                progress_ui.stop()
+                
+                # Show result
+                completed, total = execution.get_progress()
+                if execution.overall_status == "completed":
+                    wire_send(TextPart(text=f"✅ Completed {completed}/{total} steps"))
+                else:
+                    wire_send(TextPart(text=f"⚠️ Finished with status: {execution.overall_status}"))
+                
+            except ExecutionAborted:
+                progress_ui.stop()
+                wire_send(TextPart(text="❌ Execution aborted. Use `/plan-execute --resume` to continue."))
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            
+            # After execution, continue normal flow (execution results are in context)
+            # The plan execution has modified files, now we can continue with normal chat
+            wire_send(TextPart(text="✅ Plan execution complete. Continuing..."))
+            
+            # Return None to continue with normal execution
+            # (The execution has already made changes, no need for additional steps)
+            return None
+            
+        except PlanGenerationError as e:
+            wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
+            return None
+        except Exception as e:
+            wire_send(TextPart(text=f"❌ Planning error: {e}"))
+            logger.error("Planning error: {e}", e=e)
+            return None
 
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())

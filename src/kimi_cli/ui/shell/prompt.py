@@ -40,6 +40,7 @@ from prompt_toolkit.styles import Style
 from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.plans.mode import ModeManager, PlanMode
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell.console import console
@@ -498,6 +499,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-x: toggle mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
+        "ctrl-t: toggle act/plan",
     ]
     if clipboard_available:
         tips.append("ctrl-v: paste image")
@@ -719,6 +721,16 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
+        @_kb.add("c-t", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Toggle between ACT and PLAN modes."""
+            mode_manager = ModeManager.get_instance()
+            new_mode = mode_manager.toggle()
+            # Show toast notification
+            toast(f"Switched to {new_mode.name} mode", duration=2.0)
+            # Redraw UI
+            event.app.invalidate()
+
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
@@ -934,6 +946,10 @@ class CustomPromptSession:
         fragments.append(("fg:#4d4d4d", "─" * columns))
         fragments.append(("", "\n"))
 
+        # Get plan mode prefix
+        mode_manager = ModeManager.get_instance()
+        mode_prefix = mode_manager.mode_prefix
+        
         mode = str(self._mode).lower()
         if self._mode == PromptMode.AGENT:
             mode_details: list[str] = []
@@ -947,6 +963,12 @@ class CustomPromptSession:
         if status.yolo_enabled:
             fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
             columns -= len("yolo") + 2
+        # Show mode prefix with styling
+        if mode_manager.is_plan_mode():
+            fragments.extend([("bold fg:#00ffff", mode_prefix), ("", " ")])
+        else:
+            fragments.extend([("bold fg:#00ff00", mode_prefix), ("", " ")])
+        columns -= len(mode_prefix) + 1
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
         right_text = self._render_right_span(status)

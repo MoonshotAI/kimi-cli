@@ -241,3 +241,394 @@ async def import_context(soul: KimiSoul, args: str):
                 "The content is now part of your session context."
             )
         )
+
+
+@registry.command
+async def plan(soul: KimiSoul, args: str):
+    """Generate and select from multiple implementation approaches.
+    
+    Usage:
+      /plan <task description>       Generate new plan
+      /plan --list                   List saved plans  
+      /plan --reuse <id>             Reuse saved plan
+      /plan --reuse <id> --option N  Reuse with specific option
+      /plan --last                   Reuse last plan
+      /plan --delete <id>            Delete saved plan
+      /plan --help                   Show help
+    """
+    from kimi_cli.plans import (
+        PlanGenerator, InteractivePlanMenu, PlanStorage, 
+        PlanDetailView, PlanGenerationError
+    )
+    from kimi_cli.plans.mode import ModeManager, PlanMode
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    storage = PlanStorage()
+    
+    # Handle --help
+    if args == '--help' or args == '-h':
+        wire_send(TextPart(text="""
+/plan - Intelligent planning system
+
+Usage:
+  /plan <description>              Generate plans for a task
+  /plan --list                     Show saved plans
+  /plan --reuse <id>               Reuse a saved plan
+  /plan --reuse <id> --option N    Reuse with specific option (1-3)
+  /plan --last                     Reuse most recent plan
+  /plan --delete <id>              Delete a saved plan
+
+Examples:
+  /plan add user authentication
+  /plan --list
+  /plan --reuse 20240304_153045_auth
+  /plan --last
+""".strip()))
+        return
+    
+    # Handle --list
+    if args == '--list' or args == '-l':
+        plans = storage.list()
+        if not plans:
+            wire_send(TextPart(text="No saved plans. Use `/plan <description>` to create one."))
+            return
+        
+        lines = ["Saved plans:", ""]
+        for plan_id, query, created_at in plans[:20]:  # Show last 20
+            date_str = created_at.strftime("%Y-%m-%d %H:%M")
+            lines.append(f"  {plan_id}")
+            lines.append(f"    Query: {query[:50]}{'...' if len(query) > 50 else ''}")
+            lines.append(f"    Created: {date_str}")
+            lines.append("")
+        
+        wire_send(TextPart(text="\n".join(lines)))
+        return
+    
+    # Handle --delete
+    if args.startswith('--delete ') or args.startswith('-d '):
+        plan_id = args.split(' ', 1)[1].strip()
+        if storage.delete(plan_id):
+            wire_send(TextPart(text=f"✅ Deleted plan: {plan_id}"))
+        else:
+            wire_send(TextPart(text=f"❌ Plan not found: {plan_id}"))
+        return
+    
+    # Handle --reuse
+    if args.startswith('--reuse ') or args.startswith('-r '):
+        # Parse: --reuse <id> or --reuse <id> --option
+        parts = args.split()
+        plan_id = parts[1]
+        option_index = None
+        
+        if '--option' in parts or '-o' in parts:
+            # Find option value
+            for i, part in enumerate(parts):
+                if part in ('--option', '-o') and i + 1 < len(parts):
+                    try:
+                        option_index = int(parts[i + 1]) - 1  # Convert to 0-based
+                    except ValueError:
+                        pass
+        
+        plan = storage.load(plan_id)
+        if plan is None:
+            wire_send(TextPart(text=f"❌ Plan not found: {plan_id}"))
+            return
+        
+        # If no option specified, show interactive menu
+        if option_index is None:
+            menu = InteractivePlanMenu()
+            selected = menu.show(plan)
+            if selected is None:
+                wire_send(TextPart(text="❌ Cancelled."))
+                return
+            option_index = selected
+        
+        # Validate option index
+        if option_index < 0 or option_index >= len(plan.options):
+            wire_send(TextPart(text=f"❌ Invalid option: {option_index + 1}"))
+            return
+        
+        # Show detail view and execute
+        detail = PlanDetailView()
+        if detail.show(plan, option_index):
+            # Execute (Phase 3 will expand)
+            selected = plan.options[option_index]
+            wire_send(TextPart(text=f"✅ Executing: {selected.title}"))
+            # TODO: Inject into context and execute
+        else:
+            wire_send(TextPart(text="❌ Cancelled."))
+        return
+    
+    # Handle --last
+    if args == '--last':
+        plan = storage.get_last()
+        if plan is None:
+            wire_send(TextPart(text="❌ No saved plans found."))
+            return
+        
+        menu = InteractivePlanMenu()
+        selected = menu.show(plan)
+        if selected is None:
+            wire_send(TextPart(text="❌ Cancelled."))
+            return
+        
+        detail = PlanDetailView()
+        if detail.show(plan, selected):
+            selected_opt = plan.options[selected]
+            wire_send(TextPart(text=f"✅ Executing: {selected_opt.title}"))
+        else:
+            wire_send(TextPart(text="❌ Cancelled."))
+        return
+    
+    # Default: generate new plan
+    if not args:
+        wire_send(TextPart(text="Usage: /plan <description> or /plan --help"))
+        return
+    
+    # Check if LLM is configured
+    if soul.runtime.llm is None:
+        wire_send(TextPart(text="Error: LLM not configured. Cannot generate plans."))
+        return
+
+    # Show "thinking" message
+    wire_send(TextPart(text="🤔 Analyzing your request and generating implementation options..."))
+
+    try:
+        # Generate plan
+        generator = PlanGenerator(soul.runtime.llm)
+        plan = await generator.generate(
+            user_request=args,
+            work_dir=str(soul.runtime.builtin_args.KIMI_WORK_DIR),
+            files=[],  # TODO: Get from context
+            patterns=[],  # TODO: Get from AGENTS.md
+        )
+
+        # Show interactive menu for selection
+        menu = InteractivePlanMenu()
+        selected = menu.show(plan)
+        
+        if selected is None:
+            wire_send(TextPart(text="❌ Cancelled."))
+            return
+        
+        # Show detail view
+        detail = PlanDetailView()
+        if not detail.show(plan, selected):
+            wire_send(TextPart(text="❌ Cancelled."))
+            return
+        
+        # Save plan if configured (check ModeManager for setting)
+        try:
+            mode_mgr = ModeManager()
+            if mode_mgr.current_mode == PlanMode.AUTO_SAVE:
+                storage.save(plan)
+                wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
+        except Exception:
+            # If mode manager not available, still try to save
+            storage.save(plan)
+            wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
+        
+        # Execute the selected option
+        selected_opt = plan.options[selected]
+        wire_send(TextPart(text=f"✅ Executing: {selected_opt.title}"))
+        # TODO: Phase 3 - Inject plan into context and execute
+
+    except PlanGenerationError as e:
+        wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
+    except Exception as e:
+        wire_send(TextPart(text=f"❌ Unexpected error: {e}"))
+
+
+@registry.command(name="plan-execute")
+async def plan_execute(soul: KimiSoul, args: str):
+    """Execute a saved plan with full execution engine.
+    
+    Usage:
+      /plan-execute <plan_id>       Execute plan (smart resume)
+      /plan-execute --fresh         Start fresh, ignore checkpoint
+      /plan-execute --resume        Force resume from checkpoint
+    """
+    from kimi_cli.plans import PlanStorage, PlanExecutor
+    from kimi_cli.plans.checkpoint import CheckpointManager
+    from kimi_cli.plans.progress import ExecutionProgressUI
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    
+    # Parse flags
+    fresh = "--fresh" in args
+    resume = "--resume" in args
+    
+    # Remove flags to get plan_id
+    plan_id = args.replace("--fresh", "").replace("--resume", "").strip()
+    
+    if not plan_id:
+        wire_send(TextPart(text="""
+Usage: /plan-execute <plan_id> [options]
+
+Options:
+  --fresh    Start fresh, ignore any checkpoint
+  --resume   Force resume from checkpoint
+
+Examples:
+  /plan-execute 20240304_153045_auth
+  /plan-execute 20240304_153045_auth --fresh
+  /plan-execute --resume 20240304_153045_auth
+""".strip()))
+        return
+    
+    # Load plan
+    storage = PlanStorage()
+    plan = storage.load(plan_id)
+    
+    if not plan:
+        wire_send(TextPart(text=f"❌ Plan not found: {plan_id}"))
+        wire_send(TextPart(text="Use `/plan --list` to see saved plans."))
+        return
+    
+    # Check if plan has steps
+    if not plan.steps:
+        # Convert options to steps for Phase 1/2 plans
+        from kimi_cli.plans.models import PlanStep
+        plan.steps = [
+            PlanStep(
+                id=f"step_{i}",
+                name=opt.title,
+                description=opt.description,
+                depends_on=[],  # Sequential for now
+                can_parallel=False,
+                estimated_duration=opt.estimated_time,
+            )
+            for i, opt in enumerate(plan.options)
+        ]
+    
+    # Check for checkpoint status
+    checkpoint_mgr = CheckpointManager()
+    if not fresh and not resume:
+        resume = checkpoint_mgr.should_resume(plan_id)
+        if resume:
+            wire_send(TextPart(text=f"💾 Resuming from checkpoint..."))
+    
+    # Check LLM
+    if soul.runtime.llm is None:
+        wire_send(TextPart(text="❌ LLM not configured. Cannot execute plan."))
+        return
+    
+    # Create executor with progress UI
+    executor = PlanExecutor(
+        llm=soul.runtime.llm,
+        max_parallel=3,
+        enable_checkpoints=True,
+    )
+    
+    progress_ui = ExecutionProgressUI()
+    
+    # Add listeners to update UI
+    def on_step_update(step_exec):
+        progress_ui.update()
+    
+    executor.add_listener("step_start", on_step_update)
+    executor.add_listener("step_complete", on_step_update)
+    executor.add_listener("step_failed", on_step_update)
+    
+    # Execute
+    wire_send(TextPart(text=f"🚀 Executing plan: {plan_id}"))
+    wire_send(TextPart(text=f"   Query: {plan.query[:60]}..." if len(plan.query) > 60 else f"   Query: {plan.query}"))
+    
+    try:
+        progress_ui.start(None)
+        
+        execution = await executor.execute(
+            plan=plan,
+            resume=resume,
+            fresh=fresh,
+        )
+        
+        progress_ui.stop()
+        
+        # Show summary
+        completed, total = execution.get_progress()
+        duration = execution.get_duration()
+        
+        if execution.overall_status == "completed":
+            wire_send(TextPart(
+                text=f"✅ Plan completed successfully!\n"
+                     f"   Steps: {completed}/{total}\n"
+                     f"   Duration: {int(duration)}s"
+            ))
+        elif execution.overall_status == "partial":
+            wire_send(TextPart(
+                text=f"⚠️ Plan completed with skipped steps.\n"
+                     f"   Steps: {completed}/{total}\n"
+                     f"   Duration: {int(duration)}s"
+            ))
+        else:
+            wire_send(TextPart(
+                text=f"❌ Plan failed.\n"
+                     f"   Steps: {completed}/{total}\n"
+                     f"   Duration: {int(duration)}s"
+            ))
+        
+        # Clean up checkpoint if completed
+        if execution.overall_status == "completed":
+            checkpoint_mgr.delete(plan_id)
+        
+    except ExecutionAborted:
+        progress_ui.stop()
+        wire_send(TextPart(text="❌ Execution aborted by user."))
+        wire_send(TextPart(text="Use `/plan-execute --resume` to continue."))
+        
+    except Exception as e:
+        progress_ui.stop()
+        wire_send(TextPart(text=f"❌ Execution error: {e}"))
+        import logging
+        logging.getLogger(__name__).exception("Plan execution failed")
+
+
+@registry.command(name="plan-checkpoint")
+async def plan_checkpoint(soul: KimiSoul, args: str):
+    """Manage execution checkpoints.
+    
+    Usage:
+      /plan-checkpoint --list        List checkpoints
+      /plan-checkpoint --delete <id> Delete checkpoint
+    """
+    from kimi_cli.plans.checkpoint import CheckpointManager
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    checkpoint_mgr = CheckpointManager()
+    
+    if args == "--list" or args == "-l":
+        checkpoints = checkpoint_mgr.list()
+        if not checkpoints:
+            wire_send(TextPart(text="No checkpoints found."))
+            return
+        
+        lines = ["Checkpoints:", ""]
+        for plan_id, mtime in checkpoints[:20]:
+            lines.append(f"  {plan_id}")
+            lines.append(f"    Modified: {mtime.strftime('%Y-%m-%d %H:%M')}")
+        
+        wire_send(TextPart(text="\n".join(lines)))
+        return
+    
+    if args.startswith("--delete ") or args.startswith("-d "):
+        plan_id = args.split(' ', 1)[1].strip()
+        if checkpoint_mgr.delete(plan_id):
+            wire_send(TextPart(text=f"✅ Deleted checkpoint: {plan_id}"))
+        else:
+            wire_send(TextPart(text=f"❌ Checkpoint not found: {plan_id}"))
+        return
+    
+    wire_send(TextPart(text="""
+Usage: /plan-checkpoint [option]
+
+Options:
+  --list, -l           List all checkpoints
+  --delete, -d <id>    Delete specific checkpoint
+""".strip()))
