@@ -317,7 +317,7 @@ Examples:
     
     # Handle --reuse
     if args.startswith('--reuse ') or args.startswith('-r '):
-        # Parse: --reuse <id> or --reuse <id> --option N
+        # Parse: --reuse <id> or --reuse <id> --option
         parts = args.split()
         plan_id = parts[1]
         option_index = None
@@ -439,3 +439,196 @@ Examples:
         wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
     except Exception as e:
         wire_send(TextPart(text=f"❌ Unexpected error: {e}"))
+
+
+@registry.command(name="plan-execute")
+async def plan_execute(soul: KimiSoul, args: str):
+    """Execute a saved plan with full execution engine.
+    
+    Usage:
+      /plan-execute <plan_id>       Execute plan (smart resume)
+      /plan-execute --fresh         Start fresh, ignore checkpoint
+      /plan-execute --resume        Force resume from checkpoint
+    """
+    from kimi_cli.plans import PlanStorage, PlanExecutor
+    from kimi_cli.plans.checkpoint import CheckpointManager
+    from kimi_cli.plans.progress import ExecutionProgressUI
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    
+    # Parse flags
+    fresh = "--fresh" in args
+    resume = "--resume" in args
+    
+    # Remove flags to get plan_id
+    plan_id = args.replace("--fresh", "").replace("--resume", "").strip()
+    
+    if not plan_id:
+        wire_send(TextPart(text="""
+Usage: /plan-execute <plan_id> [options]
+
+Options:
+  --fresh    Start fresh, ignore any checkpoint
+  --resume   Force resume from checkpoint
+
+Examples:
+  /plan-execute 20240304_153045_auth
+  /plan-execute 20240304_153045_auth --fresh
+  /plan-execute --resume 20240304_153045_auth
+""".strip()))
+        return
+    
+    # Load plan
+    storage = PlanStorage()
+    plan = storage.load(plan_id)
+    
+    if not plan:
+        wire_send(TextPart(text=f"❌ Plan not found: {plan_id}"))
+        wire_send(TextPart(text="Use `/plan --list` to see saved plans."))
+        return
+    
+    # Check if plan has steps
+    if not plan.steps:
+        # Convert options to steps for Phase 1/2 plans
+        from kimi_cli.plans.models import PlanStep
+        plan.steps = [
+            PlanStep(
+                id=f"step_{i}",
+                name=opt.title,
+                description=opt.description,
+                depends_on=[],  # Sequential for now
+                can_parallel=False,
+                estimated_duration=opt.estimated_time,
+            )
+            for i, opt in enumerate(plan.options)
+        ]
+    
+    # Check for checkpoint status
+    checkpoint_mgr = CheckpointManager()
+    if not fresh and not resume:
+        resume = checkpoint_mgr.should_resume(plan_id)
+        if resume:
+            wire_send(TextPart(text=f"💾 Resuming from checkpoint..."))
+    
+    # Check LLM
+    if soul.runtime.llm is None:
+        wire_send(TextPart(text="❌ LLM not configured. Cannot execute plan."))
+        return
+    
+    # Create executor with progress UI
+    executor = PlanExecutor(
+        llm=soul.runtime.llm,
+        max_parallel=3,
+        enable_checkpoints=True,
+    )
+    
+    progress_ui = ExecutionProgressUI()
+    
+    # Add listeners to update UI
+    def on_step_update(step_exec):
+        progress_ui.update()
+    
+    executor.add_listener("step_start", on_step_update)
+    executor.add_listener("step_complete", on_step_update)
+    executor.add_listener("step_failed", on_step_update)
+    
+    # Execute
+    wire_send(TextPart(text=f"🚀 Executing plan: {plan_id}"))
+    wire_send(TextPart(text=f"   Query: {plan.query[:60]}..." if len(plan.query) > 60 else f"   Query: {plan.query}"))
+    
+    try:
+        progress_ui.start(None)
+        
+        execution = await executor.execute(
+            plan=plan,
+            resume=resume,
+            fresh=fresh,
+        )
+        
+        progress_ui.stop()
+        
+        # Show summary
+        completed, total = execution.get_progress()
+        duration = execution.get_duration()
+        
+        if execution.overall_status == "completed":
+            wire_send(TextPart(
+                text=f"✅ Plan completed successfully!\n"
+                     f"   Steps: {completed}/{total}\n"
+                     f"   Duration: {int(duration)}s"
+            ))
+        elif execution.overall_status == "partial":
+            wire_send(TextPart(
+                text=f"⚠️ Plan completed with skipped steps.\n"
+                     f"   Steps: {completed}/{total}\n"
+                     f"   Duration: {int(duration)}s"
+            ))
+        else:
+            wire_send(TextPart(
+                text=f"❌ Plan failed.\n"
+                     f"   Steps: {completed}/{total}\n"
+                     f"   Duration: {int(duration)}s"
+            ))
+        
+        # Clean up checkpoint if completed
+        if execution.overall_status == "completed":
+            checkpoint_mgr.delete(plan_id)
+        
+    except ExecutionAborted:
+        progress_ui.stop()
+        wire_send(TextPart(text="❌ Execution aborted by user."))
+        wire_send(TextPart(text="Use `/plan-execute --resume` to continue."))
+        
+    except Exception as e:
+        progress_ui.stop()
+        wire_send(TextPart(text=f"❌ Execution error: {e}"))
+        import logging
+        logging.getLogger(__name__).exception("Plan execution failed")
+
+
+@registry.command(name="plan-checkpoint")
+async def plan_checkpoint(soul: KimiSoul, args: str):
+    """Manage execution checkpoints.
+    
+    Usage:
+      /plan-checkpoint --list        List checkpoints
+      /plan-checkpoint --delete <id> Delete checkpoint
+    """
+    from kimi_cli.plans.checkpoint import CheckpointManager
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    checkpoint_mgr = CheckpointManager()
+    
+    if args == "--list" or args == "-l":
+        checkpoints = checkpoint_mgr.list()
+        if not checkpoints:
+            wire_send(TextPart(text="No checkpoints found."))
+            return
+        
+        lines = ["Checkpoints:", ""]
+        for plan_id, mtime in checkpoints[:20]:
+            lines.append(f"  {plan_id}")
+            lines.append(f"    Modified: {mtime.strftime('%Y-%m-%d %H:%M')}")
+        
+        wire_send(TextPart(text="\n".join(lines)))
+        return
+    
+    if args.startswith("--delete ") or args.startswith("-d "):
+        plan_id = args.split(' ', 1)[1].strip()
+        if checkpoint_mgr.delete(plan_id):
+            wire_send(TextPart(text=f"✅ Deleted checkpoint: {plan_id}"))
+        else:
+            wire_send(TextPart(text=f"❌ Checkpoint not found: {plan_id}"))
+        return
+    
+    wire_send(TextPart(text="""
+Usage: /plan-checkpoint [option]
+
+Options:
+  --list, -l           List all checkpoints
+  --delete, -d <id>    Delete specific checkpoint
+""".strip()))

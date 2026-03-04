@@ -8,6 +8,7 @@ from kimi_cli.plans.ui import PlanMenuRenderer
 from kimi_cli.plans.interactive import InteractivePlanMenu
 from kimi_cli.plans.storage import PlanStorage
 from kimi_cli.plans.detail import PlanDetailView
+from kimi_cli.plans.executor import PlanExecutor, ExecutionAborted
 
 __all__ = [
     # Mode management
@@ -27,4 +28,7 @@ __all__ = [
     "InteractivePlanMenu",
     "PlanStorage",
     "PlanDetailView",
+    # Phase 3: Execution engine
+    "PlanExecutor",
+    "ExecutionAborted",
 ]

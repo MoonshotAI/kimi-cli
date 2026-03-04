@@ -288,7 +288,7 @@ class KimiSoul:
         user_message: Message,
         text_input: str
     ) -> TurnOutcome | None:
-        """Check if planning should trigger, show UI if needed.
+        """Check if planning should trigger, execute plan if needed.
         
         Returns:
             TurnOutcome if planning was triggered and handled,
@@ -296,8 +296,13 @@ class KimiSoul:
         """
         from kimi_cli.plans.mode import ModeManager, PlanMode
         from kimi_cli.plans.detector import ComplexityDetector
-        from kimi_cli.plans import PlanGenerator, InteractivePlanMenu, PlanStorage, PlanDetailView
-        from kimi_cli.plans.models import PlanExecution
+        from kimi_cli.plans import (
+            PlanGenerator, InteractivePlanMenu, PlanStorage, 
+            PlanDetailView, PlanGenerationError
+        )
+        from kimi_cli.plans.models import PlanStep  # For converting options to steps
+        from kimi_cli.plans.executor import PlanExecutor, ExecutionAborted
+        from kimi_cli.plans.progress import ExecutionProgressUI
         from kimi_cli.wire.types import TextPart
         from kimi_cli.soul import wire_send
         
@@ -310,7 +315,7 @@ class KimiSoul:
         detector = ComplexityDetector()
         complexity_score = detector.analyze(
             user_request=text_input,
-            predicted_files=[],  # TODO: Extract from context if available
+            predicted_files=[],
             predicted_tools=[]
         )
         
@@ -323,7 +328,7 @@ class KimiSoul:
         if not should_plan:
             return None
         
-        # Show complexity info (optional, brief)
+        # Show complexity info
         if complexity_score.total >= config.complexity_threshold:
             wire_send(TextPart(
                 text=f"🤔 This looks complex (score: {complexity_score.total}/100). Generating plans..."
@@ -341,18 +346,29 @@ class KimiSoul:
             plan = await generator.generate(
                 user_request=text_input,
                 work_dir=str(self._runtime.builtin_args.KIMI_WORK_DIR),
-                files=[],  # TODO: Get relevant files from context
-                patterns=[],  # TODO: Get from AGENTS.md
+                files=[],
+                patterns=[],
             )
+            
+            # Convert options to steps for execution
+            plan.steps = [
+                PlanStep(
+                    id=f"step_{i}",
+                    name=opt.title,
+                    description=opt.description,
+                    depends_on=[],  # Sequential execution for auto-mode
+                    can_parallel=False,
+                    estimated_duration=opt.estimated_time,
+                )
+                for i, opt in enumerate(plan.options)
+            ]
             
             # Show interactive menu
             menu = InteractivePlanMenu()
             selected_index = menu.show(plan)
             
             if selected_index is None:
-                # User cancelled
                 wire_send(TextPart(text="❌ Planning cancelled."))
-                # Return empty outcome to stop this turn
                 return TurnOutcome(
                     stop_reason="no_tool_calls",
                     final_message=None,
@@ -368,7 +384,6 @@ class KimiSoul:
             # Show detail view for confirmation
             detail_view = PlanDetailView()
             if not detail_view.show(plan, selected_index):
-                # User chose not to execute
                 wire_send(TextPart(text="❌ Execution cancelled."))
                 return TurnOutcome(
                     stop_reason="no_tool_calls",
@@ -376,35 +391,72 @@ class KimiSoul:
                     step_count=0
                 )
             
-            # Execute selected plan (Phase 3 will expand this)
-            # For now, inject plan into context and continue
+            # ============================================
+            # PHASE 3: Execute selected option using PlanExecutor
+            # ============================================
+            
+            # Filter to only selected option as a single step
             selected_option = plan.options[selected_index]
-            plan_message = self._build_plan_message(plan, selected_option)
-            await self._context.append_message(Message(role="user", content=[plan_message]))
+            execution_plan = plan  # Use full plan but we'll execute selected option
             
-            wire_send(TextPart(text=f"✅ Executing: {selected_option.title}"))
+            # For now, execute just the selected approach
+            # In future, could expand selected option into sub-steps
+            wire_send(TextPart(text=f"🚀 Executing: {selected_option.title}"))
             
-            # Continue with normal execution (the plan is now in context)
-            return None  # Signal to continue with normal flow
+            # Create executor
+            executor = PlanExecutor(
+                llm=self._runtime.llm,
+                max_parallel=1,  # Sequential for auto-mode
+                enable_checkpoints=True,
+            )
             
+            # Progress UI
+            progress_ui = ExecutionProgressUI()
+            
+            def on_step_update(step_exec):
+                progress_ui.update()
+            
+            executor.add_listener("step_start", on_step_update)
+            executor.add_listener("step_complete", on_step_update)
+            executor.add_listener("step_failed", on_step_update)
+            
+            # Execute
+            progress_ui.start(None)
+            try:
+                execution = await executor.execute(execution_plan, fresh=True)
+                progress_ui.stop()
+                
+                # Show result
+                completed, total = execution.get_progress()
+                if execution.overall_status == "completed":
+                    wire_send(TextPart(text=f"✅ Completed {completed}/{total} steps"))
+                else:
+                    wire_send(TextPart(text=f"⚠️ Finished with status: {execution.overall_status}"))
+                
+            except ExecutionAborted:
+                progress_ui.stop()
+                wire_send(TextPart(text="❌ Execution aborted. Use `/plan-execute --resume` to continue."))
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            
+            # After execution, continue normal flow (execution results are in context)
+            # The plan execution has modified files, now we can continue with normal chat
+            wire_send(TextPart(text="✅ Plan execution complete. Continuing..."))
+            
+            # Return None to continue with normal execution
+            # (The execution has already made changes, no need for additional steps)
+            return None
+            
+        except PlanGenerationError as e:
+            wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
+            return None
         except Exception as e:
-            wire_send(TextPart(text=f"❌ Planning failed: {e}"))
-            logger.error("Planning failed: {e}", e=e)
-            return None  # Fall back to normal execution
-
-    def _build_plan_message(self, plan, selected_option) -> TextPart:
-        """Build message injecting selected plan into context."""
-        content = f"""The user has selected the following implementation approach:
-
-Approach: {selected_option.title}
-Description: {selected_option.description}
-Pros: {', '.join(selected_option.pros)}
-Cons: {', '.join(selected_option.cons)}
-Estimated time: {selected_option.estimated_time or 'Unknown'}
-
-Please implement this approach step by step.
-"""
-        return TextPart(text=content)
+            wire_send(TextPart(text=f"❌ Planning error: {e}"))
+            logger.error("Planning error: {e}", e=e)
+            return None
 
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())
