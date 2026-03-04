@@ -246,17 +246,147 @@ async def import_context(soul: KimiSoul, args: str):
 @registry.command
 async def plan(soul: KimiSoul, args: str):
     """Generate and select from multiple implementation approaches.
-    Usage: /plan <task description>
-    Example: /plan add authentication to the API
+    
+    Usage:
+      /plan <task description>       Generate new plan
+      /plan --list                   List saved plans  
+      /plan --reuse <id>             Reuse saved plan
+      /plan --reuse <id> --option N  Reuse with specific option
+      /plan --last                   Reuse last plan
+      /plan --delete <id>            Delete saved plan
+      /plan --help                   Show help
     """
-    from kimi_cli.plans import PlanGenerator, PlanMenuRenderer, PlanGenerationError
+    from kimi_cli.plans import (
+        PlanGenerator, InteractivePlanMenu, PlanStorage, 
+        PlanDetailView, PlanGenerationError
+    )
+    from kimi_cli.plans.mode import ModeManager, PlanMode
     from kimi_cli.wire.types import TextPart
     from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    storage = PlanStorage()
+    
+    # Handle --help
+    if args == '--help' or args == '-h':
+        wire_send(TextPart(text="""
+/plan - Intelligent planning system
 
-    if not args.strip():
-        wire_send(TextPart(text="Usage: /plan <task description>\nExample: /plan add authentication"))
+Usage:
+  /plan <description>              Generate plans for a task
+  /plan --list                     Show saved plans
+  /plan --reuse <id>               Reuse a saved plan
+  /plan --reuse <id> --option N    Reuse with specific option (1-3)
+  /plan --last                     Reuse most recent plan
+  /plan --delete <id>              Delete a saved plan
+
+Examples:
+  /plan add user authentication
+  /plan --list
+  /plan --reuse 20240304_153045_auth
+  /plan --last
+""".strip()))
         return
-
+    
+    # Handle --list
+    if args == '--list' or args == '-l':
+        plans = storage.list()
+        if not plans:
+            wire_send(TextPart(text="No saved plans. Use `/plan <description>` to create one."))
+            return
+        
+        lines = ["Saved plans:", ""]
+        for plan_id, query, created_at in plans[:20]:  # Show last 20
+            date_str = created_at.strftime("%Y-%m-%d %H:%M")
+            lines.append(f"  {plan_id}")
+            lines.append(f"    Query: {query[:50]}{'...' if len(query) > 50 else ''}")
+            lines.append(f"    Created: {date_str}")
+            lines.append("")
+        
+        wire_send(TextPart(text="\n".join(lines)))
+        return
+    
+    # Handle --delete
+    if args.startswith('--delete ') or args.startswith('-d '):
+        plan_id = args.split(' ', 1)[1].strip()
+        if storage.delete(plan_id):
+            wire_send(TextPart(text=f"✅ Deleted plan: {plan_id}"))
+        else:
+            wire_send(TextPart(text=f"❌ Plan not found: {plan_id}"))
+        return
+    
+    # Handle --reuse
+    if args.startswith('--reuse ') or args.startswith('-r '):
+        # Parse: --reuse <id> or --reuse <id> --option N
+        parts = args.split()
+        plan_id = parts[1]
+        option_index = None
+        
+        if '--option' in parts or '-o' in parts:
+            # Find option value
+            for i, part in enumerate(parts):
+                if part in ('--option', '-o') and i + 1 < len(parts):
+                    try:
+                        option_index = int(parts[i + 1]) - 1  # Convert to 0-based
+                    except ValueError:
+                        pass
+        
+        plan = storage.load(plan_id)
+        if plan is None:
+            wire_send(TextPart(text=f"❌ Plan not found: {plan_id}"))
+            return
+        
+        # If no option specified, show interactive menu
+        if option_index is None:
+            menu = InteractivePlanMenu()
+            selected = menu.show(plan)
+            if selected is None:
+                wire_send(TextPart(text="❌ Cancelled."))
+                return
+            option_index = selected
+        
+        # Validate option index
+        if option_index < 0 or option_index >= len(plan.options):
+            wire_send(TextPart(text=f"❌ Invalid option: {option_index + 1}"))
+            return
+        
+        # Show detail view and execute
+        detail = PlanDetailView()
+        if detail.show(plan, option_index):
+            # Execute (Phase 3 will expand)
+            selected = plan.options[option_index]
+            wire_send(TextPart(text=f"✅ Executing: {selected.title}"))
+            # TODO: Inject into context and execute
+        else:
+            wire_send(TextPart(text="❌ Cancelled."))
+        return
+    
+    # Handle --last
+    if args == '--last':
+        plan = storage.get_last()
+        if plan is None:
+            wire_send(TextPart(text="❌ No saved plans found."))
+            return
+        
+        menu = InteractivePlanMenu()
+        selected = menu.show(plan)
+        if selected is None:
+            wire_send(TextPart(text="❌ Cancelled."))
+            return
+        
+        detail = PlanDetailView()
+        if detail.show(plan, selected):
+            selected_opt = plan.options[selected]
+            wire_send(TextPart(text=f"✅ Executing: {selected_opt.title}"))
+        else:
+            wire_send(TextPart(text="❌ Cancelled."))
+        return
+    
+    # Default: generate new plan
+    if not args:
+        wire_send(TextPart(text="Usage: /plan <description> or /plan --help"))
+        return
+    
     # Check if LLM is configured
     if soul.runtime.llm is None:
         wire_send(TextPart(text="Error: LLM not configured. Cannot generate plans."))
@@ -275,15 +405,35 @@ async def plan(soul: KimiSoul, args: str):
             patterns=[],  # TODO: Get from AGENTS.md
         )
 
-        # Render menu
-        renderer = PlanMenuRenderer()
-        menu_text = renderer.render(plan)
-
-        # Send menu
-        wire_send(TextPart(text=menu_text))
-
-        # TODO: Phase 2 - handle user selection
-        wire_send(TextPart(text="\n💡 Phase 2 will add selection handling. For now, use yolo mode or describe your choice."))
+        # Show interactive menu for selection
+        menu = InteractivePlanMenu()
+        selected = menu.show(plan)
+        
+        if selected is None:
+            wire_send(TextPart(text="❌ Cancelled."))
+            return
+        
+        # Show detail view
+        detail = PlanDetailView()
+        if not detail.show(plan, selected):
+            wire_send(TextPart(text="❌ Cancelled."))
+            return
+        
+        # Save plan if configured (check ModeManager for setting)
+        try:
+            mode_mgr = ModeManager()
+            if mode_mgr.current_mode == PlanMode.AUTO_SAVE:
+                storage.save(plan)
+                wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
+        except Exception:
+            # If mode manager not available, still try to save
+            storage.save(plan)
+            wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
+        
+        # Execute the selected option
+        selected_opt = plan.options[selected]
+        wire_send(TextPart(text=f"✅ Executing: {selected_opt.title}"))
+        # TODO: Phase 3 - Inject plan into context and execute
 
     except PlanGenerationError as e:
         wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))

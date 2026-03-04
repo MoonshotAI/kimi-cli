@@ -272,7 +272,139 @@ class KimiSoul:
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
+        
+        text_input = user_message.extract_text(" ").strip()
+        
+        # Check for planning
+        plan_outcome = await self._maybe_plan_and_execute(user_message, text_input)
+        if plan_outcome is not None:
+            return plan_outcome
+        
+        # Continue with normal execution
         return await self._agent_loop()
+
+    async def _maybe_plan_and_execute(
+        self, 
+        user_message: Message,
+        text_input: str
+    ) -> TurnOutcome | None:
+        """Check if planning should trigger, show UI if needed.
+        
+        Returns:
+            TurnOutcome if planning was triggered and handled,
+            None if normal execution should continue
+        """
+        from kimi_cli.plans.mode import ModeManager, PlanMode
+        from kimi_cli.plans.detector import ComplexityDetector
+        from kimi_cli.plans import PlanGenerator, InteractivePlanMenu, PlanStorage, PlanDetailView
+        from kimi_cli.plans.models import PlanExecution
+        from kimi_cli.wire.types import TextPart
+        from kimi_cli.soul import wire_send
+        
+        # Check config
+        config = self._runtime.config.plans
+        if config.auto_plan == "never" and not ModeManager.get_instance().is_plan_mode():
+            return None
+        
+        # Analyze complexity
+        detector = ComplexityDetector()
+        complexity_score = detector.analyze(
+            user_request=text_input,
+            predicted_files=[],  # TODO: Extract from context if available
+            predicted_tools=[]
+        )
+        
+        # Determine if we should plan
+        should_plan = (
+            ModeManager.get_instance().is_plan_mode() or
+            config.should_auto_plan(complexity_score.total)
+        )
+        
+        if not should_plan:
+            return None
+        
+        # Show complexity info (optional, brief)
+        if complexity_score.total >= config.complexity_threshold:
+            wire_send(TextPart(
+                text=f"🤔 This looks complex (score: {complexity_score.total}/100). Generating plans..."
+            ))
+        else:
+            wire_send(TextPart(text="🤔 Generating implementation plans..."))
+        
+        try:
+            # Generate plan
+            if self._runtime.llm is None:
+                wire_send(TextPart(text="⚠️ LLM not configured, skipping planning."))
+                return None
+            
+            generator = PlanGenerator(self._runtime.llm)
+            plan = await generator.generate(
+                user_request=text_input,
+                work_dir=str(self._runtime.builtin_args.KIMI_WORK_DIR),
+                files=[],  # TODO: Get relevant files from context
+                patterns=[],  # TODO: Get from AGENTS.md
+            )
+            
+            # Show interactive menu
+            menu = InteractivePlanMenu()
+            selected_index = menu.show(plan)
+            
+            if selected_index is None:
+                # User cancelled
+                wire_send(TextPart(text="❌ Planning cancelled."))
+                # Return empty outcome to stop this turn
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            
+            # Save plan if configured
+            if config.save_plans:
+                storage = PlanStorage()
+                plan_id = storage.save(plan)
+                wire_send(TextPart(text=f"💾 Plan saved (ID: {plan_id})"))
+            
+            # Show detail view for confirmation
+            detail_view = PlanDetailView()
+            if not detail_view.show(plan, selected_index):
+                # User chose not to execute
+                wire_send(TextPart(text="❌ Execution cancelled."))
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            
+            # Execute selected plan (Phase 3 will expand this)
+            # For now, inject plan into context and continue
+            selected_option = plan.options[selected_index]
+            plan_message = self._build_plan_message(plan, selected_option)
+            await self._context.append_message(Message(role="user", content=[plan_message]))
+            
+            wire_send(TextPart(text=f"✅ Executing: {selected_option.title}"))
+            
+            # Continue with normal execution (the plan is now in context)
+            return None  # Signal to continue with normal flow
+            
+        except Exception as e:
+            wire_send(TextPart(text=f"❌ Planning failed: {e}"))
+            logger.error("Planning failed: {e}", e=e)
+            return None  # Fall back to normal execution
+
+    def _build_plan_message(self, plan, selected_option) -> TextPart:
+        """Build message injecting selected plan into context."""
+        content = f"""The user has selected the following implementation approach:
+
+Approach: {selected_option.title}
+Description: {selected_option.description}
+Pros: {', '.join(selected_option.pros)}
+Cons: {', '.join(selected_option.cons)}
+Estimated time: {selected_option.estimated_time or 'Unknown'}
+
+Please implement this approach step by step.
+"""
+        return TextPart(text=content)
 
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())

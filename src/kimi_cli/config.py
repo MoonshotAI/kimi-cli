@@ -146,6 +146,37 @@ class MCPConfig(BaseModel):
     )
 
 
+class PlanConfig(BaseModel):
+    """Configuration for the planning system."""
+
+    auto_plan: Literal["always", "complex", "never"] = Field(
+        default="complex",
+        description='When to automatically show planning UI. "always": Always show plans for every request. "complex": Only for complex tasks (default). "never": Never auto-show, only explicit /plan.',
+    )
+    complexity_threshold: int = Field(
+        default=60,
+        ge=0,
+        le=100,
+        description="Score threshold for complex task detection. Tasks with complexity score >= this value trigger planning. Only used when auto_plan = 'complex'.",
+    )
+    save_plans: bool = Field(
+        default=True,
+        description="Whether to save plans to disk.",
+    )
+    plan_model: str | None = Field(
+        default=None,
+        description="Model to use for plan generation. None = use default LLM (kimi-for-coding).",
+    )
+
+    def should_auto_plan(self, complexity_score: int) -> bool:
+        """Determine if planning should trigger based on config and score."""
+        if self.auto_plan == "never":
+            return False
+        if self.auto_plan == "always":
+            return True
+        return complexity_score >= self.complexity_threshold
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -173,6 +204,7 @@ class Config(BaseModel):
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    plans: PlanConfig = Field(default_factory=PlanConfig, description="Planning system configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

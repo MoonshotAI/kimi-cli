@@ -72,12 +72,17 @@ def format_context_status(
     max_context_tokens: int = 0,
 ) -> str:
     """Format context status string for display in status bar."""
+    from kimi_cli.plans.mode import ModeManager
+    
+    mode_manager = ModeManager.get_instance()
+    mode_prefix = mode_manager.mode_prefix
+    
     bounded = max(0.0, min(context_usage, 1.0))
     if max_context_tokens > 0:
         used = format_token_count(context_tokens)
         total = format_token_count(max_context_tokens)
-        return f"context: {bounded:.1%} ({used}/{total})"
-    return f"context: {bounded:.1%}"
+        return f"{mode_prefix} context: {bounded:.1%} ({used}/{total})"
+    return f"{mode_prefix} context: {bounded:.1%}"
 
 
 @dataclass(frozen=True, slots=True)
