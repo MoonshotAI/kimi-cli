@@ -1,10 +1,15 @@
 import { cn } from "@/lib/utils";
 import type { Element } from "hast";
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode, lazy, Suspense } from "react";
 import { isValidElement } from "react";
 import type { StreamdownProps } from "streamdown";
 import { defaultRehypePlugins } from "streamdown";
 import { CodeBlock } from "./code-block";
+
+// Lazy-load MermaidDiagram to avoid loading mermaid (~2MB) until needed
+const MermaidDiagram = lazy(() =>
+  import("./mermaid-diagram").then((m) => ({ default: m.MermaidDiagram })),
+);
 
 // Selectively enable rehype plugins while maintaining security.
 // The default plugins include:
@@ -142,11 +147,29 @@ const StreamdownCode = ({
     );
   }
 
+  const language = getCodeLanguage(className);
+  const code = getCodeText(children);
+
+  // Route mermaid code blocks to the dedicated diagram renderer
+  if (language === "mermaid") {
+    return (
+      <Suspense
+        fallback={
+          <div className="my-2 flex items-center justify-center rounded border border-term-border bg-card py-8 text-sm text-muted-foreground">
+            <div className="animate-pulse">Loading diagram renderer...</div>
+          </div>
+        }
+      >
+        <MermaidDiagram className="my-2" code={code} />
+      </Suspense>
+    );
+  }
+
   return (
     <CodeBlock
       className={cn("my-2", className)}
-      code={getCodeText(children)}
-      language={getCodeLanguage(className)}
+      code={code}
+      language={language}
       {...props}
     />
   );
