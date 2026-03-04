@@ -39,7 +39,8 @@ def parse_changelog(md_text: str) -> dict[str, ReleaseEntry]:
         norm_entries = [
             line.strip()[2:].strip() for line in bullet_lines if line.strip().startswith("- ")
         ]
-        result[current_ver] = ReleaseEntry(description=description, entries=norm_entries)
+        result[current_ver] = ReleaseEntry(
+            description=description, entries=norm_entries)
 
     for raw in lines:
         line = raw.rstrip()
@@ -103,6 +104,17 @@ def format_release_notes(changelog: dict[str, ReleaseEntry], include_lib_changes
     return "\n".join(parts).strip()
 
 
-CHANGELOG = parse_changelog(
-    (Path(__file__).parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
-)
+_cached_changelog: dict[str, ReleaseEntry] | None = None
+
+
+def get_changelog() -> dict[str, ReleaseEntry]:
+    """Lazily load and parse the changelog on first access."""
+    global _cached_changelog
+    if _cached_changelog is None:
+        path = Path(__file__).parent.parent / "CHANGELOG.md"
+        try:
+            _cached_changelog = parse_changelog(
+                path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            _cached_changelog = {}
+    return _cached_changelog
