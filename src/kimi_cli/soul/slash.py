@@ -99,6 +99,31 @@ async def yolo(soul: KimiSoul, args: str):
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
 
 
+@registry.command
+async def acc(soul: KimiSoul, args: str):
+    """Toggle ACC mode (agent-guided context compaction)"""
+    option = args.strip().lower()
+    if option in {"", "toggle"}:
+        enabled = not soul.is_acc_enabled()
+    elif option in {"on", "enable", "enabled", "1", "true"}:
+        enabled = True
+    elif option in {"off", "disable", "disabled", "0", "false"}:
+        enabled = False
+    elif option == "status":
+        state = "enabled" if soul.is_acc_enabled() else "disabled"
+        wire_send(TextPart(text=f"ACC mode is {state}"))
+        return
+    else:
+        wire_send(TextPart(text="Usage: /acc [on|off|status]"))
+        return
+
+    soul.set_acc_enabled(enabled)
+    if enabled:
+        wire_send(TextPart(text="ACC mode enabled. Agent can decide when to compact context."))
+    else:
+        wire_send(TextPart(text="ACC mode disabled."))
+
+
 @registry.command(name="add-dir")
 async def add_dir(soul: KimiSoul, args: str):
     """Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs"""  # noqa: E501
