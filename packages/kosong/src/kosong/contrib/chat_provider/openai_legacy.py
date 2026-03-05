@@ -127,15 +127,22 @@ class OpenAILegacy:
         generation_kwargs.update(self._generation_kwargs)
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=(tool_to_openai(tool) for tool in tools),
-                stream=self.stream,
-                stream_options={"include_usage": True} if self.stream else omit,
-                reasoning_effort=self._reasoning_effort,
+            # Build request kwargs, only include tools if non-empty
+            # Some APIs (like DashScope) reject empty tools list
+            request_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "messages": messages,
+                "stream": self.stream,
                 **generation_kwargs,
-            )
+            }
+            if tools:
+                request_kwargs["tools"] = (tool_to_openai(tool) for tool in tools)
+            if self.stream:
+                request_kwargs["stream_options"] = {"include_usage": True}
+            if self._reasoning_effort is not omit:
+                request_kwargs["reasoning_effort"] = self._reasoning_effort
+            
+            response = await self.client.chat.completions.create(**request_kwargs)
             return OpenAILegacyStreamedMessage(response, self._reasoning_key)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
