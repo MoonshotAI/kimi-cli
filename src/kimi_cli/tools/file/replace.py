@@ -135,13 +135,17 @@ class StrReplaceFile(CallableTool2[Params]):
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
 
-            # Count changes for success message
+            # Count changes for success message by re-applying edits to count
             total_replacements = 0
+            temp_content = original_content
             for edit in edits:
                 if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
+                    total_replacements += temp_content.count(edit.old)
+                    temp_content = temp_content.replace(edit.old, edit.new)
                 else:
-                    total_replacements += 1 if edit.old in original_content else 0
+                    if edit.old in temp_content:
+                        total_replacements += 1
+                        temp_content = temp_content.replace(edit.old, edit.new, 1)
 
             return ToolReturnValue(
                 is_error=False,

@@ -395,8 +395,9 @@ def feedback(app: Shell, args: str):
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
     if webbrowser.open(ISSUE_URL):
-        return
-    console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
+        console.print("Opening GitHub issues in your browser...")
+    else:
+        console.print(f"Could not open browser. Please visit: [underline]{ISSUE_URL}[/underline]")
 
 
 @registry.command(aliases=["reset"])

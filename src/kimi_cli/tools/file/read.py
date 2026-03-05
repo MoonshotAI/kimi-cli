@@ -177,7 +177,9 @@ class ReadFile(CallableTool2[Params]):
             elif len(lines) < params.n_lines:
                 message += " End of file reached."
             if truncated_line_numbers:
-                message += f" Lines {truncated_line_numbers} were truncated."
+                # Format line numbers as comma-separated list for better readability
+                lines_str = ", ".join(str(n) for n in truncated_line_numbers)
+                message += f" Lines {lines_str} were truncated."
             return ToolOk(
                 output="".join(lines_with_no),  # lines already contain \n, just join them
                 message=message,
