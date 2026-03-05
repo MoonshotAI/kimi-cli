@@ -8,7 +8,26 @@ from kimi_cli.plans.ui import PlanMenuRenderer
 from kimi_cli.plans.interactive import InteractivePlanMenu
 from kimi_cli.plans.storage import PlanStorage
 from kimi_cli.plans.detail import PlanDetailView
-from kimi_cli.plans.executor import PlanExecutor, ExecutionAborted
+from kimi_cli.plans.executor import PlanExecutor
+from kimi_cli.plans.errors import (
+    PlansError,
+    LLMTimeoutError,
+    LLMRateLimitError,
+    LLMError,
+    DiskFullError,
+    CheckpointCorruptedError,
+    ExecutionAborted,
+    NetworkError,
+    StepExecutionError,
+)
+from kimi_cli.plans.strategies import (
+    ExecutionStrategy,
+    SmallPlanStrategy,
+    MediumPlanStrategy,
+    LargePlanStrategy,
+    get_strategy,
+    get_strategy_name,
+)
 
 __all__ = [
     # Mode management
@@ -30,5 +49,21 @@ __all__ = [
     "PlanDetailView",
     # Phase 3: Execution engine
     "PlanExecutor",
+    # Phase 4: Error handling and strategies
     "ExecutionAborted",
+    "PlansError",
+    "LLMTimeoutError",
+    "LLMRateLimitError",
+    "LLMError",
+    "DiskFullError",
+    "CheckpointCorruptedError",
+    "NetworkError",
+    "StepExecutionError",
+    # Phase 4: Adaptive strategies
+    "ExecutionStrategy",
+    "SmallPlanStrategy",
+    "MediumPlanStrategy",
+    "LargePlanStrategy",
+    "get_strategy",
+    "get_strategy_name",
 ]

@@ -140,6 +140,21 @@ kimi --mcp-config-file /path/to/mcp.json
 
 See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/en/).
 
+## 🎯 Plans System (New!)
+
+Intelligent planning for complex development tasks.
+
+```bash
+# Auto-detect and plan complex tasks
+> Refactor authentication system
+🤔 Generating implementation plans...
+
+# Or use explicit planning
+/plan Add user authentication
+```
+
+[Learn more about Plans →](PLANS.md)
+
 ## Development
 
 To develop Kimi Code CLI, run:

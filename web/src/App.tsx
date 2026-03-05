@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatStatus } from "ai";
 import { PromptInputProvider } from "@ai-elements";
 import { toast } from "sonner";
-import { PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { PanelLeftOpen, PanelLeftClose, MessageSquare, ClipboardList } from "lucide-react";
 import { cn } from "./lib/utils";
 import { ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
+import { Button } from "./components/ui/button";
 import { ChatWorkspaceContainer } from "./features/chat/chat-workspace-container";
 import { SessionsSidebar } from "./features/sessions/sessions";
 import { CreateSessionDialog } from "./features/sessions/create-session-dialog";
@@ -16,6 +17,7 @@ import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
 import { consumeAuthTokenFromUrl, setAuthToken } from "./lib/auth";
+import { PlansPanel } from "./features/plans";
 
 /**
  * Get session ID from URL search params
@@ -43,6 +45,8 @@ const SIDEBAR_MIN_SIZE = 200;
 const SIDEBAR_DEFAULT_SIZE = 260;
 const SIDEBAR_ANIMATION_MS = 250;
 
+type ViewMode = 'chat' | 'plans';
+
 function App() {
   // Initialize theme on app startup
   useTheme();
@@ -57,6 +61,9 @@ function App() {
     }
     return window.matchMedia("(min-width: 1024px)").matches;
   });
+  
+  // View mode state for switching between Chat and Plans
+  const [viewMode, setViewMode] = useState<ViewMode>('chat');
 
   const {
     sessions,
@@ -361,24 +368,30 @@ function App() {
     [forkSession],
   );
 
-  const renderChatPanel = () => (
-    <ChatWorkspaceContainer
-      selectedSessionId={selectedSessionId}
-      currentSession={currentSession}
-      sessionDescription={currentSession?.title}
-      onSessionStatus={handleSessionStatus}
-      onStreamStatusChange={handleStreamStatusChange}
-      uploadSessionFile={uploadSessionFile}
-      onListSessionDirectory={listSessionDirectory}
-      onGetSessionFileUrl={getSessionFileUrl}
-      onGetSessionFile={getSessionFile}
-      onOpenCreateDialog={handleOpenCreateDialog}
-      onOpenSidebar={handleOpenMobileSidebar}
-      generateTitle={generateTitle}
-      onRenameSession={renameSession}
-      onForkSession={handleForkSession}
-    />
-  );
+  const renderMainPanel = () => {
+    if (viewMode === 'plans') {
+      return <PlansPanel />;
+    }
+    
+    return (
+      <ChatWorkspaceContainer
+        selectedSessionId={selectedSessionId}
+        currentSession={currentSession}
+        sessionDescription={currentSession?.title}
+        onSessionStatus={handleSessionStatus}
+        onStreamStatusChange={handleStreamStatusChange}
+        uploadSessionFile={uploadSessionFile}
+        onListSessionDirectory={listSessionDirectory}
+        onGetSessionFileUrl={getSessionFileUrl}
+        onGetSessionFile={getSessionFile}
+        onOpenCreateDialog={handleOpenCreateDialog}
+        onOpenSidebar={handleOpenMobileSidebar}
+        generateTitle={generateTitle}
+        onRenameSession={renameSession}
+        onForkSession={handleForkSession}
+      />
+    );
+  };
 
   return (
     <PromptInputProvider>
@@ -469,30 +482,52 @@ function App() {
                     searchQuery={searchQuery}
                     onSearchQueryChange={handleSearchQueryChange}
                   />
-                  <div className="mt-auto flex items-center justify-between pl-2 pb-2 pr-2">
-                    <div className="flex items-center gap-2">
-                      <ThemeToggle />
+                  <div className="mt-auto flex flex-col gap-2 pl-2 pb-2 pr-2">
+                    <div className="flex items-center gap-2 p-1 bg-muted/50 rounded-lg">
+                      <Button
+                        variant={viewMode === 'chat' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="flex-1 justify-center"
+                        onClick={() => setViewMode('chat')}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Chat
+                      </Button>
+                      <Button
+                        variant={viewMode === 'plans' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="flex-1 justify-center"
+                        onClick={() => setViewMode('plans')}
+                      >
+                        <ClipboardList className="w-4 h-4 mr-2" />
+                        Plans
+                      </Button>
                     </div>
-                    <button
-                      type="button"
-                      aria-label="Collapse sidebar"
-                      className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
-                      onClick={handleCollapseSidebar}
-                    >
-                      <PanelLeftClose className="size-4" />
-                    </button>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ThemeToggle />
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Collapse sidebar"
+                        className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+                        onClick={handleCollapseSidebar}
+                      >
+                        <PanelLeftClose className="size-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </ResizablePanel>
 
-              {/* Main Chat Area */}
+              {/* Main Panel Area */}
               <ResizablePanel id="chat" className="relative min-h-0 flex justify-center flex-1">
-                {renderChatPanel()}
+                {renderMainPanel()}
               </ResizablePanel>
             </ResizablePanelGroup>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              {renderChatPanel()}
+              {renderMainPanel()}
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -124,7 +125,54 @@ class KimiSoul:
 
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
+        
+        # Plan executor reference for graceful shutdown
+        self._current_executor: Any | None = None
+        
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
 
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown during plan execution."""
+        # Store original handlers
+        self._original_sigint = signal.getsignal(signal.SIGINT)
+        self._original_sigterm = signal.getsignal(signal.SIGTERM)
+        
+        def handle_signal(signum, frame):
+            """Handle SIGINT/SIGTERM by requesting graceful shutdown."""
+            if self._current_executor is not None:
+                # Request graceful shutdown on executor
+                try:
+                    self._current_executor.request_shutdown()
+                except Exception:
+                    pass
+            
+            # Re-raise as KeyboardInterrupt to stop current operation
+            raise KeyboardInterrupt
+        
+        try:
+            signal.signal(signal.SIGINT, handle_signal)
+            signal.signal(signal.SIGTERM, handle_signal)
+        except ValueError:
+            # Signals can only be registered in main thread
+            pass
+    
+    def _restore_signal_handlers(self):
+        """Restore original signal handlers."""
+        try:
+            signal.signal(signal.SIGINT, self._original_sigint)
+            signal.signal(signal.SIGTERM, self._original_sigterm)
+        except (ValueError, AttributeError):
+            pass
+    
+    def set_current_executor(self, executor: Any | None):
+        """Set current plan executor for signal handling.
+        
+        Args:
+            executor: PlanExecutor instance or None to clear
+        """
+        self._current_executor = executor
+    
     @property
     def name(self) -> str:
         return self._agent.name
@@ -403,24 +451,36 @@ class KimiSoul:
             # In future, could expand selected option into sub-steps
             wire_send(TextPart(text=f"🚀 Executing: {selected_option.title}"))
             
-            # Create executor
+            # Create executor with adaptive strategy
             executor = PlanExecutor(
                 llm=self._runtime.llm,
-                max_parallel=1,  # Sequential for auto-mode
+                max_parallel=None,  # Use adaptive strategy
                 enable_checkpoints=True,
             )
             
-            # Progress UI
-            progress_ui = ExecutionProgressUI()
+            # Register executor for signal handling (graceful shutdown)
+            self.set_current_executor(executor)
+            
+            # Determine if we should throttle progress UI based on plan size
+            plan_size = len(execution_plan.steps)
+            throttle_progress = plan_size >= 20  # Large plans
+            
+            # Progress UI with throttling for large plans
+            progress_ui = ExecutionProgressUI(throttle=throttle_progress)
             
             def on_step_update(step_exec):
                 progress_ui.update()
             
+            def on_retry(step_id: str, attempt: int, reason: str):
+                # Show retry info in UI
+                pass
+            
             executor.add_listener("step_start", on_step_update)
             executor.add_listener("step_complete", on_step_update)
             executor.add_listener("step_failed", on_step_update)
+            executor.add_listener("retry", on_retry)
             
-            # Execute
+            # Execute with error handling
             progress_ui.start(None)
             try:
                 execution = await executor.execute(execution_plan, fresh=True)
@@ -435,12 +495,27 @@ class KimiSoul:
                 
             except ExecutionAborted:
                 progress_ui.stop()
-                wire_send(TextPart(text="❌ Execution aborted. Use `/plan-execute --resume` to continue."))
+                wire_send(TextPart(text="❌ Execution aborted. State saved. Resume with `/plan-execute --resume`"))
                 return TurnOutcome(
                     stop_reason="no_tool_calls",
                     final_message=None,
                     step_count=0
                 )
+            except Exception as e:
+                progress_ui.stop()
+                # Generate error report
+                if hasattr(executor, 'generate_error_report'):
+                    error_report = executor.generate_error_report(execution)
+                    logger.error("Plan execution failed:\n{report}", report=error_report)
+                wire_send(TextPart(text=f"❌ Execution failed: {e}"))
+                return TurnOutcome(
+                    stop_reason="no_tool_calls",
+                    final_message=None,
+                    step_count=0
+                )
+            finally:
+                # Unregister executor
+                self.set_current_executor(None)
             
             # After execution, continue normal flow (execution results are in context)
             # The plan execution has modified files, now we can continue with normal chat

@@ -22,6 +22,7 @@ from starlette.responses import HTMLResponse
 from kimi_cli.web.api import (
     config_router,
     open_in_router,
+    plans_router,
     sessions_router,
     work_dirs_router,
 )
@@ -222,6 +223,7 @@ def create_app(
     application.include_router(config_router)
     application.include_router(sessions_router)
     application.include_router(work_dirs_router)
+    application.include_router(plans_router)
     if not restrict_sensitive_apis:
         application.include_router(open_in_router)
 

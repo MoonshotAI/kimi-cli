@@ -632,3 +632,103 @@ Options:
   --list, -l           List all checkpoints
   --delete, -d <id>    Delete specific checkpoint
 """.strip()))
+
+
+@registry.command(name="plan-history")
+async def plan_history(soul: KimiSoul, args: str):
+    """Show recent plan execution history for the current session.
+    
+    Usage:
+      /plan-history           Show last 10 entries
+      /plan-history --clear   Clear session history
+    """
+    from kimi_cli.plans.history import get_history
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    history = get_history()
+    
+    if args == "--clear":
+        history.clear()
+        wire_send(TextPart(text="✅ Session history cleared."))
+        return
+    
+    entries = history.get_entries(limit=10)
+    
+    if not entries:
+        wire_send(TextPart(text="No plans executed in this session."))
+        return
+    
+    lines = ["# Recent Plans", ""]
+    for e in entries:
+        status_emoji = "✅" if e.outcome == "completed" else "❌" if e.outcome == "failed" else "⚠️"
+        query_display = e.query[:50] + "..." if len(e.query) > 50 else e.query
+        lines.append(f"{status_emoji} {query_display}")
+        lines.append(f"   ID: {e.plan_id}")
+        lines.append(f"   Outcome: {e.outcome}")
+        if e.files_changed > 0:
+            lines.append(f"   Files changed: {e.files_changed}")
+        lines.append("")
+    
+    # Add session stats
+    stats = history.get_stats()
+    lines.append("---")
+    lines.append(f"Session: {stats['successful']}/{stats['total']} successful ({stats['success_rate']:.0f}%)")
+    
+    wire_send(TextPart(text="\n".join(lines)))
+
+
+@registry.command(name="plan-stats")
+async def plan_stats(soul: KimiSoul, args: str):
+    """Show plan execution statistics across all saved plans.
+    
+    Usage:
+      /plan-stats              Show overall statistics
+      /plan-stats --trends     Show 7-day usage trends
+    """
+    from kimi_cli.plans.storage import PlanStorage
+    from kimi_cli.plans.checkpoint import CheckpointManager
+    from kimi_cli.plans.analytics import PlanAnalytics
+    from kimi_cli.wire.types import TextPart
+    from kimi_cli.soul import wire_send
+    
+    args = args.strip()
+    storage = PlanStorage()
+    ckpt = CheckpointManager()
+    analytics = PlanAnalytics(storage, ckpt)
+    
+    if args == "--trends":
+        trends = analytics.get_trends(days=7)
+        lines = ["# Plan Usage Trends (Last 7 Days)", ""]
+        lines.append(f"Total executions: {trends['total_recent']}")
+        if trends['daily_executions']:
+            lines.append("\nDaily breakdown:")
+            for day, count in sorted(trends['daily_executions'].items()):
+                lines.append(f"  {day}: {count} execution(s)")
+        else:
+            lines.append("\nNo executions in the last 7 days.")
+        wire_send(TextPart(text="\n".join(lines)))
+        return
+    
+    stats = analytics.get_overall_stats()
+    
+    lines = ["# Plan Statistics", ""]
+    lines.append(f"Total Plans: {stats.get('total_plans', 0)}")
+    lines.append(f"Total Executions: {stats.get('total_executions', 0)}")
+    
+    if stats.get('total_executions', 0) > 0:
+        lines.append("")
+        lines.append("Outcomes:")
+        lines.append(f"  ✅ Completed: {stats.get('completed', 0)}")
+        if stats.get('partial', 0) > 0:
+            lines.append(f"  ⚠️  Partial: {stats.get('partial', 0)}")
+        if stats.get('failed', 0) > 0:
+            lines.append(f"  ❌ Failed: {stats.get('failed', 0)}")
+        if stats.get('aborted', 0) > 0:
+            lines.append(f"  🛑 Aborted: {stats.get('aborted', 0)}")
+        lines.append("")
+        lines.append(f"Success Rate: {stats.get('success_rate', 0):.1f}%")
+        lines.append(f"Avg Execution Time: {stats.get('avg_execution_time_seconds', 0):.1f}s")
+    
+    wire_send(TextPart(text="\n".join(lines)))

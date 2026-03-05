@@ -1,5 +1,6 @@
 """Rich-based live progress display for plan execution."""
 
+import time
 from datetime import datetime
 
 from rich.console import Console
@@ -15,10 +16,21 @@ from kimi_cli.plans.models import PlanExecution, StepExecution
 class ExecutionProgressUI:
     """Rich UI for plan execution progress with live updates."""
     
-    def __init__(self):
+    def __init__(self, throttle: bool = False):
+        """Initialize progress UI.
+        
+        Args:
+            throttle: If True, reduce update frequency for large plans
+        """
         self.console = Console()
         self.live: Live | None = None
         self.execution: PlanExecution | None = None
+        
+        # Throttling configuration
+        self.throttle = throttle
+        self._last_update = 0.0
+        self._update_interval = 0.5 if throttle else 0.1  # Slower updates for large plans
+        self._pending_update = False
     
     def start(self, execution: PlanExecution | None = None):
         """Start live progress display.
@@ -27,9 +39,10 @@ class ExecutionProgressUI:
             execution: Initial execution state (can be updated later)
         """
         self.execution = execution
+        self._last_update = time.time()
         self.live = Live(
             self._render(),
-            refresh_per_second=4,
+            refresh_per_second=4 if not self.throttle else 2,
             console=self.console,
             transient=False,
         )
@@ -43,8 +56,35 @@ class ExecutionProgressUI:
         """
         if execution:
             self.execution = execution
+        
+        if not self.live or not self.execution:
+            return
+        
+        now = time.time()
+        
+        # Check throttle
+        if now - self._last_update < self._update_interval:
+            self._pending_update = True
+            return  # Skip update
+        
+        self._last_update = now
+        self._pending_update = False
+        self._render_and_update()
+    
+    def force_update(self):
+        """Force immediate update regardless of throttle."""
         if self.live and self.execution:
+            self._last_update = time.time()
+            self._pending_update = False
+            self._render_and_update()
+    
+    def _render_and_update(self):
+        """Render and update the live display."""
+        try:
             self.live.update(self._render())
+        except Exception:
+            # Don't let rendering errors break execution
+            pass
     
     def stop(self, final_message: str | None = None):
         """Stop live display.
@@ -52,6 +92,10 @@ class ExecutionProgressUI:
         Args:
             final_message: Optional message to show after stopping
         """
+        # Force final update if pending
+        if self._pending_update and self.live:
+            self._render_and_update()
+        
         if self.live:
             self.live.stop()
             self.live = None
@@ -94,8 +138,12 @@ class ExecutionProgressUI:
         # Add completed steps (collapsible)
         if completed_steps:
             completed_branch = tree.add(f"[green]Completed ({len(completed_steps)}):[/green]")
-            for step in completed_steps:
+            # Show fewer completed steps when throttled
+            max_completed = 3 if self.throttle else 10
+            for step in completed_steps[-max_completed:]:  # Show most recent
                 self._add_step_to_tree(completed_branch, step, expanded=False)
+            if len(completed_steps) > max_completed:
+                completed_branch.add(f"[dim]... and {len(completed_steps) - max_completed} more[/dim]")
         
         # Add failed steps
         if failed_steps:
@@ -112,10 +160,11 @@ class ExecutionProgressUI:
         # Add pending steps
         if pending_steps:
             pending_branch = tree.add(f"[dim]Pending ({len(pending_steps)}):[/dim]")
-            for step in pending_steps[:5]:  # Show first 5
+            max_pending = 3 if self.throttle else 5
+            for step in pending_steps[:max_pending]:
                 self._add_step_to_tree(pending_branch, step, expanded=False)
-            if len(pending_steps) > 5:
-                pending_branch.add(f"[dim]... and {len(pending_steps) - 5} more[/dim]")
+            if len(pending_steps) > max_pending:
+                pending_branch.add(f"[dim]... and {len(pending_steps) - max_pending} more[/dim]")
         
         # Overall progress
         completed, total = self.execution.get_progress()
@@ -123,6 +172,10 @@ class ExecutionProgressUI:
         duration = self.execution.get_duration()
         
         progress_text = f"Progress: {completed}/{total} steps ({percentage}%) | Duration: {self._format_duration(duration)}"
+        
+        # Add throttle indicator
+        if self.throttle:
+            progress_text += " [dim](throttled)[/dim]"
         
         return Panel(
             tree,
@@ -154,15 +207,20 @@ class ExecutionProgressUI:
         label = f"{icon} {step.step_id} {duration}"
         branch = tree.add(label)
         
-        if expanded or step.status in ("failed", "running"):
+        # Skip details when throttled unless expanded is required
+        show_details = expanded or not self.throttle
+        
+        if show_details or step.status in ("failed", "running"):
             # Show details
             if step.output_summary:
-                branch.add(f"[dim]{step.output_summary[:80]}[/dim]")
+                summary = step.output_summary[:80] if self.throttle else step.output_summary[:120]
+                branch.add(f"[dim]{summary}[/dim]")
             
             if step.files_modified:
-                files_str = ", ".join(step.files_modified[:3])
-                if len(step.files_modified) > 3:
-                    files_str += f" [dim]+{len(step.files_modified) - 3} more[/dim]"
+                max_files = 2 if self.throttle else 3
+                files_str = ", ".join(step.files_modified[:max_files])
+                if len(step.files_modified) > max_files:
+                    files_str += f" [dim]+{len(step.files_modified) - max_files} more[/dim]"
                 branch.add(f"[dim]Files: {files_str}[/dim]")
             
             if step.lines_added or step.lines_removed:
@@ -170,7 +228,7 @@ class ExecutionProgressUI:
                 branch.add(f"[dim]Changes: {changes}[/dim]")
             
             if step.error_message and step.status == "failed":
-                error_text = step.error_message[:100] + "..." if len(step.error_message) > 100 else step.error_message
+                error_text = step.error_message[:80] + "..." if len(step.error_message) > 80 else step.error_message
                 branch.add(f"[red]Error: {error_text}[/red]")
     
     def _get_status_icon(self, status: str) -> str:
@@ -215,3 +273,8 @@ class ExecutionProgressListener:
     def on_step_failed(self, step_exec: StepExecution):
         """Called when step fails."""
         self.ui.update()
+    
+    def on_retry(self, step_id: str, attempt: int, reason: str):
+        """Called when step is being retried."""
+        # Force update on retry to show retry status
+        self.ui.force_update()

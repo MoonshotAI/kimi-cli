@@ -11,6 +11,20 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+### Added
+- **Plans System** - AI-powered planning for complex development tasks
+  - `/plan` command to generate implementation options
+  - Auto-detection of complex tasks
+  - Interactive menu with arrow key navigation
+  - Parallel step execution
+  - Progress tracking with live UI
+  - Checkpoint/resume functionality
+  - Plan history tracking (`/plan-history`)
+  - Execution analytics (`/plan-stats`)
+  - Undo/redo for plan steps
+  - Error resilience with retry logic
+  - Adaptive performance strategies
+
 ## 1.17.0 (2026-03-03)
 
 - Core: Add `/export` command to export current session context (messages, metadata) to a Markdown file, and `/import` command to import context from a file or another session ID into the current session

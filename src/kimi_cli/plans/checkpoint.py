@@ -1,22 +1,25 @@
-"""
-Checkpoint save/load system for plan execution state.
+"""Checkpoint save/load system for plan execution state.
 
 This module provides functionality to save and restore execution checkpoints,
 allowing plans to be resumed after interruption.
 """
 
 import json
+import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from kimi_cli.plans.models import PlanExecution, StepExecution
+from kimi_cli.plans.errors import DiskFullError, CheckpointCorruptedError
 
 
 class CheckpointManager:
     """Save and restore execution checkpoints."""
     
     DIR = Path.home() / ".kimi" / "checkpoints"
+    BACKUP_SUFFIX = ".backup"
+    CORRUPTED_SUFFIX = ".corrupted"
     
     def __init__(self):
         self.DIR.mkdir(parents=True, exist_ok=True)
@@ -29,16 +32,39 @@ class CheckpointManager:
             
         Returns:
             Path to saved checkpoint file
+            
+        Raises:
+            DiskFullError: If disk is full
         """
         filepath = self.DIR / f"{execution.plan_id}.json"
         data = self._execution_to_dict(execution)
         
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
+        try:
+            # Write to temp file first for atomic operation
+            temp_file = filepath.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            
+            # Atomic rename
+            temp_file.rename(filepath)
+            
+        except OSError as e:
+            # Clean up temp file if it exists
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except Exception:
+                    pass
+            
+            # Check for disk full error
+            error_str = str(e).lower()
+            if "no space left on device" in error_str or "nospace" in error_str or "disk full" in error_str:
+                raise DiskFullError(f"Cannot save checkpoint: disk full ({filepath})")
+            raise
         
         return filepath
     
-    def load(self, plan_id: str) -> PlanExecution | None:
+    def load(self, plan_id: str) -> Optional[PlanExecution]:
         """Load checkpoint for plan.
         
         Args:
@@ -46,15 +72,37 @@ class CheckpointManager:
             
         Returns:
             PlanExecution or None if not found
+            
+        Raises:
+            CheckpointCorruptedError: If checkpoint file is corrupted
         """
         filepath = self.DIR / f"{plan_id}.json"
         if not filepath.exists():
             return None
         
-        with open(filepath) as f:
-            data = json.load(f)
-        
-        return self._execution_from_dict(data)
+        try:
+            with open(filepath) as f:
+                data = json.load(f)
+            
+            return self._execution_from_dict(data)
+            
+        except json.JSONDecodeError as e:
+            # Move corrupted file aside and try backup
+            corrupted_path = filepath.with_suffix(self.CORRUPTED_SUFFIX)
+            try:
+                shutil.move(str(filepath), str(corrupted_path))
+            except Exception:
+                pass
+            raise CheckpointCorruptedError(f"Checkpoint corrupted: {e}")
+            
+        except (KeyError, TypeError, ValueError) as e:
+            # Data structure errors
+            corrupted_path = filepath.with_suffix(self.CORRUPTED_SUFFIX)
+            try:
+                shutil.move(str(filepath), str(corrupted_path))
+            except Exception:
+                pass
+            raise CheckpointCorruptedError(f"Checkpoint data invalid: {e}")
     
     def exists(self, plan_id: str) -> bool:
         """Check if checkpoint exists for plan."""
@@ -82,11 +130,18 @@ class CheckpointManager:
         if not self.exists(plan_id):
             return False
         
-        execution = self.load(plan_id)
-        if execution is None:
+        try:
+            execution = self.load(plan_id)
+            if execution is None:
+                return False
+            
+            return execution.overall_status == "running"
+        except CheckpointCorruptedError:
+            # Try to recover
+            execution = self.try_recover(plan_id)
+            if execution:
+                return execution.overall_status == "running"
             return False
-        
-        return execution.overall_status == "running"
     
     def list(self) -> list[tuple[str, datetime]]:
         """List all checkpoints.
@@ -101,6 +156,89 @@ class CheckpointManager:
             checkpoints.append((plan_id, mtime))
         
         return sorted(checkpoints, key=lambda x: x[1], reverse=True)
+    
+    def try_recover(self, plan_id: str) -> Optional[PlanExecution]:
+        """Try to recover from corrupted checkpoint.
+        
+        Attempts to:
+        1. Load backup checkpoint if available
+        2. Parse partial data from corrupted file
+        
+        Args:
+            plan_id: Plan ID to recover
+            
+        Returns:
+            Recovered PlanExecution or None if unrecoverable
+        """
+        # Try backup file first
+        backup_path = self.DIR / f"{plan_id}.json{self.BACKUP_SUFFIX}"
+        if backup_path.exists():
+            try:
+                with open(backup_path) as f:
+                    data = json.load(f)
+                return self._execution_from_dict(data)
+            except Exception:
+                pass
+        
+        # Try corrupted file
+        corrupted_path = self.DIR / f"{plan_id}.json{self.CORRUPTED_SUFFIX}"
+        if corrupted_path.exists():
+            try:
+                # Try to parse partial JSON
+                text = corrupted_path.read_text()
+                # Find first valid JSON object
+                for end in range(len(text), 0, -1):
+                    try:
+                        data = json.loads(text[:end])
+                        return self._execution_from_dict(data)
+                    except (json.JSONDecodeError, KeyError, TypeError):
+                        continue
+            except Exception:
+                pass
+        
+        return None
+    
+    def create_backup(self, plan_id: str) -> Optional[Path]:
+        """Create backup of current checkpoint.
+        
+        Args:
+            plan_id: Plan ID to backup
+            
+        Returns:
+            Path to backup file or None if no checkpoint exists
+        """
+        filepath = self.DIR / f"{plan_id}.json"
+        if not filepath.exists():
+            return None
+        
+        backup_path = filepath.with_suffix(self.BACKUP_SUFFIX)
+        shutil.copy2(str(filepath), str(backup_path))
+        return backup_path
+    
+    def cleanup_old_checkpoints(self, max_age_days: int = 7) -> int:
+        """Remove old checkpoint files.
+        
+        Args:
+            max_age_days: Maximum age in days
+            
+        Returns:
+            Number of files removed
+        """
+        from datetime import timedelta
+        
+        cutoff = datetime.now() - timedelta(days=max_age_days)
+        removed = 0
+        
+        for filepath in self.DIR.glob("*.json"):
+            try:
+                mtime = datetime.fromtimestamp(filepath.stat().st_mtime)
+                if mtime < cutoff:
+                    filepath.unlink()
+                    removed += 1
+            except Exception:
+                pass
+        
+        return removed
     
     def _execution_to_dict(self, execution: PlanExecution) -> dict[str, Any]:
         """Serialize execution to dict."""
