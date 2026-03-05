@@ -1,7 +1,7 @@
 """
 Interactive menu for plan selection with arrow key navigation.
 
-This module provides a rich-based interactive menu for selecting plan options
+This module provides an interactive menu for selecting plan options
 using keyboard navigation (arrow keys, Enter, q to cancel).
 """
 
@@ -13,7 +13,6 @@ from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.live import Live
 from rich.text import Text
 from rich import box
 
@@ -56,28 +55,32 @@ class InteractivePlanMenu:
         """
         self.selected = 0
         
-        with Live(
-            self._render(plan),
-            console=self.console,
-            refresh_per_second=30,
-            auto_refresh=False
-        ) as live:
-            while True:
-                live.update(self._render(plan))
-                
-                try:
-                    action = self._handle_input()
-                except KeyboardInterrupt:
-                    return None
-                
-                if action == "up":
-                    self.selected = (self.selected - 1) % len(plan.options)
-                elif action == "down":
-                    self.selected = (self.selected + 1) % len(plan.options)
-                elif action == "select":
-                    return self.selected
-                elif action == "cancel":
-                    return None
+        # Clear screen and show initial menu
+        self.console.clear()
+        
+        while True:
+            # Render and display menu
+            self.console.print(self._render(plan))
+            
+            try:
+                action = self._handle_input()
+            except KeyboardInterrupt:
+                self.console.clear()
+                return None
+            
+            if action == "up":
+                self.selected = (self.selected - 1) % len(plan.options)
+            elif action == "down":
+                self.selected = (self.selected + 1) % len(plan.options)
+            elif action == "select":
+                self.console.clear()
+                return self.selected
+            elif action == "cancel":
+                self.console.clear()
+                return None
+            
+            # Clear screen for next render
+            self.console.clear()
     
     def _render(self, plan: Plan) -> Panel:
         """Render menu table with current selection highlighted.
@@ -93,46 +96,42 @@ class InteractivePlanMenu:
             show_header=False,
             show_edge=False,
             show_lines=False,
-            padding=(0, 0),
+            padding=(0, 1),
             box=None,
         )
-        table.add_column("marker", width=2, style="bold")
+        table.add_column("marker", width=3, style="bold")
         table.add_column("content", ratio=1)
         
         for i, option in enumerate(plan.options):
             is_selected = i == self.selected
-            row_style = self._get_option_style(option, is_selected)
             
             # Marker: '>' for selected, ' ' for others
             marker = ">" if is_selected else " "
+            marker_style = "bold cyan" if is_selected else "dim"
             
             # Format the option content
             content = self._format_option(option, is_selected)
             
             table.add_row(
-                Text(marker, style=row_style),
+                Text(marker, style=marker_style),
                 content
             )
         
         # Add help text at the bottom
         help_text = Text(
-            "↑/↓ to navigate • Enter to select • q to cancel",
+            "\n↑/↓ to navigate • Enter to select • q to cancel",
             style="dim",
             justify="center"
         )
         
-        # Combine table and help text
-        content = Text.assemble(
-            table,
-            "\n\n",
-            help_text
-        )
+        # Create panel with title - combine table and help
+        from rich.console import Group
+        content = Group(table, help_text)
         
-        # Create panel with title
         panel = Panel(
             content,
-            title="Select Implementation Approach",
-            title_align="left",
+            title="[bold blue]Plan Selection[/bold blue]",
+            title_align="center",
             border_style="blue",
             box=box.ROUNDED,
             padding=(1, 2)
@@ -140,78 +139,42 @@ class InteractivePlanMenu:
         
         return panel
     
-    def _get_option_style(self, option: PlanOption, is_selected: bool) -> str:
-        """Get the style for an option based on selection state and approach type.
-        
-        Args:
-            option: The plan option
-            is_selected: Whether this option is currently selected
-            
-        Returns:
-            Rich style string
-        """
-        if is_selected:
-            return "bold green"
-        return "default"
-    
     def _format_option(self, option: PlanOption, is_selected: bool) -> Text:
-        """Format a plan option for display.
+        """Format a single option for display.
         
         Args:
-            option: The plan option to format
+            option: Plan option to format
             is_selected: Whether this option is currently selected
             
         Returns:
-            Rich Text object with formatted content
+            Rich Text object
         """
-        style = "bold green" if is_selected else "default"
-        
-        # Title line: [id] Title
+        # Title with number
+        title_style = "bold cyan" if is_selected else "bold white"
         title = Text.assemble(
-            (f"[{option.id}] ", style),
-            (option.title, f"bold {style}" if is_selected else "bold")
+            (f"[{option.id}] ", "dim"),
+            (option.title, title_style)
         )
         
-        # Description line (indented)
-        description = Text(f"  {option.description}", style="dim")
+        # Description (truncated)
+        desc_text = option.description[:200]
+        if len(option.description) > 200:
+            desc_text += "..."
+        description = Text(desc_text, style="dim" if not is_selected else "default")
         
-        # Pros/Cons preview line
-        preview_parts = []
-        
-        # Add time estimate if available
+        # Meta info (time, approach_type, pros/cons count)
+        meta_parts = []
         if option.estimated_time:
-            preview_parts.append((f"⏱ {option.estimated_time}", "cyan"))
-        
-        # Add approach type indicator
-        type_indicators = {
-            "quick": ("⚡ Quick", "yellow"),
-            "proper": ("✓ Proper", "green"),
-            "hybrid": ("⚖ Hybrid", "blue")
-        }
-        if option.approach_type in type_indicators:
-            indicator, color = type_indicators[option.approach_type]
-            preview_parts.append((indicator, color))
-        
-        # Add pros preview (first pro or count)
+            meta_parts.append(f"⏱ {option.estimated_time}")
+        if option.approach_type:
+            approach_emoji = {"quick": "⚡", "proper": "✓", "hybrid": "⚖"}.get(option.approach_type, "•")
+            meta_parts.append(f"{approach_emoji} {option.approach_type.title()}")
         if option.pros:
-            pros_text = f"✓ {option.pros[0]}" if len(option.pros) == 1 else f"✓ {len(option.pros)} pros"
-            preview_parts.append((pros_text, "green"))
-        
-        # Add cons preview (first con or count)
+            meta_parts.append(f"✓ {len(option.pros)} pros")
         if option.cons:
-            cons_text = f"✗ {option.cons[0]}" if len(option.cons) == 1 else f"✗ {len(option.cons)} cons"
-            preview_parts.append((cons_text, "red"))
+            meta_parts.append(f"✗ {len(option.cons)} cons")
         
-        # Build preview line
-        preview_spans = []
-        for i, (text, color) in enumerate(preview_parts):
-            if i > 0:
-                preview_spans.append(("  ", "default"))
-            preview_spans.append((text, color))
-        
-        preview = Text("  ")
-        for text, color in preview_spans:
-            preview.append(text, style=color)
+        meta = Text("  ").append(Text("  ").join([Text(m, style="dim") for m in meta_parts]))
         
         # Combine all parts
         result = Text.assemble(
@@ -219,7 +182,7 @@ class InteractivePlanMenu:
             "\n",
             description,
             "\n",
-            preview
+            meta
         )
         
         return result

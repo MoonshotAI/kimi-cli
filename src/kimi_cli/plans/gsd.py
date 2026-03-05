@@ -11,7 +11,8 @@ import json
 import os
 from datetime import datetime
 from enum import Enum, auto
-from pathlib import Path
+import os
+from pathlib import Path as StdPath
 from typing import Optional
 from dataclasses import dataclass, field, asdict
 
@@ -64,9 +65,16 @@ class GSDProject:
 class GSDManager:
     """Manages GSD workflow for plan mode."""
     
-    def __init__(self, project_path: Optional[Path] = None):
+    def __init__(self, project_path=None):
         self.console = Console()
-        self.project_path = project_path or Path.cwd()
+        # Use standard pathlib.Path, not KaosPath
+        if project_path is None:
+            self.project_path = StdPath.cwd()
+        elif isinstance(project_path, str):
+            self.project_path = StdPath(project_path)
+        else:
+            # If it's a KaosPath, convert to string then to Path
+            self.project_path = StdPath(str(project_path))
         self.planning_dir = self.project_path / ".planning"
         self.state_file = self.planning_dir / "STATE.md"
         self.current_project: Optional[GSDProject] = None
@@ -363,6 +371,6 @@ Progress: [green]{done}/{total}[/green] tasks ({progress:.0f}%)
         self.console.print(tree)
 
 
-def get_gsd_manager(project_path: Optional[Path] = None) -> GSDManager:
+def get_gsd_manager(project_path=None):
     """Get GSD manager instance."""
     return GSDManager(project_path)

@@ -18,7 +18,8 @@ from kimi_cli.plans.analytics import PlanAnalytics
 from kimi_cli.plans.scheduler import PlanScheduler, ScheduledPlan
 from kimi_cli.plans.models import Plan, PlanOption, PlanStep, PlanExecution, StepExecution
 from kimi_cli.plans.generator import PlanGenerator
-from kimi_cli.llm import get_default_llm
+from kimi_cli.llm import create_llm
+from kimi_cli.config import load_config
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 
@@ -303,7 +304,26 @@ async def get_plan(plan_id: str) -> PlanDetailResponse:
 async def generate_plan(request: GeneratePlanRequest) -> PlanDetailResponse:
     """Generate new plan from query."""
     try:
-        llm = get_default_llm()
+        # Load config and create LLM
+        config = load_config()
+        model_name = config.default_model
+        
+        if not model_name or model_name not in config.models:
+            raise HTTPException(
+                status_code=500,
+                detail="No default model configured"
+            )
+        
+        model_config = config.models[model_name]
+        provider_config = config.providers.get(model_config.provider)
+        
+        if not provider_config:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Provider {model_config.provider} not configured"
+            )
+        
+        llm = create_llm(model_config, provider_config)
         generator = PlanGenerator(llm)
         plan = await generator.generate(
             user_request=request.query,
