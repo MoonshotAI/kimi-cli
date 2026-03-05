@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Core: Pass session ID as `user_id` metadata to Anthropic API
+- ACP: Skip Kimi authentication check when using a non-Kimi default provider
 
 ## 1.17.0 (2026-03-03)
 

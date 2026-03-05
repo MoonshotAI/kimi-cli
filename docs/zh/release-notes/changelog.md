@@ -5,6 +5,7 @@
 ## 未发布
 
 - Core：将会话 ID 作为 `user_id` 元数据传递给 Anthropic API
+- ACP：当默认模型使用非 Kimi 供应商时，跳过 Kimi 认证检查
 
 ## 1.17.0 (2026-03-03)
 
