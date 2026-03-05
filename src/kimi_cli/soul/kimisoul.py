@@ -896,5 +896,4 @@ class FlowRunner:
         wire_send(TurnBegin(user_input=prompt))
         res = await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
         wire_send(TurnEnd())
-        _notify_terminal()
         return res
