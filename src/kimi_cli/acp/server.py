@@ -109,6 +109,13 @@ class ACPServer:
 
     def _check_auth(self) -> None:
         """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
+        config = load_config()
+        default_model = config.models.get(config.default_model)
+        if default_model is not None:
+            provider = config.providers.get(default_model.provider)
+            if provider is not None and provider.type != "kimi":
+                return
+
         ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
         token = load_tokens(ref)
 
