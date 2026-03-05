@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -261,6 +262,7 @@ class KimiSoul:
             await self._turn(user_message)
 
         wire_send(TurnEnd())
+        _notify_terminal()
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -384,6 +386,7 @@ class KimiSoul:
                     tool_call_id=request.tool_call_id,
                     display=request.display,
                 )
+                _notify_terminal(f"Kimi: approval required - {request.action}")
                 wire_send(wire_request)
                 # We wait for the request to be resolved over the wire, which means that,
                 # for each soul, we will have only one approval request waiting on the wire
@@ -666,6 +669,50 @@ class KimiSoul:
         )
 
 
+def _notify_terminal(message: str = "Kimi: task completed") -> None:
+    """Emit OSC 9 notification to the terminal.
+
+    This notifies terminal emulators that support desktop notifications
+    (e.g., iTerm2, Windows Terminal, WezTerm) that Kimi has finished.
+
+    OSC 9 is supported by:
+    - iTerm2 (macOS)
+    - Windows Terminal
+    - WezTerm
+    - ConEmu
+    - mintty
+    - and others
+
+    The OSC sequence is written directly to the controlling terminal to bypass
+    any redirections and ensure it reaches the actual terminal emulator.
+    """
+    import os
+    import sys
+
+    osc_sequence = f"\033]9;{message}\007\a"
+
+    # Platform-specific handling:
+    # - Unix/Linux/macOS: use /dev/tty (controlling terminal)
+    # - Windows: use CONOUT$ (console output)
+    try:
+        if sys.platform == "win32":
+            # Windows: write to console output
+            with open("CONOUT$", "wb") as con:
+                con.write(osc_sequence.encode())
+                con.flush()
+        else:
+            # Unix/Linux/macOS: write to controlling terminal
+            with open("/dev/tty", "wb") as tty:
+                tty.write(osc_sequence.encode())
+                tty.flush()
+    except (OSError, IOError):
+        # Fallback to stderr if direct terminal access fails
+        try:
+            os.write(2, osc_sequence.encode())
+        except OSError:
+            pass
+
+
 class BackToTheFuture(Exception):
     """
     Raise when we need to revert the context to a previous checkpoint.
@@ -849,4 +896,5 @@ class FlowRunner:
         wire_send(TurnBegin(user_input=prompt))
         res = await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
         wire_send(TurnEnd())
+        _notify_terminal()
         return res
