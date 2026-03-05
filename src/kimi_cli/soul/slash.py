@@ -408,6 +408,11 @@ Examples:
     # Show "thinking" message
     wire_send(TextPart(text="🤔 Analyzing your request and generating implementation options..."))
 
+    # Suppress spinner during planning
+    from kimi_cli.plans.mode import ModeManager
+    mode_mgr = ModeManager.get_instance()
+    mode_mgr.set_suppress_spinner(True)
+
     try:
         # Generate plan
         generator = PlanGenerator(soul.runtime.llm)
@@ -488,6 +493,9 @@ Examples:
         wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
     except Exception as e:
         wire_send(TextPart(text=f"❌ Unexpected error: {e}"))
+    finally:
+        # Restore spinner output
+        mode_mgr.set_suppress_spinner(False)
 
 
 @registry.command(name="plan-execute")

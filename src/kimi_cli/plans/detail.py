@@ -6,31 +6,13 @@ displaying all details and asking for user confirmation before execution.
 """
 
 import sys
-import tty
-import termios
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.align import Align
 from rich import box
 
 from kimi_cli.plans.models import Plan
-
-
-def getch() -> str:
-    """Get single character without pressing Enter.
-    
-    Returns:
-        Single character string
-    """
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        return sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 class PlanDetailView:
@@ -143,32 +125,48 @@ class PlanDetailView:
         return result
     
     def _confirm(self) -> bool:
-        """Get user confirmation.
+        """Get user confirmation with simple y/n.
         
         Returns:
             bool: True for 'y', False for 'n' or Ctrl+C
         """
-        while True:
-            try:
-                char = getch()
+        import tty
+        import termios
+        
+        self.console.print("\n[bold cyan]Execute this plan? (y/n):[/bold cyan] ", end="")
+        
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        
+        try:
+            # Set to cbreak mode for single char input
+            tty.setcbreak(fd)
+            
+            while True:
+                char = sys.stdin.read(1)
                 
-                # Handle Ctrl+C
+                # Ctrl+C
                 if char == '\x03':
                     self.console.print()
                     return False
                 
-                # Handle 'y' or 'Y'
+                # y or Y - confirm
                 if char.lower() == 'y':
-                    self.console.print()
+                    self.console.print('y')
                     return True
                 
-                # Handle 'n' or 'N'
+                # n or N - cancel
                 if char.lower() == 'n':
-                    self.console.print()
+                    self.console.print('n')
                     return False
                 
-                # Ignore other characters and continue looping
-                
-            except (KeyboardInterrupt, EOFError):
-                self.console.print()
-                return False
+                # Enter - default to confirm (y)
+                if char in ('\r', '\n'):
+                    self.console.print('[default: y]')
+                    return True
+                    
+        except (KeyboardInterrupt, EOFError):
+            self.console.print()
+            return False
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)

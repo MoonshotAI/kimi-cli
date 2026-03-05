@@ -85,11 +85,27 @@ async def visualize(
 class _ContentBlock:
     def __init__(self, is_think: bool):
         self.is_think = is_think
-        self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
+        # Check if we should suppress spinner (during planning)
+        self._suppress = False
+        try:
+            from kimi_cli.plans.mode import ModeManager
+            self._suppress = ModeManager.get_instance().suppress_spinner
+        except Exception:
+            pass
+        
+        if not self._suppress:
+            self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
+        else:
+            self._spinner = None
         self.raw_text = ""
 
     def compose(self) -> RenderableType:
+        if self._suppress or self._spinner is None:
+            return Text("")
         return self._spinner
+
+    def append(self, content: str) -> None:
+        self.raw_text += content
 
     def compose_final(self) -> RenderableType:
         return BulletColumns(
