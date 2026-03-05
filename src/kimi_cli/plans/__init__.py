@@ -28,6 +28,14 @@ from kimi_cli.plans.strategies import (
     get_strategy,
     get_strategy_name,
 )
+from kimi_cli.plans.gsd import (
+    GSDManager,
+    GSDProject,
+    GSDTask,
+    GSDPhase,
+    get_gsd_manager,
+)
+from kimi_cli.plans.gsd_commands import handle_gsd_command, gsd_status
 
 __all__ = [
     # Mode management
@@ -66,4 +74,12 @@ __all__ = [
     "LargePlanStrategy",
     "get_strategy",
     "get_strategy_name",
+    # Phase 5: GSD (Get Shit Done)
+    "GSDManager",
+    "GSDProject",
+    "GSDTask",
+    "GSDPhase",
+    "get_gsd_manager",
+    "handle_gsd_command",
+    "gsd_status",
 ]

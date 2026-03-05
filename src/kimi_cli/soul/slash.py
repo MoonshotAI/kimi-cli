@@ -382,7 +382,7 @@ Examples:
             wire_send(TextPart(text="❌ Cancelled."))
         return
     
-    # Default: generate new plan
+    # Default: generate new plan WITH GSD INTEGRATION
     if not args:
         wire_send(TextPart(text="Usage: /plan <description> or /plan --help"))
         return
@@ -391,6 +391,19 @@ Examples:
     if soul.runtime.llm is None:
         wire_send(TextPart(text="Error: LLM not configured. Cannot generate plans."))
         return
+
+    # Initialize GSD Project FIRST
+    from kimi_cli.plans.gsd import get_gsd_manager, GSDPhase
+    gsd_manager = get_gsd_manager(soul.runtime.builtin_args.KIMI_WORK_DIR)
+    
+    # Create GSD project for this plan
+    gsd_project = gsd_manager.init_project(
+        name=args[:50] + "..." if len(args) > 50 else args,
+        description=args
+    )
+    
+    wire_send(TextPart(text=f"🚀 GSD Project initialized: {gsd_project.name}"))
+    wire_send(TextPart(text=f"📁 Project files: {gsd_manager.planning_dir}"))
 
     # Show "thinking" message
     wire_send(TextPart(text="🤔 Analyzing your request and generating implementation options..."))
@@ -404,6 +417,15 @@ Examples:
             files=[],  # TODO: Get from context
             patterns=[],  # TODO: Get from AGENTS.md
         )
+        
+        # Add plan generation task to GSD
+        gsd_manager.load_project()
+        gsd_manager.add_task(
+            phase=GSDPhase.DISCUSS,
+            title="Generate implementation options",
+            description=f"Created {len(plan.options)} implementation approaches",
+            files=[]
+        )
 
         # Show interactive menu for selection
         menu = InteractivePlanMenu()
@@ -413,27 +435,54 @@ Examples:
             wire_send(TextPart(text="❌ Cancelled."))
             return
         
+        # Mark task as done
+        gsd_manager.load_project()
+        discuss_tasks = [t for t in gsd_manager.current_project.tasks if t.phase == "discuss"]
+        if discuss_tasks:
+            gsd_manager.complete_task(discuss_tasks[-1].id, f"Selected option {selected + 1}")
+        
         # Show detail view
         detail = PlanDetailView()
         if not detail.show(plan, selected):
             wire_send(TextPart(text="❌ Cancelled."))
             return
         
-        # Save plan if configured (check ModeManager for setting)
-        try:
-            mode_mgr = ModeManager()
-            if mode_mgr.current_mode == PlanMode.AUTO_SAVE:
-                storage.save(plan)
-                wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
-        except Exception:
-            # If mode manager not available, still try to save
-            storage.save(plan)
-            wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
+        # Move to PLAN phase and create execution tasks
+        gsd_manager.move_to_phase(GSDPhase.PLAN)
+        
+        # Convert selected option to GSD tasks
+        selected_opt = plan.options[selected]
+        if plan.steps:
+            for i, step in enumerate(plan.steps):
+                gsd_manager.add_task(
+                    phase=GSDPhase.EXECUTE,
+                    title=step.title,
+                    description=step.description,
+                    files=step.files_to_modify
+                )
+        else:
+            # If no detailed steps, add option as task
+            gsd_manager.add_task(
+                phase=GSDPhase.EXECUTE,
+                title=selected_opt.title,
+                description=selected_opt.description,
+                files=[]
+            )
+        
+        # Save plan
+        storage.save(plan)
+        wire_send(TextPart(text=f"💾 Plan saved: {plan.plan_id}"))
+        
+        # Show GSD status
+        wire_send(TextPart(text="\n📊 GSD Project Status:"))
+        gsd_manager.show_status()
         
         # Execute the selected option
-        selected_opt = plan.options[selected]
-        wire_send(TextPart(text=f"✅ Executing: {selected_opt.title}"))
-        # TODO: Phase 3 - Inject plan into context and execute
+        wire_send(TextPart(text=f"\n✅ Ready to execute: {selected_opt.title}"))
+        wire_send(TextPart(text=f"\n💡 Next: Use `/gsd status` to track progress"))
+        wire_send(TextPart(text=f"   Or start first task: `/gsd task start execute-001`"))
+        
+        # TODO: Phase 3 - Inject plan into context and execute with task tracking
 
     except PlanGenerationError as e:
         wire_send(TextPart(text=f"❌ Failed to generate plan: {e}"))
@@ -732,3 +781,14 @@ async def plan_stats(soul: KimiSoul, args: str):
         lines.append(f"Avg Execution Time: {stats.get('avg_execution_time_seconds', 0):.1f}s")
     
     wire_send(TextPart(text="\n".join(lines)))
+
+
+@registry.command
+def gsd(soul: KimiSoul, args: str):
+    """GSD (Get Shit Done) - Structured project planning and execution"""
+    from kimi_cli.plans.gsd_commands import handle_gsd_command
+    from kimi_cli.wire.types import TextPart
+    
+    result = handle_gsd_command(args)
+    if result:
+        wire_send(TextPart(text=result))

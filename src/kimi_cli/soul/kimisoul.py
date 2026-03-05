@@ -385,6 +385,18 @@ class KimiSoul:
             wire_send(TextPart(text="🤔 Generating implementation plans..."))
         
         try:
+            # Initialize GSD Project FIRST
+            from kimi_cli.plans.gsd import get_gsd_manager, GSDPhase
+            gsd_manager = get_gsd_manager(self._runtime.builtin_args.KIMI_WORK_DIR)
+            
+            # Create GSD project for this plan
+            gsd_project = gsd_manager.init_project(
+                name=text_input[:50] + "..." if len(text_input) > 50 else text_input,
+                description=text_input
+            )
+            
+            wire_send(TextPart(text=f"🚀 GSD Project initialized: {gsd_project.name}"))
+            
             # Generate plan
             if self._runtime.llm is None:
                 wire_send(TextPart(text="⚠️ LLM not configured, skipping planning."))
@@ -396,6 +408,15 @@ class KimiSoul:
                 work_dir=str(self._runtime.builtin_args.KIMI_WORK_DIR),
                 files=[],
                 patterns=[],
+            )
+            
+            # Add plan generation task to GSD
+            gsd_manager.load_project()
+            gsd_manager.add_task(
+                phase=GSDPhase.DISCUSS,
+                title="Generate implementation options",
+                description=f"Created {len(plan.options)} implementation approaches",
+                files=[]
             )
             
             # Convert options to steps for execution
@@ -447,9 +468,28 @@ class KimiSoul:
             selected_option = plan.options[selected_index]
             execution_plan = plan  # Use full plan but we'll execute selected option
             
+            # Mark discussion task as done
+            gsd_manager.load_project()
+            discuss_tasks = [t for t in gsd_manager.current_project.tasks if t.phase == "discuss"]
+            if discuss_tasks:
+                gsd_manager.complete_task(discuss_tasks[-1].id, f"Selected option: {selected_option.title}")
+            
+            # Move to PLAN phase and create execution tasks
+            gsd_manager.move_to_phase(GSDPhase.PLAN)
+            
+            # Create GSD tasks for execution
+            for step in execution_plan.steps:
+                gsd_manager.add_task(
+                    phase=GSDPhase.EXECUTE,
+                    title=step.name,
+                    description=step.description,
+                    files=[]
+                )
+            
             # For now, execute just the selected approach
             # In future, could expand selected option into sub-steps
             wire_send(TextPart(text=f"🚀 Executing: {selected_option.title}"))
+            wire_send(TextPart(text=f"\n💡 Track progress: `/gsd status`"))
             
             # Create executor with adaptive strategy
             executor = PlanExecutor(
@@ -490,6 +530,12 @@ class KimiSoul:
                 completed, total = execution.get_progress()
                 if execution.overall_status == "completed":
                     wire_send(TextPart(text=f"✅ Completed {completed}/{total} steps"))
+                    # Mark GSD tasks as done
+                    gsd_manager.load_project()
+                    for task in gsd_manager.current_project.tasks:
+                        if task.phase == "execute" and task.status != "done":
+                            gsd_manager.complete_task(task.id, "Executed successfully")
+                    gsd_manager.move_to_phase(GSDPhase.VERIFY)
                 else:
                     wire_send(TextPart(text=f"⚠️ Finished with status: {execution.overall_status}"))
                 
@@ -520,6 +566,10 @@ class KimiSoul:
             # After execution, continue normal flow (execution results are in context)
             # The plan execution has modified files, now we can continue with normal chat
             wire_send(TextPart(text="✅ Plan execution complete. Continuing..."))
+            
+            # Show final GSD status
+            gsd_manager.load_project()
+            gsd_manager.show_status()
             
             # Return None to continue with normal execution
             # (The execution has already made changes, no need for additional steps)
