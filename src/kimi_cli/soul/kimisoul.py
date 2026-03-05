@@ -689,7 +689,7 @@ def _notify_terminal(message: str = "Kimi: task completed") -> None:
     import os
     import sys
 
-    osc_sequence = f"\033]9;{message}\007\a"
+    osc_sequence = f"\033]9;{message}\a"
 
     # Platform-specific handling:
     # - Unix/Linux/macOS: use /dev/tty (controlling terminal)
