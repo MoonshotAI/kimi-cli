@@ -324,6 +324,9 @@ export function useSessionStream(
 
   // Initialize message tracking
   const initializeIdRef = useRef<string | null>(null);
+  const initializeRetryCountRef = useRef(0); // Track retry attempts for initialize
+  const MAX_INITIALIZE_RETRIES = 5; // Maximum retry attempts
+  const usingCachedCommandsRef = useRef(false); // Track if using cached slash commands
 
   // Current state accumulators
   const currentThinkingRef = useRef("");
@@ -776,7 +779,7 @@ export function useSessionStream(
   }, []);
 
   // Reset all state
-  const resetState = useCallback(() => {
+  const resetState = useCallback((preserveSlashCommands = false) => {
     resetStepState();
     currentToolCallsRef.current.clear();
     currentToolCallIdRef.current = null;
@@ -792,7 +795,6 @@ export function useSessionStream(
     isReplayingRef.current = true;
     setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
-    setSlashCommands([]);
     // Reset first turn tracking
     hasTurnStartedRef.current = false;
     firstTurnCompleteCalledRef.current = false;
@@ -802,6 +804,13 @@ export function useSessionStream(
     if (historyCompleteTimeoutRef.current) {
       window.clearTimeout(historyCompleteTimeoutRef.current);
       historyCompleteTimeoutRef.current = null;
+    }
+    // Handle slashCommands: preserve or clear
+    if (!preserveSlashCommands) {
+      setSlashCommands([]);
+      usingCachedCommandsRef.current = false;
+    } else if (slashCommands.length > 0) {
+      usingCachedCommandsRef.current = true;
     }
   }, [resetStepState, setAwaitingFirstResponse]);
 
@@ -1809,16 +1818,29 @@ export function useSessionStream(
   const handleMessage = useCallback(
     (data: string) => {
       try {
-        console.log("[SessionStream] Received raw message:", data);
         const message: WireMessage = JSON.parse(data);
-        console.log("[SessionStream] Parsed message:", message);
 
         // Check for JSON-RPC error response
         if (message.error) {
-          // Initialize failure during busy session is non-fatal - just skip
+          // Initialize failure during busy session is non-fatal - retry after delay
           if (message.id === initializeIdRef.current) {
-            console.warn("[SessionStream] Initialize rejected (session busy), continuing...");
+            initializeRetryCountRef.current += 1;
+            
+            if (initializeRetryCountRef.current > MAX_INITIALIZE_RETRIES) {
+              initializeIdRef.current = null;
+              initializeRetryCountRef.current = 0;
+              return;
+            }
+            
             initializeIdRef.current = null;
+            
+            // Auto-retry initialize after 2 seconds
+            setTimeout(() => {
+              if (wsRef.current?.readyState === WebSocket.OPEN) {
+                sendInitialize(wsRef.current);
+              }
+            }, 2000);
+            
             return;
           }
 
@@ -1897,13 +1919,14 @@ export function useSessionStream(
 
         // Handle initialize response
         if (message.id && message.id === initializeIdRef.current && message.result) {
-          console.log("[SessionStream] Initialize response received:", message.result);
           initializeIdRef.current = null;
+          initializeRetryCountRef.current = 0;
 
-          // Extract slash commands
           const { slash_commands } = message.result;
-          if (slash_commands) {
+          
+          if (slash_commands && slash_commands.length > 0) {
             setSlashCommands(slash_commands);
+            usingCachedCommandsRef.current = false;
           }
           return;
         }
@@ -2196,8 +2219,11 @@ export function useSessionStream(
   const connect = useCallback(() => {
     if (!sessionId) return;
 
+    initializeRetryCountRef.current = 0; // Reset retry count for new connection
+
     // Close existing connection
     if (wsRef.current) {
+      console.log("[SessionStream] Closing existing WebSocket");
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -2207,7 +2233,7 @@ export function useSessionStream(
     }
 
     awaitingIdleRef.current = false;
-    resetState();
+    resetState(true);  // preserve slashCommands on reconnect
     setMessages([]);
     setStatus("submitted");
     setAwaitingFirstResponse(Boolean(pendingMessageRef.current));
