@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
@@ -103,6 +103,15 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
     return headers
 
 
+def _openai_client_kwargs(provider: LLMProvider) -> dict[str, Any]:
+    client_kwargs: dict[str, Any] = {}
+    if provider.custom_headers:
+        client_kwargs["default_headers"] = provider.custom_headers
+    if provider.default_query:
+        client_kwargs["default_query"] = provider.default_query
+    return client_kwargs
+
+
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
@@ -152,6 +161,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                **_openai_client_kwargs(provider),
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -160,6 +170,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                **_openai_client_kwargs(provider),
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
