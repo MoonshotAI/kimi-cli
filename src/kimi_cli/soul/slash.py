@@ -241,3 +241,15 @@ async def import_context(soul: KimiSoul, args: str):
                 "The content is now part of your session context."
             )
         )
+
+
+@registry.command
+async def hooks(soul: KimiSoul, args: str):
+    """List and show information about AgentHooks"""
+    from kimi_cli.hooks.display import build_hooks_display
+
+    output = build_hooks_display(
+        hook_manager=soul.runtime.hook_manager,
+        work_dir=str(soul.runtime.session.work_dir),
+    )
+    wire_send(TextPart(text=output))

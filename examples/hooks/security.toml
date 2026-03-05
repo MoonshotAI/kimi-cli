@@ -1,0 +1,49 @@
+# Security Hooks Example
+# Place this in ~/.kimi/config.toml to enable security hooks
+
+[hooks]
+
+# Block dangerous rm commands targeting root
+[[hooks.before_tool]]
+name = "block-dangerous-rm"
+type = "Command"
+matcher = { tool = "Shell", pattern = "rm -rf\s*/" }
+command = "echo '{\"decision\": \"deny\", \"reason\": \"Forbidden: Deleting root directory is not allowed\"}'"
+timeout = 100
+description = "Block dangerous rm -rf / commands"
+
+# Block rm on important system directories
+[[hooks.before_tool]]
+name = "block-system-dirs"
+type = "Command"
+matcher = { tool = "Shell", pattern = "rm -rf\s+(~|/home|/etc|/usr|/bin|/sbin|/lib)" }
+command = "echo '{\"decision\": \"deny\", \"reason\": \"Forbidden: Cannot delete system directories\"}'"
+timeout = 100
+description = "Block deletion of system directories"
+
+# Log all shell commands for audit
+[[hooks.before_tool]]
+name = "audit-shell-commands"
+type = "Command"
+matcher = { tool = "Shell" }
+command = 'read input && echo "$input" | jq -r \'.tool_input.command\' >> ~/.kimi/audit.log && echo \'{"decision": "allow"}\''
+async = true
+timeout = 500
+description = "Audit all shell commands"
+
+# Block write to sensitive files
+[[hooks.before_tool]]
+name = "block-sensitive-files"
+type = "Command"
+matcher = { tool = "WriteFile", pattern = "\.(ssh|aws|config)/|id_rsa|\.env|password|secret" }
+command = "echo '{\"decision\": \"ask\", \"reason\": \"This file may contain sensitive information\"}'"
+timeout = 100
+description = "Ask before writing to potentially sensitive files"
+
+# Notify on subagent start (security monitoring)
+[[hooks.subagent_start]]
+name = "notify-subagent"
+type = "Command"
+command = 'read input && echo "Subagent started at $(date): $input" >> ~/.kimi/security.log'
+async = true
+description = "Log subagent creation for security monitoring"
