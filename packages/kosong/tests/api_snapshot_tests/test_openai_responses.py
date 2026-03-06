@@ -379,6 +379,18 @@ async def test_openai_responses_generation_kwargs():
         assert (body["temperature"], body["max_output_tokens"]) == snapshot((0.7, 2048))
 
 
+async def test_openai_responses_omits_reasoning_by_default():
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
+        provider = OpenAIResponses(model="gpt-4.1", api_key="test-key", stream=False)
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "reasoning" not in body
+        assert "include" not in body
+
+
 async def test_openai_responses_with_thinking():
     with respx.mock(base_url="https://api.openai.com") as mock:
         mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))

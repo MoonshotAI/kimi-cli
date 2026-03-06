@@ -3,6 +3,7 @@ from __future__ import annotations
 from inline_snapshot import snapshot
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
+from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
@@ -133,3 +134,27 @@ def test_create_llm_requires_base_url_for_kimi():
     model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
 
     assert create_llm(provider, model) is None
+
+
+def test_create_llm_openai_responses_does_not_force_reasoning_off():
+    provider = LLMProvider(
+        type="openai_responses",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="openrouter_custom",
+        model="minimax/minimax-m2.5",
+        max_context_size=128000,
+        capabilities=None,
+    )
+
+    llm = create_llm(provider, model, thinking=False)
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAIResponses)
+    assert llm.chat_provider.model_parameters == snapshot(
+        {
+            "base_url": "https://openrouter.ai/api/v1/",
+        }
+    )

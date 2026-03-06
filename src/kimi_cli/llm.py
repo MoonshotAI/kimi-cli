@@ -224,7 +224,7 @@ def create_llm(
     # Apply thinking if specified or if model always requires thinking
     if "always_thinking" in capabilities or (thinking is True and "thinking" in capabilities):
         chat_provider = chat_provider.with_thinking("high")
-    elif thinking is False:
+    elif thinking is False and provider.type != "openai_responses":
         chat_provider = chat_provider.with_thinking("off")
     # If thinking is None and model doesn't always think, leave as-is (default behavior)
 
