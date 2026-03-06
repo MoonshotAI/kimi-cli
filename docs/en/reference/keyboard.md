@@ -39,7 +39,7 @@ Press `Ctrl-O` to open an external editor (e.g., VS Code, Vim) to edit the curre
 1. Editor configured via `/editor` command
 2. `$VISUAL` environment variable
 3. `$EDITOR` environment variable
-4. Auto-detect: `code --wait` (VS Code) → `vim` → `vi` → `nano`
+4. Auto-detect: `code --wait` (VS Code) → `vim` → `vi` → `nano` → `trae --wait` (Trae)
 
 Use the `/editor` command to interactively switch editors, or specify directly, e.g., `/editor vim`.
 

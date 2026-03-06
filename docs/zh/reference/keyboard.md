@@ -39,7 +39,7 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 1. `/editor` 命令配置的编辑器
 2. `$VISUAL` 环境变量
 3. `$EDITOR` 环境变量
-4. 自动检测：`code --wait`（VS Code）→ `vim` → `vi` → `nano`
+4. 自动检测：`code --wait`（VS Code）→ `vim` → `vi` → `nano` → `trae --wait`（Trae）
 
 使用 `/editor` 命令可交互式切换编辑器，也可直接指定，如 `/editor vim`。
 
