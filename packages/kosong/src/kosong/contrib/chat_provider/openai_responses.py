@@ -168,11 +168,13 @@ class OpenAIResponses:
 
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
-        generation_kwargs["reasoning"] = Reasoning(
-            effort=generation_kwargs.pop("reasoning_effort", None),
-            summary="auto",
-        )
-        generation_kwargs["include"] = ["reasoning.encrypted_content"]
+        reasoning_effort = generation_kwargs.pop("reasoning_effort", None)
+        if reasoning_effort is not None:
+            generation_kwargs["reasoning"] = Reasoning(
+                effort=reasoning_effort,
+                summary="auto",
+            )
+            generation_kwargs["include"] = ["reasoning.encrypted_content"]
 
         try:
             response = await self._client.responses.create(
