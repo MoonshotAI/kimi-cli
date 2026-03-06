@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "fc3ecf3602c3",
+  "session_id": "5c0447e5-f29d-434b-bb0b-8898b57a8e78",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-06T10:20:32.81162Z",
+  "branch": "fix/toolbar-slash-commands",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "web/src/hooks/useSessionStream.ts"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "40b2ec5ec07a",
+  "checkpoint_transcript_start": 16,
+  "transcript_lines_at_start": 16,
+  "initial_attribution": {
+    "calculated_at": "2026-03-06T10:20:32.80423Z",
+    "agent_lines": 0,
+    "human_added": 20,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 20,
+    "agent_percentage": 0
+  }
+}
