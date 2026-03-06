@@ -1,0 +1,122 @@
+Implement the following plan:
+
+# Plan: Clean up debug logs and rebase toolbar fix onto latest main
+
+## Context
+
+Branch `fix/toolbar-overlap` contains two types of changes:
+1. **Committed** toolbar overflow fix (commits `862b804`, `b3851c3`): modifies `prompt-toolbar/index.tsx`, `toolbar-changes.tsx`, and docs/changelogs.
+2. **Uncommitted** (unstaged): changes to `useSlashCommands.ts` and `useSessionStream.ts` that include useful WebSocket retry logic + slash command caching — but also leftover debug `console.log` statements flagged in the security review.
+
+Additionally, 4 untracked debug MD files exist in `web/` that need to be deleted.
+
+Goal: strip the debug logs, delete the MD files, then land all changes cleanly onto a new branch from latest `origin/main`.
+
+---
+
+## Critical Files
+
+- `web/src/features/chat/useSlashCommands.ts` — remove debug logs (lines ~155, ~161, ~297)
+- `web/src/hooks/useSessionStream.ts` — remove [SlashDebug] logs (lines ~1901, ~1903, ~1908, ~2302)
+- `web/src/features/chat/components/prompt-toolbar/index.tsx` — toolbar fix (already committed)
+- `web/src/features/chat/components/prompt-toolbar/toolbar-changes.tsx` — toolbar fix (already committed)
+- `web/debug-diagnosis.md`, `web/debug-logs-summary.md`, `web/fix-proposal.md`, `web/slash-commands-fix-plan.md` — delete
+
+---
+
+## Steps
+
+### 1. Remove debug console.log lines
+
+**`web/src/features/chat/useSlashCommands.ts`** — remove these 3 additions:
+- `console.log("[useSlashCommands] Skipping detection, isSelectingRef is true");` (~line 155)
+- The entire `if (text.includes("/")) { console.log("[SlashDebug] Detecting slash...") }` block (~lines 160–162)
+- The entire debug `useEffect` block that logs state changes (~lines 292–296)
+
+**`web/src/hooks/useSessionStream.ts`** — remove these 4 additions:
+- `console.log(\`[SlashDebug] Fetched new commands...\`)` (~line 1901)
+- `console.log(\`[SlashDebug] Fetched commands: ...\`)` (~line 1903)
+- `console.log(\`[SlashDebug] Using cached commands: ...\`)` (~line 1908)
+- `console.log("[SlashDebug] Disconnected:", ...)` (~line 2302) — restore the original `console.log("[SessionStream] Disconnected:", event.code, event.reason);`
+
+Also restore the two removed raw-message logs at the top of `handleMessage` if they were removed by mistake, or leave removed (they were removed intentionally to reduce noise — leave them out).
+
+### 2. Delete the 4 untracked MD files
+
+```bash
+rm web/debug-diagnosis.md web/debug-logs-summary.md web/fix-proposal.md web/slash-commands-fix-plan.md
+```
+
+### 3. Stash the cleaned working-tree changes
+
+```bash
+git stash push -m "clean: remove debug logs from useSlashCommands + useSessionStream"
+```
+
+Note: existing `stash@{0}` becomes `stash@{1}`; our new stash is `stash@{0}`.
+
+### 4. Switch to latest main
+
+```bash
+git fetch origin
+git checkout main
+git pull origin main
+```
+
+### 5. Create a new branch
+
+```bash
+git checkout -b fix/toolbar-slash-commands
+```
+
+### 6. Cherry-pick the toolbar fix commits
+
+```bash
+git cherry-pick 862b804   # fix(toolbar): fix scrollable file list overflow
+git cherry-pick b3851c3   # docs: update changelog and kimi-web docs for toolbar fix
+```
+
+Resolve any conflicts in CHANGELOG / docs files if they arise (likely due to new entries on main).
+
+### 7. Apply the stashed slash-commands changes
+
+```bash
+git stash pop   # applies stash@{0} — the cleaned useSlashCommands.ts + useSessionStream.ts
+```
+
+### 8. Commit the slash-commands changes
+
+```bash
+git add web/src/features/chat/useSlashCommands.ts web/src/hooks/useSessionStream.ts
+git commit -m "fix(web): preserve slash commands on reconnect and add initialize retry logic"
+```
+
+### 9. Push the new branch
+
+```bash
+git push -u origin fix/toolbar-slash-commands
+```
+
+---
+
+## Verification
+
+- Check `git log --oneline origin/main..HEAD` — should show the cherry-picked toolbar commits + the slash-commands commit
+- Check `git diff origin/main HEAD -- web/src/features/chat/useSlashCommands.ts` — should show no `[SlashDebug]` or `[useSlashCommands]` console.log lines
+- Check `git status` — should be clean
+- Confirm the 4 MD files are gone
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+make check make gen-docs make gen-changelog etc.
+
+---
+
+查看pr模板，给我生成pr描述，严格按照模板来写。描述中还要写本质上这个修改是保留了一个缓存
+
+---
+
+[Request interrupted by user for tool use]
