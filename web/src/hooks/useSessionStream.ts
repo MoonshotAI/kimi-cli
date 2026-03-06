@@ -812,7 +812,7 @@ export function useSessionStream(
     } else if (slashCommands.length > 0) {
       usingCachedCommandsRef.current = true;
     }
-  }, [resetStepState, setAwaitingFirstResponse]);
+  }, [resetStepState, setAwaitingFirstResponse, slashCommands.length]);
 
   // Process a SubagentEvent: accumulate inner events into parent Task tool's subagentSteps
   const processSubagentEvent = useCallback(
@@ -1814,6 +1814,29 @@ export function useSessionStream(
     ],
   );
 
+  // Helper to send initialize message
+  const sendInitialize = useCallback((ws: WebSocket) => {
+    const id = uuidV4();
+    initializeIdRef.current = id;
+    const message = {
+      jsonrpc: "2.0",
+      method: "initialize",
+      id,
+      params: {
+        protocol_version: "1.3",
+        client: {
+          name: "kiwi",
+          version: kimiCliVersion,
+        },
+        capabilities: {
+          supports_question: true,
+        },
+      },
+    };
+    ws.send(JSON.stringify(message));
+    console.log("[SessionStream] Sent initialize message");
+  }, []);
+
   // Handle incoming WebSocket message
   const handleMessage = useCallback(
     (data: string) => {
@@ -1984,6 +2007,7 @@ export function useSessionStream(
       setAwaitingFirstResponse,
       applySessionStatus,
       completeStreamingMessages,
+      sendInitialize,
     ],
   );
 
@@ -2032,29 +2056,6 @@ export function useSessionStream(
     },
     [setAwaitingFirstResponse],
   );
-
-  // Helper to send initialize message
-  const sendInitialize = useCallback((ws: WebSocket) => {
-    const id = uuidV4();
-    initializeIdRef.current = id;
-    const message = {
-      jsonrpc: "2.0",
-      method: "initialize",
-      id,
-      params: {
-        protocol_version: "1.3",
-        client: {
-          name: "kiwi",
-          version: kimiCliVersion,
-        },
-        capabilities: {
-          supports_question: true,
-        },
-      },
-    };
-    ws.send(JSON.stringify(message));
-    console.log("[SessionStream] Sent initialize message");
-  }, []);
 
   const respondToApproval = useCallback(
     async (
