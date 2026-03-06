@@ -1,0 +1,46 @@
+Implement the following plan:
+
+# 修复 truncate 在 flex 容器中失效
+
+## Context
+
+PR #1303 的 Copilot Review 指出 `toolbar-changes.tsx` 中两处 `truncate` span 在 flex 行里缺少 `min-w-0`，导致 `text-overflow: ellipsis` 不生效：长文件路径 / workDir 会直接撑宽容器而非显示省略号。
+
+Flex 子元素默认 `min-width: auto`（等于内容宽度），因此即使设置了 `overflow: hidden`（`truncate` 依赖此），元素也不会被压缩，省略号无法触发。加上 `min-w-0` 可覆盖此默认值；加上 `flex-1` 让该 span 占满父容器剩余空间（其两侧是 `flex-shrink-0` 的固定元素）。
+
+## 修改内容
+
+**文件：** `web/src/features/chat/components/prompt-toolbar/toolbar-changes.tsx`
+
+### Fix 1 — 文件路径 span（第 48 行）
+
+```tsx
+// 修改前
+<span className="truncate text-muted-foreground" title={file.path}>
+
+// 修改后
+<span className="truncate text-muted-foreground min-w-0 flex-1" title={file.path}>
+```
+
+父容器结构：`FileIcon(flex-shrink-0)` + `stats span(flex-shrink-0)` + **此 span** + `OpenInButton div(flex-shrink-0)`，所以 `flex-1` 让路径 span 吸收剩余宽度，`min-w-0` 允许它真正收缩。
+
+### Fix 2 — workDir span（第 62 行）
+
+```tsx
+// 修改前
+<span className="truncate text-muted-foreground/70">{workDir}</span>
+
+// 修改后
+<span className="truncate text-muted-foreground/70 min-w-0 flex-1">{workDir}</span>
+```
+
+父容器结构：`FolderOpenIcon(flex-shrink-0)` + **此 span** + `OpenInButton div(flex-shrink-0)`，逻辑相同。
+
+## 验证
+
+1. 用超长文件路径或 workDir 路径测试，确认两处都显示省略号而非横向溢出
+2. 短路径正常显示不受影响
+3. `make check` 通过
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl

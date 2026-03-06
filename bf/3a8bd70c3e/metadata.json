@@ -3,7 +3,7 @@
   "checkpoint_id": "bf3a8bd70c3e",
   "strategy": "manual-commit",
   "branch": "fix/toolbar-slash-commands",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "web/src/hooks/useSessionStream.ts"
   ],
@@ -14,13 +14,20 @@
       "context": "/bf/3a8bd70c3e/0/context.md",
       "content_hash": "/bf/3a8bd70c3e/0/content_hash.txt",
       "prompt": "/bf/3a8bd70c3e/0/prompt.txt"
+    },
+    {
+      "metadata": "/bf/3a8bd70c3e/1/metadata.json",
+      "transcript": "/bf/3a8bd70c3e/1/full.jsonl",
+      "context": "/bf/3a8bd70c3e/1/context.md",
+      "content_hash": "/bf/3a8bd70c3e/1/content_hash.txt",
+      "prompt": "/bf/3a8bd70c3e/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2842,
-    "cache_creation_tokens": 159542,
-    "cache_read_tokens": 1440731,
-    "output_tokens": 13952,
-    "api_call_count": 35
+    "input_tokens": 2848,
+    "cache_creation_tokens": 166706,
+    "cache_read_tokens": 1524716,
+    "output_tokens": 14510,
+    "api_call_count": 39
   }
 }
