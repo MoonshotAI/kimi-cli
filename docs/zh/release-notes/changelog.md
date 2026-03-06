@@ -12,6 +12,7 @@
 - Shell：在状态栏上下文用量旁显示 Token 数量（已用/总量），如 `context: 42.0% (4.2k/10.0k)`
 - Shell：工具栏快捷键提示改为轮转显示——每次提交后循环展示不同快捷键提示，节省横向空间
 - MCP：为 MCP 服务器连接添加加载指示器——Shell 在连接 MCP 服务器时显示 "Connecting to MCP servers..." 加载动画，Web 在 MCP 工具加载期间显示状态消息
+- Core：在 aiohttp 客户端会话中启用 `trust_env`，以支持代理环境变量（`https_proxy`、`http_proxy` 等）
 - Web：修复工具栏变更面板中文件列表滚动溢出的问题
 - Core：新增 `compaction_trigger_ratio` 配置项（默认 `0.85`），用于控制自动压缩的触发时机——当上下文用量达到配置比例或剩余空间低于 `reserved_context_size` 时触发压缩，以先满足的条件为准
 - Core：`/compact` 命令支持自定义指令（如 `/compact keep database discussions`），可指导压缩时重点保留的内容
