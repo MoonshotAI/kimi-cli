@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "fc3ecf3602c3",
+  "session_id": "8f3c3e6d-de5b-41e0-bf00-79caed417af9",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-06T10:20:35.651705Z",
+  "branch": "fix/toolbar-slash-commands",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "web/src/hooks/useSessionStream.ts"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "aa4117423a25",
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 244953,
+    "cache_read_tokens": 1809596,
+    "output_tokens": 11904,
+    "api_call_count": 41
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-06T10:20:35.088433Z",
+    "agent_lines": 8,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 8,
+    "agent_percentage": 100
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/8f3c3e6d-de5b-41e0-bf00-79caed417af9.jsonl"
+}

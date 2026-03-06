@@ -1,0 +1,95 @@
+Implement the following plan:
+
+# PR Checklist Completion + Description
+
+## Steps to complete the checklist
+
+### 1. Run `make gen-changelog`
+```bash
+make gen-changelog
+```
+Auto-generates a changelog entry via `uv run kimi --yolo --prompt /skill:gen-changelog`.
+
+### 2. Run `make gen-docs`
+```bash
+make gen-docs
+```
+Auto-generates user docs updates via `uv run kimi --yolo --prompt /skill:gen-docs`.
+
+### 3. Commit generated files
+```bash
+git add CHANGELOG.md docs/
+git commit -m "docs: update changelog and user docs for slash command cache on reconnect"
+```
+
+### 4. Push
+```bash
+git push
+```
+
+**Tests note**: No web unit test files exist in `web/src/` — the project has no vitest/jest setup for hooks. The behavior (WebSocket reconnect + slash command preservation) is an integration-level concern; checklist item can be marked N/A.
+
+---
+
+## Final PR Description (copy-paste ready)
+
+Strictly follows `.github/pull_request_template.md`.
+
+```markdown
+## Related Issue
+
+<!-- Please link to the issue here. -->
+
+N/A
+
+## Description
+
+When the WebSocket session reconnects (e.g. after a network drop or page navigation), `resetState()` previously cleared the slash commands list unconditionally. This meant users had to wait for a new `initialize` handshake to complete before slash commands became available again — and if the server rejected `initialize` while busy, the list stayed empty permanently.
+
+**Core fix — preserve the slash commands cache on reconnect:**
+
+The essential change is that `resetState()` now accepts a `preserveSlashCommands` parameter. When reconnecting an existing session, `resetState(true)` is called so the previously fetched slash commands are kept in state and remain immediately usable. A `usingCachedCommandsRef` flag tracks that the list is from cache, so it gets transparently replaced once the fresh `initialize` response arrives.
+
+**Additional improvements:**
+
+- **Initialize retry logic**: When the server rejects an `initialize` request (e.g. session is busy), the client now auto-retries up to 5 times with a 2-second delay instead of silently giving up. The retry counter resets on a successful response.
+- **Refactor `sendInitialize`**: Extracted initialize message construction into a reusable `sendInitialize` `useCallback`, shared between the initial connect path and the retry path.
+
+## Checklist
+
+- [x] I have read the [CONTRIBUTING](https://github.com/MoonshotAI/kimi-cli/blob/main/CONTRIBUTING.md) document.
+- [x] I have linked the related issue, if any. (N/A — no related issue)
+- [x] I have added tests that prove my fix is effective or that my feature works. (N/A — no web unit test infrastructure exists; this is integration-level behavior)
+- [x] I have run `make gen-changelog` to update the changelog.
+- [x] I have run `make gen-docs` to update the user documentation.
+```
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+<task-notification>
+<task-id>bowd1jpfw</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Run make gen-docs" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+continue push and pr
+
+---
+
+review 一下系统地
+
+---
+
+修改一下pr title
+
+---
+
+我要你review刚刚pr的代码。还有什么需要修正的。修改pr的标题以符合ci检查的要求
