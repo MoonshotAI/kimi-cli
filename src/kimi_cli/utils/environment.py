@@ -28,7 +28,7 @@ class Environment:
                 os_kind = system
 
         os_arch = platform.machine()
-        os_version = platform.version()
+        os_version = f"{platform.system()} {platform.release()}"
 
         if os_kind == "Windows":
             shell_name = "Windows PowerShell"
