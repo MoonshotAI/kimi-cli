@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Core: Pass session ID as `user_id` metadata to Anthropic API
+- Core: Strip whitespace from OAuth header values to prevent encoding errors
 
 ## 1.17.0 (2026-03-03)
 
