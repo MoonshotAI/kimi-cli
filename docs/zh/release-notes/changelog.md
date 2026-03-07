@@ -5,6 +5,7 @@
 ## 未发布
 
 - Core：将会话 ID 作为 `user_id` 元数据传递给 Anthropic API
+- Core：对 OAuth 头字段值去除首尾空白，避免编码错误
 
 ## 1.17.0 (2026-03-03)
 
