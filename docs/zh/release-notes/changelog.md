@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.18.0 (2026-03-09)
+
 - ACP：支持 ACP 模式下的嵌入式资源内容，使 Zed 的 `@` 文件引用能够正确包含文件内容
 - Core：在 Google GenAI provider 中使用 `parameters_json_schema` 替代 `parameters`，绕过 Pydantic 校验对 MCP 工具中标准 JSON Schema 元数据字段的拒绝
 - Shell：增强 `Ctrl-V` 剪贴板粘贴功能，支持粘贴视频文件——视频文件路径以文本形式插入输入框，同时修复剪贴板数据为 `None` 时的崩溃问题
