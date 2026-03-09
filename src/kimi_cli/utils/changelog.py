@@ -39,8 +39,7 @@ def parse_changelog(md_text: str) -> dict[str, ReleaseEntry]:
         norm_entries = [
             line.strip()[2:].strip() for line in bullet_lines if line.strip().startswith("- ")
         ]
-        result[current_ver] = ReleaseEntry(
-            description=description, entries=norm_entries)
+        result[current_ver] = ReleaseEntry(description=description, entries=norm_entries)
 
     for raw in lines:
         line = raw.rstrip()
