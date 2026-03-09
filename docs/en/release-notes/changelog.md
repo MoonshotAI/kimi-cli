@@ -6,6 +6,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Core: Pass session ID as `user_id` metadata to Anthropic API
 - Web: Preserve slash commands on WebSocket reconnect and add automatic retry logic for session initialization
+- ACP: Support embedded resource content in ACP mode, enabling Zed's `@` file references to include file content correctly
 
 ## 1.17.0 (2026-03-03)
 
