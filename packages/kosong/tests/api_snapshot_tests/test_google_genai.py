@@ -107,15 +107,12 @@ async def test_google_genai_message_conversion():
                                 {
                                     "name": "add",
                                     "description": "Add two integers.",
-                                    "parameters": {
-                                        "type": "OBJECT",
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {
-                                                "type": "INTEGER",
-                                                "description": "First number",
-                                            },
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
-                                                "type": "INTEGER",
+                                                "type": "integer",
                                                 "description": "Second number",
                                             },
                                         },
@@ -125,16 +122,16 @@ async def test_google_genai_message_conversion():
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -231,31 +228,31 @@ async def test_google_genai_message_conversion():
                                 {
                                     "description": "Add two integers.",
                                     "name": "add",
-                                    "parameters": {
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -335,31 +332,31 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "description": "Add two integers.",
                                     "name": "add",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -454,31 +451,31 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "description": "Add two integers.",
                                     "name": "add",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]

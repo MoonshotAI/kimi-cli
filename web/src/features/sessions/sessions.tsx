@@ -52,7 +52,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { isMacOS } from "@/hooks/utils";
+import { hasPlatformModifier, isMacOS } from "@/hooks/utils";
 import { cn, } from "@/lib/utils";
 
 // Top-level regex constants for performance
@@ -647,8 +647,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     aria-label="New Session"
                     className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     onClick={(e) => {
-                      const isNewTab = isMacOS() ? e.metaKey : e.ctrlKey;
-                      if (isNewTab) {
+                      if (hasPlatformModifier(e)) {
                         const url = new URL(window.location.origin + window.location.pathname);
                         url.searchParams.set("action", "create");
                         window.open(url.toString(), "_blank");
@@ -865,8 +864,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                     className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-0 group-hover/dir:opacity-100 hover:bg-accent hover:text-foreground transition-all"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const isNewTab = isMacOS() ? e.metaKey : e.ctrlKey;
-                                      if (isNewTab) {
+                                      if (hasPlatformModifier(e)) {
                                         const url = new URL(window.location.origin + window.location.pathname);
                                         url.searchParams.set("action", "create-in-dir");
                                         url.searchParams.set("workDir", group.workDir);

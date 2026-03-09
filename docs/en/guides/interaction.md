@@ -45,11 +45,11 @@ Sometimes you need to enter multiple lines, such as pasting a code snippet or er
 
 After finishing your input, press `Enter` to send the complete message.
 
-## Clipboard and image paste
+## Clipboard and media paste
 
-Press `Ctrl-V` to paste text or images from the clipboard.
+Press `Ctrl-V` to paste text, images, or video files from the clipboard.
 
-If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
+If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image. If the clipboard contains a video file, its file path is inserted as text into the input box.
 
 ::: tip
 Image input requires the model to support the `image_in` capability. Video input requires the `video_in` capability.
