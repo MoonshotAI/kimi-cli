@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "6fb0000a4ae0",
+  "session_id": "fbddf74d-d590-452d-aa3e-99a79888a119",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T12:44:16.415157Z",
+  "branch": "feat/platform-modifier-helper",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "CHANGELOG.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/release-notes/changelog.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "ac995ecba494",
+  "checkpoint_transcript_start": 29,
+  "transcript_lines_at_start": 29,
+  "token_usage": {
+    "input_tokens": 4,
+    "cache_creation_tokens": 341,
+    "cache_read_tokens": 46834,
+    "output_tokens": 233,
+    "api_call_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T12:44:16.400421Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 3,
+    "total_committed": 0,
+    "agent_percentage": 0
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/fbddf74d-d590-452d-aa3e-99a79888a119.jsonl"
+}
