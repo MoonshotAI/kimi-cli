@@ -125,7 +125,14 @@ class Context:
                 if not line.strip():
                     continue
 
-                line_json = json.loads(line)
+                try:
+                    line_json = json.loads(line)
+                except json.JSONDecodeError:
+                    try:
+                        line_json = json.loads(line, strict=False)
+                    except json.JSONDecodeError:
+                        logger.warning("Skipping malformed line in context file during revert_to")
+                        continue
                 if line_json["role"] == "_checkpoint" and line_json["id"] == checkpoint_id:
                     break
 

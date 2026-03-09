@@ -431,7 +431,7 @@ class KimiStreamedMessage:
                             id=tool_call.id or str(uuid.uuid4()),
                             function=ToolCall.FunctionBody(
                                 name=tool_call.function.name,
-                                arguments=_sanitize_tool_arguments(tool_call.function.arguments),
+                                arguments=tool_call.function.arguments,
                             ),
                         )
                     elif tool_call.function.arguments:
