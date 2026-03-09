@@ -7,6 +7,23 @@ import string
 _NEWLINE_RE = re.compile(r"[\r\n]+")
 
 
+def shorten(text: str, *, width: int, placeholder: str = "…") -> str:
+    """Shorten text to at most width characters.
+
+    This always hard-truncates instead of
+    trying word-boundary breaking, so CJK text without spaces won't
+    collapse to just the placeholder.
+    """
+    text = " ".join(text.split())
+    if len(text) <= width:
+        return text
+    cut = width - len(placeholder)
+    space = text.rfind(" ", 0, cut + 1)
+    if space > 0:
+        cut = space
+    return text[:cut].rstrip() + placeholder
+
+
 def shorten_middle(text: str, width: int, remove_newline: bool = True) -> str:
     """Shorten the text by inserting ellipsis in the middle."""
     if len(text) <= width:
