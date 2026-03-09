@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
@@ -43,7 +44,11 @@ from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
+from kimi_cli.utils.clipboard import (
+    ClipboardVideo,
+    grab_media_from_clipboard,
+    is_clipboard_available,
+)
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.slashcmd import SlashCommand
@@ -500,7 +505,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-j: newline",
     ]
     if clipboard_available:
-        tips.append("ctrl-v: paste image")
+        tips.append("ctrl-v: paste media")
     tips.append("@: mention files")
     return tips
 
@@ -734,9 +739,11 @@ class CustomPromptSession:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
-                if self._try_paste_image(event):
+                if self._try_paste_media(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
+                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                    return
                 event.current_buffer.paste_clipboard_data(clipboard_data)
 
             clipboard = PyperclipClipboard()
@@ -839,26 +846,40 @@ class CustomPromptSession:
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
 
-    def _try_paste_image(self, event: KeyPressEvent) -> bool:
-        """Try to paste an image from the clipboard. Return True if successful."""
-        image = grab_image_from_clipboard()
-        if image is None:
+    def _try_paste_media(self, event: KeyPressEvent) -> bool:
+        """Try to paste media (image or video) from the clipboard.
+
+        Reads the clipboard once and handles both media types.
+        Returns True if media was detected (even if the model lacks the capability).
+        """
+        media = grab_media_from_clipboard()
+        if media is None:
             return False
 
+        if isinstance(media, ClipboardVideo):
+            logger.debug("Pasted video from clipboard: {path}", path=media.path)
+            video_text = str(media.path)
+            if self._mode == PromptMode.SHELL:
+                video_text = shlex.quote(video_text)
+            event.current_buffer.insert_text(video_text)
+            event.app.invalidate()
+            return True
+
+        # media must be ClipboardImage at this point.
         if "image_in" not in self._model_capabilities:
             console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
-            return False
+            return True
 
-        cached = self._attachment_cache.store_image(image)
+        cached = self._attachment_cache.store_image(media.image)
         if cached is None:
             return False
         logger.debug(
             "Pasted image from clipboard: {attachment_id}, {image_size}",
             attachment_id=cached.attachment_id,
-            image_size=image.size,
+            image_size=media.image.size,
         )
 
-        placeholder = f"[image:{cached.attachment_id},{image.width}x{image.height}]"
+        placeholder = f"[image:{cached.attachment_id},{media.image.width}x{media.image.height}]"
         event.current_buffer.insert_text(placeholder)
         event.app.invalidate()
         return True
