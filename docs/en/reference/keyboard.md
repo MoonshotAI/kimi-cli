@@ -12,6 +12,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images and video files) |
 | `Ctrl-E` | Expand full approval request content |
+| `↑` / `↓` or `k` / `j` | Navigate options (approval/question panels) |
 | `1`–`3` | Quick select approval option |
 | `1`–`5` | Select question option by number |
 | `Ctrl-D` | Exit Kimi Code CLI |
@@ -92,7 +93,7 @@ When the AI uses the `AskUserQuestion` tool to ask you a question, the question 
 
 | Shortcut | Function |
 |----------|----------|
-| `↑` / `↓` | Navigate options |
+| `↑` / `↓` or `k` / `j` | Navigate options |
 | `←` / `→` / `Tab` | Switch between questions (multi-question mode) |
 | `1`–`5` | Select option by number (auto-submits for single-select, toggles for multi-select) |
 | `Space` | Submit selection in single-select mode, toggle selection in multi-select mode |

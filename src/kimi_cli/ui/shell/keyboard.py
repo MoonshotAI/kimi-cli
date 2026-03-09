@@ -197,6 +197,10 @@ def _listen_for_keyboard_unix(
                 emit(KeyEvent.NUM_4)
             elif c == b"5":
                 emit(KeyEvent.NUM_5)
+            elif c == b"j":
+                emit(KeyEvent.DOWN)  # Vim-style down
+            elif c == b"k":
+                emit(KeyEvent.UP)  # Vim-style up
     finally:
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
 
@@ -265,6 +269,10 @@ def _listen_for_keyboard_windows(
                 emit(KeyEvent.NUM_4)
             elif c == b"5":
                 emit(KeyEvent.NUM_5)
+            elif c == b"j":
+                emit(KeyEvent.DOWN)  # Vim-style down
+            elif c == b"k":
+                emit(KeyEvent.UP)  # Vim-style up
         else:
             if cancel.is_set():
                 break
