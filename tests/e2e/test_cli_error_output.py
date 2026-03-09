@@ -111,6 +111,61 @@ See logs: {log_path}
     )
 
 
+def test_sessions_and_continue_conflict_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(["--sessions", "--continue"], share_dir=share_dir)
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --continue: Cannot combine --continue, --sessions.
+"""
+    )
+
+
+def test_list_sessions_and_session_conflict_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(["--list-sessions", "--session", "abc"], share_dir=share_dir)
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --session: Cannot combine --session, --list-sessions.
+"""
+    )
+
+
+def test_sessions_with_print_mode_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(["--sessions", "--print", "--prompt", "hi"], share_dir=share_dir)
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --sessions: --sessions is only supported for shell UI
+"""
+    )
+
+
+def test_list_sessions_with_no_sessions(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    result = _run_kimi(["--list-sessions", "--work-dir", str(work_dir)], share_dir=share_dir)
+    assert result.returncode == snapshot(0)
+    assert "No sessions found" in result.stdout
+    assert result.stderr == snapshot("")
+
+
 def test_continue_without_previous_session_is_reported(tmp_path: Path) -> None:
     share_dir = tmp_path / "share"
     work_dir = tmp_path / "work"
