@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Shell: Enhance `Ctrl-V` clipboard paste to support video files in addition to images — video file paths are inserted as text, and a crash when clipboard data is `None` is fixed
+- Core: Pass session ID as `user_id` metadata to Anthropic API
 
 ## 1.17.0 (2026-03-03)
 
