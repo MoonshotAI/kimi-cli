@@ -45,7 +45,6 @@ from kimi_cli.share import get_share_dir
 from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.clipboard import (
-    ClipboardVideo,
     grab_media_from_clipboard,
     is_clipboard_available,
 )
@@ -847,42 +846,50 @@ class CustomPromptSession:
         self._status_refresh_task = None
 
     def _try_paste_media(self, event: KeyPressEvent) -> bool:
-        """Try to paste media (image or video) from the clipboard.
+        """Try to paste media from the clipboard.
 
-        Reads the clipboard once and handles both media types.
-        Returns True if media was detected (even if the model lacks the capability).
+        Reads the clipboard once and handles all detected content:
+        non-image files (videos, PDFs, etc.) are inserted as paths,
+        image files are cached and inserted as placeholders.
+        Returns True if any media was detected.
         """
-        media = grab_media_from_clipboard()
-        if media is None:
+        result = grab_media_from_clipboard()
+        if result is None:
             return False
 
-        if isinstance(media, ClipboardVideo):
-            logger.debug("Pasted video from clipboard: {path}", path=media.path)
-            video_text = str(media.path)
-            if self._mode == PromptMode.SHELL:
-                video_text = shlex.quote(video_text)
-            event.current_buffer.insert_text(video_text)
-            event.app.invalidate()
-            return True
+        parts: list[str] = []
 
-        # media must be ClipboardImage at this point.
-        if "image_in" not in self._model_capabilities:
-            console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
-            return True
+        # 1. Insert file paths (videos, PDFs, etc.)
+        if result.file_paths:
+            logger.debug("Pasted {count} file path(s) from clipboard", count=len(result.file_paths))
+            for p in result.file_paths:
+                text = str(p)
+                if self._mode == PromptMode.SHELL:
+                    text = shlex.quote(text)
+                parts.append(text)
 
-        cached = self._attachment_cache.store_image(media.image)
-        if cached is None:
-            return False
-        logger.debug(
-            "Pasted image from clipboard: {attachment_id}, {image_size}",
-            attachment_id=cached.attachment_id,
-            image_size=media.image.size,
-        )
+        # 2. Insert images via cache.
+        if result.images:
+            if "image_in" not in self._model_capabilities:
+                console.print(
+                    "[yellow]Image input is not supported by the selected LLM model[/yellow]"
+                )
+            else:
+                for image in result.images:
+                    cached = self._attachment_cache.store_image(image)
+                    if cached is None:
+                        continue
+                    logger.debug(
+                        "Pasted image from clipboard: {attachment_id}, {image_size}",
+                        attachment_id=cached.attachment_id,
+                        image_size=image.size,
+                    )
+                    parts.append(f"[image:{cached.attachment_id},{image.width}x{image.height}]")
 
-        placeholder = f"[image:{cached.attachment_id},{media.image.width}x{media.image.height}]"
-        event.current_buffer.insert_text(placeholder)
+        if parts:
+            event.current_buffer.insert_text(" ".join(parts))
         event.app.invalidate()
-        return True
+        return bool(parts)
 
     async def prompt(self) -> UserInput:
         with patch_stdout(raw=True):

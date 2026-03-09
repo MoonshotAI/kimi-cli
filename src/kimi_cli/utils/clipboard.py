@@ -18,13 +18,15 @@ _VIDEO_SUFFIXES: frozenset[str] = frozenset(
 
 
 @dataclass(frozen=True, slots=True)
-class ClipboardImage:
-    image: Image.Image
+class ClipboardResult:
+    """Result of reading media from the clipboard.
 
+    Both fields may be non-empty when the clipboard contains a mix of
+    image files and non-image files (videos, PDFs, etc.).
+    """
 
-@dataclass(frozen=True, slots=True)
-class ClipboardVideo:
-    path: Path
+    images: tuple[Image.Image, ...]
+    file_paths: tuple[Path, ...]
 
 
 def is_clipboard_available() -> bool:
@@ -36,21 +38,25 @@ def is_clipboard_available() -> bool:
         return False
 
 
-def grab_media_from_clipboard() -> ClipboardImage | ClipboardVideo | None:
+def grab_media_from_clipboard() -> ClipboardResult | None:
     """Read media from the clipboard.
 
-    Inspects the clipboard once and returns the most specific media type found.
-    Priority: video file > image file > raw image data (e.g. screenshots).
+    Inspects the clipboard once and returns all detected media.
+    Image files are returned as loaded PIL images; non-image files
+    (videos, PDFs, etc.) are returned as file paths.
 
-    This ordering ensures that a video file copied from Finder is never
-    misidentified as its macOS-generated thumbnail image.
+    On macOS the native pasteboard API is tried first to avoid
+    misidentifying a file's thumbnail as clipboard image data.
     """
     # 1. Try macOS native API for file paths (most reliable for Finder copies).
     if sys.platform == "darwin":
         file_paths = _read_clipboard_file_paths_macos_native()
-        result = _classify_file_paths(file_paths)
-        if result is not None:
-            return result
+        images, non_image_paths = _classify_file_paths(file_paths)
+        if images or non_image_paths:
+            return ClipboardResult(
+                images=tuple(images),
+                file_paths=tuple(non_image_paths),
+            )
 
     # 2. Try PIL ImageGrab as fallback.
     #    - On macOS this uses AppleScript «class furl» for file paths,
@@ -60,18 +66,29 @@ def grab_media_from_clipboard() -> ClipboardImage | ClipboardVideo | None:
     if payload is None:
         return None
     if isinstance(payload, Image.Image):
-        # Raw image data (screenshot or thumbnail) — return as image.
-        # Note: if a video file was copied, the native path above would have
-        # already caught it. Reaching here means no video file was found.
-        return ClipboardImage(image=payload)
+        # Raw image data (screenshot or thumbnail).
+        # If we reach here, the macOS native path lookup did not find any
+        # file paths, so this is safe to treat as a real image.
+        return ClipboardResult(images=(payload,), file_paths=())
     # payload is a list of file path strings.
-    return _classify_file_paths(payload)
+    images, non_image_paths = _classify_file_paths(payload)
+    if images or non_image_paths:
+        return ClipboardResult(
+            images=tuple(images),
+            file_paths=tuple(non_image_paths),
+        )
+    return None
 
 
 def _classify_file_paths(
     paths: Iterable[os.PathLike[str] | str],
-) -> ClipboardImage | ClipboardVideo | None:
-    """Classify file paths from clipboard: check for video first, then image."""
+) -> tuple[list[Image.Image], list[Path]]:
+    """Classify clipboard file paths into images and non-image files.
+
+    Returns ``(images, non_image_paths)`` where *images* contains loaded
+    PIL images and *non_image_paths* contains paths to videos, documents,
+    and other non-image files.
+    """
     resolved: list[Path] = []
     for item in paths:
         try:
@@ -82,21 +99,22 @@ def _classify_file_paths(
             continue
         resolved.append(path)
 
-    # Video takes priority over image.
-    for path in resolved:
-        if path.suffix.lower() in _VIDEO_SUFFIXES:
-            return ClipboardVideo(path=path)
+    images: list[Image.Image] = []
+    non_image_paths: list[Path] = []
 
-    # Then try opening as image.
     for path in resolved:
+        # Video files are never opened as images.
+        if path.suffix.lower() in _VIDEO_SUFFIXES:
+            non_image_paths.append(path)
+            continue
         try:
             with Image.open(path) as img:
                 img.load()
-                return ClipboardImage(image=img.copy())
+                images.append(img.copy())
         except Exception:
-            continue
+            non_image_paths.append(path)
 
-    return None
+    return images, non_image_paths
 
 
 def _read_clipboard_file_paths_macos_native() -> list[Path]:
