@@ -56,8 +56,10 @@ The working directory determines the root directory for file operations. Relativ
 |--------|-------|-------------|
 | `--continue` | `-C` | Continue the previous session in the current working directory |
 | `--session ID` | `-S` | Resume session with specified ID, creates new session if not exists |
+| `--sessions` | | Interactively select a session from the current working directory |
+| `--list-sessions` | | List all sessions in the current working directory and exit |
 
-`--continue` and `--session` are mutually exclusive.
+`--continue`, `--session`, `--sessions`, and `--list-sessions` are mutually exclusive.
 
 ## Input and commands
 
