@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog` 和 `/feedback`。
+Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog`、`/feedback`、`/export` 和 `/import`。
 
 ::: warning 注意
 Shell 模式中每个命令独立执行，`cd`、`export` 等改变环境的命令不会影响后续命令。
@@ -45,11 +45,11 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 输入完成后，按 `Enter` 发送整条消息。
 
-## 剪贴板与图片粘贴
+## 剪贴板与媒体粘贴
 
-按 `Ctrl-V` 可以粘贴剪贴板中的文本或图片。
+按 `Ctrl-V` 可以粘贴剪贴板中的文本、图片或视频文件。
 
-如果剪贴板中是图片，Kimi Code CLI 会自动将图片作为附件添加到消息中。发送消息后，AI 可以看到并分析这张图片。
+如果剪贴板中是图片，Kimi Code CLI 会自动将图片作为附件添加到消息中。发送消息后，AI 可以看到并分析这张图片。如果剪贴板中是视频文件，其文件路径会以文本形式插入输入框。
 
 ::: tip 提示
 图片输入需要当前模型支持 `image_in` 能力，视频输入需要支持 `video_in` 能力。

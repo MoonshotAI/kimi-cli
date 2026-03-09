@@ -81,7 +81,10 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
     <div className={cn("w-full px-1 sm:px-2 flex flex-col gap-1 mb-2", isGitDiffLoading && "opacity-70")}>
       {/* ── Expanded panel ── */}
       {activeTab && (
-        <div className="max-h-32 overflow-y-auto rounded-md border border-border bg-background py-1 px-0.5">
+        <div className={cn(
+          "rounded-md border border-border bg-background",
+          activeTab !== "changes" && "max-h-32 overflow-y-auto py-1 px-0.5",
+        )}>
           {activeTab === "queue" && <ToolbarQueuePanel queue={queue} />}
           {activeTab === "changes" && stats && (
             <ToolbarChangesPanel stats={stats} workDir={workDir} />

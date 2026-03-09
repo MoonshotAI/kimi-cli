@@ -4,6 +4,21 @@
 
 ## 未发布
 
+## 1.18.0 (2026-03-09)
+
+- ACP：支持 ACP 模式下的嵌入式资源内容，使 Zed 的 `@` 文件引用能够正确包含文件内容
+- Core：在 Google GenAI provider 中使用 `parameters_json_schema` 替代 `parameters`，绕过 Pydantic 校验对 MCP 工具中标准 JSON Schema 元数据字段的拒绝
+- Shell：增强 `Ctrl-V` 剪贴板粘贴功能，支持粘贴视频文件——视频文件路径以文本形式插入输入框，同时修复剪贴板数据为 `None` 时的崩溃问题
+- Core：将会话 ID 作为 `user_id` 元数据传递给 Anthropic API
+- Web：修复 WebSocket 重连时斜杠命令丢失的问题，并为会话初始化添加自动重试逻辑
+
+## 1.17.0 (2026-03-03)
+
+- Core：新增 `/export` 命令，支持将当前会话上下文（消息、元数据）导出为 Markdown 文件；新增 `/import` 命令，支持从文件或其他会话 ID 导入上下文到当前会话
+- Shell：在状态栏上下文用量旁显示 Token 数量（已用/总量），如 `context: 42.0% (4.2k/10.0k)`
+- Shell：工具栏快捷键提示改为轮转显示——每次提交后循环展示不同快捷键提示，节省横向空间
+- MCP：为 MCP 服务器连接添加加载指示器——Shell 在连接 MCP 服务器时显示 "Connecting to MCP servers..." 加载动画，Web 在 MCP 工具加载期间显示状态消息
+- Web：修复工具栏变更面板中文件列表滚动溢出的问题
 - Core：新增 `compaction_trigger_ratio` 配置项（默认 `0.85`），用于控制自动压缩的触发时机——当上下文用量达到配置比例或剩余空间低于 `reserved_context_size` 时触发压缩，以先满足的条件为准
 - Core：`/compact` 命令支持自定义指令（如 `/compact keep database discussions`），可指导压缩时重点保留的内容
 - Web：新增 URL 操作参数（`?action=create` 打开创建会话对话框，`?action=create-in-dir&workDir=xxx` 直接创建会话）用于外部集成，支持 Cmd/Ctrl+点击新建会话按钮在新标签页中打开会话创建
