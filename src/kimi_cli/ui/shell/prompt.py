@@ -975,6 +975,9 @@ class CustomPromptSession:
         if status.yolo_enabled:
             fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
             columns -= len("yolo") + 2
+        if status.acc_enabled:
+            fragments.extend([("bold fg:#00d7af", "ACC"), ("", " " * 2)])
+            columns -= len("ACC") + 2
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
         right_text = self._render_right_span(status)
