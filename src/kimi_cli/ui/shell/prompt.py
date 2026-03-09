@@ -733,6 +733,7 @@ class CustomPromptSession:
         if clipboard_available:
 
             @_kb.add("c-v", eager=True)
+            @_kb.add("escape", "v", eager=True)  # Alt+V for compatibility with Claude Code
             def _(event: KeyPressEvent) -> None:
                 if self._try_paste_image(event):
                     return
