@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "82d789f1f018",
+  "session_id": "5c0447e5-f29d-434b-bb0b-8898b57a8e78",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T12:40:10.45518Z",
+  "branch": "feat/platform-modifier-helper",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "CHANGELOG.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/release-notes/changelog.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "40b2ec5ec07a",
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T12:40:10.447805Z",
+    "agent_lines": 0,
+    "human_added": 104,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 104,
+    "agent_percentage": 0
+  }
+}
