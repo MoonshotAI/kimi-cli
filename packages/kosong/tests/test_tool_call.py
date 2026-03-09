@@ -466,3 +466,98 @@ def test_simple_toolset_with_string_annotation_handle():
     """Test that tools with string annotations can be called correctly."""
     result = asyncio.run(_test_handle_async_with_string_annotation())
     assert result.return_value == ToolOk(output="5")
+
+
+# --- Tests for JSON control character fix (ENG-314) ---
+
+
+def test_sanitize_tool_arguments_with_control_chars():
+    """Arguments with literal newlines are re-serialized with proper escaping."""
+    from kosong.chat_provider.kimi import _sanitize_tool_arguments
+
+    valid = json.dumps({"command": 'git commit -m "feat\n\nline 2"'})
+    malformed = valid.replace("\\n", "\n")
+
+    result = _sanitize_tool_arguments(malformed)
+
+    # Result should be parseable in strict mode
+    parsed = json.loads(result)
+    assert "line 2" in parsed["command"]
+    assert "\n" in parsed["command"]
+
+
+def test_sanitize_tool_arguments_valid_json_unchanged():
+    """Valid JSON passes through with identical semantics."""
+    from kosong.chat_provider.kimi import _sanitize_tool_arguments
+
+    valid = '{"command": "ls -la"}'
+    result = _sanitize_tool_arguments(valid)
+    assert json.loads(result) == json.loads(valid)
+
+
+def test_sanitize_tool_arguments_none_returns_empty_object():
+    from kosong.chat_provider.kimi import _sanitize_tool_arguments
+
+    assert _sanitize_tool_arguments(None) == "{}"
+
+
+def test_sanitize_tool_arguments_empty_string_returns_empty_object():
+    from kosong.chat_provider.kimi import _sanitize_tool_arguments
+
+    assert _sanitize_tool_arguments("") == "{}"
+
+
+def test_sanitize_tool_arguments_invalid_json_passes_through():
+    """Completely broken JSON is returned as-is for downstream error handling."""
+    from kosong.chat_provider.kimi import _sanitize_tool_arguments
+
+    broken = "not json at all"
+    assert _sanitize_tool_arguments(broken) == broken
+
+
+def test_sanitize_tool_arguments_with_tabs():
+    """Tab characters (another control char) are also handled."""
+    from kosong.chat_provider.kimi import _sanitize_tool_arguments
+
+    valid = json.dumps({"text": "col1\tcol2"})
+    malformed = valid.replace("\\t", "\t")
+    result = _sanitize_tool_arguments(malformed)
+    parsed = json.loads(result)
+    assert "\t" in parsed["text"]
+
+
+def test_simple_toolset_handles_control_chars_in_arguments():
+    """SimpleToolset should parse arguments containing control characters."""
+
+    class EchoTool(CallableTool):
+        name: str = "echo"
+        description: str = "Echo command"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        }
+
+        @override
+        async def __call__(self, command: str) -> ToolReturnValue:
+            return ToolOk(output=command)
+
+    toolset = SimpleToolset([EchoTool()])
+
+    # Build malformed arguments with literal newlines
+    valid = json.dumps({"command": 'git commit -m "feat\n\nline 2"'})
+    malformed = valid.replace("\\n", "\n")
+
+    tool_call = ToolCall(
+        id="1",
+        function=ToolCall.FunctionBody(name="echo", arguments=malformed),
+    )
+
+    async def run():
+        result = toolset.handle(tool_call)
+        if isinstance(result, ToolResult):
+            return result
+        return await result
+
+    result = asyncio.run(run())
+    assert result.return_value == ToolOk(output='git commit -m "feat\n\nline 2"')

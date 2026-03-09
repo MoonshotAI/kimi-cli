@@ -171,6 +171,28 @@ async def test_nonexistent_tool_returns_not_found():
 # --- hide/unhide cycle ---
 
 
+async def test_kimi_toolset_handles_control_chars_in_arguments():
+    """KimiToolset should parse arguments containing literal control characters."""
+    ts = _make_toolset()
+
+    # Build malformed arguments with literal newlines
+    valid = json.dumps({"value": "line1\nline2"})
+    malformed = valid.replace("\\n", "\n")
+
+    tool_call = ToolCall(
+        id="tc-ctrl",
+        function=ToolCall.FunctionBody(name="ToolA", arguments=malformed),
+    )
+
+    result = ts.handle(tool_call)
+    if isinstance(result, asyncio.Task):
+        result = await result
+
+    # Should succeed — not ToolParseError or ToolNotFoundError
+    assert not isinstance(result.return_value, KosongToolNotFoundError)
+    assert result.return_value == ToolOk(output="a")
+
+
 def test_hide_unhide_cycle():
     """Multiple hide/unhide cycles should work correctly."""
     ts = _make_toolset()
