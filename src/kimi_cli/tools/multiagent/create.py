@@ -3,6 +3,7 @@ from pathlib import Path
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
+from kimi_cli.session_state import DynamicSubagentSpec
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.utils import load_desc
@@ -44,6 +45,13 @@ class CreateSubagent(CallableTool2[Params]):
             runtime=self._runtime.copy_for_dynamic_subagent(),
         )
         self._runtime.labor_market.add_dynamic_subagent(params.name, subagent)
+
+        # Persist dynamic subagent definition
+        self._runtime.session.state.dynamic_subagents.append(
+            DynamicSubagentSpec(name=params.name, system_prompt=params.system_prompt)
+        )
+        self._runtime.session.save_state()
+
         return ToolOk(
             output="Available subagents: " + ", ".join(self._runtime.labor_market.subagents.keys()),
             message=f"Subagent '{params.name}' created successfully.",

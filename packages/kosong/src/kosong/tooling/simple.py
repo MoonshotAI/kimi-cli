@@ -51,11 +51,31 @@ class SimpleToolset:
         Add a tool to the toolset.
         """
         return_annotation = inspect.signature(tool.__call__).return_annotation
-        if return_annotation is not ToolReturnValue:
+
+        # Check if the return annotation is ToolReturnValue
+        # Supports both actual type and string annotation (when using
+        # `from __future__ import annotations`)
+        if return_annotation is ToolReturnValue:
+            pass
+        elif isinstance(return_annotation, str):
+            # String annotation - check if it matches ToolReturnValue
+            # Accept any suffix of the full module path, e.g.:
+            #   "ToolReturnValue", "tooling.ToolReturnValue", "kosong.tooling.ToolReturnValue"
+            full_name = f"{ToolReturnValue.__module__}.ToolReturnValue"
+            full_parts = full_name.split(".")
+            if not any(
+                return_annotation == ".".join(full_parts[i:]) for i in range(len(full_parts))
+            ):
+                raise TypeError(
+                    f"Expected tool `{tool.name}` to return `ToolReturnValue`, "
+                    f"but got `{return_annotation}`"
+                )
+        else:
             raise TypeError(
                 f"Expected tool `{tool.name}` to return `ToolReturnValue`, "
                 f"but got `{return_annotation}`"
             )
+
         self._tool_dict[tool.name] = tool
         return self
 

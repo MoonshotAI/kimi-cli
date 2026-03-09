@@ -4,7 +4,7 @@ Kimi Code CLI supports integration with IDEs through the [Agent Client Protocol 
 
 ## Prerequisites
 
-Before configuring your IDE, make sure you have installed Kimi Code CLI and completed the `/setup` configuration.
+Before configuring your IDE, make sure you have installed Kimi Code CLI and completed the `/login` configuration.
 
 ## Using in Zed
 

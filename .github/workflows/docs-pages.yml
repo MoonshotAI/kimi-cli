@@ -27,6 +27,14 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Cache docs node_modules
+        uses: actions/cache@v4
+        with:
+          path: docs/node_modules
+          key: ${{ runner.os }}-docs-node-modules-${{ hashFiles('docs/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-docs-node-modules-
+
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@v5

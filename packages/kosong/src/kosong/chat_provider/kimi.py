@@ -21,11 +21,17 @@ from typing_extensions import TypedDict
 from kosong.chat_provider import (
     ChatProvider,
     ChatProviderError,
+    RetryableChatProvider,
     StreamedMessagePart,
     ThinkingEffort,
     TokenUsage,
 )
-from kosong.chat_provider.openai_common import convert_error, tool_to_openai
+from kosong.chat_provider.openai_common import (
+    close_replaced_openai_client,
+    convert_error,
+    create_openai_client,
+    tool_to_openai,
+)
 from kosong.message import (
     ContentPart,
     Message,
@@ -41,6 +47,7 @@ if TYPE_CHECKING:
 
     def type_check(kimi: "Kimi"):
         _: ChatProvider = kimi
+        _: RetryableChatProvider = kimi
 
 
 class ThinkingConfig(TypedDict, total=True):
@@ -107,10 +114,13 @@ class Kimi:
         """The name of the model to use."""
         self.stream: bool = stream
         """Whether to generate responses as a stream."""
-        self.client: AsyncOpenAI = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            **client_kwargs,
+        self._api_key: str | None = api_key
+        self._base_url: str | None = base_url
+        self._client_kwargs: dict[str, Any] = dict(client_kwargs)
+        self.client: AsyncOpenAI = create_openai_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            client_kwargs=self._client_kwargs,
         )
         """The underlying `AsyncOpenAI` client."""
         self._generation_kwargs: Kimi.GenerationKwargs = {}
@@ -163,6 +173,16 @@ class Kimi:
             return KimiStreamedMessage(response)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        old_client = self.client
+        self.client = create_openai_client(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            client_kwargs=self._client_kwargs,
+        )
+        close_replaced_openai_client(old_client, client_kwargs=self._client_kwargs)
+        return True
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
         match effort:

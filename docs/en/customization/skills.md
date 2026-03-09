@@ -41,6 +41,10 @@ You can also specify other directories with the `--skills-dir` flag, which skips
 kimi --skills-dir /path/to/my-skills
 ```
 
+::: tip
+Skills paths are independent of [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir). `KIMI_SHARE_DIR` customizes the storage location for configuration, sessions, logs, and other runtime data, but does not affect Skills search paths. Skills are cross-tool shared capability extensions (compatible with Kimi CLI, Claude, Codex, and others), which is a different type of data from application runtime data. To override Skills paths, use the `--skills-dir` flag.
+:::
+
 ## Built-in skills
 
 Kimi Code CLI includes the following built-in skills:

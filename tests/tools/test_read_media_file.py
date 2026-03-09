@@ -12,7 +12,7 @@ from kaos.path import KaosPath
 from kimi_cli.llm import ModelCapability
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.read_media import Params, ReadMediaFile
-from kimi_cli.wire.types import ImageURLPart, VideoURLPart
+from kimi_cli.wire.types import ImageURLPart, TextPart, VideoURLPart
 
 
 async def test_read_image_file(read_media_file_tool: ReadMediaFile, temp_work_dir: KaosPath):
@@ -25,8 +25,10 @@ async def test_read_image_file(read_media_file_tool: ReadMediaFile, temp_work_di
 
     assert not result.is_error
     assert isinstance(result.output, list)
-    assert len(result.output) == 1
-    part = result.output[0]
+    assert len(result.output) == 3
+    assert result.output[0] == TextPart(text=f'<image path="{image_file}">')
+    assert result.output[2] == TextPart(text="</image>")
+    part = result.output[1]
     assert isinstance(part, ImageURLPart)
     assert part.image_url.url.startswith("data:image/png;base64,")
     assert result.message == snapshot(
@@ -50,8 +52,10 @@ async def test_read_extensionless_image_file(
 
     assert not result.is_error
     assert isinstance(result.output, list)
-    assert len(result.output) == 1
-    part = result.output[0]
+    assert len(result.output) == 3
+    assert result.output[0] == TextPart(text=f'<image path="{image_file}">')
+    assert result.output[2] == TextPart(text="</image>")
+    part = result.output[1]
     assert isinstance(part, ImageURLPart)
     assert part.image_url.url.startswith("data:image/png;base64,")
     assert result.message == snapshot(
@@ -97,8 +101,10 @@ async def test_read_video_file(read_media_file_tool: ReadMediaFile, temp_work_di
 
     assert not result.is_error
     assert isinstance(result.output, list)
-    assert len(result.output) == 1
-    part = result.output[0]
+    assert len(result.output) == 3
+    assert result.output[0] == TextPart(text=f'<video path="{video_file}">')
+    assert result.output[2] == TextPart(text="</video>")
+    part = result.output[1]
     assert isinstance(part, VideoURLPart)
     assert part.video_url.url.startswith("data:video/mp4;base64,")
     assert result.message == snapshot(

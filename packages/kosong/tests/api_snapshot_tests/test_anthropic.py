@@ -503,3 +503,94 @@ async def test_anthropic_with_thinking():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 32000})
+
+
+async def test_anthropic_opus_46_adaptive_thinking():
+    """Opus 4.6 models should use adaptive thinking instead of budget-based thinking."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-6-20260205",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("high")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "adaptive"})
+        # Adaptive thinking should not include interleaved-thinking beta header
+        beta_header = mock.calls.last.request.headers.get("anthropic-beta", "")
+        assert "interleaved-thinking-2025-05-14" not in beta_header
+
+
+async def test_anthropic_opus_46_thinking_off():
+    """Opus 4.6 with thinking off should still use disabled."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-6-20260205",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("off")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "disabled"})
+
+
+async def test_anthropic_metadata():
+    """Metadata should be forwarded to the Anthropic API request."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+            metadata={"user_id": "test-session-id"},
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["metadata"] == snapshot({"user_id": "test-session-id"})
+
+
+async def test_anthropic_metadata_omitted_when_none():
+    """Metadata should not be included in the request when not provided."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "metadata" not in body
+
+
+async def test_anthropic_opus_46_thinking_effort_property():
+    """thinking_effort should return 'high' for adaptive thinking config."""
+    provider = Anthropic(
+        model="claude-opus-4-6-20260205",
+        api_key="test-key",
+        default_max_tokens=1024,
+        stream=False,
+    ).with_thinking("high")
+    assert provider.thinking_effort == "high"
+
+    provider_off = Anthropic(
+        model="claude-opus-4-6-20260205",
+        api_key="test-key",
+        default_max_tokens=1024,
+        stream=False,
+    ).with_thinking("off")
+    assert provider_off.thinking_effort == "off"

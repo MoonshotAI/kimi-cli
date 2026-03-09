@@ -5,7 +5,15 @@ from pathlib import Path
 from typing import Literal, Self
 
 import tomlkit
-from pydantic import BaseModel, Field, SecretStr, ValidationError, field_serializer, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_serializer,
+    model_validator,
+)
 from tomlkit.exceptions import TOMLKitError
 
 from kimi_cli.exception import ConfigError
@@ -60,7 +68,11 @@ class LLMModel(BaseModel):
 class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
-    max_steps_per_turn: int = Field(default=100, ge=1, validation_alias="max_steps_per_run")
+    max_steps_per_turn: int = Field(
+        default=100,
+        ge=1,
+        validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
+    )
     """Maximum number of steps in one turn"""
     max_retries_per_step: int = Field(default=3, ge=1)
     """Maximum number of retries in one step"""
@@ -68,7 +80,12 @@ class LoopControl(BaseModel):
     """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
     reserved_context_size: int = Field(default=50_000, ge=1000)
     """Reserved token count for LLM response generation. Auto-compaction triggers when
-    context_tokens + reserved_context_size >= max_context_size. Default is 50000."""
+    either context_tokens + reserved_context_size >= max_context_size or
+    context_tokens >= max_context_size * compaction_trigger_ratio. Default is 50000."""
+    compaction_trigger_ratio: float = Field(default=0.85, ge=0.5, le=0.99)
+    """Context usage ratio threshold for auto-compaction. Default is 0.85 (85%).
+    Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio
+    or when context_tokens + reserved_context_size >= max_context_size."""
 
 
 class MoonshotSearchConfig(BaseModel):
@@ -137,8 +154,18 @@ class Config(BaseModel):
         description="Whether the config was loaded from the default location",
         exclude=True,
     )
+    source_file: Path | None = Field(
+        default=None,
+        description="Path to the loaded config file. None when loaded from --config text.",
+        exclude=True,
+    )
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
+    default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
+    default_editor: str = Field(
+        default="",
+        description="Default external editor command (e.g. 'vim', 'code --wait')",
+    )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"
@@ -186,12 +213,11 @@ def load_config(config_file: Path | None = None) -> Config:
     Raises:
         ConfigError: If the configuration file is invalid.
     """
-    default_config_file = get_config_file()
+    default_config_file = get_config_file().expanduser().resolve(strict=False)
     if config_file is None:
         config_file = default_config_file
-    is_default_config_file = config_file.expanduser().resolve(
-        strict=False
-    ) == default_config_file.expanduser().resolve(strict=False)
+    config_file = config_file.expanduser().resolve(strict=False)
+    is_default_config_file = config_file == default_config_file
     logger.debug("Loading config from file: {file}", file=config_file)
 
     # If the user hasn't provided an explicit config path, migrate legacy JSON config once.
@@ -203,6 +229,7 @@ def load_config(config_file: Path | None = None) -> Config:
         logger.debug("No config file found, creating default config: {config}", config=config)
         save_config(config, config_file)
         config.is_from_default_location = is_default_config_file
+        config.source_file = config_file
         return config
 
     try:
@@ -213,12 +240,13 @@ def load_config(config_file: Path | None = None) -> Config:
             data = tomlkit.loads(config_text)
         config = Config.model_validate(data)
     except json.JSONDecodeError as e:
-        raise ConfigError(f"Invalid JSON in configuration file: {e}") from e
+        raise ConfigError(f"Invalid JSON in configuration file {config_file}: {e}") from e
     except TOMLKitError as e:
-        raise ConfigError(f"Invalid TOML in configuration file: {e}") from e
+        raise ConfigError(f"Invalid TOML in configuration file {config_file}: {e}") from e
     except ValidationError as e:
-        raise ConfigError(f"Invalid configuration file: {e}") from e
+        raise ConfigError(f"Invalid configuration file {config_file}: {e}") from e
     config.is_from_default_location = is_default_config_file
+    config.source_file = config_file
     return config
 
 
@@ -258,6 +286,7 @@ def load_config_from_string(config_string: str) -> Config:
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration text: {e}") from e
     config.is_from_default_location = False
+    config.source_file = None
     return config
 
 

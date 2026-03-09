@@ -156,7 +156,7 @@ async def test_glob_outside_work_directory(glob_tool: Glob):
     result = await glob_tool(Params(pattern="*.py", directory=dir))
 
     assert result.is_error
-    assert "outside the working directory" in result.message
+    assert "outside the workspace" in result.message
 
 
 async def test_glob_outside_work_directory_with_prefix(glob_tool: Glob, temp_work_dir: KaosPath):
@@ -168,7 +168,7 @@ async def test_glob_outside_work_directory_with_prefix(glob_tool: Glob, temp_wor
     result = await glob_tool(Params(pattern="*.py", directory=str(sneaky_dir)))
 
     assert result.is_error
-    assert "outside the working directory" in result.message
+    assert "outside the workspace" in result.message
 
 
 async def test_glob_nonexistent_directory(glob_tool: Glob, temp_work_dir: KaosPath):

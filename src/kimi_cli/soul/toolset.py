@@ -71,11 +71,23 @@ if TYPE_CHECKING:
 class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
+        self._hidden_tools: set[str] = set()
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
+
+    def hide(self, tool_name: str) -> bool:
+        """Hide a tool from the LLM tool list. Returns True if the tool exists."""
+        if tool_name in self._tool_dict:
+            self._hidden_tools.add(tool_name)
+            return True
+        return False
+
+    def unhide(self, tool_name: str) -> None:
+        """Restore a hidden tool to the LLM tool list."""
+        self._hidden_tools.discard(tool_name)
 
     @overload
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
@@ -92,7 +104,9 @@ class KimiToolset:
 
     @property
     def tools(self) -> list[Tool]:
-        return [tool.base for tool in self._tool_dict.values()]
+        return [
+            tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
+        ]
 
     def handle(self, tool_call: ToolCall) -> HandleResult:
         token = current_tool_call.set(tool_call)
@@ -323,6 +337,10 @@ class KimiToolset:
             self._mcp_loading_task = asyncio.create_task(_connect())
         else:
             await _connect()
+
+    def has_pending_mcp_tools(self) -> bool:
+        """Return True if the background MCP tool-loading task is still running."""
+        return self._mcp_loading_task is not None and not self._mcp_loading_task.done()
 
     async def wait_for_mcp_tools(self) -> None:
         """Wait for background MCP tool loading to finish."""

@@ -82,11 +82,19 @@ class ExternalTool(BaseModel):
     parameters: dict[str, JsonType]
 
 
+class ClientCapabilities(BaseModel):
+    """Capabilities declared by the Wire client during initialization."""
+
+    supports_question: bool = False
+    """Whether the client can handle QuestionRequest messages."""
+
+
 class JSONRPCInitializeMessage(_MessageBase):
     class Params(BaseModel):
         protocol_version: str
         client: ClientInfo | None = None
         external_tools: list[ExternalTool] | None = None
+        capabilities: ClientCapabilities | None = None
 
     method: Literal["initialize"] = "initialize"
     id: str
@@ -104,6 +112,25 @@ class JSONRPCPromptMessage(_MessageBase):
     @model_serializer()
     def _serialize(self) -> dict[str, Any]:
         raise NotImplementedError("Prompt message serialization is not implemented.")
+
+
+class JSONRPCReplayMessage(_MessageBase):
+    method: Literal["replay"] = "replay"
+    id: str
+    params: JsonType | None = None
+
+
+class JSONRPCSteerMessage(_MessageBase):
+    class Params(BaseModel):
+        user_input: str | list[ContentPart]
+
+    method: Literal["steer"] = "steer"
+    id: str
+    params: Params
+
+    @model_serializer()
+    def _serialize(self) -> dict[str, Any]:
+        raise NotImplementedError("Steer message serialization is not implemented.")
 
 
 class JSONRPCCancelMessage(_MessageBase):
@@ -154,10 +181,12 @@ type JSONRPCInMessage = (
     | JSONRPCErrorResponse
     | JSONRPCInitializeMessage
     | JSONRPCPromptMessage
+    | JSONRPCSteerMessage
+    | JSONRPCReplayMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "cancel"}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse
@@ -199,3 +228,5 @@ class Statuses:
     """The agent run was cancelled by the user."""
     MAX_STEPS_REACHED = "max_steps_reached"
     """The agent run reached the maximum number of steps."""
+    STEERED = "steered"
+    """A steer message was queued for injection into the active turn."""

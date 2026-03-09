@@ -1,10 +1,10 @@
 # 平台与模型
 
-Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命令进行配置。
+Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命令进行配置。
 
 ## 平台选择
 
-最简单的配置方式是在 Shell 模式下运行 `/setup` 命令，按照向导完成平台和模型的选择：
+最简单的配置方式是在 Shell 模式下运行 `/login` 命令（别名 `/setup`），按照向导完成平台和模型的选择：
 
 1. 选择 API 平台
 2. 输入 API 密钥
@@ -12,7 +12,7 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/setup` 命
 
 配置完成后，Kimi Code CLI 会自动保存设置到 `~/.kimi/config.toml` 并重新加载。
 
-`/setup` 目前支持以下平台：
+`/login` 目前支持以下平台：
 
 | 平台 | 说明 |
 | --- | --- |
@@ -141,7 +141,7 @@ capabilities = ["thinking", "image_in"]
 
 `SearchWeb` 和 `FetchURL` 工具依赖外部服务，目前仅 Kimi Code 平台提供这些服务。
 
-使用 `/setup` 选择 Kimi Code 平台时，搜索和抓取服务会自动配置。
+使用 `/login` 选择 Kimi Code 平台时，搜索和抓取服务会自动配置。
 
 | 服务 | 对应工具 | 未配置时的行为 |
 | --- | --- | --- |

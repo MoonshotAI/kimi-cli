@@ -55,6 +55,20 @@ class ChatProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class RetryableChatProvider(Protocol):
+    """Optional interface for providers that can recover from retryable transport errors."""
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        """
+        Try to recover provider transport state after a retryable error.
+
+        Returns:
+            bool: Whether recovery action was performed.
+        """
+        ...
+
+
 type StreamedMessagePart = ContentPart | ToolCall | ToolCallPart
 
 

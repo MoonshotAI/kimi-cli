@@ -12,6 +12,7 @@ from kaos.path import KaosPath
 from kosong.message import Message
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
+from kimi_cli.session_state import SessionState, load_session_state, save_session_state
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import TurnBegin
@@ -32,6 +33,10 @@ class Session:
     """The absolute path to the file storing the message history."""
     wire_file: WireFile
     """The wire message log file wrapper."""
+
+    # session state
+    state: SessionState
+    """Persisted session state (approval, dynamic subagents, etc.)."""
 
     # refreshable metadata
     title: str
@@ -54,6 +59,10 @@ class Session:
             return self.context_file.stat().st_size == 0
         except FileNotFoundError:
             return True
+
+    def save_state(self) -> None:
+        """Persist the session state to disk."""
+        save_session_state(self.state, self.dir)
 
     async def delete(self) -> None:
         """Delete the session directory."""
@@ -129,6 +138,7 @@ class Session:
             work_dir_meta=work_dir_meta,
             context_file=context_file,
             wire_file=WireFile(path=session_dir / "wire.jsonl"),
+            state=SessionState(),
             title="",
             updated_at=0.0,
         )
@@ -171,6 +181,7 @@ class Session:
             work_dir_meta=work_dir_meta,
             context_file=context_file,
             wire_file=WireFile(path=session_dir / "wire.jsonl"),
+            state=load_session_state(session_dir),
             title="",
             updated_at=0.0,
         )
@@ -214,6 +225,7 @@ class Session:
                 work_dir_meta=work_dir_meta,
                 context_file=context_file,
                 wire_file=WireFile(path=session_dir / "wire.jsonl"),
+                state=load_session_state(session_dir),
                 title="",
                 updated_at=0.0,
             )

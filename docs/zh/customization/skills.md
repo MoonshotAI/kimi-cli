@@ -41,6 +41,10 @@ Kimi Code CLI 采用分层加载机制发现 Skills，按以下优先级加载�
 kimi --skills-dir /path/to/my-skills
 ```
 
+::: tip 提示
+Skills 路径独立于 [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir)。`KIMI_SHARE_DIR` 用于自定义配置、会话、日志等运行时数据的存储位置，不影响 Skills 的搜索路径。Skills 是跨工具共享的能力扩展（支持 Kimi CLI、Claude、Codex 等多个工具共用），与应用运行时数据是不同类型的数据。如需覆盖 Skills 路径，请使用 `--skills-dir` 参数。
+:::
+
 ## 内置 Skills
 
 Kimi Code CLI 内置了以下 Skills：

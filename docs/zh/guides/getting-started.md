@@ -10,10 +10,14 @@ Kimi Code CLI 适合以下场景：
 - **理解项目**：探索陌生的代码库，解答架构和实现问题
 - **自动化任务**：批量处理文件、执行构建和测试、运行脚本
 
-Kimi Code CLI 在终端中提供类似 Shell 的交互体验，你可以用自然语言描述需求，也可以随时切换到 Shell 模式直接执行命令。除了终端使用，Kimi Code CLI 还支持通过 [Agent Client Protocol] 集成到 [IDE](./ides.md) 和其他本地 Agent 客户端中。
+Kimi Code CLI 支持以下几种使用方式：
 
-::: warning 注意
-Kimi Code CLI 目前处于技术预览阶段，功能和 API 可能会发生变化。如果你遇到问题或有建议，欢迎在 [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues) 反馈。
+- **[交互式命令行（`kimi`）](../reference/kimi-command.md)**：在终端中以 Shell 方式与 AI 对话，支持自然语言描述任务或直接执行 Shell 命令
+- **[浏览器界面（`kimi web`）](../reference/kimi-web.md)**：在本地浏览器中打开图形界面，支持会话管理、文件引用、代码高亮等
+- **[Agent 集成（`kimi acp`）](../reference/kimi-acp.md)**：以服务方式运行，通过 [Agent Client Protocol] 集成到 [IDE](./ides.md) 和其他本地 Agent 客户端中
+
+::: info 提示
+如果你遇到问题或有建议，欢迎在 [GitHub Issues](https://github.com/MoonshotAI/kimi-cli/issues) 反馈。
 :::
 
 [Agent Client Protocol]: https://agentclientprotocol.com/
@@ -75,21 +79,13 @@ cd your-project
 kimi
 ```
 
-首次启动时，你需要配置 API 来源。推荐使用 `/login` 命令登录 Kimi 账号，登录后会自动配置可用的模型：
+首次启动时，你需要配置 API 来源。输入 `/login` 命令开始配置：
 
 ```
 /login
 ```
 
-执行后会自动打开浏览器，完成 Kimi 账号授权即可。登录成功后 Kimi Code CLI 会自动重新加载配置。
-
-如果你更倾向于使用 API 密钥，可以输入 `/setup` 命令进入配置向导：
-
-1. 选择 API 平台（如 Kimi Code、Moonshot AI 开放平台）
-2. 输入你的 API 密钥
-3. 选择要使用的模型
-
-配置完成后，Kimi Code CLI 会自动保存设置并重新加载。详见 [平台与模型](../configuration/providers.md)。
+执行后首先选择平台。推荐选择 **Kimi Code**，会自动打开浏览器进行 OAuth 授权；选择其他平台则需要输入 API 密钥。配置完成后 Kimi Code CLI 会自动保存设置并重新加载。详见 [平台与模型](../configuration/providers.md)。
 
 现在你可以直接用自然语言和 Kimi Code CLI 对话了。试着描述你想完成的任务，比如：
 

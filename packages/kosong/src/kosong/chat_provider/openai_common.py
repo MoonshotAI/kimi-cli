@@ -1,6 +1,11 @@
+import asyncio
+import inspect
+from collections.abc import Awaitable, Mapping
+from typing import Any, cast
+
 import httpx
 import openai
-from openai import OpenAIError
+from openai import AsyncOpenAI, OpenAIError
 from openai.types import ReasoningEffort
 from openai.types.chat import ChatCompletionToolParam
 
@@ -12,6 +17,57 @@ from kosong.chat_provider import (
     ThinkingEffort,
 )
 from kosong.tooling import Tool
+
+
+def create_openai_client(
+    *,
+    api_key: str | None,
+    base_url: str | None,
+    client_kwargs: Mapping[str, Any],
+) -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+
+
+async def _drain_awaitable(awaitable: Awaitable[object]) -> None:
+    try:
+        await awaitable
+    except Exception:
+        return
+
+
+def close_openai_client(client: AsyncOpenAI) -> None:
+    close = getattr(client, "close", None)
+    if not callable(close):
+        return
+    try:
+        result = close()
+    except Exception:
+        return
+    if not inspect.isawaitable(result):
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        if hasattr(result, "close"):
+            result.close()  # type: ignore[attr-defined]
+        return
+    loop.create_task(_drain_awaitable(cast(Awaitable[object], result)))
+
+
+def close_replaced_openai_client(client: AsyncOpenAI, *, client_kwargs: Mapping[str, Any]) -> None:
+    """
+    Close a replaced OpenAI client unless it would close a shared external http client.
+
+    When callers pass `http_client=...` to `AsyncOpenAI`, multiple wrappers may share the same
+    `httpx.AsyncClient`. Closing the replaced wrapper would also close that shared client and
+    break the new wrapper immediately.
+    """
+    shared_http_client = client_kwargs.get("http_client")
+    if isinstance(shared_http_client, httpx.AsyncClient) and getattr(client, "_client", None) is (
+        shared_http_client
+    ):
+        return
+    close_openai_client(client)
 
 
 def convert_error(error: OpenAIError | httpx.HTTPError) -> ChatProviderError:

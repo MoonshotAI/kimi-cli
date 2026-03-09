@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Iterable, Mapping
 from contextlib import suppress
 from typing import Literal
 
@@ -262,8 +262,8 @@ class ACPKaos:
     ) -> None:
         await self._fallback.mkdir(path, parents=parents, exist_ok=exist_ok)
 
-    async def exec(self, *args: str) -> KaosProcess:
-        return await self._fallback.exec(*args)
+    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
+        return await self._fallback.exec(*args, env=env)
 
     def _abs_path(self, path: StrOrKaosPath) -> str:
         kaos_path = path if isinstance(path, KaosPath) else KaosPath(path)

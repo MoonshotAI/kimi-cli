@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -25,10 +26,20 @@ type Response = Literal["approve", "approve_for_session", "reject"]
 
 
 class ApprovalState:
-    def __init__(self, yolo: bool = False):
+    def __init__(
+        self,
+        yolo: bool = False,
+        auto_approve_actions: set[str] | None = None,
+        on_change: Callable[[], None] | None = None,
+    ):
         self.yolo = yolo
-        self.auto_approve_actions: set[str] = set()  # TODO: persist across sessions
+        self.auto_approve_actions: set[str] = auto_approve_actions or set()
         """Set of action names that should automatically be approved."""
+        self._on_change = on_change
+
+    def notify_change(self) -> None:
+        if self._on_change is not None:
+            self._on_change()
 
 
 class Approval:
@@ -43,6 +54,7 @@ class Approval:
 
     def set_yolo(self, yolo: bool) -> None:
         self._state.yolo = yolo
+        self._state.notify_change()
 
     def is_yolo(self) -> bool:
         return self._state.yolo
@@ -141,6 +153,7 @@ class Approval:
                 future.set_result(True)
             case "approve_for_session":
                 self._state.auto_approve_actions.add(request.action)
+                self._state.notify_change()
                 future.set_result(True)
             case "reject":
                 future.set_result(False)

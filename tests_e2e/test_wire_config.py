@@ -75,10 +75,13 @@ def test_config_string(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -160,10 +163,13 @@ def test_model_override(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:

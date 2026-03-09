@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 from typing import override
 
@@ -292,3 +293,176 @@ def test_simple_toolset_sub():
     assert len(toolset.tools) == 1
     toolset.remove(TestTool.name)
     assert len(toolset.tools) == 0
+
+
+# Tests for both real type and string annotations support
+# These tests verify that SimpleToolset works correctly in both scenarios:
+# 1. When type annotations are actual type objects (normal case)
+# 2. When type annotations are strings (with `from __future__ import annotations`)
+
+
+def test_simple_toolset_with_real_type_annotation_callable_tool():
+    """Test that SimpleToolset works with CallableTool when using real type annotation."""
+
+    class TestTool(CallableTool):
+        name: str = "test_real"
+        description: str = "This is a test tool"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {},
+        }
+
+        @override
+        async def __call__(self) -> ToolReturnValue:
+            return ToolOk(output="test")
+
+    # Verify the annotation is actually a type (not string)
+    assert inspect.signature(TestTool().__call__).return_annotation is ToolReturnValue
+
+    toolset = SimpleToolset()
+    toolset += TestTool()
+    assert len(toolset.tools) == 1
+    assert toolset.tools[0].name == "test_real"
+
+
+def test_simple_toolset_with_string_annotation_callable_tool():
+    """Test that SimpleToolset works with CallableTool when using string annotation."""
+
+    class TestTool(CallableTool):
+        name: str = "test_str"
+        description: str = "This is a test tool"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {},
+        }
+
+        @override
+        async def __call__(self) -> "ToolReturnValue":  # type: ignore[reportIncompatibleMethodOverride]
+            return ToolOk(output="test")
+
+    # Verify the annotation is actually a string
+    assert isinstance(inspect.signature(TestTool().__call__).return_annotation, str)
+
+    toolset = SimpleToolset()
+    toolset += TestTool()
+    assert len(toolset.tools) == 1
+    assert toolset.tools[0].name == "test_str"
+
+
+def test_simple_toolset_with_invalid_string_annotation_rejected():
+    """Test that SimpleToolset rejects invalid string annotations."""
+
+    class TestTool(CallableTool):
+        name: str = "test_invalid"
+        description: str = "This is a test tool"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {},
+        }
+
+        @override
+        async def __call__(self) -> "InvalidType":  # noqa: F821  # type: ignore[reportUnknownParameterType]
+            return ToolOk(output="test")  # type: ignore[return-value]
+
+    tool_instance = TestTool()
+    sig = inspect.signature(tool_instance.__call__)  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    # Verify the annotation is actually a string
+    assert isinstance(sig.return_annotation, str)
+
+    toolset = SimpleToolset()
+    try:
+        toolset += TestTool()
+        raise AssertionError("Expected TypeError for invalid string annotation")
+    except TypeError as e:
+        assert "InvalidType" in str(e)
+
+
+def test_simple_toolset_with_real_type_annotation_callable_tool2():
+    """Test that SimpleToolset works with CallableTool2 when using real type annotation."""
+
+    class TestParams(BaseModel):
+        value: int = Field(description="A test value")
+
+    class TestTool(CallableTool2[TestParams]):
+        name: str = "test2_real"
+        description: str = "This is a test tool 2"
+        params: type[TestParams] = TestParams
+
+        @override
+        async def __call__(self, params: TestParams) -> ToolReturnValue:
+            return ToolOk(output=f"value: {params.value}")
+
+    # Verify the annotation is actually a type (not string)
+    assert inspect.signature(TestTool().__call__).return_annotation is ToolReturnValue
+
+    toolset = SimpleToolset()
+    toolset += TestTool()
+    assert len(toolset.tools) == 1
+    assert toolset.tools[0].name == "test2_real"
+
+
+def test_simple_toolset_with_string_annotation_callable_tool2():
+    """Test that SimpleToolset works with CallableTool2 when using string annotation."""
+
+    class TestParams(BaseModel):
+        value: int = Field(description="A test value")
+
+    class TestTool(CallableTool2[TestParams]):
+        name: str = "test2_str"
+        description: str = "This is a test tool 2"
+        params: type[TestParams] = TestParams
+
+        @override
+        async def __call__(self, params: TestParams) -> "ToolReturnValue":
+            return ToolOk(output=f"value: {params.value}")
+
+    # Verify the annotation is actually a string
+    assert isinstance(inspect.signature(TestTool().__call__).return_annotation, str)
+
+    toolset = SimpleToolset()
+    toolset += TestTool()
+    assert len(toolset.tools) == 1
+    assert toolset.tools[0].name == "test2_str"
+
+
+async def _test_handle_async_with_string_annotation():
+    """Helper async function to test tool handling with string annotation."""
+
+    class TestTool(CallableTool):
+        name: str = "add_str"
+        description: str = "Add two numbers"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "integer"},
+                "b": {"type": "integer"},
+            },
+            "required": ["a", "b"],
+        }
+
+        @override
+        async def __call__(self, a: int, b: int) -> "ToolReturnValue":
+            return ToolOk(output=str(a + b))
+
+    # Verify the annotation is actually a string
+    assert isinstance(inspect.signature(TestTool().__call__).return_annotation, str)
+
+    toolset = SimpleToolset([TestTool()])
+    tool_call = ToolCall(
+        id="1",
+        function=ToolCall.FunctionBody(
+            name="add_str",
+            arguments='{"a": 2, "b": 3}',
+        ),
+    )
+
+    result = toolset.handle(tool_call)
+    if asyncio.isfuture(result):
+        result = await result
+    return result
+
+
+def test_simple_toolset_with_string_annotation_handle():
+    """Test that tools with string annotations can be called correctly."""
+    result = asyncio.run(_test_handle_async_with_string_annotation())
+    assert result.return_value == ToolOk(output="5")

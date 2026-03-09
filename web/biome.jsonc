@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/core", "ultracite/react"],
+  "files": {
+    // external code
+    "includes": [
+      "!src/components/ai-elements",
+      "!src/components/ui",
+      "!src/lib/api",
+      "!**/dist",
+    ],
+  },
+  "formatter": {
+    // Disable Biome formatting while we continue using Prettier.
+    "enabled": false,
+  },
+  // TODO: some rules can be enabled later when the development is more mature
+  "linter": {
+    "rules": {
+      "correctness": {
+        // View Transitions API uses ::view-transition-old(root) which linter doesn't recognize
+        "noUnknownTypeSelector": "off",
+      },
+      "suspicious": {
+        // Middleware pattern often requires async without await
+        "useAwait": "off",
+      },
+      "performance": {},
+      "complexity": {
+        // TODO: refactor complex functions later
+        "noExcessiveCognitiveComplexity": "off",
+      },
+      "nursery": {
+        "useSortedClasses": "off",
+        "noLeakedRender": "off",
+      },
+      "style": "off",
+    },
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "off",
+        "useSortedAttributes": "off",
+      },
+    },
+  },
+  "overrides": [
+    {
+      "includes": ["src/lib/api/**/*"],
+      "linter": {
+        "enabled": false,
+      },
+      "formatter": {
+        "enabled": false,
+      },
+    },
+    {
+      "includes": ["biome.jsonc", "index.html"],
+      "formatter": {
+        "enabled": false,
+      },
+    },
+  ],
+}

@@ -44,8 +44,11 @@ kimi [OPTIONS] COMMAND [ARGS]
 | 选项 | 简写 | 说明 |
 |------|------|------|
 | `--work-dir PATH` | `-w` | 指定工作目录（默认当前目录） |
+| `--add-dir PATH` | | 添加额外目录到工作区范围，可多次指定 |
 
 工作目录决定了文件操作的根目录。在工作目录内可使用相对路径，操作工作目录外的文件需使用绝对路径。
+
+`--add-dir` 可以将工作目录之外的目录纳入工作区范围，使所有文件工具可以访问该目录中的文件。添加的目录会随会话状态持久化。运行中也可以通过 [`/add-dir`](./slash-commands.md#add-dir) 斜杠命令添加。
 
 ## 会话管理
 
@@ -150,6 +153,7 @@ Thinking 模式需要模型支持。如果不指定，使用上次会话的设�
 | [`kimi acp`](./kimi-acp.md) | 启动多会话 ACP 服务器 |
 | [`kimi mcp`](./kimi-mcp.md) | 管理 MCP 服务器配置 |
 | [`kimi term`](./kimi-term.md) | 启动 Toad 终端 UI |
+| [`kimi web`](./kimi-web.md) | 启动 Web UI 服务器 |
 
 ### `kimi login`
 
@@ -166,3 +170,38 @@ kimi login
 ```sh
 kimi logout
 ```
+
+### `kimi web`
+
+启动 Web UI 服务器，通过浏览器访问 Kimi Code CLI。
+
+```sh
+kimi web [OPTIONS]
+```
+
+如果默认端口被占用，服务器会自动尝试下一个可用端口（默认范围 `5494`–`5503`），并在终端打印提示。
+
+| 选项 | 简写 | 说明 |
+|------|------|------|
+| `--host TEXT` | `-h` | 绑定的主机地址（默认：`127.0.0.1`） |
+| `--port INTEGER` | `-p` | 绑定的端口号（默认：`5494`） |
+| `--reload` | | 启用自动重载（开发模式） |
+| `--open / --no-open` | | 自动打开浏览器（默认：启用） |
+
+示例：
+
+```sh
+# 默认启动，自动打开浏览器
+kimi web
+
+# 指定端口
+kimi web --port 8080
+
+# 不自动打开浏览器
+kimi web --no-open
+
+# 绑定到所有网络接口（允许局域网访问）
+kimi web --host 0.0.0.0
+```
+
+详见 [Web UI](./kimi-web.md)。

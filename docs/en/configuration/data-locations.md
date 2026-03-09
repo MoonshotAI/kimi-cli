@@ -2,6 +2,12 @@
 
 Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home directory. This page describes the locations and purposes of various data files.
 
+::: tip
+You can customize the share directory path by setting the `KIMI_SHARE_DIR` environment variable. See [Environment Variables](./env-vars.md#kimi-share-dir) for details.
+
+Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data listed above, not the [Agent Skills](../customization/skills.md) search paths. Skills, as cross-tool shared capability extensions, are a different type of data from application runtime data.
+:::
+
 ## Directory structure
 
 ```
@@ -9,11 +15,14 @@ Kimi Code CLI stores all data in the `~/.kimi/` directory under the user's home 
 ├── config.toml           # Main configuration file
 ├── kimi.json             # Metadata
 ├── mcp.json              # MCP server configuration
+├── credentials/          # OAuth credentials
+│   └── <provider>.json
 ├── sessions/             # Session data
 │   └── <work-dir-hash>/
 │       └── <session-id>/
 │           ├── context.jsonl
-│           └── wire.jsonl
+│           ├── wire.jsonl
+│           └── state.json
 ├── user-history/         # Input history
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # Logs
@@ -57,19 +66,35 @@ Example structure:
 }
 ```
 
+## Credentials
+
+OAuth credentials are stored in the `~/.kimi/credentials/` directory. After logging in to your Kimi account via `/login`, OAuth tokens are saved in this directory.
+
+Files in this directory have permissions set to read/write for the current user only (600) to protect sensitive information.
+
 ## Session data
 
 Session data is grouped by working directory and stored under `~/.kimi/sessions/`. Each working directory corresponds to a subdirectory named with the path's MD5 hash, and each session corresponds to a subdirectory named with the session ID.
 
 ### `context.jsonl`
 
-Context history file, stores the session's message history in JSONL format. Each line is a message (user input, model response, tool calls, etc.).
+Context history file, stores the session's message history in JSON Lines (JSONL) format. Each line is a message (user input, model response, tool calls, etc.).
 
 Kimi Code CLI uses this file to restore session context when using `--continue` or `--session`.
 
 ### `wire.jsonl`
 
-Wire message log file, stores Wire events during the session in JSONL format. Used for session replay and extracting session titles.
+Wire message log file, stores Wire events during the session in JSON Lines (JSONL) format. Used for session replay and extracting session titles.
+
+### `state.json`
+
+Session state file, stores the session's runtime state, including:
+
+- `approval`: Approval decision state (YOLO mode on/off, auto-approved operation types)
+- `dynamic_subagents`: Dynamically created subagent definitions
+- `additional_dirs`: Additional workspace directories added via `--add-dir` or `/add-dir`
+
+When resuming a session, Kimi Code CLI reads this file to restore the session state. This file uses atomic writes to prevent data corruption on crash.
 
 ## Input history
 
@@ -85,7 +110,7 @@ Log files are used for troubleshooting. When reporting bugs, please include rele
 
 ## Cleaning data
 
-Deleting the `~/.kimi/` directory completely clears all Kimi Code CLI data, including configuration, sessions, and history.
+Deleting the share directory (default `~/.kimi/`, or the path specified by `KIMI_SHARE_DIR`) completely clears all Kimi Code CLI data, including configuration, sessions, and history.
 
 To clean only specific data:
 
@@ -97,3 +122,4 @@ To clean only specific data:
 | Clear input history | Delete `~/.kimi/user-history/` directory |
 | Clear logs | Delete `~/.kimi/logs/` directory |
 | Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |
+| Clear login credentials | Delete `~/.kimi/credentials/` directory or use `/logout` |

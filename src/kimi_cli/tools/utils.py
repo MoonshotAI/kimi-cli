@@ -1,30 +1,30 @@
 import re
-import string
 from pathlib import Path
 
-from jinja2 import Environment
+from jinja2 import Environment, Undefined
 from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
 
 
-def load_desc(path: Path, substitutions: dict[str, str] | None = None) -> str:
-    """Load a tool description from a file, with optional substitutions."""
-    description = path.read_text(encoding="utf-8")
-    if substitutions:
-        description = string.Template(description).safe_substitute(substitutions)
-    return description
+class _KeepPlaceholderUndefined(Undefined):
+    def __str__(self) -> str:
+        if self._undefined_name is None:
+            return ""
+        return f"${{{self._undefined_name}}}"
+
+    __repr__ = __str__
 
 
-def load_desc_jinja(path: Path, context: dict[str, object] | None = None) -> str:
+def load_desc(path: Path, context: dict[str, object] | None = None) -> str:
     """Load a tool description from a file, rendered via Jinja2."""
     description = path.read_text(encoding="utf-8")
     env = Environment(
-        autoescape=False,
         keep_trailing_newline=True,
         lstrip_blocks=True,
         trim_blocks=True,
         variable_start_string="${",
         variable_end_string="}",
+        undefined=_KeepPlaceholderUndefined,
     )
     template = env.from_string(description)
     return template.render(context or {})

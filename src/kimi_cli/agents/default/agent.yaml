@@ -9,6 +9,7 @@ agent:
     # - "kimi_cli.tools.multiagent:CreateSubagent"
     # - "kimi_cli.tools.dmail:SendDMail"
     # - "kimi_cli.tools.think:Think"
+    - "kimi_cli.tools.ask_user:AskUserQuestion"
     - "kimi_cli.tools.todo:SetTodoList"
     - "kimi_cli.tools.shell:Shell"
     - "kimi_cli.tools.file:ReadFile"

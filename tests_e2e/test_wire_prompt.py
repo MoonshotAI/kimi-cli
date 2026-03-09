@@ -80,6 +80,8 @@ def test_basic_prompt_events(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": 5e-05,
+                        "context_tokens": 5,
+                        "max_context_tokens": 100000,
                         "token_usage": {
                             "input_other": 5,
                             "output": 2,
@@ -89,6 +91,7 @@ def test_basic_prompt_events(tmp_path) -> None:
                         "message_id": "scripted-1",
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
@@ -284,6 +287,8 @@ def test_max_steps_reached(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
@@ -352,6 +357,8 @@ def test_status_update_fields(tmp_path) -> None:
                 "type": "StatusUpdate",
                 "payload": {
                     "context_usage": 5e-05,
+                    "context_tokens": 5,
+                    "max_context_tokens": 100000,
                     "token_usage": {
                         "input_other": 5,
                         "output": 2,
@@ -451,6 +458,8 @@ def test_concurrent_prompt_error(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
@@ -497,10 +506,13 @@ def test_concurrent_prompt_error(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
                     },
                 },
+                {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
     finally:
