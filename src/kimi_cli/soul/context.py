@@ -37,7 +37,14 @@ class Context:
             async for line in f:
                 if not line.strip():
                     continue
-                line_json = json.loads(line)
+                try:
+                    line_json = json.loads(line)
+                except json.JSONDecodeError:
+                    try:
+                        line_json = json.loads(line, strict=False)
+                    except json.JSONDecodeError:
+                        logger.warning("Skipping malformed line in context file")
+                        continue
                 if line_json["role"] == "_usage":
                     self._token_count = line_json["token_count"]
                     continue
