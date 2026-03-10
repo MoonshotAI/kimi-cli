@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix session stream state management — guard against null reference errors during state resets and preserve slash commands across session switches to avoid a brief empty gap
+
 ## 1.18.0 (2026-03-09)
 
 - ACP: Support embedded resource content in ACP mode so that Zed's `@` file references correctly include file contents
