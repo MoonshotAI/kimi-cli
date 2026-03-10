@@ -9,6 +9,8 @@ const LEADING_DOT_SLASH = /^\.\//;
 const NON_WHITESPACE_START = /^\S/;
 const MAX_WORKSPACE_FILES = 500;
 const MAX_DIRECTORY_SCANS = 200;
+const WORKSPACE_STALE_MS = 30_000;
+const DIRECTORY_QUERY_DEBOUNCE_MS = 300;
 
 type MentionRange = {
   start: number;
@@ -70,6 +72,7 @@ type UseFileMentionsReturn = {
   workspaceStatus: "idle" | "loading" | "ready" | "error";
   workspaceError: string | null;
   retryWorkspace: () => void;
+  workspaceFileCount: number;
 };
 
 const detectMention = (
@@ -244,14 +247,28 @@ export const useFileMentions = ({
   >("idle");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const workspaceRequestRef = useRef(0);
+  const lastLoadedRef = useRef(0);
+  const directoryQueryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [directoryFiles, setDirectoryFiles] = useState<WorkspaceFile[]>([]);
 
   const attachmentOptions = useMemo(
     () => toAttachmentOptions(attachments),
     [attachments],
   );
+  const mergedWorkspaceFiles = useMemo(() => {
+    if (directoryFiles.length === 0) {
+      return workspaceFiles;
+    }
+    const existing = new Set(workspaceFiles.map((f) => f.path));
+    const extra = directoryFiles.filter((f) => !existing.has(f.path));
+    return extra.length === 0 ? workspaceFiles : [...workspaceFiles, ...extra];
+  }, [workspaceFiles, directoryFiles]);
+
   const workspaceOptions = useMemo(
-    () => toWorkspaceOptions(workspaceFiles),
-    [workspaceFiles],
+    () => toWorkspaceOptions(mergedWorkspaceFiles),
+    [mergedWorkspaceFiles],
   );
 
   const sections = useMemo(() => {
@@ -287,12 +304,14 @@ export const useFileMentions = ({
     setActiveIndex(0);
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset workspace when sessionId changes
   useEffect(() => {
     setWorkspaceFiles([]);
     setWorkspaceStatus("idle");
     setWorkspaceError(null);
     workspaceRequestRef.current += 1;
-  }, []);
+    lastLoadedRef.current = 0;
+  }, [sessionId]);
 
   const loadWorkspaceFiles = useCallback(async () => {
     if (!(sessionId && listDirectory)) {
@@ -309,6 +328,7 @@ export const useFileMentions = ({
       }
       setWorkspaceFiles(files);
       setWorkspaceStatus("ready");
+      lastLoadedRef.current = Date.now();
     } catch (error) {
       if (workspaceRequestRef.current !== requestId) {
         return;
@@ -329,18 +349,58 @@ export const useFileMentions = ({
     if (!(sessionId && listDirectory)) {
       return;
     }
-    if (workspaceStatus !== "idle" || workspaceFiles.length > 0) {
+    if (workspaceStatus === "loading") {
+      return;
+    }
+    const isStale =
+      workspaceStatus === "ready" &&
+      Date.now() - lastLoadedRef.current > WORKSPACE_STALE_MS;
+    if (workspaceStatus !== "idle" && !isStale) {
       return;
     }
     loadWorkspaceFiles();
-  }, [
-    range,
-    sessionId,
-    listDirectory,
-    workspaceStatus,
-    workspaceFiles.length,
-    loadWorkspaceFiles,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, sessionId, listDirectory, workspaceStatus, loadWorkspaceFiles]);
+
+  // Debounced directory query when query contains "/"
+  useEffect(() => {
+    if (directoryQueryTimerRef.current) {
+      clearTimeout(directoryQueryTimerRef.current);
+      directoryQueryTimerRef.current = null;
+    }
+    const query = range?.query ?? "";
+    const slashIndex = query.lastIndexOf("/");
+    if (slashIndex < 0 || !(sessionId && listDirectory)) {
+      setDirectoryFiles([]);
+      return;
+    }
+    const dirPrefix = query.slice(0, slashIndex);
+    const dirPath = dirPrefix === "" ? undefined : dirPrefix;
+    directoryQueryTimerRef.current = setTimeout(async () => {
+      try {
+        const entries = await listDirectory(sessionId, dirPath);
+        const files: WorkspaceFile[] = [];
+        for (const entry of entries) {
+          if (entry.type === "directory") {
+            continue;
+          }
+          const fullPath = dirPath
+            ? `${dirPath}/${entry.name}`
+            : entry.name;
+          files.push({ path: fullPath, size: entry.size });
+        }
+        setDirectoryFiles(files);
+      } catch {
+        // Silently ignore — the main index is still available
+      }
+    }, DIRECTORY_QUERY_DEBOUNCE_MS);
+    return () => {
+      if (directoryQueryTimerRef.current) {
+        clearTimeout(directoryQueryTimerRef.current);
+        directoryQueryTimerRef.current = null;
+      }
+    };
+  }, [range?.query, sessionId, listDirectory]);
 
   useEffect(() => {
     const caret = textareaRef.current?.selectionStart ?? text.length;
@@ -464,5 +524,6 @@ export const useFileMentions = ({
     workspaceStatus,
     workspaceError,
     retryWorkspace,
+    workspaceFileCount: workspaceFiles.length,
   };
 };
