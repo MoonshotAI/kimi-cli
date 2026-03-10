@@ -3,7 +3,7 @@
   "checkpoint_id": "2977bc73228c",
   "strategy": "manual-commit",
   "branch": "fix/web-websocket-reconnect-storm",
-  "checkpoints_count": 1,
+  "checkpoints_count": 5,
   "files_touched": [
     "web/src/hooks/useSessionStream.ts"
   ],
@@ -14,13 +14,20 @@
       "context": "/29/77bc73228c/0/context.md",
       "content_hash": "/29/77bc73228c/0/content_hash.txt",
       "prompt": "/29/77bc73228c/0/prompt.txt"
+    },
+    {
+      "metadata": "/29/77bc73228c/1/metadata.json",
+      "transcript": "/29/77bc73228c/1/full.jsonl",
+      "context": "/29/77bc73228c/1/context.md",
+      "content_hash": "/29/77bc73228c/1/content_hash.txt",
+      "prompt": "/29/77bc73228c/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 60,
-    "cache_creation_tokens": 344208,
-    "cache_read_tokens": 2487725,
-    "output_tokens": 14386,
-    "api_call_count": 50
+    "input_tokens": 9474,
+    "cache_creation_tokens": 449594,
+    "cache_read_tokens": 9610834,
+    "output_tokens": 39995,
+    "api_call_count": 143
   }
 }
