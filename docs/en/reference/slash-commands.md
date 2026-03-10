@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, and `/feedback`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, and `/import`.
 :::
 
 ## Help and info
@@ -63,7 +63,7 @@ This command is only available when using the default configuration file. If a c
 
 ### `/editor`
 
-Set the default external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
+Set the external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
 
 ### `/reload`
 
@@ -82,7 +82,7 @@ Debug information is displayed in a pager, press `q` to exit.
 
 Display API usage and quota information, showing quota usage with progress bars and remaining percentages.
 
-Aliases: `/status`
+Alias: `/status`
 
 ::: tip
 This command only works with the Kimi Code platform.
@@ -110,6 +110,29 @@ Alias: `/resume`
 
 Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
 
+### `/export`
+
+Export the current session context to a Markdown file for archiving or sharing.
+
+Usage:
+
+- `/export`: Export to the current working directory with an auto-generated filename (format: `kimi-export-<first 8 chars of session ID>-<timestamp>.md`)
+- `/export <path>`: Export to the specified path. If the path is a directory, the filename is auto-generated; if it is a file path, the content is written directly to that file
+
+The exported file includes:
+- Session metadata (session ID, export time, working directory, message count, token count)
+- Conversation overview (topic, number of turns, tool call count)
+- Complete conversation history organized by turns, including user messages, AI responses, tool calls, and tool results
+
+### `/import`
+
+Import context from a file or another session into the current session. The imported content is appended as reference context, and the AI can use this information to inform subsequent interactions.
+
+Usage:
+
+- `/import <file_path>`: Import from a file. Supports common text-based formats such as Markdown, plain text, source code, and configuration files; binary files (e.g., images, PDFs, archives) are not supported
+- `/import <session_id>`: Import from the specified session ID. Cannot import the current session into itself
+
 ### `/clear`
 
 Clear the current session's context and start a new conversation.
@@ -118,7 +141,7 @@ Alias: `/reset`
 
 ### `/compact`
 
-Manually compact the context to reduce token usage.
+Manually compact the context to reduce token usage. You can append custom instructions after the command to tell the AI which information to prioritize preserving during compaction, e.g., `/compact preserve database-related discussions`.
 
 When the context is too long, Kimi Code CLI will automatically trigger compaction. This command allows manually triggering the compaction process.
 

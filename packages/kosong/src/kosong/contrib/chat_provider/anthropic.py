@@ -45,6 +45,7 @@ from anthropic.types import (
     MessageDeltaUsage,
     MessageParam,
     MessageStartEvent,
+    MetadataParam,
     RawContentBlockDeltaEvent,
     RawContentBlockStartEvent,
     RawMessageStreamEvent,
@@ -127,12 +128,14 @@ class Anthropic:
         tool_message_conversion: ToolMessageConversion | None = None,
         # Must provide a max_tokens. Can be overridden by .with_generation_kwargs()
         default_max_tokens: int,
+        metadata: MetadataParam | None = None,
         **client_kwargs: Any,
     ):
         self._model = model
         self._stream = stream
         self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
+        self._metadata = metadata
         self._generation_kwargs: Anthropic.GenerationKwargs = {
             "max_tokens": default_max_tokens,
             "beta_features": ["interleaved-thinking-2025-05-14"],
@@ -222,6 +225,7 @@ class Anthropic:
                 tools=tools_,
                 stream=self._stream,
                 extra_headers=extra_headers,
+                metadata=self._metadata if self._metadata is not None else omit,
                 **generation_kwargs,
             )
             return AnthropicStreamedMessage(response)

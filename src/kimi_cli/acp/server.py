@@ -14,8 +14,10 @@ from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
+from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
-from kimi_cli.config import LLMModel, load_config, save_config
+from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, load_tokens
+from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
 from kimi_cli.session import Session
@@ -29,6 +31,8 @@ class ACPServer:
         self.client_capabilities: acp.schema.ClientCapabilities | None = None
         self.conn: acp.Client | None = None
         self.sessions: dict[str, tuple[ACPSession, _ModelIDConv]] = {}
+        self.negotiated_version: ACPVersionSpec | None = None
+        self._auth_methods: list[acp.schema.AuthMethod] = []
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -41,10 +45,13 @@ class ACPServer:
         client_info: acp.schema.Implementation | None = None,
         **kwargs: Any,
     ) -> acp.InitializeResponse:
+        self.negotiated_version = negotiate_version(protocol_version)
         logger.info(
-            "ACP server initialized with protocol version: {version}, "
+            "ACP server initialized with client protocol version: {version}, "
+            "negotiated version: {negotiated}, "
             "client capabilities: {capabilities}, client info: {info}",
             version=protocol_version,
+            negotiated=self.negotiated_version,
             capabilities=client_capabilities,
             info=client_info,
         )
@@ -58,63 +65,86 @@ class ACPServer:
             idx = sys.argv.index("kimi")
             args = sys.argv[1 : idx + 1]
 
+        # Build terminal auth data for error response
+        terminal_args = args + ["login"]
+
+        # Build and cache auth methods for reuse in AUTH_REQUIRED errors
+        self._auth_methods = [
+            acp.schema.AuthMethod(
+                id="login",
+                name="Login with Kimi account",
+                description=(
+                    "Run `kimi login` command in the terminal, "
+                    "then follow the instructions to finish login."
+                ),
+                # Store auth data in field_meta for building AUTH_REQUIRED error
+                field_meta={
+                    "terminal-auth": {
+                        "command": command,
+                        "args": terminal_args,
+                        "label": "Kimi Code Login",
+                        "env": {},
+                        "type": "terminal",
+                    }
+                },
+            ),
+        ]
+
         return acp.InitializeResponse(
-            protocol_version=protocol_version,
+            protocol_version=self.negotiated_version.protocol_version,
             agent_capabilities=acp.schema.AgentCapabilities(
                 load_session=True,
                 prompt_capabilities=acp.schema.PromptCapabilities(
-                    embedded_context=False, image=True, audio=False
+                    embedded_context=True, image=True, audio=False
                 ),
                 mcp_capabilities=acp.schema.McpCapabilities(http=True, sse=False),
                 session_capabilities=acp.schema.SessionCapabilities(
                     list=acp.schema.SessionListCapabilities(),
+                    resume=acp.schema.SessionResumeCapabilities(),
                 ),
             ),
-            auth_methods=[
-                acp.schema.AuthMethod(
-                    id="login",
-                    name="Login with Kimi account",
-                    description=(
-                        "Run `kimi login` command in the terminal, "
-                        "then follow the instructions to finish login."
-                    ),
-                    field_meta={
-                        "terminal-auth": {
-                            "command": command,
-                            "args": args + ["login"],
-                            "label": "Kimi Code Login",
-                        }
-                    },
-                ),
-                # acp.schema.AuthMethod(
-                #     id="setup",
-                #     name="Setup LLM with /setup slash command",
-                #     description=(
-                #         "Run `kimi` command in the terminal, "
-                #         "then send `/setup` command to complete the setup."
-                #     ),
-                #     field_meta={
-                #         "terminal-auth": {
-                #             "command": command,
-                #             "args": args,
-                #             "label": "Kimi Code CLI Setup",
-                #         }
-                #     },
-                # ),
-            ],
+            auth_methods=self._auth_methods,
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
+    def _check_auth(self) -> None:
+        """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
+        ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
+        token = load_tokens(ref)
+
+        if token is None or not token.access_token:
+            # Build AUTH_REQUIRED error data for clients
+            auth_methods_data: list[dict[str, Any]] = []
+            for m in self._auth_methods:
+                if m.field_meta and "terminal-auth" in m.field_meta:
+                    terminal_auth = m.field_meta["terminal-auth"]
+                    auth_methods_data.append(
+                        {
+                            "id": m.id,
+                            "name": m.name,
+                            "description": m.description,
+                            "type": terminal_auth.get("type", "terminal"),
+                            "args": terminal_auth.get("args", []),
+                            "env": terminal_auth.get("env", {}),
+                        }
+                    )
+
+            logger.warning("Authentication required, no valid token found")
+            raise acp.RequestError.auth_required({"authMethods": auth_methods_data})
+
     async def new_session(
-        self, cwd: str, mcp_servers: list[MCPServer], **kwargs: Any
+        self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.NewSessionResponse:
         logger.info("Creating new session for working directory: {cwd}", cwd=cwd)
         assert self.conn is not None, "ACP client not connected"
         assert self.client_capabilities is not None, "ACP connection not initialized"
 
+        # Check authentication before creating session
+        self._check_auth()
+
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
@@ -165,16 +195,15 @@ class ACPServer:
             ),
         )
 
-    async def load_session(
-        self, cwd: str, mcp_servers: list[MCPServer], session_id: str, **kwargs: Any
-    ) -> None:
-        logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+    async def _setup_session(
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[MCPServer] | None = None,
+    ) -> tuple[ACPSession, _ModelIDConv]:
+        """Load or resume a session. Shared by load_session and resume_session."""
         assert self.conn is not None, "ACP client not connected"
         assert self.client_capabilities is not None, "ACP connection not initialized"
-
-        if session_id in self.sessions:
-            logger.warning("Session already loaded: {id}", id=session_id)
-            return
 
         work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
         session = await Session.find(work_dir, session_id)
@@ -184,7 +213,7 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers)
+        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
@@ -204,7 +233,54 @@ class ACPServer:
                 cli_instance.soul.runtime,
             )
 
+        return acp_session, model_id_conv
+
+    async def load_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> None:
+        logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        if session_id in self.sessions:
+            logger.warning("Session already loaded: {id}", id=session_id)
+            return
+
+        # Check authentication before loading session
+        self._check_auth()
+
+        await self._setup_session(cwd, session_id, mcp_servers)
         # TODO: replay session history?
+
+    async def resume_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.schema.ResumeSessionResponse:
+        logger.info("Resuming session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
+
+        if session_id not in self.sessions:
+            await self._setup_session(cwd, session_id, mcp_servers)
+
+        acp_session, model_id_conv = self.sessions[session_id]
+        config = acp_session.cli.soul.runtime.config
+        return acp.schema.ResumeSessionResponse(
+            modes=acp.schema.SessionModeState(
+                available_modes=[
+                    acp.schema.SessionMode(
+                        id="default",
+                        name="Default",
+                        description="The default mode.",
+                    ),
+                ],
+                current_mode_id="default",
+            ),
+            models=acp.schema.SessionModelState(
+                available_models=_expand_llm_models(config.models),
+                current_model_id=model_id_conv.to_acp_model_id(),
+            ),
+        )
+
+    async def fork_session(
+        self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
+    ) -> acp.schema.ForkSessionResponse:
+        raise NotImplementedError
 
     async def list_sessions(
         self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
@@ -278,7 +354,28 @@ class ACPServer:
         save_config(config_for_save)
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
-        raise NotImplementedError
+        """
+        For Terminal Auth, this method is typically not called directly
+        (user completes auth in terminal). Implement for completeness.
+        """
+        if method_id == "login":
+            ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
+            token = load_tokens(ref)
+
+            if token and token.access_token:
+                logger.info("Authentication successful for method: {id}", id=method_id)
+                return acp.AuthenticateResponse()
+            else:
+                logger.warning("Authentication not complete for method: {id}", id=method_id)
+                raise acp.RequestError.auth_required(
+                    {
+                        "message": "Please complete login in terminal first",
+                        "authMethods": self._auth_methods,
+                    }
+                )
+
+        logger.error("Unknown auth method: {method_id}", method_id=method_id)
+        raise acp.RequestError.invalid_params({"method_id": "Unknown auth method"})
 
     async def prompt(
         self, prompt: list[ACPContentBlock], session_id: str, **kwargs: Any

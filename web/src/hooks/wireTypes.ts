@@ -153,6 +153,16 @@ export type CompactionEndEvent = {
   payload?: Record<string, never>;
 };
 
+export type MCPLoadingBeginEvent = {
+  type: "MCPLoadingBegin";
+  payload?: Record<string, never>;
+};
+
+export type MCPLoadingEndEvent = {
+  type: "MCPLoadingEnd";
+  payload?: Record<string, never>;
+};
+
 export type ApprovalRequestEvent = {
   type: "ApprovalRequest";
   payload: {
@@ -224,6 +234,8 @@ export type WireEvent =
   | SessionNoticeEvent
   | CompactionBeginEvent
   | CompactionEndEvent
+  | MCPLoadingBeginEvent
+  | MCPLoadingEndEvent
   | ApprovalRequestEvent
   | ApprovalRequestResolvedEvent
   | QuestionRequestEvent

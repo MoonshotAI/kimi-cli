@@ -32,7 +32,7 @@ from kimi_cli.soul import (
     wire_send,
 )
 from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction
+from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
@@ -48,6 +48,8 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    MCPLoadingBegin,
+    MCPLoadingEnd,
     StatusUpdate,
     StepBegin,
     StepInterrupted,
@@ -148,9 +150,13 @@ class KimiSoul:
 
     @property
     def status(self) -> StatusSnapshot:
+        token_count = self._context.token_count
+        max_size = self._runtime.llm.max_context_size if self._runtime.llm is not None else 0
         return StatusSnapshot(
             context_usage=self._context_usage,
             yolo_enabled=self._approval.is_yolo(),
+            context_tokens=token_count,
+            max_context_tokens=max_size,
         )
 
     @property
@@ -357,7 +363,14 @@ class KimiSoul:
             self._steer_queue.get_nowait()
 
         if isinstance(self._agent.toolset, KimiToolset):
-            await self._agent.toolset.wait_for_mcp_tools()
+            loading = self._agent.toolset.has_pending_mcp_tools()
+            if loading:
+                wire_send(MCPLoadingBegin())
+            try:
+                await self._agent.toolset.wait_for_mcp_tools()
+            finally:
+                if loading:
+                    wire_send(MCPLoadingEnd())
 
         async def _pipe_approval_to_wire():
             while True:
@@ -392,8 +405,12 @@ class KimiSoul:
             step_outcome: StepOutcome | None = None
             try:
                 # compact the context if needed
-                reserved = self._loop_control.reserved_context_size
-                if self._context.token_count + reserved >= self._runtime.llm.max_context_size:
+                if should_auto_compact(
+                    self._context.token_count,
+                    self._runtime.llm.max_context_size,
+                    trigger_ratio=self._loop_control.compaction_trigger_ratio,
+                    reserved_context_size=self._loop_control.reserved_context_size,
+                ):
                     logger.info("Context too long, compacting...")
                     await self.compact_context()
 
@@ -476,7 +493,10 @@ class KimiSoul:
         if result.usage is not None:
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)
-            status_update.context_usage = self.status.context_usage
+            snap = self.status
+            status_update.context_usage = snap.context_usage
+            status_update.context_tokens = snap.context_tokens
+            status_update.max_context_tokens = snap.max_context_tokens
         wire_send(status_update)
 
         # wait for all tool results (may be interrupted)
@@ -544,7 +564,7 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self) -> None:
+    async def compact_context(self, custom_instruction: str = "") -> None:
         """
         Compact the context.
 
@@ -558,7 +578,9 @@ class KimiSoul:
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
-            return await self._compaction.compact(self._context.history, self._runtime.llm)
+            return await self._compaction.compact(
+                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+            )
 
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),

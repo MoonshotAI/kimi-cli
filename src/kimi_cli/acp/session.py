@@ -25,6 +25,8 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    MCPLoadingBegin,
+    MCPLoadingEnd,
     QuestionRequest,
     StatusUpdate,
     StepBegin,
@@ -157,6 +159,10 @@ class ACPSession:
                     case CompactionBegin():
                         pass
                     case CompactionEnd():
+                        pass
+                    case MCPLoadingBegin():
+                        pass
+                    case MCPLoadingEnd():
                         pass
                     case StatusUpdate():
                         pass

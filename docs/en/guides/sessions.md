@@ -48,6 +48,39 @@ In addition to conversation history, Kimi Code CLI also automatically saves and 
 
 This means you don't need to reconfigure these settings each time you resume a session. For example, if you approved auto-execution of certain shell commands in your previous session, those approvals remain in effect after resuming.
 
+## Export and import
+
+Kimi Code CLI supports exporting session context to a file, or importing context from external files and other sessions.
+
+**Export a session**
+
+Enter `/export` to export the current session's complete conversation history as a Markdown file:
+
+```
+/export
+```
+
+The exported file includes session metadata, a conversation overview, and the complete conversation organized by turns. You can also specify an output path:
+
+```
+/export ~/exports/my-session.md
+```
+
+**Import context**
+
+Enter `/import` to import context from a file or another session. The imported content is appended as reference information to the current session:
+
+```
+/import ./previous-session-export.md
+/import abc12345
+```
+
+Common text-based file formats are supported (Markdown, source code, configuration files, etc.). You can also pass a session ID to import the complete conversation history from that session.
+
+::: tip
+Exported files may contain sensitive information (such as code snippets, file paths, etc.). Please review before sharing.
+:::
+
 ## Clear and compact
 
 As the conversation progresses, the context grows longer. Kimi Code CLI will automatically compress the context when needed to ensure the conversation can continue.
@@ -72,10 +105,16 @@ Enter `/compact` to have the AI summarize the current conversation and replace t
 /compact
 ```
 
+You can also append custom instructions after the command to tell the AI what content to prioritize preserving during compaction:
+
+```
+/compact keep the database-related discussion
+```
+
 Compacting preserves key information while reducing token consumption. This is useful when the conversation is long but you still want to retain some context.
 
 ::: tip
-The bottom status bar displays the current context usage (`context: xx.x%`), helping you understand when you need to clear or compact.
+The bottom status bar displays the current context usage with token counts (e.g., `context: 42.0% (4.2k/10.0k)`), helping you understand when you need to clear or compact.
 :::
 
 ::: tip

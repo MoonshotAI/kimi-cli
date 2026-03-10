@@ -106,6 +106,12 @@ kimi --mcp-config-file /path/to/mcp.json
 kimi --mcp-config '{"mcpServers": {"test": {"url": "https://..."}}}'
 ```
 
+## 加载状态
+
+当 Kimi Code CLI 启动并连接 MCP 服务器时，Shell 模式会在首次响应前显示 "Connecting to MCP servers..." 加载指示器，Web 界面也会显示相应的加载状态提示。连接完成后指示器自动消失。
+
+如果配置了多个 MCP 服务器，加载时间可能较长，此时加载指示器可以帮助你了解当前状态。
+
 ## 安全性
 
 MCP 工具可能会访问和操作外部系统，需要注意安全风险。
