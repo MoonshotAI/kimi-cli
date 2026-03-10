@@ -252,6 +252,7 @@ export const useFileMentions = ({
     null,
   );
   const [directoryFiles, setDirectoryFiles] = useState<WorkspaceFile[]>([]);
+  const sessionIdRef = useRef(sessionId);
 
   const attachmentOptions = useMemo(
     () => toAttachmentOptions(attachments),
@@ -304,13 +305,14 @@ export const useFileMentions = ({
     setActiveIndex(0);
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset workspace when sessionId changes
   useEffect(() => {
     setWorkspaceFiles([]);
+    setDirectoryFiles([]);
     setWorkspaceStatus("idle");
     setWorkspaceError(null);
     workspaceRequestRef.current += 1;
     lastLoadedRef.current = 0;
+    sessionIdRef.current = sessionId;
   }, [sessionId]);
 
   const loadWorkspaceFiles = useCallback(async () => {
@@ -359,7 +361,6 @@ export const useFileMentions = ({
       return;
     }
     loadWorkspaceFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, sessionId, listDirectory, workspaceStatus, loadWorkspaceFiles]);
 
   // Debounced directory query when query contains "/"
@@ -376,9 +377,11 @@ export const useFileMentions = ({
     }
     const dirPrefix = query.slice(0, slashIndex);
     const dirPath = dirPrefix === "" ? undefined : dirPrefix;
+    const capturedSessionId = sessionId;
     directoryQueryTimerRef.current = setTimeout(async () => {
+      if (sessionIdRef.current !== capturedSessionId) return;
       try {
-        const entries = await listDirectory(sessionId, dirPath);
+        const entries = await listDirectory(capturedSessionId, dirPath);
         const files: WorkspaceFile[] = [];
         for (const entry of entries) {
           if (entry.type === "directory") {
