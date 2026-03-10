@@ -37,7 +37,7 @@ def create_app() -> FastAPI:
 
     application.add_middleware(
         cast(Any, CORSMiddleware),
-        allow_origins=["*"],
+        allow_origins=["*"],  # Local-only tool; port is dynamic so wildcard is acceptable
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

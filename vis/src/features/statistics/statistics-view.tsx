@@ -79,10 +79,14 @@ function DailyUsageChart({
   // X-axis labels: show ~5 evenly spaced dates
   const labelCount = Math.min(5, daily.length);
   const labelIndices: number[] = [];
-  for (let i = 0; i < labelCount; i++) {
-    labelIndices.push(
-      Math.round((i / (labelCount - 1)) * (daily.length - 1)),
-    );
+  if (labelCount <= 1) {
+    if (daily.length > 0) labelIndices.push(0);
+  } else {
+    for (let i = 0; i < labelCount; i++) {
+      labelIndices.push(
+        Math.round((i / (labelCount - 1)) * (daily.length - 1)),
+      );
+    }
   }
 
   return (

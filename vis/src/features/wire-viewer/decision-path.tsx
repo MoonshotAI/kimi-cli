@@ -109,7 +109,7 @@ function extractDecisionChains(events: WireEvent[]): DecisionChain[] {
       // Duration
       let durationSec = 0;
       if (resultEvent) {
-        durationSec = Math.max(0, (resultEvent.timestamp - ev.timestamp) / 1000);
+        durationSec = Math.max(0, resultEvent.timestamp - ev.timestamp);
       }
 
       // Summarize thinking

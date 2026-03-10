@@ -10,27 +10,10 @@ from typing import Any
 from fastapi import APIRouter
 
 from kimi_cli.share import get_share_dir
-from kimi_cli.vis.api.sessions import get_work_dir_for_hash
+from kimi_cli.vis.api.sessions import collect_events, get_work_dir_for_hash
 from kimi_cli.wire.file import WireFileMetadata, parse_wire_file_line
 
 router = APIRouter(prefix="/api/vis", tags=["vis"])
-
-
-def _collect_events(
-    msg_type: str,
-    payload: dict[str, Any],
-    out: list[tuple[str, dict[str, Any]]],
-) -> None:
-    """Recursively unwrap SubagentEvent and collect (type, payload) pairs."""
-    if msg_type == "SubagentEvent":
-        inner: dict[str, Any] | None = payload.get("event")
-        if isinstance(inner, dict):
-            inner_type: str = inner.get("type", "")
-            inner_payload: dict[str, Any] = inner.get("payload", {})
-            if inner_type:
-                _collect_events(inner_type, inner_payload, out)
-    else:
-        out.append((msg_type, payload))
 
 
 # Simple in-memory cache: (result, timestamp)
@@ -39,7 +22,7 @@ _CACHE_TTL = 60  # seconds
 
 
 @router.get("/statistics")
-async def get_statistics() -> dict[str, Any]:
+def get_statistics() -> dict[str, Any]:
     """Aggregate statistics across all sessions."""
     now = time.time()
     cached = _cache.get("statistics")
@@ -128,7 +111,7 @@ async def get_statistics() -> dict[str, Any]:
 
                         # Collect (type, payload) pairs, unwrapping SubagentEvent recursively
                         events_to_process: list[tuple[str, dict[str, Any]]] = []
-                        _collect_events(msg_type, payload, events_to_process)
+                        collect_events(msg_type, payload, events_to_process)
 
                         for ev_type, ev_payload in events_to_process:
                             if ev_type == "TurnBegin":

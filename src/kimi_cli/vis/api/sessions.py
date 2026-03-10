@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/vis", tags=["vis"])
 logger = logging.getLogger(__name__)
 
 
-def _collect_events(
+def collect_events(
     msg_type: str,
     payload: dict[str, Any],
     out: list[tuple[str, dict[str, Any]]],
@@ -32,7 +32,7 @@ def _collect_events(
             inner_type: str = inner.get("type", "")
             inner_payload: dict[str, Any] = inner.get("payload", {})
             if inner_type:
-                _collect_events(inner_type, inner_payload, out)
+                collect_events(inner_type, inner_payload, out)
     else:
         out.append((msg_type, payload))
 
@@ -70,7 +70,7 @@ def get_work_dir_for_hash(hash_dir_name: str) -> str | None:
 
 
 @router.get("/sessions")
-async def list_sessions() -> list[dict[str, Any]]:
+def list_sessions() -> list[dict[str, Any]]:
     """List all available sessions across all work directories."""
     sessions_root = get_share_dir() / "sessions"
     if not sessions_root.exists():
@@ -307,7 +307,7 @@ async def get_session_summary(work_dir_hash: str, session_id: str) -> dict[str, 
 
             # Collect (type, payload) pairs, unwrapping SubagentEvent recursively
             events_to_process: list[tuple[str, dict[str, Any]]] = []
-            _collect_events(msg_type, payload, events_to_process)
+            collect_events(msg_type, payload, events_to_process)
 
             for ev_type, ev_payload in events_to_process:
                 if ev_type == "TurnBegin":
