@@ -35,6 +35,8 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.file:StrReplaceFile",
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
         ]
     )
     subagents = {
@@ -59,6 +61,8 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.multiagent:CreateSubagent",
             "kimi_cli.tools.dmail:SendDMail",
             "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
         ]
     )
     assert subagent_specs["coder"].tools == snapshot(
@@ -75,6 +79,8 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.file:StrReplaceFile",
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
         ]
     )
     sub_subagents = {
@@ -166,6 +172,8 @@ agent:
                 "kimi_cli.tools.file:StrReplaceFile",
                 "kimi_cli.tools.web:SearchWeb",
                 "kimi_cli.tools.web:FetchURL",
+                "kimi_cli.tools.plan:ExitPlanMode",
+                "kimi_cli.tools.plan.enter:EnterPlanMode",
             ]
         )
         assert spec.exclude_tools == snapshot(

@@ -7,6 +7,7 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl-X` | 切换 Agent/Shell 模式 |
+| `Shift-Tab` | 切换 Plan 模式（只读研究与规划） |
 | `Ctrl-O` | 在外部编辑器中编辑（`$VISUAL`/`$EDITOR`） |
 | `Ctrl-J` | 插入换行 |
 | `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
@@ -28,7 +29,16 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 
 提示符会根据当前模式变化：
 - Agent 模式：`✨`（普通）或 `💫`（Thinking 模式）
+- Plan 模式：`📋`
 - Shell 模式：`$`
+
+## Plan 模式
+
+### `Shift-Tab`：切换 Plan 模式
+
+按 `Shift-Tab` 可以开启或关闭 Plan 模式。Plan 模式下 AI 只能使用只读工具探索代码库，将实施方案写入 plan 文件后提交给你审批。
+
+开启时提示符变为 `📋`，状态栏显示蓝色的 `plan` 标识。也可以使用 `/plan` 斜杠命令管理 Plan 模式。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
 
 ## 外部编辑器
 
@@ -134,7 +144,8 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 
 - 当前时间
 - 当前模式（agent/shell）和模型名称（Agent 模式下显示）
-- YOLO 标识（开启时显示）
+- YOLO 标识（开启时显示黄色标识）
+- Plan 标识（开启时显示蓝色标识）
 - 快捷键提示
 - 上下文使用率
 

@@ -80,6 +80,8 @@ class WireServer:
         """Maps JSON RPC message IDs to pending `Request`s."""
         self._client_supports_question: bool = False
         """Whether the Wire client supports QuestionRequest."""
+        self._client_supports_plan_mode: bool = False
+        """Whether the Wire client supports plan mode."""
 
     async def serve(self) -> None:
         logger.info("Starting Wire server on stdio")
@@ -377,9 +379,11 @@ class WireServer:
 
         if msg.params.capabilities is not None:
             self._client_supports_question = msg.params.capabilities.supports_question
+            self._client_supports_plan_mode = msg.params.capabilities.supports_plan_mode
 
         if toolset is not None:
             self._sync_ask_user_tool_visibility(toolset)
+            self._sync_plan_mode_tool_visibility(toolset)
 
         result["capabilities"] = cast(
             JsonType,
@@ -410,6 +414,31 @@ class WireServer:
             logger.info(
                 "Hid {tool} tool: client does not support questions",
                 tool=ASK_USER_TOOL_NAME,
+            )
+
+    def _sync_plan_mode_tool_visibility(self, toolset: KimiToolset) -> None:
+        """Hide or unhide plan mode tools based on client capabilities."""
+        from kimi_cli.tools.plan import NAME as EXIT_PLAN_MODE_TOOL_NAME
+        from kimi_cli.tools.plan.enter import NAME as ENTER_PLAN_MODE_TOOL_NAME
+
+        plan_tool_names = [ENTER_PLAN_MODE_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME]
+
+        all_toolsets = [toolset]
+        if isinstance(self._soul, KimiSoul):
+            for subagent in self._soul.agent.runtime.labor_market.fixed_subagents.values():
+                if isinstance(subagent.toolset, KimiToolset):
+                    all_toolsets.append(subagent.toolset)
+
+        if self._client_supports_plan_mode:
+            for ts in all_toolsets:
+                for name in plan_tool_names:
+                    ts.unhide(name)
+        else:
+            for ts in all_toolsets:
+                for name in plan_tool_names:
+                    ts.hide(name)
+            logger.info(
+                "Hide plan mode tools: client does not support plan mode",
             )
 
     def _apply_wire_client_info(self, client: ClientInfo | None) -> None:

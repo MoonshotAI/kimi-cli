@@ -238,6 +238,12 @@ class QuestionItem(BaseModel):
     """The available choices for this question (2-4 options)."""
     multi_select: bool = False
     """Whether multiple options can be selected."""
+    body: str = ""
+    """Optional body content (markdown) displayed above options."""
+    other_label: str = ""
+    """Custom label for the synthetic 'Other' free-text option. Empty uses default."""
+    other_description: str = ""
+    """Custom description for the synthetic 'Other' option. Empty uses default."""
 
 
 class QuestionResponse(BaseModel):

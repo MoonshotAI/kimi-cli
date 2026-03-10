@@ -469,12 +469,16 @@ class _QuestionRequestPanel:
         self._saved_selections: dict[int, tuple[int, set[int]]] = {}
         self._selected_index = 0
         self._multi_selected: set[int] = set()
+        self._body_text: str = ""
+        self.has_expandable_content: bool = False
         self._setup_current_question()
 
     def _setup_current_question(self) -> None:
         q = self._current_question
         self._options = [(o.label, o.description) for o in q.options]
-        self._options.append((OTHER_OPTION_LABEL, "Provide custom text input"))
+        other_label = q.other_label or OTHER_OPTION_LABEL
+        other_desc = q.other_description or ""
+        self._options.append((other_label, other_desc))
         idx = self._current_question_index
         if idx in self._saved_selections:
             saved_idx, saved_multi = self._saved_selections[idx]
@@ -505,6 +509,13 @@ class _QuestionRequestPanel:
         else:
             self._selected_index = 0
             self._multi_selected = set()
+        self._recompute_body()
+
+    def _recompute_body(self) -> None:
+        """Recompute body content state for the current question."""
+        body = self._current_question.body
+        self._body_text = body.rstrip("\n") if body else ""
+        self.has_expandable_content = bool(self._body_text)
 
     @property
     def _current_question(self):
@@ -561,6 +572,15 @@ class _QuestionRequestPanel:
             lines.append(Text("  (SPACE to toggle, ENTER to submit)", style="dim italic"))
         lines.append(Text(""))
 
+        # Body hint: prompt user to view full content
+        if self._body_text:
+            lines.append(
+                Text.from_markup(
+                    "[bold cyan]  \u25b6 Press ctrl-e to view full content[/bold cyan]"
+                )
+            )
+            lines.append(Text(""))
+
         # Options with number key labels
         for i, (label, description) in enumerate(self._options):
             num = i + 1
@@ -578,10 +598,10 @@ class _QuestionRequestPanel:
                     option_line = Text.from_markup(f"[grey50]  \\[{num}] {escape(label)}[/grey50]")
             lines.append(option_line)
 
-            if description and label != OTHER_OPTION_LABEL:
+            if description:
                 lines.append(Text(f"      {description}", style="dim"))
 
-        # Keyboard hint for multi-question
+        # Keyboard hints
         if len(self.request.questions) > 1:
             lines.append(Text(""))
             lines.append(
@@ -699,13 +719,31 @@ class _QuestionRequestPanel:
     def get_answers(self) -> dict[str, str]:
         return self._answers
 
+    def render_full_body(self) -> list[RenderableType]:
+        """Render full body content for pager display (no truncation)."""
+        if not self._body_text:
+            return []
+        return [Markdown(self._body_text)]
 
-def _prompt_other_input(question_text: str) -> str:
+
+def _show_question_body_in_pager(panel: _QuestionRequestPanel) -> None:
+    """Show the full question body content in a pager."""
+    with console.screen(), console.pager(styles=True):
+        console.print(Text.from_markup(f"[yellow]? {escape(panel.current_question_text)}[/yellow]"))
+        console.print()
+        for renderable in panel.render_full_body():
+            console.print(renderable)
+
+
+async def _prompt_other_input(question_text: str) -> str:
     """Prompt the user for free-text input when 'Other' is selected."""
+    from prompt_toolkit import PromptSession
+
     console.print(Text.from_markup(f"\n[yellow]? {escape(question_text)}[/yellow]"))
     console.print(Text("  Enter your answer:", style="dim"))
     try:
-        return input("  > ").strip()
+        session: PromptSession[str] = PromptSession()
+        return (await session.prompt_async("  > ")).strip()
     except (EOFError, KeyboardInterrupt):
         return ""
 
@@ -814,6 +852,19 @@ class _LiveView:
                             live.start()
                             live.update(self.compose(), refresh=True)
                             await listener.resume()
+                    elif (
+                        self._current_question_panel
+                        and self._current_question_panel.has_expandable_content
+                    ):
+                        await listener.pause()
+                        live.stop()
+                        try:
+                            _show_question_body_in_pager(self._current_question_panel)
+                        finally:
+                            self._reset_live_shape(live)
+                            live.start()
+                            live.update(self.compose(), refresh=True)
+                            await listener.resume()
                     return
 
                 # Handle ENTER/SPACE on question panel when "Other" is selected
@@ -826,7 +877,7 @@ class _LiveView:
                     await listener.pause()
                     live.stop()
                     try:
-                        text = _prompt_other_input(question_text)
+                        text = await _prompt_other_input(question_text)
                     finally:
                         self._reset_live_shape(live)
                         live.start()

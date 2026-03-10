@@ -51,6 +51,7 @@ SKILL_COMMAND_PREFIX = "skill:"
 
 _KEYBOARD_SHORTCUTS = [
     ("Ctrl-X", "Toggle agent/shell mode"),
+    ("Shift-Tab", "Toggle plan mode (read-only research)"),
     ("Ctrl-O", "Edit in external editor ($VISUAL/$EDITOR)"),
     ("Ctrl-J / Alt-Enter", "Insert newline"),
     ("Ctrl-V", "Paste (supports images)"),

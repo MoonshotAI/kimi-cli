@@ -87,6 +87,8 @@ class ClientCapabilities(BaseModel):
 
     supports_question: bool = False
     """Whether the client can handle QuestionRequest messages."""
+    supports_plan_mode: bool = False
+    """Whether the client supports plan mode (EnterPlanMode / ExitPlanMode)."""
 
 
 class JSONRPCInitializeMessage(_MessageBase):

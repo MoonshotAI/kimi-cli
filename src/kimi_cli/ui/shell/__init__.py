@@ -68,6 +68,11 @@ class Shell:
                 wire_file=self.soul.wire_file,
             )
 
+        async def _plan_mode_toggle() -> bool:
+            if isinstance(self.soul, KimiSoul):
+                return await self.soul.toggle_plan_mode_from_manual()
+            return False
+
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
@@ -78,6 +83,7 @@ class Shell:
             editor_command_provider=lambda: (
                 self.soul.runtime.config.default_editor if isinstance(self.soul, KimiSoul) else ""
             ),
+            plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             try:
                 while True:
