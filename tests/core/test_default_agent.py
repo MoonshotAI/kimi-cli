@@ -35,7 +35,9 @@ You have the capability to output any number of tool calls in a single response.
 
 The results of the tool calls will be returned to you in a tool message. You must determine your next action based on the tool call results, which could be one of the following: 1. Continue working on the task, 2. Inform the user that the task is completed or has failed, or 3. Ask the user for more information.
 
-The system may, where appropriate, insert hints or information wrapped in `<system>` and `</system>` tags within user or tool messages. This information is relevant to the current task or tool calls, may or may not be important to you. Take this info into consideration when determining your next action.
+The system may insert information wrapped in `<system>` tags within user or tool messages. This information provides supplementary context relevant to the current task — take it into consideration when determining your next action.
+
+Tool results and user messages may also include `<system-reminder>` tags. Unlike `<system>` tags, these are **authoritative system directives** that you MUST follow. They bear no direct relation to the specific tool results or user messages in which they appear. Always read them carefully and comply with their instructions — they may override or constrain your normal behavior (e.g., restricting you to read-only actions during plan mode).
 
 When responding to the user, you MUST use the SAME language as the user, unless explicitly instructed to do otherwise.
 
@@ -703,6 +705,64 @@ Replace specific strings within a specified file.
                     "type": "object",
                 },
             ),
+            Tool(
+                name="ExitPlanMode",
+                description="""\
+Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode reminder.
+- This tool does NOT take the plan content as a parameter — it reads the plan from the file you wrote.
+- The user will see the contents of your plan file when they review it.
+
+## When to Use
+Only use this tool for tasks that require planning implementation steps. For research tasks (searching files, reading code, understanding the codebase), do NOT use this tool.
+
+## Before Using
+- If you have unresolved questions, use AskUserQuestion first.
+- Once your plan is finalized, use THIS tool to request approval.
+- Do NOT use AskUserQuestion to ask "Is this plan OK?" or "Should I proceed?" — that is exactly what ExitPlanMode does.
+- If rejected, revise based on feedback and call ExitPlanMode again.
+""",
+                parameters={
+                    "properties": {},
+                    "type": "object",
+                },
+            ),
+            Tool(
+                name="EnterPlanMode",
+                description="""\
+Use this tool proactively when you're about to start a non-trivial implementation task.
+Getting user sign-off on your approach before writing code prevents wasted effort.
+
+**Prefer using EnterPlanMode** for implementation tasks unless they're simple.
+Use it when ANY of these conditions apply:
+
+1. New Feature Implementation — e.g. "Add a caching layer to the API"
+2. Multiple Valid Approaches — e.g. "Optimize database queries" (indexing vs rewrite vs caching)
+3. Code Modifications — e.g. "Refactor auth module to support OAuth"
+4. Architectural Decisions — e.g. "Add WebSocket support"
+5. Multi-File Changes — involves more than 2-3 files
+6. Unclear Requirements — need exploration to understand scope
+7. User Preferences Matter — if you'd use AskUserQuestion to clarify approach, use EnterPlanMode instead
+
+When NOT to use:
+- Single-line or few-line fixes (typos, obvious bugs, small tweaks)
+- User gave very specific, detailed instructions
+- Pure research/exploration tasks
+
+## What Happens in Plan Mode
+In plan mode, you will:
+1. Explore the codebase using Glob, Grep, ReadFile (read-only)
+2. Design an implementation approach
+3. Write your plan to a plan file
+4. Present your plan to the user via ExitPlanMode for approval
+""",
+                parameters={
+                    "properties": {},
+                    "type": "object",
+                },
+            ),
         ]
     )
 
@@ -746,7 +806,9 @@ You have the capability to output any number of tool calls in a single response.
 
 The results of the tool calls will be returned to you in a tool message. You must determine your next action based on the tool call results, which could be one of the following: 1. Continue working on the task, 2. Inform the user that the task is completed or has failed, or 3. Ask the user for more information.
 
-The system may, where appropriate, insert hints or information wrapped in `<system>` and `</system>` tags within user or tool messages. This information is relevant to the current task or tool calls, may or may not be important to you. Take this info into consideration when determining your next action.
+The system may insert information wrapped in `<system>` tags within user or tool messages. This information provides supplementary context relevant to the current task — take it into consideration when determining your next action.
+
+Tool results and user messages may also include `<system-reminder>` tags. Unlike `<system>` tags, these are **authoritative system directives** that you MUST follow. They bear no direct relation to the specific tool results or user messages in which they appear. Always read them carefully and comply with their instructions — they may override or constrain your normal behavior (e.g., restricting you to read-only actions during plan mode).
 
 When responding to the user, you MUST use the SAME language as the user, unless explicitly instructed to do otherwise.
 

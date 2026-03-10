@@ -86,6 +86,8 @@ class StatusSnapshot:
     """The usage of the context, in percentage."""
     yolo_enabled: bool = False
     """Whether YOLO (auto-approve) mode is enabled."""
+    plan_mode: bool = False
+    """Whether plan mode (read-only research and planning) is active."""
     context_tokens: int = 0
     """The number of tokens currently in the context."""
     max_context_tokens: int = 0

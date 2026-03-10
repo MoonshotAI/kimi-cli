@@ -8,7 +8,7 @@ import os
 import re
 import time
 from collections import deque
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from hashlib import md5, sha256
@@ -53,6 +53,7 @@ from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
 PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
+PROMPT_SYMBOL_PLAN = "📋"
 
 
 class SlashCommandCompleter(Completer):
@@ -496,6 +497,7 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
 def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
     tips = [
         "ctrl-x: toggle mode",
+        "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
     ]
@@ -660,6 +662,7 @@ class CustomPromptSession:
         agent_mode_slash_commands: Sequence[SlashCommand[Any]],
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
         editor_command_provider: Callable[[], str] = lambda: "",
+        plan_mode_toggle_callback: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -667,6 +670,7 @@ class CustomPromptSession:
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
         self._editor_command_provider = editor_command_provider
+        self._plan_mode_toggle_callback = plan_mode_toggle_callback
         self._model_capabilities = model_capabilities
         self._model_name = model_name
         self._last_history_content: str | None = None
@@ -719,6 +723,23 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
+        @_kb.add("s-tab", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Toggle plan mode with Shift+Tab."""
+            if self._plan_mode_toggle_callback is not None:
+
+                async def _toggle() -> None:
+                    assert self._plan_mode_toggle_callback is not None
+                    new_state = await self._plan_mode_toggle_callback()
+                    if new_state:
+                        toast("plan mode ON", topic="plan_mode", duration=3.0, immediate=True)
+                    else:
+                        toast("plan mode OFF", topic="plan_mode", duration=3.0, immediate=True)
+                    event.app.invalidate()
+
+                event.app.create_background_task(_toggle())
+            event.app.invalidate()
+
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
@@ -767,6 +788,9 @@ class CustomPromptSession:
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
             return FormattedText([("bold", f"{PROMPT_SYMBOL_SHELL} ")])
+        status = self._status_provider()
+        if status.plan_mode:
+            return FormattedText([("fg:#00aaff", f"{PROMPT_SYMBOL_PLAN} ")])
         symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
         return FormattedText([("", f"{symbol} ")])
 
@@ -947,6 +971,9 @@ class CustomPromptSession:
         if status.yolo_enabled:
             fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
             columns -= len("yolo") + 2
+        if status.plan_mode:
+            fragments.extend([("bold fg:#00aaff", "plan"), ("", " " * 2)])
+            columns -= len("plan") + 2
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
         right_text = self._render_right_span(status)

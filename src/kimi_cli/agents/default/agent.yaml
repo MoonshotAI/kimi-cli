@@ -20,6 +20,8 @@ agent:
     - "kimi_cli.tools.file:StrReplaceFile"
     - "kimi_cli.tools.web:SearchWeb"
     - "kimi_cli.tools.web:FetchURL"
+    - "kimi_cli.tools.plan:ExitPlanMode"
+    - "kimi_cli.tools.plan.enter:EnterPlanMode"
   subagents:
     coder:
       path: ./sub.yaml
