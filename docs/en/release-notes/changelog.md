@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Add plan mode — the agent can enter a planning phase (`EnterPlanMode`) where only read-only tools (Glob, Grep, ReadFile) are available, write a structured plan to a file, and present it for user approval (`ExitPlanMode`) before executing; toggle manually via `/plan` slash command or `Shift-Tab` keyboard shortcut
 - Core: Pass session ID as `user_id` metadata to Anthropic API
 
 ## 1.17.0 (2026-03-03)

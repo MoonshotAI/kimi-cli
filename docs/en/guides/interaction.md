@@ -25,6 +25,42 @@ Shell mode also supports some slash commands, including `/help`, `/exit`, `/vers
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
 :::
 
+## Plan mode
+
+Plan mode is a read-only planning mode that lets the AI design an implementation plan before writing code, preventing wasted effort in the wrong direction.
+
+In plan mode, the AI can only use read-only tools (`Glob`, `Grep`, `ReadFile`) to explore the codebase — it cannot modify any files or execute commands. The AI writes its plan to a dedicated plan file, then submits it to you for approval. You can approve, reject, or provide revision feedback.
+
+### Entering plan mode
+
+There are three ways to enter plan mode:
+
+- **Keyboard shortcut**: Press `Shift-Tab` to toggle plan mode
+- **Slash command**: Enter `/plan` or `/plan on`
+- **AI-initiated**: When facing complex tasks, the AI may request to enter plan mode via the `EnterPlanMode` tool — you can accept or decline
+
+When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
+
+### Reviewing plans
+
+When the AI finishes its plan, it submits it for approval via `ExitPlanMode`. The approval panel shows the full plan content, and you can:
+
+- **Approve**: Accept the plan, exit plan mode, and let the AI begin execution
+- **Reject**: Decline the plan, stay in plan mode, and provide feedback via conversation
+- **Revise**: Enter revision notes — the AI will update the plan and resubmit
+
+Press `Ctrl-E` to view the full plan content in a fullscreen pager.
+
+### Managing plan mode
+
+Use the `/plan` command to manage plan mode:
+
+- `/plan`: Toggle plan mode
+- `/plan on`: Enable plan mode
+- `/plan off`: Disable plan mode
+- `/plan view`: View the current plan content
+- `/plan clear`: Clear the current plan file
+
 ## Thinking mode
 
 Thinking mode allows the AI to think more deeply before responding, suitable for handling complex problems.

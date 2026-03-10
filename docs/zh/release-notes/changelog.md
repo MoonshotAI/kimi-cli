@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：新增 Plan 模式——AI 在编码前先制定实施方案并提交审批。Plan 模式下仅允许使用只读工具（`Glob`、`Grep`、`ReadFile`）探索代码库，将方案写入 plan 文件后通过 `ExitPlanMode` 提交审批，用户可批准、拒绝或提供修改意见；支持 `Shift-Tab` 快捷键和 `/plan` 斜杠命令切换
 - Core：将会话 ID 作为 `user_id` 元数据传递给 Anthropic API
 
 ## 1.17.0 (2026-03-03)
