@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.19.0 (2026-03-10)
+
 - Core: Add plan mode — the agent can enter a planning phase (`EnterPlanMode`) where only read-only tools (Glob, Grep, ReadFile) are available, write a structured plan to a file, and present it for user approval (`ExitPlanMode`) before executing; toggle manually via `/plan` slash command or `Shift-Tab` keyboard shortcut
 - Vis: Add `kimi vis` command for launching an interactive visualization dashboard to inspect session traces — includes wire event timeline, context viewer, session explorer, and usage statistics
 - Web: Fix session stream state management — guard against null reference errors during state resets and preserve slash commands across session switches to avoid a brief empty gap
