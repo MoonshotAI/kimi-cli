@@ -12,7 +12,15 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Core: Add plan mode — the agent can enter a planning phase (`EnterPlanMode`) where only read-only tools (Glob, Grep, ReadFile) are available, write a structured plan to a file, and present it for user approval (`ExitPlanMode`) before executing; toggle manually via `/plan` slash command or `Shift-Tab` keyboard shortcut
+- Web: Fix session stream state management — guard against null reference errors during state resets and preserve slash commands across session switches to avoid a brief empty gap
+
+## 1.18.0 (2026-03-09)
+
+- ACP: Support embedded resource content in ACP mode so that Zed's `@` file references correctly include file contents
+- Core: Use `parameters_json_schema` instead of `parameters` in Google GenAI provider to bypass Pydantic validation that rejects standard JSON Schema metadata fields in MCP tools
+- Shell: Enhance `Ctrl-V` clipboard paste to support video files in addition to images — video file paths are inserted as text, and a crash when clipboard data is `None` is fixed
 - Core: Pass session ID as `user_id` metadata to Anthropic API
+- Web: Preserve slash commands on WebSocket reconnect and add automatic retry logic for session initialization
 
 ## 1.17.0 (2026-03-03)
 

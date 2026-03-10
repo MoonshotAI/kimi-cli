@@ -26,7 +26,7 @@ def test_build_toolbar_tips_with_clipboard():
         "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
-        "ctrl-v: paste image",
+        "ctrl-v: paste media",
         "@: mention files",
     ]
 

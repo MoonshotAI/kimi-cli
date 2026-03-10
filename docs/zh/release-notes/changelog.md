@@ -5,7 +5,15 @@
 ## 未发布
 
 - Core：新增 Plan 模式——AI 在编码前先制定实施方案并提交审批。Plan 模式下仅允许使用只读工具（`Glob`、`Grep`、`ReadFile`）探索代码库，将方案写入 plan 文件后通过 `ExitPlanMode` 提交审批，用户可批准、拒绝或提供修改意见；支持 `Shift-Tab` 快捷键和 `/plan` 斜杠命令切换
+- Web：修复会话流状态管理问题——修复状态重置时的空引用错误，并在切换会话时保留斜杠命令，避免初始化响应返回前出现短暂的空白
+
+## 1.18.0 (2026-03-09)
+
+- ACP：支持 ACP 模式下的嵌入式资源内容，使 Zed 的 `@` 文件引用能够正确包含文件内容
+- Core：在 Google GenAI provider 中使用 `parameters_json_schema` 替代 `parameters`，绕过 Pydantic 校验对 MCP 工具中标准 JSON Schema 元数据字段的拒绝
+- Shell：增强 `Ctrl-V` 剪贴板粘贴功能，支持粘贴视频文件——视频文件路径以文本形式插入输入框，同时修复剪贴板数据为 `None` 时的崩溃问题
 - Core：将会话 ID 作为 `user_id` 元数据传递给 Anthropic API
+- Web：修复 WebSocket 重连时斜杠命令丢失的问题，并为会话初始化添加自动重试逻辑
 
 ## 1.17.0 (2026-03-03)
 
