@@ -783,10 +783,10 @@ export function useSessionStream(
   // Reset all state
   const resetState = useCallback((preserveSlashCommands = false) => {
     resetStepState();
-    currentToolCallsRef.current.clear();
+    currentToolCallsRef.current?.clear();
     currentToolCallIdRef.current = null;
-    pendingApprovalRequestsRef.current.clear();
-    pendingQuestionRequestsRef.current.clear();
+    pendingApprovalRequestsRef.current?.clear();
+    pendingQuestionRequestsRef.current?.clear();
     pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
@@ -1851,22 +1851,22 @@ export function useSessionStream(
           // Initialize failure during busy session is non-fatal - retry after delay
           if (message.id === initializeIdRef.current) {
             initializeRetryCountRef.current += 1;
-            
+
             if (initializeRetryCountRef.current > MAX_INITIALIZE_RETRIES) {
               initializeIdRef.current = null;
               initializeRetryCountRef.current = 0;
               return;
             }
-            
+
             initializeIdRef.current = null;
-            
+
             // Auto-retry initialize after 2 seconds
             setTimeout(() => {
               if (wsRef.current?.readyState === WebSocket.OPEN) {
                 sendInitialize(wsRef.current);
               }
             }, 2000);
-            
+
             return;
           }
 
@@ -1949,7 +1949,7 @@ export function useSessionStream(
           initializeRetryCountRef.current = 0;
 
           const { slash_commands } = message.result;
-          
+
           if (slash_commands && slash_commands.length > 0) {
             setSlashCommands(slash_commands);
             slashCommandsLenRef.current = slash_commands.length;
@@ -2608,7 +2608,7 @@ export function useSessionStream(
   // Clear messages
   const clearMessages = useCallback(() => {
     setMessages([]);
-    resetStateRef.current();
+    resetStateRef.current(true);
   }, [setMessages]);
 
   // Auto-connect when sessionId changes
@@ -2634,8 +2634,8 @@ export function useSessionStream(
       disconnectRef.current();
     }
 
-    // Reset state for new session
-    resetStateRef.current();
+    // Reset state for new session (preserve slash commands to avoid empty gap before initialize response)
+    resetStateRef.current(true);
     setMessages([]);
     useToolEventsStore.getState().clearTodoItems();
 
