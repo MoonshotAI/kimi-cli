@@ -78,7 +78,7 @@ class _FakeACPConn:
         ("Windows PowerShell", "powershell.exe", "powershell.exe", ["-command", "echo test"]),
     ],
 )
-async def test_terminal_shell_passes_executable_and_args(
+async def test_terminal_shell_uses_public_shell_args(
     monkeypatch: pytest.MonkeyPatch,
     approval: Approval,
     environment,

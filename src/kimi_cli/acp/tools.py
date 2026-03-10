@@ -88,7 +88,7 @@ class Terminal(CallableTool2[ShellParams]):
         timed_out = False
 
         try:
-            shell_argv = self._shell_tool._shell_args(params.command)
+            shell_argv = self._shell_tool.shell_args(params.command)
             term = await self._acp_conn.create_terminal(
                 command=shell_argv[0],
                 session_id=self._acp_session_id,
