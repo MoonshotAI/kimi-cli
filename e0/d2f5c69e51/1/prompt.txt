@@ -1,0 +1,211 @@
+Implement the following plan:
+
+# Fix: WebSocket reconnect storm — 重构 useSessionStream 依赖关系
+
+## Context
+
+Web UI 切换 session 时出现 WebSocket 快速重连风暴（每秒数十次 open/close）。根因是 PR #1359 (`416bc1b`) 为 `resetState` 的 `useCallback` 依赖数组新增了 `slashCommands.length`，导致 `resetState` 回调引用不稳定，触发 `useLayoutEffect` 循环执行。
+
+## 问题分析：当前完整依赖链
+
+### 关键函数依赖关系（当前代码）
+
+```
+resetStepState                deps: []                                                  ✅ 稳定
+  └─ 调用者: resetState, processEvent
+
+setMessages                   deps: []                                                  ✅ 稳定
+setAwaitingFirstResponse      deps: []                                                  ✅ 稳定
+sendInitialize                deps: []                                                  ✅ 稳定
+completeStreamingMessages     deps: [setMessages]                                       ✅ 稳定
+
+resetState                    deps: [resetStepState, setAwaitingFirstResponse,
+                                     slashCommands.length]                              ❌ 不稳定
+  └─ 调用者: connect, clearMessages, useLayoutEffect
+
+applySessionStatus            deps: [completeStreamingMessages, normalizeSessionStatus,
+                                     onSessionStatus, setAwaitingFirstResponse,
+                                     onFirstTurnComplete]                               ⚠️ 视 props 而定
+
+handleMessage                 deps: [processEvent, onError, setAwaitingFirstResponse,
+                                     applySessionStatus, completeStreamingMessages,
+                                     sendInitialize]                                    ⚠️ 视 processEvent 而定
+
+sendPendingMessage            deps: [setAwaitingFirstResponse]                          ✅ 稳定
+
+connect                       deps: [sessionId, resetState, setMessages,
+                                     getWebSocketUrl, handleMessage, onError,
+                                     sendInitialize, sendPendingMessage,
+                                     setAwaitingFirstResponse,
+                                     completeStreamingMessages]                         ❌ 不稳定 (← resetState)
+
+disconnect                    deps: [completeStreamingMessages,
+                                     setAwaitingFirstResponse, setMessages]             ✅ 稳定
+
+cancel                        deps: [status, disconnect, setAwaitingFirstResponse,
+                                     setMessages]                                       ⚠️ status 变化
+
+reconnect                     deps: [disconnect, connect]                               ❌ 不稳定 (← connect)
+
+clearMessages                 deps: [setMessages, resetState]                           ❌ 不稳定 (← resetState)
+
+useLayoutEffect (auto-connect)
+                              deps: [sessionId, resetState, setMessages]                ❌ 不稳定 (← resetState)
+```
+
+### Ref 间接引用（已有）
+
+```
+connectRef.current    = connect       — 用于 useLayoutEffect 中调用 connect
+disconnectRef.current = disconnect    — 用于 useLayoutEffect 中调用 disconnect
+reconnectRef.current  = reconnect     — 用于 handleMessage 中 history_complete 超时
+statusRef.current     = status        — 用于 watchdog 判断
+```
+
+### 不稳定依赖链
+
+```
+slashCommands (state)
+  ↓ length 变化
+resetState (useCallback, deps 含 slashCommands.length)  ← 不稳定
+  ↓ 引用变化
+connect (useCallback, deps 含 resetState)                ← 不稳定
+reconnect (useCallback, deps 含 connect)                 ← 不稳定
+clearMessages (useCallback, deps 含 resetState)          ← 不稳定
+useLayoutEffect (deps 含 resetState)                     ← 循环触发
+```
+
+### 循环过程
+
+1. `sessionId` 变 → effect 执行 → `resetState()` → `setSlashCommands([])` → length N→0
+2. `resetState` 引用变 → effect 重新执行 → disconnect + setTimeout(connect)
+3. connect 后服务端推送 slash_commands → `setSlashCommands(cmds)` → length 0→N
+4. `resetState` 引用又变 → 循环…
+
+### 核心矛盾
+
+PR #1359 需要 `resetState` 能条件性保留/清空 slash commands，于是在 `useCallback` 内读了 `slashCommands.length` 来判断是否有缓存可保留。但这让 `resetState` 引用随 slash commands 变化，污染了整条依赖链。
+
+## 修改方案
+
+### 文件：`web/src/hooks/useSessionStream.ts`
+
+### 1. 用 ref 追踪 slashCommands 长度，去掉 state 依赖
+
+**目的**：让 `resetState` 的依赖数组不包含 `slashCommands.length`，从而恢复引用稳定性。
+
+```ts
+// 新增 ref（在 usingCachedCommandsRef 附近）
+const slashCommandsLenRef = useRef(0);
+```
+
+在 `setSlashCommands` 被调用的地方同步更新 ref。有两处：
+- `resetState` 内 `setSlashCommands([])` → 之后加 `slashCommandsLenRef.current = 0`
+- `handleMessage` 内 `setSlashCommands(slash_commands)` → 之后加 `slashCommandsLenRef.current = slash_commands.length`
+
+然后将 `resetState` 中的 `slashCommands.length > 0` 改为 `slashCommandsLenRef.current > 0`，并从依赖数组移除 `slashCommands.length`：
+
+```ts
+const resetState = useCallback((preserveSlashCommands = false) => {
+    // ... 其余不变 ...
+    if (!preserveSlashCommands) {
+      setSlashCommands([]);
+      slashCommandsLenRef.current = 0;
+      usingCachedCommandsRef.current = false;
+    } else if (slashCommandsLenRef.current > 0) {  // ← 用 ref 替代 state
+      usingCachedCommandsRef.current = true;
+    }
+}, [resetStepState, setAwaitingFirstResponse]);  // ← 移除 slashCommands.length
+```
+
+### 2. useLayoutEffect 只依赖 sessionId
+
+**目的**：effect 只在 sessionId 变化时执行，不受 resetState/setMessages 引用变化影响。
+
+添加 `resetStateRef` 并同步（与已有的 connectRef/disconnectRef 模式一致）：
+
+```ts
+// 声明（约 308-310 行附近）
+const resetStateRef = useRef<(preserveSlashCommands?: boolean) => void>(() => undefined);
+
+// 同步（约 2562-2564 行附近）
+resetStateRef.current = resetState;
+```
+
+修改 `useLayoutEffect`：
+
+```ts
+useLayoutEffect(() => {
+    if (wsRef.current) {
+      disconnectRef.current();
+    }
+    resetStateRef.current();     // ← 用 ref
+    setMessages([]);
+    useToolEventsStore.getState().clearTodoItems();
+
+    if (sessionId) {
+      const timeoutId = window.setTimeout(() => {
+        connectRef.current();
+      }, 50);
+      return () => {
+        window.clearTimeout(timeoutId);
+        disconnectRef.current();
+      };
+    }
+    setIsReplayingHistory(false);
+    return () => {
+      disconnectRef.current();
+    };
+}, [sessionId]);  // ← 只依赖 sessionId
+```
+
+### 3. clearMessages 也用 ref
+
+```ts
+const clearMessages = useCallback(() => {
+    setMessages([]);
+    resetStateRef.current();
+}, [setMessages]);
+```
+
+### 修改后依赖链
+
+```
+resetState                    deps: [resetStepState, setAwaitingFirstResponse]          ✅ 稳定
+  └─ 读 slashCommandsLenRef.current（ref，不需要声明依赖）
+
+connect                       deps: [sessionId, resetState, ...]                        ✅ 稳定（resetState 已稳定）
+reconnect                     deps: [disconnect, connect]                               ✅ 稳定
+clearMessages                 deps: [setMessages]                                       ✅ 稳定（用 resetStateRef）
+
+useLayoutEffect (auto-connect)
+                              deps: [sessionId]                                         ✅ 稳定
+  └─ 通过 resetStateRef / connectRef / disconnectRef 调用（ref 不需要声明依赖）
+
+新增 Ref:
+  slashCommandsLenRef.current  — 追踪 slashCommands 长度，替代 state 依赖
+  resetStateRef.current        — 追踪 resetState 最新引用，用于 effect 和 clearMessages
+```
+
+### 修改总结
+
+| 改动 | 目的 |
+|------|------|
+| 新增 `slashCommandsLenRef` | 替代 `slashCommands.length` state 依赖 |
+| `resetState` deps 移除 `slashCommands.length` | 恢复引用稳定性 |
+| 新增 `resetStateRef` + 同步 | 让 effect 通过 ref 调用，不依赖回调引用 |
+| `useLayoutEffect` deps 改为 `[sessionId]` | 只在 session 切换时执行 |
+| `clearMessages` 用 `resetStateRef.current()` | 消除对 `resetState` 引用的依赖 |
+
+## 验证
+
+1. `cd web && ./node_modules/.bin/biome check src/hooks/useSessionStream.ts` — 无错误
+2. `cd web && ./node_modules/.bin/tsc --noEmit` — 无错误
+3. 启动 `kimi web`，在多个 session 间切换，确认日志中每次切换只有一对 "connection open" / "connection closed"（对旧 session）和一个 "connection open"（对新 session），不再有重连风暴
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+深度review一下这个实现有什么其他可能的问题
