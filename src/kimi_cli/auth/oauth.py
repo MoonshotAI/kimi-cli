@@ -193,12 +193,8 @@ def get_device_id() -> str:
 
 
 def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
-    try:
-        value.encode("ascii")
-        return value
-    except UnicodeEncodeError:
-        sanitized = value.encode("ascii", errors="ignore").decode("ascii").strip()
-        return sanitized or fallback
+    sanitized = "".join(c for c in value if c == "\t" or "\x20" <= c <= "\x7e").strip()
+    return sanitized or fallback
 
 
 def _common_headers() -> dict[str, str]:
