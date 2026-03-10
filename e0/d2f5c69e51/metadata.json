@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "e0d2f5c69e51",
+  "strategy": "manual-commit",
+  "branch": "fix/web-websocket-reconnect-storm",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "web/src/hooks/useSessionStream.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e0/d2f5c69e51/0/metadata.json",
+      "transcript": "/e0/d2f5c69e51/0/full.jsonl",
+      "context": "/e0/d2f5c69e51/0/context.md",
+      "content_hash": "/e0/d2f5c69e51/0/content_hash.txt",
+      "prompt": "/e0/d2f5c69e51/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 38,
+    "cache_creation_tokens": 274123,
+    "cache_read_tokens": 1997734,
+    "output_tokens": 11208,
+    "api_call_count": 32
+  }
+}
