@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "b43526b075f6",
+  "strategy": "manual-commit",
+  "branch": "fix/web-file-mention-stale-index",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "web/src/features/chat/components/chat-prompt-composer.tsx",
+    "web/src/features/chat/file-mention-menu.tsx",
+    "web/src/features/chat/useFileMentions.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b4/3526b075f6/0/metadata.json",
+      "transcript": "/b4/3526b075f6/0/full.jsonl",
+      "context": "/b4/3526b075f6/0/context.md",
+      "content_hash": "/b4/3526b075f6/0/content_hash.txt",
+      "prompt": "/b4/3526b075f6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 39,
+    "cache_creation_tokens": 56118,
+    "cache_read_tokens": 1332404,
+    "output_tokens": 8186,
+    "api_call_count": 35
+  }
+}

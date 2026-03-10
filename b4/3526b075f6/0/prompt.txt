@@ -1,0 +1,81 @@
+Implement the following plan:
+
+# 修复：Web 端 @ 文件索引在切换 session 或文件变更后不刷新
+
+## 背景
+
+用户重命名工作区目录后，`@` 文件提及的自动补全列表仍显示旧数据。即使切换到新 session 也不会更新，只能手动刷新页面。此外超过 500 个文件后无法通过 `@` 找到剩余文件。
+
+**根因**（`useFileMentions.ts`）：
+1. 重置 effect（第 290-295 行）依赖数组为 `[]` — 仅在组件挂载时执行，sessionId 变化时不重置
+2. 加载 effect（第 325-343 行）有守卫条件 `workspaceStatus !== "idle" || workspaceFiles.length > 0` — 一旦加载完成（status="ready"），即使 sessionId 变了也不会重新加载
+3. 没有过期/TTL 机制 — 索引永远存活直到页面刷新
+4. BFS 爬取上限 500 个文件，超出部分完全不可访问
+
+## 修复方案
+
+### 改动 1：sessionId 变化时重置 workspace 状态
+
+**文件：** `web/src/features/chat/useFileMentions.ts`
+
+将重置 effect 的依赖从 `[]` 改为 `[sessionId]`：
+
+```ts
+useEffect(() => {
+  setWorkspaceFiles([]);
+  setWorkspaceStatus("idle");
+  setWorkspaceError(null);
+  workspaceRequestRef.current += 1;
+}, [sessionId]);
+```
+
+切换 session 后，索引被清空，下次输入 `@` 会重新爬取。
+
+### 改动 2：添加过期刷新机制
+
+**文件：** `web/src/features/chat/useFileMentions.ts`
+
+当用户输入 `@` 打开菜单时，如果距离上次加载超过 30 秒，自动重新爬取：
+
+- 新增 `WORKSPACE_STALE_MS = 30_000` 常量
+- 新增 `lastLoadedRef` 记录上次成功爬取的时间戳
+- 在 `loadWorkspaceFiles` 成功时设置时间戳
+- 修改加载 effect 的守卫条件：status 为 "ready" 但数据已过期时也触发重新加载
+
+### 改动 3：按路径前缀实时查询（解决 500 文件上限问题）
+
+**文件：** `web/src/features/chat/useFileMentions.ts`
+
+当用户 `@` 查询包含 `/` 时（如 `@deep/path/`），提取目录前缀，实时调用 `listDirectory` 获取该目录下的文件，与已缓存的索引合并去重后展示。这样即使文件不在预爬取的 500 个文件内，也能通过输入路径前缀找到。
+
+- 新增 `queryDirectory` 函数：对指定路径调用 `listDirectory`，返回该目录下的文件列表
+- 在 `filterOptions` 之前，检查 query 是否包含 `/`，如果是则触发针对性的目录查询
+- 用 debounce（~300ms）避免每次按键都发请求
+- 查询结果与 `workspaceFiles` 合并去重（基于 path）
+
+### 改动 4：文件数量截断提示
+
+**文件：** `web/src/features/chat/file-mention-menu.tsx`
+
+当索引文件数达到上限（500）时，在状态栏显示提示如 "Showing first 500 files. Type a path to search deeper."，让用户知道可以通过输入路径找到更多文件。
+
+## 需修改的文件
+
+1. `web/src/features/chat/useFileMentions.ts` — sessionId 重置 + 过期刷新 + 路径前缀实时查询
+2. `web/src/features/chat/file-mention-menu.tsx` — 截断提示
+
+## 验证方式
+
+1. 启动 kimi web，打开一个 session，输入 `@` 加载文件索引
+2. 在工作区重命名一个目录
+3. 切换到另一个 session 再切回来 → 验证 `@` 菜单显示新目录名
+4. 停留在同一 session，等 30 秒后再次输入 `@` → 验证索引自动刷新
+5. 在大型工作区（>500 文件），输入 `@deep/path/` → 验证能看到未在初始索引中的文件
+6. 在 web 目录运行现有测试
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+在最新main的单独分支上提交这个修改
