@@ -1,0 +1,59 @@
+Implement the following plan:
+
+# Fix: @ file mention stale index — review 问题修复
+
+## Context
+
+PR `fix/web-file-mention-stale-index` 在 review 中发现了两个需要修复的问题：
+1. session 切换时 `directoryFiles` 状态未清除，导致旧 session 的目录查询结果残留
+2. 目录查询的 `setTimeout` 回调存在竞态条件，可能用旧 `sessionId` 发起请求
+
+## 修改文件
+
+- `web/src/features/chat/useFileMentions.ts`
+
+## 修改内容
+
+### 1. session 切换时清除 directoryFiles
+
+在 `sessionId` 变化的 reset effect（约第 308 行）中增加 `setDirectoryFiles([])`：
+
+```ts
+useEffect(() => {
+    setWorkspaceFiles([]);
+    setDirectoryFiles([]);        // ← 新增
+    setWorkspaceStatus("idle");
+    setWorkspaceError(null);
+    workspaceRequestRef.current += 1;
+    lastLoadedRef.current = 0;
+}, [sessionId]);
+```
+
+### 2. 目录查询 timeout 回调中校验 sessionId 防竞态
+
+用 ref 存储当前 sessionId，在 timeout 回调内校验：
+
+- 在现有 ref 声明区域新增 `const sessionIdRef = useRef(sessionId)`
+- 在 sessionId 变化时同步更新 ref（可放在 session reset effect 中或单独 effect）
+- 在 setTimeout 回调开头校验 `if (sessionIdRef.current !== sessionId) return`
+
+### 3. 统一 lint 抑制格式
+
+将第 362 行的 `eslint-disable-next-line` 改为 `biome-ignore`，与第 307 行一致：
+
+```diff
+-  // eslint-disable-next-line react-hooks/exhaustive-deps
++  // biome-ignore lint/correctness/useExhaustiveDependencies: staleness depends on Date.now() which is not a dep
+```
+
+## 验证
+
+- 确认 `biome check` / lint 通过
+- 确认 TypeScript 编译无错误（`tsc --noEmit` 或 IDE 无红线）
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/moonshot/.REDACTED.jsonl
+
+---
+
+add commit
