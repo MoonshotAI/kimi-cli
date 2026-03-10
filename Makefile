@@ -29,6 +29,13 @@ web-back: ## Start web backend with uvicorn (reload enabled).
 web-front: ## Start web frontend (vite dev server).
 	@npm --prefix web run dev
 
+# for kimi vis development
+.PHONY: vis-back vis-front
+vis-back: ## Start vis backend with uvicorn (reload enabled).
+	@LOG_LEVEL=DEBUG uv run uvicorn kimi_cli.vis.app:create_app --factory --reload --port 5495
+vis-front: ## Start vis frontend (vite dev server).
+	@npm --prefix vis run dev
+
 .PHONY: format format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web
 format: format-kimi-cli format-kosong format-pykaos format-kimi-sdk format-web ## Auto-format all workspace packages.
 format-kimi-cli: ## Auto-format Kimi Code CLI sources with ruff.
@@ -105,8 +112,8 @@ test-kimi-sdk: ## Run kimi-sdk tests.
 	@echo "==> Running kimi-sdk tests"
 	@uv run --project sdks/kimi-sdk --directory sdks/kimi-sdk pytest tests -vv
 .PHONY: build build-kimi-cli build-kosong build-pykaos build-kimi-sdk build-bin build-bin-onedir
-build: build-web build-kimi-cli build-kosong build-pykaos build-kimi-sdk ## Build Python packages for release.
-build-kimi-cli: build-web ## Build the kimi-cli and kimi-code sdists and wheels.
+build: build-web build-vis build-kimi-cli build-kosong build-pykaos build-kimi-sdk ## Build Python packages for release.
+build-kimi-cli: build-web build-vis ## Build the kimi-cli and kimi-code sdists and wheels.
 	@echo "==> Building kimi-cli distributions"
 	@uv build --package kimi-cli --no-sources --out-dir dist
 	@echo "==> Building kimi-code distributions"
@@ -123,12 +130,15 @@ build-kimi-sdk: ## Build the kimi-sdk sdist and wheel.
 build-web: ## Build web UI and sync into kimi-cli package.
 	@echo "==> Building web UI"
 	@uv run scripts/build_web.py
-build-bin: build-web ## Build the standalone executable with PyInstaller (one-file mode).
+build-vis: ## Build vis UI and sync into kimi-cli package.
+	@echo "==> Building vis UI"
+	@uv run scripts/build_vis.py
+build-bin: build-web build-vis ## Build the standalone executable with PyInstaller (one-file mode).
 	@echo "==> Building PyInstaller binary (one-file)"
 	@uv run pyinstaller kimi.spec
 	@mkdir -p dist/onefile
 	@if [ -f dist/kimi.exe ]; then mv dist/kimi.exe dist/onefile/; elif [ -f dist/kimi ]; then mv dist/kimi dist/onefile/; fi
-build-bin-onedir: build-web ## Build the standalone executable with PyInstaller (one-dir mode).
+build-bin-onedir: build-web build-vis ## Build the standalone executable with PyInstaller (one-dir mode).
 	@echo "==> Building PyInstaller binary (one-dir)"
 	@rm -rf dist/onedir dist/kimi
 	@uv run pyinstaller kimi.spec
