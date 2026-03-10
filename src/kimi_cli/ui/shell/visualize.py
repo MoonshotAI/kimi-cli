@@ -576,7 +576,7 @@ class _QuestionRequestPanel:
         if self._body_text:
             lines.append(
                 Text.from_markup(
-                    "[bold cyan]  \u25b6 Press ctrl-e to view the full plan[/bold cyan]"
+                    "[bold cyan]  \u25b6 Press ctrl-e to view full content[/bold cyan]"
                 )
             )
             lines.append(Text(""))

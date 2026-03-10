@@ -177,7 +177,11 @@ def _reentry_reminder(plan_file_path: str | None = None) -> str:
         "This supersedes any other instructions you have received.",
         "",
         "## Re-entering Plan Mode",
-        f"A plan file exists at {plan_file_path} from a previous planning session.",
+        (
+            f"A plan file exists at {plan_file_path} from a previous planning session."
+            if plan_file_path
+            else "A plan file from a previous planning session already exists."
+        ),
         "Before proceeding:",
         "1. Read the existing plan file to understand what was previously planned",
         "2. Evaluate the user's current request against that plan",
