@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix `@` file mention index not refreshing after switching sessions or when workspace files change — reset index on session switch, auto-refresh after 30s staleness, and support path-prefix search beyond the 500-file limit
+
 ## 1.18.0 (2026-03-09)
 
 - ACP: Support embedded resource content in ACP mode so that Zed's `@` file references correctly include file contents
