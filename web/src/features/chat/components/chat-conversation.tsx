@@ -17,7 +17,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isMacOS } from "@/hooks/utils";
+import { hasPlatformModifier, isMacOS } from "@/hooks/utils";
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -61,7 +61,7 @@ export function ChatConversation({
   // Handle Cmd+F / Ctrl+F
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+      if (hasPlatformModifier(e) && e.key === "f") {
         e.preventDefault();
         onSearchOpenChange(true);
       }
@@ -138,8 +138,7 @@ export function ChatConversation({
                     className="mt-1"
                     type="button"
                     onClick={(e) => {
-                      const isNewTab = isMacOS() ? e.metaKey : e.ctrlKey;
-                      if (isNewTab) {
+                      if (hasPlatformModifier(e)) {
                         const url = new URL(window.location.origin + window.location.pathname);
                         url.searchParams.set("action", "create");
                         window.open(url.toString(), "_blank");
