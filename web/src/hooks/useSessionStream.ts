@@ -308,6 +308,7 @@ export function useSessionStream(
   const connectRef = useRef<() => void>(() => undefined);
   const disconnectRef = useRef<() => void>(() => undefined);
   const reconnectRef = useRef<() => void>(() => undefined);
+  const resetStateRef = useRef<(preserveSlashCommands?: boolean) => void>(() => undefined);
   const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
@@ -327,6 +328,7 @@ export function useSessionStream(
   const initializeRetryCountRef = useRef(0); // Track retry attempts for initialize
   const MAX_INITIALIZE_RETRIES = 5; // Maximum retry attempts
   const usingCachedCommandsRef = useRef(false); // Track if using cached slash commands
+  const slashCommandsLenRef = useRef(0); // Track slashCommands length without state dependency
 
   // Current state accumulators
   const currentThinkingRef = useRef("");
@@ -808,11 +810,12 @@ export function useSessionStream(
     // Handle slashCommands: preserve or clear
     if (!preserveSlashCommands) {
       setSlashCommands([]);
+      slashCommandsLenRef.current = 0;
       usingCachedCommandsRef.current = false;
-    } else if (slashCommands.length > 0) {
+    } else if (slashCommandsLenRef.current > 0) {
       usingCachedCommandsRef.current = true;
     }
-  }, [resetStepState, setAwaitingFirstResponse, slashCommands.length]);
+  }, [resetStepState, setAwaitingFirstResponse]);
 
   // Process a SubagentEvent: accumulate inner events into parent Task tool's subagentSteps
   const processSubagentEvent = useCallback(
@@ -1949,6 +1952,7 @@ export function useSessionStream(
           
           if (slash_commands && slash_commands.length > 0) {
             setSlashCommands(slash_commands);
+            slashCommandsLenRef.current = slash_commands.length;
             usingCachedCommandsRef.current = false;
           }
           return;
@@ -2562,6 +2566,7 @@ export function useSessionStream(
   connectRef.current = connect;
   disconnectRef.current = disconnect;
   reconnectRef.current = reconnect;
+  resetStateRef.current = resetState;
   statusRef.current = status;
 
   // Send message to session (auto-connects if not connected)
@@ -2603,8 +2608,8 @@ export function useSessionStream(
   // Clear messages
   const clearMessages = useCallback(() => {
     setMessages([]);
-    resetState();
-  }, [setMessages, resetState]);
+    resetStateRef.current();
+  }, [setMessages]);
 
   // Auto-connect when sessionId changes
   useLayoutEffect(() => {
@@ -2630,7 +2635,7 @@ export function useSessionStream(
     }
 
     // Reset state for new session
-    resetState();
+    resetStateRef.current();
     setMessages([]);
     useToolEventsStore.getState().clearTodoItems();
 
@@ -2650,7 +2655,7 @@ export function useSessionStream(
     return () => {
       disconnectRef.current();
     };
-  }, [sessionId, resetState, setMessages]);
+  }, [sessionId, setMessages]);
 
   // Cleanup on unmount
   useEffect(
