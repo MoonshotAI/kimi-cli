@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "8e8115e3489b",
+  "session_id": "7758c4c5-5d29-41e5-bc0a-b3091fd59b0c",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-10T09:44:59.61411Z",
+  "branch": "fix/web-websocket-reconnect-storm",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "CHANGELOG.md",
+    "docs/en/reference/kimi-info.md",
+    "docs/en/release-notes/changelog.md",
+    "docs/zh/reference/kimi-info.md",
+    "docs/zh/release-notes/changelog.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "4f46600d7f6b",
+  "transcript_identifier_at_start": "1325b1a0-0ec7-45eb-af6f-56a4d964eeda",
+  "checkpoint_transcript_start": 530,
+  "transcript_lines_at_start": 530,
+  "token_usage": {
+    "input_tokens": 22,
+    "cache_creation_tokens": 233682,
+    "cache_read_tokens": 1459104,
+    "output_tokens": 2719,
+    "api_call_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-10T09:44:57.853796Z",
+    "agent_lines": 0,
+    "human_added": 6,
+    "human_modified": 4,
+    "human_removed": 0,
+    "total_committed": 6,
+    "agent_percentage": 0
+  },
+  "transcript_path": ".claude/projects/-Users-moonshot-dev-working-kimi-kimi-cli/7758c4c5-5d29-41e5-bc0a-b3091fd59b0c.jsonl"
+}
