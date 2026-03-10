@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Auth: Sanitize HTTP header values to strip control characters (newline, carriage return, null bytes, etc.) that could cause h11/aiohttp validation errors when system information contains them (e.g., kernel version with trailing newline on some Ubuntu systems)
+
 ## 1.18.0 (2026-03-09)
 
 - ACP: Support embedded resource content in ACP mode so that Zed's `@` file references correctly include file contents
