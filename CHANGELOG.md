@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Vis: Add `kimi vis` command for launching an interactive visualization dashboard to inspect session traces — includes wire event timeline, context viewer, session explorer, and usage statistics
 - Web: Fix session stream state management — guard against null reference errors during state resets and preserve slash commands across session switches to avoid a brief empty gap
 
 ## 1.18.0 (2026-03-09)
