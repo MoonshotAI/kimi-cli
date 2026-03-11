@@ -123,7 +123,7 @@ export function ChatWorkspaceContainer({
     isConnected: isStreamConnected,
     isReplayingHistory,
     planMode,
-    togglePlanMode,
+    sendSetPlanMode,
     slashCommands,
   } = sessionStream;
 
@@ -312,9 +312,9 @@ export function ChatWorkspaceContainer({
     [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage, enqueue],
   );
 
-  const handlePlanModeToggle = useCallback(() => {
-    togglePlanMode();
-  }, [togglePlanMode]);
+  const handlePlanModeChange = useCallback((enabled: boolean) => {
+    sendSetPlanMode(enabled);
+  }, [sendSetPlanMode]);
 
   const handleForkSession = useCallback(
     async (turnIndex: number) => {
@@ -385,7 +385,7 @@ export function ChatWorkspaceContainer({
       onRenameSession={onRenameSession}
       slashCommands={slashCommands}
       planMode={planMode}
-      onPlanModeToggle={handlePlanModeToggle}
+      onPlanModeChange={handlePlanModeChange}
       onForkSession={onForkSession ? handleForkSession : undefined}
     />
   );

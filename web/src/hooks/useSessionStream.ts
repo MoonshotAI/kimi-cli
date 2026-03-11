@@ -238,8 +238,8 @@ type UseSessionStreamReturn = {
   error: Error | null;
   /** Whether plan mode is active */
   planMode: boolean;
-  /** Toggle plan mode via silent RPC (no context message) */
-  togglePlanMode: () => void;
+  /** Set plan mode via silent RPC (no context message) */
+  sendSetPlanMode: (enabled: boolean) => void;
   /** Available slash commands from the server */
   slashCommands: SlashCommandDef[];
 };
@@ -2623,15 +2623,16 @@ export function useSessionStream(
     resetStateRef.current(true);
   }, [setMessages]);
 
-  // Toggle plan mode via silent RPC (no context message)
-  const togglePlanMode = useCallback(() => {
+  // Set plan mode via silent RPC (no context message)
+  const sendSetPlanMode = useCallback((enabled: boolean) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return;
     }
     const message: JsonRpcRequest = {
       jsonrpc: "2.0",
-      method: "toggle_plan_mode",
+      method: "set_plan_mode",
       id: uuidV4(),
+      params: { enabled },
     };
     wsRef.current.send(JSON.stringify(message));
   }, []);
@@ -2719,7 +2720,7 @@ export function useSessionStream(
     clearMessages,
     error,
     planMode,
-    togglePlanMode,
+    sendSetPlanMode,
     slashCommands,
   };
 }

@@ -231,6 +231,8 @@ class KimiSoul:
 
     def _set_plan_mode(self, enabled: bool, *, source: Literal["manual", "tool"]) -> bool:
         """Update plan mode state for either manual or tool-driven toggles."""
+        if enabled == self._plan_mode:
+            return self._plan_mode
         self._plan_mode = enabled
         if enabled:
             self._ensure_plan_session_id()
@@ -271,13 +273,16 @@ class KimiSoul:
         return self._set_plan_mode(not self._plan_mode, source="tool")
 
     async def toggle_plan_mode_from_manual(self) -> bool:
-        """Toggle plan mode from UI/manual entry points.
-
-        Manual toggles do not append a synthetic history message. Instead, entering
-        plan mode schedules a one-shot injection for the next LLM step, and exiting
-        plan mode clears that pending injection if it has not been used yet.
-        """
+        """Toggle plan mode from UI/manual entry points (slash command, keybinding)."""
         return self._set_plan_mode(not self._plan_mode, source="manual")
+
+    async def set_plan_mode_from_manual(self, enabled: bool) -> bool:
+        """Set plan mode to a specific state from UI/manual entry points.
+
+        Unlike toggle, this accepts the desired state directly, avoiding
+        race conditions when the caller already knows the target value.
+        """
+        return self._set_plan_mode(enabled, source="manual")
 
     def consume_pending_plan_activation_injection(self) -> bool:
         """Consume the next-step activation reminder scheduled by a manual toggle."""

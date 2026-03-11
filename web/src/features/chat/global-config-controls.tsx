@@ -45,13 +45,13 @@ function getThinkingState(model: ConfigModel | null): ThinkingState {
 export type GlobalConfigControlsProps = {
   className?: string;
   planMode?: boolean;
-  onPlanModeToggle?: () => void;
+  onPlanModeChange?: (enabled: boolean) => void;
 };
 
 export function GlobalConfigControls({
   className,
   planMode = false,
-  onPlanModeToggle,
+  onPlanModeChange,
 }: GlobalConfigControlsProps): ReactElement {
   const { config, isLoading, isUpdating, error, refresh, update } =
     useGlobalConfig();
@@ -277,7 +277,7 @@ export function GlobalConfigControls({
         thinkingToggle
       )}
 
-      {onPlanModeToggle && (
+      {onPlanModeChange && (
         <>
           <div className="mx-0 h-4 w-px bg-border/70" />
           <Tooltip>
@@ -289,7 +289,7 @@ export function GlobalConfigControls({
                 <Switch
                   aria-label="Toggle plan mode"
                   checked={planMode}
-                  onCheckedChange={onPlanModeToggle}
+                  onCheckedChange={onPlanModeChange}
                 />
               </div>
             </TooltipTrigger>

@@ -82,8 +82,8 @@ type ChatWorkspaceProps = {
   slashCommands?: SlashCommandDef[];
   /** Whether plan mode is active */
   planMode?: boolean;
-  /** Callback to toggle plan mode */
-  onPlanModeToggle?: () => void;
+  /** Callback to set plan mode */
+  onPlanModeChange?: (enabled: boolean) => void;
   /** Maximum context size for the current model (tokens) */
   maxContextSize?: number;
   /** Fork session at a specific turn */
@@ -117,7 +117,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   maxContextSize,
   slashCommands = [],
   planMode = false,
-  onPlanModeToggle,
+  onPlanModeChange,
   onForkSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
@@ -315,7 +315,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
                   isGitDiffLoading={isGitDiffLoading}
                   slashCommands={slashCommands}
                   planMode={planMode}
-                  onPlanModeToggle={onPlanModeToggle}
+                  onPlanModeChange={onPlanModeChange}
                   activityStatus={activityStatus}
                   usagePercent={usagePercent}
                   usedTokens={usedTokens}
