@@ -382,6 +382,7 @@ export const useFileMentions = ({
       if (sessionIdRef.current !== capturedSessionId) return;
       try {
         const entries = await listDirectory(capturedSessionId, dirPath);
+        if (sessionIdRef.current !== capturedSessionId) return;
         const files: WorkspaceFile[] = [];
         for (const entry of entries) {
           if (entry.type === "directory") {
