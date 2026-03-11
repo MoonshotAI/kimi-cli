@@ -128,9 +128,11 @@ class KimiSoul:
             self._checkpoint_with_user_message = False
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
-        self._plan_mode: bool = False
+        self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = None
         self._pending_plan_activation_injection: bool = False
+        if self._plan_mode:
+            self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
         ]
@@ -239,6 +241,9 @@ class KimiSoul:
             self._pending_plan_activation_injection = source == "manual"
         else:
             self._pending_plan_activation_injection = False
+        # Persist plan mode to session state so it survives process restarts
+        self._runtime.session.state.plan_mode = self._plan_mode
+        self._runtime.session.save_state()
         return self._plan_mode
 
     def get_plan_file_path(self) -> Path | None:
