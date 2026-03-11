@@ -141,6 +141,54 @@ const toSessionSnapshot = (
   updatedAt: status?.updatedAt ?? fallbackUpdatedAt,
 });
 
+const getSnapshotTimestamp = (
+  snapshot?: Pick<SessionStatusSnapshot, "updatedAt">,
+): number | null => {
+  if (!(snapshot?.updatedAt instanceof Date)) {
+    return null;
+  }
+  const timestamp = snapshot.updatedAt.getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+};
+
+export const shouldApplySessionSnapshot = (
+  previous: SessionStatusSnapshot | undefined,
+  next: SessionStatusSnapshot,
+): boolean => {
+  if (!previous) {
+    return true;
+  }
+
+  if (typeof previous.seq === "number" && typeof next.seq === "number") {
+    return next.seq > previous.seq;
+  }
+
+  if (typeof next.seq === "number") {
+    return true;
+  }
+
+  const previousTimestamp = getSnapshotTimestamp(previous);
+  const nextTimestamp = getSnapshotTimestamp(next);
+
+  if (previousTimestamp !== null && nextTimestamp !== null) {
+    return nextTimestamp > previousTimestamp;
+  }
+
+  if (typeof previous.seq === "number") {
+    return false;
+  }
+
+  if (nextTimestamp !== null) {
+    return true;
+  }
+
+  if (previousTimestamp !== null) {
+    return false;
+  }
+
+  return true;
+};
+
 /**
  * Custom error class for directory not found
  */
@@ -192,6 +240,10 @@ export function useSessions(): UseSessionsReturn {
       } = useSessionAttentionStore.getState();
       const previous = sessionSnapshots[sessionId];
       const next = toSessionSnapshot(status, fallbackUpdatedAt);
+
+      if (!shouldApplySessionSnapshot(previous, next)) {
+        return;
+      }
 
       setSessionSnapshot(sessionId, next);
 
