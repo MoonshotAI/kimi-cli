@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/collapsible";
 import { hasPlatformModifier, isMacOS } from "@/hooks/utils";
 import { cn, } from "@/lib/utils";
+import { useSessionAttentionStore } from "@/hooks/useSessionAttention";
 
 // Top-level regex constants for performance
 const NEWLINE_REGEX = /\r\n|\r|\n/;
@@ -76,6 +77,34 @@ type SessionGroup = {
 };
 
 const VIEW_MODE_KEY = "kimi-sessions-view-mode";
+
+/**
+ * Status dot indicator for session list items.
+ * - Yellow pulsing dot: session is busy (running a prompt)
+ * - Green dot: needs attention (completed unread / approval request)
+ * - No dot: idle or stopped
+ */
+function SessionStatusDot({ sessionId }: { sessionId: string }) {
+  const state = useSessionAttentionStore((s) => s.sessionStates[sessionId]);
+  const needsAttention = useSessionAttentionStore(
+    (s) => s.attention[sessionId] ?? false,
+  );
+
+  if (state === "busy") {
+    return (
+      <span className="relative flex size-2 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-yellow-400" />
+      </span>
+    );
+  }
+
+  if (needsAttention) {
+    return <span className="inline-flex size-2 shrink-0 rounded-full bg-green-400" />;
+  }
+
+  return null;
+}
 
 /**
  * Shorten a path to fit in limited space
@@ -924,16 +953,19 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                             className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
                                           />
                                         ) : (
-                                          <Tooltip delayDuration={500}>
-                                            <TooltipTrigger asChild>
-                                              <p className="text-sm font-medium text-foreground truncate">
+                                          <div className="flex items-center gap-2">
+                                            <SessionStatusDot sessionId={session.id} />
+                                            <Tooltip delayDuration={500}>
+                                              <TooltipTrigger asChild>
+                                                <p className="text-sm font-medium text-foreground truncate">
+                                                  {normalizeTitle(session.title)}
+                                                </p>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="right" className="max-w-md">
                                                 {normalizeTitle(session.title)}
-                                              </p>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="right" className="max-w-md">
-                                              {normalizeTitle(session.title)}
-                                            </TooltipContent>
-                                          </Tooltip>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </div>
                                         )}
                                         {!isEditing && (
                                           <span className="text-[10px] text-muted-foreground mt-1 block">
@@ -1045,6 +1077,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                           />
                         ) : (
                           <div className="flex items-center gap-2">
+                            <SessionStatusDot sessionId={session.id} />
                             <Tooltip delayDuration={500}>
                               <TooltipTrigger asChild>
                                 <p className="text-sm font-medium text-foreground truncate flex-1">
@@ -1160,6 +1193,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                     type="button"
                                   >
                                     <div className="flex items-center gap-2">
+                                      <SessionStatusDot sessionId={session.id} />
                                       <Tooltip delayDuration={500}>
                                         <TooltipTrigger asChild>
                                           <p className="text-sm font-medium text-foreground truncate flex-1 opacity-70">

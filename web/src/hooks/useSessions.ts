@@ -8,6 +8,7 @@ import { SessionFromJSON } from "../lib/api/models/Session";
 import { apiClient } from "../lib/apiClient";
 import { getAuthHeader, getAuthToken } from "../lib/auth";
 import { formatRelativeTime, getApiBaseUrl } from "./utils";
+import { useSessionAttentionStore } from "./useSessionAttention";
 
 // Regex patterns for path normalization
 const LEADING_DOT_SLASH_REGEX = /^\.\/+/;
@@ -174,6 +175,14 @@ export function useSessions(): UseSessionsReturn {
       setSessions(sessionsList);
       setHasMoreSessions(sessionsList.length === PAGE_SIZE);
       lastRefreshRef.current = Date.now();
+
+      // Sync session states to attention store for status dot rendering
+      const { setSessionState } = useSessionAttentionStore.getState();
+      for (const session of sessionsList) {
+        if (session.status?.state) {
+          setSessionState(session.sessionId, session.status.state);
+        }
+      }
 
       // Don't auto-select first session - user can click on one or create a new one
     } catch (err) {

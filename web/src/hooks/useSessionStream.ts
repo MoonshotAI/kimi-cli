@@ -135,6 +135,7 @@ import {
 import { createMessageId, getApiBaseUrl } from "./utils";
 import { kimiCliVersion } from "@/lib/version";
 import { handleToolResult, useToolEventsStore, type TodoItem } from "@/features/tool/store";
+import { useSessionAttentionStore } from "./useSessionAttention";
 import { v4 as uuidV4 } from "uuid";
 
 // Regex patterns moved to top level for performance
@@ -1409,6 +1410,11 @@ export function useSessionStream(
             rpcId: rpcMessageId,
             submitted: false,
           });
+
+          // Mark session as needing attention for approval request
+          if (!isReplay && sessionId) {
+            useSessionAttentionStore.getState().setAttention(sessionId);
+          }
 
           break;
         }

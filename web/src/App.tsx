@@ -14,6 +14,7 @@ import { useSessions } from "./hooks/useSessions";
 import { useTheme } from "./hooks/use-theme";
 import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
+import { useSessionAttentionStore } from "./hooks/useSessionAttention";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
 import { consumeAuthTokenFromUrl, setAuthToken } from "./lib/auth";
 
@@ -270,6 +271,19 @@ function App() {
     (status: SessionStatus) => {
       applySessionStatus(status);
 
+      const { setSessionState, setAttention, clearAttention } =
+        useSessionAttentionStore.getState();
+
+      // Track session state for status dot rendering
+      if (status.state) {
+        setSessionState(status.sessionId, status.state);
+      }
+
+      // When session becomes busy, clear any existing attention
+      if (status.state === "busy") {
+        clearAttention(status.sessionId);
+      }
+
       if (status.state !== "idle") {
         return;
       }
@@ -279,13 +293,18 @@ function App() {
         return;
       }
 
+      // Mark as needing attention if not the currently viewed session
+      if (status.sessionId !== selectedSessionId) {
+        setAttention(status.sessionId);
+      }
+
       console.log(
         "[App] Prompt complete, refreshing session info:",
         status.sessionId,
       );
       refreshSession(status.sessionId);
     },
-    [applySessionStatus, refreshSession],
+    [applySessionStatus, refreshSession, selectedSessionId],
   );
 
   const handleCreateSession = useCallback(
@@ -313,6 +332,10 @@ function App() {
     (sessionId: string) => {
       selectSession(sessionId);
       setIsMobileSidebarOpen(false);
+      // Clear attention when user views a session
+      if (sessionId) {
+        useSessionAttentionStore.getState().clearAttention(sessionId);
+      }
     },
     [selectSession],
   );
