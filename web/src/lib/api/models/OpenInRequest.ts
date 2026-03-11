@@ -41,6 +41,7 @@ export const OpenInRequestAppEnum = {
     Finder: 'finder',
     Cursor: 'cursor',
     Vscode: 'vscode',
+    Trae: 'trae',
     Iterm: 'iterm',
     Terminal: 'terminal',
     Antigravity: 'antigravity'

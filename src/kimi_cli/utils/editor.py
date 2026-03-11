@@ -19,6 +19,7 @@ _EDITOR_CANDIDATES = [
     (["vim"], "vim"),
     (["vi"], "vi"),
     (["nano"], "nano"),
+    (["trae", "--wait"], "trae"),
 ]
 
 
