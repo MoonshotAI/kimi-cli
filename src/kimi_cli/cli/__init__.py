@@ -10,6 +10,7 @@ import typer
 
 from kimi_cli.constant import VERSION
 
+from .export import cli as export_cli
 from .info import cli as info_cli
 from .mcp import cli as mcp_cli
 from .vis import cli as vis_cli
@@ -802,6 +803,7 @@ def web_worker(session_id: str) -> None:
     asyncio.run(run_worker(parsed_session_id))
 
 
+cli.add_typer(export_cli, name="export")
 cli.add_typer(mcp_cli, name="mcp")
 cli.add_typer(vis_cli, name="vis")
 cli.add_typer(web_cli, name="web")
