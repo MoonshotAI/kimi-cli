@@ -6,6 +6,8 @@ from kosong.message import Message
 
 import kimi_cli.prompts as prompts
 from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
+from kosong.message import AudioURLPart, ImageURLPart, VideoURLPart
+
 from kimi_cli.wire.types import TextPart, ThinkPart
 
 
@@ -213,3 +215,63 @@ class TestShouldAutoCompact:
     def test_zero_tokens_never_triggers(self):
         """Empty context should never trigger compaction."""
         assert not should_auto_compact(0, 200_000, trigger_ratio=0.85, reserved_context_size=50_000)
+
+
+def test_prepare_filters_out_media_parts():
+    """Media parts (image_url, audio_url, video_url) must be stripped from compaction input.
+
+    The Kimi API rejects compaction requests containing media parts with:
+    'the message contains an invalid part type: video_url'
+
+    Fixes: https://github.com/MoonshotAI/kimi-cli/issues/1395
+    Fixes: https://github.com/MoonshotAI/kimi-cli/issues/1390
+    """
+    messages = [
+        Message(
+            role="user",
+            content=[
+                TextPart(text="Analyze these files:"),
+                ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,IMG")),
+                AudioURLPart(audio_url=AudioURLPart.AudioURL(url="data:audio/mp3;base64,AUD")),
+                VideoURLPart(video_url=VideoURLPart.VideoURL(url="data:video/mp4;base64,VID")),
+            ],
+        ),
+        Message(role="assistant", content=[TextPart(text="I can see all the media files.")]),
+        Message(role="user", content=[TextPart(text="What's your conclusion?")]),
+    ]
+
+    result = SimpleCompaction(max_preserved_messages=1).prepare(messages)
+
+    assert result.compact_message is not None
+    # Verify no media parts leak into the compaction request
+    for part in result.compact_message.content:
+        assert not isinstance(part, (ImageURLPart, AudioURLPart, VideoURLPart)), (
+            f"Media part {part.type} should be filtered out during compaction"
+        )
+
+    # Text content should be preserved
+    texts = [p.text for p in result.compact_message.content if isinstance(p, TextPart)]
+    assert any("Analyze these files:" in t for t in texts)
+    assert any("I can see all the media files." in t for t in texts)
+
+
+def test_prepare_preserves_media_parts_in_recent_messages():
+    """Media parts in preserved (recent) messages should remain untouched."""
+    messages = [
+        Message(role="user", content=[TextPart(text="Old question")]),
+        Message(role="assistant", content=[TextPart(text="Old answer")]),
+        Message(
+            role="user",
+            content=[
+                TextPart(text="Look at this video:"),
+                VideoURLPart(video_url=VideoURLPart.VideoURL(url="data:video/mp4;base64,VID")),
+            ],
+        ),
+        Message(role="assistant", content=[TextPart(text="Nice video!")]),
+    ]
+
+    result = SimpleCompaction(max_preserved_messages=2).prepare(messages)
+
+    # Preserved messages should keep their media parts intact
+    preserved_user_msg = result.to_preserve[0]
+    assert any(isinstance(p, VideoURLPart) for p in preserved_user_msg.content)
