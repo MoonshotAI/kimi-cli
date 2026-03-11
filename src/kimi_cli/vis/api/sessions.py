@@ -438,17 +438,16 @@ async def import_session(file: UploadFile) -> dict[str, Any]:
 
     with zf:
         names = zf.namelist()
-        # Must contain at least wire.jsonl or context.jsonl
+        # Must contain wire.jsonl or context.jsonl at root or under exactly one directory
+        _VALID_FILES = ("wire.jsonl", "context.jsonl")
         has_valid = any(
-            n.rstrip("/") in ("wire.jsonl", "context.jsonl")
-            or n.endswith("/wire.jsonl")
-            or n.endswith("/context.jsonl")
-            for n in names
+            n in _VALID_FILES or (n.count("/") == 1 and n.endswith(_VALID_FILES)) for n in names
         )
         if not has_valid:
             raise HTTPException(
                 status_code=400,
-                detail="ZIP must contain wire.jsonl or context.jsonl",
+                detail="ZIP must contain wire.jsonl or context.jsonl at the top level "
+                "(or inside a single directory)",
             )
 
         session_id = uuid4().hex[:16]

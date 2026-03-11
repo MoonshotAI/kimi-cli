@@ -179,17 +179,6 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     );
   }
 
-  if (sessions.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center text-muted-foreground gap-2">
-        <span className="text-lg">No sessions found</span>
-        <span className="text-sm">
-          Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded">kimi</code> to create your first session.
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full flex-col">
       <ExplorerToolbar
@@ -259,6 +248,15 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
           <div className="flex flex-col items-center justify-center text-muted-foreground text-sm py-12 gap-2">
             <span>No imported sessions</span>
             <span className="text-xs">Import a session ZIP to get started.</span>
+          </div>
+        )}
+
+        {sessions.length === 0 && !search && filterMode === "all" && (
+          <div className="flex flex-col items-center justify-center text-muted-foreground py-12 gap-2">
+            <span className="text-lg">No sessions found</span>
+            <span className="text-sm">
+              Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded">kimi</code> to create your first session, or import a session ZIP.
+            </span>
           </div>
         )}
       </div>
