@@ -295,7 +295,7 @@ If no turn is in progress:
 {"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
-### `toggle_plan_mode`
+### `set_plan_mode`
 
 ::: info Added
 Added in Wire 1.4.
@@ -304,19 +304,24 @@ Added in Wire 1.4.
 - **Direction**: Client → Agent
 - **Type**: Request (requires response)
 
-Toggle plan mode. After calling, the agent toggles plan mode state and sends a `StatusUpdate` event with the new state.
+Set plan mode to a specific state. After calling, the agent updates plan mode and sends a `StatusUpdate` event with the new state.
 
 This feature requires capability negotiation: the client must declare `capabilities.supports_plan_mode: true` during `initialize` for the agent to enable plan mode tools (`EnterPlanMode`, `ExitPlanMode`). If the client does not declare support, these tools are automatically hidden from the LLM's tool list.
 
-```typescript
-/** toggle_plan_mode request has no parameters, params can be empty object or omitted */
-type TogglePlanModeParams = Record<string, never>
+Plan mode state is persisted to the session, so it survives process restarts and is restored when the session resumes.
 
-/** toggle_plan_mode response result */
-interface TogglePlanModeResult {
+```typescript
+/** set_plan_mode request parameters */
+interface SetPlanModeParams {
+  /** Whether to enable plan mode */
+  enabled: boolean
+}
+
+/** set_plan_mode response result */
+interface SetPlanModeResult {
   /** Fixed as "ok" */
   status: "ok"
-  /** Plan mode state after toggle */
+  /** Plan mode state after the call */
   plan_mode: boolean
 }
 ```
@@ -324,7 +329,7 @@ interface TogglePlanModeResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "toggle_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8"}
+{"jsonrpc": "2.0", "method": "set_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "params": {"enabled": true}}
 ```
 
 **Success response example**

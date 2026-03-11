@@ -295,7 +295,7 @@ interface SteerResult {
 {"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
-### `toggle_plan_mode`
+### `set_plan_mode`
 
 ::: info 新增
 新增于 Wire 1.4。
@@ -304,19 +304,24 @@ interface SteerResult {
 - **方向**：Client → Agent
 - **类型**：Request（需要响应）
 
-切换 Plan 模式。调用后 Agent 会切换 Plan 模式状态，并通过 `StatusUpdate` 事件通知新的状态。
+将 Plan 模式设置为指定状态。调用后 Agent 会更新 Plan 模式并通过 `StatusUpdate` 事件通知新的状态。
 
 此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_plan_mode: true` 声明支持后，Agent 才会启用 Plan 模式相关工具（`EnterPlanMode`、`ExitPlanMode`）。如果 Client 未声明支持，这些工具会从 LLM 的工具列表中自动隐藏。
 
-```typescript
-/** toggle_plan_mode 请求无参数，params 可以是空对象或省略 */
-type TogglePlanModeParams = Record<string, never>
+Plan 模式状态会持久化到会话中，因此在进程重启后可以恢复。
 
-/** toggle_plan_mode 响应结果 */
-interface TogglePlanModeResult {
+```typescript
+/** set_plan_mode 请求参数 */
+interface SetPlanModeParams {
+  /** 是否启用 Plan 模式 */
+  enabled: boolean
+}
+
+/** set_plan_mode 响应结果 */
+interface SetPlanModeResult {
   /** 固定为 "ok" */
   status: "ok"
-  /** 切换后的 Plan 模式状态 */
+  /** 调用后的 Plan 模式状态 */
   plan_mode: boolean
 }
 ```
@@ -324,7 +329,7 @@ interface TogglePlanModeResult {
 **请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "toggle_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8"}
+{"jsonrpc": "2.0", "method": "set_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "params": {"enabled": true}}
 ```
 
 **成功响应示例**

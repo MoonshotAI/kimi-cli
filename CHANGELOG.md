@@ -12,7 +12,6 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Web: Add plan mode toggle in web UI — switch control in the input toolbar with a dashed blue border on the composer when plan mode is active, and support setting plan mode via the `set_plan_mode` Wire protocol method
-- Wire: Rename `toggle_plan_mode` RPC method to `set_plan_mode` with an explicit `enabled` parameter — avoids race conditions by sending the desired state directly instead of toggling
 - Core: Persist plan mode state across session restarts — `plan_mode` is saved to `SessionState` and restored when a session resumes
 - Core: Fix StatusUpdate not reflecting plan mode changes triggered by tools — send a corrected `StatusUpdate` after `EnterPlanMode`/`ExitPlanMode` tool execution so the client sees the up-to-date state
 - Core: Fix HTTP header values containing trailing whitespace/newlines on certain Linux systems (e.g. kernel 6.8.0-101) causing connection errors — strip whitespace from ASCII header values before sending

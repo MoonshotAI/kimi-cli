@@ -5,7 +5,6 @@
 ## 未发布
 
 - Web：新增 Web UI 中的 Plan 模式切换——在输入工具栏中添加开关控件，Plan 模式激活时输入框显示蓝色虚线边框，并支持通过 `set_plan_mode` Wire 协议方法设置 Plan 模式
-- Wire：将 `toggle_plan_mode` RPC 方法重命名为 `set_plan_mode`，新增显式 `enabled` 参数——通过直接发送目标状态而非切换来避免竞态条件
 - Core：Plan 模式状态跨会话持久化——将 `plan_mode` 保存到 `SessionState`，会话恢复时自动还原
 - Core：修复工具触发的 Plan 模式变更未正确反映在 StatusUpdate 中的问题——在 `EnterPlanMode`/`ExitPlanMode` 工具执行后发送更新的 `StatusUpdate`，确保客户端看到最新状态
 - Core：修复部分 Linux 系统（如内核版本 6.8.0-101）上 HTTP 请求头包含尾部空白/换行符导致连接错误的问题——发送前对 ASCII 请求头值执行空白裁剪
