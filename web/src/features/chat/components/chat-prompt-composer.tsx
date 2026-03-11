@@ -109,6 +109,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
     workspaceStatus: mentionWorkspaceStatus,
     workspaceError: mentionWorkspaceError,
     retryWorkspace: retryMentionWorkspace,
+    workspaceFileCount: mentionWorkspaceFileCount,
   } = useFileMentions({
     text: promptController.textInput.value,
     setText: promptController.textInput.setInput,
@@ -288,6 +289,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
                 isWorkspaceAvailable={Boolean(
                   currentSession && onListSessionDirectory,
                 )}
+                workspaceFileCount={mentionWorkspaceFileCount}
               />
             </div>
           </div>
