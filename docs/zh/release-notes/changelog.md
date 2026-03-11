@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.20.0 (2026-03-11)
+
 - Web：新增 Web UI 中的 Plan 模式切换——在输入工具栏中添加开关控件，Plan 模式激活时输入框显示蓝色虚线边框，并支持通过 `set_plan_mode` Wire 协议方法设置 Plan 模式
 - Core：Plan 模式状态跨会话持久化——将 `plan_mode` 保存到 `SessionState`，会话恢复时自动还原
 - Core：修复工具触发的 Plan 模式变更未正确反映在 StatusUpdate 中的问题——在 `EnterPlanMode`/`ExitPlanMode` 工具执行后发送更新的 `StatusUpdate`，确保客户端看到最新状态

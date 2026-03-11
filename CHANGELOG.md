@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.20.0 (2026-03-11)
+
 - Web: Add plan mode toggle in web UI — switch control in the input toolbar with a dashed blue border on the composer when plan mode is active, and support setting plan mode via the `set_plan_mode` Wire protocol method
 - Core: Persist plan mode state across session restarts — `plan_mode` is saved to `SessionState` and restored when a session resumes
 - Core: Fix StatusUpdate not reflecting plan mode changes triggered by tools — send a corrected `StatusUpdate` after `EnterPlanMode`/`ExitPlanMode` tool execution so the client sees the up-to-date state

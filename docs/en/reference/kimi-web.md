@@ -187,9 +187,10 @@ Web UI provides a unified prompt toolbar above the input box, displaying various
 - **Message queue**: Queue follow-up messages while the AI is processing; queued messages are sent automatically when the current response completes
 - **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
 - **Todo list**: When the `SetTodoList` tool is active, shows task progress with support for expanding to view the detailed list
+- **Plan mode**: Toggle plan mode on/off from the input toolbar. When plan mode is active, the composer displays a dashed blue border. Plan mode can also be set programmatically via the `set_plan_mode` Wire protocol method
 
 ::: info Changed
-Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar.
+Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar. Plan mode toggle added in version 1.20.
 :::
 
 ### Open-in functionality
