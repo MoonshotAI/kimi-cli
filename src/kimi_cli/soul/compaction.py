@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 import kosong
 from kosong.chat_provider import TokenUsage
-from kosong.message import AudioURLPart, ImageURLPart, Message, VideoURLPart
+from kosong.message import Message
 from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.prompts as prompts
@@ -175,9 +175,7 @@ class SimpleCompaction:
                 TextPart(text=f"## Message {i + 1}\nRole: {msg.role}\nContent:\n")
             )
             compact_message.content.extend(
-                part
-                for part in msg.content
-                if not isinstance(part, (ThinkPart, ImageURLPart, AudioURLPart, VideoURLPart))
+                part for part in msg.content if isinstance(part, TextPart)
             )
         prompt_text = "\n" + prompts.COMPACT
         if custom_instruction:

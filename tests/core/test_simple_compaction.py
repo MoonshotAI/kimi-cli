@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 from kosong.chat_provider import TokenUsage
-from kosong.message import Message
+from kosong.message import AudioURLPart, ImageURLPart, Message, VideoURLPart
 
 import kimi_cli.prompts as prompts
 from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
-from kosong.message import AudioURLPart, ImageURLPart, VideoURLPart
-
 from kimi_cli.wire.types import TextPart, ThinkPart
 
 
@@ -217,11 +215,11 @@ class TestShouldAutoCompact:
         assert not should_auto_compact(0, 200_000, trigger_ratio=0.85, reserved_context_size=50_000)
 
 
-def test_prepare_filters_out_media_parts():
-    """Media parts (image_url, audio_url, video_url) must be stripped from compaction input.
+def test_prepare_only_keeps_text_parts_in_compaction():
+    """Compaction input should only contain TextPart (whitelist approach).
 
-    The Kimi API rejects compaction requests containing media parts with:
-    'the message contains an invalid part type: video_url'
+    Non-text parts (media, think, etc.) are filtered out because the compaction
+    API endpoint only supports text content.
 
     Fixes: https://github.com/MoonshotAI/kimi-cli/issues/1395
     Fixes: https://github.com/MoonshotAI/kimi-cli/issues/1390
@@ -234,6 +232,7 @@ def test_prepare_filters_out_media_parts():
                 ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,IMG")),
                 AudioURLPart(audio_url=AudioURLPart.AudioURL(url="data:audio/mp3;base64,AUD")),
                 VideoURLPart(video_url=VideoURLPart.VideoURL(url="data:video/mp4;base64,VID")),
+                ThinkPart(think="internal reasoning"),
             ],
         ),
         Message(role="assistant", content=[TextPart(text="I can see all the media files.")]),
@@ -243,10 +242,10 @@ def test_prepare_filters_out_media_parts():
     result = SimpleCompaction(max_preserved_messages=1).prepare(messages)
 
     assert result.compact_message is not None
-    # Verify no media parts leak into the compaction request
+    # Verify only TextPart remains in the compaction request
     for part in result.compact_message.content:
-        assert not isinstance(part, (ImageURLPart, AudioURLPart, VideoURLPart)), (
-            f"Media part {part.type} should be filtered out during compaction"
+        assert isinstance(part, TextPart), (
+            f"Only TextPart should be in compaction input, got {type(part).__name__}"
         )
 
     # Text content should be preserved
