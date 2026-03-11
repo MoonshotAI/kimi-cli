@@ -247,6 +247,7 @@ export const useFileMentions = ({
   >("idle");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const workspaceRequestRef = useRef(0);
+  const directoryRequestRef = useRef(0);
   const lastLoadedRef = useRef(0);
   const directoryQueryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -311,6 +312,7 @@ export const useFileMentions = ({
     setWorkspaceStatus("idle");
     setWorkspaceError(null);
     workspaceRequestRef.current += 1;
+    directoryRequestRef.current += 1;
     lastLoadedRef.current = 0;
     sessionIdRef.current = sessionId;
   }, [sessionId]);
@@ -372,16 +374,21 @@ export const useFileMentions = ({
     const query = range?.query ?? "";
     const slashIndex = query.lastIndexOf("/");
     if (slashIndex < 0 || !(sessionId && listDirectory)) {
+      directoryRequestRef.current += 1;
       setDirectoryFiles([]);
       return;
     }
     const dirPrefix = query.slice(0, slashIndex);
     const dirPath = dirPrefix === "" ? undefined : dirPrefix;
     const capturedSessionId = sessionId;
+    directoryRequestRef.current += 1;
+    const requestId = directoryRequestRef.current;
     directoryQueryTimerRef.current = setTimeout(async () => {
+      if (directoryRequestRef.current !== requestId) return;
       if (sessionIdRef.current !== capturedSessionId) return;
       try {
         const entries = await listDirectory(capturedSessionId, dirPath);
+        if (directoryRequestRef.current !== requestId) return;
         if (sessionIdRef.current !== capturedSessionId) return;
         const files: WorkspaceFile[] = [];
         for (const entry of entries) {
@@ -395,6 +402,7 @@ export const useFileMentions = ({
         }
         setDirectoryFiles(files);
       } catch {
+        if (directoryRequestRef.current !== requestId) return;
         // Silently ignore — the main index is still available
       }
     }, DIRECTORY_QUERY_DEBOUNCE_MS);
