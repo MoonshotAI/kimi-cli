@@ -1837,7 +1837,7 @@ export function useSessionStream(
       method: "initialize",
       id,
       params: {
-        protocol_version: "1.3",
+        protocol_version: "1.4",
         client: {
           name: "kiwi",
           version: kimiCliVersion,
