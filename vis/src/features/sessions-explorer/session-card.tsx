@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   type SessionInfo,
   type SessionSummary,
+  getSessionDownloadUrl,
   getSessionSummary,
 } from "@/lib/api";
-import { AlertCircle, Clock, RefreshCw, Zap } from "lucide-react";
+import { AlertCircle, Clock, Download, RefreshCw, Zap } from "lucide-react";
 
 function formatRelativeTime(epochSec: number): string {
   if (!epochSec) return "";
@@ -63,6 +64,13 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
       ? session.metadata.title
       : session.title || "Untitled Session";
 
+  const downloadUrl = getSessionDownloadUrl(`${session.work_dir_hash}/${session.session_id}`);
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(downloadUrl);
+  };
+
   if (compact) {
     return (
       <button
@@ -80,6 +88,16 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
         <span className="text-[10px] text-muted-foreground shrink-0 w-16 text-right">
           {formatRelativeTime(session.last_updated)}
         </span>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={handleDownload}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDownload(e as unknown as React.MouseEvent); }}
+          className="rounded p-0.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          title="Download session files"
+        >
+          <Download size={11} />
+        </span>
       </button>
     );
   }
@@ -94,9 +112,21 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
         <span className="font-mono text-[10px] text-muted-foreground">
           {session.session_id.slice(0, 8)}
         </span>
-        <span className="text-[10px] text-muted-foreground">
-          {formatRelativeTime(session.last_updated)}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={handleDownload}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDownload(e as unknown as React.MouseEvent); }}
+            className="rounded p-0.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            title="Download session files"
+          >
+            <Download size={12} />
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            {formatRelativeTime(session.last_updated)}
+          </span>
+        </div>
       </div>
 
       {/* Row 2: Title */}

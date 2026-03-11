@@ -5,9 +5,9 @@ import { WireViewer } from "@/features/wire-viewer/wire-viewer";
 import { ContextViewer } from "@/features/context-viewer/context-viewer";
 import { StateViewer } from "@/features/state-viewer/state-viewer";
 import { useTheme } from "@/hooks/use-theme";
-import { type WireEvent, getWireEvents, listSessions } from "@/lib/api";
+import { type WireEvent, getSessionDownloadUrl, getWireEvents, listSessions } from "@/lib/api";
 import { isErrorEvent } from "@/features/wire-viewer/wire-event-card";
-import { ArrowLeft, BarChart3, Columns, List, Moon, RefreshCw, Sun, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Columns, Download, List, Moon, RefreshCw, Sun, X } from "lucide-react";
 import { DualView } from "@/features/dual-view/dual-view";
 
 type Tab = "wire" | "context" | "state" | "dual";
@@ -235,6 +235,14 @@ export function App() {
       {sessionId && (
         <div className="flex items-center border-b">
           <SessionStats sessionId={sessionId} refreshKey={refreshKey} />
+          <a
+            href={getSessionDownloadUrl(sessionId)}
+            download
+            className="shrink-0 rounded-md p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            title="Download session files as ZIP"
+          >
+            <Download size={14} />
+          </a>
           <button
             onClick={() => {
               setRefreshing(true);

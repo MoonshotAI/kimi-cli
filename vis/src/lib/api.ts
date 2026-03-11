@@ -213,6 +213,10 @@ export function getAggregateStats(forceRefresh = false): Promise<AggregateStats>
   return apiCache.get(key, () => fetchJSON<AggregateStats>("/statistics"), 60_000);
 }
 
+export function getSessionDownloadUrl(sessionId: string): string {
+  return `${BASE}/sessions/${sessionId}/download`;
+}
+
 export function getSessionSummary(
   sessionId: string,
   forceRefresh = false,

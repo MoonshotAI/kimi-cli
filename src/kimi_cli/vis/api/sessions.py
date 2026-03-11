@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import logging
 import re
+import zipfile
 from pathlib import Path
 from typing import Any
 
 import aiofiles
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from kimi_cli.metadata import load_metadata
 from kimi_cli.share import get_share_dir
@@ -351,3 +354,25 @@ async def get_session_summary(work_dir_hash: str, session_id: str) -> dict[str, 
         "state_size": state_size,
         "total_size": wire_size + context_size + state_size,
     }
+
+
+@router.get("/sessions/{work_dir_hash}/{session_id}/download")
+def download_session(work_dir_hash: str, session_id: str) -> StreamingResponse:
+    """Download all files in a session directory as a ZIP archive."""
+    session_dir = _find_session_dir(work_dir_hash, session_id)
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(session_dir.iterdir()):
+            if file_path.is_file():
+                zf.write(file_path, arcname=file_path.name)
+    buf.seek(0)
+
+    filename = f"session-{session_id[:8]}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
