@@ -153,6 +153,7 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
 | [`kimi term`](./kimi-term.md) | Launch the Toad terminal UI |
+| [`kimi vis`](./kimi-vis.md) | Launch the Agent Tracing Visualizer (Technical Preview) |
 | [`kimi web`](./kimi-web.md) | Start the Web UI server |
 
 ### `kimi login`
@@ -170,6 +171,26 @@ Log out from your Kimi account. This clears stored OAuth credentials and removes
 ```sh
 kimi logout
 ```
+
+### `kimi vis`
+
+::: warning Note
+Technical Preview feature, may be unstable.
+:::
+
+Launch the Agent Tracing Visualizer to view and analyze session traces in a browser.
+
+```sh
+kimi vis [OPTIONS]
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--port INTEGER` | `-p` | Port number to bind to (default: `5495`) |
+| `--open / --no-open` | | Automatically open browser (default: enabled) |
+| `--reload` | | Enable auto-reload (development mode) |
+
+See [Agent Tracing Visualizer](./kimi-vis.md) for details.
 
 ### `kimi web`
 

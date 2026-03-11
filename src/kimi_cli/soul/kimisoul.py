@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import kosong
@@ -34,6 +35,12 @@ from kimi_cli.soul import (
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.dynamic_injection import (
+    DynamicInjection,
+    DynamicInjectionProvider,
+    normalize_history,
+)
+from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -121,6 +128,15 @@ class KimiSoul:
             self._checkpoint_with_user_message = False
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
+        self._plan_mode: bool = False
+        self._plan_session_id: str | None = None
+        self._pending_plan_activation_injection: bool = False
+        self._injection_providers: list[DynamicInjectionProvider] = [
+            PlanModeInjectionProvider(),
+        ]
+
+        # Bind plan mode state to tools that support it
+        self._bind_plan_mode_tools()
 
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
@@ -140,6 +156,137 @@ class KimiSoul:
         return self._runtime.llm.capabilities
 
     @property
+    def plan_mode(self) -> bool:
+        """Whether plan mode (read-only research and planning) is active."""
+        return self._plan_mode
+
+    def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
+        """Register an additional dynamic injection provider."""
+        self._injection_providers.append(provider)
+
+    async def _collect_injections(self) -> list[DynamicInjection]:
+        """Collect dynamic injections from all registered providers."""
+        injections: list[DynamicInjection] = []
+        for provider in self._injection_providers:
+            try:
+                result = await provider.get_injections(self._context.history, self)
+                injections.extend(result)
+            except Exception:
+                logger.warning(
+                    "injection provider %s failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+        return injections
+
+    def _bind_plan_mode_tools(self) -> None:
+        """Bind plan mode state to tools that support it."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return
+
+        def checker() -> bool:
+            return self._plan_mode
+
+        def path_getter() -> Path | None:
+            return self.get_plan_file_path()
+
+        # WriteFile gets both checker and path_getter (for plan file auto-approve)
+        from kimi_cli.tools.file.write import WriteFile
+
+        write_tool = self._agent.toolset.find("WriteFile")
+        if isinstance(write_tool, WriteFile):
+            write_tool.bind_plan_mode(checker, path_getter)
+
+        # ExitPlanMode has a special bind() method
+        from kimi_cli.tools.plan import ExitPlanMode
+
+        exit_tool = self._agent.toolset.find("ExitPlanMode")
+        if isinstance(exit_tool, ExitPlanMode):
+            exit_tool.bind(self.toggle_plan_mode, path_getter, checker)
+
+        # EnterPlanMode has a special bind() with yolo_checker
+        from kimi_cli.tools.plan.enter import EnterPlanMode
+
+        enter_tool = self._agent.toolset.find("EnterPlanMode")
+        if isinstance(enter_tool, EnterPlanMode):
+
+            def yolo_checker() -> bool:
+                return self._approval.is_yolo()
+
+            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, yolo_checker)
+
+        # AskUserQuestion gets plan mode checker for dynamic description
+        from kimi_cli.tools.ask_user import AskUserQuestion
+
+        ask_tool = self._agent.toolset.find("AskUserQuestion")
+        if isinstance(ask_tool, AskUserQuestion):
+            ask_tool.bind_plan_mode(checker)
+
+    def _ensure_plan_session_id(self) -> None:
+        """Allocate a stable plan session ID on first activation."""
+        if self._plan_session_id is None:
+            import uuid
+
+            self._plan_session_id = uuid.uuid4().hex
+
+    def _set_plan_mode(self, enabled: bool, *, source: Literal["manual", "tool"]) -> bool:
+        """Update plan mode state for either manual or tool-driven toggles."""
+        self._plan_mode = enabled
+        if enabled:
+            self._ensure_plan_session_id()
+            self._pending_plan_activation_injection = source == "manual"
+        else:
+            self._pending_plan_activation_injection = False
+        return self._plan_mode
+
+    def get_plan_file_path(self) -> Path | None:
+        """Get the plan file path for the current session."""
+        if self._plan_session_id is None:
+            return None
+        from kimi_cli.tools.plan.heroes import get_plan_file_path
+
+        return get_plan_file_path(self._plan_session_id)
+
+    def read_current_plan(self) -> str | None:
+        """Read the current plan file content."""
+        if self._plan_session_id is None:
+            return None
+        from kimi_cli.tools.plan.heroes import read_plan_file
+
+        return read_plan_file(self._plan_session_id)
+
+    def clear_current_plan(self) -> None:
+        """Delete the current plan file."""
+        path = self.get_plan_file_path()
+        if path and path.exists():
+            path.unlink()
+
+    async def toggle_plan_mode(self) -> bool:
+        """Toggle plan mode on/off. Returns the new state.
+
+        Tools are not hidden/unhidden — instead, each tool checks plan mode
+        state at call time and rejects if blocked.
+        Periodic reminders are handled by the dynamic injection system.
+        """
+        return self._set_plan_mode(not self._plan_mode, source="tool")
+
+    async def toggle_plan_mode_from_manual(self) -> bool:
+        """Toggle plan mode from UI/manual entry points.
+
+        Manual toggles do not append a synthetic history message. Instead, entering
+        plan mode schedules a one-shot injection for the next LLM step, and exiting
+        plan mode clears that pending injection if it has not been used yet.
+        """
+        return self._set_plan_mode(not self._plan_mode, source="manual")
+
+    def consume_pending_plan_activation_injection(self) -> bool:
+        """Consume the next-step activation reminder scheduled by a manual toggle."""
+        if not self._plan_mode or not self._pending_plan_activation_injection:
+            return False
+        self._pending_plan_activation_injection = False
+        return True
+
+    @property
     def thinking(self) -> bool | None:
         """Whether thinking mode is enabled."""
         if self._runtime.llm is None:
@@ -155,6 +302,7 @@ class KimiSoul:
         return StatusSnapshot(
             context_usage=self._context_usage,
             yolo_enabled=self._approval.is_yolo(),
+            plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,
         )
@@ -462,13 +610,26 @@ class KimiSoul:
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
+        # Dynamic injection
+        injections = await self._collect_injections()
+        if injections:
+            combined = "\n".join(
+                f"<system-reminder>\n{inj.content}\n</system-reminder>" for inj in injections
+            )
+            await self._context.append_message(
+                Message(role="user", content=[TextPart(text=combined)])
+            )
+
+        # Normalize: merge adjacent user messages for clean API input
+        effective_history = normalize_history(self._context.history)
+
         async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
                 chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
-                self._context.history,
+                effective_history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
             )

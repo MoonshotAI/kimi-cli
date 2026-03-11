@@ -61,6 +61,11 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                         {
+                            "name": "plan",
+                            "description": "Toggle plan mode. Usage: /plan [on|off|view|clear]",
+                            "aliases": [],
+                        },
+                        {
                             "name": "add-dir",
                             "description": "Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs",
                             "aliases": [],
@@ -140,6 +145,11 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         {
                             "name": "yolo",
                             "description": "Toggle YOLO mode (auto-approve all actions)",
+                            "aliases": [],
+                        },
+                        {
+                            "name": "plan",
+                            "description": "Toggle plan mode. Usage: /plan [on|off|view|clear]",
                             "aliases": [],
                         },
                         {
