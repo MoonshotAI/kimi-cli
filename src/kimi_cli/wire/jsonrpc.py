@@ -135,6 +135,18 @@ class JSONRPCSteerMessage(_MessageBase):
         raise NotImplementedError("Steer message serialization is not implemented.")
 
 
+class _SetPlanModeParams(BaseModel):
+    enabled: bool
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class JSONRPCSetPlanModeMessage(_MessageBase):
+    method: Literal["set_plan_mode"] = "set_plan_mode"
+    id: str
+    params: _SetPlanModeParams
+
+
 class JSONRPCCancelMessage(_MessageBase):
     method: Literal["cancel"] = "cancel"
     id: str
@@ -185,10 +197,11 @@ type JSONRPCInMessage = (
     | JSONRPCPromptMessage
     | JSONRPCSteerMessage
     | JSONRPCReplayMessage
+    | JSONRPCSetPlanModeMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "set_plan_mode", "cancel"}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse

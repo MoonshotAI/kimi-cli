@@ -62,6 +62,8 @@ type ChatPromptComposerProps = {
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
   slashCommands?: SlashCommandDef[];
+  planMode?: boolean;
+  onPlanModeChange?: (enabled: boolean) => void;
   activityStatus?: ActivityDetail;
   usagePercent?: number;
   usedTokens?: number;
@@ -83,6 +85,8 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   gitDiffStats,
   isGitDiffLoading,
   slashCommands = [],
+  planMode = false,
+  onPlanModeChange,
   activityStatus,
   usagePercent,
   usedTokens,
@@ -193,6 +197,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         gitDiffStats={gitDiffStats}
         isGitDiffLoading={isGitDiffLoading}
         workDir={currentSession?.workDir}
+        planMode={planMode}
         activityStatus={activityStatus}
         usagePercent={usagePercent}
         usedTokens={usedTokens}
@@ -202,7 +207,10 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
 
       <PromptInput
         accept="*"
-        className="w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border"
+        className={cn(
+          "w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border",
+          planMode && "[&_[data-slot=input-group]]:border-dashed [&_[data-slot=input-group]]:!border-blue-200 dark:[&_[data-slot=input-group]]:!border-blue-600"
+        )}
         multiple
         maxFiles={MEDIA_CONFIG.maxCount}
         onSubmit={onSubmit}
@@ -296,7 +304,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         </PromptInputBody>
         <PromptInputFooter className="w-full gap-2 py-1 border-none bg-transparent shadow-none">
           <PromptInputTools className="flex-1 min-w-0 flex-wrap">
-            <GlobalConfigControls />
+            <GlobalConfigControls planMode={planMode} onPlanModeChange={onPlanModeChange} />
           </PromptInputTools>
           {isStreaming ? (
             <div className="flex items-center gap-1.5 shrink-0">

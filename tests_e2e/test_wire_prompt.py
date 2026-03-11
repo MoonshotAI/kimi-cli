@@ -89,6 +89,7 @@ def test_basic_prompt_events(tmp_path) -> None:
                             "input_cache_creation": 0,
                         },
                         "message_id": "scripted-1",
+                        "plan_mode": False,
                     },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
@@ -291,6 +292,7 @@ def test_max_steps_reached(tmp_path) -> None:
                         "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {
@@ -366,6 +368,7 @@ def test_status_update_fields(tmp_path) -> None:
                         "input_cache_creation": 0,
                     },
                     "message_id": "scripted-1",
+                    "plan_mode": False,
                 },
             }
         )
@@ -462,6 +465,7 @@ def test_concurrent_prompt_error(tmp_path) -> None:
                         "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {
@@ -510,6 +514,7 @@ def test_concurrent_prompt_error(tmp_path) -> None:
                         "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},

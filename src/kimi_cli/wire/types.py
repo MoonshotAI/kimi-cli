@@ -116,6 +116,8 @@ class StatusUpdate(BaseModel):
     """The token usage statistics of the current step."""
     message_id: str | None = None
     """The message ID of the current step."""
+    plan_mode: bool | None = None
+    """Whether plan mode (read-only) is active. None means no change."""
 
 
 class SubagentEvent(BaseModel):

@@ -130,6 +130,7 @@ export type StatusUpdateEvent = {
     context_usage: number | null;
     token_usage?: TokenUsage | null;
     message_id?: string;
+    plan_mode?: boolean | null;
   };
 };
 
@@ -197,6 +198,9 @@ export type QuestionItem = {
   header: string;
   options: QuestionOption[];
   multi_select: boolean;
+  body?: string;
+  other_label?: string;
+  other_description?: string;
 };
 
 export type QuestionRequestEvent = {

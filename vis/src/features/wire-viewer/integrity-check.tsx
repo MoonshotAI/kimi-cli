@@ -102,7 +102,7 @@ export function computeIntegrity(events: WireEvent[]): IntegrityResult {
       }
     } else if (ev.type === "ApprovalResponse") {
       totalPairable++;
-      const id = ev.payload.id as string | undefined;
+      const id = ev.payload.request_id as string | undefined;
       if (id && approvalMap.has(id)) {
         approvalMap.delete(id);
       } else {
