@@ -225,6 +225,7 @@ class LocalFileMentionCompleter(Completer):
         self._limit = limit
         self._cache_time: float = 0.0
         self._cached_paths: list[str] = []
+        self._cache_scope: str = ""
         self._top_cache_time: float = 0.0
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
@@ -253,7 +254,7 @@ class LocalFileMentionCompleter(Completer):
         fragment = self._fragment_hint or ""
         if "/" not in fragment and len(fragment) < 3:
             return self._get_top_level_paths()
-        return self._get_deep_paths()
+        return self._get_deep_paths(fragment)
 
     def _get_top_level_paths(self) -> list[str]:
         now = time.monotonic()
@@ -276,15 +277,35 @@ class LocalFileMentionCompleter(Completer):
         self._top_cache_time = now
         return self._top_cached_paths
 
-    def _get_deep_paths(self) -> list[str]:
+    def _get_deep_paths(self, fragment: str = "") -> list[str]:
         now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval:
+
+        # Scope the walk to the directory prefix from the fragment.
+        # For "src/utils/he" → walk from <root>/src/utils/ instead of <root>/
+        # This avoids exhausting the limit on unrelated directories in large repos.
+        scope_prefix = ""
+        walk_root = self._root
+        if "/" in fragment:
+            dir_part = fragment.rsplit("/", 1)[0]
+            candidate = self._root / dir_part
+            if candidate.is_dir():
+                walk_root = candidate
+                scope_prefix = dir_part + "/"
+
+        cache_key = scope_prefix
+        if (
+            now - self._cache_time <= self._refresh_interval
+            and getattr(self, "_cache_scope", "") == cache_key
+        ):
             return self._cached_paths
 
         paths: list[str] = []
+        # When scoped, include the scope directory itself so callers see it.
+        if scope_prefix:
+            paths.append(scope_prefix)
         try:
-            for current_root, dirs, files in os.walk(self._root):
-                relative_root = Path(current_root).relative_to(self._root)
+            for current_root, dirs, files in os.walk(walk_root):
+                relative_root = Path(current_root).relative_to(walk_root)
 
                 # Prevent descending into ignored directories.
                 dirs[:] = sorted(d for d in dirs if not self._is_ignored(d))
@@ -296,7 +317,7 @@ class LocalFileMentionCompleter(Completer):
                     continue
 
                 if relative_root.parts:
-                    paths.append(relative_root.as_posix() + "/")
+                    paths.append(scope_prefix + relative_root.as_posix() + "/")
                     if len(paths) >= self._limit:
                         break
 
@@ -306,7 +327,7 @@ class LocalFileMentionCompleter(Completer):
                     relative = (relative_root / file_name).as_posix()
                     if not relative:
                         continue
-                    paths.append(relative)
+                    paths.append(scope_prefix + relative)
                     if len(paths) >= self._limit:
                         break
 
@@ -317,6 +338,7 @@ class LocalFileMentionCompleter(Completer):
 
         self._cached_paths = paths
         self._cache_time = now
+        self._cache_scope = cache_key
         return self._cached_paths
 
     @staticmethod
