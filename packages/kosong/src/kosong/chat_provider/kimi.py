@@ -1,4 +1,5 @@
 import copy
+import json
 import mimetypes
 import os
 import uuid
@@ -56,6 +57,16 @@ class ThinkingConfig(TypedDict, total=True):
 
 class ExtraBody(TypedDict, total=False, extra_items=Any):
     thinking: ThinkingConfig
+
+
+def _sanitize_tool_arguments(raw: str | None) -> str:
+    """Re-serialize tool arguments to ensure control characters are properly escaped."""
+    if not raw:
+        return "{}"
+    try:
+        return json.dumps(json.loads(raw, strict=False))
+    except json.JSONDecodeError:
+        return raw  # Leave as-is; downstream will catch and report ToolParseError
 
 
 class Kimi:
@@ -381,7 +392,7 @@ class KimiStreamedMessage:
                         id=tool_call.id or str(uuid.uuid4()),
                         function=ToolCall.FunctionBody(
                             name=tool_call.function.name,
-                            arguments=tool_call.function.arguments,
+                            arguments=_sanitize_tool_arguments(tool_call.function.arguments),
                         ),
                     )
 
