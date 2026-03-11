@@ -5,7 +5,9 @@
 ## 未发布
 
 - Web：新增 Web UI 中的 Plan 模式切换——Plan 模式激活时在工具栏显示 "plan" 标识，并支持通过 `toggle_plan_mode` Wire 协议方法切换 Plan 模式
+- Core：修复部分 Linux 系统（如内核版本 6.8.0-101）上 HTTP 请求头包含尾部空白/换行符导致连接错误的问题——发送前对 ASCII 请求头值执行空白裁剪
 - Core：修复 OpenAI Responses provider 隐式发送 `reasoning.effort=null` 导致需要推理的 Responses 兼容端点报错的问题——现在仅在显式设置时才发送推理参数
+- Vis：新增会话下载、导入、导出与删除功能——在会话浏览器和详情页支持一键 ZIP 下载，支持将 ZIP 文件导入到独立的 `~/.kimi/imported_sessions/` 目录并通过"Imported"筛选器切换查看，新增 `kimi export <session_id>` CLI 命令，支持删除导入的会话并提供 AlertDialog 二次确认
 - Core：修复对话包含媒体内容（图片、音频、视频）时上下文压缩失败的问题——将过滤策略从黑名单（排除 `ThinkPart`）改为白名单（仅保留 `TextPart`），防止不支持的内容类型被发送到压缩 API
 - Web：修复 `@` 文件提及索引在切换会话或工作区文件变更后不刷新的问题——切换会话时重置索引，30 秒过期自动刷新，输入路径前缀可查找超出 500 文件上限的文件
 
