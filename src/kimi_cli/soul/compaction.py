@@ -175,7 +175,7 @@ class SimpleCompaction:
                 TextPart(text=f"## Message {i + 1}\nRole: {msg.role}\nContent:\n")
             )
             compact_message.content.extend(
-                part for part in msg.content if not isinstance(part, ThinkPart)
+                part for part in msg.content if isinstance(part, TextPart)
             )
         prompt_text = "\n" + prompts.COMPACT
         if custom_instruction:
