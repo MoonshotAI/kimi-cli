@@ -46,6 +46,7 @@ export interface SessionInfo {
   state_size: number;
   total_size: number;
   turns: number;
+  imported?: boolean;
 }
 
 export interface SessionSummary {
@@ -213,6 +214,10 @@ export function getAggregateStats(forceRefresh = false): Promise<AggregateStats>
   return apiCache.get(key, () => fetchJSON<AggregateStats>("/statistics"), 60_000);
 }
 
+export function getSessionDownloadUrl(sessionId: string): string {
+  return `${BASE}/sessions/${sessionId}/download`;
+}
+
 export function getSessionSummary(
   sessionId: string,
   forceRefresh = false,
@@ -220,4 +225,47 @@ export function getSessionSummary(
   const key = `summary:${sessionId}`;
   if (forceRefresh) apiCache.invalidate(key);
   return apiCache.get(key, () => fetchJSON<SessionSummary>(`/sessions/${sessionId}/summary`));
+}
+
+export async function importSession(file: File): Promise<{ session_id: string; work_dir_hash: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE}/sessions/import`, { method: "POST", body: formData, signal: controller.signal });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `Import failed: ${res.status}`);
+    }
+    apiCache.invalidate("sessions");
+    return res.json();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Import request timed out");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(`${BASE}/sessions/${sessionId}`, { method: "DELETE", signal: controller.signal });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `Delete failed: ${res.status}`);
+    }
+    apiCache.invalidate("sessions");
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Delete request timed out");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

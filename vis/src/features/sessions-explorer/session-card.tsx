@@ -2,9 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import {
   type SessionInfo,
   type SessionSummary,
+  deleteSession,
+  getSessionDownloadUrl,
   getSessionSummary,
 } from "@/lib/api";
-import { AlertCircle, Clock, RefreshCw, Zap } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { AlertCircle, Clock, Download, RefreshCw, Trash2, Zap } from "lucide-react";
 
 function formatRelativeTime(epochSec: number): string {
   if (!epochSec) return "";
@@ -55,80 +67,192 @@ interface SessionCardProps {
   onSelect: () => void;
   compact?: boolean;
   searchQuery?: string;
+  onDeleted?: (sessionId: string) => void;
 }
 
-export function SessionCard({ session, onSelect, compact, searchQuery }: SessionCardProps) {
+export function SessionCard({ session, onSelect, compact, searchQuery, onDeleted }: SessionCardProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const displayTitle =
     session.metadata?.title && session.metadata.title !== "Untitled Session"
       ? session.metadata.title
       : session.title || "Untitled Session";
 
+  const sessionPath = `${session.work_dir_hash}/${session.session_id}`;
+  const downloadUrl = getSessionDownloadUrl(sessionPath);
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    setDeleting(true);
+    deleteSession(sessionPath)
+      .then(() => {
+        setDeleteDialogOpen(false);
+        onDeleted?.(session.session_id);
+      })
+      .catch((err) => alert(err instanceof Error ? err.message : "Delete failed"))
+      .finally(() => setDeleting(false));
+  };
+
+  const deleteDialog = session.imported ? (
+    <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete imported session?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently delete the imported session
+            &quot;{displayTitle}&quot;. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDeleteConfirm} disabled={deleting}>
+            {deleting ? "Deleting..." : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  ) : null;
+
   if (compact) {
     return (
-      <button
-        onClick={onSelect}
-        className="flex items-center gap-3 w-full border-b px-3 py-2 text-left hover:bg-accent/50 transition-colors"
-      >
-        <span className="font-mono text-[10px] text-muted-foreground w-16 shrink-0">
-          {session.session_id.slice(0, 8)}
-        </span>
-        <span className="text-xs truncate flex-1"><HighlightText text={displayTitle} query={searchQuery} /></span>
-        <LazyStats sessionId={`${session.work_dir_hash}/${session.session_id}`} hasWire={session.has_wire} inline />
-        <span className="text-[10px] text-muted-foreground shrink-0 w-14 text-right">
-          {formatBytes(session.total_size)}
-        </span>
-        <span className="text-[10px] text-muted-foreground shrink-0 w-16 text-right">
-          {formatRelativeTime(session.last_updated)}
-        </span>
-      </button>
+      <>
+        <button
+          onClick={onSelect}
+          className="flex items-center gap-3 w-full border-b px-3 py-2 text-left hover:bg-accent/50 transition-colors"
+        >
+          <span className="font-mono text-[10px] text-muted-foreground w-16 shrink-0">
+            {session.session_id.slice(0, 8)}
+          </span>
+          {session.imported && (
+            <span className="rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1 py-0 text-[9px] border border-orange-500/20 shrink-0">
+              imported
+            </span>
+          )}
+          <span className="text-xs truncate flex-1"><HighlightText text={displayTitle} query={searchQuery} /></span>
+          <LazyStats sessionId={sessionPath} hasWire={session.has_wire} inline />
+          <span className="text-[10px] text-muted-foreground shrink-0 w-14 text-right">
+            {formatBytes(session.total_size)}
+          </span>
+          <span className="text-[10px] text-muted-foreground shrink-0 w-16 text-right">
+            {formatRelativeTime(session.last_updated)}
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={handleDownload}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDownload(e as unknown as React.MouseEvent); }}
+            className="rounded p-0.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            title="Download session files"
+          >
+            <Download size={11} />
+          </span>
+          {session.imported && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleDeleteClick}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDeleteClick(e as unknown as React.MouseEvent); }}
+              className="rounded p-0.5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+              title="Delete imported session"
+            >
+              <Trash2 size={11} />
+            </span>
+          )}
+        </button>
+        {deleteDialog}
+      </>
     );
   }
 
   return (
-    <button
-      onClick={onSelect}
-      className="rounded-lg border bg-card p-3 text-left hover:bg-accent/50 hover:border-primary/30 transition-colors w-full"
-    >
-      {/* Row 1: ID + time */}
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {session.session_id.slice(0, 8)}
-        </span>
-        <span className="text-[10px] text-muted-foreground">
-          {formatRelativeTime(session.last_updated)}
-        </span>
-      </div>
+    <>
+      <button
+        onClick={onSelect}
+        className="rounded-lg border bg-card p-3 text-left hover:bg-accent/50 hover:border-primary/30 transition-colors w-full"
+      >
+        {/* Row 1: ID + time + actions */}
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {session.session_id.slice(0, 8)}
+            </span>
+            {session.imported && (
+              <span className="rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1 py-0 text-[9px] border border-orange-500/20">
+                imported
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleDownload}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDownload(e as unknown as React.MouseEvent); }}
+              className="rounded p-0.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              title="Download session files"
+            >
+              <Download size={12} />
+            </span>
+            {session.imported && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={handleDeleteClick}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDeleteClick(e as unknown as React.MouseEvent); }}
+                className="rounded p-0.5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+                title="Delete imported session"
+              >
+                <Trash2 size={12} />
+              </span>
+            )}
+            <span className="text-[10px] text-muted-foreground">
+              {formatRelativeTime(session.last_updated)}
+            </span>
+          </div>
+        </div>
 
-      {/* Row 2: Title */}
-      <div className="text-sm font-medium truncate mb-1.5" title={displayTitle}>
-        <HighlightText text={displayTitle} query={searchQuery} />
-      </div>
+        {/* Row 2: Title */}
+        <div className="text-sm font-medium truncate mb-1.5" title={displayTitle}>
+          <HighlightText text={displayTitle} query={searchQuery} />
+        </div>
 
-      {/* Row 3: Availability badges + file size */}
-      <div className="flex items-center gap-1 mb-2">
-        {session.has_wire && (
-          <span className="rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0 text-[10px] border border-blue-500/20">
-            wire
+        {/* Row 3: Availability badges + file size */}
+        <div className="flex items-center gap-1 mb-2">
+          {session.has_wire && (
+            <span className="rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0 text-[10px] border border-blue-500/20">
+              wire
+            </span>
+          )}
+          {session.has_context && (
+            <span className="rounded bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0 text-[10px] border border-green-500/20">
+              context
+            </span>
+          )}
+          {session.has_state && (
+            <span className="rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0 text-[10px] border border-purple-500/20">
+              state
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            {formatBytes(session.total_size)}
           </span>
-        )}
-        {session.has_context && (
-          <span className="rounded bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0 text-[10px] border border-green-500/20">
-            context
-          </span>
-        )}
-        {session.has_state && (
-          <span className="rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0 text-[10px] border border-purple-500/20">
-            state
-          </span>
-        )}
-        <span className="text-[10px] text-muted-foreground ml-auto">
-          {formatBytes(session.total_size)}
-        </span>
-      </div>
+        </div>
 
-      {/* Row 4+: Lazy-loaded stats */}
-      <LazyStats sessionId={`${session.work_dir_hash}/${session.session_id}`} hasWire={session.has_wire} />
-    </button>
+        {/* Row 4+: Lazy-loaded stats */}
+        <LazyStats sessionId={sessionPath} hasWire={session.has_wire} />
+      </button>
+      {deleteDialog}
+    </>
   );
 }
 
