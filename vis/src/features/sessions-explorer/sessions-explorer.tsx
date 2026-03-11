@@ -35,10 +35,13 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [importing, setImporting] = useState(false);
 
-  const refreshSessions = () => {
-    listSessions(true)
-      .then(setSessions)
-      .catch(console.error);
+  const refreshSessions = async () => {
+    try {
+      const updated = await listSessions(true);
+      setSessions(updated);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   useEffect(() => {
@@ -67,13 +70,20 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     setImporting(true);
     try {
       await importSession(file);
-      refreshSessions();
+      await refreshSessions();
     } catch (err) {
       console.error("Import failed:", err);
       alert(err instanceof Error ? err.message : "Import failed");
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleSessionDeleted = (deletedSessionId: string) => {
+    // Optimistic removal from local state
+    setSessions((prev) => prev.filter((s) => s.session_id !== deletedSessionId));
+    // Then refresh from server to ensure consistency
+    refreshSessions();
   };
 
   const filtered = useMemo(() => {
@@ -209,7 +219,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
               onSelectSession={onSelectSession}
               compact={viewMode === "compact"}
               searchQuery={search}
-              onSessionDeleted={refreshSessions}
+              onSessionDeleted={handleSessionDeleted}
             />
           ))
         ) : viewMode === "compact" ? (
@@ -221,7 +231,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
                 onSelect={() => onSelectSession(`${s.work_dir_hash}/${s.session_id}`)}
                 compact
                 searchQuery={search}
-                onDeleted={refreshSessions}
+                onDeleted={handleSessionDeleted}
               />
             ))}
           </div>
@@ -233,7 +243,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
                 session={s}
                 onSelect={() => onSelectSession(`${s.work_dir_hash}/${s.session_id}`)}
                 searchQuery={search}
-                onDeleted={refreshSessions}
+                onDeleted={handleSessionDeleted}
               />
             ))}
           </div>
@@ -242,6 +252,13 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
         {filtered.length === 0 && search && (
           <div className="flex items-center justify-center text-muted-foreground text-sm py-12">
             No sessions matching &quot;{search}&quot;
+          </div>
+        )}
+
+        {filtered.length === 0 && !search && filterMode === "imported" && (
+          <div className="flex flex-col items-center justify-center text-muted-foreground text-sm py-12 gap-2">
+            <span>No imported sessions</span>
+            <span className="text-xs">Import a session ZIP to get started.</span>
           </div>
         )}
       </div>

@@ -6,6 +6,7 @@ import {
   Import,
   LayoutGrid,
   List,
+  Loader2,
   X,
 } from "lucide-react";
 import {
@@ -156,7 +157,7 @@ export function ExplorerToolbar({
           className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
           title="Import session from ZIP"
         >
-          <Import size={12} className={importing ? "animate-spin" : ""} />
+          {importing ? <Loader2 size={12} className="animate-spin" /> : <Import size={12} />}
           {importing ? "Importing..." : "Import"}
         </button>
         <input

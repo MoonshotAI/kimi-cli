@@ -15,7 +15,7 @@ interface ProjectGroupProps {
   onSelectSession: (sessionId: string) => void;
   compact?: boolean;
   searchQuery?: string;
-  onSessionDeleted?: () => void;
+  onSessionDeleted?: (sessionId: string) => void;
 }
 
 export function ProjectGroup({
