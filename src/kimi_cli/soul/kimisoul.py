@@ -673,8 +673,14 @@ class KimiSoul:
         wire_send(status_update)
 
         # wait for all tool results (may be interrupted)
+        plan_mode_before_tools = self._plan_mode
         results = await result.tool_results()
         logger.debug("Got tool results: {results}", results=results)
+
+        # If a tool (EnterPlanMode/ExitPlanMode) changed plan mode during execution,
+        # send a corrected StatusUpdate so the client sees the up-to-date state.
+        if self._plan_mode != plan_mode_before_tools:
+            wire_send(StatusUpdate(plan_mode=self._plan_mode))
 
         # shield the context manipulation from interruption
         await asyncio.shield(self._grow_context(result, results))
