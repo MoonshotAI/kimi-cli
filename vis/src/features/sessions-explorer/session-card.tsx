@@ -84,7 +84,7 @@ export function SessionCard({ session, onSelect, compact, searchQuery, onDeleted
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    window.open(downloadUrl);
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {

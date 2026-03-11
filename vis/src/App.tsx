@@ -101,7 +101,7 @@ function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey
             className="font-mono shrink-0 cursor-pointer hover:text-foreground transition-colors"
             onClick={() => {
               const fullId = sessionId.split("/").pop() ?? sessionId;
-              navigator.clipboard.writeText(fullId);
+              navigator.clipboard.writeText(fullId).catch(() => {});
               setCopied(true);
               setTimeout(() => setCopied(false), 2000);
             }}

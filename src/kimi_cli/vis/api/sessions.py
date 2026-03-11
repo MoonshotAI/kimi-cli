@@ -411,7 +411,7 @@ def download_session(work_dir_hash: str, session_id: str) -> StreamingResponse:
                 zf.write(file_path, arcname=file_path.name)
     buf.seek(0)
 
-    filename = f"session-{session_id[:8]}.zip"
+    filename = f"session-{session_id}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",
@@ -428,6 +428,11 @@ async def import_session(file: UploadFile) -> dict[str, Any]:
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
+
+    # Reject uploads larger than 200 MB
+    _MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 200 MB)")
 
     # Validate ZIP
     buf = io.BytesIO(content)
@@ -454,6 +459,15 @@ async def import_session(file: UploadFile) -> dict[str, Any]:
         imported_root = _get_imported_root()
         session_dir = imported_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Zip Slip protection: reject entries with path traversal or absolute paths
+        for info in zf.infolist():
+            if info.filename.startswith("/") or ".." in info.filename.split("/"):
+                shutil.rmtree(session_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail="ZIP contains unsafe path entries",
+                )
 
         # Extract - handle both flat ZIPs and ZIPs with a single top-level directory
         zf.extractall(session_dir)

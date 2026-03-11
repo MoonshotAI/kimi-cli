@@ -59,7 +59,7 @@ def export(
 
     # Determine output path
     if output is None:
-        output = Path.cwd() / f"session-{session_id[:8]}.zip"
+        output = Path.cwd() / f"session-{session_id}.zip"
 
     # Create ZIP
     buf = io.BytesIO()
