@@ -136,7 +136,9 @@ def test_create_llm_requires_base_url_for_kimi():
     assert create_llm(provider, model) is None
 
 
-def test_create_llm_openai_responses_does_not_force_reasoning_off():
+def test_create_llm_openai_responses_thinking_false_no_reasoning_in_params():
+    """thinking=False should call with_thinking("off"), which sets reasoning_effort=None.
+    The OpenAIResponses provider handles this by omitting reasoning from the request."""
     provider = LLMProvider(
         type="openai_responses",
         base_url="https://openrouter.ai/api/v1",
@@ -153,8 +155,11 @@ def test_create_llm_openai_responses_does_not_force_reasoning_off():
 
     assert llm is not None
     assert isinstance(llm.chat_provider, OpenAIResponses)
+    # with_thinking("off") sets reasoning_effort=None in generation kwargs,
+    # but generate() will omit reasoning from the actual API request when effort is None.
     assert llm.chat_provider.model_parameters == snapshot(
         {
             "base_url": "https://openrouter.ai/api/v1/",
+            "reasoning_effort": None,
         }
     )
