@@ -33,10 +33,14 @@ from kimi_cli.soul import (
     wire_send,
 )
 from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.attachment import Attachment, AttachmentProvider, normalize_history
-from kimi_cli.soul.attachments.plan_mode import PlanModeAttachmentProvider
 from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.dynamic_injection import (
+    DynamicInjection,
+    DynamicInjectionProvider,
+    normalize_history,
+)
+from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -126,9 +130,9 @@ class KimiSoul:
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
         self._plan_mode: bool = False
         self._plan_session_id: str | None = None
-        self._pending_plan_activation_attachment: bool = False
-        self._attachment_providers: list[AttachmentProvider] = [
-            PlanModeAttachmentProvider(),
+        self._pending_plan_activation_injection: bool = False
+        self._injection_providers: list[DynamicInjectionProvider] = [
+            PlanModeInjectionProvider(),
         ]
 
         # Bind plan mode state to tools that support it
@@ -156,17 +160,24 @@ class KimiSoul:
         """Whether plan mode (read-only research and planning) is active."""
         return self._plan_mode
 
-    def add_attachment_provider(self, provider: AttachmentProvider) -> None:
-        """Register an additional attachment provider."""
-        self._attachment_providers.append(provider)
+    def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
+        """Register an additional dynamic injection provider."""
+        self._injection_providers.append(provider)
 
-    async def _collect_attachments(self) -> list[Attachment]:
-        """Collect attachments from all registered providers."""
-        attachments: list[Attachment] = []
-        for provider in self._attachment_providers:
-            result = await provider.get_attachments(self._context.history, self)
-            attachments.extend(result)
-        return attachments
+    async def _collect_injections(self) -> list[DynamicInjection]:
+        """Collect dynamic injections from all registered providers."""
+        injections: list[DynamicInjection] = []
+        for provider in self._injection_providers:
+            try:
+                result = await provider.get_injections(self._context.history, self)
+                injections.extend(result)
+            except Exception:
+                logger.warning(
+                    "injection provider %s failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+        return injections
 
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
@@ -223,9 +234,9 @@ class KimiSoul:
         self._plan_mode = enabled
         if enabled:
             self._ensure_plan_session_id()
-            self._pending_plan_activation_attachment = source == "manual"
+            self._pending_plan_activation_injection = source == "manual"
         else:
-            self._pending_plan_activation_attachment = False
+            self._pending_plan_activation_injection = False
         return self._plan_mode
 
     def get_plan_file_path(self) -> Path | None:
@@ -255,7 +266,7 @@ class KimiSoul:
 
         Tools are not hidden/unhidden — instead, each tool checks plan mode
         state at call time and rejects if blocked.
-        Periodic reminders are handled by the attachment system.
+        Periodic reminders are handled by the dynamic injection system.
         """
         return self._set_plan_mode(not self._plan_mode, source="tool")
 
@@ -263,16 +274,16 @@ class KimiSoul:
         """Toggle plan mode from UI/manual entry points.
 
         Manual toggles do not append a synthetic history message. Instead, entering
-        plan mode schedules a one-shot attachment for the next LLM step, and exiting
-        plan mode clears that pending attachment if it has not been used yet.
+        plan mode schedules a one-shot injection for the next LLM step, and exiting
+        plan mode clears that pending injection if it has not been used yet.
         """
         return self._set_plan_mode(not self._plan_mode, source="manual")
 
-    def consume_pending_plan_activation_attachment(self) -> bool:
+    def consume_pending_plan_activation_injection(self) -> bool:
         """Consume the next-step activation reminder scheduled by a manual toggle."""
-        if not self._plan_mode or not self._pending_plan_activation_attachment:
+        if not self._plan_mode or not self._pending_plan_activation_injection:
             return False
-        self._pending_plan_activation_attachment = False
+        self._pending_plan_activation_injection = False
         return True
 
     @property
@@ -599,11 +610,11 @@ class KimiSoul:
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
-        # Attachment injection
-        attachments = await self._collect_attachments()
-        if attachments:
+        # Dynamic injection
+        injections = await self._collect_injections()
+        if injections:
             combined = "\n".join(
-                f"<system-reminder>\n{att.content}\n</system-reminder>" for att in attachments
+                f"<system-reminder>\n{inj.content}\n</system-reminder>" for inj in injections
             )
             await self._context.append_message(
                 Message(role="user", content=[TextPart(text=combined)])

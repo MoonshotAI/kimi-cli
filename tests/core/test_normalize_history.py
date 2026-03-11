@@ -1,10 +1,10 @@
-"""Tests for normalize_history in the attachment module."""
+"""Tests for normalize_history in the dynamic_injection module."""
 
 from __future__ import annotations
 
 from kosong.message import ContentPart, Message, TextPart
 
-from kimi_cli.soul.attachment import normalize_history
+from kimi_cli.soul.dynamic_injection import normalize_history
 
 
 def _text(part: ContentPart) -> str:

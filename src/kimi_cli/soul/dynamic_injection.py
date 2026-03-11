@@ -12,15 +12,15 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class Attachment:
+class DynamicInjection:
     """A dynamic prompt content to be injected before an LLM step."""
 
     type: str  # identifier, e.g. "plan_mode"
     content: str  # text content (will be wrapped in <system-reminder> tags)
 
 
-class AttachmentProvider(ABC):
-    """Base class for attachment providers.
+class DynamicInjectionProvider(ABC):
+    """Base class for dynamic injection providers.
 
     Called before each LLM step. Implementations handle their own throttling.
     Providers can access all runtime state via the ``soul`` parameter
@@ -28,17 +28,17 @@ class AttachmentProvider(ABC):
     """
 
     @abstractmethod
-    async def get_attachments(
+    async def get_injections(
         self,
         history: Sequence[Message],
         soul: KimiSoul,
-    ) -> list[Attachment]: ...
+    ) -> list[DynamicInjection]: ...
 
 
 def normalize_history(history: Sequence[Message]) -> list[Message]:
     """Merge adjacent user messages to produce a clean API input sequence.
 
-    Attachments are stored as standalone user messages in history;
+    Dynamic injections are stored as standalone user messages in history;
     normalization merges them into the adjacent user message.
 
     Only ``user`` role messages are merged. Assistant and tool messages

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from kosong.message import Message, TextPart
 
-from kimi_cli.soul.attachment import Attachment, AttachmentProvider
+from kimi_cli.soul.dynamic_injection import DynamicInjection, DynamicInjectionProvider
 
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
@@ -16,7 +16,7 @@ _TURN_INTERVAL = 5
 _FULL_EVERY_N = 5
 
 
-class PlanModeAttachmentProvider(AttachmentProvider):
+class PlanModeInjectionProvider(DynamicInjectionProvider):
     """Periodically injects read-only reminders while plan mode is active.
 
     Throttling is inferred from history: scan backwards to the last
@@ -27,11 +27,11 @@ class PlanModeAttachmentProvider(AttachmentProvider):
     def __init__(self) -> None:
         self._inject_count: int = 0
 
-    async def get_attachments(
+    async def get_injections(
         self,
         history: Sequence[Message],
         soul: KimiSoul,
-    ) -> list[Attachment]:
+    ) -> list[DynamicInjection]:
         if not soul.plan_mode:
             self._inject_count = 0
             return []
@@ -41,18 +41,18 @@ class PlanModeAttachmentProvider(AttachmentProvider):
         plan_exists = plan_path is not None and plan_path.exists()
 
         # Manual toggles schedule a one-shot activation reminder for the next LLM step.
-        if soul.consume_pending_plan_activation_attachment():
+        if soul.consume_pending_plan_activation_injection():
             self._inject_count = 1
             # When re-entering with an existing plan, use the reentry reminder.
             if plan_exists:
                 return [
-                    Attachment(
+                    DynamicInjection(
                         type="plan_mode_reentry",
                         content=_reentry_reminder(plan_path_str),
                     )
                 ]
             return [
-                Attachment(
+                DynamicInjection(
                     type="plan_mode",
                     content=_full_reminder(plan_path_str, plan_exists),
                 )
@@ -72,7 +72,7 @@ class PlanModeAttachmentProvider(AttachmentProvider):
         if not found_previous:
             self._inject_count = 1
             return [
-                Attachment(
+                DynamicInjection(
                     type="plan_mode",
                     content=_full_reminder(plan_path_str, plan_exists),
                 )
@@ -89,7 +89,7 @@ class PlanModeAttachmentProvider(AttachmentProvider):
             content = _full_reminder(plan_path_str, plan_exists)
         else:
             content = _sparse_reminder(plan_path_str)
-        return [Attachment(type="plan_mode", content=content)]
+        return [DynamicInjection(type="plan_mode", content=content)]
 
 
 def _has_plan_reminder(msg: Message) -> bool:
