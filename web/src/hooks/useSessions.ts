@@ -8,7 +8,10 @@ import { SessionFromJSON } from "../lib/api/models/Session";
 import { apiClient } from "../lib/apiClient";
 import { getAuthHeader, getAuthToken } from "../lib/auth";
 import { formatRelativeTime, getApiBaseUrl } from "./utils";
-import { useSessionAttentionStore } from "./useSessionAttention";
+import {
+  useSessionAttentionStore,
+  type SessionStatusSnapshot,
+} from "./useSessionAttention";
 
 // Regex patterns for path normalization
 const LEADING_DOT_SLASH_REGEX = /^\.\/+/;
@@ -120,6 +123,24 @@ const normalizeSessionPath = (value?: string): string => {
 const PAGE_SIZE = 100;
 const AUTO_REFRESH_MS = 30_000;
 
+const RUNNING_SESSION_STATES = new Set(["busy", "restarting"]);
+
+const isPromptCompletionReason = (reason?: string | null): boolean =>
+  typeof reason === "string" && reason.startsWith("prompt_");
+
+const isRunningState = (state?: string): boolean =>
+  typeof state === "string" && RUNNING_SESSION_STATES.has(state);
+
+const toSessionSnapshot = (
+  status?: SessionStatus | null,
+  fallbackUpdatedAt?: Date,
+): SessionStatusSnapshot => ({
+  state: status?.state ?? "stopped",
+  reason: status?.reason ?? undefined,
+  seq: status?.seq,
+  updatedAt: status?.updatedAt ?? fallbackUpdatedAt,
+});
+
 /**
  * Custom error class for directory not found
  */
@@ -155,6 +176,55 @@ export function useSessions(): UseSessionsReturn {
   const [hasMoreArchivedSessions, setHasMoreArchivedSessions] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const lastRefreshRef = useRef(0);
+  const selectedSessionIdRef = useRef(selectedSessionId);
+
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
+
+  const syncSessionStatus = useCallback(
+    (sessionId: string, status?: SessionStatus | null, fallbackUpdatedAt?: Date) => {
+      const {
+        sessionSnapshots,
+        setSessionSnapshot,
+        setAttention,
+        clearAttention,
+      } = useSessionAttentionStore.getState();
+      const previous = sessionSnapshots[sessionId];
+      const next = toSessionSnapshot(status, fallbackUpdatedAt);
+
+      setSessionSnapshot(sessionId, next);
+
+      if (sessionId === selectedSessionIdRef.current) {
+        clearAttention(sessionId);
+        return;
+      }
+
+      if (isRunningState(next.state) || next.state === "error") {
+        clearAttention(sessionId);
+        return;
+      }
+
+      if (
+        previous &&
+        isRunningState(previous.state) &&
+        next.state === "idle" &&
+        isPromptCompletionReason(next.reason)
+      ) {
+        setAttention(sessionId);
+      }
+    },
+    [],
+  );
+
+  const syncSessionsStatus = useCallback(
+    (items: Session[]) => {
+      for (const session of items) {
+        syncSessionStatus(session.sessionId, session.status, session.lastUpdated);
+      }
+    },
+    [syncSessionStatus],
+  );
 
   /**
    * Refresh sessions list from API
@@ -175,14 +245,7 @@ export function useSessions(): UseSessionsReturn {
       setSessions(sessionsList);
       setHasMoreSessions(sessionsList.length === PAGE_SIZE);
       lastRefreshRef.current = Date.now();
-
-      // Sync session states to attention store for status dot rendering
-      const { setSessionState } = useSessionAttentionStore.getState();
-      for (const session of sessionsList) {
-        if (session.status?.state) {
-          setSessionState(session.sessionId, session.status.state);
-        }
-      }
+      syncSessionsStatus(sessionsList);
 
       // Don't auto-select first session - user can click on one or create a new one
     } catch (err) {
@@ -193,7 +256,7 @@ export function useSessions(): UseSessionsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, syncSessionsStatus]);
 
   const loadMoreSessions = useCallback(async () => {
     if (isLoadingMore || isLoading || !hasMoreSessions) {
@@ -212,6 +275,7 @@ export function useSessions(): UseSessionsReturn {
       setSessions((current) => [...current, ...moreSessions]);
       setHasMoreSessions(moreSessions.length === PAGE_SIZE);
       lastRefreshRef.current = Date.now();
+      syncSessionsStatus(moreSessions);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to load more sessions";
@@ -220,17 +284,35 @@ export function useSessions(): UseSessionsReturn {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [hasMoreSessions, isLoading, isLoadingMore, searchQuery, sessions.length]);
+  }, [
+    hasMoreSessions,
+    isLoading,
+    isLoadingMore,
+    searchQuery,
+    sessions.length,
+    syncSessionsStatus,
+  ]);
 
-  const applySessionStatus = useCallback((status: SessionStatus) => {
-    setSessions((current) =>
-      current.map((session) =>
-        session.sessionId === status.sessionId
-          ? { ...session, status }
-          : session,
-      ),
-    );
-  }, []);
+  const applySessionStatus = useCallback(
+    (status: SessionStatus) => {
+      setSessions((current) =>
+        current.map((session) =>
+          session.sessionId === status.sessionId
+            ? { ...session, status }
+            : session,
+        ),
+      );
+      setArchivedSessions((current) =>
+        current.map((session) =>
+          session.sessionId === status.sessionId
+            ? { ...session, status }
+            : session,
+        ),
+      );
+      syncSessionStatus(status.sessionId, status);
+    },
+    [syncSessionStatus],
+  );
 
   /**
    * Refresh archived sessions list from API
@@ -249,27 +331,18 @@ export function useSessions(): UseSessionsReturn {
         throw new Error("Failed to load archived sessions");
       }
       const data = await response.json();
-      // Convert snake_case to camelCase
-      const archivedList: Session[] = data.map(
-        (item: Record<string, unknown>) => ({
-          sessionId: item.session_id,
-          title: item.title,
-          lastUpdated: new Date(item.last_updated as string),
-          isRunning: item.is_running,
-          status: item.status,
-          workDir: item.work_dir,
-          sessionDir: item.session_dir,
-          archived: item.archived,
-        }),
+      const archivedList: Session[] = data.map((item: Record<string, unknown>) =>
+        SessionFromJSON(item),
       );
       setArchivedSessions(archivedList);
       setHasMoreArchivedSessions(archivedList.length === PAGE_SIZE);
+      syncSessionsStatus(archivedList);
     } catch (err) {
       console.error("Failed to refresh archived sessions:", err);
     } finally {
       setIsLoadingArchived(false);
     }
-  }, []);
+  }, [syncSessionsStatus]);
 
   /**
    * Load more archived sessions for pagination
@@ -292,20 +365,12 @@ export function useSessions(): UseSessionsReturn {
         throw new Error("Failed to load more archived sessions");
       }
       const data = await response.json();
-      const moreArchived: Session[] = data.map(
-        (item: Record<string, unknown>) => ({
-          sessionId: item.session_id,
-          title: item.title,
-          lastUpdated: new Date(item.last_updated as string),
-          isRunning: item.is_running,
-          status: item.status,
-          workDir: item.work_dir,
-          sessionDir: item.session_dir,
-          archived: item.archived,
-        }),
+      const moreArchived: Session[] = data.map((item: Record<string, unknown>) =>
+        SessionFromJSON(item),
       );
       setArchivedSessions((current) => [...current, ...moreArchived]);
       setHasMoreArchivedSessions(moreArchived.length === PAGE_SIZE);
+      syncSessionsStatus(moreArchived);
     } catch (err) {
       console.error("Failed to load more archived sessions:", err);
     } finally {
@@ -316,6 +381,7 @@ export function useSessions(): UseSessionsReturn {
     hasMoreArchivedSessions,
     isLoadingArchived,
     isLoadingMoreArchived,
+    syncSessionsStatus,
   ]);
 
   // Refresh sessions list when search changes
@@ -407,13 +473,15 @@ export function useSessions(): UseSessionsReturn {
           );
         }
 
+        syncSessionStatus(session.sessionId, session.status, session.lastUpdated);
+
         return session;
       } catch (err) {
         console.error("Failed to refresh session:", sessionId, err);
         return null;
       }
     },
-    [],
+    [syncSessionStatus],
   );
 
   /**

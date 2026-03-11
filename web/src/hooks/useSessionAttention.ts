@@ -1,23 +1,36 @@
 import { create } from "zustand";
 
+export type SessionStatusSnapshot = {
+  state: string;
+  reason?: string;
+  seq?: number;
+  updatedAt?: Date;
+};
+
 type SessionAttentionState = {
-  /** Session IDs that need user attention (completed unread, approval request, etc.) */
+  /** Session IDs that need user attention (completed unread, etc.) */
   attention: Record<string, boolean>;
-  /** Last known session state from server (for busy dot rendering) */
+  /** Last known session state from server (for sidebar dot rendering) */
   sessionStates: Record<string, string>;
+  /** Last known runtime snapshot from server for transition detection */
+  sessionSnapshots: Record<string, SessionStatusSnapshot>;
 
   /** Mark a session as needing attention */
   setAttention: (sessionId: string) => void;
   /** Clear attention for a session (user viewed it) */
   clearAttention: (sessionId: string) => void;
-  /** Update the cached state for a session */
-  setSessionState: (sessionId: string, state: string) => void;
+  /** Update the cached runtime snapshot for a session */
+  setSessionSnapshot: (
+    sessionId: string,
+    snapshot: SessionStatusSnapshot,
+  ) => void;
 };
 
 export const useSessionAttentionStore = create<SessionAttentionState>(
   (set) => ({
     attention: {},
     sessionStates: {},
+    sessionSnapshots: {},
 
     setAttention: (sessionId) =>
       set((s) => ({
@@ -32,9 +45,13 @@ export const useSessionAttentionStore = create<SessionAttentionState>(
         return { attention: next };
       }),
 
-    setSessionState: (sessionId, state) =>
+    setSessionSnapshot: (sessionId, snapshot) =>
       set((s) => ({
-        sessionStates: { ...s.sessionStates, [sessionId]: state },
+        sessionStates: { ...s.sessionStates, [sessionId]: snapshot.state },
+        sessionSnapshots: {
+          ...s.sessionSnapshots,
+          [sessionId]: snapshot,
+        },
       })),
   }),
 );

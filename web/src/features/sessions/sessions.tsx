@@ -80,8 +80,9 @@ const VIEW_MODE_KEY = "kimi-sessions-view-mode";
 
 /**
  * Status dot indicator for session list items.
- * - Yellow pulsing dot: session is busy (running a prompt)
- * - Green dot: needs attention (completed unread / approval request)
+ * - Red dot: session hit a runtime error
+ * - Yellow pulsing dot: session is running or restarting
+ * - Green dot: session needs attention (completed unread)
  * - No dot: idle or stopped
  */
 function SessionStatusDot({ sessionId }: { sessionId: string }) {
@@ -90,7 +91,11 @@ function SessionStatusDot({ sessionId }: { sessionId: string }) {
     (s) => s.attention[sessionId] ?? false,
   );
 
-  if (state === "busy") {
+  if (state === "error") {
+    return <span className="inline-flex size-2 shrink-0 rounded-full bg-red-400" />;
+  }
+
+  if (state === "busy" || state === "restarting") {
     return (
       <span className="relative flex size-2 shrink-0">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75" />

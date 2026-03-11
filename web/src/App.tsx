@@ -254,6 +254,13 @@ function App() {
     updateUrlWithSession(selectedSessionId || null);
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    if (!selectedSessionId) {
+      return;
+    }
+    useSessionAttentionStore.getState().clearAttention(selectedSessionId);
+  }, [selectedSessionId]);
+
   // Show toast notifications for errors
   useEffect(() => {
     if (sessionsError) {
@@ -271,19 +278,6 @@ function App() {
     (status: SessionStatus) => {
       applySessionStatus(status);
 
-      const { setSessionState, setAttention, clearAttention } =
-        useSessionAttentionStore.getState();
-
-      // Track session state for status dot rendering
-      if (status.state) {
-        setSessionState(status.sessionId, status.state);
-      }
-
-      // When session becomes busy, clear any existing attention
-      if (status.state === "busy") {
-        clearAttention(status.sessionId);
-      }
-
       if (status.state !== "idle") {
         return;
       }
@@ -293,18 +287,13 @@ function App() {
         return;
       }
 
-      // Mark as needing attention if not the currently viewed session
-      if (status.sessionId !== selectedSessionId) {
-        setAttention(status.sessionId);
-      }
-
       console.log(
         "[App] Prompt complete, refreshing session info:",
         status.sessionId,
       );
       refreshSession(status.sessionId);
     },
-    [applySessionStatus, refreshSession, selectedSessionId],
+    [applySessionStatus, refreshSession],
   );
 
   const handleCreateSession = useCallback(
