@@ -272,6 +272,11 @@ class Shell:
                 console.print("[red]Membership expired, please renew your plan[/red]")
             elif isinstance(e, APIStatusError) and e.status_code == 403:
                 console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+            elif isinstance(e, APIStatusError) and e.status_code == 429:
+                console.print(
+                    "[yellow]API rate limit reached. Please wait a moment before retrying,"
+                    " or reduce the number of concurrent agents.[/yellow]"
+                )
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
         except MaxStepsReached as e:
