@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { type SessionInfo, listSessions } from "@/lib/api";
+import { type SessionInfo, importSession, listSessions } from "@/lib/api";
 import {
   ExplorerToolbar,
+  type FilterMode,
   type SortMode,
   type ViewMode,
 } from "./explorer-toolbar";
@@ -31,6 +32,14 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
   const [sortMode, setSortMode] = useState<SortMode>("time");
   const [grouped, setGrouped] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [importing, setImporting] = useState(false);
+
+  const refreshSessions = () => {
+    listSessions(true)
+      .then(setSessions)
+      .catch(console.error);
+  };
 
   useEffect(() => {
     listSessions()
@@ -54,16 +63,40 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  const handleImport = async (file: File) => {
+    setImporting(true);
+    try {
+      await importSession(file);
+      refreshSessions();
+    } catch (err) {
+      console.error("Import failed:", err);
+      alert(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filtered = useMemo(() => {
-    if (!search) return sessions;
-    const q = search.toLowerCase();
-    return sessions.filter(
-      (s) =>
-        s.session_id.toLowerCase().includes(q) ||
-        s.title.toLowerCase().includes(q) ||
-        (s.work_dir && s.work_dir.toLowerCase().includes(q)),
-    );
-  }, [sessions, search]);
+    let result = sessions;
+
+    // Apply imported filter
+    if (filterMode === "imported") {
+      result = result.filter((s) => s.imported);
+    }
+
+    // Apply search filter
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.session_id.toLowerCase().includes(q) ||
+          s.title.toLowerCase().includes(q) ||
+          (s.work_dir && s.work_dir.toLowerCase().includes(q)),
+      );
+    }
+
+    return result;
+  }, [sessions, search, filterMode]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -81,7 +114,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     if (!grouped) return [];
     const map = new Map<string, SessionInfo[]>();
     for (const s of sorted) {
-      const key = s.work_dir ?? "Unknown";
+      const key = s.imported ? "Imported" : (s.work_dir ?? "Unknown");
       const list = map.get(key);
       if (list) {
         list.push(s);
@@ -158,8 +191,12 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
         onToggleGrouped={() => setGrouped((v) => !v)}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        filterMode={filterMode}
+        onFilterModeChange={setFilterMode}
         totalCount={sessions.length}
         filteredCount={filtered.length}
+        onImport={handleImport}
+        importing={importing}
       />
 
       <div className="flex-1 overflow-auto p-4">
@@ -172,6 +209,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
               onSelectSession={onSelectSession}
               compact={viewMode === "compact"}
               searchQuery={search}
+              onSessionDeleted={refreshSessions}
             />
           ))
         ) : viewMode === "compact" ? (
@@ -183,6 +221,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
                 onSelect={() => onSelectSession(`${s.work_dir_hash}/${s.session_id}`)}
                 compact
                 searchQuery={search}
+                onDeleted={refreshSessions}
               />
             ))}
           </div>
@@ -194,6 +233,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
                 session={s}
                 onSelect={() => onSelectSession(`${s.work_dir_hash}/${s.session_id}`)}
                 searchQuery={search}
+                onDeleted={refreshSessions}
               />
             ))}
           </div>

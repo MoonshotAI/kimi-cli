@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   type SessionInfo,
   type SessionSummary,
+  deleteSession,
   getSessionDownloadUrl,
   getSessionSummary,
 } from "@/lib/api";
-import { AlertCircle, Clock, Download, RefreshCw, Zap } from "lucide-react";
+import { AlertCircle, Clock, Download, RefreshCw, Trash2, Zap } from "lucide-react";
 
 function formatRelativeTime(epochSec: number): string {
   if (!epochSec) return "";
@@ -56,19 +57,29 @@ interface SessionCardProps {
   onSelect: () => void;
   compact?: boolean;
   searchQuery?: string;
+  onDeleted?: () => void;
 }
 
-export function SessionCard({ session, onSelect, compact, searchQuery }: SessionCardProps) {
+export function SessionCard({ session, onSelect, compact, searchQuery, onDeleted }: SessionCardProps) {
   const displayTitle =
     session.metadata?.title && session.metadata.title !== "Untitled Session"
       ? session.metadata.title
       : session.title || "Untitled Session";
 
-  const downloadUrl = getSessionDownloadUrl(`${session.work_dir_hash}/${session.session_id}`);
+  const sessionPath = `${session.work_dir_hash}/${session.session_id}`;
+  const downloadUrl = getSessionDownloadUrl(sessionPath);
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(downloadUrl);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this imported session?")) return;
+    deleteSession(sessionPath)
+      .then(() => onDeleted?.())
+      .catch((err) => alert(err instanceof Error ? err.message : "Delete failed"));
   };
 
   if (compact) {
@@ -80,8 +91,13 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
         <span className="font-mono text-[10px] text-muted-foreground w-16 shrink-0">
           {session.session_id.slice(0, 8)}
         </span>
+        {session.imported && (
+          <span className="rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1 py-0 text-[9px] border border-orange-500/20 shrink-0">
+            imported
+          </span>
+        )}
         <span className="text-xs truncate flex-1"><HighlightText text={displayTitle} query={searchQuery} /></span>
-        <LazyStats sessionId={`${session.work_dir_hash}/${session.session_id}`} hasWire={session.has_wire} inline />
+        <LazyStats sessionId={sessionPath} hasWire={session.has_wire} inline />
         <span className="text-[10px] text-muted-foreground shrink-0 w-14 text-right">
           {formatBytes(session.total_size)}
         </span>
@@ -98,6 +114,18 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
         >
           <Download size={11} />
         </span>
+        {session.imported && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={handleDelete}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDelete(e as unknown as React.MouseEvent); }}
+            className="rounded p-0.5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+            title="Delete imported session"
+          >
+            <Trash2 size={11} />
+          </span>
+        )}
       </button>
     );
   }
@@ -107,11 +135,18 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
       onClick={onSelect}
       className="rounded-lg border bg-card p-3 text-left hover:bg-accent/50 hover:border-primary/30 transition-colors w-full"
     >
-      {/* Row 1: ID + time */}
+      {/* Row 1: ID + time + actions */}
       <div className="flex items-center justify-between mb-1">
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {session.session_id.slice(0, 8)}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {session.session_id.slice(0, 8)}
+          </span>
+          {session.imported && (
+            <span className="rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 px-1 py-0 text-[9px] border border-orange-500/20">
+              imported
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           <span
             role="button"
@@ -123,6 +158,18 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
           >
             <Download size={12} />
           </span>
+          {session.imported && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleDelete}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleDelete(e as unknown as React.MouseEvent); }}
+              className="rounded p-0.5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+              title="Delete imported session"
+            >
+              <Trash2 size={12} />
+            </span>
+          )}
           <span className="text-[10px] text-muted-foreground">
             {formatRelativeTime(session.last_updated)}
           </span>
@@ -157,7 +204,7 @@ export function SessionCard({ session, onSelect, compact, searchQuery }: Session
       </div>
 
       {/* Row 4+: Lazy-loaded stats */}
-      <LazyStats sessionId={`${session.work_dir_hash}/${session.session_id}`} hasWire={session.has_wire} />
+      <LazyStats sessionId={sessionPath} hasWire={session.has_wire} />
     </button>
   );
 }

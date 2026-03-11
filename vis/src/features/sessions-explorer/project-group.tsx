@@ -15,6 +15,7 @@ interface ProjectGroupProps {
   onSelectSession: (sessionId: string) => void;
   compact?: boolean;
   searchQuery?: string;
+  onSessionDeleted?: () => void;
 }
 
 export function ProjectGroup({
@@ -23,6 +24,7 @@ export function ProjectGroup({
   onSelectSession,
   compact,
   searchQuery,
+  onSessionDeleted,
 }: ProjectGroupProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -64,6 +66,7 @@ export function ProjectGroup({
               onSelect={() => onSelectSession(`${s.work_dir_hash}/${s.session_id}`)}
               compact={compact}
               searchQuery={searchQuery}
+              onDeleted={onSessionDeleted}
             />
           ))}
         </div>

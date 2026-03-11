@@ -46,6 +46,7 @@ export interface SessionInfo {
   state_size: number;
   total_size: number;
   turns: number;
+  imported?: boolean;
 }
 
 export interface SessionSummary {
@@ -224,4 +225,25 @@ export function getSessionSummary(
   const key = `summary:${sessionId}`;
   if (forceRefresh) apiCache.invalidate(key);
   return apiCache.get(key, () => fetchJSON<SessionSummary>(`/sessions/${sessionId}/summary`));
+}
+
+export async function importSession(file: File): Promise<{ session_id: string; work_dir_hash: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${BASE}/sessions/import`, { method: "POST", body: formData });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `Import failed: ${res.status}`);
+  }
+  apiCache.invalidate("sessions");
+  return res.json();
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${BASE}/sessions/${sessionId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `Delete failed: ${res.status}`);
+  }
+  apiCache.invalidate("sessions");
 }

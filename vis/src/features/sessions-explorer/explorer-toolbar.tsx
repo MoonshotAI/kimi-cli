@@ -1,7 +1,9 @@
+import { useRef } from "react";
 import {
   Search,
   ArrowUpDown,
   FolderOpen,
+  Import,
   LayoutGrid,
   List,
   X,
@@ -16,6 +18,7 @@ import {
 
 export type SortMode = "time" | "turns" | "name";
 export type ViewMode = "cards" | "compact";
+export type FilterMode = "all" | "imported";
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "time", label: "Recent" },
@@ -32,8 +35,12 @@ interface ExplorerToolbarProps {
   onToggleGrouped: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  filterMode: FilterMode;
+  onFilterModeChange: (mode: FilterMode) => void;
   totalCount: number;
   filteredCount: number;
+  onImport: (file: File) => void;
+  importing?: boolean;
 }
 
 export function ExplorerToolbar({
@@ -45,9 +52,15 @@ export function ExplorerToolbar({
   onToggleGrouped,
   viewMode,
   onViewModeChange,
+  filterMode,
+  onFilterModeChange,
   totalCount,
   filteredCount,
+  onImport,
+  importing,
 }: ExplorerToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="border-b px-4 py-2">
       <div className="flex items-center gap-2">
@@ -95,6 +108,20 @@ export function ExplorerToolbar({
 
         <div className="h-4 w-px bg-border" />
 
+        {/* Imported filter toggle */}
+        <button
+          onClick={() => onFilterModeChange(filterMode === "all" ? "imported" : "all")}
+          className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] transition-colors ${
+            filterMode === "imported"
+              ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+          title="Show imported sessions only"
+        >
+          <Import size={12} />
+          Imported
+        </button>
+
         {/* Group toggle */}
         <button
           onClick={onToggleGrouped}
@@ -119,6 +146,30 @@ export function ExplorerToolbar({
         >
           {viewMode === "cards" ? <List size={12} /> : <LayoutGrid size={12} />}
         </button>
+
+        <div className="h-4 w-px bg-border" />
+
+        {/* Import button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          title="Import session from ZIP"
+        >
+          <Import size={12} className={importing ? "animate-spin" : ""} />
+          {importing ? "Importing..." : "Import"}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".zip"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onImport(file);
+            e.target.value = "";
+          }}
+        />
 
         {/* Count */}
         <span className="text-[11px] text-muted-foreground ml-auto shrink-0">
