@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix OpenAI Responses provider sending implicit `reasoning.effort=null` which breaks Responses-compatible endpoints that require reasoning — reasoning parameters are now omitted unless explicitly set
 - ACP: Support embedded resource content in ACP mode so that Zed's `@` file references correctly include file contents
 - Core: Use `parameters_json_schema` instead of `parameters` in Google GenAI provider to bypass Pydantic validation that rejects standard JSON Schema metadata fields in MCP tools
 - Shell: Enhance `Ctrl-V` clipboard paste to support video files in addition to images — video file paths are inserted as text, and a crash when clipboard data is `None` is fixed
