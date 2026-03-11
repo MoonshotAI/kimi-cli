@@ -107,6 +107,7 @@ async def test_wire_message_serde():
                 "max_context_tokens": None,
                 "token_usage": None,
                 "message_id": None,
+                "plan_mode": None,
             },
         }
     )

@@ -49,6 +49,7 @@ from .jsonrpc import (
     JSONRPCRequestMessage,
     JSONRPCSteerMessage,
     JSONRPCSuccessResponse,
+    JSONRPCTogglePlanModeMessage,
     Statuses,
 )
 
@@ -294,6 +295,8 @@ class WireServer:
                     resp = await self._handle_replay(msg)
                 case JSONRPCSteerMessage():
                     resp = await self._handle_steer(msg)
+                case JSONRPCTogglePlanModeMessage():
+                    resp = await self._handle_toggle_plan_mode(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -550,6 +553,27 @@ class WireServer:
         return JSONRPCSuccessResponse(
             id=msg.id,
             result={"status": Statuses.STEERED},
+        )
+
+    async def _handle_toggle_plan_mode(
+        self, msg: JSONRPCTogglePlanModeMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if not isinstance(self._soul, KimiSoul):
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="Plan mode is not supported",
+                ),
+            )
+
+        new_state = await self._soul.toggle_plan_mode_from_manual()
+        from kimi_cli.wire.types import StatusUpdate
+
+        await self._send_msg(JSONRPCEventMessage(params=StatusUpdate(plan_mode=new_state)))
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result={"status": "ok", "plan_mode": new_state},
         )
 
     async def _handle_replay(

@@ -25,6 +25,7 @@ type PromptToolbarProps = {
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
   workDir?: string | null;
+  planMode?: boolean;
   activityStatus?: ActivityDetail;
   usagePercent?: number;
   usedTokens?: number;
@@ -38,6 +39,7 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
   gitDiffStats,
   isGitDiffLoading,
   workDir,
+  planMode = false,
   activityStatus,
   usagePercent,
   usedTokens,
@@ -75,7 +77,7 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
     setActiveTab((prev) => (prev === tab ? null : tab));
   }, []);
 
-  if (!(hasTabs || activityStatus || hasContext)) return null;
+  if (!(hasTabs || activityStatus || hasContext || planMode)) return null;
 
   return (
     <div className={cn("w-full px-1 sm:px-2 flex flex-col gap-1 mb-2", isGitDiffLoading && "opacity-70")}>
@@ -97,6 +99,12 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
 
       {/* ── Tab bar ── */}
       <div className="flex items-center gap-1.5 px-1">
+        {planMode && (
+          <span className="text-xs font-medium text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+            plan
+          </span>
+        )}
+
         {activityStatus && (
           <ToolbarActivityIndicator activity={activityStatus} />
         )}

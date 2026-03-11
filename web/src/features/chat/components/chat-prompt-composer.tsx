@@ -62,6 +62,8 @@ type ChatPromptComposerProps = {
   gitDiffStats?: GitDiffStats | null;
   isGitDiffLoading?: boolean;
   slashCommands?: SlashCommandDef[];
+  planMode?: boolean;
+  onPlanModeToggle?: () => void;
   activityStatus?: ActivityDetail;
   usagePercent?: number;
   usedTokens?: number;
@@ -83,6 +85,8 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
   gitDiffStats,
   isGitDiffLoading,
   slashCommands = [],
+  planMode = false,
+  onPlanModeToggle,
   activityStatus,
   usagePercent,
   usedTokens,
@@ -193,6 +197,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         gitDiffStats={gitDiffStats}
         isGitDiffLoading={isGitDiffLoading}
         workDir={currentSession?.workDir}
+        planMode={planMode}
         activityStatus={activityStatus}
         usagePercent={usagePercent}
         usedTokens={usedTokens}
@@ -296,7 +301,7 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         </PromptInputBody>
         <PromptInputFooter className="w-full gap-2 py-1 border-none bg-transparent shadow-none">
           <PromptInputTools className="flex-1 min-w-0 flex-wrap">
-            <GlobalConfigControls />
+            <GlobalConfigControls planMode={planMode} onPlanModeToggle={onPlanModeToggle} />
           </PromptInputTools>
           {isStreaming ? (
             <div className="flex items-center gap-1.5 shrink-0">

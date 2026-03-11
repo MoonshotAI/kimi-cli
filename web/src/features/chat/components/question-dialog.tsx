@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRightIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
+import { MessageResponse } from "@/components/ai-elements/message";
 import type { LiveMessage } from "@/hooks/types";
 import type { QuestionItem } from "@/hooks/wireTypes";
 
@@ -434,6 +437,21 @@ export function QuestionDialog({
             </span>
           )}
         </div>
+
+        {/* Plan body preview */}
+        {currentQuestion.body && (
+          <Collapsible defaultOpen className="mx-4 mb-2">
+            <CollapsibleTrigger className="flex items-center gap-2 w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+              <ChevronRightIcon className="size-3.5 transition-transform [[data-state=open]>&]:rotate-90" />
+              <span>Plan Preview</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="border-l-2 border-blue-400/40 pl-3 mt-1 max-h-[360px] overflow-y-auto">
+                <MessageResponse>{currentQuestion.body}</MessageResponse>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         {/* Options */}
         <div className="flex flex-col px-4 py-2 gap-0.5">

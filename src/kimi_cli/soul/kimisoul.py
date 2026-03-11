@@ -650,7 +650,9 @@ class KimiSoul:
 
         result = await _kosong_step_with_retry()
         logger.debug("Got step result: {result}", result=result)
-        status_update = StatusUpdate(token_usage=result.usage, message_id=result.id)
+        status_update = StatusUpdate(
+            token_usage=result.usage, message_id=result.id, plan_mode=self._plan_mode
+        )
         if result.usage is not None:
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)

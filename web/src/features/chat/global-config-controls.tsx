@@ -44,10 +44,14 @@ function getThinkingState(model: ConfigModel | null): ThinkingState {
 
 export type GlobalConfigControlsProps = {
   className?: string;
+  planMode?: boolean;
+  onPlanModeToggle?: () => void;
 };
 
 export function GlobalConfigControls({
   className,
+  planMode = false,
+  onPlanModeToggle,
 }: GlobalConfigControlsProps): ReactElement {
   const { config, isLoading, isUpdating, error, refresh, update } =
     useGlobalConfig();
@@ -271,6 +275,31 @@ export function GlobalConfigControls({
         </Tooltip>
       ) : (
         thinkingToggle
+      )}
+
+      {onPlanModeToggle && (
+        <>
+          <div className="mx-0 h-4 w-px bg-border/70" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex h-9 items-center gap-2 rounded-md px-2">
+                <span className={cn("text-xs", planMode ? "text-blue-400" : "text-muted-foreground")}>
+                  Plan
+                </span>
+                <Switch
+                  aria-label="Toggle plan mode"
+                  checked={planMode}
+                  onCheckedChange={onPlanModeToggle}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={8}>
+              {planMode
+                ? "Plan mode is active. The model will only read and plan, not modify files."
+                : "Enable plan mode for read-only research and planning."}
+            </TooltipContent>
+          </Tooltip>
+        </>
       )}
 
       {(lastBusySkip && lastBusySkip.length > 0) || error ? (
