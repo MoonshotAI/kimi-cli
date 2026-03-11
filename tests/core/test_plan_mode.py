@@ -231,8 +231,8 @@ class TestEnterPlanModeDynamicDescription:
         assert tool.base.description == _DEFAULT_DESCRIPTION
 
 
-class TestManualPlanModeAttachments:
-    async def test_manual_toggle_defers_activation_to_attachment(
+class TestManualPlanModeInjections:
+    async def test_manual_toggle_defers_activation_to_injection(
         self,
         runtime: Runtime,
         tmp_path: Path,
@@ -243,18 +243,18 @@ class TestManualPlanModeAttachments:
 
         assert await soul.toggle_plan_mode_from_manual() is True
         assert soul.plan_mode is True
-        assert soul._pending_plan_activation_attachment is True
+        assert soul._pending_plan_activation_injection is True
         assert soul.context.history == []
 
-        attachments = await soul._collect_attachments()
+        injections = await soul._collect_injections()
 
-        assert len(attachments) == 1
-        assert attachments[0].type == "plan_mode"
-        assert "Plan mode is active." in attachments[0].content
-        assert soul._pending_plan_activation_attachment is False
+        assert len(injections) == 1
+        assert injections[0].type == "plan_mode"
+        assert "Plan mode is active." in injections[0].content
+        assert soul._pending_plan_activation_injection is False
         assert soul.context.history == []
 
-    async def test_manual_exit_clears_pending_activation_attachment(
+    async def test_manual_exit_clears_pending_activation_injection(
         self,
         runtime: Runtime,
         tmp_path: Path,
@@ -264,16 +264,16 @@ class TestManualPlanModeAttachments:
         soul = _make_soul(runtime, tmp_path)
 
         assert await soul.toggle_plan_mode_from_manual() is True
-        assert soul._pending_plan_activation_attachment is True
+        assert soul._pending_plan_activation_injection is True
 
         assert await soul.toggle_plan_mode_from_manual() is False
         assert soul.plan_mode is False
-        assert soul._pending_plan_activation_attachment is False
+        assert soul._pending_plan_activation_injection is False
 
-        attachments = await soul._collect_attachments()
-        assert attachments == []
+        injections = await soul._collect_injections()
+        assert injections == []
 
-    async def test_tool_toggle_does_not_queue_manual_activation_attachment(
+    async def test_tool_toggle_does_not_queue_manual_activation_injection(
         self,
         runtime: Runtime,
         tmp_path: Path,
@@ -284,7 +284,7 @@ class TestManualPlanModeAttachments:
 
         assert await soul.toggle_plan_mode() is True
         assert soul.plan_mode is True
-        assert soul._pending_plan_activation_attachment is False
+        assert soul._pending_plan_activation_injection is False
 
 
 # ---------------------------------------------------------------------------
