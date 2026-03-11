@@ -283,7 +283,7 @@ export function GlobalConfigControls({
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex h-9 items-center gap-2 rounded-md px-2">
-                <span className={cn("text-xs", planMode ? "text-blue-400" : "text-muted-foreground")}>
+                <span className="text-xs text-muted-foreground">
                   Plan
                 </span>
                 <Switch

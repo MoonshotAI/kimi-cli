@@ -441,8 +441,8 @@ export function QuestionDialog({
         {/* Plan body preview */}
         {currentQuestion.body && (
           <Collapsible defaultOpen className="mx-4 mb-2">
-            <CollapsibleTrigger className="flex items-center gap-2 w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
-              <ChevronRightIcon className="size-3.5 transition-transform [[data-state=open]>&]:rotate-90" />
+            <CollapsibleTrigger className="group flex items-center gap-2 w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+              <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
               <span>Plan Preview</span>
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -503,7 +503,7 @@ export function QuestionDialog({
           {/* "Other" — inline input */}
           <div
             className={cn(
-              "flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors",
+              "flex items-start gap-2.5 rounded-md px-2 py-1.5 transition-colors",
               isMultiSelect && multiSelected.has(otherIndex) && "bg-primary/[0.08]",
               selectedIndex === otherIndex && !(isMultiSelect && multiSelected.has(otherIndex)) && "bg-muted/70",
               selectedIndex === otherIndex && isMultiSelect && multiSelected.has(otherIndex) && "ring-1 ring-inset ring-primary/20",
@@ -513,7 +513,7 @@ export function QuestionDialog({
               <Checkbox
                 checked={multiSelected.has(otherIndex)}
                 onCheckedChange={() => handleOptionClick(otherIndex)}
-                className="pointer-events-auto"
+                className="mt-0.5 pointer-events-auto"
                 tabIndex={-1}
               />
             ) : (
@@ -521,47 +521,59 @@ export function QuestionDialog({
                 {options.length + 1}.
               </span>
             )}
-            <input
-              ref={otherInputRef}
-              value={otherText}
-              onChange={(e) => {
-                setOtherText(e.target.value);
-                if (!isMultiSelect) {
-                  setSelectedIndex(otherIndex);
-                } else if (!multiSelected.has(otherIndex)) {
-                  setMultiSelected((prev) => new Set(prev).add(otherIndex));
-                }
-              }}
-              onFocus={() => {
-                setSelectedIndex(otherIndex);
-                if (isMultiSelect && !multiSelected.has(otherIndex)) {
-                  setMultiSelected((prev) => new Set(prev).add(otherIndex));
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  handleSubmitCurrent();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setSelectedIndex(Math.max(otherIndex - 1, 0));
-                } else if (e.key === "ArrowDown") {
-                  // Already at last position — no-op but prevent default
-                  e.preventDefault();
-                }
-              }}
-              placeholder="Type your answer..."
-              className={cn(
-                "flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50",
-                "border-0 outline-none ring-0 focus:ring-0 focus:outline-none",
-                "py-0 h-auto",
-                disableActions && "opacity-50 cursor-not-allowed",
+            <div className="flex flex-col min-w-0 flex-1">
+              {currentQuestion.other_label && (
+                <span className="font-medium text-foreground text-sm">
+                  {currentQuestion.other_label}
+                </span>
               )}
-              disabled={disableActions}
-            />
+              {currentQuestion.other_description && (
+                <span className="text-xs text-muted-foreground">
+                  {currentQuestion.other_description}
+                </span>
+              )}
+              <input
+                ref={otherInputRef}
+                value={otherText}
+                onChange={(e) => {
+                  setOtherText(e.target.value);
+                  if (!isMultiSelect) {
+                    setSelectedIndex(otherIndex);
+                  } else if (!multiSelected.has(otherIndex)) {
+                    setMultiSelected((prev) => new Set(prev).add(otherIndex));
+                  }
+                }}
+                onFocus={() => {
+                  setSelectedIndex(otherIndex);
+                  if (isMultiSelect && !multiSelected.has(otherIndex)) {
+                    setMultiSelected((prev) => new Set(prev).add(otherIndex));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    handleSubmitCurrent();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSelectedIndex(Math.max(otherIndex - 1, 0));
+                  } else if (e.key === "ArrowDown") {
+                    // Already at last position — no-op but prevent default
+                    e.preventDefault();
+                  }
+                }}
+                placeholder={currentQuestion.other_label || "Type your answer..."}
+                className={cn(
+                  "flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50",
+                  "border-0 outline-none ring-0 focus:ring-0 focus:outline-none",
+                  "py-0 h-auto",
+                  disableActions && "opacity-50 cursor-not-allowed",
+                )}
+                disabled={disableActions}
+              />
+            </div>
           </div>
         </div>
 

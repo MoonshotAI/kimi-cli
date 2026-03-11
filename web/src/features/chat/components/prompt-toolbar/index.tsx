@@ -99,13 +99,7 @@ export const PromptToolbar = memo(function PromptToolbarComponent({
 
       {/* ── Tab bar ── */}
       <div className="flex items-center gap-1.5 px-1">
-        {planMode && (
-          <span className="text-xs font-medium text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
-            plan
-          </span>
-        )}
-
-        {activityStatus && (
+{activityStatus && (
           <ToolbarActivityIndicator activity={activityStatus} />
         )}
 
