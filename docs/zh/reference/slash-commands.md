@@ -201,6 +201,20 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 此命令会启动一个临时子会话分析代码库结构，生成项目说明文档，帮助 Agent 更好地理解项目。
 
+### `/plan`
+
+切换 Plan 模式。Plan 模式下 AI 只能使用只读工具探索代码库，将实施方案写入 plan 文件后提交给你审批。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
+
+用法：
+
+- `/plan`：切换 Plan 模式开关
+- `/plan on`：开启 Plan 模式
+- `/plan off`：关闭 Plan 模式
+- `/plan view`：查看当前方案内容
+- `/plan clear`：清除当前方案文件
+
+开启 Plan 模式后，提示符变为 `📋`，底部状态栏显示蓝色的 `plan` 标识。
+
 ### `/yolo`
 
 切换 YOLO 模式。开启后自动批准所有操作，底部状态栏会显示黄色的 YOLO 标识；再次输入可关闭。

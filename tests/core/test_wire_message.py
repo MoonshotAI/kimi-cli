@@ -278,6 +278,9 @@ async def test_wire_message_serde():
                             {"label": "Vue", "description": "A progressive framework"},
                         ],
                         "multi_select": False,
+                        "body": "",
+                        "other_label": "",
+                        "other_description": "",
                     }
                 ],
             },

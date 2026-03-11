@@ -7,6 +7,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
+| `Shift-Tab` | Toggle plan mode (read-only research and planning) |
 | `Ctrl-O` | Edit in external editor (`$VISUAL`/`$EDITOR`) |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
@@ -28,7 +29,16 @@ Press `Ctrl-X` in the input box to switch between two modes:
 
 The prompt changes based on current mode:
 - Agent mode: `✨` (normal) or `💫` (thinking mode)
+- Plan mode: `📋`
 - Shell mode: `$`
+
+## Plan mode
+
+### `Shift-Tab`: Toggle plan mode
+
+Press `Shift-Tab` to enable or disable plan mode. In plan mode, the AI can only use read-only tools to explore the codebase, writing an implementation plan to a plan file and submitting it for your approval.
+
+When enabled, the prompt changes to `📋` and a blue `plan` badge appears in the status bar. You can also use the `/plan` slash command to manage plan mode. See [Plan mode](../guides/interaction.md#plan-mode) for details.
 
 ## External editor
 
@@ -134,7 +144,8 @@ The bottom status bar displays:
 
 - Current time
 - Current mode (agent/shell) and model name (in agent mode)
-- YOLO badge (when enabled)
+- YOLO badge (yellow, when enabled)
+- Plan badge (blue, when enabled)
 - Shortcut hints
 - Context usage
 
