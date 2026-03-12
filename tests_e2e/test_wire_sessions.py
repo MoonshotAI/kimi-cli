@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -140,7 +141,7 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 6, "wire_after": 11})
+    } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -209,9 +210,18 @@ def test_clear_context_rotates(tmp_path) -> None:
     assert len(session_ids) == 1
     session_dir = session_root / session_ids[0]
     context_file = session_dir / "context.jsonl"
-    assert context_file.stat().st_size == 0
-    rotated = sorted(p.name for p in session_dir.iterdir() if p.name.startswith("context.jsonl."))
-    assert rotated == snapshot([])
+    context_lines = [
+        json.loads(line)
+        for line in context_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(context_lines) == 1
+    assert context_lines[0]["role"] == "_system_prompt"
+    assert isinstance(context_lines[0]["content"], str)
+    assert context_lines[0]["content"]
+    rotated = sorted(p.name for p in session_dir.iterdir() if p.name.startswith("context_"))
+    assert rotated == snapshot(["context_1.jsonl"])
+    assert _count_lines(session_dir / rotated[0]) > 1
 
 
 def test_manual_compact(tmp_path) -> None:
