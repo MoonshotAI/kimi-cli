@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Vis: Add session directory shortcuts in `kimi vis` — open the current session folder directly from the session page, copy the raw session directory path with `Copy DIR`, and support opening directories on both macOS and Windows
 - Shell: Improve API key login UX — show a spinner during key verification, display a helpful hint when a 401 error suggests the wrong platform was selected, show a setup summary on success, and default thinking mode to "on"
 
 ## 1.20.0 (2026-03-11)
