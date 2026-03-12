@@ -250,15 +250,21 @@ def _build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Pane
 
 
 def _format_row(row: UsageRow, label_width: int) -> RenderableType:
-    ratio = (row.limit - row.used) / row.limit if row.limit > 0 else 0
-    color = _ratio_color(ratio)
+    if row.limit > 0:
+        usage_ratio = row.used / row.limit
+        color = _ratio_color(usage_ratio)
+        percent = (1 - usage_ratio) * 100
+        percent_text = f"{percent:.0f}% left"
+    else:
+        usage_ratio = 0
+        color = "grey50"
+        percent_text = "N/A"
 
     label = Text(f"{row.label:<{label_width}}  ", style="cyan")
     bar = ProgressBar(total=row.limit or 1, completed=row.used, width=20, complete_style=color)
 
     detail = Text()
-    percent = ratio * 100
-    detail.append(f"  {percent:.0f}% left", style="bold")
+    detail.append(f"  {percent_text}", style="bold")
     if row.reset_hint:
         detail.append(f"  ({row.reset_hint})", style="grey50")
 
