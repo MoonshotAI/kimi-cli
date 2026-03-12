@@ -77,19 +77,28 @@ class Context:
         """Write the system prompt as the first record of the context file.
 
         If the file is empty, writes it directly. If the file already has content
-        (e.g. a legacy session without system prompt), prepends it before existing content.
+        (e.g. a legacy session without system prompt), prepends it atomically via a
+        temporary file to avoid corruption on crash and avoid loading the entire file
+        into memory.
         """
-        self._system_prompt = prompt
         prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
 
         if not self._file_backend.exists() or self._file_backend.stat().st_size == 0:
             async with aiofiles.open(self._file_backend, "w", encoding="utf-8") as f:
                 await f.write(prompt_line)
         else:
-            async with aiofiles.open(self._file_backend, encoding="utf-8") as f:
-                existing_content = await f.read()
-            async with aiofiles.open(self._file_backend, "w", encoding="utf-8") as f:
-                await f.write(prompt_line + existing_content)
+            tmp_path = self._file_backend.with_suffix(".tmp")
+            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as tmp_f:
+                await tmp_f.write(prompt_line)
+                async with aiofiles.open(self._file_backend, encoding="utf-8") as src_f:
+                    while True:
+                        chunk = await src_f.read(64 * 1024)
+                        if not chunk:
+                            break
+                        await tmp_f.write(chunk)
+            await aiofiles.os.replace(tmp_path, self._file_backend)
+
+        self._system_prompt = prompt
 
     async def checkpoint(self, add_user_message: bool):
         checkpoint_id = self._next_checkpoint_id
