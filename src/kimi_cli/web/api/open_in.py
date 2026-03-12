@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,10 @@ def _run_command(args: list[str]) -> None:
     )
 
 
+def _spawn_process(args: list[str]) -> None:
+    subprocess.Popen(args, close_fds=True)
+
+
 def _open_app(app_name: str, path: Path, fallback: str | None = None) -> None:
     try:
         _run_command(["open", "-a", app_name, str(path)])
@@ -96,9 +101,9 @@ def _open_windows_app(command: str, path: Path) -> None:
 
 def _open_windows_explorer(path: Path, *, is_file: bool) -> None:
     if is_file:
-        _run_command(["explorer", f"/select,{path}"])
+        _spawn_process(["explorer", f"/select,{path}"])
     else:
-        _run_command(["explorer", str(path)])
+        _spawn_process(["explorer", str(path)])
 
 
 def _open_windows_terminal(path: Path) -> None:
@@ -160,6 +165,13 @@ def _open_in_windows(app: OpenInRequest, path: Path, *, is_file: bool) -> None:
             )
 
 
+def _open_in_sync(request: OpenInRequest, path: Path, *, is_file: bool) -> None:
+    if sys.platform == "darwin":
+        _open_in_macos(request, path, is_file=is_file)
+    else:
+        _open_in_windows(request, path, is_file=is_file)
+
+
 @router.post("", summary="Open a path in a local application")
 async def open_in(request: OpenInRequest) -> OpenInResponse:
     if sys.platform not in {"darwin", "win32"}:
@@ -172,10 +184,7 @@ async def open_in(request: OpenInRequest) -> OpenInResponse:
     is_file = path.is_file()
 
     try:
-        if sys.platform == "darwin":
-            _open_in_macos(request, path, is_file=is_file)
-        else:
-            _open_in_windows(request, path, is_file=is_file)
+        await asyncio.to_thread(_open_in_sync, request, path, is_file=is_file)
     except subprocess.CalledProcessError as exc:
         logger.warning("Open-in failed ({}): {}", request.app, exc)
         detail = exc.stderr.strip() if exc.stderr else "Failed to open application."
