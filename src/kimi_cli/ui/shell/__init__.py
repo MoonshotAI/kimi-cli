@@ -17,6 +17,7 @@ from rich.text import Text
 
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo
 from kimi_cli.ui.shell.prompt import (
@@ -321,7 +322,7 @@ class Shell:
         if result == UpdateResult.UPDATE_AVAILABLE:
             while True:
                 toast(
-                    "new version found, run `uv tool upgrade kimi-cli` to upgrade",
+                    f"new version found, run `{_update_mod.UPGRADE_COMMAND}` to upgrade",
                     topic="update",
                     duration=30.0,
                 )
@@ -393,7 +394,7 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
             rows.append(
                 Text.from_markup(
                     f"\n[yellow]New version available: {latest_version}. "
-                    "Please run `uv tool upgrade kimi-cli` to upgrade.[/yellow]"
+                    f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
                 )
             )
 

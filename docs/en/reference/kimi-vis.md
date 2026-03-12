@@ -50,6 +50,10 @@ Visualizes session context content, including user messages, assistant messages,
 
 Browse and search all historical sessions, grouped by project. View detailed information for each session, including working directory, creation time, and message count.
 
+### Session directory shortcuts
+
+At the top of the session detail page, you can use `Open Dir` to open the current session directory directly. On macOS this opens Finder; on Windows it opens Explorer. `Copy DIR` copies the raw session directory path so you can continue debugging in a terminal, editor, or issue report.
+
 ### Usage statistics
 
 Displays token usage statistics and charts, including input/output token distribution and cache hit rates.

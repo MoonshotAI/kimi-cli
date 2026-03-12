@@ -764,6 +764,7 @@ class KimiSoul:
         wire_send(CompactionBegin())
         compaction_result = await _compact_with_retry()
         await self._context.clear()
+        await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
 

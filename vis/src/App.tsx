@@ -5,9 +5,30 @@ import { WireViewer } from "@/features/wire-viewer/wire-viewer";
 import { ContextViewer } from "@/features/context-viewer/context-viewer";
 import { StateViewer } from "@/features/state-viewer/state-viewer";
 import { useTheme } from "@/hooks/use-theme";
-import { type WireEvent, getSessionDownloadUrl, getWireEvents, listSessions } from "@/lib/api";
+import {
+  type SessionInfo,
+  type WireEvent,
+  getSessionDownloadUrl,
+  getVisCapabilities,
+  getWireEvents,
+  listSessions,
+  openInPath,
+} from "@/lib/api";
 import { isErrorEvent } from "@/features/wire-viewer/wire-event-card";
-import { ArrowLeft, BarChart3, Columns, Download, List, Moon, RefreshCw, Sun, X } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  Check,
+  Columns,
+  Copy,
+  Download,
+  FolderOpen,
+  List,
+  Moon,
+  RefreshCw,
+  Sun,
+  X,
+} from "lucide-react";
 import { DualView } from "@/features/dual-view/dual-view";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -68,6 +89,87 @@ function formatTokens(n: number): string {
   return `${(n / 1000).toFixed(1)}k`;
 }
 
+function getSessionDir(session: SessionInfo): string {
+  return session.session_dir;
+}
+
+function SessionDirectoryActions({
+  session,
+  openInSupported,
+}: {
+  session: SessionInfo;
+  openInSupported: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleOpenSessionDir = useCallback(async () => {
+    try {
+      await openInPath("finder", session.session_dir);
+    } catch (error) {
+      console.error("Failed to open session directory:", error);
+      window.alert(
+        error instanceof Error
+          ? `Failed to open session directory:\n${error.message}`
+          : "Failed to open session directory",
+      );
+    }
+  }, [session.session_dir]);
+
+  const handleCopyDirInfo = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(getSessionDir(session));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy DIR info:", error);
+      window.alert("Failed to copy DIR info");
+    }
+  }, [session]);
+
+  return (
+    <div className="flex shrink-0 items-center gap-1 px-1.5">
+      {openInSupported && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleOpenSessionDir}
+              className="rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Open current session directory"
+            >
+              <span className="flex items-center gap-1">
+                <FolderOpen size={13} />
+                Open Dir
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-md break-all">
+            Open current session directory
+            <div className="mt-1 font-mono text-[11px]">{session.session_dir}</div>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={handleCopyDirInfo}
+            className="rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Copy current session directory info"
+          >
+            <span className="flex items-center gap-1">
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              Copy DIR
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {copied ? "Copied session directory" : "Copy session directory path"}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey: number }) {
   const [copied, setCopied] = useState(false);
   const [events, setEvents] = useState<WireEvent[]>([]);
@@ -94,7 +196,7 @@ function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey
   if (stats.compactions > 0) parts.push(`${stats.compactions} compaction${stats.compactions !== 1 ? "s" : ""}`);
 
   return (
-    <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-muted-foreground overflow-x-auto">
+    <div className="min-w-0 flex flex-1 items-center gap-2 overflow-x-auto px-4 py-1.5 text-xs text-muted-foreground">
       <Tooltip>
         <TooltipTrigger asChild>
           <span
@@ -151,6 +253,7 @@ export function App() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [openInSupported, setOpenInSupported] = useState(false);
   // Cross-reference navigation targets
   const [contextScrollTarget, setContextScrollTarget] = useState<string | null>(null);
   const [wireScrollTarget, setWireScrollTarget] = useState<string | null>(null);
@@ -191,15 +294,27 @@ export function App() {
     listSessions().then(setSessions).catch(() => {});
   }, []);
   useEffect(() => {
+    getVisCapabilities()
+      .then((capabilities) => setOpenInSupported(capabilities.open_in_supported))
+      .catch((error) => {
+        console.error("Failed to load vis capabilities:", error);
+        setOpenInSupported(false);
+      });
+  }, []);
+  const currentSession = useMemo(() => {
+    if (!sessionId) return null;
+    return sessions.find((s) => `${s.work_dir_hash}/${s.session_id}` === sessionId) ?? null;
+  }, [sessionId, sessions]);
+  useEffect(() => {
     if (!sessionId) {
       document.title = "Kimi Agent Tracing";
       return;
     }
     const rawId = sessionId.split("/").pop() ?? sessionId;
-    const session = sessions.find((s) => s.session_id === rawId);
-    const label = session?.title || rawId.slice(0, 8);
+    const label =
+      currentSession?.metadata?.title || currentSession?.title || rawId.slice(0, 8);
     document.title = `${label} — Kimi Agent Tracing`;
-  }, [sessionId, sessions]);
+  }, [currentSession, sessionId]);
 
   // Global keyboard shortcuts: 1/2/3 to switch tabs
   useEffect(() => {
@@ -254,6 +369,12 @@ export function App() {
       {sessionId && (
         <div className="flex items-center border-b">
           <SessionStats sessionId={sessionId} refreshKey={refreshKey} />
+          {currentSession && (
+            <SessionDirectoryActions
+              session={currentSession}
+              openInSupported={openInSupported}
+            />
+          )}
           <a
             href={getSessionDownloadUrl(sessionId)}
             download
@@ -266,9 +387,10 @@ export function App() {
             onClick={() => {
               setRefreshing(true);
               setRefreshKey((k) => k + 1);
+              listSessions(true).then(setSessions).catch(() => {});
               setTimeout(() => setRefreshing(false), 600);
             }}
-            className="shrink-0 mr-3 ml-auto rounded-md p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            className="mr-3 shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             title="Refresh session data"
           >
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />

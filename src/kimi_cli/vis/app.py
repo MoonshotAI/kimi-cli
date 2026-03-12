@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from kimi_cli.vis.api import sessions_router, statistics_router
+from kimi_cli.vis.api import sessions_router, statistics_router, system_router
+from kimi_cli.web.api.open_in import router as open_in_router
 
 STATIC_DIR = Path(__file__).parent / "static"
 GZIP_MINIMUM_SIZE = 1024
@@ -45,6 +46,8 @@ def create_app() -> FastAPI:
 
     application.include_router(sessions_router)
     application.include_router(statistics_router)
+    application.include_router(system_router)
+    application.include_router(open_in_router)
 
     @application.get("/healthz")
     async def health_probe() -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
