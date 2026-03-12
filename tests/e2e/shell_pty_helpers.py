@@ -225,6 +225,7 @@ def start_shell_pty(
     env["TERM"] = "xterm-256color"
     env["PYTHONUTF8"] = "1"
     env["PROMPT_TOOLKIT_NO_CPR"] = "1"
+    env.pop("NO_COLOR", None)
 
     cmd = [sys.executable, "-m", "kimi_cli.cli"]
     if yolo:
