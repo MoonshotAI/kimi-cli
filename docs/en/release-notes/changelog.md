@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Vis: Add session directory shortcuts in `kimi vis` — open the current session folder directly from the session page, copy the raw session directory path with `Copy DIR`, and support opening directories on both macOS and Windows
+
 ## 1.20.0 (2026-03-11)
 
 - Web: Add plan mode toggle in web UI — switch control in the input toolbar with a dashed blue border on the composer when plan mode is active, and support setting plan mode via the `set_plan_mode` Wire protocol method
