@@ -225,6 +225,13 @@ export type SubagentEventWire = {
   };
 };
 
+export type SteerInputEvent = {
+  type: "SteerInput";
+  payload: {
+    user_input: string | ContentPart[];
+  };
+};
+
 // Union of all event types
 export type WireEvent =
   | TurnBeginEvent
@@ -243,7 +250,8 @@ export type WireEvent =
   | ApprovalRequestEvent
   | ApprovalRequestResolvedEvent
   | QuestionRequestEvent
-  | SubagentEventWire;
+  | SubagentEventWire
+  | SteerInputEvent;
 
 // Parsed wire message
 export type WireMessage = {

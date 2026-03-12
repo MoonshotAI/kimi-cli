@@ -23,6 +23,11 @@ Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data lis
 │           ├── context.jsonl
 │           ├── wire.jsonl
 │           └── state.json
+├── imported_sessions/    # Imported session data (via kimi vis)
+│   └── <session-id>/
+│       ├── context.jsonl
+│       ├── wire.jsonl
+│       └── state.json
 ├── user-history/         # Input history
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # Logs
@@ -93,6 +98,7 @@ Wire message log file, stores Wire events during the session in JSON Lines (JSON
 Session state file, stores the session's runtime state, including:
 
 - `approval`: Approval decision state (YOLO mode on/off, auto-approved operation types)
+- `plan_mode`: Plan mode on/off status
 - `dynamic_subagents`: Dynamically created subagent definitions
 - `additional_dirs`: Additional workspace directories added via `--add-dir` or `/add-dir`
 
