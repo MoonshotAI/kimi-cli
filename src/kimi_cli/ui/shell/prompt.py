@@ -15,7 +15,7 @@ from enum import Enum
 from hashlib import md5, sha256
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal, override
+from typing import Any, Literal, Protocol, override
 
 from kaos.path import KaosPath
 from PIL import Image
@@ -32,8 +32,8 @@ from prompt_toolkit.completion import (
     merge_completers,
 )
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import has_completions
-from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.filters import Condition, has_completions
+from prompt_toolkit.formatted_text import AnyFormattedText, FormattedText, to_formatted_text
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -452,7 +452,8 @@ class UserInput(BaseModel):
         return bool(self.command)
 
 
-_REFRESH_INTERVAL = 1.0
+_IDLE_REFRESH_INTERVAL = 1.0
+_RUNNING_REFRESH_INTERVAL = 0.1
 
 
 @dataclass(slots=True)
@@ -460,7 +461,17 @@ class _ToastEntry:
     topic: str | None
     """There can be only one toast of each non-None topic in the queue."""
     message: str
-    duration: float
+    expires_at: float
+
+
+class RunningPromptDelegate(Protocol):
+    def render_running_prompt_body(self, columns: int) -> AnyFormattedText: ...
+
+    def running_prompt_placeholder(self) -> AnyFormattedText | None: ...
+
+    def should_handle_running_prompt_key(self, key: str) -> bool: ...
+
+    def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
 
 
 _toast_queues: dict[Literal["left", "right"], deque[_ToastEntry]] = {
@@ -478,8 +489,8 @@ def toast(
     position: Literal["left", "right"] = "left",
 ) -> None:
     queue = _toast_queues[position]
-    duration = max(duration, _REFRESH_INTERVAL)
-    entry = _ToastEntry(topic=topic, message=message, duration=duration)
+    duration = max(duration, _IDLE_REFRESH_INTERVAL)
+    entry = _ToastEntry(topic=topic, message=message, expires_at=time.monotonic() + duration)
     if topic is not None:
         # Remove existing toasts with the same topic
         for existing in list(queue):
@@ -493,6 +504,9 @@ def toast(
 
 def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry | None:
     queue = _toast_queues[position]
+    now = time.monotonic()
+    while queue and queue[0].expires_at <= now:
+        queue.popleft()
     if not queue:
         return None
     return queue[0]
@@ -682,6 +696,7 @@ class CustomPromptSession:
         self._thinking = thinking
         self._attachment_cache = AttachmentCache()
         self._tip_rotation_index: int = 0
+        self._running_prompt_delegate: RunningPromptDelegate | None = None
         clipboard_available = is_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available)
 
@@ -721,6 +736,8 @@ class CustomPromptSession:
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
+            if self._running_prompt_delegate is not None:
+                return
             self._mode = self._mode.toggle()
             # Apply mode-specific settings
             self._apply_mode(event)
@@ -730,6 +747,8 @@ class CustomPromptSession:
         @_kb.add("s-tab", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Toggle plan mode with Shift+Tab."""
+            if self._running_prompt_delegate is not None:
+                return
             if self._plan_mode_toggle_callback is not None:
 
                 async def _toggle() -> None:
@@ -755,6 +774,118 @@ class CustomPromptSession:
             """Open current buffer in external editor."""
             self._open_in_external_editor(event)
 
+        @_kb.add(
+            "up",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("up")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("up", event)
+
+        @_kb.add(
+            "down",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("down")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("down", event)
+
+        @_kb.add(
+            "left",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("left")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("left", event)
+
+        @_kb.add(
+            "right",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("right")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("right", event)
+
+        @_kb.add(
+            "tab",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("tab")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("tab", event)
+
+        @_kb.add(
+            "enter",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("enter")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("enter", event)
+
+        @_kb.add(
+            "space",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("space")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("space", event)
+
+        @_kb.add(
+            "c-e",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("c-e")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("c-e", event)
+
+        @_kb.add(
+            "escape",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("escape")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("escape", event)
+
+        @_kb.add(
+            "1",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("1")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("1", event)
+
+        @_kb.add(
+            "2",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("2")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("2", event)
+
+        @_kb.add(
+            "3",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("3")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("3", event)
+
+        @_kb.add(
+            "4",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("4")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("4", event)
+
+        @_kb.add(
+            "5",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("5")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("5", event)
+
         if clipboard_available:
 
             @_kb.add("c-v", eager=True)
@@ -779,8 +910,15 @@ class CustomPromptSession:
             clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
-            style=Style.from_dict({"bottom-toolbar": "noreverse"}),
+            style=Style.from_dict(
+                {
+                    "bottom-toolbar": "noreverse",
+                    "running-prompt-placeholder": "fg:#7c8594 italic",
+                    "running-prompt-separator": "fg:#4a5568",
+                }
+            ),
         )
+        self._apply_mode()
 
         # Allow completion to be triggered when the text is changed,
         # such as when backspace is used to delete text.
@@ -794,11 +932,7 @@ class CustomPromptSession:
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
             return FormattedText([("bold", f"{PROMPT_SYMBOL_SHELL} ")])
-        status = self._status_provider()
-        if status.plan_mode:
-            return FormattedText([("fg:#00aaff", f"{PROMPT_SYMBOL_PLAN} ")])
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return FormattedText([("", f"{symbol} ")])
+        return self._render_agent_prompt_message()
 
     def _open_in_external_editor(self, event: KeyPressEvent) -> None:
         """Open the current buffer content in an external editor."""
@@ -837,12 +971,62 @@ class CustomPromptSession:
         else:
             if buff is not None:
                 buff.completer = self._agent_mode_completer
+        self._sync_erase_when_done()
+
+    def _sync_erase_when_done(self) -> None:
+        app = getattr(self._session, "app", None)
+        if app is not None:
+            app.erase_when_done = self._mode == PromptMode.AGENT
+
+    def _should_handle_running_prompt_key(self, key: str) -> bool:
+        running_prompt = getattr(self, "_running_prompt_delegate", None)
+        return running_prompt is not None and running_prompt.should_handle_running_prompt_key(key)
+
+    def _handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
+        running_prompt = self._running_prompt_delegate
+        if running_prompt is None:
+            return
+        running_prompt.handle_running_prompt_key(key, event)
+        event.app.invalidate()
+
+    def invalidate(self) -> None:
+        app = get_app_or_none()
+        if app is not None:
+            app.invalidate()
+
+    def _render_agent_prompt_message(self) -> FormattedText:
+        app = get_app_or_none()
+        columns = app.output.get_size().columns if app is not None else 80
+        fragments: FormattedText = FormattedText()
+        body = self._render_agent_prompt_body(columns)
+        if body:
+            fragments.extend(body)
+            if not body[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+        fragments.append(("", "\n"))
+        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append(("", "\n"))
+        fragments.extend(self._render_agent_prompt_label())
+        return fragments
+
+    def _render_agent_prompt_body(self, columns: int) -> FormattedText:
+        running_prompt = self._running_prompt_delegate
+        if running_prompt is None:
+            return FormattedText([])
+        return to_formatted_text(running_prompt.render_running_prompt_body(columns))
+
+    def _render_agent_prompt_label(self) -> FormattedText:
+        status = self._status_provider()
+        if status.plan_mode:
+            return FormattedText([("fg:#00aaff", f"{PROMPT_SYMBOL_PLAN} ")])
+        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
+        return FormattedText([("", f"{symbol} ")])
 
     def __enter__(self) -> CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             return self
 
-        async def _refresh(interval: float) -> None:
+        async def _refresh() -> None:
             try:
                 while True:
                     app = get_app_or_none()
@@ -856,12 +1040,17 @@ class CustomPromptSession:
                         self._status_refresh_task = None
                         break
 
+                    interval = (
+                        _RUNNING_REFRESH_INTERVAL
+                        if self._running_prompt_delegate is not None
+                        else _IDLE_REFRESH_INTERVAL
+                    )
                     await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 # graceful exit
                 pass
 
-        self._status_refresh_task = asyncio.create_task(_refresh(_REFRESH_INTERVAL))
+        self._status_refresh_task = asyncio.create_task(_refresh())
         return self
 
     def __exit__(self, *_) -> None:
@@ -916,15 +1105,37 @@ class CustomPromptSession:
         return bool(parts)
 
     async def prompt(self) -> UserInput:
+        return await self._prompt_once(append_history=True)
+
+    async def prompt_steer(self, delegate: RunningPromptDelegate) -> UserInput:
+        previous_mode = self._mode
+        self._running_prompt_delegate = delegate
+        self._mode = PromptMode.AGENT
+        self._apply_mode()
+        self.invalidate()
+        try:
+            return await self._prompt_once(append_history=False)
+        finally:
+            self._mode = previous_mode
+            self._running_prompt_delegate = None
+            self._apply_mode()
+            self.invalidate()
+
+    async def _prompt_once(self, *, append_history: bool) -> UserInput:
+        placeholder = None
+        if self._running_prompt_delegate is not None:
+            placeholder = self._running_prompt_delegate.running_prompt_placeholder()
         with patch_stdout(raw=True):
-            command = str(await self._session.prompt_async()).strip()
+            command = str(await self._session.prompt_async(placeholder=placeholder)).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
             # Sanitize UTF-16 surrogates that may come from Windows clipboard
             command = _sanitize_surrogates(command)
-        self._append_history_entry(command)
+        if append_history:
+            self._append_history_entry(command)
         self._tip_rotation_index += 1
+        return self._build_user_input(command)
 
-        # Parse rich content parts
+    def _build_user_input(self, command: str) -> UserInput:
         content: list[ContentPart] = []
         remaining_command = command
         while match := _ATTACHMENT_PLACEHOLDER_RE.search(remaining_command):
@@ -1010,9 +1221,6 @@ class CustomPromptSession:
         if current_toast_left is not None:
             fragments.extend([("", current_toast_left.message), ("", " " * 2)])
             columns -= len(current_toast_left.message) + 2
-            current_toast_left.duration -= _REFRESH_INTERVAL
-            if current_toast_left.duration <= 0.0:
-                _toast_queues["left"].popleft()
         else:
             # Reserve space for right_text, two trailing spaces after tips, and
             # at least one space of padding before right_text.
@@ -1051,8 +1259,4 @@ class CustomPromptSession:
                 status.context_tokens,
                 status.max_context_tokens,
             )
-
-        current_toast.duration -= _REFRESH_INTERVAL
-        if current_toast.duration <= 0.0:
-            _toast_queues["right"].popleft()
         return current_toast.message

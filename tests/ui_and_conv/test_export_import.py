@@ -7,7 +7,7 @@ from pathlib import Path
 
 from kosong.message import Message
 
-from kimi_cli.soul.message import system
+from kimi_cli.soul.message import system, system_reminder
 from kimi_cli.utils.export import (
     _IMPORTABLE_EXTENSIONS,
     _extract_tool_call_hint,
@@ -57,6 +57,10 @@ def _make_checkpoint_message(checkpoint_id: int = 0) -> Message:
         role="user",
         content=[system(f"CHECKPOINT {checkpoint_id}")],
     )
+
+
+def _make_system_reminder_message(text: str = "Stay focused.") -> Message:
+    return Message(role="user", content=[system_reminder(text)])
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +514,32 @@ class TestGroupIntoTurns:
         assert turns[1][0].role == "user"
         assert len(turns[1]) == 2
 
+    def test_system_reminders_excluded_from_turns(self) -> None:
+        history = [
+            Message(role="user", content=[TextPart(text="Q1")]),
+            Message(role="assistant", content=[TextPart(text="A1")]),
+            _make_system_reminder_message("Do not split the turn."),
+            Message(role="assistant", content=[TextPart(text="A2")]),
+        ]
+
+        turns = _group_into_turns(history)
+
+        assert len(turns) == 1
+        assert [msg.extract_text(" ") for msg in turns[0]] == ["Q1", "A1", "A2"]
+
+    def test_plain_steer_user_message_starts_new_turn(self) -> None:
+        history = [
+            Message(role="user", content=[TextPart(text="Q1")]),
+            Message(role="assistant", content=[TextPart(text="A1")]),
+            Message(role="user", content=[TextPart(text="A steer follow-up")]),
+            Message(role="assistant", content=[TextPart(text="A2")]),
+        ]
+
+        turns = _group_into_turns(history)
+
+        assert len(turns) == 2
+        assert turns[1][0].extract_text(" ") == "A steer follow-up"
+
 
 # ---------------------------------------------------------------------------
 # build_export_markdown
@@ -589,6 +619,57 @@ class TestBuildExportMarkdown:
         assert "Tool Result: bash" in result
         assert "hi\n" in result
         assert "Done." in result
+
+    def test_system_reminders_are_omitted_from_export_and_topic(self) -> None:
+        history = [
+            _make_system_reminder_message("Never show this reminder."),
+            Message(role="user", content=[TextPart(text="Real question")]),
+            Message(role="assistant", content=[TextPart(text="Real answer")]),
+        ]
+        now = datetime(2026, 1, 1)
+
+        result = build_export_markdown(
+            session_id="s1",
+            work_dir="/w",
+            history=history,
+            token_count=100,
+            now=now,
+        )
+
+        assert "Never show this reminder." not in result
+        assert "- **Topic**: Real question" in result
+
+    def test_plain_steer_is_included_in_export(self) -> None:
+        history = [
+            Message(role="user", content=[TextPart(text="Original question")]),
+            Message(role="assistant", content=[TextPart(text="First answer")]),
+            Message(role="user", content=[TextPart(text="A steer follow-up")]),
+            Message(role="assistant", content=[TextPart(text="Second answer")]),
+        ]
+        now = datetime(2026, 1, 1)
+
+        result = build_export_markdown(
+            session_id="s1",
+            work_dir="/w",
+            history=history,
+            token_count=100,
+            now=now,
+        )
+
+        assert "A steer follow-up" in result
+        assert "## Turn 2" in result
+
+    def test_stringify_context_history_skips_system_reminders(self) -> None:
+        history = [
+            _make_system_reminder_message("Never show this reminder."),
+            Message(role="user", content=[TextPart(text="Hello")]),
+            Message(role="assistant", content=[TextPart(text="Hi")]),
+        ]
+
+        result = stringify_context_history(history)
+
+        assert "Never show this reminder." not in result
+        assert "[USER]\nHello" in result
 
 
 # ---------------------------------------------------------------------------

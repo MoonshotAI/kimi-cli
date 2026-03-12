@@ -1,5 +1,6 @@
 """Kimi Code CLI Web UI application."""
 
+import importlib
 import os
 import secrets
 import socket
@@ -114,7 +115,7 @@ def _get_network_addresses() -> list[str]:
 
     # Method 3: Try netifaces if available (most comprehensive)
     try:
-        import netifaces
+        netifaces = importlib.import_module("netifaces")
 
         for interface in netifaces.interfaces():
             addrs = netifaces.ifaddresses(interface)

@@ -11,6 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add inline running prompt with steer input — agent output is now rendered inside the prompt area while the model is running, and users can type and send follow-up messages (steers) without waiting for the turn to finish; approval requests and question panels are handled inline with keyboard navigation
+- Core: Change steer injection from synthetic tool calls to regular user messages — steer content is now appended as a standard user message instead of a fake `_steer` tool-call/tool-result pair, improving compatibility with context serialization and visualization
+- Wire: Add `SteerInput` event — a new Wire protocol event emitted when the user sends a follow-up steer message during a running turn
+- Shell: Echo user input after submission in agent mode — the prompt symbol and entered text are printed back to the terminal for a clearer conversation transcript
+- Shell: Improve session replay with steer inputs — replay now correctly reconstructs and displays steer messages alongside regular turns, and filters out internal system-reminder messages
+- Shell: Fix upgrade command in toast notifications — the upgrade command text is now sourced from a single `UPGRADE_COMMAND` constant for consistency
 - Core: Persist system prompt in `context.jsonl` — the system prompt is now written as the first record of the context file and frozen per session, so visualization tools can read the full conversation context and session restores reuse the original prompt instead of regenerating it
 - Vis: Add session directory shortcuts in `kimi vis` — open the current session folder directly from the session page, copy the raw session directory path with `Copy DIR`, and support opening directories on both macOS and Windows
 - Shell: Improve API key login UX — show a spinner during key verification, display a helpful hint when a 401 error suggests the wrong platform was selected, show a setup summary on success, and default thinking mode to "on"

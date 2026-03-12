@@ -31,6 +31,17 @@ def _count_lines(path: Path) -> int:
     return len(path.read_text(encoding="utf-8").splitlines())
 
 
+def _read_roles(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    roles: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        roles.append(json.loads(line)["role"])
+    return roles
+
+
 def test_session_files_created(tmp_path) -> None:
     config_path = write_scripted_config(tmp_path, ["text: hello"])
     work_dir = make_work_dir(tmp_path)
@@ -142,6 +153,19 @@ def test_continue_session_appends(tmp_path) -> None:
         "wire_before": wire_before,
         "wire_after": wire_after,
     } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
+    assert _read_roles(context_file) == snapshot(
+        [
+            "_system_prompt",
+            "_checkpoint",
+            "user",
+            "_checkpoint",
+            "assistant",
+            "_checkpoint",
+            "user",
+            "_checkpoint",
+            "assistant",
+        ]
+    )
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -210,18 +234,16 @@ def test_clear_context_rotates(tmp_path) -> None:
     assert len(session_ids) == 1
     session_dir = session_root / session_ids[0]
     context_file = session_dir / "context.jsonl"
-    context_lines = [
-        json.loads(line)
-        for line in context_file.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    assert len(context_lines) == 1
-    assert context_lines[0]["role"] == "_system_prompt"
-    assert isinstance(context_lines[0]["content"], str)
-    assert context_lines[0]["content"]
-    rotated = sorted(p.name for p in session_dir.iterdir() if p.name.startswith("context_"))
+    assert _read_roles(context_file) == snapshot(["_system_prompt"])
+    rotated = sorted(
+        p.name
+        for p in session_dir.iterdir()
+        if p.is_file() and p.name.startswith("context_") and p.suffix == ".jsonl"
+    )
     assert rotated == snapshot(["context_1.jsonl"])
-    assert _count_lines(session_dir / rotated[0]) > 1
+    assert _read_roles(session_dir / rotated[0]) == snapshot(
+        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "assistant"]
+    )
 
 
 def test_manual_compact(tmp_path) -> None:

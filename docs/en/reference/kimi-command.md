@@ -153,6 +153,7 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
 | [`kimi term`](./kimi-term.md) | Launch the Toad terminal UI |
+| [`kimi export`](#kimi-export) | Export a session as a ZIP file |
 | [`kimi vis`](./kimi-vis.md) | Launch the Agent Tracing Visualizer (Technical Preview) |
 | [`kimi web`](./kimi-web.md) | Start the Web UI server |
 
@@ -171,6 +172,23 @@ Log out from your Kimi account. This clears stored OAuth credentials and removes
 ```sh
 kimi logout
 ```
+
+### `kimi export`
+
+Export the data of a specified session as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
+
+```sh
+kimi export <session_id> [-o <output_path>]
+```
+
+| Argument / Option | Description |
+|--------|-------------|
+| `<session_id>` | Session ID to export |
+| `--output, -o` | Output ZIP file path (defaults to `session-<id>.zip` in the current directory) |
+
+::: info Added
+Added in version 1.20.
+:::
 
 ### `kimi vis`
 
