@@ -150,8 +150,10 @@ class AskUserQuestion(CallableTool2[Params]):
 
         if not answers:
             return ToolReturnValue(
-                is_error=False,
-                output='{"answers": {}, "note": "User dismissed the question without answering."}',
+                is_error=True,
+                output="User dismissed the question without answering. "
+                "Do NOT assume any answer or proceed on the user's behalf. "
+                "Stop and wait for the user's next message.",
                 message="User dismissed the question without answering.",
                 display=[BriefDisplayBlock(text="User dismissed")],
             )

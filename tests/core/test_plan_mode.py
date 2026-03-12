@@ -378,7 +378,7 @@ class TestExitPlanModeHappyPaths:
         assert not result.is_error
         assert "User feedback:" not in _tool_output_text(result)
 
-    async def test_dismissed_returns_continue(
+    async def test_dismissed_returns_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
@@ -387,8 +387,9 @@ class TestExitPlanModeHappyPaths:
 
         result = await tool(tool.params())
         assert isinstance(result, ToolReturnValue)
-        assert not result.is_error
+        assert result.is_error
         assert "dismissed" in _tool_output_text(result).lower()
+        assert "do not proceed" in _tool_output_text(result).lower()
         toggle_cb.assert_not_awaited()
 
     async def test_question_not_supported(
@@ -475,8 +476,9 @@ class TestEnterPlanModeHappyPaths:
 
         result = await tool(tool.params())
         assert isinstance(result, ToolReturnValue)
-        assert not result.is_error
+        assert result.is_error
         assert "dismissed" in _tool_output_text(result).lower()
+        assert "do not proceed" in _tool_output_text(result).lower()
         toggle_cb.assert_not_awaited()
 
     async def test_question_not_supported(
