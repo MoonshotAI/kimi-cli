@@ -913,8 +913,8 @@ class CustomPromptSession:
             style=Style.from_dict(
                 {
                     "bottom-toolbar": "noreverse",
-                    "running-prompt-placeholder": "fg:#6f7682 italic",
-                    "running-prompt-separator": "fg:#667085",
+                    "running-prompt-placeholder": "fg:#7c8594 italic",
+                    "running-prompt-separator": "fg:#4a5568",
                 }
             ),
         )
