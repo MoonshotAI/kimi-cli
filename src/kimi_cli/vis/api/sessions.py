@@ -152,6 +152,7 @@ def _scan_session_dir(
 
     return {
         "session_id": session_dir.name,
+        "session_dir": str(session_dir),
         "work_dir": work_dir,
         "work_dir_hash": work_dir_hash,
         "title": title,

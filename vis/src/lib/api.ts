@@ -33,6 +33,7 @@ export interface SessionMetadataInfo {
 
 export interface SessionInfo {
   session_id: string;
+  session_dir: string;
   work_dir: string | null;
   work_dir_hash: string;
   title: string;
@@ -208,14 +209,50 @@ export interface AggregateStats {
   per_project: { work_dir: string; sessions: number; turns: number }[];
 }
 
+export interface VisCapabilities {
+  open_in_supported: boolean;
+}
+
 export function getAggregateStats(forceRefresh = false): Promise<AggregateStats> {
   const key = "aggregate-stats";
   if (forceRefresh) apiCache.invalidate(key);
   return apiCache.get(key, () => fetchJSON<AggregateStats>("/statistics"), 60_000);
 }
 
+export function getVisCapabilities(forceRefresh = false): Promise<VisCapabilities> {
+  const key = "vis-capabilities";
+  if (forceRefresh) apiCache.invalidate(key);
+  return apiCache.get(key, () => fetchJSON<VisCapabilities>("/capabilities"), 60_000);
+}
+
 export function getSessionDownloadUrl(sessionId: string): string {
   return `${BASE}/sessions/${sessionId}/download`;
+}
+
+type OpenInApp = "finder";
+
+export async function openInPath(app: OpenInApp, path: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch("/api/open-in", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app, path }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `Open failed: ${res.status}`);
+    }
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Open request timed out");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function getSessionSummary(
