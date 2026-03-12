@@ -31,34 +31,6 @@ def _read_until_prompt(shell, *, after: int, timeout: float = 15.0) -> str:
     return read_until_prompt_ready(shell, after=after, timeout=timeout)
 
 
-def _send_key_and_wait(
-    shell,
-    key: str,
-    expected_text: str,
-    *,
-    after: int,
-    timeout: float = 15.0,
-    max_retries: int = 3,
-) -> str:
-    """Send a key press and wait for expected text, retrying if needed.
-
-    In _PromptLiveView mode, prompt_toolkit may not process key presses
-    immediately after rendering. This helper retries the key press if the
-    expected response doesn't appear within a short window.
-    """
-    per_attempt = min(3.0, timeout / max_retries)
-    last_error: AssertionError | None = None
-    for _attempt in range(max_retries):
-        time.sleep(0.2)
-        shell.send_key(key)
-        try:
-            return shell.read_until_contains(expected_text, after=after, timeout=per_attempt)
-        except AssertionError as exc:
-            last_error = exc
-    assert last_error is not None
-    raise last_error
-
-
 def _exit_shell(shell) -> None:
     last_error: AssertionError | None = None
     for _ in range(2):
@@ -191,15 +163,30 @@ def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
 
         turn_mark = shell.mark()
         shell.send_line("ask the interactive questions")
-        shell.read_until_contains("Pick a base option?", after=turn_mark)
-        _send_key_and_wait(shell, "2", "Need anything else?", after=turn_mark)
-        time.sleep(0.2)
+        # Wait for the complete question panel to render (including keyboard
+        # hints at the bottom) before sending a key.  On slow CI runners,
+        # prompt_toolkit may not be ready to process key bindings until the
+        # full layout has been painted at least once.
+        shell.read_until_contains("esc exit", after=turn_mark)
+        # Small delay for prompt_toolkit's event loop to finish processing
+        # the render and become ready for input.
+        time.sleep(0.5)
+        # Select "Beta" (option 2) for the first question.  The key press
+        # auto-submits and the panel advances to Q2.  We wait for the "✓"
+        # checkmark in the tab bar – prompt_toolkit's differential renderer
+        # can fragment the full question text across cursor-positioning
+        # escapes, so the literal "Need anything else?" may not survive
+        # CSI stripping in the accumulated PTY transcript.
+        shell.send_key("2")
+        shell.read_until_contains("\u2713", after=turn_mark)
+        # Select "Other" (option 3) for the second question
         shell.send_key("3")
         shell.send_key("enter")
-        shell.read_until_contains("Enter the custom answer, then press Enter.", after=turn_mark)
-        time.sleep(0.2)
+        shell.read_until_contains(
+            "Enter the custom answer, then press Enter.", after=turn_mark, timeout=15.0
+        )
         shell.send_line("Custom follow-up")
-        shell.read_until_contains("Question flow complete.", after=turn_mark)
+        shell.read_until_contains("Question flow complete.", after=turn_mark, timeout=15.0)
         prompt_mark = shell.mark()
         _read_until_prompt(shell, after=prompt_mark)
 
@@ -313,6 +300,9 @@ def test_shell_approval_reject_and_recover(tmp_path: Path) -> None:
             "requesting approval to run command", after=reject_mark, timeout=15.0
         )
         shell.send_key("3")
+        # Wait for the tool call to be fully processed (confirmed by "Used Shell" marker)
+        # before looking for the prompt, to avoid matching ✨ from a mid-turn redraw.
+        shell.read_until_contains("Used Shell", after=reject_mark, timeout=15.0)
         reject_prompt_mark = shell.mark()
         _read_until_prompt(shell, after=reject_prompt_mark)
         assert not (work_dir / "should_not_exist.txt").exists()
