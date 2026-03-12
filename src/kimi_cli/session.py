@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import json
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -56,9 +57,20 @@ class Session:
         if not self.wire_file.is_empty():
             return False
         try:
-            return self.context_file.stat().st_size == 0
+            with self.context_file.open(encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    role = json.loads(line).get("role")
+                    if isinstance(role, str) and not role.startswith("_"):
+                        return False
         except FileNotFoundError:
             return True
+        except (OSError, ValueError, TypeError):
+            logger.exception("Failed to read context file {file}:", file=self.context_file)
+            return False
+        return True
 
     def save_state(self) -> None:
         """Persist the session state to disk."""
