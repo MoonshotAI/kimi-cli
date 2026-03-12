@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Improve API key login UX — show a spinner during key verification, display a helpful hint when a 401 error suggests the wrong platform was selected, show a setup summary on success, and default thinking mode to "on"
+
 ## 1.20.0 (2026-03-11)
 
 - Web: Add plan mode toggle in web UI — switch control in the input toolbar with a dashed blue border on the composer when plan mode is active, and support setting plan mode via the `set_plan_mode` Wire protocol method
