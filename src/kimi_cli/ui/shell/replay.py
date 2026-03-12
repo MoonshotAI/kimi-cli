@@ -5,12 +5,14 @@ import contextlib
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from kosong.message import ContentPart, Message
 from kosong.tooling import ToolError, ToolOk
 
+from kimi_cli.soul.message import is_system_reminder_message
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL
+from kimi_cli.ui.shell.echo import render_user_echo
 from kimi_cli.ui.shell.visualize import visualize
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
@@ -21,6 +23,7 @@ from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
     Event,
     StatusUpdate,
+    SteerInput,
     StepBegin,
     TextPart,
     ToolResult,
@@ -51,18 +54,19 @@ async def replay_recent_history(
         # or the context has been cleared
         return
 
+    start_idx = _find_replay_start(history)
+    history_turns = (
+        [] if start_idx is None else _build_replay_turns_from_history(history[start_idx:])
+    )
     turns = await _build_replay_turns_from_wire(wire_file)
-    if not turns:
-        start_idx = _find_replay_start(history)
-        if start_idx is None:
-            return
-        turns = _build_replay_turns_from_history(history[start_idx:])
+    if not turns or (history_turns and not _same_user_turns(turns, history_turns)):
+        turns = history_turns
     if not turns:
         return
 
     for turn in turns:
         wire = Wire()
-        console.print(f"{PROMPT_SYMBOL} {message_stringify(turn.user_message)}")
+        console.print(render_user_echo(turn.user_message))
         ui_task = asyncio.create_task(
             visualize(wire.ui_side(merge=False), initial_status=StatusUpdate())
         )
@@ -98,7 +102,16 @@ async def _build_replay_turns_from_wire(wire_file: WireFile | None) -> list[_Rep
                     continue
                 turns.append(
                     _ReplayTurn(
-                        user_message=Message(role="user", content=wire_msg.user_input),
+                        user_message=_message_from_user_input(wire_msg.user_input),
+                        events=[],
+                    )
+                )
+                continue
+
+            if isinstance(wire_msg, SteerInput):
+                turns.append(
+                    _ReplayTurn(
+                        user_message=_message_from_user_input(wire_msg.user_input),
                         events=[],
                     )
                 )
@@ -117,6 +130,20 @@ async def _build_replay_turns_from_wire(wire_file: WireFile | None) -> list[_Rep
     return list(turns)
 
 
+def _message_from_user_input(user_input: str | list[ContentPart]) -> Message:
+    content = cast(
+        list[ContentPart],
+        list(user_input) if isinstance(user_input, list) else [TextPart(text=user_input)],
+    )
+    return Message(role="user", content=content)
+
+
+def _same_user_turns(lhs: Sequence[_ReplayTurn], rhs: Sequence[_ReplayTurn]) -> bool:
+    return [message_stringify(turn.user_message) for turn in lhs] == [
+        message_stringify(turn.user_message) for turn in rhs
+    ]
+
+
 def _is_clear_command_input(user_input: str | list[ContentPart]) -> bool:
     if isinstance(user_input, list):
         text = Message(role="user", content=user_input).extract_text(" ").strip()
@@ -132,7 +159,9 @@ def _is_user_message(message: Message) -> bool:
     # FIXME: should consider non-text tool call results which are sent as user messages
     if message.role != "user":
         return False
-    return not message.extract_text().startswith("<system>CHECKPOINT")
+    if message.extract_text().startswith("<system>CHECKPOINT"):
+        return False
+    return not is_system_reminder_message(message)
 
 
 def _find_replay_start(history: Sequence[Message]) -> int | None:

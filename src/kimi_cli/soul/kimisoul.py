@@ -6,7 +6,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import kosong
 import tenacity
@@ -18,7 +18,7 @@ from kosong.chat_provider import (
     APITimeoutError,
     RetryableChatProvider,
 )
-from kosong.message import Message, ToolCall
+from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
@@ -41,7 +41,7 @@ from kimi_cli.soul.dynamic_injection import (
     normalize_history,
 )
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.message import check_message, system, tool_result_to_message
+from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
@@ -58,6 +58,7 @@ from kimi_cli.wire.types import (
     MCPLoadingBegin,
     MCPLoadingEnd,
     StatusUpdate,
+    SteerInput,
     StepBegin,
     StepInterrupted,
     TextPart,
@@ -347,7 +348,7 @@ class KimiSoul:
         self._steer_queue.put_nowait(content)
 
     async def _consume_pending_steers(self) -> bool:
-        """Drain the steer queue and inject as synthetic tool results.
+        """Drain the steer queue and inject as follow-up user messages.
 
         Returns True if any steers were consumed.
         """
@@ -355,38 +356,22 @@ class KimiSoul:
         while not self._steer_queue.empty():
             content = self._steer_queue.get_nowait()
             await self._inject_steer(content)
+            wire_send(SteerInput(user_input=content))
             consumed = True
         return consumed
 
     async def _inject_steer(self, content: str | list[ContentPart]) -> None:
-        """Inject a single steer as a synthetic ``_steer`` tool_call + tool result pair."""
-        from uuid import uuid4
-
-        steer_id = f"steer_{uuid4().hex[:8]}"
-        text = (
-            content
-            if isinstance(content, str)
-            else Message(role="user", content=content).extract_text(" ")
+        """Inject a single steer as a regular follow-up user message."""
+        parts = cast(
+            list[ContentPart],
+            [TextPart(text=content)] if isinstance(content, str) else list(content),
         )
-        await self._context.append_message(
-            [
-                Message(
-                    role="assistant",
-                    content=[],
-                    tool_calls=[
-                        ToolCall(
-                            id=steer_id,
-                            function=ToolCall.FunctionBody(name="_steer", arguments=None),
-                        )
-                    ],
-                ),
-                Message(
-                    role="tool",
-                    content=[system(f"The user has sent a real-time instruction:\n\n{text}")],
-                    tool_call_id=steer_id,
-                ),
-            ]
-        )
+        message = Message(role="user", content=parts)
+        if self._runtime.llm is None:
+            raise LLMNotSet()
+        if missing_caps := check_message(message, self._runtime.llm.capabilities):
+            raise LLMNotSupported(self._runtime.llm, list(missing_caps))
+        await self._context.append_message(message)
 
     @property
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
@@ -593,7 +578,7 @@ class KimiSoul:
 
             if step_outcome is not None:
                 has_steers = await self._consume_pending_steers()
-                if step_outcome.stop_reason == "no_tool_calls" and has_steers:
+                if has_steers:
                     continue  # steers injected, force another LLM step
                 final_message = (
                     step_outcome.assistant_message
@@ -623,11 +608,12 @@ class KimiSoul:
         # Dynamic injection
         injections = await self._collect_injections()
         if injections:
-            combined = "\n".join(
-                f"<system-reminder>\n{inj.content}\n</system-reminder>" for inj in injections
-            )
+            combined_reminders = "\n".join(system_reminder(inj.content).text for inj in injections)
             await self._context.append_message(
-                Message(role="user", content=[TextPart(text=combined)])
+                Message(
+                    role="user",
+                    content=[TextPart(text=combined_reminders)],
+                )
             )
 
         # Normalize: merge adjacent user messages for clean API input
