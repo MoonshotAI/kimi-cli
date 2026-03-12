@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NamedTuple
 
+import aiohttp
 from loguru import logger
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
+from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
 from kimi_cli.auth.platforms import (
     PLATFORMS,
     ModelInfo,
@@ -54,7 +56,12 @@ async def setup_platform(platform: Platform) -> bool:
         return False
 
     _apply_setup_result(result)
-    console.print("[green]✓[/green] Kimi Code CLI has been setup! Reloading...")
+    thinking_label = "on" if result.thinking else "off"
+    console.print("[green]✓ Setup complete![/green]")
+    console.print(f"  Platform: [bold]{result.platform.name}[/bold]")
+    console.print(f"  Model:    [bold]{result.selected_model.id}[/bold]")
+    console.print(f"  Thinking: [bold]{thinking_label}[/bold]")
+    console.print("  Reloading...")
     return True
 
 
@@ -74,7 +81,17 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
 
     # list models
     try:
-        models = await list_models(platform, api_key)
+        with console.status("[cyan]Verifying API key...[/cyan]"):
+            models = await list_models(platform, api_key)
+    except aiohttp.ClientResponseError as e:
+        logger.error("Failed to get models: {error}", error=e)
+        console.print(f"[red]Failed to get models: {e.message}[/red]")
+        if e.status == 401 and platform.id != KIMI_CODE_PLATFORM_ID:
+            console.print(
+                "[yellow]Hint: If your API key was obtained from Kimi Code, "
+                'please select "Kimi Code" instead.[/yellow]'
+            )
+        return None
     except Exception as e:
         logger.error("Failed to get models: {error}", error=e)
         console.print(f"[red]Failed to get models: {e}[/red]")
@@ -105,7 +122,7 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
     elif "thinking" in capabilities:
         thinking_selection = await _prompt_choice(
             header="Enable thinking mode? (↑↓ navigate, Enter select, Ctrl+C cancel):",
-            choices=["off", "on"],
+            choices=["on", "off"],
         )
         if not thinking_selection:
             return None
