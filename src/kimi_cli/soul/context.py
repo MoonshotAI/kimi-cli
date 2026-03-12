@@ -20,6 +20,7 @@ class Context:
         self._token_count: int = 0
         self._next_checkpoint_id: int = 0
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
+        self._system_prompt: str | None = None
 
     async def restore(self) -> bool:
         logger.debug("Restoring context from file: {file_backend}", file_backend=self._file_backend)
@@ -38,6 +39,9 @@ class Context:
                 if not line.strip():
                     continue
                 line_json = json.loads(line)
+                if line_json["role"] == "_system_prompt":
+                    self._system_prompt = line_json["content"]
+                    continue
                 if line_json["role"] == "_usage":
                     self._token_count = line_json["token_count"]
                     continue
@@ -62,8 +66,39 @@ class Context:
         return self._next_checkpoint_id
 
     @property
+    def system_prompt(self) -> str | None:
+        return self._system_prompt
+
+    @property
     def file_backend(self) -> Path:
         return self._file_backend
+
+    async def write_system_prompt(self, prompt: str) -> None:
+        """Write the system prompt as the first record of the context file.
+
+        If the file is empty, writes it directly. If the file already has content
+        (e.g. a legacy session without system prompt), prepends it atomically via a
+        temporary file to avoid corruption on crash and avoid loading the entire file
+        into memory.
+        """
+        prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
+
+        if not self._file_backend.exists() or self._file_backend.stat().st_size == 0:
+            async with aiofiles.open(self._file_backend, "w", encoding="utf-8") as f:
+                await f.write(prompt_line)
+        else:
+            tmp_path = self._file_backend.with_suffix(".tmp")
+            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as tmp_f:
+                await tmp_f.write(prompt_line)
+                async with aiofiles.open(self._file_backend, encoding="utf-8") as src_f:
+                    while True:
+                        chunk = await src_f.read(64 * 1024)
+                        if not chunk:
+                            break
+                        await tmp_f.write(chunk)
+            await aiofiles.os.replace(tmp_path, self._file_backend)
+
+        self._system_prompt = prompt
 
     async def checkpoint(self, add_user_message: bool):
         checkpoint_id = self._next_checkpoint_id
@@ -110,6 +145,7 @@ class Context:
         self._history.clear()
         self._token_count = 0
         self._next_checkpoint_id = 0
+        self._system_prompt = None
         async with (
             aiofiles.open(rotated_file_path, encoding="utf-8") as old_file,
             aiofiles.open(self._file_backend, "w", encoding="utf-8") as new_file,
@@ -123,7 +159,9 @@ class Context:
                     break
 
                 await new_file.write(line)
-                if line_json["role"] == "_usage":
+                if line_json["role"] == "_system_prompt":
+                    self._system_prompt = line_json["content"]
+                elif line_json["role"] == "_usage":
                     self._token_count = line_json["token_count"]
                 elif line_json["role"] == "_checkpoint":
                     self._next_checkpoint_id = line_json["id"] + 1
@@ -158,6 +196,7 @@ class Context:
         self._history.clear()
         self._token_count = 0
         self._next_checkpoint_id = 0
+        self._system_prompt = None
 
     async def append_message(self, message: Message | Sequence[Message]):
         logger.debug("Appending message(s) to context: {message}", message=message)

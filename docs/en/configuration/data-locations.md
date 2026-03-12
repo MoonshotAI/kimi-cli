@@ -78,7 +78,9 @@ Session data is grouped by working directory and stored under `~/.kimi/sessions/
 
 ### `context.jsonl`
 
-Context history file, stores the session's message history in JSON Lines (JSONL) format. Each line is a message (user input, model response, tool calls, etc.).
+Context history file, stores the session's full context in JSON Lines (JSONL) format. The first line is a system prompt record (`_system_prompt`), followed by messages (user input, model response, tool calls, etc.) and internal records (checkpoints, token usage, etc.).
+
+The system prompt is generated and frozen at session creation time, and reused on session restore instead of being regenerated.
 
 Kimi Code CLI uses this file to restore session context when using `--continue` or `--session`.
 
