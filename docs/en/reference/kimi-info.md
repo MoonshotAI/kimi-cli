@@ -29,7 +29,7 @@ kimi info [--json]
 $ kimi info
 kimi-cli version: 1.20.0
 agent spec versions: 1
-wire protocol: 1.4
+wire protocol: 1.5
 python version: 3.13.1
 ```
 
