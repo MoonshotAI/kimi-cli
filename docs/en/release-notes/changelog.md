@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.21.0 (2026-03-12)
+
 - Shell: Add inline running prompt with steer input — agent output is now rendered inside the prompt area while the model is running, and users can type and send follow-up messages (steers) without waiting for the turn to finish; approval requests and question panels are handled inline with keyboard navigation
 - Core: Change steer injection from synthetic tool calls to regular user messages — steer content is now appended as a standard user message instead of a fake `_steer` tool-call/tool-result pair, improving compatibility with context serialization and visualization
 - Wire: Add `SteerInput` event — a new Wire protocol event emitted when the user sends a follow-up steer message during a running turn

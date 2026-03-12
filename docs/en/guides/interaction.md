@@ -75,6 +75,16 @@ kimi --thinking
 Thinking mode requires support from the current model. Some models (like `kimi-k2-thinking-turbo`) always use thinking mode and cannot be disabled.
 :::
 
+## Sending messages while running (Steer)
+
+While the AI is executing a task, you can type and send follow-up messages in the input box without waiting for the current turn to finish. This feature is called "steering" and allows you to adjust the AI's direction mid-turn.
+
+Steer messages are appended to the context after the current step completes, and the AI will see and respond to your message before the next step begins. Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
+
+::: tip
+Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.
+:::
+
 ## Multi-line input
 
 Sometimes you need to enter multiple lines, such as pasting a code snippet or error log. Press `Ctrl-J` or `Alt-Enter` to insert a newline instead of sending the message immediately.
