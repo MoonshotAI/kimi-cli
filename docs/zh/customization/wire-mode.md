@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.4`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.5`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -153,13 +153,13 @@ interface ExternalToolsResult {
 **请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.4", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.5", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.4", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.5", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。
@@ -259,7 +259,7 @@ interface ReplayResult {
 - **方向**：Client → Agent
 - **类型**：Request（需要响应）
 
-在 Agent 轮次进行中注入用户消息。与 `prompt` 不同，`steer` 不会开始新的轮次，而是将消息注入到当前正在进行的轮次中。注入的消息会作为一个合成的工具调用结果插入上下文，从而在 AI 处理过程中 “引导” 其行为。
+在 Agent 轮次进行中注入用户消息。与 `prompt` 不同，`steer` 不会开始新的轮次，而是将消息注入到当前正在进行的轮次中。注入的消息会在当前步骤完成后作为标准用户消息追加到上下文中，从而在下一步骤开始前”引导” AI 的行为。消息被消费时会发出 `SteerInput` 事件。
 
 ```typescript
 /** steer 请求参数 */
@@ -476,6 +476,7 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | SteerInput
 
 /** 请求：通过 request 方法发送，需要响应 */
 type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
@@ -702,6 +703,21 @@ interface SubagentEvent {
   task_tool_call_id: string
   /** 子 Agent 产生的事件，嵌套的 Wire 消息格式 */
   event: { type: string; payload: object }
+}
+```
+
+### `SteerInput`
+
+::: info 新增
+新增于 Wire 1.5。
+:::
+
+表示用户在当前运行中的轮次追加了后续输入。此事件在当前步骤完成且输入被追加到上下文之后、下一步骤开始之前发出。
+
+```typescript
+interface SteerInput {
+  /** 用户输入，可以是纯文本或内容片段数组 */
+  user_input: string | ContentPart[]
 }
 ```
 
