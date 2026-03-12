@@ -39,10 +39,16 @@ class TestFormatRow:
     @pytest.mark.parametrize(
         "used,limit,expected_ratio",
         [
-            (7, 100, 0.07),    # 7% used -> low usage
-            (50, 100, 0.5),    # 50% used -> low usage
-            (75, 100, 0.75),   # 75% used -> medium usage
-            (95, 100, 0.95),   # 95% used -> high usage
+            (0, 100, 0.0),     # 0% used -> boundary (green)
+            (7, 100, 0.07),    # 7% used -> low usage (green)
+            (50, 100, 0.5),    # 50% used -> low usage (green)
+            (69, 100, 0.69),   # 69% used -> boundary (green)
+            (70, 100, 0.7),    # 70% used -> boundary (yellow)
+            (75, 100, 0.75),   # 75% used -> medium usage (yellow)
+            (89, 100, 0.89),   # 89% used -> boundary (yellow)
+            (90, 100, 0.9),    # 90% used -> boundary (red)
+            (95, 100, 0.95),   # 95% used -> high usage (red)
+            (100, 100, 1.0),   # 100% used -> boundary (red)
         ],
     )
     def test_format_row_passes_usage_ratio(self, used: int, limit: int, expected_ratio: float):
