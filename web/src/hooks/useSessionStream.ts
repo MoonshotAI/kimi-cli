@@ -134,7 +134,7 @@ import {
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
 import { kimiCliVersion } from "@/lib/version";
-import { handleToolResult } from "@/features/tool/store";
+import { handleToolResult, useToolEventsStore, type TodoItem } from "@/features/tool/store";
 import { v4 as uuidV4 } from "uuid";
 
 // Regex patterns moved to top level for performance
@@ -236,6 +236,10 @@ type UseSessionStreamReturn = {
   clearMessages: () => void;
   /** Connection error if any */
   error: Error | null;
+  /** Whether plan mode is active */
+  planMode: boolean;
+  /** Set plan mode via silent RPC (no context message) */
+  sendSetPlanMode: (enabled: boolean) => void;
   /** Available slash commands from the server */
   slashCommands: SlashCommandDef[];
 };
@@ -279,6 +283,7 @@ export function useSessionStream(
   );
   const [contextUsage, setContextUsage] = useState(0);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
+  const [planMode, setPlanMode] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -308,6 +313,7 @@ export function useSessionStream(
   const connectRef = useRef<() => void>(() => undefined);
   const disconnectRef = useRef<() => void>(() => undefined);
   const reconnectRef = useRef<() => void>(() => undefined);
+  const resetStateRef = useRef<(preserveSlashCommands?: boolean) => void>(() => undefined);
   const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
@@ -324,6 +330,10 @@ export function useSessionStream(
 
   // Initialize message tracking
   const initializeIdRef = useRef<string | null>(null);
+  const initializeRetryCountRef = useRef(0); // Track retry attempts for initialize
+  const MAX_INITIALIZE_RETRIES = 5; // Maximum retry attempts
+  const usingCachedCommandsRef = useRef(false); // Track if using cached slash commands
+  const slashCommandsLenRef = useRef(0); // Track slashCommands length without state dependency
 
   // Current state accumulators
   const currentThinkingRef = useRef("");
@@ -347,6 +357,9 @@ export function useSessionStream(
 
   // Track compaction indicator message so we can remove it on CompactionEnd
   const compactionMessageIdRef = useRef<string | null>(null);
+
+  // Track MCP loading indicator message so we can remove it on MCPLoadingEnd
+  const mcpLoadingMessageIdRef = useRef<string | null>(null);
 
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
@@ -773,23 +786,23 @@ export function useSessionStream(
   }, []);
 
   // Reset all state
-  const resetState = useCallback(() => {
+  const resetState = useCallback((preserveSlashCommands = false) => {
     resetStepState();
-    currentToolCallsRef.current.clear();
+    currentToolCallsRef.current?.clear();
     currentToolCallIdRef.current = null;
-    pendingApprovalRequestsRef.current.clear();
-    pendingQuestionRequestsRef.current.clear();
+    pendingApprovalRequestsRef.current?.clear();
+    pendingQuestionRequestsRef.current?.clear();
     pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
     setTokenUsage(null);
+    setPlanMode(false);
     setError(null);
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
     isReplayingRef.current = true;
     setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
-    setSlashCommands([]);
     // Reset first turn tracking
     hasTurnStartedRef.current = false;
     firstTurnCompleteCalledRef.current = false;
@@ -799,6 +812,14 @@ export function useSessionStream(
     if (historyCompleteTimeoutRef.current) {
       window.clearTimeout(historyCompleteTimeoutRef.current);
       historyCompleteTimeoutRef.current = null;
+    }
+    // Handle slashCommands: preserve or clear
+    if (!preserveSlashCommands) {
+      setSlashCommands([]);
+      slashCommandsLenRef.current = 0;
+      usingCachedCommandsRef.current = false;
+    } else if (slashCommandsLenRef.current > 0) {
+      usingCachedCommandsRef.current = true;
     }
   }, [resetStepState, setAwaitingFirstResponse]);
 
@@ -1291,6 +1312,18 @@ export function useSessionStream(
               isReplay,
             );
           }
+
+          // Extract todo list from display blocks
+          if (!isReplay && Array.isArray(return_value.display)) {
+            const todoBlock = return_value.display.find(
+              (d: { type: string }) => d.type === "todo",
+            );
+            if (todoBlock) {
+              useToolEventsStore.getState().setTodoItems(
+                (todoBlock as unknown as { type: string; items: TodoItem[] }).items,
+              );
+            }
+          }
           break;
         }
 
@@ -1588,6 +1621,11 @@ export function useSessionStream(
             setTokenUsage(nextTokenUsage);
           }
 
+          const nextPlanMode = event.payload.plan_mode;
+          if (typeof nextPlanMode === "boolean") {
+            setPlanMode(nextPlanMode);
+          }
+
           // If we have a message_id, create a special message to display it
           const messageId = event.payload.message_id;
           if (messageId) {
@@ -1747,6 +1785,31 @@ export function useSessionStream(
           break;
         }
 
+        case "MCPLoadingBegin": {
+          const mcpMsgId = getNextMessageId("assistant");
+          mcpLoadingMessageIdRef.current = mcpMsgId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: mcpMsgId,
+              role: "assistant",
+              variant: "status",
+              content: "Connecting to MCP servers…",
+              isStreaming: true,
+            },
+          ]);
+          break;
+        }
+
+        case "MCPLoadingEnd": {
+          const mcpMsgId = mcpLoadingMessageIdRef.current;
+          mcpLoadingMessageIdRef.current = null;
+          if (mcpMsgId) {
+            setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+          }
+          break;
+        }
+
         default:
           break;
       }
@@ -1765,20 +1828,57 @@ export function useSessionStream(
     ],
   );
 
+  // Helper to send initialize message
+  const sendInitialize = useCallback((ws: WebSocket) => {
+    const id = uuidV4();
+    initializeIdRef.current = id;
+    const message = {
+      jsonrpc: "2.0",
+      method: "initialize",
+      id,
+      params: {
+        protocol_version: "1.4",
+        client: {
+          name: "kiwi",
+          version: kimiCliVersion,
+        },
+        capabilities: {
+          supports_question: true,
+          supports_plan_mode: true,
+        },
+      },
+    };
+    ws.send(JSON.stringify(message));
+    console.log("[SessionStream] Sent initialize message");
+  }, []);
+
   // Handle incoming WebSocket message
   const handleMessage = useCallback(
     (data: string) => {
       try {
-        console.log("[SessionStream] Received raw message:", data);
         const message: WireMessage = JSON.parse(data);
-        console.log("[SessionStream] Parsed message:", message);
 
         // Check for JSON-RPC error response
         if (message.error) {
-          // Initialize failure during busy session is non-fatal - just skip
+          // Initialize failure during busy session is non-fatal - retry after delay
           if (message.id === initializeIdRef.current) {
-            console.warn("[SessionStream] Initialize rejected (session busy), continuing...");
+            initializeRetryCountRef.current += 1;
+
+            if (initializeRetryCountRef.current > MAX_INITIALIZE_RETRIES) {
+              initializeIdRef.current = null;
+              initializeRetryCountRef.current = 0;
+              return;
+            }
+
             initializeIdRef.current = null;
+
+            // Auto-retry initialize after 2 seconds
+            setTimeout(() => {
+              if (wsRef.current?.readyState === WebSocket.OPEN) {
+                sendInitialize(wsRef.current);
+              }
+            }, 2000);
+
             return;
           }
 
@@ -1857,13 +1957,15 @@ export function useSessionStream(
 
         // Handle initialize response
         if (message.id && message.id === initializeIdRef.current && message.result) {
-          console.log("[SessionStream] Initialize response received:", message.result);
           initializeIdRef.current = null;
+          initializeRetryCountRef.current = 0;
 
-          // Extract slash commands
           const { slash_commands } = message.result;
-          if (slash_commands) {
+
+          if (slash_commands && slash_commands.length > 0) {
             setSlashCommands(slash_commands);
+            slashCommandsLenRef.current = slash_commands.length;
+            usingCachedCommandsRef.current = false;
           }
           return;
         }
@@ -1921,6 +2023,7 @@ export function useSessionStream(
       setAwaitingFirstResponse,
       applySessionStatus,
       completeStreamingMessages,
+      sendInitialize,
     ],
   );
 
@@ -1969,29 +2072,6 @@ export function useSessionStream(
     },
     [setAwaitingFirstResponse],
   );
-
-  // Helper to send initialize message
-  const sendInitialize = useCallback((ws: WebSocket) => {
-    const id = uuidV4();
-    initializeIdRef.current = id;
-    const message = {
-      jsonrpc: "2.0",
-      method: "initialize",
-      id,
-      params: {
-        protocol_version: "1.3",
-        client: {
-          name: "kiwi",
-          version: kimiCliVersion,
-        },
-        capabilities: {
-          supports_question: true,
-        },
-      },
-    };
-    ws.send(JSON.stringify(message));
-    console.log("[SessionStream] Sent initialize message");
-  }, []);
 
   const respondToApproval = useCallback(
     async (
@@ -2156,8 +2236,11 @@ export function useSessionStream(
   const connect = useCallback(() => {
     if (!sessionId) return;
 
+    initializeRetryCountRef.current = 0; // Reset retry count for new connection
+
     // Close existing connection
     if (wsRef.current) {
+      console.log("[SessionStream] Closing existing WebSocket");
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -2167,7 +2250,7 @@ export function useSessionStream(
     }
 
     awaitingIdleRef.current = false;
-    resetState();
+    resetState(true);  // preserve slashCommands on reconnect
     setMessages([]);
     setStatus("submitted");
     setAwaitingFirstResponse(Boolean(pendingMessageRef.current));
@@ -2335,9 +2418,16 @@ export function useSessionStream(
     pendingApprovalRequestsRef.current.clear();
     pendingQuestionRequestsRef.current.clear();
 
+    // Remove lingering MCP loading indicator (e.g. MCPLoadingEnd was never received)
+    const mcpMsgId = mcpLoadingMessageIdRef.current;
+    if (mcpMsgId) {
+      mcpLoadingMessageIdRef.current = null;
+      setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+    }
+
     // Mark all streaming/subagent messages as complete
     completeStreamingMessages();
-  }, [completeStreamingMessages, setAwaitingFirstResponse]);
+  }, [completeStreamingMessages, setAwaitingFirstResponse, setMessages]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {
@@ -2488,6 +2578,7 @@ export function useSessionStream(
   connectRef.current = connect;
   disconnectRef.current = disconnect;
   reconnectRef.current = reconnect;
+  resetStateRef.current = resetState;
   statusRef.current = status;
 
   // Send message to session (auto-connects if not connected)
@@ -2529,8 +2620,22 @@ export function useSessionStream(
   // Clear messages
   const clearMessages = useCallback(() => {
     setMessages([]);
-    resetState();
-  }, [setMessages, resetState]);
+    resetStateRef.current(true);
+  }, [setMessages]);
+
+  // Set plan mode via silent RPC (no context message)
+  const sendSetPlanMode = useCallback((enabled: boolean) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const message: JsonRpcRequest = {
+      jsonrpc: "2.0",
+      method: "set_plan_mode",
+      id: uuidV4(),
+      params: { enabled },
+    };
+    wsRef.current.send(JSON.stringify(message));
+  }, []);
 
   // Auto-connect when sessionId changes
   useLayoutEffect(() => {
@@ -2555,9 +2660,10 @@ export function useSessionStream(
       disconnectRef.current();
     }
 
-    // Reset state for new session
-    resetState();
+    // Reset state for new session (preserve slash commands to avoid empty gap before initialize response)
+    resetStateRef.current(true);
     setMessages([]);
+    useToolEventsStore.getState().clearTodoItems();
 
     // Auto-connect if we have a valid sessionId
     if (sessionId) {
@@ -2575,7 +2681,7 @@ export function useSessionStream(
     return () => {
       disconnectRef.current();
     };
-  }, [sessionId, resetState, setMessages]);
+  }, [sessionId, setMessages]);
 
   // Cleanup on unmount
   useEffect(
@@ -2613,6 +2719,8 @@ export function useSessionStream(
     setMessages,
     clearMessages,
     error,
+    planMode,
+    sendSetPlanMode,
     slashCommands,
   };
 }

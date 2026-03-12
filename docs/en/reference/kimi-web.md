@@ -92,7 +92,7 @@ Use `--auth-token` to set an access token. Clients need to include `Authorizatio
 kimi web --network --auth-token my-secret-token
 ```
 
-::: tip Tip
+::: tip
 The access token should be a randomly generated string with at least 32 characters. You can use `openssl rand -hex 32` to generate a random token.
 :::
 
@@ -104,7 +104,7 @@ Use `--allowed-origins` to restrict the origin domains that can access Web UI:
 kimi web --network --allowed-origins "https://example.com,https://app.example.com"
 ```
 
-::: tip Tip
+::: tip
 When using `--network` or `--host` to enable network access, it is recommended to configure `--allowed-origins` to prevent Cross-Site Request Forgery (CSRF) attacks.
 :::
 
@@ -134,7 +134,7 @@ kimi web --network --restrict-sensitive-apis
 
 In `--public` mode, `--restrict-sensitive-apis` is enabled by default; in `--lan-only` mode (default), it is not enabled.
 
-::: tip Tip
+::: tip
 When you need to expose Web UI to untrusted network environments, it is recommended to enable the `--restrict-sensitive-apis` option.
 :::
 
@@ -168,7 +168,7 @@ Web UI provides a convenient session management interface:
 
 - **Session list**: View all historical sessions, including session title and working directory
 - **Session search**: Quickly filter sessions by title or working directory
-- **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory
+- **Create session**: Create a new session with a specified working directory; if the specified path doesn't exist, you will be prompted to confirm creating the directory. Supports Cmd/Ctrl+Click on new-session buttons to open session creation in a new tab
 - **Switch session**: Switch to different sessions with one click
 - **Session fork**: Create a branching session from any assistant response, exploring different directions without affecting the original session
 - **Session archive**: Sessions older than 15 days are automatically archived. You can also archive manually. Archived sessions don't appear in the main list but can be unarchived at any time
@@ -182,12 +182,15 @@ Session search feature added in version 1.5. Directory auto-creation prompt adde
 
 Web UI provides a unified prompt toolbar above the input box, displaying various information in collapsible tabs:
 
+- **Context usage**: Shows the current context usage percentage. Hover to view detailed token usage breakdown (including input/output tokens, cache read/write, etc.)
 - **Activity status**: Shows the current agent state (processing, waiting for approval, etc.)
 - **Message queue**: Queue follow-up messages while the AI is processing; queued messages are sent automatically when the current response completes
 - **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
+- **Todo list**: When the `SetTodoList` tool is active, shows task progress with support for expanding to view the detailed list
+- **Plan mode**: Toggle plan mode on/off from the input toolbar. When plan mode is active, the composer displays a dashed blue border. Plan mode can also be set programmatically via the `set_plan_mode` Wire protocol method
 
 ::: info Changed
-Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Later versions unified it into the prompt toolbar, integrating activity status, message queue, and file changes.
+Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar. Plan mode toggle added in version 1.20.
 :::
 
 ### Open-in functionality
@@ -237,7 +240,7 @@ Copy and fork buttons added in version 1.10.
 
 ### Structured questions
 
-When the AI uses the `AskUserQuestion` tool, Web UI displays a structured question dialog in the chat area, replacing the input box at the bottom. The question dialog shows the question description and available options, supporting single-select, multi-select, and custom text input. After answering all questions, the dialog closes automatically and the AI continues execution based on your choices.
+When the AI uses the `AskUserQuestion` tool, Web UI displays a structured question dialog in the chat area, replacing the input box at the bottom. The question dialog shows the question description and available options, supporting single-select, multi-select, and custom text input. When the AI asks multiple questions at once, the dialog shows a tab bar at the top listing all questions, with support for click navigation, keyboard navigation, and restoring previous selections when revisiting answered questions. After answering all questions, the dialog closes automatically and the AI continues execution based on your choices.
 
 ::: info Added
 Structured questions added in version 1.14.
@@ -290,6 +293,22 @@ Web UI uses responsive design and displays well on screens of different sizes:
 ::: info Changed
 Responsive layout improved in version 1.6 with enhanced hover effects and better layout handling.
 :::
+
+### URL action parameters
+
+Web UI supports URL parameters to trigger specific actions, making it easy to integrate from external tools or scripts:
+
+| Parameter | Description |
+|-----------|-------------|
+| `?action=create` | Open the create-session dialog |
+| `?action=create-in-dir&workDir=<path>` | Directly create a session in the specified working directory |
+
+Examples:
+
+```
+http://127.0.0.1:5494?action=create
+http://127.0.0.1:5494?action=create-in-dir&workDir=/path/to/project
+```
 
 ## Examples
 

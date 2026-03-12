@@ -112,8 +112,11 @@ def test_skill_prompt_injects_skill_text(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
@@ -198,8 +201,11 @@ def test_flow_skill(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
@@ -287,6 +293,8 @@ def test_mcp_tool_call(tmp_path) -> None:
                     "type": "TurnBegin",
                     "payload": {"user_input": "call mcp"},
                 },
+                {"method": "event", "type": "MCPLoadingBegin", "payload": {}},
+                {"method": "event", "type": "MCPLoadingEnd", "payload": {}},
                 {"method": "event", "type": "StepBegin", "payload": {"n": 1}},
                 {
                     "method": "event",
@@ -308,8 +316,11 @@ def test_mcp_tool_call(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {
@@ -354,8 +365,11 @@ def test_mcp_tool_call(tmp_path) -> None:
                     "type": "StatusUpdate",
                     "payload": {
                         "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
                         "token_usage": None,
                         "message_id": None,
+                        "plan_mode": False,
                     },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},

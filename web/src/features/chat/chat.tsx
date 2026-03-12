@@ -80,6 +80,10 @@ type ChatWorkspaceProps = {
   onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
   /** Available slash commands */
   slashCommands?: SlashCommandDef[];
+  /** Whether plan mode is active */
+  planMode?: boolean;
+  /** Callback to set plan mode */
+  onPlanModeChange?: (enabled: boolean) => void;
   /** Maximum context size for the current model (tokens) */
   maxContextSize?: number;
   /** Fork session at a specific turn */
@@ -112,6 +116,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   onRenameSession,
   maxContextSize,
   slashCommands = [],
+  planMode = false,
+  onPlanModeChange,
   onForkSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
@@ -160,7 +166,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
 
   const maxTokens = maxContextSize ?? 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);
-  const usagePercent = Math.round(contextUsage * 100);
+  const usagePercent = Math.round(contextUsage * 1000) / 10;
 
   const canSendMessage = true;
   const isStreaming = status === "streaming";
@@ -308,6 +314,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
                   gitDiffStats={gitDiffStats}
                   isGitDiffLoading={isGitDiffLoading}
                   slashCommands={slashCommands}
+                  planMode={planMode}
+                  onPlanModeChange={onPlanModeChange}
                   activityStatus={activityStatus}
                   usagePercent={usagePercent}
                   usedTokens={usedTokens}

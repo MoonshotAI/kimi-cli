@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-hiddenimports = collect_submodules("kimi_cli.tools")
+hiddenimports = collect_submodules("kimi_cli.tools") + ["setproctitle"]
 datas = (
     collect_data_files(
         "kimi_cli",
@@ -14,6 +14,7 @@ datas = (
             "skills/**",
             "tools/**/*.md",
             "web/static/**",
+            "vis/static/**",
             "CHANGELOG.md",
         ],
         excludes=[

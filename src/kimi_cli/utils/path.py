@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path, PurePath
 from stat import S_ISDIR
 
@@ -99,6 +100,19 @@ def shorten_home(path: KaosPath) -> KaosPath:
         return path
 
 
+def sanitize_cli_path(raw: str) -> str:
+    """Strip surrounding quotes from a CLI path argument.
+
+    On macOS, dragging a file into the terminal wraps the path in single
+    quotes (e.g. ``'/path/to/file'``).  This helper strips matching outer
+    quotes (single or double) so downstream path handling works correctly.
+    """
+    raw = raw.strip()
+    if len(raw) >= 2 and ((raw[0] == "'" and raw[-1] == "'") or (raw[0] == '"' and raw[-1] == '"')):
+        raw = raw[1:-1]
+    return raw
+
+
 def is_within_directory(path: KaosPath, directory: KaosPath) -> bool:
     """
     Check whether *path* is contained within *directory* using pure path semantics.
@@ -111,3 +125,16 @@ def is_within_directory(path: KaosPath, directory: KaosPath) -> bool:
         return True
     except ValueError:
         return False
+
+
+def is_within_workspace(
+    path: KaosPath,
+    work_dir: KaosPath,
+    additional_dirs: Sequence[KaosPath] = (),
+) -> bool:
+    """
+    Check whether *path* is within the workspace (work_dir or any additional directory).
+    """
+    if is_within_directory(path, work_dir):
+        return True
+    return any(is_within_directory(path, d) for d in additional_dirs)

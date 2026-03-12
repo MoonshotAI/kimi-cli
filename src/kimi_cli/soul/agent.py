@@ -45,6 +45,8 @@ class BuiltinSystemPromptArgs:
     """The content of AGENTS.md."""
     KIMI_SKILLS: str
     """Formatted information about available skills."""
+    KIMI_ADDITIONAL_DIRS_INFO: str
+    """Formatted information about additional directories in the workspace."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -74,6 +76,7 @@ class Runtime:
     labor_market: LaborMarket
     environment: Environment
     skills: dict[str, Skill]
+    additional_dirs: list[KaosPath]
 
     @staticmethod
     async def create(
@@ -104,6 +107,40 @@ class Runtime:
             for skill in skills
         )
 
+        # Restore additional directories from session state, pruning stale entries
+        additional_dirs: list[KaosPath] = []
+        pruned = False
+        valid_dir_strs: list[str] = []
+        for dir_str in session.state.additional_dirs:
+            d = KaosPath(dir_str).canonical()
+            if await d.is_dir():
+                additional_dirs.append(d)
+                valid_dir_strs.append(dir_str)
+            else:
+                logger.warning(
+                    "Additional directory no longer exists, removing from state: {dir}",
+                    dir=dir_str,
+                )
+                pruned = True
+        if pruned:
+            session.state.additional_dirs = valid_dir_strs
+            session.save_state()
+
+        # Format additional dirs info for system prompt
+        additional_dirs_info = ""
+        if additional_dirs:
+            parts: list[str] = []
+            for d in additional_dirs:
+                try:
+                    dir_ls = await list_directory(d)
+                except OSError:
+                    logger.warning(
+                        "Cannot list additional directory, skipping listing: {dir}", dir=d
+                    )
+                    dir_ls = "[directory not readable]"
+                parts.append(f"### `{d}`\n\n```\n{dir_ls}\n```")
+            additional_dirs_info = "\n\n".join(parts)
+
         # Merge CLI flag with persisted session state
         effective_yolo = yolo or session.state.approval.yolo
         saved_actions = set(session.state.approval.auto_approve_actions)
@@ -130,12 +167,14 @@ class Runtime:
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
                 KIMI_SKILLS=skills_formatted or "No skills found.",
+                KIMI_ADDITIONAL_DIRS_INFO=additional_dirs_info,
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(state=approval_state),
             labor_market=LaborMarket(),
             environment=environment,
             skills=skills_by_name,
+            additional_dirs=additional_dirs,
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -151,6 +190,8 @@ class Runtime:
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
             skills=self.skills,
+            # Share the same list reference so /add-dir mutations propagate to all agents
+            additional_dirs=self.additional_dirs,
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -166,6 +207,8 @@ class Runtime:
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
             skills=self.skills,
+            # Share the same list reference so /add-dir mutations propagate to all agents
+            additional_dirs=self.additional_dirs,
         )
 
 

@@ -352,14 +352,16 @@ class GoogleGenAIStreamedMessage:
 
 def tool_to_google_genai(tool: KosongTool) -> Tool:
     """Convert a Kosong tool to GoogleGenAI tool format."""
-    # Kosong already validates parameters as JSON Schema format via jsonschema
-    # The google-genai SDK accepts dict format and internally converts to Schema
+    # Use parameters_json_schema instead of parameters to bypass the SDK's
+    # Pydantic validation (extra='forbid') which rejects standard JSON Schema
+    # metadata fields like $schema, $id, $comment, examples, etc.
+    # This is the SDK's official way to pass raw JSON Schema directly to the API.
     return Tool(
         function_declarations=[
             FunctionDeclaration(
                 name=tool.name,
                 description=tool.description,
-                parameters=tool.parameters,  # type: ignore[arg-type] # GoogleGenAI accepts dict
+                parameters_json_schema=tool.parameters,
             )
         ]
     )

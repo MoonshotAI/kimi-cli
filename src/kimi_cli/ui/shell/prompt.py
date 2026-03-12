@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import getpass
 import json
 import mimetypes
 import os
 import re
+import shlex
 import time
 from collections import deque
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from hashlib import md5, sha256
 from io import BytesIO
@@ -43,9 +42,12 @@ from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import StatusSnapshot
+from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell.console import console
-from kimi_cli.utils.clipboard import grab_image_from_clipboard, is_clipboard_available
+from kimi_cli.utils.clipboard import (
+    grab_media_from_clipboard,
+    is_clipboard_available,
+)
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.media_tags import wrap_media_part
 from kimi_cli.utils.slashcmd import SlashCommand
@@ -55,6 +57,7 @@ from kimi_cli.wire.types import ContentPart, ImageURLPart, TextPart
 PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
+PROMPT_SYMBOL_PLAN = "📋"
 
 
 class SlashCommandCompleter(Completer):
@@ -495,6 +498,22 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
     return queue[0]
 
 
+def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
+    tips = [
+        "ctrl-x: toggle mode",
+        "shift-tab: plan mode",
+        "ctrl-o: editor",
+        "ctrl-j: newline",
+    ]
+    if clipboard_available:
+        tips.append("ctrl-v: paste media")
+    tips.append("@: mention files")
+    return tips
+
+
+_TIP_SEPARATOR = " | "
+
+
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"\[(?P<type>[a-zA-Z0-9_\-]+):(?P<id>[a-zA-Z0-9_\-\.]+)"
     r"(?:,(?P<width>\d+)x(?P<height>\d+))?\]"
@@ -646,18 +665,25 @@ class CustomPromptSession:
         thinking: bool,
         agent_mode_slash_commands: Sequence[SlashCommand[Any]],
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
+        editor_command_provider: Callable[[], str] = lambda: "",
+        plan_mode_toggle_callback: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
         work_dir_id = md5(str(KaosPath.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
+        self._editor_command_provider = editor_command_provider
+        self._plan_mode_toggle_callback = plan_mode_toggle_callback
         self._model_capabilities = model_capabilities
         self._model_name = model_name
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = thinking
         self._attachment_cache = AttachmentCache()
+        self._tip_rotation_index: int = 0
+        clipboard_available = is_clipboard_available()
+        self._tips = _build_toolbar_tips(clipboard_available)
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -701,19 +727,43 @@ class CustomPromptSession:
             # Redraw UI
             event.app.invalidate()
 
+        @_kb.add("s-tab", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Toggle plan mode with Shift+Tab."""
+            if self._plan_mode_toggle_callback is not None:
+
+                async def _toggle() -> None:
+                    assert self._plan_mode_toggle_callback is not None
+                    new_state = await self._plan_mode_toggle_callback()
+                    if new_state:
+                        toast("plan mode ON", topic="plan_mode", duration=3.0, immediate=True)
+                    else:
+                        toast("plan mode OFF", topic="plan_mode", duration=3.0, immediate=True)
+                    event.app.invalidate()
+
+                event.app.create_background_task(_toggle())
+            event.app.invalidate()
+
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
             event.current_buffer.insert_text("\n")
 
-        if is_clipboard_available():
+        @_kb.add("c-o", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            """Open current buffer in external editor."""
+            self._open_in_external_editor(event)
+
+        if clipboard_available:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
-                if self._try_paste_image(event):
+                if self._try_paste_media(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
+                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                    return
                 event.current_buffer.paste_clipboard_data(clipboard_data)
 
             clipboard = PyperclipClipboard()
@@ -742,10 +792,37 @@ class CustomPromptSession:
         self._status_refresh_task: asyncio.Task[None] | None = None
 
     def _render_message(self) -> FormattedText:
-        symbol = PROMPT_SYMBOL if self._mode == PromptMode.AGENT else PROMPT_SYMBOL_SHELL
-        if self._mode == PromptMode.AGENT and self._thinking:
-            symbol = PROMPT_SYMBOL_THINKING
-        return FormattedText([("bold", f"{getpass.getuser()}@{KaosPath.cwd().name}{symbol} ")])
+        if self._mode == PromptMode.SHELL:
+            return FormattedText([("bold", f"{PROMPT_SYMBOL_SHELL} ")])
+        status = self._status_provider()
+        if status.plan_mode:
+            return FormattedText([("fg:#00aaff", f"{PROMPT_SYMBOL_PLAN} ")])
+        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
+        return FormattedText([("", f"{symbol} ")])
+
+    def _open_in_external_editor(self, event: KeyPressEvent) -> None:
+        """Open the current buffer content in an external editor."""
+        from prompt_toolkit.application.run_in_terminal import run_in_terminal
+
+        from kimi_cli.utils.editor import edit_text_in_editor, get_editor_command
+
+        configured = self._editor_command_provider()
+
+        if get_editor_command(configured) is None:
+            toast("No editor found. Set $VISUAL/$EDITOR or run /editor.")
+            return
+
+        buff = event.current_buffer
+        original_text = buff.text
+
+        async def _run_editor() -> None:
+            result = await run_in_terminal(
+                lambda: edit_text_in_editor(original_text, configured), in_executor=True
+            )
+            if result is not None:
+                buff.document = Document(text=result, cursor_position=len(result))
+
+        event.app.create_background_task(_run_editor())
 
     def _apply_mode(self, event: KeyPressEvent | None = None) -> None:
         # Apply mode to the active buffer (not the PromptSession itself)
@@ -792,29 +869,51 @@ class CustomPromptSession:
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
 
-    def _try_paste_image(self, event: KeyPressEvent) -> bool:
-        """Try to paste an image from the clipboard. Return True if successful."""
-        image = grab_image_from_clipboard()
-        if image is None:
+    def _try_paste_media(self, event: KeyPressEvent) -> bool:
+        """Try to paste media from the clipboard.
+
+        Reads the clipboard once and handles all detected content:
+        non-image files (videos, PDFs, etc.) are inserted as paths,
+        image files are cached and inserted as placeholders.
+        Returns True if any media was detected.
+        """
+        result = grab_media_from_clipboard()
+        if result is None:
             return False
 
-        if "image_in" not in self._model_capabilities:
-            console.print("[yellow]Image input is not supported by the selected LLM model[/yellow]")
-            return False
+        parts: list[str] = []
 
-        cached = self._attachment_cache.store_image(image)
-        if cached is None:
-            return False
-        logger.debug(
-            "Pasted image from clipboard: {attachment_id}, {image_size}",
-            attachment_id=cached.attachment_id,
-            image_size=image.size,
-        )
+        # 1. Insert file paths (videos, PDFs, etc.)
+        if result.file_paths:
+            logger.debug("Pasted {count} file path(s) from clipboard", count=len(result.file_paths))
+            for p in result.file_paths:
+                text = str(p)
+                if self._mode == PromptMode.SHELL:
+                    text = shlex.quote(text)
+                parts.append(text)
 
-        placeholder = f"[image:{cached.attachment_id},{image.width}x{image.height}]"
-        event.current_buffer.insert_text(placeholder)
+        # 2. Insert images via cache.
+        if result.images:
+            if "image_in" not in self._model_capabilities:
+                console.print(
+                    "[yellow]Image input is not supported by the selected LLM model[/yellow]"
+                )
+            else:
+                for image in result.images:
+                    cached = self._attachment_cache.store_image(image)
+                    if cached is None:
+                        continue
+                    logger.debug(
+                        "Pasted image from clipboard: {attachment_id}, {image_size}",
+                        attachment_id=cached.attachment_id,
+                        image_size=image.size,
+                    )
+                    parts.append(f"[image:{cached.attachment_id},{image.width}x{image.height}]")
+
+        if parts:
+            event.current_buffer.insert_text(" ".join(parts))
         event.app.invalidate()
-        return True
+        return bool(parts)
 
     async def prompt(self) -> UserInput:
         with patch_stdout(raw=True):
@@ -823,6 +922,7 @@ class CustomPromptSession:
             # Sanitize UTF-16 surrogates that may come from Windows clipboard
             command = _sanitize_surrogates(command)
         self._append_history_entry(command)
+        self._tip_rotation_index += 1
 
         # Parse rich content parts
         content: list[ContentPart] = []
@@ -883,9 +983,8 @@ class CustomPromptSession:
 
         fragments: list[tuple[str, str]] = []
 
-        now_text = datetime.now().strftime("%H:%M")
-        fragments.extend([("", now_text), ("", " " * 2)])
-        columns -= len(now_text) + 2
+        fragments.append(("fg:#4d4d4d", "─" * columns))
+        fragments.append(("", "\n"))
 
         mode = str(self._mode).lower()
         if self._mode == PromptMode.AGENT:
@@ -900,6 +999,9 @@ class CustomPromptSession:
         if status.yolo_enabled:
             fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
             columns -= len("yolo") + 2
+        if status.plan_mode:
+            fragments.extend([("bold fg:#00aaff", "plan"), ("", " " * 2)])
+            columns -= len("plan") + 2
         fragments.extend([("", f"{mode}"), ("", " " * 2)])
         columns -= len(mode) + 2
         right_text = self._render_right_span(status)
@@ -912,10 +1014,27 @@ class CustomPromptSession:
             if current_toast_left.duration <= 0.0:
                 _toast_queues["left"].popleft()
         else:
-            shortcuts = "ctrl-x: toggle mode"
-            if columns - len(right_text) > len(shortcuts) + 2:
-                fragments.extend([("", shortcuts), ("", " " * 2)])
-                columns -= len(shortcuts) + 2
+            # Reserve space for right_text, two trailing spaces after tips, and
+            # at least one space of padding before right_text.
+            available = columns - len(right_text) - 3
+            full_text = _TIP_SEPARATOR.join(self._tips)
+            if len(full_text) <= available:
+                tip_text: str | None = full_text
+            else:
+                n = len(self._tips)
+                offset = self._tip_rotation_index % n
+                rotated = self._tips[offset:] + self._tips[:offset]
+                selected: list[str] = []
+                total_len = 0
+                for tip in rotated:
+                    needed = len(tip) + (len(_TIP_SEPARATOR) if selected else 0)
+                    if total_len + needed <= available:
+                        selected.append(tip)
+                        total_len += needed
+                tip_text = _TIP_SEPARATOR.join(selected) if selected else None
+            if tip_text:
+                fragments.extend([("", tip_text), ("", " " * 2)])
+                columns -= len(tip_text) + 2
 
         padding = max(1, columns - len(right_text))
         fragments.append(("", " " * padding))
@@ -927,8 +1046,11 @@ class CustomPromptSession:
     def _render_right_span(status: StatusSnapshot) -> str:
         current_toast = _current_toast("right")
         if current_toast is None:
-            bounded = max(0.0, min(status.context_usage, 1.0))
-            return f"context: {bounded:.1%}"
+            return format_context_status(
+                status.context_usage,
+                status.context_tokens,
+                status.max_context_tokens,
+            )
 
         current_toast.duration -= _REFRESH_INTERVAL
         if current_toast.duration <= 0.0:

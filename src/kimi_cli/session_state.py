@@ -29,6 +29,8 @@ class SessionState(BaseModel):
     version: int = 1
     approval: ApprovalStateData = Field(default_factory=ApprovalStateData)
     dynamic_subagents: list[DynamicSubagentSpec] = Field(default_factory=_default_dynamic_subagents)
+    additional_dirs: list[str] = Field(default_factory=list)
+    plan_mode: bool = False
 
 
 def load_session_state(session_dir: Path) -> SessionState:

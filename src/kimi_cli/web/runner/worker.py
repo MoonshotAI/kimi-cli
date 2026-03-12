@@ -63,6 +63,10 @@ async def run_worker(session_id: UUID) -> None:
 
 def main() -> None:
     """Entry point for the worker subprocess."""
+    from kimi_cli.utils.proctitle import set_process_title
+
+    set_process_title("kimi-code-worker")
+
     if len(sys.argv) < 2:
         print("Usage: python -m kimi_cli.web.runner.worker <session_id>", file=sys.stderr)
         sys.exit(1)

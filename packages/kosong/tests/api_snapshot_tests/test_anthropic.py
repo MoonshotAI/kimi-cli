@@ -542,6 +542,41 @@ async def test_anthropic_opus_46_thinking_off():
         assert body["thinking"] == snapshot({"type": "disabled"})
 
 
+async def test_anthropic_metadata():
+    """Metadata should be forwarded to the Anthropic API request."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+            metadata={"user_id": "test-session-id"},
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["metadata"] == snapshot({"user_id": "test-session-id"})
+
+
+async def test_anthropic_metadata_omitted_when_none():
+    """Metadata should not be included in the request when not provided."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "metadata" not in body
+
+
 async def test_anthropic_opus_46_thinking_effort_property():
     """thinking_effort should return 'high' for adaptive thinking config."""
     provider = Anthropic(

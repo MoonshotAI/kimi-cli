@@ -67,6 +67,14 @@ def _write_context_message(context_file: Path, text: str):
     context_file.write_text(message.model_dump_json(exclude_none=True) + "\n", encoding="utf-8")
 
 
+def _write_context_records(context_file: Path, *records: dict[str, object]) -> None:
+    context_file.parent.mkdir(parents=True, exist_ok=True)
+    context_file.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+
 async def test_create_sets_fallback_title(isolated_share_dir: Path, work_dir: KaosPath):
     session = await Session.create(work_dir)
     assert session.title.startswith("Untitled (")
@@ -119,6 +127,40 @@ async def test_list_ignores_empty_sessions(isolated_share_dir: Path, work_dir: K
 
     assert [s.id for s in sessions] == [populated.id]
     assert all(s.id != empty.id for s in sessions)
+
+
+async def test_is_empty_ignores_context_metadata_only(
+    isolated_share_dir: Path, work_dir: KaosPath
+) -> None:
+    session = await Session.create(work_dir)
+
+    _write_context_records(
+        session.context_file,
+        {"role": "_system_prompt", "content": "Persisted prompt"},
+        {"role": "_checkpoint", "id": 0},
+        {"role": "_usage", "token_count": 42},
+    )
+
+    assert session.is_empty()
+
+
+async def test_list_ignores_prompt_only_sessions(
+    isolated_share_dir: Path, work_dir: KaosPath
+) -> None:
+    prompt_only = await Session.create(work_dir)
+    populated = await Session.create(work_dir)
+
+    _write_context_records(
+        prompt_only.context_file,
+        {"role": "_system_prompt", "content": "Persisted prompt"},
+    )
+    _write_context_message(populated.context_file, "persisted user message")
+    _write_wire_turn(populated.dir, "populated session")
+
+    sessions = await Session.list(work_dir)
+
+    assert [s.id for s in sessions] == [populated.id]
+    assert all(s.id != prompt_only.id for s in sessions)
 
 
 async def test_create_named_session(isolated_share_dir: Path, work_dir: KaosPath):

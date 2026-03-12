@@ -14,7 +14,7 @@ kimi --agent okabe
 
 默认 Agent，适合通常情况使用。启用的工具：
 
-`Task`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`
+`Task`、`AskUserQuestion`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`、`EnterPlanMode`、`ExitPlanMode`
 
 ### `okabe`
 
@@ -80,6 +80,7 @@ agent:
 | `${KIMI_WORK_DIR_LS}` | 工作目录文件列表 |
 | `${KIMI_AGENTS_MD}` | AGENTS.md 文件内容（如果存在） |
 | `${KIMI_SKILLS}` | 加载的 Skills 列表 |
+| `${KIMI_ADDITIONAL_DIRS_INFO}` | 通过 `--add-dir` 或 `/add-dir` 添加的额外目录信息 |
 
 你也可以通过 `system_prompt_args` 定义自定义参数：
 
@@ -166,6 +167,21 @@ agent:
 | `description` | string | 任务简短描述（3-5 词） |
 | `subagent_name` | string | 子 Agent 名称 |
 | `prompt` | string | 任务详细描述 |
+
+### `AskUserQuestion`
+
+- **路径**：`kimi_cli.tools.ask_user:AskUserQuestion`
+- **描述**：在执行过程中向用户展示结构化问题和选项，收集用户偏好或决策。适用于需要用户在多个方案中做出选择、解决模糊指令或收集需求信息的场景。不应过度使用——只在用户的选择真正影响后续操作时才调用。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `questions` | array | 问题列表（1–4 个问题） |
+| `questions[].question` | string | 问题文本，以 `?` 结尾 |
+| `questions[].header` | string | 短标签，最多 12 字符（如 `Auth`、`Style`） |
+| `questions[].options` | array | 可选项（2–4 个），系统会自动添加 "Other" 选项 |
+| `questions[].options[].label` | string | 选项标签（1–5 词），推荐选项可追加 `(Recommended)` |
+| `questions[].options[].description` | string | 选项说明 |
+| `questions[].multi_select` | bool | 是否允许多选，默认 false |
 
 ### `SetTodoList`
 
@@ -302,6 +318,20 @@ agent:
 | `message` | string | 要发送的消息 |
 | `checkpoint_id` | int | 要发送回的检查点 ID（>= 0） |
 
+### `EnterPlanMode`
+
+- **路径**：`kimi_cli.tools.plan.enter:EnterPlanMode`
+- **描述**：请求进入 Plan 模式。调用后会向用户展示审批请求，用户可以选择同意或拒绝进入 Plan 模式。在 YOLO 模式下，仅在用户明确要求规划或存在重大架构歧义时使用。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
+
+此工具不接受参数。
+
+### `ExitPlanMode`
+
+- **路径**：`kimi_cli.tools.plan:ExitPlanMode`
+- **描述**：在 Plan 模式下完成方案后提交审批。调用前需先将方案写入 plan 文件，此工具会读取 plan 文件内容并展示给用户审批。用户可以批准（退出 Plan 模式并开始执行）、拒绝（保持 Plan 模式等待反馈）或提供修改意见。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
+
+此工具不接受参数。
+
 ### `CreateSubagent`
 
 - **路径**：`kimi_cli.tools.multiagent:CreateSubagent`
@@ -314,11 +344,11 @@ agent:
 
 ## 工具安全边界
 
-**工作目录限制**
+**工作区范围**
 
-- 文件读写通常在工作目录内进行
-- 读取工作目录外文件需使用绝对路径
-- 写入和编辑操作都需要用户审批；操作工作目录外文件时，必须使用绝对路径
+- 文件读写通常在工作目录（及通过 `--add-dir` 或 `/add-dir` 添加的额外目录）内进行
+- 读取工作区外文件需使用绝对路径
+- 写入和编辑操作都需要用户审批；操作工作区外文件时，必须使用绝对路径
 
 **审批机制**
 

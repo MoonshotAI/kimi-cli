@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, override
 
@@ -5,13 +6,13 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.diff import build_diff_blocks
-from kimi_cli.utils.path import is_within_directory
+from kimi_cli.utils.path import is_within_workspace
 
 
 class Params(BaseModel):
@@ -37,16 +38,29 @@ class WriteFile(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "write.md")
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval):
+    def __init__(self, runtime: Runtime, approval: Approval):
         super().__init__()
-        self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
         self._approval = approval
+        self._plan_mode_checker: Callable[[], bool] | None = None
+        self._plan_file_path_getter: Callable[[], Path | None] | None = None
+
+    def bind_plan_mode(
+        self, checker: Callable[[], bool], path_getter: Callable[[], Path | None]
+    ) -> None:
+        """Bind plan mode state checker and plan file path getter."""
+        self._plan_mode_checker = checker
+        self._plan_file_path_getter = path_getter
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to write."""
         resolved_path = path.canonical()
 
-        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+        if (
+            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+            and not path.is_absolute()
+        ):
             return ToolError(
                 message=(
                     f"`{path}` is not an absolute path. "
@@ -73,6 +87,15 @@ class WriteFile(CallableTool2[Params]):
             if err := await self._validate_path(p):
                 return err
             p = p.canonical()
+
+            # Plan mode: auto-approve writes to the plan file (skip approval dialog)
+            is_plan_file_write = False
+            if self._plan_mode_checker and self._plan_mode_checker():
+                plan_path = self._plan_file_path_getter() if self._plan_file_path_getter else None
+                if plan_path is not None and str(p) == str(plan_path.resolve()):
+                    is_plan_file_write = True
+                    # Ensure plan directory exists
+                    plan_path.parent.mkdir(parents=True, exist_ok=True)
 
             if not await p.parent.exists():
                 return ToolError(
@@ -106,20 +129,22 @@ class WriteFile(CallableTool2[Params]):
                 )
             )
 
-            action = (
-                FileActions.EDIT
-                if is_within_directory(p, self._work_dir)
-                else FileActions.EDIT_OUTSIDE
-            )
+            # Plan file writes are auto-approved; other writes need approval
+            if not is_plan_file_write:
+                action = (
+                    FileActions.EDIT
+                    if is_within_workspace(p, self._work_dir, self._additional_dirs)
+                    else FileActions.EDIT_OUTSIDE
+                )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                action,
-                f"Write file `{p}`",
-                display=diff_blocks,
-            ):
-                return ToolRejectedError()
+                # Request approval
+                if not await self._approval.request(
+                    self.name,
+                    action,
+                    f"Write file `{p}`",
+                    display=diff_blocks,
+                ):
+                    return ToolRejectedError()
 
             # Write content to file
             match params.mode:

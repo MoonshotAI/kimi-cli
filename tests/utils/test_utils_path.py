@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from kimi_cli.utils.path import next_available_rotation
+import pytest
+
+from kimi_cli.utils.path import next_available_rotation, sanitize_cli_path
 
 
 async def test_next_available_rotation_empty_dir(tmp_path):
@@ -217,3 +219,37 @@ async def test_next_available_rotation_concurrent_calls(tmp_path):
         "events_4.log",
         "events_5.log",
     }
+
+
+# ---------------------------------------------------------------------------
+# sanitize_cli_path tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # macOS drag-and-drop: single quotes
+        ("'/Users/me/file.txt'", "/Users/me/file.txt"),
+        # double quotes
+        ('"/Users/me/file.txt"', "/Users/me/file.txt"),
+        # leading/trailing whitespace + quotes
+        ("  '/Users/me/file.txt'  ", "/Users/me/file.txt"),
+        # plain path – no change
+        ("/Users/me/file.txt", "/Users/me/file.txt"),
+        # empty string
+        ("", ""),
+        # whitespace only
+        ("   ", ""),
+        # single quote char – not a pair
+        ("'", "'"),
+        # mismatched quotes – no stripping
+        ("'/Users/me/file.txt\"", "'/Users/me/file.txt\""),
+        # quotes inside path – should be kept
+        ("/Users/it's/a path", "/Users/it's/a path"),
+        # path with spaces inside quotes (common macOS drag)
+        ("'/Users/me/my docs/file.txt'", "/Users/me/my docs/file.txt"),
+    ],
+)
+def test_sanitize_cli_path(raw: str, expected: str):
+    assert sanitize_cli_path(raw) == expected

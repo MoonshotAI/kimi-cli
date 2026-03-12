@@ -112,7 +112,14 @@ def test_shell_approval_approve(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "request",
@@ -154,7 +161,14 @@ def test_shell_approval_approve(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -222,7 +236,14 @@ def test_shell_approval_reject(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "request",
@@ -340,7 +361,14 @@ def test_approve_for_session(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "request",
@@ -382,7 +410,14 @@ def test_approve_for_session(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
                 {
@@ -409,7 +444,14 @@ def test_approve_for_session(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "event",
@@ -434,7 +476,14 @@ def test_approve_for_session(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -499,7 +548,14 @@ def test_yolo_skips_approval(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "event",
@@ -524,7 +580,14 @@ def test_yolo_skips_approval(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -765,7 +828,14 @@ def test_display_block_todo(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "event",
@@ -792,7 +862,14 @@ def test_display_block_todo(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -867,7 +944,14 @@ def test_tool_call_part_streaming(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "event",
@@ -894,7 +978,14 @@ def test_tool_call_part_streaming(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -959,7 +1050,14 @@ def test_default_agent_missing_tool(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "event",
@@ -984,7 +1082,14 @@ def test_default_agent_missing_tool(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -1063,7 +1168,14 @@ def test_custom_agent_exclude_tool(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {
                     "method": "event",
@@ -1088,7 +1200,14 @@ def test_custom_agent_exclude_tool(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]

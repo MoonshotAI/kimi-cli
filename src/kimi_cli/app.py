@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -163,6 +164,11 @@ class KimiCLI:
 
         context = Context(session.context_file)
         await context.restore()
+
+        if context.system_prompt is not None:
+            agent = dataclasses.replace(agent, system_prompt=context.system_prompt)
+        else:
+            await context.write_system_prompt(agent.system_prompt)
 
         soul = KimiSoul(agent, context=context)
         return KimiCLI(soul, runtime, env_overrides)

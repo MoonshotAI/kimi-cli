@@ -87,6 +87,8 @@ class ClientCapabilities(BaseModel):
 
     supports_question: bool = False
     """Whether the client can handle QuestionRequest messages."""
+    supports_plan_mode: bool = False
+    """Whether the client supports plan mode (EnterPlanMode / ExitPlanMode)."""
 
 
 class JSONRPCInitializeMessage(_MessageBase):
@@ -131,6 +133,18 @@ class JSONRPCSteerMessage(_MessageBase):
     @model_serializer()
     def _serialize(self) -> dict[str, Any]:
         raise NotImplementedError("Steer message serialization is not implemented.")
+
+
+class _SetPlanModeParams(BaseModel):
+    enabled: bool
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class JSONRPCSetPlanModeMessage(_MessageBase):
+    method: Literal["set_plan_mode"] = "set_plan_mode"
+    id: str
+    params: _SetPlanModeParams
 
 
 class JSONRPCCancelMessage(_MessageBase):
@@ -183,10 +197,11 @@ type JSONRPCInMessage = (
     | JSONRPCPromptMessage
     | JSONRPCSteerMessage
     | JSONRPCReplayMessage
+    | JSONRPCSetPlanModeMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "set_plan_mode", "cancel"}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse

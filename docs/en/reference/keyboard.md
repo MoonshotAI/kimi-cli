@@ -7,10 +7,14 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | Shortcut | Function |
 |----------|----------|
 | `Ctrl-X` | Toggle agent/shell mode |
+| `Shift-Tab` | Toggle plan mode (read-only research and planning) |
+| `Ctrl-O` | Edit in external editor (`$VISUAL`/`$EDITOR`) |
 | `Ctrl-J` | Insert newline |
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
-| `Ctrl-V` | Paste (supports images) |
+| `Ctrl-V` | Paste (supports images and video files) |
 | `Ctrl-E` | Expand full approval request content |
+| `1`–`3` | Quick select approval option |
+| `1`–`5` | Select question option by number |
 | `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
 
@@ -25,7 +29,33 @@ Press `Ctrl-X` in the input box to switch between two modes:
 
 The prompt changes based on current mode:
 - Agent mode: `✨` (normal) or `💫` (thinking mode)
+- Plan mode: `📋`
 - Shell mode: `$`
+
+## Plan mode
+
+### `Shift-Tab`: Toggle plan mode
+
+Press `Shift-Tab` to enable or disable plan mode. In plan mode, the AI can only use read-only tools to explore the codebase, writing an implementation plan to a plan file and submitting it for your approval.
+
+When enabled, the prompt changes to `📋` and a blue `plan` badge appears in the status bar. You can also use the `/plan` slash command to manage plan mode. See [Plan mode](../guides/interaction.md#plan-mode) for details.
+
+## External editor
+
+### `Ctrl-O`: Edit in external editor
+
+Press `Ctrl-O` to open an external editor (e.g., VS Code, Vim) to edit the current input content. The editor is selected in the following priority:
+
+1. Editor configured via `/editor` command
+2. `$VISUAL` environment variable
+3. `$EDITOR` environment variable
+4. Auto-detect: `code --wait` (VS Code) → `vim` → `vi` → `nano`
+
+Use the `/editor` command to interactively switch editors, or specify directly, e.g., `/editor vim`.
+
+After saving and exiting the editor, the edited content replaces the current input. If you quit without saving (e.g., `:q!` in Vim), the input remains unchanged.
+
+Useful for writing multi-line prompts, complex code snippets, etc.
 
 ## Multi-line input
 
@@ -46,11 +76,12 @@ Paste clipboard content into the input box. Supports:
 
 - **Text**: Pasted directly
 - **Images**: Converted to base64 embedding (requires model image input support)
+- **Video files**: File path is inserted as text into the input box (requires model video input support)
 
 When pasting images, a placeholder `[image:xxx.png,WxH]` is displayed. The actual image data is sent along with the message to the model.
 
 ::: tip
-Image pasting requires the model to support `image_in` capability.
+Image pasting requires the model to support `image_in` capability. Video pasting requires the model to support `video_in` capability.
 :::
 
 ## Approval request operations
@@ -61,6 +92,10 @@ When approval request preview content is truncated, press `Ctrl-E` to view the f
 
 Useful for viewing longer shell commands or file diff content.
 
+### Number key quick selection
+
+In the approval panel, press `1`–`3` to directly select and submit the corresponding approval option without navigating with arrow keys first.
+
 ## Structured question operations
 
 When the AI uses the `AskUserQuestion` tool to ask you a question, the question panel supports the following keyboard operations:
@@ -68,9 +103,13 @@ When the AI uses the `AskUserQuestion` tool to ask you a question, the question 
 | Shortcut | Function |
 |----------|----------|
 | `↑` / `↓` | Navigate options |
-| `Space` | Toggle selection in multi-select mode |
+| `←` / `→` / `Tab` | Switch between questions (multi-question mode) |
+| `1`–`5` | Select option by number (auto-submits for single-select, toggles for multi-select) |
+| `Space` | Submit selection in single-select mode, toggle selection in multi-select mode |
 | `Enter` | Confirm selection |
 | `Esc` | Skip question |
+
+When the AI asks multiple questions at once, the question panel displays them as tabs. Use `←` / `→` or `Tab` to switch between questions. Answered questions are marked as complete, and switching back to a previously answered question restores your earlier selection.
 
 ## Exit and interrupt
 
@@ -105,7 +144,8 @@ The bottom status bar displays:
 
 - Current time
 - Current mode (agent/shell) and model name (in agent mode)
-- YOLO badge (when enabled)
+- YOLO badge (yellow, when enabled)
+- Plan badge (blue, when enabled)
 - Shortcut hints
 - Context usage
 

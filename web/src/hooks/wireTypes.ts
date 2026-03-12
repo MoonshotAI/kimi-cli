@@ -130,6 +130,7 @@ export type StatusUpdateEvent = {
     context_usage: number | null;
     token_usage?: TokenUsage | null;
     message_id?: string;
+    plan_mode?: boolean | null;
   };
 };
 
@@ -150,6 +151,16 @@ export type CompactionBeginEvent = {
 
 export type CompactionEndEvent = {
   type: "CompactionEnd";
+  payload?: Record<string, never>;
+};
+
+export type MCPLoadingBeginEvent = {
+  type: "MCPLoadingBegin";
+  payload?: Record<string, never>;
+};
+
+export type MCPLoadingEndEvent = {
+  type: "MCPLoadingEnd";
   payload?: Record<string, never>;
 };
 
@@ -187,6 +198,9 @@ export type QuestionItem = {
   header: string;
   options: QuestionOption[];
   multi_select: boolean;
+  body?: string;
+  other_label?: string;
+  other_description?: string;
 };
 
 export type QuestionRequestEvent = {
@@ -224,6 +238,8 @@ export type WireEvent =
   | SessionNoticeEvent
   | CompactionBeginEvent
   | CompactionEndEvent
+  | MCPLoadingBeginEvent
+  | MCPLoadingEndEvent
   | ApprovalRequestEvent
   | ApprovalRequestResolvedEvent
   | QuestionRequestEvent

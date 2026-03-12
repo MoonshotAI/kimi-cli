@@ -10,8 +10,10 @@ import typer
 
 from kimi_cli.constant import VERSION
 
+from .export import cli as export_cli
 from .info import cli as info_cli
 from .mcp import cli as mcp_cli
+from .vis import cli as vis_cli
 from .web import cli as web_cli
 
 
@@ -91,6 +93,20 @@ def kimi(
             readable=True,
             writable=True,
             help="Working directory for the agent. Default: current directory.",
+        ),
+    ] = None,
+    local_add_dirs: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--add-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help=(
+                "Add an additional directory to the workspace scope. "
+                "Can be specified multiple times."
+            ),
         ),
     ] = None,
     session_id: Annotated[
@@ -302,6 +318,10 @@ def kimi(
     ] = None,
 ):
     """Kimi, your next CLI agent."""
+    from kimi_cli.utils.proctitle import init_process_name
+
+    init_process_name("Kimi Code")
+
     if ctx.invoked_subcommand is not None:
         return  # skip rest if a subcommand is invoked
 
@@ -480,6 +500,28 @@ def kimi(
         else:
             session = await Session.create(work_dir)
             logger.info("Created new session: {session_id}", session_id=session.id)
+
+        # Add CLI-provided additional directories to session state
+        if local_add_dirs:
+            from kimi_cli.utils.path import is_within_directory
+
+            canonical_work_dir = work_dir.canonical()
+            changed = False
+            for d in local_add_dirs:
+                dir_path = KaosPath.unsafe_from_local_path(d).canonical()
+                dir_str = str(dir_path)
+                # Skip dirs within work_dir (already accessible)
+                if is_within_directory(dir_path, canonical_work_dir):
+                    logger.info(
+                        "Skipping --add-dir {dir}: already within working directory",
+                        dir=dir_str,
+                    )
+                    continue
+                if dir_str not in session.state.additional_dirs:
+                    session.state.additional_dirs.append(dir_str)
+                    changed = True
+            if changed:
+                session.save_state()
 
         instance = await KimiCLI.create(
             session,
@@ -745,6 +787,10 @@ def web_worker(session_id: str) -> None:
     """Run web worker subprocess (internal)."""
     from uuid import UUID
 
+    from kimi_cli.utils.proctitle import set_process_title
+
+    set_process_title("kimi-code-worker")
+
     from kimi_cli.app import enable_logging
     from kimi_cli.web.runner.worker import run_worker
 
@@ -757,7 +803,9 @@ def web_worker(session_id: str) -> None:
     asyncio.run(run_worker(parsed_session_id))
 
 
+cli.add_typer(export_cli, name="export")
 cli.add_typer(mcp_cli, name="mcp")
+cli.add_typer(vis_cli, name="vis")
 cli.add_typer(web_cli, name="web")
 
 

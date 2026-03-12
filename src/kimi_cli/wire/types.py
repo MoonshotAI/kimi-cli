@@ -88,6 +88,18 @@ class CompactionEnd(BaseModel):
     pass
 
 
+class MCPLoadingBegin(BaseModel):
+    """Indicates that MCP tool loading is in progress."""
+
+    pass
+
+
+class MCPLoadingEnd(BaseModel):
+    """Indicates that MCP tool loading has finished."""
+
+    pass
+
+
 class StatusUpdate(BaseModel):
     """
     An update on the current status of the soul.
@@ -96,10 +108,16 @@ class StatusUpdate(BaseModel):
 
     context_usage: float | None = None
     """The usage of the context, in percentage."""
+    context_tokens: int | None = None
+    """The number of tokens currently in the context."""
+    max_context_tokens: int | None = None
+    """The maximum number of tokens the context can hold."""
     token_usage: TokenUsage | None = None
     """The token usage statistics of the current step."""
     message_id: str | None = None
     """The message ID of the current step."""
+    plan_mode: bool | None = None
+    """Whether plan mode (read-only) is active. None means no change."""
 
 
 class SubagentEvent(BaseModel):
@@ -222,6 +240,12 @@ class QuestionItem(BaseModel):
     """The available choices for this question (2-4 options)."""
     multi_select: bool = False
     """Whether multiple options can be selected."""
+    body: str = ""
+    """Optional body content (markdown) displayed above options."""
+    other_label: str = ""
+    """Custom label for the synthetic 'Other' free-text option. Empty uses default."""
+    other_description: str = ""
+    """Custom description for the synthetic 'Other' option. Empty uses default."""
 
 
 class QuestionResponse(BaseModel):
@@ -349,6 +373,8 @@ type Event = (
     | StepInterrupted
     | CompactionBegin
     | CompactionEnd
+    | MCPLoadingBegin
+    | MCPLoadingEnd
     | StatusUpdate
     | ContentPart
     | ToolCall
@@ -431,6 +457,8 @@ __all__ = [
     "StepInterrupted",
     "CompactionBegin",
     "CompactionEnd",
+    "MCPLoadingBegin",
+    "MCPLoadingEnd",
     "StatusUpdate",
     "ContentPart",
     "ToolCall",

@@ -14,6 +14,8 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ImageURLPart,
+    MCPLoadingBegin,
+    MCPLoadingEnd,
     QuestionItem,
     QuestionOption,
     QuestionRequest,
@@ -87,11 +89,26 @@ async def test_wire_message_serde():
     assert serialize_wire_message(msg) == snapshot({"type": "CompactionEnd", "payload": {}})
     _test_serde(msg)
 
+    msg = MCPLoadingBegin()
+    assert serialize_wire_message(msg) == snapshot({"type": "MCPLoadingBegin", "payload": {}})
+    _test_serde(msg)
+
+    msg = MCPLoadingEnd()
+    assert serialize_wire_message(msg) == snapshot({"type": "MCPLoadingEnd", "payload": {}})
+    _test_serde(msg)
+
     msg = StatusUpdate(context_usage=0.5)
     assert serialize_wire_message(msg) == snapshot(
         {
             "type": "StatusUpdate",
-            "payload": {"context_usage": 0.5, "token_usage": None, "message_id": None},
+            "payload": {
+                "context_usage": 0.5,
+                "context_tokens": None,
+                "max_context_tokens": None,
+                "token_usage": None,
+                "message_id": None,
+                "plan_mode": None,
+            },
         }
     )
     _test_serde(msg)
@@ -262,6 +279,9 @@ async def test_wire_message_serde():
                             {"label": "Vue", "description": "A progressive framework"},
                         ],
                         "multi_select": False,
+                        "body": "",
+                        "other_label": "",
+                        "other_description": "",
                     }
                 ],
             },

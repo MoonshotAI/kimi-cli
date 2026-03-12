@@ -94,6 +94,8 @@ interface InitializeParams {
 interface ClientCapabilities {
   /** 是否支持处理 QuestionRequest 消息 */
   supports_question?: boolean
+  /** 是否支持 Plan 模式 */
+  supports_plan_mode?: boolean
 }
 
 interface ClientInfo {
@@ -293,6 +295,57 @@ interface SteerResult {
 {"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
+### `set_plan_mode`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+将 Plan 模式设置为指定状态。调用后 Agent 会更新 Plan 模式并通过 `StatusUpdate` 事件通知新的状态。
+
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_plan_mode: true` 声明支持后，Agent 才会启用 Plan 模式相关工具（`EnterPlanMode`、`ExitPlanMode`）。如果 Client 未声明支持，这些工具会从 LLM 的工具列表中自动隐藏。
+
+Plan 模式状态会持久化到会话中，因此在进程重启后可以恢复。
+
+```typescript
+/** set_plan_mode 请求参数 */
+interface SetPlanModeParams {
+  /** 是否启用 Plan 模式 */
+  enabled: boolean
+}
+
+/** set_plan_mode 响应结果 */
+interface SetPlanModeResult {
+  /** 固定为 "ok" */
+  status: "ok"
+  /** 调用后的 Plan 模式状态 */
+  plan_mode: boolean
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "set_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "params": {"enabled": true}}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "ok", "plan_mode": true}}
+```
+
+**错误响应示例**
+
+如果当前环境不支持 Plan 模式：
+
+```json
+{"jsonrpc": "2.0", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "Plan mode is not supported"}}
+```
+
 ### `cancel`
 
 - **方向**：Client → Agent
@@ -484,10 +537,16 @@ interface StepBegin {
 interface StatusUpdate {
   /** 上下文使用率，0-1 之间的浮点数，JSON 中可能不存在 */
   context_usage?: number | null
+  /** 当前上下文中的 token 数量，JSON 中可能不存在 */
+  context_tokens?: number | null
+  /** 上下文可容纳的最大 token 数量，JSON 中可能不存在 */
+  max_context_tokens?: number | null
   /** 当前步骤的 token 用量统计，JSON 中可能不存在 */
   token_usage?: TokenUsage | null
   /** 当前步骤的消息 ID，JSON 中可能不存在 */
   message_id?: string | null
+  /** Plan 模式是否激活，null 表示状态未变更，JSON 中可能不存在 */
+  plan_mode?: boolean | null
 }
 
 interface TokenUsage {
@@ -718,7 +777,7 @@ interface ToolResult {
 
 结构化问答请求，通过 `request` 方法发送。当 Agent 使用 `AskUserQuestion` 工具时，会发送此请求。Client 必须响应后 Agent 才能继续执行。
 
-此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，Agent 会转而在文本响应中直接提问。
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，`AskUserQuestion` 工具会从 LLM 的工具列表中自动隐藏，避免 LLM 调用不受支持的交互。
 
 ```typescript
 interface QuestionRequest {

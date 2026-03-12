@@ -19,11 +19,47 @@ $ git status
 $ npm run build
 ```
 
-Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/changelog`, and `/feedback`.
+Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, and `/import`.
 
 ::: warning Note
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
 :::
+
+## Plan mode
+
+Plan mode is a read-only planning mode that lets the AI design an implementation plan before writing code, preventing wasted effort in the wrong direction.
+
+In plan mode, the AI can only use read-only tools (`Glob`, `Grep`, `ReadFile`) to explore the codebase — it cannot modify any files or execute commands. The AI writes its plan to a dedicated plan file, then submits it to you for approval. You can approve, reject, or provide revision feedback.
+
+### Entering plan mode
+
+There are three ways to enter plan mode:
+
+- **Keyboard shortcut**: Press `Shift-Tab` to toggle plan mode
+- **Slash command**: Enter `/plan` or `/plan on`
+- **AI-initiated**: When facing complex tasks, the AI may request to enter plan mode via the `EnterPlanMode` tool — you can accept or decline
+
+When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
+
+### Reviewing plans
+
+When the AI finishes its plan, it submits it for approval via `ExitPlanMode`. The approval panel shows the full plan content, and you can:
+
+- **Approve**: Accept the plan, exit plan mode, and let the AI begin execution
+- **Reject**: Decline the plan, stay in plan mode, and provide feedback via conversation
+- **Revise**: Enter revision notes — the AI will update the plan and resubmit
+
+Press `Ctrl-E` to view the full plan content in a fullscreen pager.
+
+### Managing plan mode
+
+Use the `/plan` command to manage plan mode:
+
+- `/plan`: Toggle plan mode
+- `/plan on`: Enable plan mode
+- `/plan off`: Disable plan mode
+- `/plan view`: View the current plan content
+- `/plan clear`: Clear the current plan file
 
 ## Thinking mode
 
@@ -45,11 +81,11 @@ Sometimes you need to enter multiple lines, such as pasting a code snippet or er
 
 After finishing your input, press `Enter` to send the complete message.
 
-## Clipboard and image paste
+## Clipboard and media paste
 
-Press `Ctrl-V` to paste text or images from the clipboard.
+Press `Ctrl-V` to paste text, images, or video files from the clipboard.
 
-If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image.
+If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image. If the clipboard contains a video file, its file path is inserted as text into the input box.
 
 ::: tip
 Image input requires the model to support the `image_in` capability. Video input requires the `video_in` capability.
@@ -81,13 +117,13 @@ The question panel displays the question description and available options. You 
 - Select "Other" to enter custom text
 - Press `Esc` to skip the question
 
-Each question supports 2–4 predefined options, and the AI will set appropriate options and descriptions based on the current task context. If there are multiple questions to answer, the panel presents them one by one.
+Each question supports 2–4 predefined options, and the AI will set appropriate options and descriptions based on the current task context. If there are multiple questions to answer, the panel displays them as tabs — use Left/Right arrow keys or `Tab` to switch between questions. Answered questions are marked as completed, and switching back to an answered question restores the previous selection.
 
 ::: tip
 The AI only uses this tool when your choice genuinely affects subsequent actions. For decisions that can be inferred from context, the AI will decide on its own and continue execution.
 :::
 
-## Approvals
+## Approvals and confirmations
 
 When the AI needs to perform operations that may have an impact (such as modifying files or running commands), Kimi Code CLI will request your confirmation.
 

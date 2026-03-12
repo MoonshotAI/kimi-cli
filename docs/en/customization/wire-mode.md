@@ -73,7 +73,7 @@ interface JSONRPCError {
 Added in Wire 1.1. Legacy clients can skip this request and send `prompt` directly.
 :::
 
-- **Direction**: client → agent
+- **Direction**: Client → Agent
 - **Type**: Request (requires response)
 
 Optional handshake request for negotiating protocol version, submitting external tool definitions, and retrieving the slash command list.
@@ -94,6 +94,8 @@ interface InitializeParams {
 interface ClientCapabilities {
   /** Whether the client can handle QuestionRequest messages */
   supports_question?: boolean
+  /** Whether the client supports plan mode */
+  supports_plan_mode?: boolean
 }
 
 interface ClientInfo {
@@ -293,6 +295,57 @@ If no turn is in progress:
 {"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
 ```
 
+### `set_plan_mode`
+
+::: info Added
+Added in Wire 1.4.
+:::
+
+- **Direction**: Client → Agent
+- **Type**: Request (requires response)
+
+Set plan mode to a specific state. After calling, the agent updates plan mode and sends a `StatusUpdate` event with the new state.
+
+This feature requires capability negotiation: the client must declare `capabilities.supports_plan_mode: true` during `initialize` for the agent to enable plan mode tools (`EnterPlanMode`, `ExitPlanMode`). If the client does not declare support, these tools are automatically hidden from the LLM's tool list.
+
+Plan mode state is persisted to the session, so it survives process restarts and is restored when the session resumes.
+
+```typescript
+/** set_plan_mode request parameters */
+interface SetPlanModeParams {
+  /** Whether to enable plan mode */
+  enabled: boolean
+}
+
+/** set_plan_mode response result */
+interface SetPlanModeResult {
+  /** Fixed as "ok" */
+  status: "ok"
+  /** Plan mode state after the call */
+  plan_mode: boolean
+}
+```
+
+**Request example**
+
+```json
+{"jsonrpc": "2.0", "method": "set_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "params": {"enabled": true}}
+```
+
+**Success response example**
+
+```json
+{"jsonrpc": "2.0", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "ok", "plan_mode": true}}
+```
+
+**Error response example**
+
+If plan mode is not supported in the current environment:
+
+```json
+{"jsonrpc": "2.0", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "Plan mode is not supported"}}
+```
+
 ### `cancel`
 
 - **Direction**: Client → Agent
@@ -330,7 +383,7 @@ If no turn is in progress:
 
 ### `event`
 
-- **Direction**: agent → client
+- **Direction**: Agent → Client
 - **Type**: Notification (no response needed)
 
 Events emitted by the agent during a turn. No `id` field, client doesn't need to respond.
@@ -351,7 +404,7 @@ interface EventParams {
 
 ### `request`
 
-- **Direction**: agent → client
+- **Direction**: Agent → Client
 - **Type**: Request (requires response)
 
 Requests from the agent to the client, used for approval confirmation or external tool calls. The client must respond before the agent can continue execution.
@@ -484,10 +537,16 @@ Status update.
 interface StatusUpdate {
   /** Context usage ratio, float between 0-1, may be absent in JSON */
   context_usage?: number | null
+  /** Number of tokens currently in the context, may be absent in JSON */
+  context_tokens?: number | null
+  /** Maximum number of tokens the context can hold, may be absent in JSON */
+  max_context_tokens?: number | null
   /** Token usage stats for current step, may be absent in JSON */
   token_usage?: TokenUsage | null
   /** Message ID for current step, may be absent in JSON */
   message_id?: string | null
+  /** Whether plan mode (read-only) is active, null means no change, may be absent in JSON */
+  plan_mode?: boolean | null
 }
 
 interface TokenUsage {
@@ -718,7 +777,7 @@ Added in Wire 1.4.
 
 Structured question request, sent via `request` method. When the agent uses the `AskUserQuestion` tool, this request is sent. The client must respond before the agent can continue execution.
 
-This feature requires capability negotiation: the client must declare `capabilities.supports_question: true` during `initialize` for the agent to send `QuestionRequest`. If the client does not declare support, the agent will ask questions directly in its text response instead.
+This feature requires capability negotiation: the client must declare `capabilities.supports_question: true` during `initialize` for the agent to send `QuestionRequest`. If the client does not declare support, the `AskUserQuestion` tool is automatically hidden from the LLM's tool list, preventing the LLM from invoking unsupported interactions.
 
 ```typescript
 interface QuestionRequest {

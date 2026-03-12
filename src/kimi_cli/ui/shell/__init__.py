@@ -16,6 +16,7 @@ from rich.text import Text
 
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
 from kimi_cli.ui.shell.replay import replay_recent_history
@@ -68,6 +69,11 @@ class Shell:
                 wire_file=self.soul.wire_file,
             )
 
+        async def _plan_mode_toggle() -> bool:
+            if isinstance(self.soul, KimiSoul):
+                return await self.soul.toggle_plan_mode_from_manual()
+            return False
+
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             model_capabilities=self.soul.model_capabilities or set(),
@@ -75,6 +81,10 @@ class Shell:
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
+            editor_command_provider=lambda: (
+                self.soul.runtime.config.default_editor if isinstance(self.soul, KimiSoul) else ""
+            ),
+            plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             try:
                 while True:
@@ -110,6 +120,7 @@ class Shell:
                         continue
 
                     await self.run_soul_command(user_input.content)
+                    console.print()
             finally:
                 ensure_tty_sane()
 
@@ -230,12 +241,17 @@ class Shell:
         remove_sigint = install_sigint_handler(loop, _handler)
 
         try:
+            snap = self.soul.status
             await run_soul(
                 self.soul,
                 user_input,
                 lambda wire: visualize(
                     wire.ui_side(merge=False),  # shell UI maintain its own merge buffer
-                    initial_status=StatusUpdate(context_usage=self.soul.status.context_usage),
+                    initial_status=StatusUpdate(
+                        context_usage=snap.context_usage,
+                        context_tokens=snap.context_tokens,
+                        max_context_tokens=snap.max_context_tokens,
+                    ),
                     cancel_event=cancel_event,
                 ),
                 cancel_event,
@@ -279,7 +295,7 @@ class Shell:
         if result == UpdateResult.UPDATE_AVAILABLE:
             while True:
                 toast(
-                    "new version found, run `uv tool upgrade kimi-cli` to upgrade",
+                    f"new version found, run `{_update_mod.UPGRADE_COMMAND}` to upgrade",
                     topic="update",
                     duration=30.0,
                 )
@@ -351,7 +367,7 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
             rows.append(
                 Text.from_markup(
                     f"\n[yellow]New version available: {latest_version}. "
-                    "Please run `uv tool upgrade kimi-cli` to upgrade.[/yellow]"
+                    f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
                 )
             )
 
