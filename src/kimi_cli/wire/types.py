@@ -42,6 +42,16 @@ class TurnBegin(BaseModel):
     user_input: str | list[ContentPart]
 
 
+class SteerInput(BaseModel):
+    """
+    Indicates that the user appended follow-up input to the current running turn.
+    This event is emitted after the current step finishes and the input is appended
+    to context, before the next step begins.
+    """
+
+    user_input: str | list[ContentPart]
+
+
 class TurnEnd(BaseModel):
     """
     Indicates the end of the current agent turn.
@@ -368,6 +378,7 @@ class ToolCallRequest(BaseModel):
 
 type Event = (
     TurnBegin
+    | SteerInput
     | TurnEnd
     | StepBegin
     | StepInterrupted
@@ -453,6 +464,8 @@ class WireMessageEnvelope(BaseModel):
 __all__ = [
     # `WireMessage` variants
     "TurnBegin",
+    "SteerInput",
+    "TurnEnd",
     "StepBegin",
     "StepInterrupted",
     "CompactionBegin",

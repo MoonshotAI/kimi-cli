@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.message import Message
 from loguru import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -17,7 +18,13 @@ from rich.text import Text
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.prompt import CustomPromptSession, PromptMode, toast
+from kimi_cli.ui.shell.echo import render_user_echo
+from kimi_cli.ui.shell.prompt import (
+    CustomPromptSession,
+    PromptMode,
+    UserInput,
+    toast,
+)
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.slash import shell_mode_registry
@@ -37,6 +44,7 @@ class Shell:
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        self._prompt_session: CustomPromptSession | None = None
         self._available_slash_commands: dict[str, SlashCommand[Any]] = {
             **{cmd.name: cmd for cmd in soul.available_slash_commands},
             **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
@@ -47,6 +55,18 @@ class Shell:
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
+
+    @staticmethod
+    def _should_echo_agent_input(user_input: UserInput) -> bool:
+        if user_input.mode != PromptMode.AGENT:
+            return False
+        if user_input.command in {"exit", "quit", "/exit", "/quit"}:
+            return False
+        return parse_slash_command_call(user_input.command) is None
+
+    @staticmethod
+    def _echo_agent_input(user_input: UserInput) -> None:
+        console.print(render_user_echo(Message(role="user", content=user_input.content)))
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -85,6 +105,7 @@ class Shell:
             ),
             plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
+            self._prompt_session = prompt_session
             try:
                 while True:
                     ensure_tty_sane()
@@ -105,6 +126,9 @@ class Shell:
                         continue
                     logger.debug("Got user input: {user_input}", user_input=user_input)
 
+                    if self._should_echo_agent_input(user_input):
+                        self._echo_agent_input(user_input)
+
                     if user_input.command in ["exit", "quit", "/exit", "/quit"]:
                         logger.debug("Exiting by slash command")
                         console.print("Bye!")
@@ -121,6 +145,7 @@ class Shell:
                     await self.run_soul_command(user_input.content)
                     console.print()
             finally:
+                self._prompt_session = None
                 ensure_tty_sane()
 
         return True
@@ -252,6 +277,8 @@ class Shell:
                         max_context_tokens=snap.max_context_tokens,
                     ),
                     cancel_event=cancel_event,
+                    prompt_session=self._prompt_session,
+                    steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
                 ),
                 cancel_event,
                 self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,

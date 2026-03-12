@@ -29,6 +29,7 @@ from kimi_cli.wire.types import (
     MCPLoadingEnd,
     QuestionRequest,
     StatusUpdate,
+    SteerInput,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
@@ -149,6 +150,8 @@ class ACPSession:
             async for msg in self._cli.run(user_input, self._turn_state.cancel_event):
                 match msg:
                     case TurnBegin():
+                        pass
+                    case SteerInput():
                         pass
                     case TurnEnd():
                         pass

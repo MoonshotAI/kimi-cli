@@ -3,7 +3,7 @@ from __future__ import annotations
 from rich.console import Console
 from rich.theme import Theme
 
-_NEUTRAL_MARKDOWN_THEME = Theme(
+NEUTRAL_MARKDOWN_THEME = Theme(
     {
         "markdown.paragraph": "none",
         "markdown.block_quote": "none",
@@ -28,4 +28,5 @@ _NEUTRAL_MARKDOWN_THEME = Theme(
     inherit=True,
 )
 
-console = Console(highlight=False, theme=_NEUTRAL_MARKDOWN_THEME)
+_NEUTRAL_MARKDOWN_THEME = NEUTRAL_MARKDOWN_THEME
+console = Console(highlight=False, theme=NEUTRAL_MARKDOWN_THEME)

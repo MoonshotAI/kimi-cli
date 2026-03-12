@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 from kaos.path import KaosPath
@@ -30,7 +31,8 @@ class TestWriteFilePlanMode:
             )
 
             # Mock approval.request to fail if called — plan file should skip it
-            approval.request = AsyncMock(return_value=False)
+            request_mock = AsyncMock(return_value=False)
+            approval.request = cast(Any, request_mock)
 
             result = await tool(
                 Params(
@@ -44,7 +46,7 @@ class TestWriteFilePlanMode:
         assert plan_path.exists()
         assert plan_path.read_text() == "# My Plan"
         # Approval should NOT have been called for plan file
-        approval.request.assert_not_awaited()
+        request_mock.assert_not_awaited()
 
     async def test_non_plan_file_needs_approval_in_plan_mode(
         self, runtime: Runtime, temp_work_dir: KaosPath
@@ -61,7 +63,8 @@ class TestWriteFilePlanMode:
             )
 
             # Mock approval.request to return False (rejected)
-            approval.request = AsyncMock(return_value=False)
+            request_mock = AsyncMock(return_value=False)
+            approval.request = cast(Any, request_mock)
 
             result = await tool(
                 Params(
@@ -72,7 +75,7 @@ class TestWriteFilePlanMode:
 
         assert isinstance(result, ToolRejectedError)
         # Approval WAS called for non-plan file
-        approval.request.assert_awaited_once()
+        request_mock.assert_awaited_once()
 
     async def test_no_plan_mode_normal_flow(
         self, runtime: Runtime, temp_work_dir: KaosPath
