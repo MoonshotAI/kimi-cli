@@ -9,6 +9,7 @@ import {
   type SessionInfo,
   type WireEvent,
   getSessionDownloadUrl,
+  getVisCapabilities,
   getWireEvents,
   listSessions,
   openInPath,
@@ -92,7 +93,13 @@ function getSessionDir(session: SessionInfo): string {
   return session.session_dir;
 }
 
-function SessionDirectoryActions({ session }: { session: SessionInfo }) {
+function SessionDirectoryActions({
+  session,
+  openInSupported,
+}: {
+  session: SessionInfo;
+  openInSupported: boolean;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleOpenSessionDir = useCallback(async () => {
@@ -121,24 +128,26 @@ function SessionDirectoryActions({ session }: { session: SessionInfo }) {
 
   return (
     <div className="flex shrink-0 items-center gap-1 px-1.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={handleOpenSessionDir}
-            className="rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Open current session directory"
-          >
-            <span className="flex items-center gap-1">
-              <FolderOpen size={13} />
-              Open Dir
-            </span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-md break-all">
-          Open current session directory
-          <div className="mt-1 font-mono text-[11px]">{session.session_dir}</div>
-        </TooltipContent>
-      </Tooltip>
+      {openInSupported && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleOpenSessionDir}
+              className="rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Open current session directory"
+            >
+              <span className="flex items-center gap-1">
+                <FolderOpen size={13} />
+                Open Dir
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-md break-all">
+            Open current session directory
+            <div className="mt-1 font-mono text-[11px]">{session.session_dir}</div>
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       <Tooltip>
         <TooltipTrigger asChild>
@@ -244,6 +253,7 @@ export function App() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [openInSupported, setOpenInSupported] = useState(false);
   // Cross-reference navigation targets
   const [contextScrollTarget, setContextScrollTarget] = useState<string | null>(null);
   const [wireScrollTarget, setWireScrollTarget] = useState<string | null>(null);
@@ -282,6 +292,14 @@ export function App() {
   const [sessions, setSessions] = useState<Awaited<ReturnType<typeof listSessions>>>([]);
   useEffect(() => {
     listSessions().then(setSessions).catch(() => {});
+  }, []);
+  useEffect(() => {
+    getVisCapabilities()
+      .then((capabilities) => setOpenInSupported(capabilities.open_in_supported))
+      .catch((error) => {
+        console.error("Failed to load vis capabilities:", error);
+        setOpenInSupported(false);
+      });
   }, []);
   const currentSession = useMemo(() => {
     if (!sessionId) return null;
@@ -351,7 +369,12 @@ export function App() {
       {sessionId && (
         <div className="flex items-center border-b">
           <SessionStats sessionId={sessionId} refreshKey={refreshKey} />
-          {currentSession && <SessionDirectoryActions session={currentSession} />}
+          {currentSession && (
+            <SessionDirectoryActions
+              session={currentSession}
+              openInSupported={openInSupported}
+            />
+          )}
           <a
             href={getSessionDownloadUrl(sessionId)}
             download

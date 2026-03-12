@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from kimi_cli.metadata import Metadata, WorkDirMeta, save_metadata
+from kimi_cli.vis.api import system as vis_system_api
 from kimi_cli.vis.app import create_app
 
 
@@ -42,3 +43,13 @@ def test_vis_app_mounts_open_in_route() -> None:
         )
 
     assert response.status_code == 400
+
+
+def test_vis_capabilities_report_open_in_support(monkeypatch) -> None:
+    monkeypatch.setattr(vis_system_api.sys, "platform", "linux")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/api/vis/capabilities")
+
+    assert response.status_code == 200
+    assert response.json() == {"open_in_supported": False}

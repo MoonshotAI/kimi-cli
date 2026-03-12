@@ -209,10 +209,20 @@ export interface AggregateStats {
   per_project: { work_dir: string; sessions: number; turns: number }[];
 }
 
+export interface VisCapabilities {
+  open_in_supported: boolean;
+}
+
 export function getAggregateStats(forceRefresh = false): Promise<AggregateStats> {
   const key = "aggregate-stats";
   if (forceRefresh) apiCache.invalidate(key);
   return apiCache.get(key, () => fetchJSON<AggregateStats>("/statistics"), 60_000);
+}
+
+export function getVisCapabilities(forceRefresh = false): Promise<VisCapabilities> {
+  const key = "vis-capabilities";
+  if (forceRefresh) apiCache.invalidate(key);
+  return apiCache.get(key, () => fetchJSON<VisCapabilities>("/capabilities"), 60_000);
 }
 
 export function getSessionDownloadUrl(sessionId: string): string {
