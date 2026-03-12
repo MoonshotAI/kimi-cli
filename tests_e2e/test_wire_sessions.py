@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -28,6 +29,17 @@ def _count_lines(path: Path) -> int:
     if not path.exists():
         return 0
     return len(path.read_text(encoding="utf-8").splitlines())
+
+
+def _read_roles(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    roles: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        roles.append(json.loads(line)["role"])
+    return roles
 
 
 def test_session_files_created(tmp_path) -> None:
@@ -140,7 +152,20 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 6, "wire_after": 11})
+    } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
+    assert _read_roles(context_file) == snapshot(
+        [
+            "_system_prompt",
+            "_checkpoint",
+            "user",
+            "_checkpoint",
+            "assistant",
+            "_checkpoint",
+            "user",
+            "_checkpoint",
+            "assistant",
+        ]
+    )
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -209,9 +234,16 @@ def test_clear_context_rotates(tmp_path) -> None:
     assert len(session_ids) == 1
     session_dir = session_root / session_ids[0]
     context_file = session_dir / "context.jsonl"
-    assert context_file.stat().st_size == 0
-    rotated = sorted(p.name for p in session_dir.iterdir() if p.name.startswith("context.jsonl."))
-    assert rotated == snapshot([])
+    assert _read_roles(context_file) == snapshot(["_system_prompt"])
+    rotated = sorted(
+        p.name
+        for p in session_dir.iterdir()
+        if p.is_file() and p.name.startswith("context_") and p.suffix == ".jsonl"
+    )
+    assert rotated == snapshot(["context_1.jsonl"])
+    assert _read_roles(session_dir / rotated[0]) == snapshot(
+        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "assistant"]
+    )
 
 
 def test_manual_compact(tmp_path) -> None:
