@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Persist system prompt in `context.jsonl` — the system prompt is now written as the first record of the context file and frozen per session, so visualization tools can read the full conversation context and session restores reuse the original prompt instead of regenerating it
+
 ## 1.20.0 (2026-03-11)
 
 - Web: Add plan mode toggle in web UI — switch control in the input toolbar with a dashed blue border on the composer when plan mode is active, and support setting plan mode via the `set_plan_mode` Wire protocol method
