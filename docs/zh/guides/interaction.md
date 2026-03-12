@@ -75,7 +75,7 @@ kimi --thinking
 Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-turbo`）始终使用 Thinking 模式，无法关闭。
 :::
 
-## 运行中发送消息（Steer）
+## 运行中发送消息（steer）
 
 当 AI 正在执行任务时，你可以直接在输入框中输入并发送后续消息，无需等待当前轮次结束。这个功能称为 "引导"（steer），可以在 AI 运行过程中调整其方向。
 
