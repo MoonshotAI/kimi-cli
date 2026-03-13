@@ -95,7 +95,9 @@ After finishing your input, press `Enter` to send the complete message.
 
 Press `Ctrl-V` to paste text, images, or video files from the clipboard.
 
-If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image. If the clipboard contains a video file, its file path is inserted as text into the input box.
+In agent mode, longer pasted text (over 300 characters or 3 lines) is automatically collapsed into a `[Pasted text #n]` placeholder in the input box to keep the interface clean. The full content is still expanded and sent to the model when submitting. When using an external editor (`Ctrl-O`), placeholders are automatically expanded to the original text; unmodified portions are re-collapsed after saving.
+
+If the clipboard contains an image, Kimi Code CLI caches the image to disk and displays it as an `[image:…]` placeholder in the input box. After sending the message, the AI can see and analyze the image. If the clipboard contains a video file, its file path is inserted as text into the input box.
 
 ::: tip
 Image input requires the model to support the `image_in` capability. Video input requires the `video_in` capability.
