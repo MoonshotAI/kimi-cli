@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Fix cancelled shell commands not properly terminating child processes — when a running command is cancelled, the subprocess is now explicitly killed to prevent orphaned processes
+
 ## 1.21.0 (2026-03-12)
 
 - Shell: Add inline running prompt with steer input — agent output is now rendered inside the prompt area while the model is running, and users can type and send follow-up messages (steers) without waiting for the turn to finish; approval requests and question panels are handled inline with keyboard navigation
