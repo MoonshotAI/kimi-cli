@@ -7,10 +7,16 @@ from types import SimpleNamespace
 
 from prompt_toolkit.completion import CompleteEvent, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.layout.containers import ConditionalContainer, FloatContainer, HSplit, Window
 from prompt_toolkit.utils import get_cwidth
 
 import kimi_cli.ui.shell.prompt as prompt_mod
-from kimi_cli.ui.shell.prompt import SlashCommandCompleter, SlashCommandMenuControl, _wrap_to_width
+from kimi_cli.ui.shell.prompt import (
+    SlashCommandCompleter,
+    SlashCommandMenuControl,
+    _find_prompt_float_container,
+    _wrap_to_width,
+)
 from kimi_cli.utils.slashcmd import SlashCommand
 
 
@@ -148,3 +154,25 @@ def test_slash_menu_preserves_unselected_state(monkeypatch):
     assert "›" not in rendered_lines[2]
     assert "Ctrl-O" in rendered_lines[1]
     assert rendered_lines[1].count("/editor") == 1
+
+
+def test_find_prompt_float_container_supports_conditional_container_shape():
+    float_container = FloatContainer(content=Window(), floats=[])
+    root = HSplit(
+        [
+            ConditionalContainer(
+                content=Window(),
+                filter=True,
+                alternative_content=float_container,
+            )
+        ]
+    )
+
+    assert _find_prompt_float_container(root) is float_container
+
+
+def test_find_prompt_float_container_supports_direct_float_container_shape():
+    float_container = FloatContainer(content=Window(), floats=[])
+    root = HSplit([float_container])
+
+    assert _find_prompt_float_container(root) is float_container

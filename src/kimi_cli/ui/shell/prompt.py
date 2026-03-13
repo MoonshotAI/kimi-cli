@@ -243,6 +243,28 @@ def _wrap_to_width(text: str, width: int, *, max_lines: int | None = None) -> li
     return lines
 
 
+def _find_prompt_float_container(layout_container: object) -> FloatContainer | None:
+    if not isinstance(layout_container, HSplit):
+        return None
+
+    for child in cast(Sequence[object], layout_container.children):
+        float_container = _extract_float_container(child)
+        if float_container is not None:
+            return float_container
+    return None
+
+
+def _extract_float_container(container: object) -> FloatContainer | None:
+    if isinstance(container, FloatContainer):
+        return container
+    if isinstance(container, ConditionalContainer):
+        if isinstance(container.content, FloatContainer):
+            return container.content
+        if isinstance(container.alternative_content, FloatContainer):
+            return container.alternative_content
+    return None
+
+
 class SlashCommandMenuControl(UIControl):
     """Render slash command completions as a full-width menu that matches the shell UI."""
 
@@ -1331,16 +1353,7 @@ class CustomPromptSession:
         self._status_refresh_task: asyncio.Task[None] | None = None
 
     def _install_slash_completion_menu(self) -> None:
-        layout_container = self._session.layout.container
-        if not isinstance(layout_container, HSplit):
-            return
-
-        children = cast(Sequence[object], layout_container.children)
-        if not children:
-            return
-
-        main = children[0]
-        float_container = getattr(main, "alternative_content", None)
+        float_container = _find_prompt_float_container(self._session.layout.container)
         if not isinstance(float_container, FloatContainer):
             return
 
