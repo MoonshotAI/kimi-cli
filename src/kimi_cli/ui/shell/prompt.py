@@ -15,7 +15,7 @@ from enum import Enum
 from hashlib import md5, sha256
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal, Protocol, override
+from typing import Any, Literal, Protocol, cast, override
 
 from kaos.path import KaosPath
 from PIL import Image
@@ -31,13 +31,25 @@ from prompt_toolkit.completion import (
     WordCompleter,
     merge_completers,
 )
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Condition, has_completions
+from prompt_toolkit.filters import Condition, has_completions, has_focus, is_done
 from prompt_toolkit.formatted_text import AnyFormattedText, FormattedText, to_formatted_text
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
+from prompt_toolkit.layout.containers import (
+    ConditionalContainer,
+    Float,
+    FloatContainer,
+    HSplit,
+    Window,
+)
+from prompt_toolkit.layout.controls import UIContent, UIControl
+from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
+from prompt_toolkit.utils import get_cwidth
 from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
@@ -63,7 +75,7 @@ PROMPT_SYMBOL_PLAN = "📋"
 class SlashCommandCompleter(Completer):
     """
     A completer that:
-    - Shows one line per slash command in the form: "/name (alias1, alias2)"
+    - Shows one line per slash command using the canonical "/name"
     - Fuzzy-matches by primary name or any alias while inserting the canonical "/name"
     - Only activates when the current token starts with '/'
     """
@@ -91,25 +103,29 @@ class SlashCommandCompleter(Completer):
         self._word_completer = WordCompleter(words, WORD=False, pattern=self._word_pattern)
         self._fuzzy = FuzzyCompleter(self._word_completer, WORD=False, pattern=self._fuzzy_pattern)
 
-    @override
-    def get_completions(
-        self, document: Document, complete_event: CompleteEvent
-    ) -> Iterable[Completion]:
+    @staticmethod
+    def should_complete(document: Document) -> bool:
+        """Return whether slash command completion should be active for the current buffer."""
         text = document.text_before_cursor
 
-        # Only autocomplete when the input buffer has no other content.
         if document.text_after_cursor.strip():
-            return
+            return False
 
-        # Only consider the last token (allowing future arguments after a space)
         last_space = text.rfind(" ")
         token = text[last_space + 1 :]
         prefix = text[: last_space + 1] if last_space != -1 else ""
 
-        if prefix.strip():
+        return not prefix.strip() and token.startswith("/")
+
+    @override
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterable[Completion]:
+        if not self.should_complete(document):
             return
-        if not token.startswith("/"):
-            return
+        text = document.text_before_cursor
+        last_space = text.rfind(" ")
+        token = text[last_space + 1 :]
 
         typed = token[1:]
         if typed and typed in self._command_lookup:
@@ -130,9 +146,406 @@ class SlashCommandCompleter(Completer):
                 yield Completion(
                     text=f"/{cmd.name}",
                     start_position=-len(token),
-                    display=cmd.slash_name(),
+                    display=f"/{cmd.name}",
                     display_meta=cmd.description,
                 )
+
+
+def _truncate_to_width(text: str, width: int) -> str:
+    if width <= 0:
+        return ""
+
+    total = 0
+    chars: list[str] = []
+    for ch in text:
+        ch_width = get_cwidth(ch)
+        if total + ch_width > width:
+            break
+        chars.append(ch)
+        total += ch_width
+
+    if total == get_cwidth(text):
+        return text + (" " * max(0, width - total))
+
+    ellipsis = "..."
+    ellipsis_width = get_cwidth(ellipsis)
+    if width <= ellipsis_width:
+        return "." * width
+
+    available = width - ellipsis_width
+    total = 0
+    chars = []
+    for ch in text:
+        ch_width = get_cwidth(ch)
+        if total + ch_width > available:
+            break
+        chars.append(ch)
+        total += ch_width
+    return "".join(chars) + ellipsis + (" " * max(0, width - total - ellipsis_width))
+
+
+def _wrap_to_width(text: str, width: int, *, max_lines: int | None = None) -> list[str]:
+    if width <= 0:
+        return []
+
+    words = text.split()
+    if not words:
+        return [""]
+
+    lines: list[str] = []
+    current_words: list[str] = []
+    current_width = 0
+    index = 0
+
+    while index < len(words):
+        word = words[index]
+        word_width = get_cwidth(word)
+        separator_width = 1 if current_words else 0
+
+        if current_words and current_width + separator_width + word_width <= width:
+            current_words.append(word)
+            current_width += separator_width + word_width
+            index += 1
+            continue
+
+        if not current_words and word_width <= width:
+            current_words.append(word)
+            current_width = word_width
+            index += 1
+            continue
+
+        if not current_words and word_width > width:
+            current_words.append(_truncate_to_width(word, width).rstrip())
+            current_width = get_cwidth(current_words[0])
+            index += 1
+
+        lines.append(" ".join(current_words))
+        current_words = []
+        current_width = 0
+
+        if max_lines is not None and len(lines) == max_lines:
+            remaining = " ".join(words[index:])
+            if remaining:
+                prefix = f"{lines[-1]} " if lines[-1] else ""
+                lines[-1] = _truncate_to_width(prefix + remaining, width).rstrip()
+            return lines
+
+    if current_words:
+        line = " ".join(current_words)
+        if max_lines is not None and len(lines) + 1 > max_lines:
+            if lines:
+                lines[-1] = _truncate_to_width(f"{lines[-1]} {line}", width).rstrip()
+            else:
+                lines.append(_truncate_to_width(line, width).rstrip())
+        else:
+            lines.append(line)
+
+    return lines
+
+
+def _find_prompt_float_container(layout_container: object) -> FloatContainer | None:
+    if not isinstance(layout_container, HSplit):
+        return None
+
+    for child in cast(Sequence[object], layout_container.children):
+        float_container = _extract_float_container(child)
+        if float_container is not None:
+            return float_container
+    return None
+
+
+def _extract_float_container(container: object) -> FloatContainer | None:
+    if isinstance(container, FloatContainer):
+        return container
+    if isinstance(container, ConditionalContainer):
+        if isinstance(container.content, FloatContainer):
+            return container.content
+        if isinstance(container.alternative_content, FloatContainer):
+            return container.alternative_content
+    return None
+
+
+class SlashCommandMenuControl(UIControl):
+    """Render slash command completions as a full-width menu that matches the shell UI."""
+
+    _MAX_EXPANDED_META_LINES = 3
+
+    def __init__(
+        self,
+        *,
+        left_padding: Callable[[], int],
+        scroll_offset: int = 1,
+    ) -> None:
+        self._left_padding = left_padding
+        self._scroll_offset = scroll_offset
+
+    def has_focus(self) -> bool:
+        return False
+
+    def preferred_width(self, max_available_width: int) -> int | None:
+        return max_available_width
+
+    def preferred_height(
+        self,
+        width: int,
+        max_available_height: int,
+        wrap_lines: bool,
+        get_line_prefix: Callable[..., AnyFormattedText] | None,
+    ) -> int | None:
+        app = get_app_or_none()
+        complete_state = (
+            getattr(app.current_buffer, "complete_state", None) if app is not None else None
+        )
+        if complete_state is None:
+            return 0
+        completions = complete_state.completions
+        selected_index = complete_state.complete_index
+        if selected_index is None:
+            return min(max_available_height, len(completions) + 1)
+        menu_width = max(0, width - self._left_padding())
+        marker_width = 2
+        command_width = self._command_column_width(completions, menu_width, marker_width)
+        gap_width = 3 if menu_width > command_width + 6 else 1
+        meta_width = max(0, menu_width - marker_width - command_width - gap_width)
+        selected_meta_lines = self._selected_meta_lines(
+            completions[selected_index].display_meta_text,
+            meta_width,
+        )
+        return min(max_available_height, len(completions) + len(selected_meta_lines))
+
+    def create_content(self, width: int, height: int) -> UIContent:
+        app = get_app_or_none()
+        complete_state = (
+            getattr(app.current_buffer, "complete_state", None) if app is not None else None
+        )
+        if complete_state is None or not complete_state.completions:
+            return UIContent()
+
+        completions = complete_state.completions
+        selected_index = complete_state.complete_index
+        available_rows = max(1, height - 1)
+
+        menu_width = max(0, width - self._left_padding())
+        marker_width = 2
+        command_width = self._command_column_width(completions, menu_width, marker_width)
+        gap_width = 3 if menu_width > command_width + 6 else 1
+        meta_width = max(0, menu_width - marker_width - command_width - gap_width)
+
+        rendered_lines: list[FormattedText] = [
+            FormattedText([("class:slash-completion-menu.separator", "─" * max(0, width))])
+        ]
+        selected_line_index = 0
+
+        if selected_index is None:
+            end = min(len(completions) - 1, available_rows - 1)
+            for index in range(0, end + 1):
+                rendered_lines.append(
+                    self._render_single_line_item(
+                        width=width,
+                        completion=completions[index],
+                        marker_width=marker_width,
+                        command_width=command_width,
+                        meta_width=meta_width,
+                        gap_width=gap_width,
+                        is_current=False,
+                    )
+                )
+
+            return UIContent(
+                get_line=lambda i: rendered_lines[i],
+                line_count=len(rendered_lines),
+                cursor_position=Point(x=0, y=selected_line_index),
+            )
+
+        selected_meta_lines = self._selected_meta_lines(
+            completions[selected_index].display_meta_text,
+            meta_width,
+        )
+        start, end = self._visible_window_bounds(
+            completion_count=len(completions),
+            selected_index=selected_index,
+            available_rows=available_rows,
+            selected_item_height=len(selected_meta_lines),
+        )
+        selected_line_index = 1
+
+        for index in range(start, end + 1):
+            completion = completions[index]
+            if index == selected_index:
+                selected_line_index = len(rendered_lines)
+                rendered_lines.extend(
+                    self._render_selected_item_lines(
+                        width=width,
+                        completion=completion,
+                        marker_width=marker_width,
+                        command_width=command_width,
+                        meta_width=meta_width,
+                        gap_width=gap_width,
+                        meta_lines=selected_meta_lines,
+                    )
+                )
+                continue
+
+            rendered_lines.append(
+                self._render_single_line_item(
+                    width=width,
+                    completion=completion,
+                    marker_width=marker_width,
+                    command_width=command_width,
+                    meta_width=meta_width,
+                    gap_width=gap_width,
+                    is_current=False,
+                )
+            )
+
+        return UIContent(
+            get_line=lambda i: rendered_lines[i],
+            line_count=len(rendered_lines),
+            cursor_position=Point(x=0, y=selected_line_index),
+        )
+
+    def _selected_meta_lines(self, text: str, meta_width: int) -> list[str]:
+        lines = _wrap_to_width(
+            text,
+            meta_width,
+            max_lines=self._MAX_EXPANDED_META_LINES,
+        )
+        return lines or [""]
+
+    def _visible_window_bounds(
+        self,
+        *,
+        completion_count: int,
+        selected_index: int,
+        available_rows: int,
+        selected_item_height: int,
+    ) -> tuple[int, int]:
+        selected_item_height = min(selected_item_height, available_rows)
+        remaining_rows = max(0, available_rows - selected_item_height)
+
+        before = min(self._scroll_offset, selected_index, remaining_rows)
+        remaining_rows -= before
+        after = min(completion_count - selected_index - 1, remaining_rows)
+        remaining_rows -= after
+
+        extra_before = min(selected_index - before, remaining_rows)
+        before += extra_before
+        remaining_rows -= extra_before
+
+        extra_after = min(completion_count - selected_index - 1 - after, remaining_rows)
+        after += extra_after
+
+        return selected_index - before, selected_index + after
+
+    def _command_column_width(
+        self,
+        completions: Sequence[Completion],
+        menu_width: int,
+        marker_width: int,
+    ) -> int:
+        if menu_width <= 0:
+            return 0
+        longest = max((get_cwidth(c.display_text) for c in completions), default=0)
+        preferred = longest + 2
+        usable_width = max(0, menu_width - marker_width)
+        minimum = min(usable_width, 18)
+        maximum = max(minimum, min(28, usable_width // 2))
+        return max(minimum, min(preferred, maximum))
+
+    def _render_single_line_item(
+        self,
+        *,
+        width: int,
+        completion: Completion,
+        marker_width: int,
+        command_width: int,
+        meta_width: int,
+        gap_width: int,
+        is_current: bool,
+    ) -> FormattedText:
+        padding_width = max(0, width - marker_width - command_width - meta_width - gap_width)
+        left_padding = min(self._left_padding(), padding_width)
+        trailing_width = max(
+            0,
+            width - left_padding - marker_width - command_width - gap_width - meta_width,
+        )
+
+        command_style = (
+            "class:slash-completion-menu.command.current"
+            if is_current
+            else "class:slash-completion-menu.command"
+        )
+        meta_style = (
+            "class:slash-completion-menu.meta.current"
+            if is_current
+            else "class:slash-completion-menu.meta"
+        )
+        marker_style = (
+            "class:slash-completion-menu.marker.current"
+            if is_current
+            else "class:slash-completion-menu.marker"
+        )
+        marker = "› " if is_current else "  "
+
+        fragments: FormattedText = FormattedText()
+        fragments.append(("class:slash-completion-menu", " " * left_padding))
+        fragments.append((marker_style, marker.ljust(marker_width)))
+        fragments.append(
+            (command_style, _truncate_to_width(completion.display_text, command_width))
+        )
+        fragments.append(("class:slash-completion-menu", " " * gap_width))
+        fragments.append((meta_style, _truncate_to_width(completion.display_meta_text, meta_width)))
+        fragments.append(("class:slash-completion-menu", " " * trailing_width))
+        return fragments
+
+    def _render_selected_item_lines(
+        self,
+        *,
+        width: int,
+        completion: Completion,
+        marker_width: int,
+        command_width: int,
+        meta_width: int,
+        gap_width: int,
+        meta_lines: Sequence[str],
+    ) -> list[FormattedText]:
+        lines = [
+            self._render_single_line_item(
+                width=width,
+                completion=Completion(
+                    text=completion.text,
+                    start_position=completion.start_position,
+                    display=completion.display,
+                    display_meta=meta_lines[0],
+                ),
+                marker_width=marker_width,
+                command_width=command_width,
+                meta_width=meta_width,
+                gap_width=gap_width,
+                is_current=True,
+            )
+        ]
+
+        continuation_prefix = (
+            " " * self._left_padding() + " " * marker_width + " " * command_width + " " * gap_width
+        )
+        continuation_trailing = max(
+            0,
+            width - get_cwidth(continuation_prefix) - meta_width,
+        )
+        for meta_line in meta_lines[1:]:
+            fragments: FormattedText = FormattedText()
+            fragments.append(("class:slash-completion-menu", continuation_prefix))
+            fragments.append(
+                (
+                    "class:slash-completion-menu.meta.current",
+                    _truncate_to_width(meta_line, meta_width),
+                )
+            )
+            fragments.append(("class:slash-completion-menu", " " * continuation_trailing))
+            lines.append(fragments)
+
+        return lines
 
 
 class LocalFileMentionCompleter(Completer):
@@ -906,6 +1319,7 @@ class CustomPromptSession:
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
             complete_while_typing=True,
+            reserve_space_for_menu=10,
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
@@ -915,9 +1329,18 @@ class CustomPromptSession:
                     "bottom-toolbar": "noreverse",
                     "running-prompt-placeholder": "fg:#7c8594 italic",
                     "running-prompt-separator": "fg:#4a5568",
+                    "slash-completion-menu": "",
+                    "slash-completion-menu.separator": "fg:#4a5568",
+                    "slash-completion-menu.marker": "fg:#4a5568",
+                    "slash-completion-menu.marker.current": "fg:#4f9fff",
+                    "slash-completion-menu.command": "fg:#a6adba",
+                    "slash-completion-menu.meta": "fg:#7c8594",
+                    "slash-completion-menu.command.current": "fg:#6fb7ff bold",
+                    "slash-completion-menu.meta.current": "fg:#56a4ff",
                 }
             ),
         )
+        self._install_slash_completion_menu()
         self._apply_mode()
 
         # Allow completion to be triggered when the text is changed,
@@ -928,6 +1351,64 @@ class CustomPromptSession:
                 buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task[None] | None = None
+
+    def _install_slash_completion_menu(self) -> None:
+        float_container = _find_prompt_float_container(self._session.layout.container)
+        if not isinstance(float_container, FloatContainer):
+            return
+
+        slash_menu_filter = (
+            has_focus(self._session.default_buffer)
+            & has_completions
+            & ~is_done
+            & Condition(self._should_show_slash_completion_menu)
+        )
+        slash_menu = ConditionalContainer(
+            Window(
+                content=SlashCommandMenuControl(left_padding=self._slash_menu_left_padding),
+                dont_extend_height=True,
+                height=Dimension(max=10),
+                style="class:slash-completion-menu",
+            ),
+            filter=slash_menu_filter,
+        )
+        float_container.floats.insert(
+            0,
+            Float(
+                left=0,
+                right=0,
+                ycursor=True,
+                content=slash_menu,
+                z_index=10**8,
+            ),
+        )
+
+        original_float = next(
+            (
+                float_
+                for float_ in float_container.floats[1:]
+                if isinstance(float_.content, CompletionsMenu)
+            ),
+            None,
+        )
+        if original_float is None:
+            return
+        original_float.content = ConditionalContainer(
+            original_float.content,
+            filter=~Condition(self._should_show_slash_completion_menu),
+        )
+
+    def _should_show_slash_completion_menu(self) -> bool:
+        document = self._session.default_buffer.document
+        return SlashCommandCompleter.should_complete(document)
+
+    def _slash_menu_left_padding(self) -> int:
+        if self._mode == PromptMode.SHELL:
+            return max(1, get_cwidth(f"{PROMPT_SYMBOL_SHELL} ") - 2)
+        if self._status_provider().plan_mode:
+            return max(1, get_cwidth(f"{PROMPT_SYMBOL_PLAN} ") - 2)
+        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
+        return max(1, get_cwidth(f"{symbol} ") - 2)
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
