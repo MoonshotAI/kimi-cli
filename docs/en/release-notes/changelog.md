@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.22.0 (2026-03-13)
+
 - Shell: Collapse long pasted text into `[Pasted text #n]` placeholders — text pasted via `Ctrl-V` or bracketed paste that exceeds 300 characters or 3 lines is displayed as a compact placeholder token in the prompt buffer while the full content is sent to the model; the external editor (`Ctrl-O`) expands placeholders for editing and re-folds them on save
 - Shell: Cache pasted images as attachment placeholders — images pasted from the clipboard are stored on disk and shown as `[image:…]` tokens in the prompt, keeping the input buffer readable
 - Shell: Fix UTF-16 surrogate characters in pasted text causing serialization errors — lone surrogates from Windows clipboard data are now sanitized before storage, preventing `UnicodeEncodeError` in history writes and JSON serialization
