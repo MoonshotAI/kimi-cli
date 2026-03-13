@@ -313,17 +313,19 @@ class KimiToolset:
 
             if failed_servers:
                 names = ", ".join(failed_servers.keys())
-                _toast_mcp(f"mcp connection failed: {names}")
                 for name, error in failed_servers.items():
                     logger.warning(
                         "MCP server '{name}' failed to connect: {error}",
                         name=name,
                         error=error,
                     )
-            if unauthorized_servers:
-                _toast_mcp("mcp authorization needed")
+                final_toast = f"mcp connection failed: {names}"
+            elif unauthorized_servers:
+                final_toast = "mcp authorization needed"
             else:
-                _toast_mcp("mcp servers connected")
+                final_toast = "mcp servers connected"
+
+            _toast_mcp(final_toast)
 
         for mcp_config in mcp_configs:
             if not mcp_config.mcpServers:

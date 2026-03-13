@@ -6,11 +6,15 @@ import asyncio
 import contextlib
 import json
 
+import fastmcp
+from fastmcp.client.auth.oauth import FileTokenStorage
+from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from kosong.tooling.error import ToolNotFoundError as KosongToolNotFoundError
 from pydantic import BaseModel
 
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.ui.shell import prompt as prompt_module
 from kimi_cli.wire.types import ToolCall, ToolResult
 
 
@@ -181,8 +185,152 @@ def test_hide_unhide_cycle():
     ts.unhide("ToolA")
     assert "ToolA" in _tool_names(ts)
 
-    ts.hide("ToolA")
-    assert "ToolA" not in _tool_names(ts)
 
-    ts.unhide("ToolA")
-    assert "ToolA" in _tool_names(ts)
+class _FakeMCPClient:
+    def __init__(self, server_name: str, behaviors: dict[str, dict[str, object]]) -> None:
+        self._server_name = server_name
+        self._behaviors = behaviors
+
+    async def __aenter__(self) -> _FakeMCPClient:
+        enter_error = self._behaviors[self._server_name].get("enter_error")
+        if isinstance(enter_error, Exception):
+            raise enter_error
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    async def list_tools(self) -> list[object]:
+        list_error = self._behaviors[self._server_name].get("list_error")
+        if isinstance(list_error, Exception):
+            raise list_error
+        tools = self._behaviors[self._server_name].get("tools", [])
+        return list(tools) if isinstance(tools, list) else []
+
+
+def _install_mcp_test_doubles(
+    monkeypatch,
+    behaviors: dict[str, dict[str, object]],
+    *,
+    authorized_servers: set[str] | None = None,
+) -> list[str]:
+    messages: list[str] = []
+    authorized_servers = authorized_servers or set()
+
+    def fake_toast(
+        message: str,
+        duration: float = 5.0,
+        topic: str | None = None,
+        immediate: bool = False,
+        position: str = "left",
+    ) -> None:
+        del duration, topic, immediate, position
+        messages.append(message)
+
+    def fake_client(config: MCPConfig) -> _FakeMCPClient:
+        server_name = next(iter(config.mcpServers))
+        return _FakeMCPClient(server_name, behaviors)
+
+    async def fake_get_tokens(self) -> object | None:
+        return object() if self.server_url.rsplit("/", 2)[-2] in authorized_servers else None
+
+    monkeypatch.setattr(prompt_module, "toast", fake_toast)
+    monkeypatch.setattr(fastmcp, "Client", fake_client)
+    monkeypatch.setattr(FileTokenStorage, "get_tokens", fake_get_tokens)
+    return messages
+
+
+async def _load_mcp_tools_with_messages(
+    monkeypatch,
+    runtime,
+    configs: list[MCPConfig],
+    behaviors: dict[str, dict[str, object]],
+    *,
+    authorized_servers: set[str] | None = None,
+) -> list[str]:
+    messages = _install_mcp_test_doubles(
+        monkeypatch,
+        behaviors,
+        authorized_servers=authorized_servers,
+    )
+    toolset = KimiToolset()
+    await toolset.load_mcp_tools(configs, runtime, in_background=True)
+    await toolset.wait_for_mcp_tools()
+    return messages
+
+
+def _remote_config(name: str, *, auth: str | None = None) -> MCPConfig:
+    return MCPConfig(
+        mcpServers={name: RemoteMCPServer(url=f"https://{name}.example.com/mcp", auth=auth)}
+    )
+
+
+async def test_load_mcp_tools_shows_failure_toast_without_success(monkeypatch, runtime):
+    messages = await _load_mcp_tools_with_messages(
+        monkeypatch,
+        runtime,
+        [_remote_config("ok"), _remote_config("broken")],
+        {
+            "ok": {"tools": []},
+            "broken": {"list_error": RuntimeError("boom")},
+        },
+    )
+
+    assert messages == [
+        "connecting to mcp servers...",
+        "mcp connection failed: broken",
+    ]
+
+
+async def test_load_mcp_tools_shows_authorization_toast_without_success(monkeypatch, runtime):
+    messages = await _load_mcp_tools_with_messages(
+        monkeypatch,
+        runtime,
+        [_remote_config("oauth-server", auth="oauth")],
+        {
+            "oauth-server": {"tools": []},
+        },
+    )
+
+    assert messages == [
+        "connecting to mcp servers...",
+        "mcp authorization needed",
+    ]
+
+
+async def test_load_mcp_tools_shows_success_toast_when_all_connected(monkeypatch, runtime):
+    messages = await _load_mcp_tools_with_messages(
+        monkeypatch,
+        runtime,
+        [_remote_config("ok-a"), _remote_config("ok-b")],
+        {
+            "ok-a": {"tools": []},
+            "ok-b": {"tools": []},
+        },
+        authorized_servers={"ok-a", "ok-b"},
+    )
+
+    assert messages == [
+        "connecting to mcp servers...",
+        "mcp servers connected",
+    ]
+
+
+async def test_load_mcp_tools_prioritizes_failure_over_unauthorized(monkeypatch, runtime):
+    messages = await _load_mcp_tools_with_messages(
+        monkeypatch,
+        runtime,
+        [
+            _remote_config("broken"),
+            _remote_config("oauth-server", auth="oauth"),
+        ],
+        {
+            "broken": {"enter_error": RuntimeError("boom")},
+            "oauth-server": {"tools": []},
+        },
+    )
+
+    assert messages == [
+        "connecting to mcp servers...",
+        "mcp connection failed: broken",
+    ]
