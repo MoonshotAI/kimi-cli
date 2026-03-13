@@ -56,3 +56,4 @@ Issues/
 .agents/**/state/
 .agents/**/cache/
 .agents/**/tmp/
+analysis/
