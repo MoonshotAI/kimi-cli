@@ -118,6 +118,9 @@ class Shell(CallableTool2[Params]):
                 timeout,
             )
             return await process.wait()
+        except asyncio.CancelledError:
+            await process.kill()
+            raise
         except TimeoutError:
             await process.kill()
             raise

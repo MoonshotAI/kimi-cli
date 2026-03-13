@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import platform
 
 import pytest
@@ -201,3 +202,45 @@ async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
 
     with pytest.raises(ValueError, match="timeout"):
         Params(command="echo test", timeout=MAX_TIMEOUT + 1)
+
+
+async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: pytest.MonkeyPatch):
+    """Test that cancelling a shell run kills the underlying process."""
+
+    started = asyncio.Event()
+
+    class BlockingReadable:
+        async def readline(self) -> bytes:
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = BlockingReadable()
+            self.stderr = BlockingReadable()
+            self.kill_calls = 0
+
+        async def wait(self) -> int:
+            return 0
+
+        async def kill(self) -> None:
+            self.kill_calls += 1
+
+    fake_process = FakeProcess()
+
+    async def fake_exec(*_args, **_kwargs) -> FakeProcess:
+        return fake_process
+
+    monkeypatch.setattr("kimi_cli.tools.shell.kaos.exec", fake_exec)
+
+    task = asyncio.create_task(
+        shell_tool._run_shell_command("sleep 10", lambda _line: None, lambda _line: None, 60)
+    )
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert fake_process.kill_calls == 1
