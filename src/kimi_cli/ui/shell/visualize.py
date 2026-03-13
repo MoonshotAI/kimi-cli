@@ -29,7 +29,7 @@ from rich.text import Text
 from kimi_cli.soul import format_context_status
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import NEUTRAL_MARKDOWN_THEME, console
-from kimi_cli.ui.shell.echo import render_user_echo
+from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
@@ -1425,7 +1425,7 @@ class _PromptLiveView(_LiveView):
             if not user_input:
                 continue
 
-            console.print(render_user_echo(Message(role="user", content=user_input.content)))
+            console.print(render_user_echo_text(user_input.command))
             self._pending_local_steers.append(list(user_input.content))
             self._steer(user_input.content)
 

@@ -8,6 +8,7 @@ from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
 from rich.text import Text
 
+from kimi_cli.ui.shell.prompt import PromptMode, UserInput
 from kimi_cli.wire.types import StatusUpdate, SteerInput, TextPart
 
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
@@ -168,6 +169,47 @@ async def test_steer_loop_ctrl_c_sets_cancel_event_and_exits() -> None:
     await view._steer_loop()
 
     assert calls == 1
+    assert view._cancel_event.is_set() is True
+
+
+@pytest.mark.asyncio
+async def test_steer_loop_echoes_placeholder_display_text_but_steers_expanded_content(
+    monkeypatch,
+) -> None:
+    class _PromptSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def prompt_steer(self, _delegate):
+            if self.calls:
+                raise EOFError
+            self.calls += 1
+            return UserInput(
+                mode=PromptMode.AGENT,
+                command="[Pasted text #1 +3 lines]",
+                resolved_command="line1\nline2\nline3",
+                content=[TextPart(text="line1\nline2\nline3")],
+            )
+
+    view = object.__new__(_PromptLiveView)
+    view._prompt_session = _PromptSession()
+    view._cancel_event = asyncio.Event()
+    view._pending_local_steers = deque()
+    steered: list[list[TextPart]] = []
+    view._steer = lambda content: steered.append(list(content))
+
+    printed: list[str] = []
+    monkeypatch.setattr(
+        shell_visualize.console,
+        "print",
+        lambda text: printed.append(getattr(text, "plain", str(text))),
+    )
+
+    await view._steer_loop()
+
+    assert printed == ["✨ [Pasted text #1 +3 lines]"]
+    assert steered == [[TextPart(text="line1\nline2\nline3")]]
+    assert list(view._pending_local_steers) == [[TextPart(text="line1\nline2\nline3")]]
     assert view._cancel_event.is_set() is True
 
 

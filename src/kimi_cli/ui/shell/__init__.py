@@ -8,7 +8,6 @@ from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from kosong.message import Message
 from loguru import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -19,7 +18,7 @@ from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancel
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.echo import render_user_echo
+from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
     PromptMode,
@@ -58,16 +57,32 @@ class Shell:
         return self._available_slash_commands
 
     @staticmethod
+    def _should_exit_input(user_input: UserInput) -> bool:
+        return user_input.command.strip() in {"exit", "quit", "/exit", "/quit"}
+
+    @staticmethod
+    def _agent_slash_command_call(user_input: UserInput) -> SlashCommandCall | None:
+        if user_input.mode != PromptMode.AGENT:
+            return None
+        display_call = parse_slash_command_call(user_input.command)
+        if display_call is None:
+            return None
+        resolved_call = parse_slash_command_call(user_input.resolved_command)
+        if resolved_call is None or resolved_call.name != display_call.name:
+            return display_call
+        return resolved_call
+
+    @staticmethod
     def _should_echo_agent_input(user_input: UserInput) -> bool:
         if user_input.mode != PromptMode.AGENT:
             return False
-        if user_input.command in {"exit", "quit", "/exit", "/quit"}:
+        if Shell._should_exit_input(user_input):
             return False
-        return parse_slash_command_call(user_input.command) is None
+        return Shell._agent_slash_command_call(user_input) is None
 
     @staticmethod
     def _echo_agent_input(user_input: UserInput) -> None:
-        console.print(render_user_echo(Message(role="user", content=user_input.content)))
+        console.print(render_user_echo_text(user_input.command))
 
     async def run(self, command: str | None = None) -> bool:
         if command is not None:
@@ -130,7 +145,7 @@ class Shell:
                     if self._should_echo_agent_input(user_input):
                         self._echo_agent_input(user_input)
 
-                    if user_input.command in ["exit", "quit", "/exit", "/quit"]:
+                    if self._should_exit_input(user_input):
                         logger.debug("Exiting by slash command")
                         console.print("Bye!")
                         break
@@ -139,7 +154,7 @@ class Shell:
                         await self._run_shell_command(user_input.command)
                         continue
 
-                    if slash_cmd_call := parse_slash_command_call(user_input.command):
+                    if slash_cmd_call := self._agent_slash_command_call(user_input):
                         await self._run_slash_command(slash_cmd_call)
                         continue
 
