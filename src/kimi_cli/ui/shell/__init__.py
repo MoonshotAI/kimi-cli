@@ -153,7 +153,7 @@ class Shell:
                         break
 
                     if user_input.mode == PromptMode.SHELL:
-                        await self._run_shell_command(user_input.resolved_command)
+                        await self._run_shell_command(user_input.command)
                         continue
 
                     if slash_cmd_call := self._agent_slash_command_call(user_input):
