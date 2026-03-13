@@ -45,7 +45,7 @@ def test_build_toolbar_tips_with_clipboard():
         "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
-        "ctrl-v: paste media",
+        "ctrl-v: paste clipboard",
         "@: mention files",
     ]
 
@@ -200,7 +200,7 @@ async def test_prompt_steer_enables_erase_when_done_and_restores_state() -> None
                 prompt_session._running_prompt_delegate,
             )
         )
-        return UserInput(mode=PromptMode.AGENT, command="hi", content=[])
+        return UserInput(mode=PromptMode.AGENT, command="hi", resolved_command="hi", content=[])
 
     prompt_session._apply_mode = fake_apply_mode
     prompt_session.invalidate = fake_invalidate
@@ -262,6 +262,7 @@ async def test_prompt_once_uses_prompt_delegate_placeholder_contract(running_pro
     prompt_session._build_user_input = lambda command: UserInput(
         mode=PromptMode.AGENT,
         command=command,
+        resolved_command=command,
         content=[],
     )
 
