@@ -122,9 +122,16 @@ def test_hidden_slash_in_placeholder_is_not_treated_as_local_command() -> None:
         content=[TextPart(text="/quit\nnot really")],
     )
 
-    assert Shell._should_exit_agent_input(user_input) is False
+    assert Shell._should_exit_input(user_input) is False
     assert Shell._agent_slash_command_call(user_input) is None
     assert Shell._should_echo_agent_input(user_input) is True
+
+
+def test_should_exit_input_is_mode_independent_for_visible_exit_commands() -> None:
+    assert Shell._should_exit_input(_make_user_input("exit")) is True
+    assert Shell._should_exit_input(_make_user_input("/quit")) is True
+    assert Shell._should_exit_input(_make_user_input("exit", mode=PromptMode.SHELL)) is True
+    assert Shell._should_exit_input(_make_user_input("/exit", mode=PromptMode.SHELL)) is True
 
 
 def test_visible_slash_command_keeps_expanded_placeholder_args() -> None:

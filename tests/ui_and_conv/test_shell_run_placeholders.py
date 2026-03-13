@@ -35,9 +35,14 @@ class _FakePromptSession:
         return response
 
 
-def _make_user_input(command: str, *, resolved_command: str | None = None) -> UserInput:
+def _make_user_input(
+    command: str,
+    *,
+    mode: PromptMode = PromptMode.AGENT,
+    resolved_command: str | None = None,
+) -> UserInput:
     return UserInput(
-        mode=PromptMode.AGENT,
+        mode=mode,
         command=command,
         resolved_command=command if resolved_command is None else resolved_command,
         content=[TextPart(text=command if resolved_command is None else resolved_command)],
@@ -152,5 +157,68 @@ async def test_shell_run_exits_immediately_for_visible_quit_command(
     assert result is True
     assert _FakePromptSession.instances[0].prompt_calls == 1
     shell.run_soul_command.assert_not_awaited()
+    shell._run_slash_command.assert_not_awaited()
+    assert printed == ["Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_exits_immediately_for_visible_exit_command_in_shell_mode(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque([_make_user_input("exit", mode=PromptMode.SHELL)])
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_shell_command = AsyncMock()
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    assert _FakePromptSession.instances[0].prompt_calls == 1
+    shell.run_soul_command.assert_not_awaited()
+    shell._run_shell_command.assert_not_awaited()
+    shell._run_slash_command.assert_not_awaited()
+    assert printed == ["Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_exits_immediately_for_visible_slash_exit_command_in_shell_mode(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque([_make_user_input("/exit", mode=PromptMode.SHELL)])
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_shell_command = AsyncMock()
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    assert _FakePromptSession.instances[0].prompt_calls == 1
+    shell.run_soul_command.assert_not_awaited()
+    shell._run_shell_command.assert_not_awaited()
+    shell._run_slash_command.assert_not_awaited()
+    assert printed == ["Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_exits_immediately_for_visible_slash_quit_command_in_shell_mode(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque([_make_user_input("/quit", mode=PromptMode.SHELL)])
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_shell_command = AsyncMock()
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    assert _FakePromptSession.instances[0].prompt_calls == 1
+    shell.run_soul_command.assert_not_awaited()
+    shell._run_shell_command.assert_not_awaited()
     shell._run_slash_command.assert_not_awaited()
     assert printed == ["Bye!"]

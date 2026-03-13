@@ -57,9 +57,7 @@ class Shell:
         return self._available_slash_commands
 
     @staticmethod
-    def _should_exit_agent_input(user_input: UserInput) -> bool:
-        if user_input.mode != PromptMode.AGENT:
-            return False
+    def _should_exit_input(user_input: UserInput) -> bool:
         return user_input.command.strip() in {"exit", "quit", "/exit", "/quit"}
 
     @staticmethod
@@ -78,7 +76,7 @@ class Shell:
     def _should_echo_agent_input(user_input: UserInput) -> bool:
         if user_input.mode != PromptMode.AGENT:
             return False
-        if Shell._should_exit_agent_input(user_input):
+        if Shell._should_exit_input(user_input):
             return False
         return Shell._agent_slash_command_call(user_input) is None
 
@@ -147,7 +145,7 @@ class Shell:
                     if self._should_echo_agent_input(user_input):
                         self._echo_agent_input(user_input)
 
-                    if self._should_exit_agent_input(user_input):
+                    if self._should_exit_input(user_input):
                         logger.debug("Exiting by slash command")
                         console.print("Bye!")
                         break
