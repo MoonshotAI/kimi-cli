@@ -36,6 +36,7 @@ from prompt_toolkit.filters import has_completions
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from pydantic import BaseModel, ValidationError
@@ -765,6 +766,18 @@ class CustomPromptSession:
                 if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
                     return
                 event.current_buffer.paste_clipboard_data(clipboard_data)
+
+            @_kb.add(Keys.BracketedPaste, eager=True)
+            def _(event: KeyPressEvent) -> None:
+                # On macOS, Cmd+V triggers a bracketed paste from the terminal
+                # rather than sending Ctrl+V. Try media paste first so images
+                # are inserted as [image:...] placeholders instead of raw paths.
+                if self._try_paste_media(event):
+                    return
+                data = event.data
+                data = data.replace("\r\n", "\n")
+                data = data.replace("\r", "\n")
+                event.current_buffer.insert_text(data)
 
             clipboard = PyperclipClipboard()
         else:
