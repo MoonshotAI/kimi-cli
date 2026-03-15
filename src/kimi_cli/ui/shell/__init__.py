@@ -35,7 +35,7 @@ from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
-from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
+from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane, maybe_disable_kitty_keyboard_protocol
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 
 
@@ -108,6 +108,8 @@ class Shell:
             if isinstance(self.soul, KimiSoul):
                 return await self.soul.toggle_plan_mode_from_manual()
             return False
+
+        maybe_disable_kitty_keyboard_protocol()
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
