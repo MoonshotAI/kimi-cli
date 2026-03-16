@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- ACP: Remove mandatory Kimi OAuth requirement for session operations — sessions can now be created and loaded without requiring prior authentication
+
 ## 1.22.0 (2026-03-13)
 
 - Shell: Collapse long pasted text into `[Pasted text #n]` placeholders — text pasted via `Ctrl-V` or bracketed paste that exceeds 300 characters or 3 lines is displayed as a compact placeholder token in the prompt buffer while the full content is sent to the model; the external editor (`Ctrl-O`) expands placeholders for editing and re-folds them on save
