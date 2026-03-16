@@ -10,6 +10,7 @@ import {
   ChevronUpIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { copyToClipboard } from "@/lib/clipboard";
 
 import {
   DropdownMenu,
@@ -153,7 +154,7 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(workDir);
+      await copyToClipboard(workDir);
       toast.success("Path copied", { description: workDir });
     } catch (error) {
       console.error("Failed to copy path:", error);

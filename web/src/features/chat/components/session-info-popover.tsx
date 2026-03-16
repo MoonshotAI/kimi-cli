@@ -8,6 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { Session } from "@/lib/api/models";
 import { CheckIcon, CopyIcon, InfoIcon } from "lucide-react";
 import { useState, useCallback } from "react";
@@ -22,7 +23,7 @@ function SessionInfoItem({ label, value }: SessionInfoItemProps) {
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyToClipboard(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {

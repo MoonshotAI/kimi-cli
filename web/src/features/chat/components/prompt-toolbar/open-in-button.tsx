@@ -7,6 +7,7 @@ import {
   AppWindowIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +59,7 @@ export function OpenInButton({ path, className }: { path: string; className?: st
 
   const handleCopyPath = useCallback(async (e: Event) => {
     e.stopPropagation();
-    try { await navigator.clipboard.writeText(path); toast.success("Path copied", { description: path }); }
+    try { await copyToClipboard(path); toast.success("Path copied", { description: path }); }
     catch { toast.error("Failed to copy path"); }
   }, [path]);
 
