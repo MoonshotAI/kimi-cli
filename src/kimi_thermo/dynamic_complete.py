@@ -187,7 +187,12 @@ class DynamicCompleteClient:
             return {
                 "output": f"Error: {e}",
                 "error": True,
-                "cost": 0.0
+                "cost": 0.0,
+                "tools_used": [],
+                "total_spent": self.registry.total_spent,
+                "budget_remaining": 200.0 - self.registry.total_spent,
+                "time_seconds": time.time() - start,
+                "cached": False
             }
     
     async def close(self):
