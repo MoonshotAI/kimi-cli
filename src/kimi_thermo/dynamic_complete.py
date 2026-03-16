@@ -63,7 +63,7 @@ class DynamicCompleteClient:
         start = time.time()
         
         # Check cache
-        cache_key = hash(query) % 10000000
+        cache_key = query
         if cache_key in self.cache:
             return {**self.cache[cache_key], "cached": True, "cost": 0.0}
         
