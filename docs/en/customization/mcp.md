@@ -112,6 +112,8 @@ When Kimi Code CLI starts and connects to MCP servers, shell mode displays a "Co
 
 If multiple MCP servers are configured, the loading time may be longer. The loading indicator helps you understand the current status.
 
+When an MCP server fails to connect (e.g. the command does not exist or the server is unavailable), Kimi Code CLI logs a warning and continues loading the remaining servers, so a single server issue does not crash the whole session. After all connections are attempted, a final status notification is shown; if any server failed, the notification prioritizes displaying the failure information.
+
 ## Security
 
 MCP tools may access and operate external systems. Be aware of security risks.
