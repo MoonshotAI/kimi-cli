@@ -4,7 +4,7 @@ import asyncio
 import argparse
 from .thermo_executor import WorklessClient
 
-async def main():
+async def async_main():
     parser = argparse.ArgumentParser(description="Thermodynamic Kimi CLI")
     parser.add_argument("query", help="Your query (system manages the rest)")
     parser.add_argument("--benchmark", action="store_true", help="Benchmark mode (temp=1.0)")
@@ -22,5 +22,9 @@ async def main():
 
     print(result['output'])
 
+def main():
+    """Sync wrapper for script entry point"""
+    asyncio.run(async_main())
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
