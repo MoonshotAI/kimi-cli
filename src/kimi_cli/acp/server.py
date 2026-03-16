@@ -139,9 +139,6 @@ class ACPServer:
         assert self.conn is not None, "ACP client not connected"
         assert self.client_capabilities is not None, "ACP connection not initialized"
 
-        # Check authentication before creating session
-        self._check_auth()
-
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
@@ -243,9 +240,6 @@ class ACPServer:
         if session_id in self.sessions:
             logger.warning("Session already loaded: {id}", id=session_id)
             return
-
-        # Check authentication before loading session
-        self._check_auth()
 
         await self._setup_session(cwd, session_id, mcp_servers)
         # TODO: replay session history?
