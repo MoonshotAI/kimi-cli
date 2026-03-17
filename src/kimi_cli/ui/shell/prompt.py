@@ -938,9 +938,9 @@ def _pct_color(pct: int) -> str:
     if pct >= 90:
         return "fg:#ff5555"
     if pct >= 70:
-        return "fg:#e6c800"
-    if pct >= 50:
         return "fg:#ffaa00"
+    if pct >= 50:
+        return "fg:#e6c800"
     return "fg:#00af5f"
 
 
@@ -1664,6 +1664,12 @@ class CustomPromptSession:
                 tip_text = _TIP_SEPARATOR.join(selected) if selected else None
             if tip_text:
                 fragments.extend([("", "  "), ("fg:#555555", tip_text)])
+
+        # Right-position toasts (e.g., MCP status messages)
+        current_toast_right = _current_toast("right")
+        if current_toast_right is not None:
+            right_msg = f" {current_toast_right.message}"
+            fragments.extend([_SEP, ("fg:#aaaaaa", right_msg)])
 
         # ── Line 3: yolo / plan mode indicator ──────────────────────────
         if status.yolo_enabled:

@@ -6,6 +6,7 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 
+from kimi_cli.tools.background import TaskList, TaskOutput, TaskStop
 from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
@@ -140,6 +141,8 @@ Execute a bash (`/bin/bash`) command. Use this tool to explore the filesystem, e
 **Output:**
 The stdout and stderr will be combined and returned as a string. The output may be truncated if it is too long. If the command failed, the exit code will be provided in a system tag.
 
+If `run_in_background=true`, the command will be started as a background task and this tool will return a task ID instead of waiting for command completion. When doing that, you must provide a short `description`. You will be automatically notified when the task completes. Use `TaskOutput` if you need progress or want to wait for completion, and use `TaskStop` only if the task must be cancelled. For human users in the interactive shell, background tasks are managed through `/task` only; do not suggest `/task list`, `/task output`, `/task stop`, `/tasks`, or any other invented shell subcommands.
+
 **Guidelines for safety and security:**
 - Each shell tool call will be executed in a fresh shell environment. The shell variables, current working directory changes, and the shell history is not preserved between calls.
 - The tool call will return after the command is finished. You shall not use this tool to execute an interactive command or a command that may run forever. For possibly long-running commands, you shall set `timeout` argument to a reasonable value.
@@ -155,6 +158,9 @@ The stdout and stderr will be combined and returned as a string. The output may 
 - Always quote file paths containing spaces with double quotes (e.g., cd "/path with spaces/")
 - Use `if`, `case`, `for`, `while` control flows to execute complex logic in a single call.
 - Verify directory structure before create/edit/delete files or directories to reduce the risk of failure.
+- Prefer `run_in_background=true` for long-running builds, tests, watchers, or servers when you need the conversation to continue before the command finishes.
+- After starting a background task, do not guess its outcome. Rely on the automatic completion notification whenever possible. Use `TaskOutput` only when you need to inspect progress or block until completion.
+- If you need to tell a human shell user how to manage background tasks, only mention `/task`. Do not invent `/task list`, `/task output`, `/task stop`, or `/tasks`.
 
 **Commands available:**
 - Shell environment: cd, pwd, export, unset, env
@@ -165,6 +171,56 @@ The stdout and stderr will be combined and returned as a string. The output may 
 - Network operations: curl, wget, ping, telnet, ssh
 - Archive operations: tar, zip, unzip
 - Other: Other commands available in the shell environment. Check the existence of a command by running `which <command>` before using it.
+"""
+    )
+
+
+def test_task_output_description(task_output_tool: TaskOutput):
+    assert task_output_tool.base.description == snapshot(
+        """\
+Retrieve output from a running or completed background task.
+
+Use this after `Shell(run_in_background=true)` when you need to inspect progress or explicitly wait for completion.
+
+Guidelines:
+- Prefer relying on automatic completion notifications. Use this tool only when you need task output before the automatic notification arrives.
+- Use `block=true` to wait for completion or timeout.
+- Use `block=false` for a non-blocking status and output check.
+- This tool returns structured task metadata, a fixed-size output preview, and an `output_path` for the full log.
+- When the preview is truncated, use `ReadFile` with the returned `output_path` to inspect the full log in pages.
+- This tool works with the generic background task system and should remain the primary read path for future task types, not just bash.
+"""
+    )
+
+
+def test_task_list_description(task_list_tool: TaskList):
+    assert task_list_tool.base.description == snapshot(
+        """\
+List background tasks from the current session.
+
+Use this when you need to re-enumerate which background tasks still exist, especially after context compaction or when you are no longer confident which task IDs are still active.
+
+Guidelines:
+
+- Prefer the default `active_only=true` unless you specifically need completed or failed tasks.
+- Use `TaskOutput` to inspect one task in detail after you have identified the correct task ID.
+- Do not guess which tasks are still running when you can call this tool directly.
+- This tool is read-only and safe to use in plan mode.
+"""
+    )
+
+
+def test_task_stop_description(task_stop_tool: TaskStop):
+    assert task_stop_tool.base.description == snapshot(
+        """\
+Stop a running background task.
+
+Use this only when a background task must be cancelled. For normal task completion, prefer waiting for the automatic notification or using `TaskOutput`.
+
+Guidelines:
+- This is a generic task stop capability, not a bash-specific kill tool.
+- Use it sparingly because stopping a task is destructive and may leave partial side effects.
+- If the task is already complete, this tool will simply return its current state.
 """
     )
 

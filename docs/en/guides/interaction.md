@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, and `/import`.
+Shell mode also supports some slash commands, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
 
 ::: warning Note
 In shell mode, each command executes independently. Commands that change the environment like `cd` or `export` won't affect subsequent commands.
@@ -83,6 +83,22 @@ Steer messages are appended to the context after the current step completes, and
 
 ::: tip
 Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.
+:::
+
+## Background tasks
+
+When the AI needs to run long-running commands (such as building a project, running a test suite, or starting a development server), it can launch them as background tasks. Background tasks run in a separate process, allowing the AI to continue handling other requests without waiting for the command to finish.
+
+How background tasks work:
+
+1. The AI uses the `Shell` tool with `run_in_background=true` to launch the command
+2. The tool immediately returns a task ID, and the AI continues with other work
+3. When the task completes, the system automatically notifies the AI, which will inform you of the results
+
+You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time. See [Slash commands reference](../reference/slash-commands.md#task) for details.
+
+::: tip
+By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. See [Configuration files](../configuration/config-files.md#background).
 :::
 
 ## Multi-line input

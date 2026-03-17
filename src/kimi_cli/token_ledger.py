@@ -6,11 +6,12 @@ when the date/ISO-week boundary is crossed.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from kosong.chat_provider import TokenUsage
 
@@ -59,11 +60,6 @@ class TokenLedger:
 
     def __init__(self, stats_file: Path) -> None:
         self._file = stats_file
-        today = date.today()
-        week_start = today - timedelta(days=today.weekday())  # Monday
-
-        self._today_str = today.isoformat()
-        self._week_start_str = week_start.isoformat()
 
         self._daily = _PeriodStats()
         self._weekly = _PeriodStats()
@@ -72,7 +68,12 @@ class TokenLedger:
     # ── public interface ──────────────────────────────────────────────────
 
     def record(self, usage: TokenUsage) -> None:
-        """Add *usage* to both daily and weekly buckets, then persist."""
+        """Add *usage* to both daily and weekly buckets, then persist.
+
+        Recomputes period boundaries before recording to handle long-running
+        sessions that cross midnight or Monday boundaries.
+        """
+        self._maybe_reset_boundaries()
         self._daily.add(usage)
         self._weekly.add(usage)
         self._save()
@@ -80,37 +81,102 @@ class TokenLedger:
     @property
     def daily(self) -> TokenUsage:
         """Total token usage for today (all sessions)."""
+        self._maybe_reset_boundaries()
         return self._daily.to_token_usage()
 
     @property
     def weekly(self) -> TokenUsage:
         """Total token usage for the current ISO week (all sessions)."""
+        self._maybe_reset_boundaries()
         return self._weekly.to_token_usage()
 
     # ── internal helpers ──────────────────────────────────────────────────
 
+    def _get_today_str(self) -> str:
+        """Get current date as ISO string."""
+        return date.today().isoformat()
+
+    def _get_week_start_str(self) -> str:
+        """Get current week start (Monday) as ISO string."""
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        return week_start.isoformat()
+
+    def _maybe_reset_boundaries(self) -> None:
+        """Reset daily/weekly stats if we've crossed a boundary.
+
+        Called before any read or write operation to ensure stats are
+        attributed to the correct period for long-running sessions.
+        """
+        today_str = self._get_today_str()
+        week_start_str = self._get_week_start_str()
+
+        # Load current saved state to check dates
+        if self._file.exists():
+            try:
+                data = cast(dict[str, Any], json.loads(self._file.read_text()))
+                daily_data = cast(dict[str, Any] | None, data.get("daily"))
+                if isinstance(daily_data, dict):
+                    saved_daily_date = cast(str | None, daily_data.get("date"))
+                else:
+                    saved_daily_date = None
+                weekly_data = cast(dict[str, Any] | None, data.get("weekly"))
+                if isinstance(weekly_data, dict):
+                    saved_week_start = cast(str | None, weekly_data.get("week_start"))
+                else:
+                    saved_week_start = None
+
+                # Reset daily if date changed
+                if saved_daily_date != today_str:
+                    self._daily = _PeriodStats()
+
+                # Reset weekly if week changed
+                if saved_week_start != week_start_str:
+                    self._weekly = _PeriodStats()
+            except (json.JSONDecodeError, OSError, AttributeError):
+                # If file is corrupted, continue with current in-memory stats
+                pass
+
     def _load(self) -> None:
+        """Load stats from file, respecting date boundaries."""
         if not self._file.exists():
             return
+
+        today_str = self._get_today_str()
+        week_start_str = self._get_week_start_str()
+
         try:
             data: dict[str, Any] = json.loads(self._file.read_text())
         except (json.JSONDecodeError, OSError):
             return
 
-        if data.get("daily", {}).get("date") == self._today_str:
-            self._daily = _PeriodStats.from_dict(data["daily"])
+        # Safely extract daily stats with type checking
+        daily_data = data.get("daily")
+        if isinstance(daily_data, dict):
+            daily_dict = cast(dict[str, Any], daily_data)
+            if daily_dict.get("date") == today_str:
+                with contextlib.suppress(TypeError, AttributeError):
+                    self._daily = _PeriodStats.from_dict(daily_dict)
 
-        if data.get("weekly", {}).get("week_start") == self._week_start_str:
-            self._weekly = _PeriodStats.from_dict(data["weekly"])
+        # Safely extract weekly stats with type checking
+        weekly_data = data.get("weekly")
+        if isinstance(weekly_data, dict):
+            weekly_dict = cast(dict[str, Any], weekly_data)
+            if weekly_dict.get("week_start") == week_start_str:
+                with contextlib.suppress(TypeError, AttributeError):
+                    self._weekly = _PeriodStats.from_dict(weekly_dict)
 
     def _save(self) -> None:
+        today_str = self._get_today_str()
+        week_start_str = self._get_week_start_str()
+
         data = {
-            "daily": {"date": self._today_str, **self._daily.to_dict()},
-            "weekly": {"week_start": self._week_start_str, **self._weekly.to_dict()},
+            "daily": {"date": today_str, **self._daily.to_dict()},
+            "weekly": {"week_start": week_start_str, **self._weekly.to_dict()},
         }
         try:
             tmp = self._file.with_suffix(".tmp")
             tmp.write_text(json.dumps(data))
-            tmp.rename(self._file)
+            tmp.replace(self._file)
         except OSError:
             pass  # best effort — never crash the agent over stats
