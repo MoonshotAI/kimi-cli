@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
+from kimi_cli import logger
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.cli import Reload, SwitchToWeb
 from kimi_cli.config import load_config, save_config
@@ -12,6 +14,7 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.mcp_status import get_mcp_status_snapshot, render_mcp_console
 from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
@@ -38,7 +41,6 @@ def ensure_kimi_soul(app: Shell) -> KimiSoul | None:
         console.print("[red]KimiSoul required[/red]")
         return None
     return app.soul
-
 
 @registry.command(aliases=["quit"])
 @shell_mode_registry.command(aliases=["quit"])
@@ -500,11 +502,9 @@ def web(app: Shell, args: str):
 @registry.command
 async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
-    from rich.console import Group, RenderableType
-    from rich.text import Text
+    from rich.live import Live
 
     from kimi_cli.soul.toolset import KimiToolset
-    from kimi_cli.utils.rich.columns import BulletColumns
 
     soul = ensure_kimi_soul(app)
     if soul is None:
@@ -520,40 +520,30 @@ async def mcp(app: Shell, args: str):
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
-    n_conn = sum(1 for s in servers.values() if s.status == "connected")
-    n_tools = sum(len(s.tools) for s in servers.values())
-    console.print(
-        BulletColumns(
-            Text.from_markup(
-                f"[bold]MCP Servers:[/bold] {n_conn}/{len(servers)} connected, {n_tools} tools"
-            )
-        )
-    )
+    snapshot = get_mcp_status_snapshot(toolset)
+    assert snapshot is not None
+    if not toolset.has_pending_mcp_tools():
+        console.print(render_mcp_console(snapshot))
+        return
 
-    status_colors = {
-        "connected": "green",
-        "connecting": "cyan",
-        "pending": "yellow",
-        "failed": "red",
-        "unauthorized": "red",
-    }
-    for name, info in servers.items():
-        color = status_colors.get(info.status, "red")
-        server_text = f"[{color}]{name}[/{color}]"
-        if info.status == "unauthorized":
-            server_text += " [grey50](unauthorized - run: kimi mcp auth {name})[/grey50]"
-        elif info.status != "connected":
-            server_text += f" [grey50]({info.status})[/grey50]"
-
-        lines: list[RenderableType] = [Text.from_markup(server_text)]
-        for tool in info.tools:
-            lines.append(
-                BulletColumns(
-                    Text.from_markup(f"[grey50]{tool.name}[/grey50]"),
-                    bullet_style="grey50",
-                )
-            )
-        console.print(BulletColumns(Group(*lines), bullet_style=color))
+    with Live(
+        render_mcp_console(snapshot),
+        console=console,
+        refresh_per_second=8,
+        transient=False,
+    ) as live:
+        while toolset.has_pending_mcp_tools():
+            snapshot = get_mcp_status_snapshot(toolset)
+            assert snapshot is not None
+            live.update(render_mcp_console(snapshot), refresh=True)
+            await asyncio.sleep(0.125)
+        try:
+            await toolset.wait_for_mcp_tools()
+        except Exception as e:
+            logger.debug("MCP loading completed with error while rendering /mcp: {error}", error=e)
+        snapshot = get_mcp_status_snapshot(toolset)
+        assert snapshot is not None
+        live.update(render_mcp_console(snapshot), refresh=True)
 
 
 from . import (  # noqa: E402

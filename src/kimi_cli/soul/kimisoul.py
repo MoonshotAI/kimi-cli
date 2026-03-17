@@ -519,6 +519,7 @@ class KimiSoul:
             self._steer_queue.get_nowait()
 
         if isinstance(self._agent.toolset, KimiToolset):
+            await self._agent.toolset.start_deferred_mcp_tool_loading()
             loading = self._agent.toolset.has_pending_mcp_tools()
             if loading:
                 wire_send(MCPLoadingBegin())

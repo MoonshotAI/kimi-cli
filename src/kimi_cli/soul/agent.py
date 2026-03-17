@@ -271,6 +271,7 @@ async def load_agent(
     runtime: Runtime,
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    start_mcp_loading: bool = True,
     _restore_dynamic_subagents: bool = True,
 ) -> Agent:
     """
@@ -301,6 +302,7 @@ async def load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
             mcp_configs=mcp_configs,
+            start_mcp_loading=start_mcp_loading,
             _restore_dynamic_subagents=False,
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
@@ -338,7 +340,10 @@ async def load_agent(
                     )
                 except pydantic.ValidationError as e:
                     raise MCPConfigError(f"Invalid MCP config: {e}") from e
-        await toolset.load_mcp_tools(validated_mcp_configs, runtime)
+        if start_mcp_loading:
+            await toolset.load_mcp_tools(validated_mcp_configs, runtime, in_background=True)
+        else:
+            toolset.defer_mcp_tool_loading(validated_mcp_configs, runtime)
 
     # Restore dynamic subagents from persisted session state
     # Skip for fixed subagents — they have their own isolated LaborMarket
