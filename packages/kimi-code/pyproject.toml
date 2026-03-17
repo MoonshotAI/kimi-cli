@@ -7,8 +7,7 @@ requires-python = ">=3.12"
 dependencies = ["kimi-cli==1.22.0"]
 
 [project.scripts]
-kimi = "kimi_cli.cli:cli"
-kimi-code = "kimi_cli.cli:cli"
+kimi-code = "kimi_cli.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.8.5,<0.10.0"]
