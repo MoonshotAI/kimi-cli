@@ -20,6 +20,22 @@ if command -v uv >/dev/null 2>&1; then
   UV_BIN="uv"
 else
   install_uv
+
+  # The uv installer adds itself to ~/.local/bin (or $CARGO_HOME/bin)
+  # but doesn't update the current shell's PATH. Source all available
+  # env scripts and ensure the default location is on PATH.
+  if [ -f "$HOME/.local/bin/env" ]; then
+    . "$HOME/.local/bin/env"
+  fi
+  if [ -f "${CARGO_HOME:-$HOME/.cargo}/env" ]; then
+    . "${CARGO_HOME:-$HOME/.cargo}/env"
+  fi
+  # Always add ~/.local/bin as fallback in case env scripts don't cover it
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+  esac
+
   UV_BIN="uv"
 fi
 
