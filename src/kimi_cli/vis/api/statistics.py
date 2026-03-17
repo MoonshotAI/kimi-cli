@@ -92,6 +92,8 @@ def get_statistics() -> dict[str, Any]:
                             parsed = parse_wire_file_line(line)
                         except Exception:
                             continue
+                        if parsed is None:
+                            continue
                         if isinstance(parsed, WireFileMetadata):
                             continue
 
