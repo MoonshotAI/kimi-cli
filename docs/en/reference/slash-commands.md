@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, and `/import`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
 :::
 
 ## Help and info
@@ -214,6 +214,32 @@ Usage:
 - `/plan clear`: Clear the current plan file
 
 When plan mode is enabled, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
+
+### `/task`
+
+Open the interactive task browser to view, monitor, and manage background tasks.
+
+The task browser is a three-column TUI:
+
+- **Left column**: Task list showing task ID, status, and description
+- **Middle column**: Detailed information for the selected task, including ID, status, description, timestamps, exit code, etc.
+- **Right column**: Output preview showing the last few lines
+
+Supported keyboard shortcuts:
+
+| Shortcut | Action |
+|----------|--------|
+| `Enter` / `O` | View the selected task's full output in a pager |
+| `S` | Request to stop the selected task (requires confirmation) |
+| `Tab` | Toggle filter mode (all / active tasks only) |
+| `R` | Refresh the task list |
+| `Q` / `Esc` | Exit the browser |
+
+The task browser automatically refreshes every second, showing real-time task status changes.
+
+::: tip
+Background tasks are started by the AI using the `Shell` tool with `run_in_background=true`. The system automatically notifies the AI when background tasks complete.
+:::
 
 ### `/yolo`
 

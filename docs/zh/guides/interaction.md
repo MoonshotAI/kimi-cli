@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog`、`/feedback`、`/export` 和 `/import`。
+Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
 
 ::: warning 注意
 Shell 模式中每个命令独立执行，`cd`、`export` 等改变环境的命令不会影响后续命令。
@@ -83,6 +83,22 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 ::: tip 提示
 引导消息不会中断 AI 当前正在执行的步骤，而是在步骤间被处理。如果需要立即中断，请使用 `Ctrl-C`。
+:::
+
+## 后台任务
+
+当 AI 需要执行耗时较长的命令（如构建项目、运行测试套件、启动开发服务器）时，可以将命令作为后台任务启动。后台任务在独立进程中运行，AI 可以继续处理其他请求，无需等待命令完成。
+
+后台任务的工作流程：
+
+1. AI 使用 `Shell` 工具的 `run_in_background=true` 参数启动命令
+2. 工具立即返回任务 ID，AI 继续处理其他工作
+3. 任务完成后，系统自动通知 AI，AI 会告知你执行结果
+
+你可以使用 `/task` 斜杠命令打开交互式任务浏览器，实时查看所有后台任务的状态和输出。详见 [斜杠命令参考](../reference/slash-commands.md#task)。
+
+::: tip 提示
+默认最多同时运行 4 个后台任务，可在配置文件的 `[background]` 节中调整。CLI 退出时默认会终止所有后台任务。详见 [配置文件](../configuration/config-files.md#background)。
 :::
 
 ## 多行输入
