@@ -222,8 +222,8 @@ export const GitDiffStatusBar = memo(function GitDiffStatusBarComponent({
           )}
         </div>
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="max-h-32 overflow-y-auto">
+      <CollapsibleContent className="overflow-hidden">
+        <div className="max-h-48 overflow-y-auto border-t border-border/50">
           {files.map((file) => (
             <div
               key={file.path}
