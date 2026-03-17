@@ -354,12 +354,23 @@ def tool_to_google_genai(tool: KosongTool) -> Tool:
     """Convert a Kosong tool to GoogleGenAI tool format."""
     # Kosong already validates parameters as JSON Schema format via jsonschema
     # The google-genai SDK accepts dict format and internally converts to Schema
+    parameters = tool.parameters
+    if isinstance(parameters, dict):
+        # Resolve $ref entries and remove $defs/definitions properly so that
+        # nested parameter types are preserved instead of becoming dangling refs
+        from kosong.utils.jsonschema import deref_json_schema
+
+        parameters = deref_json_schema(parameters)
+        # Strip remaining JSON Schema metadata fields that the google-genai SDK's
+        # Pydantic model rejects with extra_forbidden validation errors
+        unsupported_keys = {"$schema", "$id", "$comment"}
+        parameters = {k: v for k, v in parameters.items() if k not in unsupported_keys}
     return Tool(
         function_declarations=[
             FunctionDeclaration(
                 name=tool.name,
                 description=tool.description,
-                parameters=tool.parameters,  # type: ignore[arg-type] # GoogleGenAI accepts dict
+                parameters=parameters,  # type: ignore[arg-type] # GoogleGenAI accepts dict
             )
         ]
     )
