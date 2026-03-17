@@ -33,6 +33,8 @@ from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
     ContentPart,
+    MCPServerSnapshot,
+    MCPStatusSnapshot,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -163,6 +165,27 @@ class KimiToolset:
     def mcp_servers(self) -> dict[str, MCPServerInfo]:
         """Get MCP servers info."""
         return self._mcp_servers
+
+    def mcp_status_snapshot(self) -> MCPStatusSnapshot | None:
+        """Return a read-only snapshot of current MCP startup state."""
+        if not self._mcp_servers:
+            return None
+
+        servers = tuple(
+            MCPServerSnapshot(
+                name=name,
+                status=info.status,
+                tools=tuple(tool.name for tool in info.tools),
+            )
+            for name, info in self._mcp_servers.items()
+        )
+        return MCPStatusSnapshot(
+            loading=self.has_pending_mcp_tools(),
+            connected=sum(1 for server in servers if server.status == "connected"),
+            total=len(servers),
+            tools=sum(len(server.tools) for server in servers),
+            servers=servers,
+        )
 
     def defer_mcp_tool_loading(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
         """Store MCP configs for a later background startup."""
