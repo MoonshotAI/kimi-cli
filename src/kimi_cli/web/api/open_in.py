@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
-from loguru import logger
+from kimi_cli import logger
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/open-in", tags=["open-in"])

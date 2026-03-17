@@ -26,7 +26,7 @@ from kosong.tooling.error import (
 )
 from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
-from loguru import logger
+from kimi_cli import logger
 
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
