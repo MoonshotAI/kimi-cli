@@ -1604,11 +1604,13 @@ class CustomPromptSession:
             if self._thinking:
                 model_label += " · thinking"
 
-        fragments.extend([
-            ("fg:#4d9de0", "["),
-            ("bold fg:#4d9de0", model_label),
-            ("fg:#4d9de0", "] "),
-        ])
+        fragments.extend(
+            [
+                ("fg:#4d9de0", "["),
+                ("bold fg:#4d9de0", model_label),
+                ("fg:#4d9de0", "] "),
+            ]
+        )
         used = len(model_label) + 3  # "[" + label + "] "
 
         # Context bar + percentage + token count
@@ -1636,7 +1638,8 @@ class CustomPromptSession:
             used += _SEP_LEN + len(tok_str)
 
         # Session timer
-        elapsed_str = _format_elapsed(time.monotonic() - self._session_start_time)
+        session_start = getattr(self, "_session_start_time", time.monotonic())
+        elapsed_str = _format_elapsed(time.monotonic() - session_start)
         timer_str = f" {elapsed_str}"
         fragments.extend([_SEP, ("fg:#666666", timer_str)])
         used += _SEP_LEN + len(timer_str)
@@ -1665,18 +1668,22 @@ class CustomPromptSession:
         # ── Line 3: yolo / plan mode indicator ──────────────────────────
         if status.yolo_enabled:
             fragments.append(("", "\n"))
-            fragments.extend([
-                ("fg:#ff4444", "►► "),
-                ("bold fg:#ff4444", "bypass permissions on"),
-                ("fg:#666666", " (shift+tab to cycle)"),
-            ])
+            fragments.extend(
+                [
+                    ("fg:#ff4444", "►► "),
+                    ("bold fg:#ff4444", "bypass permissions on"),
+                    ("fg:#666666", " (shift+tab to cycle)"),
+                ]
+            )
         elif status.plan_mode:
             fragments.append(("", "\n"))
-            fragments.extend([
-                ("fg:#4d9de0", "►► "),
-                ("bold fg:#4d9de0", "plan mode"),
-                ("fg:#666666", " (shift+tab to exit)"),
-            ])
+            fragments.extend(
+                [
+                    ("fg:#4d9de0", "►► "),
+                    ("bold fg:#4d9de0", "plan mode"),
+                    ("fg:#666666", " (shift+tab to exit)"),
+                ]
+            )
 
         # ── Line 4+: daily / weekly token stats ─────────────────────────
         def _ledger_line(label: str, usage: TokenUsage) -> list[tuple[str, str]]:

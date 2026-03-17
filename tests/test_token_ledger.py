@@ -6,7 +6,6 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
-import pytest
 from kosong.chat_provider import TokenUsage
 
 from kimi_cli.token_ledger import TokenLedger
@@ -79,12 +78,26 @@ def test_stale_daily_resets(tmp_path: Path) -> None:
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     today = date.today()
     week_start = (today - timedelta(days=today.weekday())).isoformat()
-    f.write_text(json.dumps({
-        "daily": {"date": yesterday, "input_other": 999, "output": 999,
-                  "input_cache_read": 0, "input_cache_creation": 0},
-        "weekly": {"week_start": week_start, "input_other": 999, "output": 999,
-                   "input_cache_read": 0, "input_cache_creation": 0},
-    }))
+    f.write_text(
+        json.dumps(
+            {
+                "daily": {
+                    "date": yesterday,
+                    "input_other": 999,
+                    "output": 999,
+                    "input_cache_read": 0,
+                    "input_cache_creation": 0,
+                },
+                "weekly": {
+                    "week_start": week_start,
+                    "input_other": 999,
+                    "output": 999,
+                    "input_cache_read": 0,
+                    "input_cache_creation": 0,
+                },
+            }
+        )
+    )
     ledger = TokenLedger(f)
     # daily should be reset; weekly should carry over
     assert ledger.daily.total == 0
@@ -96,12 +109,26 @@ def test_stale_weekly_resets(tmp_path: Path) -> None:
     today = date.today()
     today_str = today.isoformat()
     old_week = (today - timedelta(weeks=1)).isoformat()
-    f.write_text(json.dumps({
-        "daily": {"date": today_str, "input_other": 100, "output": 50,
-                  "input_cache_read": 0, "input_cache_creation": 0},
-        "weekly": {"week_start": old_week, "input_other": 888, "output": 888,
-                   "input_cache_read": 0, "input_cache_creation": 0},
-    }))
+    f.write_text(
+        json.dumps(
+            {
+                "daily": {
+                    "date": today_str,
+                    "input_other": 100,
+                    "output": 50,
+                    "input_cache_read": 0,
+                    "input_cache_creation": 0,
+                },
+                "weekly": {
+                    "week_start": old_week,
+                    "input_other": 888,
+                    "output": 888,
+                    "input_cache_read": 0,
+                    "input_cache_creation": 0,
+                },
+            }
+        )
+    )
     ledger = TokenLedger(f)
     assert ledger.daily.input_other == 100
     assert ledger.weekly.total == 0
@@ -124,10 +151,14 @@ def test_missing_fields_default_zero(tmp_path: Path) -> None:
     f = tmp_path / "stats.json"
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
-    f.write_text(json.dumps({
-        "daily": {"date": today.isoformat(), "output": 42},
-        "weekly": {"week_start": week_start.isoformat()},
-    }))
+    f.write_text(
+        json.dumps(
+            {
+                "daily": {"date": today.isoformat(), "output": 42},
+                "weekly": {"week_start": week_start.isoformat()},
+            }
+        )
+    )
     ledger = TokenLedger(f)
     assert ledger.daily.output == 42
     assert ledger.daily.input_other == 0
