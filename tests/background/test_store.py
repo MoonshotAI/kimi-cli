@@ -56,14 +56,14 @@ def test_read_output_and_tail(runtime):
 def test_reading_missing_task_does_not_create_directory(runtime):
     store = BackgroundTaskStore(runtime.session.context_file.parent / "tasks")
 
-    runtime_state = store.read_runtime("b-missing")
-    control = store.read_control("b-missing")
-    consumer = store.read_consumer("b-missing")
+    runtime_state = store.read_runtime("bmissing01")
+    control = store.read_control("bmissing01")
+    consumer = store.read_consumer("bmissing01")
 
     assert runtime_state.status == "created"
     assert control.kill_requested_at is None
     assert consumer.last_seen_output_size == 0
-    assert not store.task_path("b-missing").exists()
+    assert not store.task_path("bmissing01").exists()
 
 
 def test_list_views_skips_invalid_task_directories(runtime):

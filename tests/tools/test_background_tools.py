@@ -152,13 +152,13 @@ async def test_task_output_blocking_timeout_surfaces_timeout_retrieval_status(
 @pytest.mark.asyncio
 async def test_task_output_missing_task_does_not_pollute_store(runtime, task_output_tool):
     result = await task_output_tool(
-        task_output_tool.params(task_id="b-missing", block=False, timeout=0)
+        task_output_tool.params(task_id="bmissing01", block=False, timeout=0)
     )
 
     assert result.is_error
     assert result.brief == "Task not found"
     assert runtime.background_tasks.store.list_task_ids() == []
-    assert not runtime.background_tasks.store.task_path("b-missing").exists()
+    assert not runtime.background_tasks.store.task_path("bmissing01").exists()
 
 
 @pytest.mark.asyncio
@@ -259,9 +259,9 @@ async def test_background_tools_reject_non_root_runtime(
 
     list_result = await task_list_tool(task_list_tool.params(active_only=True, limit=20))
     output_result = await task_output_tool(
-        task_output_tool.params(task_id="b-missing", block=False, timeout=0)
+        task_output_tool.params(task_id="bmissing01", block=False, timeout=0)
     )
-    stop_result = await task_stop_tool(task_stop_tool.params(task_id="b-missing"))
+    stop_result = await task_stop_tool(task_stop_tool.params(task_id="bmissing01"))
 
     assert list_result.is_error
     assert output_result.is_error

@@ -124,8 +124,8 @@ def test_create_bash_task_records_failed_runtime_when_worker_launch_fails(runtim
 def test_get_task_missing_does_not_create_directory(runtime):
     manager = runtime.background_tasks
 
-    assert manager.get_task("b-missing") is None
-    assert not manager.store.task_path("b-missing").exists()
+    assert manager.get_task("bmissing01") is None
+    assert not manager.store.task_path("bmissing01").exists()
 
 
 def test_recover_marks_stale_running_task_as_lost(runtime):

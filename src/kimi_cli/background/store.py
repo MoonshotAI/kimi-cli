@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from kimi_cli.utils.io import atomic_json_write
@@ -14,6 +15,13 @@ from .models import (
     TaskStatus,
     TaskView,
 )
+
+_VALID_TASK_ID = re.compile(r"^[a-z0-9]{2,20}$")
+
+
+def _validate_task_id(task_id: str) -> None:
+    if not _VALID_TASK_ID.match(task_id):
+        raise ValueError(f"Invalid task_id: {task_id!r}")
 
 
 class BackgroundTaskStore:
@@ -36,11 +44,13 @@ class BackgroundTaskStore:
         return self._root
 
     def task_dir(self, task_id: str) -> Path:
+        _validate_task_id(task_id)
         path = self._ensure_root() / task_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def task_path(self, task_id: str) -> Path:
+        _validate_task_id(task_id)
         return self.root / task_id
 
     def spec_path(self, task_id: str) -> Path:

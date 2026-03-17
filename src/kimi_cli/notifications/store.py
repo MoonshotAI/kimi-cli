@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from kimi_cli.utils.io import atomic_json_write
 
 from .models import NotificationDelivery, NotificationEvent, NotificationView
+
+_VALID_NOTIFICATION_ID = re.compile(r"^[a-z0-9]{2,20}$")
+
+
+def _validate_notification_id(notification_id: str) -> None:
+    if not _VALID_NOTIFICATION_ID.match(notification_id):
+        raise ValueError(f"Invalid notification_id: {notification_id!r}")
 
 
 class NotificationStore:
@@ -24,11 +32,13 @@ class NotificationStore:
         return self._root
 
     def notification_dir(self, notification_id: str) -> Path:
+        _validate_notification_id(notification_id)
         path = self._ensure_root() / notification_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def notification_path(self, notification_id: str) -> Path:
+        _validate_notification_id(notification_id)
         return self.root / notification_id
 
     def event_path(self, notification_id: str) -> Path:

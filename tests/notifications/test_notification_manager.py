@@ -116,10 +116,10 @@ def test_recover_requeues_stale_claim(runtime) -> None:
 def test_ack_ids_missing_notification_does_not_create_directory(runtime) -> None:
     manager = runtime.notifications
 
-    manager.ack_ids("llm", {"n-missing"})
+    manager.ack_ids("llm", {"nmissing01"})
 
     assert manager.store.list_notification_ids() == []
-    assert not manager.store.notification_path("n-missing").exists()
+    assert not manager.store.notification_path("nmissing01").exists()
 
 
 def test_list_views_skips_incomplete_notification_directories(runtime) -> None:

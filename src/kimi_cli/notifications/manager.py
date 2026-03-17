@@ -133,5 +133,5 @@ class NotificationManager:
         for notification_id in notification_ids:
             try:
                 self.ack(sink, notification_id)
-            except FileNotFoundError:
+            except (FileNotFoundError, ValueError):
                 continue

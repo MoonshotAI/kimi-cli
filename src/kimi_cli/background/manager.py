@@ -188,7 +188,7 @@ class BackgroundTaskManager:
     def get_task(self, task_id: str) -> TaskView | None:
         try:
             return self._store.merged_view(task_id)
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             return None
 
     def read_output(
@@ -302,7 +302,20 @@ class BackgroundTaskManager:
             if now - last_progress_at <= stale_after:
                 continue
 
-            runtime = view.runtime.model_copy()
+            # Re-read runtime to narrow the race window with the worker process.
+            fresh_runtime = self._store.read_runtime(view.spec.id)
+            if is_terminal_status(fresh_runtime.status):
+                continue
+            fresh_progress = (
+                fresh_runtime.heartbeat_at
+                or fresh_runtime.started_at
+                or fresh_runtime.updated_at
+                or view.spec.created_at
+            )
+            if now - fresh_progress <= stale_after:
+                continue
+
+            runtime = fresh_runtime.model_copy()
             runtime.finished_at = now
             runtime.updated_at = now
             if view.control.kill_requested_at is not None:
@@ -313,7 +326,7 @@ class BackgroundTaskManager:
                 runtime.status = "lost"
                 runtime.failure_reason = (
                     "Background worker never heartbeat after startup"
-                    if view.runtime.heartbeat_at is None
+                    if fresh_runtime.heartbeat_at is None
                     else "Background worker heartbeat expired"
                 )
             self._store.write_runtime(view.spec.id, runtime)

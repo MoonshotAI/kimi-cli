@@ -147,6 +147,7 @@ async def run_background_task_worker(
             runtime.updated_at = time.time()
             runtime.heartbeat_at = runtime.updated_at
             store.write_runtime(task_id, runtime)
+            last_known_runtime = runtime
 
             heartbeat_task = asyncio.create_task(_heartbeat_loop())
             control_task = asyncio.create_task(_control_loop())
@@ -184,7 +185,7 @@ async def run_background_task_worker(
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
 
-    runtime = store.read_runtime(task_id)
+    runtime = last_known_runtime.model_copy()
     control = store.read_control(task_id)
     runtime.finished_at = time.time()
     runtime.updated_at = runtime.finished_at
