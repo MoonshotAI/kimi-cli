@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import asyncio
-import json
-import sys
 from pathlib import Path
 from typing import Annotated, Literal
 
 import typer
-
-from kimi_cli.constant import VERSION
 
 from .export import cli as export_cli
 from .info import cli as info_cli
@@ -49,7 +44,9 @@ OutputFormat = Literal["text", "stream-json"]
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"kimi, version {VERSION}")
+        from kimi_cli.constant import get_version
+
+        typer.echo(f"kimi, version {get_version()}")
         raise typer.Exit()
 
 
@@ -318,6 +315,9 @@ def kimi(
     ] = None,
 ):
     """Kimi, your next CLI agent."""
+    import asyncio
+    import json
+
     from kimi_cli.utils.proctitle import init_process_name
 
     init_process_name("Kimi Code")
@@ -682,6 +682,8 @@ def login(
     ),
 ) -> None:
     """Login to your Kimi account."""
+    import asyncio
+
     from rich.console import Console
     from rich.status import Status
 
@@ -739,6 +741,8 @@ def logout(
     ),
 ) -> None:
     """Logout from your Kimi account."""
+    import asyncio
+
     from rich.console import Console
 
     from kimi_cli.auth.oauth import logout_kimi_code
@@ -819,6 +823,8 @@ def background_task_worker(
 @cli.command(name="__web-worker", hidden=True)
 def web_worker(session_id: str) -> None:
     """Run web worker subprocess (internal)."""
+    import asyncio
+
     from uuid import UUID
 
     from kimi_cli.utils.proctitle import set_process_title
@@ -844,6 +850,8 @@ cli.add_typer(web_cli, name="web")
 
 
 if __name__ == "__main__":
+    import sys
+
     if "kimi_cli.cli" not in sys.modules:
         sys.modules["kimi_cli.cli"] = sys.modules[__name__]
 

@@ -6,8 +6,6 @@ from typing import Annotated, TypedDict
 
 import typer
 
-from kimi_cli.constant import VERSION
-
 
 class InfoData(TypedDict):
     kimi_cli_version: str
@@ -18,10 +16,11 @@ class InfoData(TypedDict):
 
 def _collect_info() -> InfoData:
     from kimi_cli.agentspec import SUPPORTED_AGENT_SPEC_VERSIONS
+    from kimi_cli.constant import get_version
     from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
 
     return {
-        "kimi_cli_version": VERSION,
+        "kimi_cli_version": get_version(),
         "agent_spec_versions": [str(version) for version in SUPPORTED_AGENT_SPEC_VERSIONS],
         "wire_protocol_version": WIRE_PROTOCOL_VERSION,
         "python_version": platform.python_version(),
