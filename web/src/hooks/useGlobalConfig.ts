@@ -86,6 +86,15 @@ export function useGlobalConfig(): UseGlobalConfigReturn {
     refresh();
   }, [refresh]);
 
+  // Re-fetch config when another tab/session changes it (broadcast via custom event)
+  useEffect(() => {
+    const handler = () => {
+      refresh();
+    };
+    window.addEventListener("kimi:config-update", handler);
+    return () => window.removeEventListener("kimi:config-update", handler);
+  }, [refresh]);
+
   return {
     config,
     isLoading,
