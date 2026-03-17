@@ -9,6 +9,7 @@ from pathlib import Path
 from kosong.chat_provider import ChatProviderError
 from kosong.message import Message
 from rich import print
+from rich.markup import escape
 
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.soul import (
@@ -80,7 +81,7 @@ class Print:
                 if command:
                     logger.info("Running agent with command: {command}", command=command)
                     if self.output_format == "text" and not self.final_only:
-                        print(command)
+                        print(escape(command))
                     await run_soul(
                         self.soul,
                         command,
@@ -94,22 +95,22 @@ class Print:
                 command = None
         except LLMNotSet as e:
             logger.exception("LLM not set:")
-            print(str(e))
+            print(escape(str(e)))
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
-            print(str(e))
+            print(escape(str(e)))
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
-            print(str(e))
+            print(escape(str(e)))
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            print(str(e))
+            print(escape(str(e)))
         except RunCancelled:
             logger.error("Interrupted by user")
             print("Interrupted by user")
         except BaseException as e:
             logger.exception("Unknown error:")
-            print(f"Unknown error: {e}")
+            print(f"Unknown error: {escape(str(e))}")
             raise
         finally:
             remove_sigint()
