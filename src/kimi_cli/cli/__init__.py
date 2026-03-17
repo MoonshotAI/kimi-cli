@@ -42,9 +42,7 @@ class LazySubcommandGroup(typer.core.TyperGroup):
 
     def list_commands(self, ctx: typer.Context) -> list[str]:
         commands = super().list_commands(ctx)
-        if "info" not in commands:
-            commands.insert(0, "info")
-        for name in self.lazy_command_order[1:]:
+        for name in self.lazy_command_order:
             if name not in commands:
                 commands.append(name)
         return commands
