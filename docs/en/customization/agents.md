@@ -202,7 +202,7 @@ The following are all built-in tools in Kimi Code CLI.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `command` | string | Command to execute |
-| `timeout` | int | Timeout in seconds, default 60, max 86400 |
+| `timeout` | int | Timeout in seconds, default 60, max 300 for foreground / 86400 for background |
 | `run_in_background` | bool | Whether to run as a background task, default false |
 | `description` | string | Short description for the background task, required when `run_in_background=true` |
 

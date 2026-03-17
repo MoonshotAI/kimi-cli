@@ -202,7 +202,7 @@ agent:
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `command` | string | 要执行的命令 |
-| `timeout` | int | 超时时间（秒），默认 60，最大 86400 |
+| `timeout` | int | 超时时间（秒），默认 60，前台最大 300 / 后台最大 86400 |
 | `run_in_background` | bool | 是否作为后台任务运行，默认 false |
 | `description` | string | 后台任务的简短描述，`run_in_background=true` 时必填 |
 

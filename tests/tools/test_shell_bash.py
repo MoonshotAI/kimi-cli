@@ -197,11 +197,24 @@ async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
     with pytest.raises(ValueError, match="timeout"):
         Params(command="echo test", timeout=-1)
 
-    # Test timeout > MAX_TIMEOUT (should fail validation)
-    from kimi_cli.tools.shell import MAX_TIMEOUT
+    # Test timeout > MAX_BACKGROUND_TIMEOUT (should fail validation)
+    from kimi_cli.tools.shell import MAX_BACKGROUND_TIMEOUT, MAX_FOREGROUND_TIMEOUT
 
     with pytest.raises(ValueError, match="timeout"):
-        Params(command="echo test", timeout=MAX_TIMEOUT + 1)
+        Params(command="echo test", timeout=MAX_BACKGROUND_TIMEOUT + 1)
+
+    # Test foreground timeout > MAX_FOREGROUND_TIMEOUT (should fail validation)
+    with pytest.raises(ValueError, match="foreground"):
+        Params(command="echo test", timeout=MAX_FOREGROUND_TIMEOUT + 1)
+
+    # Background commands can use longer timeouts
+    params = Params(
+        command="make build",
+        timeout=MAX_FOREGROUND_TIMEOUT + 1,
+        run_in_background=True,
+        description="long build",
+    )
+    assert params.timeout == MAX_FOREGROUND_TIMEOUT + 1
 
 
 @pytest.mark.parametrize(

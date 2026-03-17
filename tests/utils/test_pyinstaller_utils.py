@@ -138,7 +138,7 @@ def test_pyinstaller_datas():
     if has_rg_binary:
         expected_datas.append((f"src/kimi_cli/deps/bin/{rg_binary}", "kimi_cli/deps/bin"))
 
-    assert sorted(datas) == sorted(expected_datas)
+    assert sorted(datas) == snapshot(sorted(expected_datas))
 
 
 def test_pyinstaller_hiddenimports():

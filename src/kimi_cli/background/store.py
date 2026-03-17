@@ -28,20 +28,20 @@ class BackgroundTaskStore:
 
     @property
     def root(self) -> Path:
+        return self._root
+
+    def _ensure_root(self) -> Path:
+        """Return the root directory, creating it if it does not exist."""
         self._root.mkdir(parents=True, exist_ok=True)
         return self._root
 
-    @property
-    def root_path(self) -> Path:
-        return self._root
-
     def task_dir(self, task_id: str) -> Path:
-        path = self.root / task_id
+        path = self._ensure_root() / task_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def task_path(self, task_id: str) -> Path:
-        return self.root_path / task_id
+        return self.root / task_id
 
     def spec_path(self, task_id: str) -> Path:
         return self.task_path(task_id) / self.SPEC_FILE
@@ -70,10 +70,10 @@ class BackgroundTaskStore:
         self.output_path(spec.id).touch(exist_ok=True)
 
     def list_task_ids(self) -> list[str]:
-        if not self.root_path.exists():
+        if not self.root.exists():
             return []
         task_ids: list[str] = []
-        for path in sorted(self.root_path.iterdir()):
+        for path in sorted(self.root.iterdir()):
             if not path.is_dir():
                 continue
             if not (path / self.SPEC_FILE).exists():

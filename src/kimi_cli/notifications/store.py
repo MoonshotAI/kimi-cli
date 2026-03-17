@@ -16,20 +16,20 @@ class NotificationStore:
 
     @property
     def root(self) -> Path:
+        return self._root
+
+    def _ensure_root(self) -> Path:
+        """Return the root directory, creating it if it does not exist."""
         self._root.mkdir(parents=True, exist_ok=True)
         return self._root
 
-    @property
-    def root_path(self) -> Path:
-        return self._root
-
     def notification_dir(self, notification_id: str) -> Path:
-        path = self.root / notification_id
+        path = self._ensure_root() / notification_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def notification_path(self, notification_id: str) -> Path:
-        return self.root_path / notification_id
+        return self.root / notification_id
 
     def event_path(self, notification_id: str) -> Path:
         return self.notification_path(notification_id) / self.EVENT_FILE
@@ -47,10 +47,10 @@ class NotificationStore:
         atomic_json_write(delivery.model_dump(mode="json"), notification_dir / self.DELIVERY_FILE)
 
     def list_notification_ids(self) -> list[str]:
-        if not self.root_path.exists():
+        if not self.root.exists():
             return []
         notification_ids: list[str] = []
-        for path in sorted(self.root_path.iterdir()):
+        for path in sorted(self.root.iterdir()):
             if not path.is_dir():
                 continue
             if not (path / self.EVENT_FILE).exists():

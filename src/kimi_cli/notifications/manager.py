@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from kimi_cli.config import NotificationConfig
+from kimi_cli.utils.logging import logger
 
 from .models import (
     NotificationDelivery,
@@ -91,15 +92,28 @@ class NotificationManager:
         limit: int = 8,
         before_claim: Callable[[], object] | None = None,
     ) -> list[NotificationView]:
-        """Deliver pending notifications for one sink using a shared claim/ack flow."""
+        """Deliver pending notifications for one sink using a shared claim/ack flow.
+
+        If the handler raises for a notification, the error is logged and that
+        notification stays in ``claimed`` state (will be recovered later).
+        Delivery continues for remaining notifications.
+        """
         if before_claim is not None:
             before_claim()
 
         delivered: list[NotificationView] = []
         for view in self.claim_for_sink(sink, limit=limit):
-            result = on_notification(view)
-            if result is not None:
-                await result
+            try:
+                result = on_notification(view)
+                if result is not None:
+                    await result
+            except Exception:
+                logger.exception(
+                    "Notification handler failed for {sink}/{id}, leaving claimed for recovery",
+                    sink=sink,
+                    id=view.event.id,
+                )
+                continue
             delivered.append(self.ack(sink, view.event.id))
         return delivered
 

@@ -82,7 +82,7 @@ def test_list_views_skips_invalid_task_directories(runtime):
     )
     store.create_task(valid)
 
-    invalid_dir = store.root_path / "b-invalid"
+    invalid_dir = store.root / "b-invalid"
     invalid_dir.mkdir(parents=True, exist_ok=True)
     (invalid_dir / "output.log").write_text("orphaned\n", encoding="utf-8")
 

@@ -197,8 +197,9 @@ async def test_deliver_pending_leaves_claimed_notification_for_recovery_on_handl
     async def _boom(_view) -> None:
         raise RuntimeError("handler failed")
 
-    with pytest.raises(RuntimeError, match="handler failed"):
-        await manager.deliver_pending("wire", on_notification=_boom)
+    # Handler errors are caught and logged; delivery continues for remaining items.
+    delivered = await manager.deliver_pending("wire", on_notification=_boom)
 
+    assert delivered == []
     stored = manager.store.merged_view(event.id)
     assert stored.delivery.sinks["wire"].status == "claimed"

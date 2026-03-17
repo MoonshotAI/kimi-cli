@@ -17,7 +17,8 @@ from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.subprocess_env import get_clean_env
 
-MAX_TIMEOUT = 24 * 60 * 60
+MAX_FOREGROUND_TIMEOUT = 5 * 60
+MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
 
 
 class Params(BaseModel):
@@ -29,7 +30,7 @@ class Params(BaseModel):
         ),
         default=60,
         ge=1,
-        le=MAX_TIMEOUT,
+        le=MAX_BACKGROUND_TIMEOUT,
     )
     run_in_background: bool = Field(
         default=False,
@@ -46,6 +47,11 @@ class Params(BaseModel):
     def _validate_background_fields(self) -> Self:
         if self.run_in_background and not self.description.strip():
             raise ValueError("description is required when run_in_background is true")
+        if not self.run_in_background and self.timeout > MAX_FOREGROUND_TIMEOUT:
+            raise ValueError(
+                f"timeout must be <= {MAX_FOREGROUND_TIMEOUT}s for foreground commands; "
+                f"use run_in_background=true for longer timeouts (up to {MAX_BACKGROUND_TIMEOUT}s)"
+            )
         return self
 
 
