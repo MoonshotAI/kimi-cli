@@ -15,7 +15,7 @@ import sys
 from typing import Any
 from uuid import UUID
 
-from loguru import logger
+from kimi_cli import logger
 
 from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.cli.mcp import get_global_mcp_config_file
