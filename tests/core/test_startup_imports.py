@@ -128,3 +128,53 @@ print("ok")
 """
     )
     assert proc.stdout.strip() == "ok"
+
+
+def test_package_entrypoint_fast_path_avoids_cli_import() -> None:
+    proc = _run_python(
+        """
+import io
+import sys
+from contextlib import redirect_stdout
+
+sys.modules.pop("kimi_cli.cli", None)
+
+from kimi_cli.__main__ import main
+
+stdout = io.StringIO()
+with redirect_stdout(stdout):
+    exit_code = main(["--version"])
+
+assert exit_code == 0
+assert stdout.getvalue().startswith("kimi, version ")
+assert "kimi_cli.cli" not in sys.modules
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
+
+
+def test_package_entrypoint_falls_back_to_cli_for_commands() -> None:
+    proc = _run_python(
+        """
+import io
+import json
+import sys
+from contextlib import redirect_stdout
+
+sys.modules.pop("kimi_cli.cli", None)
+
+from kimi_cli.__main__ import main
+
+stdout = io.StringIO()
+with redirect_stdout(stdout):
+    exit_code = main(["info", "--json"])
+
+assert exit_code in (None, 0)
+assert "kimi_cli.cli" in sys.modules
+payload = json.loads(stdout.getvalue())
+assert payload["kimi_cli_version"]
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
