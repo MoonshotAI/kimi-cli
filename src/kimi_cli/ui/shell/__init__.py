@@ -8,18 +8,19 @@ from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from kimi_cli import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from kimi_cli import logger
 from kimi_cli.notifications import NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
+from kimi_cli.ui.shell.mcp_status import get_mcp_status_snapshot, render_mcp_prompt
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
     PromptMode,
@@ -115,14 +116,42 @@ class Shell:
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
             )
+            from kimi_cli.soul.toolset import KimiToolset
+
+            toolset = self.soul.agent.toolset
+            if isinstance(toolset, KimiToolset):
+                await toolset.start_deferred_mcp_tool_loading()
 
         async def _plan_mode_toggle() -> bool:
             if isinstance(self.soul, KimiSoul):
                 return await self.soul.toggle_plan_mode_from_manual()
             return False
 
+        def _mcp_status_block(columns: int):
+            if not isinstance(self.soul, KimiSoul):
+                return None
+            from kimi_cli.soul.toolset import KimiToolset
+
+            toolset = self.soul.agent.toolset
+            if not isinstance(toolset, KimiToolset):
+                return None
+            snapshot = get_mcp_status_snapshot(toolset)
+            if snapshot is None:
+                return None
+            return render_mcp_prompt(snapshot)
+
+        def _mcp_status_loading() -> bool:
+            if not isinstance(self.soul, KimiSoul):
+                return False
+            from kimi_cli.soul.toolset import KimiToolset
+
+            toolset = self.soul.agent.toolset
+            return isinstance(toolset, KimiToolset) and toolset.has_pending_mcp_tools()
+
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
+            status_block_provider=_mcp_status_block,
+            fast_refresh_provider=_mcp_status_loading,
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=self.soul.model_name,
             thinking=self.soul.thinking or False,
