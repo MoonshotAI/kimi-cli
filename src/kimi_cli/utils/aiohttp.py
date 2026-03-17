@@ -9,4 +9,7 @@ _ssl_context = ssl.create_default_context(cafile=certifi.where())
 
 
 def new_client_session() -> aiohttp.ClientSession:
-    return aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=_ssl_context))
+    return aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(ssl=_ssl_context),
+        trust_env=True,
+    )
