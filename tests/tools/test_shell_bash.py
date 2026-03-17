@@ -217,27 +217,15 @@ async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
     assert params.timeout == MAX_FOREGROUND_TIMEOUT + 1
 
 
-@pytest.mark.parametrize(
-    ("params"),
-    [
-        Params(command="echo plan"),
-        Params(
-            command="sleep 1",
-            timeout=10,
-            run_in_background=True,
-            description="plan mode background task",
-        ),
-    ],
-)
-async def test_shell_blocks_in_plan_mode(shell_tool: Shell, runtime, params: Params):
-    """Shell should be unavailable for both foreground and background calls in plan mode."""
+async def test_shell_works_in_plan_mode(shell_tool: Shell, runtime):
+    """Shell should still work in plan mode — plan mode constraints are enforced by
+    the dynamic injection prompt, not by hard-blocking the tool."""
     runtime.session.state.plan_mode = True
 
-    result = await shell_tool(params)
+    result = await shell_tool(Params(command="echo plan_ok"))
 
-    assert result.is_error
-    assert result.message == "Shell is not available in plan mode."
-    assert result.brief == "Blocked in plan mode"
+    assert not result.is_error
+    assert "plan_ok" in result.output
 
 
 async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: pytest.MonkeyPatch):

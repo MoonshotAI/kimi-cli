@@ -79,12 +79,6 @@ class Shell(CallableTool2[Params]):
         if not params.command:
             return builder.error("Command cannot be empty.", brief="Empty command")
 
-        if self._runtime.session.state.plan_mode:
-            return builder.error(
-                "Shell is not available in plan mode.",
-                brief="Blocked in plan mode",
-            )
-
         if params.run_in_background:
             return await self._run_in_background(params)
 
