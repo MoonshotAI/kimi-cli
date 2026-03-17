@@ -17,11 +17,13 @@ from kosong.chat_provider import (
     APIStatusError,
     APITimeoutError,
     RetryableChatProvider,
+    TokenUsage,
 )
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.share import get_share_dir
 from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
@@ -44,6 +46,7 @@ from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.token_ledger import TokenLedger
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
@@ -130,6 +133,8 @@ class KimiSoul:
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
         self._plan_mode: bool = self._runtime.session.state.plan_mode
+        self._total_token_usage: TokenUsage | None = None
+        self._ledger = TokenLedger(get_share_dir() / "token-stats.json")
         self._plan_session_id: str | None = None
         self._pending_plan_activation_injection: bool = False
         if self._plan_mode:
@@ -316,6 +321,9 @@ class KimiSoul:
             plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,
+            total_token_usage=self._total_token_usage,
+            daily_token_usage=self._ledger.daily if self._ledger.daily.total > 0 else None,
+            weekly_token_usage=self._ledger.weekly if self._ledger.weekly.total > 0 else None,
         )
 
     @property
@@ -650,8 +658,22 @@ class KimiSoul:
             token_usage=result.usage, message_id=result.id, plan_mode=self._plan_mode
         )
         if result.usage is not None:
+            # Accumulate cumulative token usage for the session
+            prev = self._total_token_usage
+            if prev is None:
+                self._total_token_usage = result.usage
+            else:
+                self._total_token_usage = TokenUsage(
+                    input_other=prev.input_other + result.usage.input_other,
+                    output=prev.output + result.usage.output,
+                    input_cache_read=prev.input_cache_read + result.usage.input_cache_read,
+                    input_cache_creation=(
+                        prev.input_cache_creation + result.usage.input_cache_creation
+                    ),
+                )
             # mark the token count for the context before the step
             await self._context.update_token_count(result.usage.input)
+            self._ledger.record(result.usage)
             snap = self.status
             status_update.context_usage = snap.context_usage
             status_update.context_tokens = snap.context_tokens

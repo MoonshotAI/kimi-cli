@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, cast, override
 
 from kaos.path import KaosPath
+from kosong.chat_provider import TokenUsage
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.buffer import Buffer
@@ -51,7 +52,7 @@ from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import StatusSnapshot, format_context_status
+from kimi_cli.soul import StatusSnapshot, format_context_status, format_token_count
 from kimi_cli.ui.shell import placeholders as prompt_placeholders
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.placeholders import (
@@ -932,6 +933,41 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
     return queue[0]
 
 
+def _pct_color(pct: int) -> str:
+    """Return a prompt_toolkit style color string based on usage percentage."""
+    if pct >= 90:
+        return "fg:#ff5555"
+    if pct >= 70:
+        return "fg:#e6c800"
+    if pct >= 50:
+        return "fg:#ffaa00"
+    return "fg:#00af5f"
+
+
+def _build_context_bar(pct: int, width: int = 10) -> list[tuple[str, str]]:
+    """Build a colored block-character progress bar as FormattedText fragments."""
+    pct = max(0, min(100, pct))
+    filled = pct * width // 100
+    empty = width - filled
+    result: list[tuple[str, str]] = []
+    if filled:
+        result.append((_pct_color(pct), "█" * filled))
+    if empty:
+        result.append(("fg:#4d4d4d", "░" * empty))
+    return result
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as compact duration string."""
+    if seconds < 60:
+        return "<1m"
+    minutes = int(seconds / 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins}m" if mins else f"{hours}h"
+
+
 def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
     tips = [
         "ctrl-x: toggle mode",
@@ -977,6 +1013,7 @@ class CustomPromptSession:
         # Keep the old attribute for test compatibility and for any external imports.
         self._attachment_cache = self._placeholder_manager.attachment_cache
         self._tip_rotation_index: int = 0
+        self._session_start_time: float = time.monotonic()
         self._running_prompt_delegate: RunningPromptDelegate | None = None
         clipboard_available = is_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available)
@@ -1550,43 +1587,66 @@ class CustomPromptSession:
         app = get_app_or_none()
         assert app is not None
         columns = app.output.get_size().columns
+        status = self._status_provider()
 
         fragments: list[tuple[str, str]] = []
 
+        # ── Line 1: divider ─────────────────────────────────────────────
         fragments.append(("fg:#4d4d4d", "─" * columns))
         fragments.append(("", "\n"))
 
-        mode = str(self._mode).lower()
-        if self._mode == PromptMode.AGENT:
-            mode_details: list[str] = []
-            if self._model_name:
-                mode_details.append(self._model_name)
-            if self._thinking:
-                mode_details.append("thinking")
-            if mode_details:
-                mode += f" ({', '.join(mode_details)})"
-        status = self._status_provider()
-        if status.yolo_enabled:
-            fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
-            columns -= len("yolo") + 2
-        if status.plan_mode:
-            fragments.extend([("bold fg:#00aaff", "plan"), ("", " " * 2)])
-            columns -= len("plan") + 2
-        fragments.extend([("", f"{mode}"), ("", " " * 2)])
-        columns -= len(mode) + 2
-        right_text = self._render_right_span(status)
-
-        current_toast_left = _current_toast("left")
-        if current_toast_left is not None:
-            fragments.extend([("", current_toast_left.message), ("", " " * 2)])
-            columns -= len(current_toast_left.message) + 2
+        # ── Line 2: main status ─────────────────────────────────────────
+        # [model · thinking] or [shell]
+        if self._mode == PromptMode.SHELL:
+            model_label = "shell"
         else:
-            # Reserve space for right_text, two trailing spaces after tips, and
-            # at least one space of padding before right_text.
-            available = columns - len(right_text) - 3
-            full_text = _TIP_SEPARATOR.join(self._tips)
-            if len(full_text) <= available:
-                tip_text: str | None = full_text
+            model_label = self._model_name or "kimi"
+            if self._thinking:
+                model_label += " · thinking"
+
+        fragments.extend([
+            ("fg:#4d9de0", "["),
+            ("bold fg:#4d9de0", model_label),
+            ("fg:#4d9de0", "] "),
+        ])
+        used = len(model_label) + 3  # "[" + label + "] "
+
+        # Context bar + percentage + token count
+        pct_int = int(max(0.0, min(status.context_usage, 1.0)) * 100)
+        fragments.extend(_build_context_bar(pct_int))
+        pct_str = f" {pct_int}%"
+        fragments.append((_pct_color(pct_int) + " bold", pct_str))
+        used += 10 + len(pct_str)  # bar chars + " X%"
+        if status.context_tokens > 0 and status.max_context_tokens > 0:
+            ctx_detail = (
+                f" ({format_token_count(status.context_tokens)}"
+                f"/{format_token_count(status.max_context_tokens)})"
+            )
+            fragments.append(("fg:#666666", ctx_detail))
+            used += len(ctx_detail)
+
+        _SEP = ("fg:#4d4d4d", " │")
+        _SEP_LEN = 2
+
+        # Token stats (cumulative)
+        if status.total_token_usage is not None and status.total_token_usage.total > 0:
+            tu = status.total_token_usage
+            tok_str = f" in:{format_token_count(tu.input)} out:{format_token_count(tu.output)}"
+            fragments.extend([_SEP, ("fg:#aaaaaa", tok_str)])
+            used += _SEP_LEN + len(tok_str)
+
+        # Session timer
+        elapsed_str = _format_elapsed(time.monotonic() - self._session_start_time)
+        timer_str = f" {elapsed_str}"
+        fragments.extend([_SEP, ("fg:#666666", timer_str)])
+        used += _SEP_LEN + len(timer_str)
+
+        # Tips — fill remaining space
+        available = columns - used - 2
+        if available > 6:
+            current_toast_left = _current_toast("left")
+            if current_toast_left is not None:
+                tip_text: str | None = current_toast_left.message[:available]
             else:
                 n = len(self._tips)
                 offset = self._tip_rotation_index % n
@@ -1600,22 +1660,53 @@ class CustomPromptSession:
                         total_len += needed
                 tip_text = _TIP_SEPARATOR.join(selected) if selected else None
             if tip_text:
-                fragments.extend([("", tip_text), ("", " " * 2)])
-                columns -= len(tip_text) + 2
+                fragments.extend([("", "  "), ("fg:#555555", tip_text)])
 
-        padding = max(1, columns - len(right_text))
-        fragments.append(("", " " * padding))
-        fragments.append(("", right_text))
+        # ── Line 3: yolo / plan mode indicator ──────────────────────────
+        if status.yolo_enabled:
+            fragments.append(("", "\n"))
+            fragments.extend([
+                ("fg:#ff4444", "►► "),
+                ("bold fg:#ff4444", "bypass permissions on"),
+                ("fg:#666666", " (shift+tab to cycle)"),
+            ])
+        elif status.plan_mode:
+            fragments.append(("", "\n"))
+            fragments.extend([
+                ("fg:#4d9de0", "►► "),
+                ("bold fg:#4d9de0", "plan mode"),
+                ("fg:#666666", " (shift+tab to exit)"),
+            ])
+
+        # ── Line 4+: daily / weekly token stats ─────────────────────────
+        def _ledger_line(label: str, usage: TokenUsage) -> list[tuple[str, str]]:
+            total = format_token_count(usage.total)
+            in_fmt = format_token_count(usage.input)
+            out_fmt = format_token_count(usage.output)
+            return [
+                ("fg:#555555", f"  {label:<6}"),
+                ("fg:#aaaaaa", f" {total:>6}"),
+                ("fg:#666666", f"  in:{in_fmt} out:{out_fmt}"),
+            ]
+
+        if status.daily_token_usage is not None:
+            fragments.append(("", "\n"))
+            fragments.extend(_ledger_line("today", status.daily_token_usage))
+        if status.weekly_token_usage is not None:
+            fragments.append(("", "\n"))
+            fragments.extend(_ledger_line("week", status.weekly_token_usage))
 
         return FormattedText(fragments)
 
     @staticmethod
     def _render_right_span(status: StatusSnapshot) -> str:
+        # Retained for backward compatibility; toolbar no longer calls this directly.
         current_toast = _current_toast("right")
         if current_toast is None:
             return format_context_status(
                 status.context_usage,
                 status.context_tokens,
                 status.max_context_tokens,
+                status.total_token_usage,
             )
         return current_toast.message
