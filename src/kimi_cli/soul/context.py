@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -21,6 +22,7 @@ class Context:
         self._next_checkpoint_id: int = 0
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
         self._system_prompt: str | None = None
+        self._write_lock = asyncio.Lock()
 
     async def restore(self) -> bool:
         logger.debug("Restoring context from file: {file_backend}", file_backend=self._file_backend)
@@ -105,8 +107,9 @@ class Context:
         self._next_checkpoint_id += 1
         logger.debug("Checkpointing, ID: {id}", id=checkpoint_id)
 
-        async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
-            await f.write(json.dumps({"role": "_checkpoint", "id": checkpoint_id}) + "\n")
+        async with self._write_lock:
+            async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
+                await f.write(json.dumps({"role": "_checkpoint", "id": checkpoint_id}) + "\n")
         if add_user_message:
             await self.append_message(
                 Message(role="user", content=[system(f"CHECKPOINT {checkpoint_id}")])
@@ -203,13 +206,15 @@ class Context:
         messages = [message] if isinstance(message, Message) else message
         self._history.extend(messages)
 
-        async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
-            for message in messages:
-                await f.write(message.model_dump_json(exclude_none=True) + "\n")
+        async with self._write_lock:
+            async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
+                for message in messages:
+                    await f.write(message.model_dump_json(exclude_none=True) + "\n")
 
     async def update_token_count(self, token_count: int):
         logger.debug("Updating token count in context: {token_count}", token_count=token_count)
         self._token_count = token_count
 
-        async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
-            await f.write(json.dumps({"role": "_usage", "token_count": token_count}) + "\n")
+        async with self._write_lock:
+            async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
+                await f.write(json.dumps({"role": "_usage", "token_count": token_count}) + "\n")
