@@ -29,9 +29,7 @@ SESSIONS_DIR = KIMI_DIR / "sessions"
 
 TMP_PREFIXES = (
     "/tmp/",
-    "/tmp",
     "/private/tmp/",
-    "/private/tmp",
     "/var/folders/",
     "/private/var/folders/",
 )
