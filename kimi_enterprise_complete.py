@@ -78,10 +78,13 @@ def parse_wire_file_line(line: str) -> WireFileMetadata | WireMessageRecord | No
         return None
     if not isinstance(payload, dict) or "message" not in payload:
         return None
-    return WireMessageRecord(
-        timestamp=float(payload.get("timestamp", time.time())),
-        message=payload.get("message") or {},
-    )
+    try:
+        return WireMessageRecord(
+            timestamp=float(payload.get("timestamp", time.time())),
+            message=payload.get("message") or {},
+        )
+    except (ValueError, TypeError):
+        return None
 
 
 def _load_protocol_version(path: Path) -> Optional[str]:
