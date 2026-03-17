@@ -28,11 +28,14 @@ export const safeRehypePlugins: StreamdownProps["rehypePlugins"] = [
  * 2. Escapes both < and > in HTML-like tags elsewhere
  */
 export const escapeHtmlOutsideCodeBlocks = (text: string): string => {
-  // Match ONLY valid fenced code blocks (``` at line start) and inline code.
-  // Mid-line ``` is a syntax error and should be treated as plain text.
-  // Fenced code blocks: ``` at line start, optional language, content, then \n```
-  // Also match inline code: `..` (single backticks, no newlines inside)
-  const codeBlockRegex = /(^|\n)```[a-z]*\n[\s\S]*?\n```|`[^`\n]+`/g;
+  // Match regions that should NOT be escaped:
+  // 1. Fenced code blocks: ``` at line start, optional language, content, then \n```
+  // 2. Inline code: `..` (single backticks, no newlines inside)
+  // 3. Display math: $$...$$ (can span multiple lines)
+  // 4. Inline math: $...$ (no newlines, non-empty, no leading/trailing space)
+  // Math delimiters must be preserved because KaTeX needs raw < and > for expressions like $x < y$.
+  const codeBlockRegex =
+    /(^|\n)```[a-z]*\n[\s\S]*?\n```|`[^`\n]+`|\$\$[\s\S]*?\$\$|\$(?!\s)[^$\n]+(?<!\s)\$/g;
   const codeBlocks: { start: number; end: number }[] = [];
 
   // Find all valid code blocks
