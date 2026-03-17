@@ -201,3 +201,26 @@ async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
 
     with pytest.raises(ValueError, match="timeout"):
         Params(command="echo test", timeout=MAX_TIMEOUT + 1)
+
+
+@pytest.mark.parametrize(
+    ("params"),
+    [
+        Params(command="echo plan"),
+        Params(
+            command="sleep 1",
+            timeout=10,
+            run_in_background=True,
+            description="plan mode background task",
+        ),
+    ],
+)
+async def test_shell_blocks_in_plan_mode(shell_tool: Shell, runtime, params: Params):
+    """Shell should be unavailable for both foreground and background calls in plan mode."""
+    runtime.session.state.plan_mode = True
+
+    result = await shell_tool(params)
+
+    assert result.is_error
+    assert result.message == "Shell is not available in plan mode."
+    assert result.brief == "Blocked in plan mode"

@@ -14,6 +14,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from kimi_cli.notifications import NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
@@ -64,6 +65,17 @@ class Shell:
         _print_welcome_info(self.soul.name or "Kimi Code CLI", self._welcome_info)
 
         if isinstance(self.soul, KimiSoul):
+            watcher = NotificationWatcher(
+                self.soul.runtime.notifications,
+                sink="shell",
+                before_poll=self.soul.runtime.background_tasks.reconcile,
+                on_notification=lambda notification: toast(
+                    f"[{notification.event.type}] {notification.event.title}",
+                    topic="notification",
+                    duration=10.0,
+                ),
+            )
+            self._start_background_task(watcher.run_forever())
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
@@ -242,6 +254,7 @@ class Shell:
 
         try:
             snap = self.soul.status
+            runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
             await run_soul(
                 self.soul,
                 user_input,
@@ -255,7 +268,8 @@ class Shell:
                     cancel_event=cancel_event,
                 ),
                 cancel_event,
-                self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,
+                runtime.session.wire_file if runtime else None,
+                runtime,
             )
             return True
         except LLMNotSet:

@@ -16,6 +16,7 @@ from kimi_cli.wire.types import (
     ImageURLPart,
     MCPLoadingBegin,
     MCPLoadingEnd,
+    Notification,
     QuestionItem,
     QuestionOption,
     QuestionRequest,
@@ -108,6 +109,37 @@ async def test_wire_message_serde():
                 "token_usage": None,
                 "message_id": None,
                 "plan_mode": None,
+            },
+        }
+    )
+    _test_serde(msg)
+
+    msg = Notification(
+        id="n1234567",
+        category="task",
+        type="task.completed",
+        source_kind="background_task",
+        source_id="b1234567",
+        title="Background task completed",
+        body="Task ID: b1234567",
+        severity="success",
+        created_at=123.456,
+        payload={"task_id": "b1234567"},
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "Notification",
+            "payload": {
+                "id": "n1234567",
+                "category": "task",
+                "type": "task.completed",
+                "source_kind": "background_task",
+                "source_id": "b1234567",
+                "title": "Background task completed",
+                "body": "Task ID: b1234567",
+                "severity": "success",
+                "created_at": 123.456,
+                "payload": {"task_id": "b1234567"},
             },
         }
     )
@@ -362,6 +394,21 @@ def test_approval_request_resolved_compat():
 
 async def test_type_inspection():
     msg = StepBegin(n=1)
+    assert is_wire_message(msg)
+    assert is_event(msg)
+    assert not is_request(msg)
+
+    msg = Notification(
+        id="n1234567",
+        category="system",
+        type="system.info",
+        source_kind="test",
+        source_id="source-1",
+        title="Info",
+        body="body",
+        severity="info",
+        created_at=1.0,
+    )
     assert is_wire_message(msg)
     assert is_event(msg)
     assert not is_request(msg)

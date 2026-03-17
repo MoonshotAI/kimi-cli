@@ -27,6 +27,7 @@ from kimi_cli.wire.types import (
     ContentPart,
     MCPLoadingBegin,
     MCPLoadingEnd,
+    Notification,
     QuestionRequest,
     StatusUpdate,
     StepBegin,
@@ -166,6 +167,8 @@ class ACPSession:
                         pass
                     case StatusUpdate():
                         pass
+                    case Notification():
+                        await self._send_notification(msg)
                     case ThinkPart(think=think):
                         await self._send_thinking(think)
                     case TextPart(text=text):
@@ -250,6 +253,14 @@ class ACPSession:
                 session_update="agent_message_chunk",
             ),
         )
+
+    async def _send_notification(self, notification: Notification):
+        """Send a system notification to the client as a text chunk."""
+        body = notification.body.strip()
+        text = f"[Notification] {notification.title}"
+        if body:
+            text = f"{text}\n{body}"
+        await self._send_text(text)
 
     async def _send_tool_call(self, tool_call: ToolCall):
         """Send tool call to client."""

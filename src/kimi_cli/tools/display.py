@@ -31,3 +31,13 @@ class ShellDisplayBlock(DisplayBlock):
     type: str = "shell"
     language: str
     command: str
+
+
+class BackgroundTaskDisplayBlock(DisplayBlock):
+    """Display block describing a background task."""
+
+    type: str = "background_task"
+    task_id: str
+    kind: str
+    status: str
+    description: str

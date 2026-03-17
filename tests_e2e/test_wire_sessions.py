@@ -140,7 +140,7 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 6, "wire_after": 11})
+    } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -209,7 +209,13 @@ def test_clear_context_rotates(tmp_path) -> None:
     assert len(session_ids) == 1
     session_dir = session_root / session_ids[0]
     context_file = session_dir / "context.jsonl"
-    assert context_file.stat().st_size == 0
+    # After /clear, context.jsonl contains only the persisted system prompt
+    lines = [line for line in context_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    import json
+
+    record = json.loads(lines[0])
+    assert record["role"] == "_system_prompt"
     rotated = sorted(p.name for p in session_dir.iterdir() if p.name.startswith("context.jsonl."))
     assert rotated == snapshot([])
 
