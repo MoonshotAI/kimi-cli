@@ -524,12 +524,15 @@ async def get_session_file(
         )
 
     if file_path.is_dir():
+        hidden_dirs = {".git"}
         result: list[dict[str, str | int]] = []
         for subpath in file_path.iterdir():
             if restrict_sensitive_apis:
                 rel_subpath = rel_path / subpath.name
                 if _is_sensitive_relative_path(rel_subpath):
                     continue
+            if subpath.name.startswith(".") and subpath.name in hidden_dirs and subpath.is_dir():
+                continue
             if subpath.is_dir():
                 result.append({"name": subpath.name, "type": "directory"})
             else:
