@@ -151,6 +151,21 @@ class Shell:
             plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             self._prompt_session = prompt_session
+            if isinstance(self.soul, KimiSoul):
+                from kimi_cli.soul.toolset import KimiToolset
+
+                toolset = self.soul.agent.toolset
+                if isinstance(toolset, KimiToolset) and toolset.has_pending_mcp_tools():
+
+                    async def _invalidate_after_mcp_loading() -> None:
+                        try:
+                            await toolset.wait_for_mcp_tools()
+                        except Exception:
+                            logger.debug("MCP loading finished with error while refreshing prompt")
+                        if self._prompt_session is prompt_session:
+                            prompt_session.invalidate()
+
+                    self._start_background_task(_invalidate_after_mcp_loading())
             try:
                 while True:
                     ensure_tty_sane()
