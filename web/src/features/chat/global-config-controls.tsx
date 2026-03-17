@@ -205,6 +205,7 @@ export function GlobalConfigControls({
       <Button
         variant="ghost"
         size="icon"
+        type="button"
         className="size-9 border-0"
         aria-label="Attach files"
         onClick={() => attachments.openFileDialog()}
