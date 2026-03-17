@@ -17,7 +17,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from kosong.message import ContentPart, ImageURLPart, TextPart
-from loguru import logger
+from kimi_cli import logger
 from PIL import Image
 from PIL.Image import Image as PILImage
 from pydantic import TypeAdapter

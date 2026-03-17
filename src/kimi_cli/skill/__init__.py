@@ -9,7 +9,7 @@ from typing import Literal
 from kaos import get_current_kaos
 from kaos.local import local_kaos
 from kaos.path import KaosPath
-from loguru import logger
+from kimi_cli import logger
 from pydantic import BaseModel, ConfigDict
 
 from kimi_cli.skill.flow import Flow, FlowError

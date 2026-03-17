@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from loguru import logger
+from kimi_cli import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
