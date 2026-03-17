@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.4`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.5`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -153,13 +153,13 @@ interface ExternalToolsResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.4", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.5", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **Success response example**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.4", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.5", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 If the server does not support the `initialize` method, the client will receive a `-32601 method not found` error and should automatically fall back to no-handshake mode.
@@ -259,7 +259,7 @@ Added in Wire 1.4.
 - **Direction**: Client → Agent
 - **Type**: Request (requires response)
 
-Inject a user message into an active agent turn. Unlike `prompt`, `steer` does not start a new turn but injects the message into the currently running turn. The injected message is inserted into the context as a synthetic tool call result, allowing you to "steer" the AI's behavior while it is processing.
+Inject a user message into an active agent turn. Unlike `prompt`, `steer` does not start a new turn but injects the message into the currently running turn. The injected message is appended to the context as a standard user message after the current step finishes, allowing you to "steer" the AI's behavior before the next step begins. A `SteerInput` event is emitted when the message is consumed.
 
 ```typescript
 /** steer request parameters */
@@ -476,6 +476,7 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | SteerInput
 
 /** Requests: sent via request method, require response */
 type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
@@ -702,6 +703,21 @@ interface SubagentEvent {
   task_tool_call_id: string
   /** Event from subagent, nested Wire message format */
   event: { type: string; payload: object }
+}
+```
+
+### `SteerInput`
+
+::: info Added
+Added in Wire 1.5.
+:::
+
+Indicates that the user appended follow-up input to the current running turn. This event is emitted after the current step finishes and the input is appended to context, before the next step begins.
+
+```typescript
+interface SteerInput {
+  /** User input, can be plain text or array of content parts */
+  user_input: string | ContentPart[]
 }
 ```
 

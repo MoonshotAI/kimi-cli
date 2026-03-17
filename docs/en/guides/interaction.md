@@ -75,6 +75,16 @@ kimi --thinking
 Thinking mode requires support from the current model. Some models (like `kimi-k2-thinking-turbo`) always use thinking mode and cannot be disabled.
 :::
 
+## Sending messages while running (steer)
+
+While the AI is executing a task, you can type and send follow-up messages in the input box without waiting for the current turn to finish. This feature is called "steering" and allows you to adjust the AI's direction mid-turn.
+
+Steer messages are appended to the context after the current step completes, and the AI will see and respond to your message before the next step begins. Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
+
+::: tip
+Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.
+:::
+
 ## Multi-line input
 
 Sometimes you need to enter multiple lines, such as pasting a code snippet or error log. Press `Ctrl-J` or `Alt-Enter` to insert a newline instead of sending the message immediately.
@@ -85,7 +95,9 @@ After finishing your input, press `Enter` to send the complete message.
 
 Press `Ctrl-V` to paste text, images, or video files from the clipboard.
 
-If the clipboard contains an image, Kimi Code CLI will automatically add the image as an attachment to the message. After sending the message, the AI can see and analyze the image. If the clipboard contains a video file, its file path is inserted as text into the input box.
+In agent mode, longer pasted text (over 300 characters or 3 lines) is automatically collapsed into a `[Pasted text #n]` placeholder in the input box to keep the interface clean. The full content is still expanded and sent to the model when submitting. When using an external editor (`Ctrl-O`), placeholders are automatically expanded to the original text; unmodified portions are re-collapsed after saving.
+
+If the clipboard contains an image, Kimi Code CLI caches the image to disk and displays it as an `[image:…]` placeholder in the input box. After sending the message, the AI can see and analyze the image. If the clipboard contains a video file, its file path is inserted as text into the input box.
 
 ::: tip
 Image input requires the model to support the `image_in` capability. Video input requires the `video_in` capability.

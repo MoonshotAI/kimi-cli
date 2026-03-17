@@ -43,6 +43,7 @@ kimi --session abc123
 除了对话历史，Kimi Code CLI 还会自动保存和恢复会话的运行状态。当你恢复一个会话时，以下状态会自动还原：
 
 - **审批决策**：YOLO 模式的开关状态、通过 "本会话允许" 批准过的操作类型
+- **Plan 模式**：Plan 模式的开关状态
 - **动态子 Agent**：通过 `CreateSubagent` 工具在会话中创建的子 Agent 定义
 - **额外目录**：通过 `--add-dir` 或 `/add-dir` 添加的工作区目录
 

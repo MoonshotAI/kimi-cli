@@ -1,8 +1,8 @@
-"""Tests for _sanitize_surrogates function in prompt module."""
+"""Tests for sanitize_surrogates function in prompt module."""
 
 import pytest
 
-from kimi_cli.ui.shell.prompt import _sanitize_surrogates
+from kimi_cli.ui.shell.prompt import sanitize_surrogates
 
 
 class TestSanitizeSurrogates:
@@ -18,30 +18,30 @@ class TestSanitizeSurrogates:
             input_text.encode("utf-8")
 
         # Sanitized should encode successfully
-        result = _sanitize_surrogates(input_text)
+        result = sanitize_surrogates(input_text)
         result.encode("utf-8")  # Should not raise
 
     def test_normal_emoji_preserved(self) -> None:
         """Test that normal emoji characters are preserved."""
         input_text = "Hello 🐺 World 🎉"
-        result = _sanitize_surrogates(input_text)
+        result = sanitize_surrogates(input_text)
         assert result == input_text
 
     def test_ascii_text_unchanged(self) -> None:
         """Test that plain ASCII text is unchanged."""
         input_text = "Hello World"
-        result = _sanitize_surrogates(input_text)
+        result = sanitize_surrogates(input_text)
         assert result == input_text
 
     def test_unicode_text_preserved(self) -> None:
         """Test that normal Unicode text is preserved."""
         input_text = "你好世界 Привет мир"
-        result = _sanitize_surrogates(input_text)
+        result = sanitize_surrogates(input_text)
         assert result == input_text
 
     def test_empty_string(self) -> None:
         """Test that empty string returns empty string."""
-        result = _sanitize_surrogates("")
+        result = sanitize_surrogates("")
         assert result == ""
 
     def test_mixed_content_with_surrogates(self) -> None:
@@ -50,7 +50,7 @@ class TestSanitizeSurrogates:
         input_text = "CTL Implementation - Kimi Tasks\nAssigned To: \ud83d\udc3a Kimi"
 
         # Should not raise
-        result = _sanitize_surrogates(input_text)
+        result = sanitize_surrogates(input_text)
         result.encode("utf-8")
 
         # Should preserve the rest of the content

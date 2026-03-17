@@ -11,7 +11,7 @@ import aiofiles
 from kaos.path import KaosPath
 from kosong.message import Message
 
-from kimi_cli.soul.message import system
+from kimi_cli.soul.message import is_system_reminder_message, system
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.path import sanitize_cli_path
 from kimi_cli.wire.types import (
@@ -41,6 +41,11 @@ def _is_checkpoint_message(msg: Message) -> bool:
         return False
     part = msg.content[0]
     return isinstance(part, TextPart) and part.text.strip().startswith("<system>CHECKPOINT")
+
+
+def _is_internal_user_message(msg: Message) -> bool:
+    """Check if a user message is internal bookkeeping rather than real user input."""
+    return _is_checkpoint_message(msg) or is_system_reminder_message(msg)
 
 
 def _extract_tool_call_hint(args_json: str) -> str:
@@ -137,7 +142,7 @@ def _group_into_turns(history: Sequence[Message]) -> list[list[Message]]:
     current: list[Message] = []
 
     for msg in history:
-        if _is_checkpoint_message(msg):
+        if _is_internal_user_message(msg):
             continue
         if msg.role == "user" and current:
             turns.append(current)
@@ -164,7 +169,7 @@ def _format_turn_md(messages: list[Message], turn_number: int) -> str:
     assistant_header_written = False
 
     for msg in messages:
-        if _is_checkpoint_message(msg):
+        if _is_internal_user_message(msg):
             continue
 
         if msg.role == "user":
@@ -224,7 +229,7 @@ def _build_overview(
     # Topic: first real user message text, truncated
     topic = ""
     for msg in history:
-        if msg.role == "user" and not _is_checkpoint_message(msg):
+        if msg.role == "user" and not _is_internal_user_message(msg):
             topic = shorten(message_stringify(msg), width=80, placeholder="…")
             break
 
@@ -415,7 +420,7 @@ def stringify_context_history(history: Sequence[Message]) -> str:
     """
     parts: list[str] = []
     for msg in history:
-        if _is_checkpoint_message(msg):
+        if _is_internal_user_message(msg):
             continue
 
         role_label = msg.role.upper()

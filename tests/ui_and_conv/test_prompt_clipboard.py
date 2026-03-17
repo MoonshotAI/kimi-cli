@@ -3,15 +3,19 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from PIL import Image
 from prompt_toolkit.key_binding import KeyPressEvent
+
+if TYPE_CHECKING:
+    from prompt_toolkit.buffer import Buffer
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import PromptMode
 from kimi_cli.utils.clipboard import ClipboardResult
+from kimi_cli.wire.types import TextPart
 
 
 class _DummyBuffer:
@@ -264,3 +268,75 @@ def test_paste_returns_false_when_no_media(monkeypatch) -> None:
 
     assert result is False
     assert buffer.inserted == []
+
+
+def test_insert_pasted_text_placeholderizes_long_text_in_agent_mode() -> None:
+    ps = _make_prompt_session(PromptMode.AGENT)
+    buffer = _DummyBuffer()
+    long_text = "alpha\nbeta\ngamma"
+
+    ps._insert_pasted_text(cast("Buffer", buffer), long_text)
+
+    assert len(buffer.inserted) == 1
+    inserted = buffer.inserted[0]
+    assert inserted == "[Pasted text #1 +3 lines]"
+
+    user_input = ps._build_user_input(inserted)
+    assert user_input.command == inserted
+    assert user_input.resolved_command == long_text
+    assert user_input.content == [TextPart(text=long_text)]
+
+
+def test_insert_pasted_text_keeps_raw_text_in_shell_mode() -> None:
+    ps = _make_prompt_session(PromptMode.SHELL)
+    buffer = _DummyBuffer()
+    long_text = "alpha\nbeta\ngamma"
+
+    ps._insert_pasted_text(cast("Buffer", buffer), long_text)
+
+    assert buffer.inserted == [long_text]
+
+
+def test_build_user_input_expands_text_placeholders_for_slash_parsing() -> None:
+    ps = _make_prompt_session(PromptMode.AGENT)
+    long_text = "first line\nsecond line\nthird line"
+    token = ps._get_placeholder_manager().maybe_placeholderize_pasted_text(long_text)
+
+    user_input = ps._build_user_input(f"/echo {token}")
+
+    assert user_input.command == f"/echo {token}"
+    assert user_input.resolved_command == f"/echo {long_text}"
+
+
+def test_handle_bracketed_paste_placeholderizes_long_text_in_agent_mode() -> None:
+    ps = _make_prompt_session(PromptMode.AGENT)
+    buffer = _DummyBuffer()
+    app = _DummyApp()
+    event = SimpleNamespace(
+        current_buffer=buffer,
+        app=app,
+        data="line1\r\nline2\r\nline3",
+    )
+
+    ps._handle_bracketed_paste(cast(KeyPressEvent, event))
+
+    assert buffer.inserted == ["[Pasted text #1 +3 lines]"]
+    assert app.invalidated is True
+    user_input = ps._build_user_input(buffer.inserted[0])
+    assert user_input.resolved_command == "line1\nline2\nline3"
+
+
+def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode() -> None:
+    ps = _make_prompt_session(PromptMode.SHELL)
+    buffer = _DummyBuffer()
+    app = _DummyApp()
+    event = SimpleNamespace(
+        current_buffer=buffer,
+        app=app,
+        data="line1\r\nline2\r\nline3",
+    )
+
+    ps._handle_bracketed_paste(cast(KeyPressEvent, event))
+
+    assert buffer.inserted == ["line1\nline2\nline3"]
+    assert app.invalidated is True

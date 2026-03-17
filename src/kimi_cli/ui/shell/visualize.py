@@ -5,10 +5,18 @@ import json
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
+from io import StringIO
 from typing import Any, NamedTuple, cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
+from prompt_toolkit.application.run_in_terminal import run_in_terminal
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.key_binding import KeyPressEvent
+from rich.console import Console as RichConsole
 from rich.console import Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
@@ -20,8 +28,12 @@ from rich.text import Text
 
 from kimi_cli.soul import format_context_status
 from kimi_cli.tools import extract_key_argument
-from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.console import NEUTRAL_MARKDOWN_THEME, console
+from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
+from kimi_cli.ui.shell.prompt import (
+    CustomPromptSession,
+)
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.diff import format_unified_diff
 from kimi_cli.utils.logging import logger
@@ -44,6 +56,7 @@ from kimi_cli.wire.types import (
     QuestionRequest,
     ShellDisplayBlock,
     StatusUpdate,
+    SteerInput,
     StepBegin,
     StepInterrupted,
     SubagentEvent,
@@ -72,6 +85,8 @@ async def visualize(
     *,
     initial_status: StatusUpdate,
     cancel_event: asyncio.Event | None = None,
+    prompt_session: CustomPromptSession | None = None,
+    steer: Callable[[str | list[ContentPart]], None] | None = None,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -81,7 +96,15 @@ async def visualize(
         initial_status: Initial status snapshot
         cancel_event: Event that can be set (e.g., by ESC key) to cancel the run
     """
-    view = _LiveView(initial_status, cancel_event)
+    if prompt_session is not None and steer is not None:
+        view = _PromptLiveView(
+            initial_status,
+            prompt_session=prompt_session,
+            steer=steer,
+            cancel_event=cancel_event,
+        )
+    else:
+        view = _LiveView(initial_status, cancel_event)
     await view.visualize_loop(wire)
 
 
@@ -808,6 +831,21 @@ class _StatusBlock:
             )
 
 
+def _render_renderable_to_ansi(renderable: RenderableType, *, columns: int) -> str:
+    width = max(20, columns)
+    buf = StringIO()
+    render_console = RichConsole(
+        file=buf,
+        force_terminal=True,
+        color_system="truecolor",
+        width=width,
+        theme=NEUTRAL_MARKDOWN_THEME,
+        highlight=False,
+    )
+    render_console.print(renderable, end="")
+    return buf.getvalue()
+
+
 @asynccontextmanager
 async def _keyboard_listener(
     handler: Callable[[KeyboardListener, KeyEvent], Awaitable[None]],
@@ -874,29 +912,13 @@ class _LiveView:
             async def keyboard_handler(listener: KeyboardListener, event: KeyEvent) -> None:
                 # Handle Ctrl+E specially - pause Live while the pager is active
                 if event == KeyEvent.CTRL_E:
-                    if (
-                        self._current_approval_request_panel
-                        and self._current_approval_request_panel.has_expandable_content
-                    ):
+                    if self.has_expandable_panel():
                         await listener.pause()
                         live.stop()
                         try:
-                            _show_approval_in_pager(self._current_approval_request_panel)
+                            self._show_expandable_panel_content()
                         finally:
                             # Reset live render shape so the next refresh re-anchors cleanly.
-                            self._reset_live_shape(live)
-                            live.start()
-                            live.update(self.compose(), refresh=True)
-                            await listener.resume()
-                    elif (
-                        self._current_question_panel
-                        and self._current_question_panel.has_expandable_content
-                    ):
-                        await listener.pause()
-                        live.stop()
-                        try:
-                            _show_question_body_in_pager(self._current_question_panel)
-                        finally:
                             self._reset_live_shape(live)
                             live.start()
                             live.update(self.compose(), refresh=True)
@@ -904,11 +926,9 @@ class _LiveView:
                     return
 
                 # Handle ENTER/SPACE on question panel when "Other" is selected
-                panel = self._current_question_panel
-                _is_submit_key = event == KeyEvent.ENTER or (
-                    event == KeyEvent.SPACE and panel is not None and not panel.is_multi_select
-                )
-                if _is_submit_key and panel is not None and panel.should_prompt_other_input():
+                if self._should_prompt_question_other_for_key(event):
+                    panel = self._current_question_panel
+                    assert panel is not None
                     question_text = panel.current_question_text
                     await listener.pause()
                     live.stop()
@@ -919,10 +939,7 @@ class _LiveView:
                         live.start()
                         await listener.resume()
 
-                    all_done = panel.submit_other(text)
-                    if all_done:
-                        panel.request.resolve(panel.get_answers())
-                        self.show_next_question_request()
+                    self._submit_question_other_text(text)
                     live.update(self.compose(), refresh=True)
                     return
 
@@ -953,7 +970,51 @@ class _LiveView:
     def refresh_soon(self) -> None:
         self._need_recompose = True
 
-    def compose(self) -> RenderableType:
+    def has_expandable_panel(self) -> bool:
+        return (
+            self._expandable_approval_panel() is not None
+            or self._expandable_question_panel() is not None
+        )
+
+    def _expandable_approval_panel(self) -> _ApprovalRequestPanel | None:
+        panel = self._current_approval_request_panel
+        if panel is not None and panel.has_expandable_content:
+            return panel
+        return None
+
+    def _expandable_question_panel(self) -> _QuestionRequestPanel | None:
+        panel = self._current_question_panel
+        if panel is not None and panel.has_expandable_content:
+            return panel
+        return None
+
+    def _show_expandable_panel_content(self) -> bool:
+        if approval_panel := self._expandable_approval_panel():
+            _show_approval_in_pager(approval_panel)
+            return True
+        if question_panel := self._expandable_question_panel():
+            _show_question_body_in_pager(question_panel)
+            return True
+        return False
+
+    def _should_prompt_question_other_for_key(self, key: KeyEvent) -> bool:
+        panel = self._current_question_panel
+        if panel is None or not panel.should_prompt_other_input():
+            return False
+        return key == KeyEvent.ENTER or (key == KeyEvent.SPACE and not panel.is_multi_select)
+
+    def _submit_question_other_text(self, text: str) -> None:
+        panel = self._current_question_panel
+        if panel is None:
+            return
+
+        all_done = panel.submit_other(text)
+        if all_done:
+            panel.request.resolve(panel.get_answers())
+            self.show_next_question_request()
+        self.refresh_soon()
+
+    def compose(self, *, include_status: bool = True) -> RenderableType:
         """Compose the live view display content."""
         blocks: list[RenderableType] = []
         if self._mcp_loading_spinner is not None:
@@ -974,7 +1035,8 @@ class _LiveView:
         for notification in self._live_notification_blocks:
             blocks.append(notification.compose())
 
-        blocks.append(self._status_block.render())
+        if include_status:
+            blocks.append(self._status_block.render())
         return Group(*blocks)
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
@@ -996,6 +1058,14 @@ class _LiveView:
         match msg:
             case TurnBegin():
                 self.flush_content()
+            case SteerInput(user_input=user_input):
+                self.cleanup(is_interrupt=False)
+                content: list[ContentPart]
+                if isinstance(user_input, list):
+                    content = list(user_input)
+                else:
+                    content = [TextPart(text=user_input)]
+                console.print(render_user_echo(Message(role="user", content=content)))
             case TurnEnd():
                 pass
             case CompactionBegin():
@@ -1326,3 +1396,205 @@ class _LiveView:
                 # ignore other events for now
                 # TODO: may need to handle multi-level nested subagents
                 pass
+
+
+class _PromptLiveView(_LiveView):
+    _KEY_MAP: dict[str, KeyEvent] = {
+        "up": KeyEvent.UP,
+        "down": KeyEvent.DOWN,
+        "left": KeyEvent.LEFT,
+        "right": KeyEvent.RIGHT,
+        "tab": KeyEvent.TAB,
+        "enter": KeyEvent.ENTER,
+        "space": KeyEvent.SPACE,
+        "escape": KeyEvent.ESCAPE,
+        "1": KeyEvent.NUM_1,
+        "2": KeyEvent.NUM_2,
+        "3": KeyEvent.NUM_3,
+        "4": KeyEvent.NUM_4,
+        "5": KeyEvent.NUM_5,
+    }
+
+    def __init__(
+        self,
+        initial_status: StatusUpdate,
+        *,
+        prompt_session: CustomPromptSession,
+        steer: Callable[[str | list[ContentPart]], None],
+        cancel_event: asyncio.Event | None = None,
+    ) -> None:
+        super().__init__(initial_status, cancel_event)
+        self._prompt_session = prompt_session
+        self._steer = steer
+        self._awaiting_question_other_input = False
+        self._pending_local_steers: deque[str | list[ContentPart]] = deque()
+        self._turn_ended = False
+
+    async def visualize_loop(self, wire: WireUISide):
+        steer_task = asyncio.create_task(self._steer_loop())
+        try:
+            while True:
+                try:
+                    msg = await wire.receive()
+                except QueueShutDown:
+                    self.cleanup(is_interrupt=False)
+                    self._flush_prompt_refresh()
+                    break
+
+                if isinstance(msg, StepInterrupted):
+                    self.cleanup(is_interrupt=True)
+                    self._flush_prompt_refresh()
+                    break
+
+                if isinstance(msg, TurnEnd):
+                    self._turn_ended = True
+                    self.cleanup(is_interrupt=False)
+                    self._flush_prompt_refresh()
+                    break
+
+                self.dispatch_wire_message(msg)
+                self._flush_prompt_refresh()
+        finally:
+            steer_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await steer_task
+            self._awaiting_question_other_input = False
+            self._pending_local_steers.clear()
+            self._turn_ended = False
+            self._prompt_session.invalidate()
+
+    async def _steer_loop(self) -> None:
+        while True:
+            try:
+                user_input = await self._prompt_session.prompt_steer(self)
+            except EOFError:
+                if self._cancel_event is not None:
+                    self._cancel_event.set()
+                return
+            except KeyboardInterrupt:
+                if self._cancel_event is not None:
+                    self._cancel_event.set()
+                return
+
+            if not user_input:
+                continue
+
+            console.print(render_user_echo_text(user_input.command))
+            self._pending_local_steers.append(list(user_input.content))
+            self._steer(user_input.content)
+
+    def dispatch_wire_message(self, msg: WireMessage) -> None:
+        if isinstance(msg, SteerInput) and self._pending_local_steers:
+            pending = self._pending_local_steers[0]
+            if pending == msg.user_input:
+                self._pending_local_steers.popleft()
+                return
+        super().dispatch_wire_message(msg)
+
+    def render_running_prompt_body(self, columns: int) -> ANSI:
+        if self._turn_ended:
+            return ANSI("")
+        renderable = self.compose(include_status=False)
+        body = _render_renderable_to_ansi(renderable, columns=columns).rstrip("\n")
+        lines = [body] if body else [""]
+        if self._awaiting_question_other_input:
+            lines.append("\x1b[2mEnter the custom answer, then press Enter.\x1b[0m")
+        return ANSI("\n".join(lines))
+
+    def running_prompt_placeholder(self) -> str | None:
+        return None
+
+    def should_handle_running_prompt_key(self, key: str) -> bool:
+        if self._turn_ended:
+            return False
+        if key == "c-e":
+            return self.has_expandable_panel()
+        if self._awaiting_question_other_input:
+            return key in {"enter", "escape"}
+        if key == "escape":
+            return self._cancel_event is not None or self._current_question_panel is not None
+        if self._current_question_panel is not None:
+            return key in {
+                "up",
+                "down",
+                "left",
+                "right",
+                "tab",
+                "space",
+                "enter",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+            }
+        if self._current_approval_request_panel is not None:
+            return key in {"up", "down", "enter", "1", "2", "3"}
+        return False
+
+    def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
+        if key == "c-e":
+            event.app.create_background_task(self._show_panel_in_pager())
+            return
+
+        if self._awaiting_question_other_input:
+            if key == "enter":
+                self._submit_question_other_input(event.current_buffer)
+            elif key == "escape":
+                self._clear_buffer(event.current_buffer)
+                self._awaiting_question_other_input = False
+                self.refresh_soon()
+            self._flush_prompt_refresh()
+            return
+
+        mapped = self._KEY_MAP.get(key)
+        if mapped is not None and self._should_prompt_question_other_for_key(mapped):
+            text = event.current_buffer.text.strip()
+            if text:
+                self._submit_question_other_input(event.current_buffer)
+            else:
+                self._clear_buffer(event.current_buffer)
+                self._awaiting_question_other_input = True
+                self.refresh_soon()
+                self._flush_prompt_refresh()
+            return
+
+        if mapped is None:
+            return
+        if (
+            self._current_question_panel is not None
+            or self._current_approval_request_panel is not None
+        ):
+            self._clear_buffer(event.current_buffer)
+        self.dispatch_keyboard_event(mapped)
+        self._flush_prompt_refresh()
+
+    async def _show_panel_in_pager(self) -> None:
+        await run_in_terminal(self._show_expandable_panel_content)
+        self._prompt_session.invalidate()
+
+    def _submit_question_other_input(self, buffer: Buffer) -> None:
+        panel = self._current_question_panel
+        if panel is None:
+            self._clear_buffer(buffer)
+            self._awaiting_question_other_input = False
+            return
+
+        text = buffer.text.strip()
+        self._clear_buffer(buffer)
+        self._awaiting_question_other_input = False
+        self._submit_question_other_text(text)
+
+    @staticmethod
+    def _clear_buffer(buffer: Buffer) -> None:
+        if buffer.text:
+            buffer.document = Document(text="", cursor_position=0)
+
+    def _flush_prompt_refresh(self) -> None:
+        if self._need_recompose:
+            self._prompt_session.invalidate()
+            self._need_recompose = False
+
+    def cleanup(self, is_interrupt: bool) -> None:
+        self._awaiting_question_other_input = False
+        super().cleanup(is_interrupt)
