@@ -1,20 +1,24 @@
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
-from typing import override
+from typing import Self, override
 
 import kaos
 from kaos import AsyncReadable
 from kosong.tooling import CallableTool2, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from kimi_cli.background import TaskView, format_task
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
-from kimi_cli.tools.display import ShellDisplayBlock
+from kimi_cli.soul.toolset import get_current_tool_call_or_none
+from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
 from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.subprocess_env import get_clean_env
 
-MAX_TIMEOUT = 5 * 60
+MAX_FOREGROUND_TIMEOUT = 5 * 60
+MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
 
 
 class Params(BaseModel):
@@ -26,15 +30,36 @@ class Params(BaseModel):
         ),
         default=60,
         ge=1,
-        le=MAX_TIMEOUT,
+        le=MAX_BACKGROUND_TIMEOUT,
     )
+    run_in_background: bool = Field(
+        default=False,
+        description="Whether to run the command as a background task.",
+    )
+    description: str = Field(
+        default="",
+        description=(
+            "A short description for the background task. Required when run_in_background=true."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_background_fields(self) -> Self:
+        if self.run_in_background and not self.description.strip():
+            raise ValueError("description is required when run_in_background is true")
+        if not self.run_in_background and self.timeout > MAX_FOREGROUND_TIMEOUT:
+            raise ValueError(
+                f"timeout must be <= {MAX_FOREGROUND_TIMEOUT}s for foreground commands; "
+                f"use run_in_background=true for longer timeouts (up to {MAX_BACKGROUND_TIMEOUT}s)"
+            )
+        return self
 
 
 class Shell(CallableTool2[Params]):
     name: str = "Shell"
     params: type[Params] = Params
 
-    def __init__(self, approval: Approval, environment: Environment):
+    def __init__(self, approval: Approval, environment: Environment, runtime: Runtime):
         is_powershell = environment.shell_name == "Windows PowerShell"
         super().__init__(
             description=load_desc(
@@ -45,6 +70,7 @@ class Shell(CallableTool2[Params]):
         self._approval = approval
         self._is_powershell = is_powershell
         self._shell_path = environment.shell_path
+        self._runtime = runtime
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -52,6 +78,9 @@ class Shell(CallableTool2[Params]):
 
         if not params.command:
             return builder.error("Command cannot be empty.", brief="Empty command")
+
+        if params.run_in_background:
+            return await self._run_in_background(params)
 
         if not await self._approval.request(
             self.name,
@@ -91,6 +120,74 @@ class Shell(CallableTool2[Params]):
                 f"Command killed by timeout ({params.timeout}s)",
                 brief=f"Killed by timeout ({params.timeout}s)",
             )
+
+    async def _run_in_background(self, params: Params) -> ToolReturnValue:
+        tool_call = get_current_tool_call_or_none()
+        if tool_call is None:
+            return ToolResultBuilder().error(
+                "Background shell requires a tool call context.",
+                brief="No tool call context",
+            )
+
+        if not await self._approval.request(
+            self.name,
+            "run background command",
+            f"Run background command `{params.command}`",
+            display=[
+                ShellDisplayBlock(
+                    language="powershell" if self._is_powershell else "bash",
+                    command=params.command,
+                )
+            ],
+        ):
+            return ToolRejectedError()
+
+        try:
+            view = self._runtime.background_tasks.create_bash_task(
+                command=params.command,
+                description=params.description.strip(),
+                timeout_s=params.timeout,
+                tool_call_id=tool_call.id,
+                shell_name="Windows PowerShell" if self._is_powershell else "bash",
+                shell_path=str(self._shell_path),
+                cwd=str(self._runtime.session.work_dir),
+            )
+        except Exception as exc:
+            builder = ToolResultBuilder()
+            return builder.error(f"Failed to start background task: {exc}", brief="Start failed")
+
+        return self._background_ok(view)
+
+    def _background_ok(self, view: TaskView) -> ToolReturnValue:
+        builder = ToolResultBuilder()
+        builder.write(
+            "\n".join(
+                [
+                    format_task(view, include_command=True),
+                    "automatic_notification: true",
+                    "next_step: You will be automatically notified when it completes.",
+                    (
+                        "next_step: Use TaskOutput with this task_id "
+                        "if you need progress or want to wait."
+                    ),
+                    "next_step: Use TaskStop only if the task must be cancelled.",
+                    (
+                        "human_shell_hint: For users in the interactive shell, "
+                        "the only task-management slash command is /task. "
+                        "Do not suggest /task list, /task output, /task stop, or /tasks."
+                    ),
+                ]
+            )
+        )
+        builder.display(
+            BackgroundTaskDisplayBlock(
+                task_id=view.spec.id,
+                kind=view.spec.kind,
+                status=view.runtime.status,
+                description=view.spec.description,
+            )
+        )
+        return builder.ok("Background task started", brief=f"Started {view.spec.id}")
 
     async def _run_shell_command(
         self,

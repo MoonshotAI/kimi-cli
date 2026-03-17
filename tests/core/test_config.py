@@ -34,6 +34,20 @@ def test_default_config_dump():
                 "reserved_context_size": 50000,
                 "compaction_trigger_ratio": 0.85,
             },
+            "background": {
+                "max_running_tasks": 4,
+                "read_max_bytes": 30000,
+                "notification_tail_lines": 20,
+                "notification_tail_chars": 3000,
+                "wait_poll_interval_ms": 500,
+                "worker_heartbeat_interval_ms": 5000,
+                "worker_stale_after_ms": 15000,
+                "kill_grace_period_ms": 2000,
+                "keep_alive_on_exit": False,
+            },
+            "notifications": {
+                "claim_stale_after_ms": 15000,
+            },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
         }

@@ -12,6 +12,7 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
@@ -469,6 +470,23 @@ async def list_sessions(app: Shell, args: str):
 
     console.print(f"[green]Switching to session {selection}...[/green]")
     raise Reload(session_id=selection)
+
+
+@registry.command(name="task")
+@shell_mode_registry.command(name="task")
+async def task(app: Shell, args: str):
+    """Browse and manage background tasks"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    if args.strip():
+        console.print('[yellow]Usage: "/task" opens the interactive task browser.[/yellow]')
+        return
+    if soul.runtime.role != "root":
+        console.print("[yellow]Background tasks are only available from the root agent.[/yellow]")
+        return
+
+    await TaskBrowserApp(soul).run()
 
 
 @registry.command

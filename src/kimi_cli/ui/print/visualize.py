@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Protocol
 
 import rich
@@ -10,6 +9,7 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ContentPart,
+    Notification,
     StepBegin,
     StepInterrupted,
     ToolCall,
@@ -38,70 +38,71 @@ class TextPrinter(Printer):
 
 
 class JsonPrinter(Printer):
-    @dataclass(slots=True)
-    class _ToolCallState:
-        tool_call: ToolCall
-        tool_result: ToolResult | None
-
     def __init__(self) -> None:
         self._content_buffer: list[ContentPart] = []
         """The buffer to merge content parts."""
-        self._tool_call_buffer: dict[str, JsonPrinter._ToolCallState] = {}
-        """The buffer to store tool calls and their results."""
+        self._tool_call_buffer: list[ToolCall] = []
+        """The buffer to store the current assistant message's tool calls."""
+        self._pending_notifications: list[Notification] = []
+        """Notifications buffered until the current assistant message reaches a safe boundary."""
         self._last_tool_call: ToolCall | None = None
 
     def feed(self, msg: WireMessage) -> None:
         match msg:
             case StepBegin() | StepInterrupted():
                 self.flush()
+            case Notification() as notification:
+                if self._content_buffer or self._tool_call_buffer:
+                    self._pending_notifications.append(notification)
+                else:
+                    self._flush_assistant_message()
+                    self._flush_notifications()
+                    self._emit_notification(notification)
             case ContentPart() as part:
                 # merge with previous parts as much as possible
                 _merge_content(self._content_buffer, part)
             case ToolCall() as call:
-                self._tool_call_buffer[call.id] = JsonPrinter._ToolCallState(
-                    tool_call=call, tool_result=None
-                )
+                self._tool_call_buffer.append(call)
                 self._last_tool_call = call
             case ToolCallPart() as part:
                 if self._last_tool_call is None:
                     return
                 assert self._last_tool_call.merge_in_place(part)
             case ToolResult() as result:
-                state = self._tool_call_buffer.get(result.tool_call_id)
-                if state is None:
-                    return
-                state.tool_result = result
+                self._flush_assistant_message()
+                self._flush_notifications()
+                message = tool_result_to_message(result)
+                print(message.model_dump_json(exclude_none=True), flush=True)
             case _:
                 # ignore other messages
                 pass
 
-    def flush(self) -> None:
+    def _flush_assistant_message(self) -> None:
         if not self._content_buffer and not self._tool_call_buffer:
             return
-
-        tool_calls: list[ToolCall] = []
-        tool_results: list[ToolResult] = []
-        for state in self._tool_call_buffer.values():
-            if state.tool_result is None:
-                # this should only happen when interrupted
-                continue
-            tool_calls.append(state.tool_call)
-            tool_results.append(state.tool_result)
 
         message = Message(
             role="assistant",
             content=self._content_buffer,
-            tool_calls=tool_calls or None,
+            tool_calls=self._tool_call_buffer or None,
         )
         print(message.model_dump_json(exclude_none=True), flush=True)
 
-        for result in tool_results:
-            # FIXME: this assumes the way how the soul convert `ToolResult` to `Message`
-            message = tool_result_to_message(result)
-            print(message.model_dump_json(exclude_none=True), flush=True)
-
         self._content_buffer.clear()
         self._tool_call_buffer.clear()
+        self._last_tool_call = None
+
+    def _emit_notification(self, notification: Notification) -> None:
+        print(notification.model_dump_json(exclude_none=True), flush=True)
+
+    def _flush_notifications(self) -> None:
+        for notification in self._pending_notifications:
+            self._emit_notification(notification)
+        self._pending_notifications.clear()
+
+    def flush(self) -> None:
+        self._flush_assistant_message()
+        self._flush_notifications()
 
 
 class FinalOnlyTextPrinter(Printer):

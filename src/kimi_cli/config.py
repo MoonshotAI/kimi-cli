@@ -88,6 +88,29 @@ class LoopControl(BaseModel):
     or when context_tokens + reserved_context_size >= max_context_size."""
 
 
+class BackgroundConfig(BaseModel):
+    """Background task runtime configuration."""
+
+    max_running_tasks: int = Field(default=4, ge=1)
+    read_max_bytes: int = Field(default=30_000, ge=1024)
+    notification_tail_lines: int = Field(default=20, ge=1)
+    notification_tail_chars: int = Field(default=3_000, ge=256)
+    wait_poll_interval_ms: int = Field(default=500, ge=50)
+    worker_heartbeat_interval_ms: int = Field(default=5_000, ge=100)
+    worker_stale_after_ms: int = Field(default=15_000, ge=1000)
+    kill_grace_period_ms: int = Field(default=2_000, ge=100)
+    keep_alive_on_exit: bool = Field(
+        default=False,
+        description="Keep background tasks alive when CLI exits. Default: kill on exit.",
+    )
+
+
+class NotificationConfig(BaseModel):
+    """Notification runtime configuration."""
+
+    claim_stale_after_ms: int = Field(default=15_000, ge=1000)
+
+
 class MoonshotSearchConfig(BaseModel):
     """Moonshot Search configuration."""
 
@@ -171,6 +194,12 @@ class Config(BaseModel):
         default_factory=dict, description="List of LLM providers"
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
+    background: BackgroundConfig = Field(
+        default_factory=BackgroundConfig, description="Background task configuration"
+    )
+    notifications: NotificationConfig = Field(
+        default_factory=NotificationConfig, description="Notification configuration"
+    )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
 

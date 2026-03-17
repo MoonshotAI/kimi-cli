@@ -25,6 +25,7 @@ from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from kimi_cli.tools.display import (
+    BackgroundTaskDisplayBlock,
     DiffDisplayBlock,
     ShellDisplayBlock,
     TodoDisplayBlock,
@@ -128,6 +129,21 @@ class StatusUpdate(BaseModel):
     """The message ID of the current step."""
     plan_mode: bool | None = None
     """Whether plan mode (read-only) is active. None means no change."""
+
+
+class Notification(BaseModel):
+    """A generic system notification for UI and client consumption."""
+
+    id: str
+    category: str
+    type: str
+    source_kind: str
+    source_id: str
+    title: str
+    body: str
+    severity: str
+    created_at: float
+    payload: dict[str, JsonType] = Field(default_factory=dict)
 
 
 class SubagentEvent(BaseModel):
@@ -387,6 +403,7 @@ type Event = (
     | MCPLoadingBegin
     | MCPLoadingEnd
     | StatusUpdate
+    | Notification
     | ContentPart
     | ToolCall
     | ToolCallPart
@@ -473,6 +490,7 @@ __all__ = [
     "MCPLoadingBegin",
     "MCPLoadingEnd",
     "StatusUpdate",
+    "Notification",
     "ContentPart",
     "ToolCall",
     "ToolCallPart",
@@ -506,4 +524,5 @@ __all__ = [
     "TodoDisplayBlock",
     "TodoDisplayItem",
     "ShellDisplayBlock",
+    "BackgroundTaskDisplayBlock",
 ]
