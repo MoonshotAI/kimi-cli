@@ -78,8 +78,4 @@ def test_render_mcp_servers_shows_final_statuses() -> None:
     assert "chrome-devtools (failed)" in output
 
     prompt_text = "".join(text for _, text in render_mcp_prompt(snapshot, now=0.0))
-    assert "MCP Servers: 1/2 connected, 2 tools" in prompt_text
-    assert "context7 (2 tools)" in prompt_text
-    assert "chrome-devtools (failed)" in prompt_text
-    assert "resolve-library-id" not in prompt_text
-    assert "query-docs" not in prompt_text
+    assert prompt_text == ""

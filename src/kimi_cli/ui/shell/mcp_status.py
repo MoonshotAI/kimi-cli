@@ -85,6 +85,9 @@ def render_mcp_console(snapshot: MCPStatusSnapshot) -> RenderableType:
 
 
 def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) -> FormattedText:
+    if not snapshot.loading:
+        return FormattedText([])
+
     fragments: list[tuple[str, str]] = []
     prefix = f"{_spinner_frame(now)} " if snapshot.loading else ""
     fragments.append(
