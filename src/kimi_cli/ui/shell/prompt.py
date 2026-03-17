@@ -1567,7 +1567,7 @@ class CustomPromptSession:
                 mode += f" ({', '.join(mode_details)})"
         status = self._status_provider()
         if status.yolo_enabled:
-            fragments.extend([("bold fg:#ffff00", "yolo"), ("", " " * 2)])
+            fragments.extend([("bold fg:ansired", "yolo"), ("", " " * 2)])
             columns -= len("yolo") + 2
         if status.plan_mode:
             fragments.extend([("bold fg:#00aaff", "plan"), ("", " " * 2)])
