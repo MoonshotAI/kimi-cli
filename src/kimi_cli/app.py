@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import warnings
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -71,6 +71,8 @@ class KimiCLI:
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
         max_ralph_iterations: int | None = None,
+        startup_progress: Callable[[str], None] | None = None,
+        defer_mcp_loading: bool = False,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -93,6 +95,10 @@ class KimiCLI:
                 Defaults to None.
             max_ralph_iterations (int | None, optional): Extra iterations after the first turn in
                 Ralph mode. Defaults to None.
+            startup_progress (Callable[[str], None] | None, optional): Progress callback used by
+                interactive startup UI. Defaults to None.
+            defer_mcp_loading (bool, optional): Defer MCP startup until the interactive shell is
+                ready. Defaults to False.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -105,6 +111,9 @@ class KimiCLI:
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
                 connected.
         """
+        if startup_progress is not None:
+            startup_progress("Loading configuration...")
+
         config = config if isinstance(config, Config) else load_config(config)
         if max_steps_per_turn is not None:
             config.loop_control.max_steps_per_turn = max_steps_per_turn
@@ -156,12 +165,25 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             logger.info("Thinking mode: {thinking}", thinking=thinking)
 
+        if startup_progress is not None:
+            startup_progress("Scanning workspace...")
+
         runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir)
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
-        agent = await load_agent(agent_file, runtime, mcp_configs=mcp_configs or [])
+        if startup_progress is not None:
+            startup_progress("Loading agent...")
 
+        agent = await load_agent(
+            agent_file,
+            runtime,
+            mcp_configs=mcp_configs or [],
+            start_mcp_loading=not defer_mcp_loading,
+        )
+
+        if startup_progress is not None:
+            startup_progress("Restoring conversation...")
         context = Context(session.context_file)
         await context.restore()
 
