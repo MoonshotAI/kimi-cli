@@ -123,7 +123,11 @@ class Shell(CallableTool2[Params]):
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:
         tool_call = get_current_tool_call_or_none()
-        assert tool_call is not None, "Background shell requires a tool call context"
+        if tool_call is None:
+            return ToolResultBuilder().error(
+                "Background shell requires a tool call context.",
+                brief="No tool call context",
+            )
 
         if not await self._approval.request(
             self.name,
