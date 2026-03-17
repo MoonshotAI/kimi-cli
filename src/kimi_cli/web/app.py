@@ -17,9 +17,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from kimi_cli import logger
 from starlette.responses import HTMLResponse
 
+from kimi_cli import logger
 from kimi_cli.web.api import (
     config_router,
     open_in_router,

@@ -678,6 +678,7 @@ def kimi(
 
         run_web_server(open_browser=True)
 
+
 @cli.command()
 def login(
     json: bool = typer.Option(
@@ -847,6 +848,7 @@ def web_worker(session_id: str) -> None:
 
     enable_logging(debug=False)
     asyncio.run(run_worker(parsed_session_id))
+
 
 if __name__ == "__main__":
     import sys

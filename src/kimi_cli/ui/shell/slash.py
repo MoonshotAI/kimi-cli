@@ -42,6 +42,7 @@ def ensure_kimi_soul(app: Shell) -> KimiSoul | None:
         return None
     return app.soul
 
+
 @registry.command(aliases=["quit"])
 @shell_mode_registry.command(aliases=["quit"])
 def exit(app: Shell, args: str):

@@ -25,9 +25,7 @@ def render_mcp_console(snapshot: MCPStatusSnapshot) -> RenderableType:
         color = _status_color(server.status)
         server_text = f"[{color}]{server.name}[/{color}]"
         if server.status == "unauthorized":
-            server_text += (
-                f" [grey50](unauthorized - run: kimi mcp auth {server.name})[/grey50]"
-            )
+            server_text += f" [grey50](unauthorized - run: kimi mcp auth {server.name})[/grey50]"
         elif server.status != "connected":
             server_text += f" [grey50]({server.status})[/grey50]"
 
