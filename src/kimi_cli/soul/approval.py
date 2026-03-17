@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
@@ -25,17 +27,41 @@ type Response = Literal["approve", "approve_for_session", "reject"]
 
 
 class ApprovalState:
-    def __init__(self, yolo: bool = False):
+    def __init__(self, yolo: bool = False, session_dir: Path | None = None):
         self.yolo = yolo
-        self.auto_approve_actions: set[str] = set()  # TODO: persist across sessions
+        self.auto_approve_actions: set[str] = set()
         """Set of action names that should automatically be approved."""
+        self._state_file = session_dir / "approval_state.json" if session_dir else None
+        self._load()
+
+    def _load(self) -> None:
+        if self._state_file is None or not self._state_file.exists():
+            return
+        try:
+            data = json.loads(self._state_file.read_text(encoding="utf-8"))
+            actions = data.get("auto_approve_actions", [])
+            if isinstance(actions, list):
+                self.auto_approve_actions = set(actions)
+        except Exception:
+            logger.debug("Failed to load approval state, starting fresh")
+
+    def _save(self) -> None:
+        if self._state_file is None:
+            return
+        try:
+            self._state_file.write_text(
+                json.dumps({"auto_approve_actions": sorted(self.auto_approve_actions)}),
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.debug("Failed to save approval state")
 
 
 class Approval:
-    def __init__(self, yolo: bool = False, *, state: ApprovalState | None = None):
+    def __init__(self, yolo: bool = False, *, state: ApprovalState | None = None, session_dir: Path | None = None):
         self._request_queue = Queue[Request]()
         self._requests: dict[str, tuple[Request, asyncio.Future[bool]]] = {}
-        self._state = state or ApprovalState(yolo=yolo)
+        self._state = state or ApprovalState(yolo=yolo, session_dir=session_dir)
 
     def share(self) -> Approval:
         """Create a new approval queue that shares state (yolo + auto-approve)."""
@@ -141,6 +167,7 @@ class Approval:
                 future.set_result(True)
             case "approve_for_session":
                 self._state.auto_approve_actions.add(request.action)
+                self._state._save()
                 future.set_result(True)
             case "reject":
                 future.set_result(False)
