@@ -48,12 +48,15 @@ def parse_wire_file_metadata(line: str) -> WireFileMetadata | None:
         return None
 
 
-def parse_wire_file_line(line: str) -> WireFileMetadata | WireMessageRecord:
+def parse_wire_file_line(line: str) -> WireFileMetadata | WireMessageRecord | None:
     """Parse a wire file line into metadata or a message record."""
     metadata = parse_wire_file_metadata(line)
     if metadata is not None:
         return metadata
-    return WireMessageRecord.model_validate_json(line)
+    try:
+        return WireMessageRecord.model_validate_json(line)
+    except (ValidationError, ValueError):
+        return None
 
 
 @dataclass(slots=True)
@@ -101,12 +104,8 @@ class WireFile:
                     line = line.strip()
                     if not line:
                         continue
-                    try:
-                        parsed = parse_wire_file_line(line)
-                    except Exception:
-                        logger.exception(
-                            "Failed to parse line in wire file {file}:", file=self.path
-                        )
+                    parsed = parse_wire_file_line(line)
+                    if parsed is None:
                         continue
                     if isinstance(parsed, WireFileMetadata):
                         continue

@@ -782,6 +782,24 @@ def acp():
     acp_main()
 
 
+@cli.command(name="build-web")
+def build_web(
+    root: Annotated[
+        Path,
+        typer.Option(
+            "--root",
+            help="Repository root containing web/ and pyproject.toml",
+        ),
+    ] = Path("."),
+) -> None:
+    """Build and sync the web UI into src/kimi_cli/web/static."""
+    from kimi_cli.utils.web_build import build_web_ui
+
+    code = build_web_ui(root.resolve())
+    if code != 0:
+        raise typer.Exit(code=code)
+
+
 @cli.command(name="__web-worker", hidden=True)
 def web_worker(session_id: str) -> None:
     """Run web worker subprocess (internal)."""

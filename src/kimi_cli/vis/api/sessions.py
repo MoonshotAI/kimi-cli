@@ -123,6 +123,9 @@ def _scan_session_dir(
                     except Exception:
                         logger.debug("Skipped malformed line in %s", wire_path)
                         continue
+                    if parsed is None:
+                        logger.debug("Skipped malformed line in %s", wire_path)
+                        continue
                     if isinstance(parsed, WireFileMetadata):
                         continue
                     if parsed.message.type == "TurnBegin":
@@ -225,6 +228,9 @@ async def get_wire_events(work_dir_hash: str, session_id: str) -> dict[str, Any]
             try:
                 parsed = parse_wire_file_line(line)
             except Exception:
+                logger.debug("Skipped malformed line in %s", wire_path)
+                continue
+            if parsed is None:
                 logger.debug("Skipped malformed line in %s", wire_path)
                 continue
             if isinstance(parsed, WireFileMetadata):
@@ -337,6 +343,9 @@ async def get_session_summary(work_dir_hash: str, session_id: str) -> dict[str, 
             try:
                 parsed = parse_wire_file_line(line)
             except Exception:
+                logger.debug("Skipped malformed line in %s", wire_path)
+                continue
+            if parsed is None:
                 logger.debug("Skipped malformed line in %s", wire_path)
                 continue
             if isinstance(parsed, WireFileMetadata):
