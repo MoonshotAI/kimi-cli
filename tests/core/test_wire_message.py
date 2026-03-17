@@ -565,7 +565,14 @@ def test_wire_message_type_alias():
 
     module = kimi_cli.wire.types
     # Helper types that are BaseModel subclasses but not WireMessage types
-    _NON_WIRE_TYPES = {WireMessageEnvelope, QuestionOption, QuestionItem, QuestionResponse}
+    _NON_WIRE_TYPES = {
+        WireMessageEnvelope,
+        MCPServerSnapshot,
+        MCPStatusSnapshot,
+        QuestionOption,
+        QuestionItem,
+        QuestionResponse,
+    }
 
     wire_message_types = {
         obj

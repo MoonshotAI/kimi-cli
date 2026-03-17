@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 import typer
 
 from ._lazy_group import LazySubcommandGroup
+
+
 class Reload(Exception):
     """Reload configuration."""
 
@@ -805,6 +807,8 @@ def background_task_worker(
     kill_grace_period_ms: Annotated[int, typer.Option("--kill-grace-period-ms")] = 2000,
 ) -> None:
     """Run background task worker subprocess (internal)."""
+    import asyncio
+
     from kimi_cli.background import run_background_task_worker
     from kimi_cli.utils.proctitle import set_process_title
 

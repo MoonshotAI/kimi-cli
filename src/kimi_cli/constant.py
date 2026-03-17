@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from functools import cache
+from typing import TYPE_CHECKING
 
 NAME = "Kimi Code CLI"
+
+if TYPE_CHECKING:
+    VERSION: str
+    USER_AGENT: str
 
 
 @cache

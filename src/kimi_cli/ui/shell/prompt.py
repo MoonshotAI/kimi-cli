@@ -1393,9 +1393,10 @@ class CustomPromptSession:
         return to_formatted_text(running_prompt.render_running_prompt_body(columns))
 
     def _render_status_block(self, columns: int) -> FormattedText:
-        if self._status_block_provider is None:
+        status_block_provider = getattr(self, "_status_block_provider", None)
+        if status_block_provider is None:
             return FormattedText([])
-        block = self._status_block_provider(columns)
+        block = status_block_provider(columns)
         if block is None:
             return FormattedText([])
         return to_formatted_text(block)
