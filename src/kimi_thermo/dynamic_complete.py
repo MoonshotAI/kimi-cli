@@ -162,10 +162,10 @@ class DynamicCompleteClient:
                     full_response += delta.content
             
             # Base cost for completion
-            cost += 0.002 * (len(full_response) / 1000)  # Approximate token cost
-            
-            # Update spent
-            self.registry.total_spent += cost
+            # Base cost for completion (token cost only; tool costs already tracked by registry)
+            token_cost = 0.002 * (len(full_response) / 1000)
+            cost += token_cost
+            self.registry.total_spent += token_cost
             
             result = {
                 "output": full_response,
