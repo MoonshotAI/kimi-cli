@@ -173,6 +173,7 @@ def test_shell_shows_mcp_loading_without_blocking_input(tmp_path: Path) -> None:
         transcript = shell.normalized_text()[prompt_mark:]
         assert "slow-test" in transcript
         assert "(pending)" in transcript or "(connecting)" in transcript
+        assert "ping" not in transcript
 
         _exit_shell(shell)
     finally:

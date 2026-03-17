@@ -100,14 +100,10 @@ def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) 
 
     for server in snapshot.servers:
         fragments.append((_prompt_status_style(server.status), f"• {server.name}"))
-        if server.status == "unauthorized":
-            fragments.append(("fg:#7c8594", f" (unauthorized - run: kimi mcp auth {server.name})"))
-        elif server.status != "connected":
-            fragments.append(("fg:#7c8594", f" ({server.status})"))
+        detail = _prompt_server_detail(server)
+        if detail:
+            fragments.append(("fg:#7c8594", detail))
         fragments.append(("", "\n"))
-        for tool_name in server.tools:
-            fragments.append(("fg:#7c8594", f"  • {tool_name}"))
-            fragments.append(("", "\n"))
 
     return FormattedText(fragments)
 
@@ -135,3 +131,17 @@ def _prompt_status_style(status: str) -> str:
         "failed": "fg:#ff7b72",
         "unauthorized": "fg:#ff7b72",
     }.get(status, "fg:#ff7b72")
+
+
+def _prompt_server_detail(server: MCPServerSnapshot) -> str:
+    if server.status == "unauthorized":
+        return f" (unauthorized - run: kimi mcp auth {server.name})"
+
+    parts: list[str] = []
+    if server.status != "connected":
+        parts.append(server.status)
+    if server.tools:
+        label = "tool" if len(server.tools) == 1 else "tools"
+        parts.append(f"{len(server.tools)} {label}")
+
+    return f" ({', '.join(parts)})" if parts else ""
