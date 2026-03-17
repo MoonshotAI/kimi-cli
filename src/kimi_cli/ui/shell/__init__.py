@@ -174,6 +174,7 @@ class Shell:
                     console.print()
             finally:
                 self._prompt_session = None
+                self._cancel_background_tasks()
                 ensure_tty_sane()
 
         return True
@@ -374,6 +375,12 @@ class Shell:
 
         task.add_done_callback(_cleanup)
         return task
+
+    def _cancel_background_tasks(self) -> None:
+        """Cancel all background tasks (notification watcher, auto-update, etc.)."""
+        for task in self._background_tasks:
+            task.cancel()
+        self._background_tasks.clear()
 
 
 _KIMI_BLUE = "dodger_blue1"
