@@ -834,6 +834,21 @@ async def _keyboard_listener(
         await listener.stop()
 
 
+def _emit_osc_notification(title: str, body: str) -> None:
+    """Emit terminal notification via OSC 9 and OSC 777."""
+    # Use stderr fd directly because Rich's Live() may redirect sys.stdout,
+    # making sys.stdout.isatty() unreliable during rendering.
+    import os
+    if not os.isatty(2):
+        return
+    try:
+        # Write to stderr fd to bypass Rich's stdout proxy
+        os.write(2, f"\x1b]9;{body}\x07".encode())
+        os.write(2, f"\x1b]777;notify;{title};{body}\x07".encode())
+    except OSError:
+        pass
+
+
 class _LiveView:
     def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
         self._cancel_event = cancel_event
@@ -1396,6 +1411,7 @@ class _PromptLiveView(_LiveView):
                     self._turn_ended = True
                     self.cleanup(is_interrupt=False)
                     self._flush_prompt_refresh()
+                    _emit_osc_notification("Kimi", "Task completed")
                     break
 
                 self.dispatch_wire_message(msg)
