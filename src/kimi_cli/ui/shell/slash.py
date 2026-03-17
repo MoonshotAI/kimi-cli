@@ -14,7 +14,7 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
-from kimi_cli.ui.shell.mcp_status import get_mcp_status_snapshot, render_mcp_console
+from kimi_cli.ui.shell.mcp_status import render_mcp_console
 from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
@@ -504,25 +504,16 @@ async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
     from rich.live import Live
 
-    from kimi_cli.soul.toolset import KimiToolset
-
     soul = ensure_kimi_soul(app)
     if soul is None:
         return
-    toolset = soul.agent.toolset
-    if not isinstance(toolset, KimiToolset):
-        console.print("[red]KimiToolset required[/red]")
-        return
-
-    servers = toolset.mcp_servers
-
-    if not servers:
+    await soul.start_background_mcp_loading()
+    snapshot = soul.status.mcp_status
+    if snapshot is None:
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
-    snapshot = get_mcp_status_snapshot(toolset)
-    assert snapshot is not None
-    if not toolset.has_pending_mcp_tools():
+    if not snapshot.loading:
         console.print(render_mcp_console(snapshot))
         return
 
@@ -532,18 +523,21 @@ async def mcp(app: Shell, args: str):
         refresh_per_second=8,
         transient=False,
     ) as live:
-        while toolset.has_pending_mcp_tools():
-            snapshot = get_mcp_status_snapshot(toolset)
-            assert snapshot is not None
+        while True:
+            snapshot = soul.status.mcp_status
+            if snapshot is None:
+                break
             live.update(render_mcp_console(snapshot), refresh=True)
+            if not snapshot.loading:
+                break
             await asyncio.sleep(0.125)
         try:
-            await toolset.wait_for_mcp_tools()
+            await soul.wait_for_background_mcp_loading()
         except Exception as e:
             logger.debug("MCP loading completed with error while rendering /mcp: {error}", error=e)
-        snapshot = get_mcp_status_snapshot(toolset)
-        assert snapshot is not None
-        live.update(render_mcp_console(snapshot), refresh=True)
+        snapshot = soul.status.mcp_status
+        if snapshot is not None:
+            live.update(render_mcp_console(snapshot), refresh=True)
 
 
 from . import (  # noqa: E402

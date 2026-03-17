@@ -480,9 +480,6 @@ def kimi(
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
         try:
             startup_progress.update("Preparing session...")
-        startup_progress = ShellStartupProgress(enabled=ui == "shell")
-        try:
-            startup_progress.update("Preparing session...")
 
             if session_id is not None:
                 session = await Session.find(work_dir, session_id)

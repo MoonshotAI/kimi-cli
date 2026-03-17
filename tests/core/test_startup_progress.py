@@ -64,7 +64,13 @@ def test_shell_startup_progress_is_noop_when_disabled(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypatch) -> None:
     phases: list[str] = []
-    fake_runtime = SimpleNamespace(session=session, config=config, llm=None)
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+    )
     fake_agent = SimpleNamespace(name="Test Agent", system_prompt="Test system prompt")
     fake_context = SimpleNamespace(system_prompt=None)
     write_system_prompt = AsyncMock()

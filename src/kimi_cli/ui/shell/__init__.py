@@ -20,7 +20,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
-from kimi_cli.ui.shell.mcp_status import get_mcp_status_snapshot, render_mcp_prompt
+from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
     PromptMode,
@@ -116,11 +116,7 @@ class Shell:
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
             )
-            from kimi_cli.soul.toolset import KimiToolset
-
-            toolset = self.soul.agent.toolset
-            if isinstance(toolset, KimiToolset):
-                await toolset.start_deferred_mcp_tool_loading()
+            await self.soul.start_background_mcp_loading()
 
         async def _plan_mode_toggle() -> bool:
             if isinstance(self.soul, KimiSoul):
@@ -130,12 +126,7 @@ class Shell:
         def _mcp_status_block(columns: int):
             if not isinstance(self.soul, KimiSoul):
                 return None
-            from kimi_cli.soul.toolset import KimiToolset
-
-            toolset = self.soul.agent.toolset
-            if not isinstance(toolset, KimiToolset):
-                return None
-            snapshot = get_mcp_status_snapshot(toolset)
+            snapshot = self.soul.status.mcp_status
             if snapshot is None:
                 return None
             return render_mcp_prompt(snapshot)
@@ -143,10 +134,8 @@ class Shell:
         def _mcp_status_loading() -> bool:
             if not isinstance(self.soul, KimiSoul):
                 return False
-            from kimi_cli.soul.toolset import KimiToolset
-
-            toolset = self.soul.agent.toolset
-            return isinstance(toolset, KimiToolset) and toolset.has_pending_mcp_tools()
+            snapshot = self.soul.status.mcp_status
+            return bool(snapshot and snapshot.loading)
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
@@ -164,14 +153,13 @@ class Shell:
         ) as prompt_session:
             self._prompt_session = prompt_session
             if isinstance(self.soul, KimiSoul):
-                from kimi_cli.soul.toolset import KimiToolset
-
-                toolset = self.soul.agent.toolset
-                if isinstance(toolset, KimiToolset) and toolset.has_pending_mcp_tools():
+                kimi_soul = self.soul
+                snapshot = kimi_soul.status.mcp_status
+                if snapshot and snapshot.loading:
 
                     async def _invalidate_after_mcp_loading() -> None:
                         try:
-                            await toolset.wait_for_mcp_tools()
+                            await kimi_soul.wait_for_background_mcp_loading()
                         except Exception:
                             logger.debug("MCP loading finished with error while refreshing prompt")
                         if self._prompt_session is prompt_session:
@@ -349,6 +337,7 @@ class Shell:
                         context_usage=snap.context_usage,
                         context_tokens=snap.context_tokens,
                         max_context_tokens=snap.max_context_tokens,
+                        mcp_status=snap.mcp_status,
                     ),
                     cancel_event=cancel_event,
                     prompt_session=self._prompt_session,

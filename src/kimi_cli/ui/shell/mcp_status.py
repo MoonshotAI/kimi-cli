@@ -1,56 +1,16 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from typing import Literal
 
 from prompt_toolkit.formatted_text import FormattedText
 from rich.console import Group, RenderableType
 from rich.spinner import Spinner
 from rich.text import Text
 
-from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.rich.columns import BulletColumns
+from kimi_cli.wire.types import MCPServerSnapshot, MCPStatusSnapshot
 
 _SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
-
-
-@dataclass(frozen=True, slots=True)
-class MCPServerSnapshot:
-    name: str
-    status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
-    tools: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class MCPStatusSnapshot:
-    loading: bool
-    connected: int
-    total: int
-    tools: int
-    servers: tuple[MCPServerSnapshot, ...]
-
-
-def get_mcp_status_snapshot(toolset: KimiToolset) -> MCPStatusSnapshot | None:
-    servers = toolset.mcp_servers
-    if not servers:
-        return None
-
-    server_snapshots = tuple(
-        MCPServerSnapshot(
-            name=name,
-            status=info.status,
-            tools=tuple(tool.name for tool in info.tools),
-        )
-        for name, info in servers.items()
-    )
-    return MCPStatusSnapshot(
-        loading=toolset.has_pending_mcp_tools(),
-        connected=sum(1 for server in server_snapshots if server.status == "connected"),
-        total=len(server_snapshots),
-        tools=sum(len(server.tools) for server in server_snapshots),
-        servers=server_snapshots,
-    )
 
 
 def render_mcp_console(snapshot: MCPStatusSnapshot) -> RenderableType:
