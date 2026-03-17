@@ -90,15 +90,18 @@ async def run_background_task_worker(
             return
         kill_sent_at = kill_sent_at or time.time()
 
-        if os.name == "nt":
-            terminate_process_tree_windows(process.pid, force=force)
-            return
+        try:
+            if os.name == "nt":
+                terminate_process_tree_windows(process.pid, force=force)
+                return
 
-        target_pgid = process.pid
-        if force:
-            os.killpg(target_pgid, signal.SIGKILL)
-        else:
-            os.killpg(target_pgid, signal.SIGTERM)
+            target_pgid = process.pid
+            if force:
+                os.killpg(target_pgid, signal.SIGKILL)
+            else:
+                os.killpg(target_pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
 
     async def _control_loop() -> None:
         nonlocal kill_sent_at
