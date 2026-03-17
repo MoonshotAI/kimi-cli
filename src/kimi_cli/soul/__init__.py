@@ -254,7 +254,12 @@ def wire_send(msg: WireMessage) -> None:
 
 async def _pump_notifications_to_wire(runtime: Runtime | None, wire: Wire) -> None:
     while True:
-        await _deliver_notifications_to_wire_once(runtime, wire)
+        try:
+            await _deliver_notifications_to_wire_once(runtime, wire)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Notification wire pump failed")
         await asyncio.sleep(1.0)
 
 
