@@ -52,7 +52,7 @@ class JsonPrinter(Printer):
             case StepBegin() | StepInterrupted():
                 self.flush()
             case Notification() as notification:
-                if self._content_buffer:
+                if self._content_buffer or self._tool_call_buffer:
                     self._pending_notifications.append(notification)
                 else:
                     self._flush_assistant_message()

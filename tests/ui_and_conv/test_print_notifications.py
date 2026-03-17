@@ -98,6 +98,35 @@ def test_json_printer_keeps_merged_tool_call_arguments_before_notification(capsy
     assert outputs[2]["tool_call_id"] == "call_123"
 
 
+def test_json_printer_buffers_notification_during_tool_call_streaming(capsys):
+    """Notification arriving between ToolCall and ToolCallPart must not truncate arguments.
+
+    Before the fix, only _content_buffer was checked.  A Notification arriving
+    while _tool_call_buffer was non-empty (but _content_buffer empty) would
+    prematurely flush the incomplete assistant message and clear _last_tool_call,
+    causing subsequent ToolCallPart chunks to be silently dropped.
+    """
+    printer = JsonPrinter()
+
+    # ToolCall with partial arguments
+    printer.feed(_tool_call())  # arguments = '{"command"'
+    # Notification arrives mid-streaming (no content yet, but tool call is pending)
+    printer.feed(_notification())
+    # Remaining arguments arrive
+    printer.feed(ToolCallPart(arguments_part=': "ls"}'))
+    # Tool result completes the cycle
+    printer.feed(_tool_result())
+
+    outputs = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+
+    # Expected order: assistant (with complete tool call) → notification → tool result
+    assert len(outputs) == 3
+    assert outputs[0]["role"] == "assistant"
+    assert outputs[0]["tool_calls"][0]["function"]["arguments"] == '{"command": "ls"}'
+    assert outputs[1]["id"] == "n1234567"
+    assert outputs[2]["tool_call_id"] == "call_123"
+
+
 def test_json_printer_does_not_split_streamed_assistant_message_for_notification(capsys):
     printer = JsonPrinter()
 
