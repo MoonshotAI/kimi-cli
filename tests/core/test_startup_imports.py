@@ -65,3 +65,66 @@ print("ok")
 """
     )
     assert proc.stdout.strip() == "ok"
+
+
+def test_root_help_lists_lazy_subcommands_without_importing_them() -> None:
+    proc = _run_python(
+        """
+import sys
+from typer.testing import CliRunner
+
+lazy_modules = [
+    "kimi_cli.cli.info",
+    "kimi_cli.cli.export",
+    "kimi_cli.cli.mcp",
+    "kimi_cli.cli.vis",
+    "kimi_cli.cli.web",
+]
+for name in lazy_modules:
+    sys.modules.pop(name, None)
+
+from kimi_cli.cli import cli
+
+assert all(name not in sys.modules for name in lazy_modules)
+
+result = CliRunner().invoke(cli, ["--help"])
+assert result.exit_code == 0, result.output
+for name in ("info", "export", "mcp", "vis", "web"):
+    assert name in result.output
+assert all(name not in sys.modules for name in lazy_modules)
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
+
+
+def test_info_subcommand_loads_on_demand() -> None:
+    proc = _run_python(
+        """
+import sys
+from typer.testing import CliRunner
+
+lazy_modules = [
+    "kimi_cli.cli.info",
+    "kimi_cli.cli.export",
+    "kimi_cli.cli.mcp",
+    "kimi_cli.cli.vis",
+    "kimi_cli.cli.web",
+]
+for name in lazy_modules:
+    sys.modules.pop(name, None)
+
+from kimi_cli.cli import cli
+
+result = CliRunner().invoke(cli, ["info", "--json"])
+assert result.exit_code == 0, result.output
+assert '"kimi_cli_version"' in result.output
+assert "kimi_cli.cli.info" in sys.modules
+assert "kimi_cli.cli.export" not in sys.modules
+assert "kimi_cli.cli.mcp" not in sys.modules
+assert "kimi_cli.cli.vis" not in sys.modules
+assert "kimi_cli.cli.web" not in sys.modules
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
