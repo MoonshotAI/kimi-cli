@@ -11,7 +11,7 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.file import WireFile
-from kimi_cli.wire.types import ContentPart, MCPStatusSnapshot, WireMessage
+from kimi_cli.wire.types import ContentPart, MCPStatusSnapshot, TokenUsage, WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
@@ -71,14 +71,21 @@ def format_context_status(
     context_usage: float,
     context_tokens: int = 0,
     max_context_tokens: int = 0,
+    total_token_usage: TokenUsage | None = None,
 ) -> str:
     """Format context status string for display in status bar."""
     bounded = max(0.0, min(context_usage, 1.0))
     if max_context_tokens > 0:
         used = format_token_count(context_tokens)
         total = format_token_count(max_context_tokens)
-        return f"context: {bounded:.1%} ({used}/{total})"
-    return f"context: {bounded:.1%}"
+        result = f"context: {bounded:.1%} ({used}/{total})"
+    else:
+        result = f"context: {bounded:.1%}"
+    if total_token_usage is not None and total_token_usage.total > 0:
+        in_fmt = format_token_count(total_token_usage.input)
+        out_fmt = format_token_count(total_token_usage.output)
+        result += f"  in:{in_fmt} out:{out_fmt}"
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,8 +100,15 @@ class StatusSnapshot:
     """The number of tokens currently in the context."""
     max_context_tokens: int = 0
     """The maximum number of tokens the context can hold."""
+    total_token_usage: TokenUsage | None = None
+    """Cumulative token usage across all steps in the current session."""
+    daily_token_usage: TokenUsage | None = None
+    """Cumulative token usage for today (all sessions, persistent)."""
+    weekly_token_usage: TokenUsage | None = None
+    """Cumulative token usage for the current ISO week (all sessions, persistent)."""
     mcp_status: MCPStatusSnapshot | None = None
     """The current MCP startup snapshot, if MCP is configured."""
+
 
 
 @runtime_checkable

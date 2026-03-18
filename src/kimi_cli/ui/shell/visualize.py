@@ -9,6 +9,7 @@ from io import StringIO
 from typing import Any, NamedTuple, cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
+from kosong.chat_provider import TokenUsage
 from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 from prompt_toolkit.application.run_in_terminal import run_in_terminal
@@ -830,6 +831,10 @@ class _StatusBlock:
         self._context_usage: float = 0.0
         self._context_tokens: int = 0
         self._max_context_tokens: int = 0
+        self._total_input_other: int = 0
+        self._total_output: int = 0
+        self._total_cache_read: int = 0
+        self._total_cache_creation: int = 0
         self.update(initial)
 
     def render(self) -> RenderableType:
@@ -842,11 +847,34 @@ class _StatusBlock:
             self._context_tokens = status.context_tokens
         if status.max_context_tokens is not None:
             self._max_context_tokens = status.max_context_tokens
+        if status.token_usage is not None:
+            u = status.token_usage
+            self._total_input_other += u.input_other
+            self._total_output += u.output
+            self._total_cache_read += u.input_cache_read
+            self._total_cache_creation += u.input_cache_creation
         if status.context_usage is not None:
+            total = (
+                self._total_input_other
+                + self._total_output
+                + self._total_cache_read
+                + self._total_cache_creation
+            )
+            total_usage = (
+                TokenUsage(
+                    input_other=self._total_input_other,
+                    output=self._total_output,
+                    input_cache_read=self._total_cache_read,
+                    input_cache_creation=self._total_cache_creation,
+                )
+                if total > 0
+                else None
+            )
             self.text.plain = format_context_status(
                 self._context_usage,
                 self._context_tokens,
                 self._max_context_tokens,
+                total_usage,
             )
 
 

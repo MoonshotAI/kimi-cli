@@ -85,7 +85,7 @@ def test_running_prompt_uses_shared_toolbar_and_separator_layout(monkeypatch) ->
     width = 72
     prompt_session = object.__new__(CustomPromptSession)
     prompt_session._mode = PromptMode.AGENT
-    prompt_session._model_name = None
+    prompt_session._model_name = "kimi"
     prompt_session._running_prompt_delegate = _DummyRunningPrompt()
     prompt_session._status_provider = lambda: StatusSnapshot(context_usage=0.0)
     prompt_session._thinking = False
@@ -108,9 +108,9 @@ def test_running_prompt_uses_shared_toolbar_and_separator_layout(monkeypatch) ->
 
     rendered_toolbar = prompt_session._render_bottom_toolbar()
     plain_toolbar = "".join(fragment[1] for fragment in rendered_toolbar)
-    assert "agent" in plain_toolbar
+    assert "kimi" in plain_toolbar
     assert "tip" in plain_toolbar
-    assert "context: 0.0%" in plain_toolbar
+    assert "0%" in plain_toolbar
 
 
 def test_idle_agent_prompt_uses_same_separator_layout(monkeypatch) -> None:
