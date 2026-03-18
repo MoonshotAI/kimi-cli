@@ -623,6 +623,50 @@ class TestKimiSoulPlanState:
 
 
 # ---------------------------------------------------------------------------
+# KimiSoul — plan_session_id cross-process persistence
+# ---------------------------------------------------------------------------
+
+
+class TestKimiSoulPlanSessionPersistence:
+    """Tests that plan_session_id survives simulated process restarts."""
+
+    async def test_plan_session_id_survives_restart(
+        self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Second KimiSoul created from same session state gets same plan file path."""
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        soul1 = _make_soul(runtime, tmp_path)
+        soul1._set_plan_mode(True, source="tool")
+        path1 = soul1.get_plan_file_path()
+        assert path1 is not None
+
+        # Simulate restart: new KimiSoul reads from same (already-saved) session state
+        soul2 = _make_soul(runtime, tmp_path)
+        path2 = soul2.get_plan_file_path()
+        assert path2 == path1
+
+    async def test_plan_session_id_cleared_after_deactivation(
+        self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After plan mode is turned off and process restarts, new activation gets fresh path."""
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        soul1 = _make_soul(runtime, tmp_path)
+        soul1._set_plan_mode(True, source="tool")
+        path1 = soul1.get_plan_file_path()
+        soul1._set_plan_mode(False, source="tool")
+        # state.plan_session_id is now None in persisted state
+
+        # Restart + re-activate
+        from kimi_cli.tools.plan.heroes import _slug_cache
+
+        _slug_cache.clear()  # simulate fresh process (in-memory cache gone)
+        soul2 = _make_soul(runtime, tmp_path)
+        soul2._set_plan_mode(True, source="tool")
+        path2 = soul2.get_plan_file_path()
+        assert path2 != path1  # fresh slug, different path
+
+
+# ---------------------------------------------------------------------------
 # ToolRejectedError — enhanced constructor
 # ---------------------------------------------------------------------------
 
