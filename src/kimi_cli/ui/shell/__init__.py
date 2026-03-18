@@ -217,6 +217,7 @@ class Shell:
             prompt_task = asyncio.create_task(
                 self._route_prompt_events(prompt_session, idle_events, resume_prompt)
             )
+            shell_ok = True
             try:
                 while True:
                     event = await idle_events.get()
@@ -231,6 +232,7 @@ class Shell:
                         break
 
                     if event.kind == "error":
+                        shell_ok = False
                         break
 
                     user_input = event.user_input
@@ -287,7 +289,7 @@ class Shell:
                 self._cancel_background_tasks()
                 ensure_tty_sane()
 
-        return True
+        return shell_ok
 
     async def _run_shell_command(self, command: str) -> None:
         """Run a shell command in foreground."""
