@@ -336,7 +336,7 @@ agent:
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `options` | list \| null | 当方案包含多个可选实施路径时，列出 2–4 个选项供用户选择。每个选项有 `label`（1–8 个词的简短标签，可附加 "(Recommended)"）和可选的 `description`（方案摘要）。不可使用 "Approve"、"Reject"、"Revise" 作为标签名。 |
+| `options` | list \| null | 当方案包含多个可选实施路径时，列出 2–3 个选项供用户选择。每个选项有 `label`（1–8 个词的简短标签，可附加 "(Recommended)"）和可选的 `description`（方案摘要）。不可使用 "Approve"、"Reject"、"Revise" 作为标签名。 |
 
 ### `TaskList`
 

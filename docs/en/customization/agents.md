@@ -336,7 +336,7 @@ This tool takes no parameters.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `options` | list \| null | When the plan contains multiple alternative implementation paths, list 2–4 options for the user to choose from. Each option has a `label` (1–8 word short name, may append "(Recommended)") and an optional `description` (brief summary). The labels "Approve", "Reject", and "Revise" are reserved and cannot be used. |
+| `options` | list \| null | When the plan contains multiple alternative implementation paths, list 2–3 options for the user to choose from. Each option has a `label` (1–8 word short name, may append "(Recommended)") and an optional `description` (brief summary). The labels "Approve", "Reject", and "Revise" are reserved and cannot be used. |
 
 ### `TaskList`
 
