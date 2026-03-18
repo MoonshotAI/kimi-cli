@@ -46,12 +46,26 @@ class _PeriodStats:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, int]) -> _PeriodStats:
+    def from_dict(cls, d: dict[str, Any]) -> _PeriodStats:
+        """Create _PeriodStats from dict, coercing values to int."""
+
+        def _to_int(v: Any) -> int:
+            if isinstance(v, int):
+                return v
+            if isinstance(v, float):
+                return int(v)
+            if isinstance(v, str):
+                try:
+                    return int(float(v))
+                except (ValueError, TypeError):
+                    return 0
+            return 0
+
         return cls(
-            input_other=d.get("input_other", 0),
-            output=d.get("output", 0),
-            input_cache_read=d.get("input_cache_read", 0),
-            input_cache_creation=d.get("input_cache_creation", 0),
+            input_other=_to_int(d.get("input_other", 0)),
+            output=_to_int(d.get("output", 0)),
+            input_cache_read=_to_int(d.get("input_cache_read", 0)),
+            input_cache_creation=_to_int(d.get("input_cache_creation", 0)),
         )
 
 
@@ -73,7 +87,8 @@ class TokenLedger:
         Recomputes period boundaries before recording to handle long-running
         sessions that cross midnight or Monday boundaries.
         """
-        self._maybe_reset_boundaries()
+        # Reload from disk to pick up any concurrent updates, then add and save
+        self._reload_and_merge()
         self._daily.add(usage)
         self._weekly.add(usage)
         self._save()
@@ -101,6 +116,56 @@ class TokenLedger:
         today = date.today()
         week_start = today - timedelta(days=today.weekday())
         return week_start.isoformat()
+
+    def _reload_and_merge(self) -> None:
+        """Reload from disk and merge, handling date boundaries.
+
+        This ensures that if another process has written stats, we pick them up
+        before adding our own.
+        """
+        # First check if we need to reset due to date boundary
+        self._maybe_reset_boundaries()
+
+        # Then reload and merge disk data
+        disk_daily, disk_weekly = self._read_from_disk()
+        if disk_daily is not None:
+            self._daily = disk_daily
+        if disk_weekly is not None:
+            self._weekly = disk_weekly
+
+    def _read_from_disk(self) -> tuple[_PeriodStats | None, _PeriodStats | None]:
+        """Read stats from disk and return (daily, weekly) if valid for current period."""
+        if not self._file.exists():
+            return (None, None)
+
+        today_str = self._get_today_str()
+        week_start_str = self._get_week_start_str()
+
+        try:
+            data: dict[str, Any] = json.loads(self._file.read_text())
+        except (json.JSONDecodeError, OSError):
+            return (None, None)
+
+        daily = None
+        weekly = None
+
+        # Safely extract daily stats with type checking
+        daily_data = data.get("daily")
+        if isinstance(daily_data, dict):
+            daily_dict = cast(dict[str, Any], daily_data)
+            if daily_dict.get("date") == today_str:
+                with contextlib.suppress(TypeError, AttributeError):
+                    daily = _PeriodStats.from_dict(daily_dict)
+
+        # Safely extract weekly stats with type checking
+        weekly_data = data.get("weekly")
+        if isinstance(weekly_data, dict):
+            weekly_dict = cast(dict[str, Any], weekly_data)
+            if weekly_dict.get("week_start") == week_start_str:
+                with contextlib.suppress(TypeError, AttributeError):
+                    weekly = _PeriodStats.from_dict(weekly_dict)
+
+        return (daily, weekly)
 
     def _maybe_reset_boundaries(self) -> None:
         """Reset daily/weekly stats if we've crossed a boundary.
@@ -139,32 +204,11 @@ class TokenLedger:
 
     def _load(self) -> None:
         """Load stats from file, respecting date boundaries."""
-        if not self._file.exists():
-            return
-
-        today_str = self._get_today_str()
-        week_start_str = self._get_week_start_str()
-
-        try:
-            data: dict[str, Any] = json.loads(self._file.read_text())
-        except (json.JSONDecodeError, OSError):
-            return
-
-        # Safely extract daily stats with type checking
-        daily_data = data.get("daily")
-        if isinstance(daily_data, dict):
-            daily_dict = cast(dict[str, Any], daily_data)
-            if daily_dict.get("date") == today_str:
-                with contextlib.suppress(TypeError, AttributeError):
-                    self._daily = _PeriodStats.from_dict(daily_dict)
-
-        # Safely extract weekly stats with type checking
-        weekly_data = data.get("weekly")
-        if isinstance(weekly_data, dict):
-            weekly_dict = cast(dict[str, Any], weekly_data)
-            if weekly_dict.get("week_start") == week_start_str:
-                with contextlib.suppress(TypeError, AttributeError):
-                    self._weekly = _PeriodStats.from_dict(weekly_dict)
+        daily, weekly = self._read_from_disk()
+        if daily is not None:
+            self._daily = daily
+        if weekly is not None:
+            self._weekly = weekly
 
     def _save(self) -> None:
         today_str = self._get_today_str()
