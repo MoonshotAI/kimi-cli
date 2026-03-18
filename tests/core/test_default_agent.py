@@ -39,6 +39,8 @@ The system may insert information wrapped in `<system>` tags within user or tool
 
 Tool results and user messages may also include `<system-reminder>` tags. Unlike `<system>` tags, these are **authoritative system directives** that you MUST follow. They bear no direct relation to the specific tool results or user messages in which they appear. Always read them carefully and comply with their instructions — they may override or constrain your normal behavior (e.g., restricting you to read-only actions during plan mode).
 
+If the `Shell`, `TaskList`, `TaskOutput`, and `TaskStop` tools are available and you are the root agent, you can use Background Bash for long-running shell commands. Launch it via `Shell` with `run_in_background=true` and a short `description`. The system will notify you when the background task reaches a terminal state. Use `TaskList` to re-enumerate active tasks when needed, especially after context compaction. Use `TaskOutput` to inspect progress or wait for completion, and use `TaskStop` only when you need to cancel the task. For human users in the interactive shell, the only task-management slash command is `/task`. Do not tell users to run `/task list`, `/task output`, `/task stop`, `/tasks`, or any other invented slash subcommands. If you are a subagent or these tools are not available, do not assume you can create or control background tasks.
+
 When responding to the user, you MUST use the SAME language as the user, unless explicitly instructed to do otherwise.
 
 # General Guidelines for Coding
@@ -152,6 +154,16 @@ At any time, you should be HELPFUL and POLITE, CONCISE and ACCURATE, PATIENT and
 - Do not give up too early.
 - ALWAYS, keep it stupidly simple. Do not overcomplicate things.\
 """
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_default_agent_background_bash_guardrails(runtime: Runtime):
+    agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
+
+    assert "the only task-management slash command is `/task`" in agent.system_prompt
+    assert "Do not tell users to run `/task list`, `/task output`, `/task stop`, `/tasks`" in (
+        agent.system_prompt
     )
     assert agent.toolset.tools == snapshot(
         [
@@ -336,6 +348,8 @@ Execute a bash (`/bin/bash`) command. Use this tool to explore the filesystem, e
 **Output:**
 The stdout and stderr will be combined and returned as a string. The output may be truncated if it is too long. If the command failed, the exit code will be provided in a system tag.
 
+If `run_in_background=true`, the command will be started as a background task and this tool will return a task ID instead of waiting for command completion. When doing that, you must provide a short `description`. You will be automatically notified when the task completes. Use `TaskOutput` if you need progress or want to wait for completion, and use `TaskStop` only if the task must be cancelled. For human users in the interactive shell, background tasks are managed through `/task` only; do not suggest `/task list`, `/task output`, `/task stop`, `/tasks`, or any other invented shell subcommands.
+
 **Guidelines for safety and security:**
 - Each shell tool call will be executed in a fresh shell environment. The shell variables, current working directory changes, and the shell history is not preserved between calls.
 - The tool call will return after the command is finished. You shall not use this tool to execute an interactive command or a command that may run forever. For possibly long-running commands, you shall set `timeout` argument to a reasonable value.
@@ -351,6 +365,9 @@ The stdout and stderr will be combined and returned as a string. The output may 
 - Always quote file paths containing spaces with double quotes (e.g., cd "/path with spaces/")
 - Use `if`, `case`, `for`, `while` control flows to execute complex logic in a single call.
 - Verify directory structure before create/edit/delete files or directories to reduce the risk of failure.
+- Prefer `run_in_background=true` for long-running builds, tests, watchers, or servers when you need the conversation to continue before the command finishes.
+- After starting a background task, do not guess its outcome. Rely on the automatic completion notification whenever possible. Use `TaskOutput` only when you need to inspect progress or block until completion.
+- If you need to tell a human shell user how to manage background tasks, only mention `/task`. Do not invent `/task list`, `/task output`, `/task stop`, or `/tasks`.
 
 **Commands available:**
 - Shell environment: cd, pwd, export, unset, env
@@ -371,12 +388,120 @@ The stdout and stderr will be combined and returned as a string. The output may 
                         "timeout": {
                             "default": 60,
                             "description": "The timeout in seconds for the command to execute. If the command takes longer than this, it will be killed.",
-                            "maximum": 300,
+                            "maximum": 86400,
+                            "minimum": 1,
+                            "type": "integer",
+                        },
+                        "run_in_background": {
+                            "default": False,
+                            "description": "Whether to run the command as a background task.",
+                            "type": "boolean",
+                        },
+                        "description": {
+                            "default": "",
+                            "description": "A short description for the background task. Required when run_in_background=true.",
+                            "type": "string",
+                        },
+                    },
+                    "required": ["command"],
+                    "type": "object",
+                },
+            ),
+            Tool(
+                name="TaskList",
+                description="""\
+List background tasks from the current session.
+
+Use this when you need to re-enumerate which background tasks still exist, especially after context compaction or when you are no longer confident which task IDs are still active.
+
+Guidelines:
+
+- Prefer the default `active_only=true` unless you specifically need completed or failed tasks.
+- Use `TaskOutput` to inspect one task in detail after you have identified the correct task ID.
+- Do not guess which tasks are still running when you can call this tool directly.
+- This tool is read-only and safe to use in plan mode.
+""",
+                parameters={
+                    "properties": {
+                        "active_only": {
+                            "default": True,
+                            "description": "Whether to list only non-terminal background tasks.",
+                            "type": "boolean",
+                        },
+                        "limit": {
+                            "default": 20,
+                            "description": "Maximum number of tasks to return.",
+                            "maximum": 100,
                             "minimum": 1,
                             "type": "integer",
                         },
                     },
-                    "required": ["command"],
+                    "type": "object",
+                },
+            ),
+            Tool(
+                name="TaskOutput",
+                description="""\
+Retrieve output from a running or completed background task.
+
+Use this after `Shell(run_in_background=true)` when you need to inspect progress or explicitly wait for completion.
+
+Guidelines:
+- Prefer relying on automatic completion notifications. Use this tool only when you need task output before the automatic notification arrives.
+- Use `block=true` to wait for completion or timeout.
+- Use `block=false` for a non-blocking status and output check.
+- This tool returns structured task metadata, a fixed-size output preview, and an `output_path` for the full log.
+- When the preview is truncated, use `ReadFile` with the returned `output_path` to inspect the full log in pages.
+- This tool works with the generic background task system and should remain the primary read path for future task types, not just bash.
+""",
+                parameters={
+                    "properties": {
+                        "task_id": {
+                            "description": "The background task ID to inspect.",
+                            "type": "string",
+                        },
+                        "block": {
+                            "default": True,
+                            "description": "Whether to wait for the task to finish before returning.",
+                            "type": "boolean",
+                        },
+                        "timeout": {
+                            "default": 30,
+                            "description": "Maximum number of seconds to wait when block=true.",
+                            "maximum": 3600,
+                            "minimum": 0,
+                            "type": "integer",
+                        },
+                    },
+                    "required": ["task_id"],
+                    "type": "object",
+                },
+            ),
+            Tool(
+                name="TaskStop",
+                description="""\
+Stop a running background task.
+
+Use this only when a background task must be cancelled. For normal task completion, prefer waiting for the automatic notification or using `TaskOutput`.
+
+Guidelines:
+- This is a generic task stop capability, not a bash-specific kill tool.
+- Use it sparingly because stopping a task is destructive and may leave partial side effects.
+- If the task is already complete, this tool will simply return its current state.
+""",
+                parameters={
+                    "properties": {
+                        "task_id": {
+                            "description": "The background task ID to stop.",
+                            "type": "string",
+                        },
+                        "reason": {
+                            "default": "Stopped by TaskStop",
+                            "description": "Short reason recorded when the task is stopped.",
+                            "type": "string",
+                        },
+                    },
+                    "required": ["task_id"],
                     "type": "object",
                 },
             ),
@@ -814,6 +939,8 @@ The system may insert information wrapped in `<system>` tags within user or tool
 
 Tool results and user messages may also include `<system-reminder>` tags. Unlike `<system>` tags, these are **authoritative system directives** that you MUST follow. They bear no direct relation to the specific tool results or user messages in which they appear. Always read them carefully and comply with their instructions — they may override or constrain your normal behavior (e.g., restricting you to read-only actions during plan mode).
 
+If the `Shell`, `TaskList`, `TaskOutput`, and `TaskStop` tools are available and you are the root agent, you can use Background Bash for long-running shell commands. Launch it via `Shell` with `run_in_background=true` and a short `description`. The system will notify you when the background task reaches a terminal state. Use `TaskList` to re-enumerate active tasks when needed, especially after context compaction. Use `TaskOutput` to inspect progress or wait for completion, and use `TaskStop` only when you need to cancel the task. For human users in the interactive shell, the only task-management slash command is `/task`. Do not tell users to run `/task list`, `/task output`, `/task stop`, `/tasks`, or any other invented slash subcommands. If you are a subagent or these tools are not available, do not assume you can create or control background tasks.
+
 When responding to the user, you MUST use the SAME language as the user, unless explicitly instructed to do otherwise.
 
 # General Guidelines for Coding
@@ -930,6 +1057,9 @@ At any time, you should be HELPFUL and POLITE, CONCISE and ACCURATE, PATIENT and
                 [
                     "AskUserQuestion",
                     "Shell",
+                    "TaskList",
+                    "TaskOutput",
+                    "TaskStop",
                     "ReadFile",
                     "ReadMediaFile",
                     "Glob",

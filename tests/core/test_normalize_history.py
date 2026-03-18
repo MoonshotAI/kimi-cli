@@ -107,3 +107,19 @@ def test_multipart_content_preserved() -> None:
     assert _text(result[0].content[0]) == "A"
     assert _text(result[0].content[1]) == "B"
     assert _text(result[0].content[2]) == "C"
+
+
+def test_notification_messages_not_merged_with_user_messages() -> None:
+    msgs = [
+        Message(role="user", content=[TextPart(text="user input")]),
+        Message(
+            role="user",
+            content=[
+                TextPart(
+                    text='<notification id="n1" category="task" type="task.completed">x</notification>'
+                )
+            ],
+        ),
+    ]
+    result = normalize_history(msgs)
+    assert len(result) == 2

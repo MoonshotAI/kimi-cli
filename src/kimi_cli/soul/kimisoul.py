@@ -21,7 +21,13 @@ from kosong.chat_provider import (
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.llm import ModelCapability
+from kimi_cli.notifications import (
+    NotificationView,
+    build_notification_message,
+    extract_notification_ids,
+)
 from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
@@ -33,7 +39,12 @@ from kimi_cli.soul import (
     wire_send,
 )
 from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
+from kimi_cli.soul.compaction import (
+    CompactionResult,
+    SimpleCompaction,
+    estimate_text_tokens,
+    should_auto_compact,
+)
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.dynamic_injection import (
     DynamicInjection,
@@ -137,6 +148,8 @@ class KimiSoul:
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
         ]
+        if self._runtime.role == "root":
+            self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
 
         # Bind plan mode state to tools that support it
         self._bind_plan_mode_tools()
@@ -600,6 +613,18 @@ class KimiSoul:
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
+        if self._runtime.role == "root":
+
+            async def _append_notification(view: NotificationView) -> None:
+                await self._context.append_message(build_notification_message(view, self._runtime))
+
+            await self._runtime.notifications.deliver_pending(
+                "llm",
+                limit=4,
+                before_claim=self._runtime.background_tasks.reconcile,
+                on_notification=_append_notification,
+            )
+
         # Dynamic injection
         injections = await self._collect_injections()
         if injections:
@@ -762,9 +787,26 @@ class KimiSoul:
         await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
+        estimated_token_count = compaction_result.estimated_token_count
+
+        if self._runtime.role == "root":
+            active_task_snapshot = build_active_task_snapshot(self._runtime.background_tasks)
+            if active_task_snapshot is not None:
+                active_task_message = Message(
+                    role="user",
+                    content=[
+                        system(
+                            "The following background tasks are still active after compaction. "
+                            "Use TaskList if you need to re-enumerate them later."
+                        ),
+                        TextPart(text=active_task_snapshot),
+                    ],
+                )
+                await self._context.append_message(active_task_message)
+                estimated_token_count += estimate_text_tokens([active_task_message])
 
         # Estimate token count so context_usage is not reported as 0%
-        await self._context.update_token_count(compaction_result.estimated_token_count)
+        await self._context.update_token_count(estimated_token_count)
 
         wire_send(CompactionEnd())
 

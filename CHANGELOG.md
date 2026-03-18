@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.23.0 (2026-03-17)
+
+- Shell: Add background bash — the `Shell` tool now accepts `run_in_background=true` to launch long-running commands (builds, tests, servers) as background tasks, freeing the agent to continue working; new `TaskList`, `TaskOutput`, and `TaskStop` tools manage task lifecycle, and the system automatically notifies the agent when tasks reach a terminal state
+- Shell: Add `/task` slash command with interactive task browser — a three-column TUI to view, monitor, and manage background tasks with real-time refresh, output preview, and keyboard-driven stopping
 - Web: Fix global config not refreshing on other tabs when model is changed — when the model is changed in one tab, other tabs now detect the config update and automatically refresh their global config
 
 ## 1.22.0 (2026-03-13)

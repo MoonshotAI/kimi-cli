@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from kosong.message import Message
 
+from kimi_cli.notifications import is_notification_message
+
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
 
@@ -50,7 +52,13 @@ def normalize_history(history: Sequence[Message]) -> list[Message]:
 
     result: list[Message] = []
     for msg in history:
-        if result and result[-1].role == msg.role and msg.role == "user":
+        if (
+            result
+            and result[-1].role == msg.role
+            and msg.role == "user"
+            and not is_notification_message(result[-1])
+            and not is_notification_message(msg)
+        ):
             merged_content = list(result[-1].content) + list(msg.content)
             result[-1] = Message(role="user", content=merged_content)
         else:
