@@ -103,13 +103,15 @@ class TokenLedger:
     @property
     def daily(self) -> TokenUsage:
         """Total token usage for today (all sessions)."""
-        self._maybe_reset_boundaries()
+        # Reload from disk to pick up concurrent updates before returning
+        self._reload_and_merge()
         return self._daily.to_token_usage()
 
     @property
     def weekly(self) -> TokenUsage:
         """Total token usage for the current ISO week (all sessions)."""
-        self._maybe_reset_boundaries()
+        # Reload from disk to pick up concurrent updates before returning
+        self._reload_and_merge()
         return self._weekly.to_token_usage()
 
     # ── internal helpers ──────────────────────────────────────────────────
