@@ -45,7 +45,7 @@ When plan mode is active, the prompt changes to `📋` and a blue `plan` badge a
 
 When the AI finishes its plan, it submits it for approval via `ExitPlanMode`. The approval panel shows the full plan content, and you can:
 
-- **Approve**: Accept the plan, exit plan mode, and let the AI begin execution
+- **Approve / select an approach**: If the plan contains multiple alternative implementation paths, the AI lists 2–4 labeled options (e.g. "Option A", "Option B (Recommended)") for you to choose from — selecting one exits plan mode and tells the AI which path to follow. If the plan has a single path, an **Approve** button is shown instead.
 - **Reject**: Decline the plan, stay in plan mode, and provide feedback via conversation
 - **Revise**: Enter revision notes — the AI will update the plan and resubmit
 
