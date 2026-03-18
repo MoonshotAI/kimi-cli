@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple
 
 import aiohttp
-from loguru import logger
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from pydantic import SecretStr
 
+from kimi_cli import logger
 from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
 from kimi_cli.auth.platforms import (
     PLATFORMS,

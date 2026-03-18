@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 from kaos.path import KaosPath
 from kosong.message import Message
-from loguru import logger
 
 import kimi_cli.prompts as prompts
+from kimi_cli import logger
 from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context

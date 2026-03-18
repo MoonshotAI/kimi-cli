@@ -34,6 +34,7 @@ from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
+    UserInput,
 )
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.diff import format_unified_diff
@@ -88,6 +89,9 @@ async def visualize(
     cancel_event: asyncio.Event | None = None,
     prompt_session: CustomPromptSession | None = None,
     steer: Callable[[str | list[ContentPart]], None] | None = None,
+    bind_running_input: Callable[[Callable[[UserInput], None], Callable[[], None]], None]
+    | None = None,
+    unbind_running_input: Callable[[], None] | None = None,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -104,9 +108,24 @@ async def visualize(
             steer=steer,
             cancel_event=cancel_event,
         )
+        prompt_session.attach_running_prompt(view)
+
+        def _cancel_running_input() -> None:
+            if cancel_event is not None:
+                cancel_event.set()
+
+        if bind_running_input is not None:
+            bind_running_input(view.handle_local_input, _cancel_running_input)
     else:
         view = _LiveView(initial_status, cancel_event)
-    await view.visualize_loop(wire)
+    try:
+        await view.visualize_loop(wire)
+    finally:
+        if prompt_session is not None and steer is not None:
+            if unbind_running_input is not None:
+                unbind_running_input()
+            assert isinstance(view, _PromptLiveView)
+            prompt_session.detach_running_prompt(view)
 
 
 class _ContentBlock:
@@ -1459,7 +1478,6 @@ class _PromptLiveView(_LiveView):
         self._turn_ended = False
 
     async def visualize_loop(self, wire: WireUISide):
-        steer_task = asyncio.create_task(self._steer_loop())
         try:
             while True:
                 try:
@@ -1483,33 +1501,19 @@ class _PromptLiveView(_LiveView):
                 self.dispatch_wire_message(msg)
                 self._flush_prompt_refresh()
         finally:
-            steer_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await steer_task
             self._awaiting_question_other_input = False
             self._pending_local_steers.clear()
             self._turn_ended = False
             self._prompt_session.invalidate()
 
-    async def _steer_loop(self) -> None:
-        while True:
-            try:
-                user_input = await self._prompt_session.prompt_steer(self)
-            except EOFError:
-                if self._cancel_event is not None:
-                    self._cancel_event.set()
-                return
-            except KeyboardInterrupt:
-                if self._cancel_event is not None:
-                    self._cancel_event.set()
-                return
+    def handle_local_input(self, user_input: UserInput) -> None:
+        if not user_input or self._turn_ended:
+            return
 
-            if not user_input:
-                continue
-
-            console.print(render_user_echo_text(user_input.command))
-            self._pending_local_steers.append(list(user_input.content))
-            self._steer(user_input.content)
+        console.print(render_user_echo_text(user_input.command))
+        self._pending_local_steers.append(list(user_input.content))
+        self._steer(user_input.content)
+        self._flush_prompt_refresh()
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
         if isinstance(msg, SteerInput) and self._pending_local_steers:

@@ -11,7 +11,7 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.file import WireFile
-from kimi_cli.wire.types import ContentPart, TokenUsage, WireMessage
+from kimi_cli.wire.types import ContentPart, MCPStatusSnapshot, TokenUsage, WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
@@ -106,6 +106,9 @@ class StatusSnapshot:
     """Cumulative token usage for today (all sessions, persistent)."""
     weekly_token_usage: TokenUsage | None = None
     """Cumulative token usage for the current ISO week (all sessions, persistent)."""
+    mcp_status: MCPStatusSnapshot | None = None
+    """The current MCP startup snapshot, if MCP is configured."""
+
 
 
 @runtime_checkable

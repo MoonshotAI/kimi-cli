@@ -74,7 +74,7 @@ Useful for entering multi-line code snippets or formatted text.
 
 Paste clipboard content into the input box. Supports:
 
-- **Text**: In agent mode, text longer than 300 characters or 3 lines is automatically collapsed into a `[Pasted text #n]` placeholder to keep the input box clean; the full content is expanded and sent to the model when submitting. When using `Ctrl-O` to open an external editor, placeholders are automatically expanded to the original text, and unmodified portions are re-collapsed after saving
+- **Text**: In agent mode, text longer than 1000 characters or 15 lines is automatically collapsed into a `[Pasted text #n]` placeholder to keep the input box clean; the full content is expanded and sent to the model when submitting. When using `Ctrl-O` to open an external editor, placeholders are automatically expanded to the original text, and unmodified portions are re-collapsed after saving
 - **Images**: Cached to disk and displayed as an `[image:xxx.png,WxH]` placeholder; the actual image data is sent along with the message to the model (requires model image input support)
 - **Video files**: File path is inserted as text into the input box (requires model video input support)
 

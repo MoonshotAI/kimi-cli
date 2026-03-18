@@ -26,13 +26,15 @@ from kosong.tooling.error import (
 )
 from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
-from loguru import logger
 
+from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
     ContentPart,
+    MCPServerSnapshot,
+    MCPStatusSnapshot,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -74,6 +76,7 @@ class KimiToolset:
         self._hidden_tools: set[str] = set()
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
+        self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
@@ -162,6 +165,48 @@ class KimiToolset:
     def mcp_servers(self) -> dict[str, MCPServerInfo]:
         """Get MCP servers info."""
         return self._mcp_servers
+
+    def mcp_status_snapshot(self) -> MCPStatusSnapshot | None:
+        """Return a read-only snapshot of current MCP startup state."""
+        if not self._mcp_servers:
+            return None
+
+        servers = tuple(
+            MCPServerSnapshot(
+                name=name,
+                status=info.status,
+                tools=tuple(tool.name for tool in info.tools),
+            )
+            for name, info in self._mcp_servers.items()
+        )
+        return MCPStatusSnapshot(
+            loading=self.has_pending_mcp_tools(),
+            connected=sum(1 for server in servers if server.status == "connected"),
+            total=len(servers),
+            tools=sum(len(server.tools) for server in servers),
+            servers=servers,
+        )
+
+    def defer_mcp_tool_loading(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
+        """Store MCP configs for a later background startup."""
+        self._deferred_mcp_load = (list(mcp_configs), runtime)
+
+    def has_deferred_mcp_tools(self) -> bool:
+        """Return True when MCP loading is configured but has not started yet."""
+        return self._deferred_mcp_load is not None
+
+    async def start_deferred_mcp_tool_loading(self) -> bool:
+        """Start any deferred MCP loading in the background."""
+        if self._deferred_mcp_load is None:
+            return False
+        if self._mcp_loading_task is not None or self._mcp_servers:
+            self._deferred_mcp_load = None
+            return False
+
+        mcp_configs, runtime = self._deferred_mcp_load
+        self._deferred_mcp_load = None
+        await self.load_mcp_tools(mcp_configs, runtime, in_background=True)
+        return True
 
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
@@ -355,6 +400,7 @@ class KimiToolset:
 
     async def cleanup(self) -> None:
         """Cleanup any resources held by the toolset."""
+        self._deferred_mcp_load = None
         if self._mcp_loading_task:
             self._mcp_loading_task.cancel()
             with contextlib.suppress(Exception):

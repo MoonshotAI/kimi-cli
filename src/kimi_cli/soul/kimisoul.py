@@ -218,6 +218,12 @@ class KimiSoul:
         if isinstance(write_tool, WriteFile):
             write_tool.bind_plan_mode(checker, path_getter)
 
+        from kimi_cli.tools.file.replace import StrReplaceFile
+
+        replace_tool = self._agent.toolset.find("StrReplaceFile")
+        if isinstance(replace_tool, StrReplaceFile):
+            replace_tool.bind_plan_mode(checker, path_getter)
+
         # ExitPlanMode has a special bind() method
         from kimi_cli.tools.plan import ExitPlanMode
 
@@ -225,23 +231,12 @@ class KimiSoul:
         if isinstance(exit_tool, ExitPlanMode):
             exit_tool.bind(self.toggle_plan_mode, path_getter, checker)
 
-        # EnterPlanMode has a special bind() with yolo_checker
+        # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-
-            def yolo_checker() -> bool:
-                return self._approval.is_yolo()
-
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, yolo_checker)
-
-        # AskUserQuestion gets plan mode checker for dynamic description
-        from kimi_cli.tools.ask_user import AskUserQuestion
-
-        ask_tool = self._agent.toolset.find("AskUserQuestion")
-        if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_plan_mode(checker)
+            enter_tool.bind(self.toggle_plan_mode, path_getter, checker)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -337,6 +332,7 @@ class KimiSoul:
             total_token_usage=self._total_token_usage,
             daily_token_usage=self._ledger.daily,
             weekly_token_usage=self._ledger.weekly,
+            mcp_status=self._mcp_status_snapshot(),
         )
 
     @property
@@ -360,6 +356,23 @@ class KimiSoul:
     @property
     def wire_file(self) -> WireFile:
         return self._runtime.session.wire_file
+
+    def _mcp_status_snapshot(self):
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return None
+        return self._agent.toolset.mcp_status_snapshot()
+
+    async def start_background_mcp_loading(self) -> bool:
+        """Start deferred MCP loading, if any, without exposing toolset internals."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return False
+        return await self._agent.toolset.start_deferred_mcp_tool_loading()
+
+    async def wait_for_background_mcp_loading(self) -> None:
+        """Wait for any in-flight MCP startup to finish."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return
+        await self._agent.toolset.wait_for_mcp_tools()
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
@@ -527,13 +540,16 @@ class KimiSoul:
             self._steer_queue.get_nowait()
 
         if isinstance(self._agent.toolset, KimiToolset):
-            loading = self._agent.toolset.has_pending_mcp_tools()
+            await self.start_background_mcp_loading()
+            loading = bool((snapshot := self._mcp_status_snapshot()) and snapshot.loading)
             if loading:
+                wire_send(StatusUpdate(mcp_status=snapshot))
                 wire_send(MCPLoadingBegin())
             try:
-                await self._agent.toolset.wait_for_mcp_tools()
+                await self.wait_for_background_mcp_loading()
             finally:
                 if loading:
+                    wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
         async def _pipe_approval_to_wire():

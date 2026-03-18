@@ -111,6 +111,24 @@ class MCPLoadingEnd(BaseModel):
     pass
 
 
+class MCPServerSnapshot(BaseModel):
+    """A snapshot of one MCP server during startup."""
+
+    name: str
+    status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
+    tools: tuple[str, ...] = ()
+
+
+class MCPStatusSnapshot(BaseModel):
+    """A snapshot of MCP startup progress."""
+
+    loading: bool
+    connected: int
+    total: int
+    tools: int
+    servers: tuple[MCPServerSnapshot, ...] = ()
+
+
 class StatusUpdate(BaseModel):
     """
     An update on the current status of the soul.
@@ -129,6 +147,8 @@ class StatusUpdate(BaseModel):
     """The message ID of the current step."""
     plan_mode: bool | None = None
     """Whether plan mode (read-only) is active. None means no change."""
+    mcp_status: MCPStatusSnapshot | None = None
+    """The current MCP startup snapshot. None means no change."""
 
 
 class Notification(BaseModel):
@@ -490,6 +510,8 @@ __all__ = [
     "MCPLoadingBegin",
     "MCPLoadingEnd",
     "StatusUpdate",
+    "MCPServerSnapshot",
+    "MCPStatusSnapshot",
     "Notification",
     "ContentPart",
     "ToolCall",

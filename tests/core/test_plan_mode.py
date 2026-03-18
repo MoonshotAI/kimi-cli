@@ -12,8 +12,11 @@ from kosong.tooling.empty import EmptyToolset
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.tools.file.replace import StrReplaceFile
+from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.plan import ExitPlanMode
-from kimi_cli.tools.plan.enter import _DEFAULT_DESCRIPTION, _YOLO_DESCRIPTION, EnterPlanMode
+from kimi_cli.tools.plan.enter import _DESCRIPTION, EnterPlanMode
 from kimi_cli.tools.plan.heroes import (
     _slug_cache,
     get_or_create_slug,
@@ -182,7 +185,6 @@ class TestEnterPlanModeGuards:
             toggle_callback=AsyncMock(return_value=True),
             plan_file_path_getter=lambda: Path("/tmp/plan.md"),
             plan_mode_checker=lambda: True,
-            yolo_checker=lambda: False,
         )
         result = await tool(tool.params())
         assert isinstance(result, ToolError)
@@ -200,35 +202,14 @@ class TestEnterPlanModeGuards:
 
 
 # ---------------------------------------------------------------------------
-# EnterPlanMode — dynamic description via base property
+# EnterPlanMode — static description
 # ---------------------------------------------------------------------------
 
 
-class TestEnterPlanModeDynamicDescription:
-    def test_description_updates_with_yolo_toggle(self) -> None:
-        yolo_state = [False]
+class TestEnterPlanModeDescription:
+    def test_description_is_static(self) -> None:
         tool = EnterPlanMode()
-        tool.bind(
-            toggle_callback=AsyncMock(return_value=True),
-            plan_file_path_getter=lambda: Path("/tmp/plan.md"),
-            plan_mode_checker=lambda: False,
-            yolo_checker=lambda: yolo_state[0],
-        )
-
-        # Initially non-yolo
-        assert tool.base.description == _DEFAULT_DESCRIPTION
-
-        # Toggle yolo on
-        yolo_state[0] = True
-        assert tool.base.description == _YOLO_DESCRIPTION
-
-        # Toggle yolo off again
-        yolo_state[0] = False
-        assert tool.base.description == _DEFAULT_DESCRIPTION
-
-    def test_description_without_bind_is_default(self) -> None:
-        tool = EnterPlanMode()
-        assert tool.base.description == _DEFAULT_DESCRIPTION
+        assert tool.base.description == _DESCRIPTION
 
 
 class TestManualPlanModeInjections:
@@ -438,7 +419,6 @@ def _setup_enter_tool(tmp_path: Path) -> tuple[EnterPlanMode, AsyncMock, Path]:
         toggle_callback=toggle_cb,
         plan_file_path_getter=lambda: plan_path,
         plan_mode_checker=lambda: False,
-        yolo_checker=lambda: False,
     )
     return tool, toggle_cb, plan_path
 
@@ -455,6 +435,8 @@ class TestEnterPlanModeHappyPaths:
         output = _tool_output_text(result)
         assert "Plan mode activated" in output or "plan mode" in output.lower()
         assert str(plan_path) in output
+        assert "StrReplaceFile" in output
+        assert "clarify missing requirements" in output
         toggle_cb.assert_awaited_once()
 
     async def test_user_declines(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -609,6 +591,34 @@ class TestKimiSoulPlanState:
         assert soul.status.plan_mode is True
         soul._set_plan_mode(False, source="tool")
         assert soul.status.plan_mode is False
+
+    def test_bind_plan_mode_tools_binds_callbacks(self, runtime: Runtime, tmp_path: Path) -> None:
+        toolset = KimiToolset()
+        write_tool = WriteFile(runtime, runtime.approval)
+        replace_tool = StrReplaceFile(runtime, runtime.approval)
+        toolset.add(write_tool)
+        toolset.add(replace_tool)
+
+        agent = Agent(
+            name="Test Agent",
+            system_prompt="Test system prompt.",
+            toolset=toolset,
+            runtime=runtime,
+        )
+        soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+
+        assert write_tool._plan_mode_checker is not None
+        assert write_tool._plan_file_path_getter is not None
+        assert replace_tool._plan_mode_checker is not None
+        assert replace_tool._plan_file_path_getter is not None
+
+        soul._set_plan_mode(True, source="tool")
+        plan_path = soul.get_plan_file_path()
+        assert plan_path is not None
+        assert write_tool._plan_mode_checker() is True
+        assert replace_tool._plan_mode_checker() is True
+        assert write_tool._plan_file_path_getter() == plan_path
+        assert replace_tool._plan_file_path_getter() == plan_path
 
 
 # ---------------------------------------------------------------------------
