@@ -17,12 +17,12 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from kosong.message import ContentPart, ImageURLPart, TextPart
-from loguru import logger
 from PIL import Image
 from PIL.Image import Image as PILImage
 from pydantic import TypeAdapter
 from starlette.websockets import WebSocket, WebSocketState
 
+from kimi_cli import logger
 from kimi_cli.config import load_config
 from kimi_cli.llm import ModelCapability
 from kimi_cli.utils.subprocess_env import get_clean_env

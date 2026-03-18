@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import textwrap
 import time
 from pathlib import Path
 
@@ -205,8 +206,43 @@ def test_shell_exit_command_from_idle_prompt(tmp_path: Path) -> None:
         shell.close()
 
 
-def test_shell_ctrl_c_from_idle_prompt_after_completed_turn_shows_tip(tmp_path: Path) -> None:
-    config_path = write_scripted_config(tmp_path, ["text: First turn finished."])
+def test_shell_shows_mcp_loading_without_blocking_input(tmp_path: Path) -> None:
+    server_path = tmp_path / "slow_mcp_server.py"
+    server_path.write_text(
+        textwrap.dedent(
+            """
+            import time
+            from fastmcp.server import FastMCP
+
+            time.sleep(1.5)
+            server = FastMCP("slow-mcp")
+
+            @server.tool
+            def ping(text: str) -> str:
+                return f"pong:{{text}}"
+
+            if __name__ == "__main__":
+                server.run(transport="stdio", show_banner=False)
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    mcp_config_path = tmp_path / "mcp.json"
+    mcp_config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "slow-test": {
+                        "command": sys.executable,
+                        "args": [str(server_path)],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = write_scripted_config(tmp_path, [])
     work_dir = make_work_dir(tmp_path)
     home_dir = make_home_dir(tmp_path)
     shell = start_shell_pty(
@@ -214,26 +250,18 @@ def test_shell_ctrl_c_from_idle_prompt_after_completed_turn_shows_tip(tmp_path: 
         work_dir=work_dir,
         home_dir=home_dir,
         yolo=True,
+        extra_args=["--mcp-config-file", str(mcp_config_path)],
     )
 
     try:
         shell.read_until_contains("Welcome to Kimi Code CLI!")
-        _read_until_prompt(shell, after=shell.mark())
-
-        turn_mark = shell.mark()
-        shell.send_line("run first turn")
-        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
         prompt_mark = shell.mark()
         _read_until_prompt(shell, after=prompt_mark)
-
-        interrupt_mark = shell.mark()
-        shell.send_key("ctrl_c")
-        shell.read_until_contains(
-            "Tip: press Ctrl-D or send 'exit' to quit",
-            after=interrupt_mark,
-            timeout=4.0,
-        )
-        _read_until_prompt(shell, after=shell.mark())
+        shell.read_until_contains("MCP Servers:", after=prompt_mark, timeout=15.0)
+        transcript = shell.normalized_text()[prompt_mark:]
+        assert "slow-test" in transcript
+        assert "(pending)" in transcript or "(connecting)" in transcript
+        assert "ping" not in transcript
 
         _exit_shell(shell)
     finally:
@@ -265,6 +293,39 @@ def test_shell_ctrl_d_from_idle_prompt_after_completed_turn_exits_cleanly(tmp_pa
         shell.send_key("ctrl_d")
         shell.read_until_contains("Bye!", after=eof_mark, timeout=4.0)
         assert shell.wait() == 0
+    finally:
+        shell.close()
+
+
+def test_shell_ctrl_c_from_idle_prompt_after_completed_turn_shows_tip(tmp_path: Path) -> None:
+    config_path = write_scripted_config(tmp_path, ["text: First turn finished."])
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_line("run first turn")
+        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
+        prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=prompt_mark)
+
+        interrupt_mark = shell.mark()
+        shell.send_key("ctrl_c")
+        shell.read_until_contains(
+            "Tip: press Ctrl-D or send 'exit' to quit",
+            after=interrupt_mark,
+            timeout=4.0,
+        )
+        _read_until_prompt(shell, after=shell.mark())
     finally:
         shell.close()
 
