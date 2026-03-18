@@ -28,7 +28,7 @@ from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
 from loguru import logger
 
-from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.exception import InvalidToolError
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
@@ -312,12 +312,20 @@ class KimiToolset:
                     continue
 
             if failed_servers:
-                _toast_mcp("mcp connection failed")
-                raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
-            if unauthorized_servers:
-                _toast_mcp("mcp authorization needed")
+                names = ", ".join(failed_servers.keys())
+                for name, error in failed_servers.items():
+                    logger.warning(
+                        "MCP server '{name}' failed to connect: {error}",
+                        name=name,
+                        error=error,
+                    )
+                final_toast = f"mcp connection failed: {names}"
+            elif unauthorized_servers:
+                final_toast = "mcp authorization needed"
             else:
-                _toast_mcp("mcp servers connected")
+                final_toast = "mcp servers connected"
+
+            _toast_mcp(final_toast)
 
         for mcp_config in mcp_configs:
             if not mcp_config.mcpServers:
@@ -420,7 +428,15 @@ class MCPTool[T: ClientTransport](CallableTool):
                     ),
                     brief="Timeout",
                 )
-            raise
+            logger.error(
+                "MCP tool call failed: {tool_name}, error: {error}",
+                tool_name=self._mcp_tool.name,
+                error=e,
+            )
+            return ToolError(
+                message=f"MCP tool `{self._mcp_tool.name}` failed: {e}",
+                brief="MCP error",
+            )
 
 
 class WireExternalTool(CallableTool):

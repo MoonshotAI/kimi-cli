@@ -17,6 +17,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Shell: Fix UTF-16 surrogate characters in pasted text causing serialization errors — lone surrogates from Windows clipboard data are now sanitized before storage, preventing `UnicodeEncodeError` in history writes and JSON serialization
 - Shell: Redesign slash command completion menu — replace the default completion popup with a full-width custom menu that shows command names and multi-line descriptions, with highlight and scroll support
 - Shell: Fix cancelled shell commands not properly terminating child processes — when a running command is cancelled, the subprocess is now explicitly killed to prevent orphaned processes
+- MCP: Gracefully degrade on MCP server connection failure instead of crashing — if an MCP server fails to connect (e.g. missing binary), log a warning and continue loading remaining servers; runtime MCP tool call failures also return a tool error instead of crashing
+- MCP: Fix MCP connection toast showing success even when some servers failed — consolidate into a single final notification with priority: failure > unauthorized > success
 
 ## 1.21.0 (2026-03-12)
 
