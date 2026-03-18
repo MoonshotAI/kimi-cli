@@ -171,7 +171,8 @@ class TokenLedger:
 
         try:
             raw_data = json.loads(self._file.read_text())
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            # Best-effort: treat decode errors same as parse errors
             return (None, None)
 
         # Validate root type is a mapping before accessing
@@ -231,8 +232,8 @@ class TokenLedger:
                 # Reset weekly if week changed
                 if saved_week_start != week_start_str:
                     self._weekly = _PeriodStats()
-            except (json.JSONDecodeError, OSError, AttributeError):
-                # If file is corrupted, continue with current in-memory stats
+            except (json.JSONDecodeError, OSError, AttributeError, UnicodeDecodeError):
+                # If file is corrupted or has encoding issues, continue with current in-memory stats
                 pass
 
     def _load(self) -> None:
