@@ -328,6 +328,8 @@ def test_shell_ctrl_c_from_idle_prompt_after_completed_turn_shows_tip(tmp_path: 
         _read_until_prompt(shell, after=shell.mark())
     finally:
         shell.close()
+
+
 def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
     question_payload = [
         {
