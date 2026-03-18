@@ -592,9 +592,7 @@ class TestKimiSoulPlanState:
         soul._set_plan_mode(False, source="tool")
         assert soul.status.plan_mode is False
 
-    def test_bind_plan_mode_tools_updates_file_tool_descriptions(
-        self, runtime: Runtime, tmp_path: Path
-    ) -> None:
+    def test_bind_plan_mode_tools_binds_callbacks(self, runtime: Runtime, tmp_path: Path) -> None:
         toolset = KimiToolset()
         write_tool = WriteFile(runtime, runtime.approval)
         replace_tool = StrReplaceFile(runtime, runtime.approval)
