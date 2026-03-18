@@ -122,9 +122,16 @@ def _full_reminder(
     if plan_file_path:
         lines.append("")
         if plan_exists:
-            lines.append(f"Plan file: {plan_file_path} (exists — read first, then update)")
+            lines.append(
+                f"Plan file: {plan_file_path} "
+                "(exists — read first, then update it with WriteFile or StrReplaceFile)"
+            )
         else:
-            lines.append(f"Plan file: {plan_file_path} (create with WriteFile)")
+            lines.append(
+                f"Plan file: {plan_file_path} "
+                "(create it with WriteFile; once it exists, you can modify it with "
+                "WriteFile or StrReplaceFile)"
+            )
         lines.append("This is the only file you are allowed to edit.")
     # Workflow
     lines.extend(
@@ -134,7 +141,8 @@ def _full_reminder(
             "1. Understand — explore the codebase with Glob, Grep, ReadFile",
             "2. Design — identify approaches, trade-offs, and decisions",
             "3. Review — re-read key files to verify understanding",
-            "4. Write Plan — write your plan to the plan file with WriteFile",
+            "4. Write Plan — modify the plan file with WriteFile or StrReplaceFile. "
+            "Use WriteFile if the plan file does not exist yet",
             "5. Exit — call ExitPlanMode for user approval",
         ]
     )
@@ -142,6 +150,9 @@ def _full_reminder(
     lines.extend(
         [
             "",
+            "AskUserQuestion is only for clarifying missing requirements or asking the user "
+            "to choose between approaches.",
+            "Never ask about plan approval via text or AskUserQuestion.",
             "Your turn must end with either AskUserQuestion (to clarify requirements) "
             "or ExitPlanMode (to request plan approval). Do NOT end your turn any other way.",
             "Do NOT use AskUserQuestion to ask about plan approval or reference "
@@ -161,6 +172,9 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
         parts.append("Read-only.")
     parts.extend(
         [
+            "Use WriteFile or StrReplaceFile to modify the plan file. "
+            "If it does not exist yet, create it with WriteFile first.",
+            "Use AskUserQuestion only for clarifications or approach choices.",
             "End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for approval).",
             "Never ask about plan approval via text or AskUserQuestion.",
         ]
@@ -185,9 +199,13 @@ def _reentry_reminder(plan_file_path: str | None = None) -> str:
         "Before proceeding:",
         "1. Read the existing plan file to understand what was previously planned",
         "2. Evaluate the user's current request against that plan",
-        "3. If different task: overwrite with a fresh plan. "
+        "3. If different task: replace the old plan with a fresh one. "
         "If same task: update the existing plan.",
-        "4. Always edit the plan file before calling ExitPlanMode.",
+        "4. You may use WriteFile or StrReplaceFile to modify the plan file. "
+        "If the file does not exist yet, create it with WriteFile first.",
+        "5. Use AskUserQuestion only for clarifying missing requirements or asking the user "
+        "to choose between approaches.",
+        "6. Always edit the plan file before calling ExitPlanMode.",
         "",
         "Your turn must end with either AskUserQuestion (to clarify requirements) "
         "or ExitPlanMode (to request plan approval).",

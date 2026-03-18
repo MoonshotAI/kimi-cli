@@ -115,7 +115,6 @@ def test_pyinstaller_datas():
         ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
         ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
-        ("src/kimi_cli/tools/plan/enter_description_yolo.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
         ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
         (
@@ -154,6 +153,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file",
             "kimi_cli.tools.file.glob",
             "kimi_cli.tools.file.grep_local",
+            "kimi_cli.tools.file.plan_mode",
             "kimi_cli.tools.file.read",
             "kimi_cli.tools.file.read_media",
             "kimi_cli.tools.file.replace",

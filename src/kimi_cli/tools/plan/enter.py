@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import override
 from uuid import uuid4
 
-from kosong.tooling import BriefDisplayBlock, CallableTool2, Tool, ToolError, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel
 
 from kimi_cli.soul import get_wire_or_none, wire_send
@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 NAME = "EnterPlanMode"
 
-_DEFAULT_DESCRIPTION = load_desc(Path(__file__).parent / "enter_description.md")
-_YOLO_DESCRIPTION = load_desc(Path(__file__).parent / "enter_description_yolo.md")
+_DESCRIPTION = load_desc(Path(__file__).parent / "enter_description.md")
 
 
 class Params(BaseModel):
@@ -30,7 +29,7 @@ class Params(BaseModel):
 
 class EnterPlanMode(CallableTool2[Params]):
     name: str = NAME
-    description: str = _DEFAULT_DESCRIPTION
+    description: str = _DESCRIPTION
     params: type[Params] = Params
 
     def __init__(self) -> None:
@@ -38,33 +37,17 @@ class EnterPlanMode(CallableTool2[Params]):
         self._toggle_callback: Callable[[], Awaitable[bool]] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
         self._plan_mode_checker: Callable[[], bool] | None = None
-        self._yolo_checker: Callable[[], bool] | None = None
 
     def bind(
         self,
         toggle_callback: Callable[[], Awaitable[bool]],
         plan_file_path_getter: Callable[[], Path | None],
         plan_mode_checker: Callable[[], bool],
-        yolo_checker: Callable[[], bool],
     ) -> None:
         """Late-bind soul callbacks after KimiSoul is constructed."""
         self._toggle_callback = toggle_callback
         self._plan_file_path_getter = plan_file_path_getter
         self._plan_mode_checker = plan_mode_checker
-        self._yolo_checker = yolo_checker
-
-    @property
-    def base(self) -> Tool:
-        """Dynamically update description based on current yolo state."""
-        if self._yolo_checker is not None:
-            desc = _YOLO_DESCRIPTION if self._yolo_checker() else _DEFAULT_DESCRIPTION
-            if self._base.description != desc:
-                self._base = Tool(
-                    name=self._base.name,
-                    description=desc,
-                    parameters=self._base.parameters,
-                )
-        return self._base
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -153,7 +136,11 @@ class EnterPlanMode(CallableTool2[Params]):
                     f"Plan mode activated. You MUST NOT edit code files — only read and plan.\n"
                     f"Plan file: {plan_path}\n"
                     f"Workflow: explore with Glob/Grep/ReadFile → design approach → "
-                    f"write plan with WriteFile → call ExitPlanMode.\n"
+                    f"modify the plan file with WriteFile or StrReplaceFile "
+                    f"(create it with WriteFile first if it does not exist) → "
+                    f"call ExitPlanMode.\n"
+                    f"Use AskUserQuestion only to clarify missing requirements or choose "
+                    f"between approaches.\n"
                     f"Do NOT use AskUserQuestion to ask about plan approval."
                 ),
                 message="Plan mode on",

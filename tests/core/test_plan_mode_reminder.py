@@ -93,6 +93,9 @@ def test_full_reminder_contains_only_exception() -> None:
 def test_full_reminder_contains_turn_ending_constraint() -> None:
     """Full reminder should constrain how turns end."""
     text = _full_reminder("/tmp/plan.md")
+    assert "WriteFile" in text
+    assert "StrReplaceFile" in text
+    assert "clarifying missing requirements" in text
     assert "AskUserQuestion" in text
     assert "ExitPlanMode" in text
     assert "Do NOT end your turn any other way" in text
@@ -110,6 +113,9 @@ def test_full_reminder_contains_anti_pattern() -> None:
 def test_sparse_reminder_contains_turn_ending_constraint() -> None:
     """Sparse reminder should include turn ending instructions."""
     text = _sparse_reminder("/tmp/plan.md")
+    assert "WriteFile" in text
+    assert "StrReplaceFile" in text
+    assert "approach choices" in text
     assert "AskUserQuestion" in text
     assert "ExitPlanMode" in text
     assert "Never ask about plan approval" in text
@@ -131,3 +137,6 @@ def test_reentry_reminder_contains_decision_tree() -> None:
     assert "different task" in text.lower()
     assert "same task" in text.lower()
     assert "Read the existing plan" in text
+    assert "WriteFile" in text
+    assert "StrReplaceFile" in text
+    assert "clarifying missing requirements" in text
