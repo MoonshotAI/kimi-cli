@@ -1173,6 +1173,14 @@ class CustomPromptSession:
         def _(event: KeyPressEvent) -> None:
             self._handle_running_prompt_key("5", event)
 
+        @_kb.add(
+            "6",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("6")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("6", event)
+
         @_kb.add(Keys.BracketedPaste, eager=True)
         def _(event: KeyPressEvent) -> None:
             self._handle_bracketed_paste(event)

@@ -25,6 +25,7 @@ class KeyEvent(Enum):
     NUM_3 = auto()
     NUM_4 = auto()
     NUM_5 = auto()
+    NUM_6 = auto()
 
 
 class KeyboardListener:
@@ -197,6 +198,8 @@ def _listen_for_keyboard_unix(
                 emit(KeyEvent.NUM_4)
             elif c == b"5":
                 emit(KeyEvent.NUM_5)
+            elif c == b"6":
+                emit(KeyEvent.NUM_6)
     finally:
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
 
@@ -265,6 +268,8 @@ def _listen_for_keyboard_windows(
                 emit(KeyEvent.NUM_4)
             elif c == b"5":
                 emit(KeyEvent.NUM_5)
+            elif c == b"6":
+                emit(KeyEvent.NUM_6)
         else:
             if cancel.is_set():
                 break

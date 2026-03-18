@@ -52,7 +52,7 @@ class PlanOption(BaseModel):
 class Params(BaseModel):
     options: list[PlanOption] | None = Field(
         default=None,
-        max_length=3,
+        max_length=4,
         description=(
             "When the plan contains multiple alternative approaches, list them here "
             "so the user can choose which one to execute. 2-3 options. "

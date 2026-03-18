@@ -848,8 +848,8 @@ class TestPlanOptionValidator:
         opt = PlanOption(label="Option A", description="x")
         assert opt.label == "Option A"
 
-    def test_params_max_four_options_raises(self) -> None:
-        """Params.options has max_length=3; passing 4 must raise ValidationError."""
+    def test_params_max_five_options_raises(self) -> None:
+        """Params.options has max_length=4; passing 5 must raise ValidationError."""
         with pytest.raises(ValidationError):
             Params(
                 options=[
@@ -857,8 +857,21 @@ class TestPlanOptionValidator:
                     PlanOption(label="B", description=""),
                     PlanOption(label="C", description=""),
                     PlanOption(label="D", description=""),
+                    PlanOption(label="E", description=""),
                 ]
             )
+
+    def test_params_four_options_ok(self) -> None:
+        params = Params(
+            options=[
+                PlanOption(label="A", description=""),
+                PlanOption(label="B", description=""),
+                PlanOption(label="C", description=""),
+                PlanOption(label="D", description=""),
+            ]
+        )
+        assert params.options is not None
+        assert len(params.options) == 4
 
     def test_params_three_options_ok(self) -> None:
         params = Params(
