@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from kosong.tooling import ToolError, ToolReturnValue
 from kosong.tooling.empty import EmptyToolset
+from pydantic import ValidationError
 
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
@@ -15,7 +16,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.plan import ExitPlanMode
+from kimi_cli.tools.plan import ExitPlanMode, Params, PlanOption
 from kimi_cli.tools.plan.enter import _DESCRIPTION, EnterPlanMode
 from kimi_cli.tools.plan.heroes import (
     _slug_cache,
@@ -516,9 +517,8 @@ class TestKimiSoulPlanState:
         soul = _make_soul(runtime, tmp_path)
 
         soul._set_plan_mode(True, source="tool")
-        sid = soul._plan_session_id
         soul._set_plan_mode(False, source="tool")
-        assert soul._plan_session_id == sid
+        assert soul._plan_session_id is None
 
     def test_plan_file_path_none_before_activation(self, runtime: Runtime, tmp_path: Path) -> None:
         soul = _make_soul(runtime, tmp_path)
@@ -622,6 +622,53 @@ class TestKimiSoulPlanState:
 
 
 # ---------------------------------------------------------------------------
+# KimiSoul — plan_session_id cross-process persistence
+# ---------------------------------------------------------------------------
+
+
+class TestKimiSoulPlanSessionPersistence:
+    """Tests that plan_session_id survives simulated process restarts."""
+
+    async def test_plan_session_id_survives_restart(
+        self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Second KimiSoul created from same session state gets same plan file path."""
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        soul1 = _make_soul(runtime, tmp_path)
+        soul1._set_plan_mode(True, source="tool")
+        path1 = soul1.get_plan_file_path()
+        assert path1 is not None
+
+        # Simulate restart: clear in-process slug cache (as would happen in a new process)
+        _slug_cache.clear()
+
+        # New KimiSoul reads from same (already-saved) session state and re-seeds cache
+        soul2 = _make_soul(runtime, tmp_path)
+        path2 = soul2.get_plan_file_path()
+        assert path2 == path1
+
+    async def test_plan_session_id_cleared_after_deactivation(
+        self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After plan mode is turned off and process restarts, new activation gets fresh path."""
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        soul1 = _make_soul(runtime, tmp_path)
+        soul1._set_plan_mode(True, source="tool")
+        path1 = soul1.get_plan_file_path()
+        soul1._set_plan_mode(False, source="tool")
+        # state.plan_session_id is now None in persisted state
+
+        # Restart + re-activate
+        from kimi_cli.tools.plan.heroes import _slug_cache
+
+        _slug_cache.clear()  # simulate fresh process (in-memory cache gone)
+        soul2 = _make_soul(runtime, tmp_path)
+        soul2._set_plan_mode(True, source="tool")
+        path2 = soul2.get_plan_file_path()
+        assert path2 != path1  # fresh slug, different path
+
+
+# ---------------------------------------------------------------------------
 # ToolRejectedError — enhanced constructor
 # ---------------------------------------------------------------------------
 
@@ -641,3 +688,197 @@ class TestToolRejectedError:
         err = ToolRejectedError(message="Custom rejection")
         assert err.message == "Custom rejection"
         assert err.brief == "Rejected by user"
+
+
+# ---------------------------------------------------------------------------
+# ExitPlanMode — multi-option selection
+# ---------------------------------------------------------------------------
+
+
+class TestExitPlanModeMultiOption:
+    """Tests for ExitPlanMode with the `options` parameter."""
+
+    def _make_params_with_options(self) -> Params:
+        return Params(
+            options=[
+                PlanOption(label="Option A (Recommended)", description="Add new method"),
+                PlanOption(label="Option B", description="Modify call site"),
+            ]
+        )
+
+    async def test_select_option_approves_plan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, plan_path = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(
+            QuestionRequest,
+            "wait",
+            AsyncMock(return_value={"q": "Option A (Recommended)"}),
+        )
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        output = _tool_output_text(result)
+        assert "Option A (Recommended)" in output
+        assert "Selected approach" in output
+        assert "# My Plan" in output
+        toggle_cb.assert_awaited_once()
+
+    async def test_select_second_option(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Option B"}))
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        output = _tool_output_text(result)
+        assert "Option B" in output
+        assert "Selected approach" in output
+        toggle_cb.assert_awaited_once()
+
+    async def test_reject_with_options(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Reject"}))
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolRejectedError)
+        toggle_cb.assert_not_awaited()
+
+    async def test_revise_with_options(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, _, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(
+            QuestionRequest,
+            "wait",
+            AsyncMock(return_value={"q": "I want a third approach using decorator"}),
+        )
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        output = _tool_output_text(result)
+        assert "revision" in output.lower() or "revise" in output.lower()
+        assert "decorator" in output
+
+    async def test_dismissed_with_options(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={}))
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        assert "dismissed" in _tool_output_text(result).lower()
+        toggle_cb.assert_not_awaited()
+
+    async def test_no_options_falls_back_to_approve_reject(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When options=None, behaves like the original Approve/Reject flow."""
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Approve"}))
+
+        result = await tool(tool.params())
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        assert "Plan approved" in _tool_output_text(result)
+        toggle_cb.assert_awaited_once()
+
+    async def test_single_option_falls_back_to_approve_reject(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When only 1 option is provided (<2), falls back to Approve/Reject."""
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Approve"}))
+
+        params = Params(options=[PlanOption(label="Only one", description="...")])
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        assert "Plan approved" in _tool_output_text(result)
+        toggle_cb.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# PlanOption validator — reserved labels and Params max_length
+# ---------------------------------------------------------------------------
+
+
+class TestPlanOptionValidator:
+    """Tests for PlanOption label validation and Params.options max_length."""
+
+    def test_reserved_label_reject_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="Reject", description="x")
+
+    def test_reserved_label_reject_lowercase_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="reject", description="x")
+
+    def test_reserved_label_revise_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="Revise", description="x")
+
+    def test_reserved_label_approve_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="Approve", description="x")
+
+    def test_reserved_label_with_whitespace_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="  Reject  ", description="x")
+
+    def test_non_reserved_label_ok(self) -> None:
+        opt = PlanOption(label="Option A", description="x")
+        assert opt.label == "Option A"
+
+    def test_params_max_four_options_raises(self) -> None:
+        """Params.options has max_length=3; passing 4 must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            Params(
+                options=[
+                    PlanOption(label="A", description=""),
+                    PlanOption(label="B", description=""),
+                    PlanOption(label="C", description=""),
+                    PlanOption(label="D", description=""),
+                ]
+            )
+
+    def test_params_duplicate_labels_raises(self) -> None:
+        """Duplicate option labels must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            Params(
+                options=[
+                    PlanOption(label="Patch config", description=""),
+                    PlanOption(label="Patch config", description="different desc"),
+                ]
+            )
+
+    def test_params_three_options_ok(self) -> None:
+        params = Params(
+            options=[
+                PlanOption(label="A", description=""),
+                PlanOption(label="B", description=""),
+                PlanOption(label="C", description=""),
+            ]
+        )
+        assert params.options is not None
+        assert len(params.options) == 3

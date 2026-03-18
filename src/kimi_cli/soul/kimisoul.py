@@ -141,7 +141,12 @@ class KimiSoul:
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
         self._plan_mode: bool = self._runtime.session.state.plan_mode
-        self._plan_session_id: str | None = None
+        self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
+        # Pre-warm slug cache so the persisted slug survives process restarts
+        if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
+            from kimi_cli.tools.plan.heroes import seed_slug_cache
+
+            seed_slug_cache(self._plan_session_id, self._runtime.session.state.plan_slug)
         self._pending_plan_activation_injection: bool = False
         if self._plan_mode:
             self._ensure_plan_session_id()
@@ -239,6 +244,13 @@ class KimiSoul:
             import uuid
 
             self._plan_session_id = uuid.uuid4().hex
+            self._runtime.session.state.plan_session_id = self._plan_session_id
+            # Compute and persist slug immediately so the path survives process restarts
+            from kimi_cli.tools.plan.heroes import get_or_create_slug
+
+            slug = get_or_create_slug(self._plan_session_id)
+            self._runtime.session.state.plan_slug = slug
+            self._runtime.session.save_state()
 
     def _set_plan_mode(self, enabled: bool, *, source: Literal["manual", "tool"]) -> bool:
         """Update plan mode state for either manual or tool-driven toggles."""
@@ -250,6 +262,9 @@ class KimiSoul:
             self._pending_plan_activation_injection = source == "manual"
         else:
             self._pending_plan_activation_injection = False
+            self._plan_session_id = None
+            self._runtime.session.state.plan_session_id = None
+            self._runtime.session.state.plan_slug = None
         # Persist plan mode to session state so it survives process restarts
         self._runtime.session.state.plan_mode = self._plan_mode
         self._runtime.session.save_state()

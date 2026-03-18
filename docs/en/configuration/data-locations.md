@@ -28,6 +28,8 @@ Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data lis
 │       ├── context.jsonl
 │       ├── wire.jsonl
 │       └── state.json
+├── plans/                # Plan mode plan files
+│   └── <slug>.md
 ├── user-history/         # Input history
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # Logs
@@ -99,10 +101,18 @@ Session state file, stores the session's runtime state, including:
 
 - `approval`: Approval decision state (YOLO mode on/off, auto-approved operation types)
 - `plan_mode`: Plan mode on/off status
+- `plan_session_id`: Unique identifier for the current plan session, used to associate the plan file
+- `plan_slug`: The file path identifier for the plan (the slug in `~/.kimi/plans/<slug>.md`), preserved so restarts resume the same file
 - `dynamic_subagents`: Dynamically created subagent definitions
 - `additional_dirs`: Additional workspace directories added via `--add-dir` or `/add-dir`
 
 When resuming a session, Kimi Code CLI reads this file to restore the session state. This file uses atomic writes to prevent data corruption on crash.
+
+## Plan files
+
+Plan mode plan files are stored in the `~/.kimi/plans/` directory. Each plan session corresponds to a randomly named Markdown file (e.g. `<slug>.md`).
+
+The `plan_slug` is saved in `state.json`, so the same plan file is resumed after a process restart. Use `/plan clear` to delete the current plan session's file.
 
 ## Input history
 
@@ -127,6 +137,7 @@ To clean only specific data:
 | Reset configuration | Delete `~/.kimi/config.toml` |
 | Clear all sessions | Delete `~/.kimi/sessions/` directory |
 | Clear sessions for specific working directory | Use `/sessions` in shell mode to view and delete |
+| Clear plan files | Delete `~/.kimi/plans/` directory, or use `/plan clear` in plan mode |
 | Clear input history | Delete `~/.kimi/user-history/` directory |
 | Clear logs | Delete `~/.kimi/logs/` directory |
 | Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |

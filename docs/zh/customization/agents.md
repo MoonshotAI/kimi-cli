@@ -332,9 +332,11 @@ agent:
 ### `ExitPlanMode`
 
 - **路径**：`kimi_cli.tools.plan:ExitPlanMode`
-- **描述**：在 Plan 模式下完成方案后提交审批。调用前需先将方案写入 plan 文件，此工具会读取 plan 文件内容并展示给用户审批。用户可以批准（退出 Plan 模式并开始执行）、拒绝（保持 Plan 模式等待反馈）或提供修改意见。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
+- **描述**：在 Plan 模式下完成方案后提交审批。调用前需先将方案写入 plan 文件，此工具会读取 plan 文件内容并展示给用户审批。用户可以选择某个实施路径（退出 Plan 模式并开始执行）、拒绝（保持 Plan 模式等待反馈）或提供修改意见。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
 
-此工具不接受参数。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `options` | list \| null | 当方案包含多个可选实施路径时，列出 2–3 个选项供用户选择。每个选项有 `label`（1–8 个词的简短标签，可附加 "(Recommended)"）和可选的 `description`（方案摘要）。不可使用 "Approve"、"Reject"、"Revise" 作为标签名。 |
 
 ### `TaskList`
 

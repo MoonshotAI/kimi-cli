@@ -332,9 +332,11 @@ This tool takes no parameters.
 ### `ExitPlanMode`
 
 - **Path**: `kimi_cli.tools.plan:ExitPlanMode`
-- **Description**: Submit a plan for user approval while in plan mode. Before calling, the plan must be written to the plan file. This tool reads the plan file content and presents it to the user for approval. The user can approve (exit plan mode and start execution), reject (stay in plan mode and wait for feedback), or provide revision comments. See [Plan mode](../guides/interaction.md#plan-mode).
+- **Description**: Submit a plan for user approval while in plan mode. Before calling, the plan must be written to the plan file. This tool reads the plan file content and presents it to the user for approval. The user can select an implementation path (exit plan mode and start execution), reject (stay in plan mode and wait for feedback), or provide revision comments. See [Plan mode](../guides/interaction.md#plan-mode).
 
-This tool takes no parameters.
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `options` | list \| null | When the plan contains multiple alternative implementation paths, list 2–3 options for the user to choose from. Each option has a `label` (1–8 word short name, may append "(Recommended)") and an optional `description` (brief summary). The labels "Approve", "Reject", and "Revise" are reserved and cannot be used. |
 
 ### `TaskList`
 
