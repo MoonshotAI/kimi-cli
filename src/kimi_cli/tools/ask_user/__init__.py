@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import override
 from uuid import uuid4
 
-from kosong.tooling import BriefDisplayBlock, CallableTool2, Tool, ToolError, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul import get_wire_or_none, wire_send
@@ -20,12 +19,6 @@ logger = logging.getLogger(__name__)
 NAME = "AskUserQuestion"
 
 _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "description.md")
-
-_PLAN_MODE_SUFFIX = (
-    "\n\nPlan mode note: Use this tool ONLY to clarify requirements or choose between "
-    'approaches. Do NOT ask about plan approval or reference "the plan" — '
-    "the user cannot see the plan until you call ExitPlanMode."
-)
 
 
 class QuestionOptionParam(BaseModel):
@@ -69,30 +62,6 @@ class AskUserQuestion(CallableTool2[Params]):
     name: str = NAME
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._plan_mode_checker: Callable[[], bool] | None = None
-        self._cached_plan_mode: bool | None = None
-
-    def bind_plan_mode(self, plan_mode_checker: Callable[[], bool]) -> None:
-        """Late-bind plan mode checker after KimiSoul is constructed."""
-        self._plan_mode_checker = plan_mode_checker
-
-    @property
-    def base(self) -> Tool:
-        """Dynamically append plan mode note when plan mode is active."""
-        if self._plan_mode_checker is not None:
-            in_plan = self._plan_mode_checker()
-            if in_plan != self._cached_plan_mode:
-                self._cached_plan_mode = in_plan
-                desc = _BASE_DESCRIPTION + _PLAN_MODE_SUFFIX if in_plan else _BASE_DESCRIPTION
-                self._base = Tool(
-                    name=self._base.name,
-                    description=desc,
-                    parameters=self._base.parameters,
-                )
-        return self._base
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:

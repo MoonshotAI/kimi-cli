@@ -1,45 +1,49 @@
-"""Tests for AskUserQuestion plan mode dynamic description."""
+"""Tests for AskUserQuestion cache-stable descriptions."""
 
 from __future__ import annotations
 
-from kimi_cli.tools.ask_user import _PLAN_MODE_SUFFIX, AskUserQuestion
+from pathlib import Path
+
+from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.context import Context
+from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.tools.ask_user import _BASE_DESCRIPTION, AskUserQuestion
 
 
-class TestAskUserPlanModeDescription:
-    def test_includes_suffix_when_active(self) -> None:
+class TestAskUserDescriptionStability:
+    def test_description_is_static_without_plan_mode_binding(self) -> None:
         tool = AskUserQuestion()
-        tool.bind_plan_mode(lambda: True)
-        assert _PLAN_MODE_SUFFIX in tool.base.description
-
-    def test_normal_when_inactive(self) -> None:
-        tool = AskUserQuestion()
-        tool.bind_plan_mode(lambda: False)
-        assert _PLAN_MODE_SUFFIX not in tool.base.description
-
-    def test_updates_on_mode_change(self) -> None:
-        state = [False]
-        tool = AskUserQuestion()
-        tool.bind_plan_mode(lambda: state[0])
-
-        # Initially inactive
-        assert _PLAN_MODE_SUFFIX not in tool.base.description
-
-        # Activate
-        state[0] = True
-        assert _PLAN_MODE_SUFFIX in tool.base.description
-
-        # Deactivate
-        state[0] = False
-        assert _PLAN_MODE_SUFFIX not in tool.base.description
-
-    def test_default_without_bind(self) -> None:
-        tool = AskUserQuestion()
-        assert _PLAN_MODE_SUFFIX not in tool.base.description
+        assert tool.base.description == _BASE_DESCRIPTION
 
     def test_cache_prevents_recreation(self) -> None:
         tool = AskUserQuestion()
-        tool.bind_plan_mode(lambda: True)
 
         first = tool.base
         second = tool.base
         assert first is second
+
+    def test_description_stays_static_when_soul_toggles_plan_mode(
+        self, runtime: Runtime, tmp_path: Path
+    ) -> None:
+        toolset = KimiToolset()
+        tool = AskUserQuestion()
+        toolset.add(tool)
+
+        agent = Agent(
+            name="Test Agent",
+            system_prompt="Test system prompt.",
+            toolset=toolset,
+            runtime=runtime,
+        )
+        soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+
+        before = tool.base.description
+        soul._set_plan_mode(True, source="tool")
+        during = tool.base.description
+        soul._set_plan_mode(False, source="tool")
+        after = tool.base.description
+
+        assert before == _BASE_DESCRIPTION
+        assert during == _BASE_DESCRIPTION
+        assert after == _BASE_DESCRIPTION

@@ -200,6 +200,12 @@ class KimiSoul:
         if isinstance(write_tool, WriteFile):
             write_tool.bind_plan_mode(checker, path_getter)
 
+        from kimi_cli.tools.file.replace import StrReplaceFile
+
+        replace_tool = self._agent.toolset.find("StrReplaceFile")
+        if isinstance(replace_tool, StrReplaceFile):
+            replace_tool.bind_plan_mode(checker, path_getter)
+
         # ExitPlanMode has a special bind() method
         from kimi_cli.tools.plan import ExitPlanMode
 
@@ -207,23 +213,12 @@ class KimiSoul:
         if isinstance(exit_tool, ExitPlanMode):
             exit_tool.bind(self.toggle_plan_mode, path_getter, checker)
 
-        # EnterPlanMode has a special bind() with yolo_checker
+        # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-
-            def yolo_checker() -> bool:
-                return self._approval.is_yolo()
-
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, yolo_checker)
-
-        # AskUserQuestion gets plan mode checker for dynamic description
-        from kimi_cli.tools.ask_user import AskUserQuestion
-
-        ask_tool = self._agent.toolset.find("AskUserQuestion")
-        if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_plan_mode(checker)
+            enter_tool.bind(self.toggle_plan_mode, path_getter, checker)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
