@@ -9,18 +9,19 @@ from enum import Enum
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
-from loguru import logger
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from kimi_cli import logger
 from kimi_cli.notifications import NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
+from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
     PromptMode,
@@ -187,14 +188,31 @@ class Shell:
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
             )
+            await self.soul.start_background_mcp_loading()
 
         async def _plan_mode_toggle() -> bool:
             if isinstance(self.soul, KimiSoul):
                 return await self.soul.toggle_plan_mode_from_manual()
             return False
 
+        def _mcp_status_block(columns: int):
+            if not isinstance(self.soul, KimiSoul):
+                return None
+            snapshot = self.soul.status.mcp_status
+            if snapshot is None:
+                return None
+            return render_mcp_prompt(snapshot)
+
+        def _mcp_status_loading() -> bool:
+            if not isinstance(self.soul, KimiSoul):
+                return False
+            snapshot = self.soul.status.mcp_status
+            return bool(snapshot and snapshot.loading)
+
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
+            status_block_provider=_mcp_status_block,
+            fast_refresh_provider=_mcp_status_loading,
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=self.soul.model_name,
             thinking=self.soul.thinking or False,
@@ -206,6 +224,20 @@ class Shell:
             plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             self._prompt_session = prompt_session
+            if isinstance(self.soul, KimiSoul):
+                kimi_soul = self.soul
+                snapshot = kimi_soul.status.mcp_status
+                if snapshot and snapshot.loading:
+
+                    async def _invalidate_after_mcp_loading() -> None:
+                        try:
+                            await kimi_soul.wait_for_background_mcp_loading()
+                        except Exception:
+                            logger.debug("MCP loading finished with error while refreshing prompt")
+                        if self._prompt_session is prompt_session:
+                            prompt_session.invalidate()
+
+                    self._start_background_task(_invalidate_after_mcp_loading())
             self._exit_after_run = False
             idle_events: asyncio.Queue[_PromptEvent] = asyncio.Queue()
             # resume_prompt controls whether the prompt router reads input.
@@ -417,6 +449,7 @@ class Shell:
                         context_usage=snap.context_usage,
                         context_tokens=snap.context_tokens,
                         max_context_tokens=snap.max_context_tokens,
+                        mcp_status=snap.mcp_status,
                     ),
                     cancel_event=cancel_event,
                     prompt_session=self._prompt_session,

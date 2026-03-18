@@ -273,13 +273,13 @@ def test_paste_returns_false_when_no_media(monkeypatch) -> None:
 def test_insert_pasted_text_placeholderizes_long_text_in_agent_mode() -> None:
     ps = _make_prompt_session(PromptMode.AGENT)
     buffer = _DummyBuffer()
-    long_text = "alpha\nbeta\ngamma"
+    long_text = "\n".join([f"line{i}" for i in range(1, 16)])
 
     ps._insert_pasted_text(cast("Buffer", buffer), long_text)
 
     assert len(buffer.inserted) == 1
     inserted = buffer.inserted[0]
-    assert inserted == "[Pasted text #1 +3 lines]"
+    assert inserted == "[Pasted text #1 +15 lines]"
 
     user_input = ps._build_user_input(inserted)
     assert user_input.command == inserted
@@ -299,7 +299,7 @@ def test_insert_pasted_text_keeps_raw_text_in_shell_mode() -> None:
 
 def test_build_user_input_expands_text_placeholders_for_slash_parsing() -> None:
     ps = _make_prompt_session(PromptMode.AGENT)
-    long_text = "first line\nsecond line\nthird line"
+    long_text = "\n".join([f"line{i}" for i in range(1, 16)])
     token = ps._get_placeholder_manager().maybe_placeholderize_pasted_text(long_text)
 
     user_input = ps._build_user_input(f"/echo {token}")
@@ -312,18 +312,20 @@ def test_handle_bracketed_paste_placeholderizes_long_text_in_agent_mode() -> Non
     ps = _make_prompt_session(PromptMode.AGENT)
     buffer = _DummyBuffer()
     app = _DummyApp()
+    data_lines = "\r\n".join([f"line{i}" for i in range(1, 16)])
     event = SimpleNamespace(
         current_buffer=buffer,
         app=app,
-        data="line1\r\nline2\r\nline3",
+        data=data_lines,
     )
 
     ps._handle_bracketed_paste(cast(KeyPressEvent, event))
 
-    assert buffer.inserted == ["[Pasted text #1 +3 lines]"]
+    assert buffer.inserted == ["[Pasted text #1 +15 lines]"]
     assert app.invalidated is True
+    resolved_text = "\n".join([f"line{i}" for i in range(1, 16)])
     user_input = ps._build_user_input(buffer.inserted[0])
-    assert user_input.resolved_command == "line1\nline2\nline3"
+    assert user_input.resolved_command == resolved_text
 
 
 def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode() -> None:

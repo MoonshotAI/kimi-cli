@@ -145,6 +145,61 @@ async def test_fixed_subagent_does_not_restore_dynamic_subagents(runtime: Runtim
     assert len(fixed_sub.runtime.labor_market.dynamic_subagents) == 0
 
 
+async def test_load_agent_starts_mcp_in_background(runtime: Runtime, monkeypatch):
+    called: dict[str, bool] = {}
+
+    async def fake_load_mcp_tools(self, mcp_configs, runtime, in_background: bool = True):
+        called["in_background"] = in_background
+
+    monkeypatch.setattr(KimiToolset, "load_mcp_tools", fake_load_mcp_tools)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        (tmpdir / "system.md").write_text("Main agent prompt")
+        agent_yaml = tmpdir / "agent.yaml"
+        agent_yaml.write_text(
+            'version: 1\nagent:\n  name: "Main"\n'
+            "  system_prompt_path: ./system.md\n"
+            '  tools: ["kimi_cli.tools.think:Think"]\n'
+        )
+
+        await load_agent(agent_yaml, runtime, mcp_configs=[{"mcpServers": {}}])
+
+    assert called == {"in_background": True}
+
+
+async def test_load_agent_can_defer_mcp_loading(runtime: Runtime, monkeypatch):
+    called: dict[str, bool] = {}
+
+    async def fake_load_mcp_tools(self, mcp_configs, runtime, in_background: bool = True):
+        called["load_called"] = True
+
+    def fake_defer_mcp_tool_loading(self, mcp_configs, runtime):
+        called["defer_called"] = True
+
+    monkeypatch.setattr(KimiToolset, "load_mcp_tools", fake_load_mcp_tools)
+    monkeypatch.setattr(KimiToolset, "defer_mcp_tool_loading", fake_defer_mcp_tool_loading)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        (tmpdir / "system.md").write_text("Main agent prompt")
+        agent_yaml = tmpdir / "agent.yaml"
+        agent_yaml.write_text(
+            'version: 1\nagent:\n  name: "Main"\n'
+            "  system_prompt_path: ./system.md\n"
+            '  tools: ["kimi_cli.tools.think:Think"]\n'
+        )
+
+        await load_agent(
+            agent_yaml,
+            runtime,
+            mcp_configs=[{"mcpServers": {}}],
+            start_mcp_loading=False,
+        )
+
+    assert called == {"defer_called": True}
+
+
 @pytest.fixture
 def agent_file_invalid_tools() -> Generator[Path, Any, Any]:
     """Create an agent configuration file with invalid tools."""

@@ -953,6 +953,8 @@ class CustomPromptSession:
         self,
         *,
         status_provider: Callable[[], StatusSnapshot],
+        status_block_provider: Callable[[int], AnyFormattedText | None] | None = None,
+        fast_refresh_provider: Callable[[], bool] | None = None,
         model_capabilities: set[ModelCapability],
         model_name: str | None,
         thinking: bool,
@@ -966,6 +968,8 @@ class CustomPromptSession:
         work_dir_id = md5(str(KaosPath.cwd()).encode(encoding="utf-8")).hexdigest()
         self._history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
         self._status_provider = status_provider
+        self._status_block_provider = status_block_provider
+        self._fast_refresh_provider = fast_refresh_provider
         self._editor_command_provider = editor_command_provider
         self._plan_mode_toggle_callback = plan_mode_toggle_callback
         self._model_capabilities = model_capabilities
@@ -1287,8 +1291,23 @@ class CustomPromptSession:
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
-            return FormattedText([("bold", f"{PROMPT_SYMBOL_SHELL} ")])
+            return self._render_shell_prompt_message()
         return self._render_agent_prompt_message()
+
+    def _render_shell_prompt_message(self) -> FormattedText:
+        app = get_app_or_none()
+        columns = app.output.get_size().columns if app is not None else 80
+        fragments: FormattedText = FormattedText()
+        body = self._render_status_block(columns)
+        if body:
+            fragments.extend(body)
+            if not body[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+            fragments.append(("", "\n"))
+            fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+            fragments.append(("", "\n"))
+        fragments.append(("bold", f"{PROMPT_SYMBOL_SHELL} "))
+        return fragments
 
     def _open_in_external_editor(self, event: KeyPressEvent) -> None:
         """Open the current buffer content in an external editor."""
@@ -1372,8 +1391,17 @@ class CustomPromptSession:
     def _render_agent_prompt_body(self, columns: int) -> FormattedText:
         running_prompt = self._running_prompt_delegate
         if running_prompt is None:
-            return FormattedText([])
+            return self._render_status_block(columns)
         return to_formatted_text(running_prompt.render_running_prompt_body(columns))
+
+    def _render_status_block(self, columns: int) -> FormattedText:
+        status_block_provider = getattr(self, "_status_block_provider", None)
+        if status_block_provider is None:
+            return FormattedText([])
+        block = status_block_provider(columns)
+        if block is None:
+            return FormattedText([])
+        return to_formatted_text(block)
 
     def _render_agent_prompt_label(self) -> FormattedText:
         status = self._status_provider()
@@ -1403,6 +1431,10 @@ class CustomPromptSession:
                     interval = (
                         _RUNNING_REFRESH_INTERVAL
                         if self._running_prompt_delegate is not None
+                        or (
+                            self._fast_refresh_provider is not None
+                            and self._fast_refresh_provider()
+                        )
                         else _IDLE_REFRESH_INTERVAL
                     )
                     await asyncio.sleep(interval)

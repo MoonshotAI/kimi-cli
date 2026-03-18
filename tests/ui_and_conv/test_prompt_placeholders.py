@@ -97,7 +97,8 @@ def test_placeholder_manager_leaves_unknown_text_token_literal() -> None:
 
 def test_placeholder_manager_resolves_mixed_text_and_image_tokens(tmp_path) -> None:
     manager = PromptPlaceholderManager(attachment_cache=AttachmentCache(root=tmp_path))
-    text_token = manager.maybe_placeholderize_pasted_text("alpha\nbeta\ngamma")
+    pasted_text = "\n".join([f"line{i}" for i in range(1, 16)])
+    text_token = manager.maybe_placeholderize_pasted_text(pasted_text)
     image = Image.new("RGB", (4, 4), color=(10, 20, 30))
     image_token = manager.create_image_placeholder(image)
 
@@ -105,9 +106,9 @@ def test_placeholder_manager_resolves_mixed_text_and_image_tokens(tmp_path) -> N
 
     resolved = manager.resolve_command(f"look {text_token} {image_token}")
 
-    assert resolved.resolved_text == f"look alpha\nbeta\ngamma {image_token}"
+    assert resolved.resolved_text == f"look {pasted_text} {image_token}"
     assert resolved.content[0] == TextPart(text="look ")
-    assert resolved.content[1] == TextPart(text="alpha\nbeta\ngamma")
+    assert resolved.content[1] == TextPart(text=pasted_text)
     assert resolved.content[2] == TextPart(text=" ")
     assert resolved.content[3].type == "text"
     assert resolved.content[4].type == "image_url"
@@ -140,14 +141,14 @@ def test_placeholder_manager_leaves_unknown_image_placeholder_literal() -> None:
 def test_placeholder_manager_sanitizes_surrogates_in_pasted_text() -> None:
     manager = PromptPlaceholderManager()
     # Lone surrogate \ud83d (half of an emoji pair) must not survive into the entry.
-    text_with_surrogate = "A" * 300 + "\ud83d"
+    text_with_surrogate = "A" * 1000 + "\ud83d"
     token = manager.maybe_placeholderize_pasted_text(text_with_surrogate)
 
     resolved = manager.resolve_command(token)
 
     # The surrogate must not survive; it is replaced with U+FFFD characters.
     assert "\ud83d" not in resolved.resolved_text
-    assert resolved.resolved_text.startswith("A" * 300)
+    assert resolved.resolved_text.startswith("A" * 1000)
     assert "\ufffd" in resolved.resolved_text
 
     # Serialization for history must not raise.
@@ -156,20 +157,22 @@ def test_placeholder_manager_sanitizes_surrogates_in_pasted_text() -> None:
 
 
 def test_placeholderize_thresholds_cover_char_and_line_boundaries() -> None:
-    assert should_placeholderize_pasted_text("A" * 299) is False
-    assert should_placeholderize_pasted_text("A" * 300) is True
+    assert should_placeholderize_pasted_text("A" * 999) is False
+    assert should_placeholderize_pasted_text("A" * 1000) is True
     assert should_placeholderize_pasted_text("line1\nline2") is False
-    assert should_placeholderize_pasted_text("line1\nline2\nline3") is True
+    assert should_placeholderize_pasted_text("\n".join([f"line{i}" for i in range(1, 15)])) is False
+    assert should_placeholderize_pasted_text("\n".join([f"line{i}" for i in range(1, 16)])) is True
 
 
 def test_placeholder_manager_normalizes_crlf_before_threshold_and_resolution() -> None:
     manager = PromptPlaceholderManager()
-    token = manager.maybe_placeholderize_pasted_text("line1\r\nline2\r\nline3")
+    lines = "\r\n".join([f"line{i}" for i in range(1, 16)])
+    token = manager.maybe_placeholderize_pasted_text(lines)
 
-    assert token == "[Pasted text #1 +3 lines]"
+    assert token == "[Pasted text #1 +15 lines]"
 
     resolved = manager.resolve_command(token)
-    assert resolved.resolved_text == "line1\nline2\nline3"
+    assert resolved.resolved_text == "\n".join([f"line{i}" for i in range(1, 16)])
 
 
 def test_attachment_cache_loads_legacy_root(tmp_path) -> None:

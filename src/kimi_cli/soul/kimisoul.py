@@ -324,6 +324,7 @@ class KimiSoul:
             plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,
+            mcp_status=self._mcp_status_snapshot(),
         )
 
     @property
@@ -347,6 +348,23 @@ class KimiSoul:
     @property
     def wire_file(self) -> WireFile:
         return self._runtime.session.wire_file
+
+    def _mcp_status_snapshot(self):
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return None
+        return self._agent.toolset.mcp_status_snapshot()
+
+    async def start_background_mcp_loading(self) -> bool:
+        """Start deferred MCP loading, if any, without exposing toolset internals."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return False
+        return await self._agent.toolset.start_deferred_mcp_tool_loading()
+
+    async def wait_for_background_mcp_loading(self) -> None:
+        """Wait for any in-flight MCP startup to finish."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return
+        await self._agent.toolset.wait_for_mcp_tools()
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
@@ -514,13 +532,16 @@ class KimiSoul:
             self._steer_queue.get_nowait()
 
         if isinstance(self._agent.toolset, KimiToolset):
-            loading = self._agent.toolset.has_pending_mcp_tools()
+            await self.start_background_mcp_loading()
+            loading = bool((snapshot := self._mcp_status_snapshot()) and snapshot.loading)
             if loading:
+                wire_send(StatusUpdate(mcp_status=snapshot))
                 wire_send(MCPLoadingBegin())
             try:
-                await self._agent.toolset.wait_for_mcp_tools()
+                await self.wait_for_background_mcp_loading()
             finally:
                 if loading:
+                    wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
         async def _pipe_approval_to_wire():
