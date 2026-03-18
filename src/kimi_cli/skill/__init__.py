@@ -103,6 +103,10 @@ async def resolve_skills_roots(
         roots.append(user_dir)
     if project_dir := await find_project_skills_dir(work_dir):
         roots.append(project_dir)
+    # Plugin directory
+    plugins_path = get_plugins_dir()
+    if plugins_path.exists():
+        roots.append(KaosPath.unsafe_from_local_path(plugins_path))
     return roots
 
 

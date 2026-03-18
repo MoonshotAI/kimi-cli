@@ -165,3 +165,33 @@ def test_remove_plugin(tmp_path: Path):
 def test_remove_nonexistent_plugin(tmp_path: Path):
     with pytest.raises(PluginError, match="not found"):
         remove_plugin("ghost", tmp_path / "plugins")
+
+
+@pytest.mark.asyncio
+async def test_skill_discovery_includes_plugins_dir(tmp_path: Path, monkeypatch):
+    """Plugins dir should be included in skill discovery roots."""
+    from kaos.path import KaosPath
+    from kimi_cli.skill import resolve_skills_roots
+
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+
+    # Create a valid plugin with SKILL.md
+    plugin_dir = plugins_dir / "my-plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "SKILL.md").write_text(
+        "---\nname: my-plugin\ndescription: test\n---\n# Test",
+        encoding="utf-8",
+    )
+    (plugin_dir / "plugin.json").write_text(
+        json.dumps({"name": "my-plugin", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "kimi_cli.skill.get_plugins_dir", lambda: plugins_dir
+    )
+
+    roots = await resolve_skills_roots(KaosPath(str(tmp_path)))
+    root_strs = [str(r) for r in roots]
+    assert str(plugins_dir) in root_strs
