@@ -8,8 +8,16 @@ Use this tool when you are in plan mode and have finished writing your plan to t
 ## When to Use
 Only use this tool for tasks that require planning implementation steps. For research tasks (searching files, reading code, understanding the codebase), do NOT use this tool.
 
+## Multiple Approaches
+If your plan contains multiple alternative approaches:
+- Pass them via the `options` parameter so the user can choose which approach to execute.
+- Each option should have a concise label and a brief description of trade-offs.
+- If you recommend one option, append "(Recommended)" to its label.
+- The user will see all options alongside Reject and Revise choices.
+
 ## Before Using
 - If you have unresolved questions, use AskUserQuestion first.
+- If you have multiple approaches and haven't narrowed down yet, consider using AskUserQuestion first to let the user choose, then write a plan for the chosen approach only.
 - Once your plan is finalized, use THIS tool to request approval.
 - Do NOT use AskUserQuestion to ask "Is this plan OK?" or "Should I proceed?" — that is exactly what ExitPlanMode does.
 - If rejected, revise based on feedback and call ExitPlanMode again.

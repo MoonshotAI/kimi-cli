@@ -10,7 +10,7 @@ from typing import override
 from uuid import uuid4
 
 from kosong.tooling import BriefDisplayBlock, CallableTool2, ToolError, ToolReturnValue
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from kimi_cli.soul import get_wire_or_none, wire_send
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
@@ -22,8 +22,30 @@ logger = logging.getLogger(__name__)
 NAME = "ExitPlanMode"
 
 
+class PlanOption(BaseModel):
+    """A selectable approach/option within the plan."""
+
+    label: str = Field(
+        description=(
+            "Short name for this option (1-8 words). "
+            "Append '(Recommended)' if you recommend this option."
+        ),
+    )
+    description: str = Field(
+        default="",
+        description="Brief summary of this approach and its trade-offs.",
+    )
+
+
 class Params(BaseModel):
-    pass
+    options: list[PlanOption] | None = Field(
+        default=None,
+        description=(
+            "When the plan contains multiple alternative approaches, list them here "
+            "so the user can choose which one to execute. 2-4 options. "
+            "Each option represents a distinct approach from the plan."
+        ),
+    )
 
 
 class ExitPlanMode(CallableTool2[Params]):
@@ -91,6 +113,32 @@ class ExitPlanMode(CallableTool2[Params]):
                 brief="Invalid context",
             )
 
+        has_options = params.options is not None and len(params.options) >= 2
+
+        if has_options:
+            assert params.options is not None
+            question_options = [
+                QuestionOption(label=opt.label, description=opt.description)
+                for opt in params.options
+            ]
+            question_options.append(
+                QuestionOption(
+                    label="Reject",
+                    description="Stay in plan mode and continue conversation",
+                )
+            )
+        else:
+            question_options = [
+                QuestionOption(
+                    label="Approve",
+                    description="Exit plan mode and start execution",
+                ),
+                QuestionOption(
+                    label="Reject",
+                    description="Stay in plan mode and continue conversation",
+                ),
+            ]
+
         request = QuestionRequest(
             id=str(uuid4()),
             tool_call_id=tool_call.id,
@@ -99,16 +147,7 @@ class ExitPlanMode(CallableTool2[Params]):
                     question=f"Plan ready for review (saved at {plan_path}):",
                     header="Plan",
                     body=plan_content,
-                    options=[
-                        QuestionOption(
-                            label="Approve",
-                            description="Exit plan mode and start execution",
-                        ),
-                        QuestionOption(
-                            label="Reject",
-                            description="Stay in plan mode and continue conversation",
-                        ),
-                    ],
+                    options=question_options,
                     other_label="Revise",
                     other_description="Stay in plan mode and provide feedback",
                 )
@@ -142,23 +181,9 @@ class ExitPlanMode(CallableTool2[Params]):
             )
 
         # Parse user choice — exact match on option label
-        chose_approve = any(v == "Approve" for v in answers.values())
         chose_reject = any(v == "Reject" for v in answers.values())
 
-        if chose_approve:
-            await self._toggle_callback()
-            return ToolReturnValue(
-                is_error=False,
-                output=(
-                    f"Plan approved by user. Plan mode deactivated. "
-                    f"All tools are now available.\n"
-                    f"Plan saved to: {plan_path}\n\n"
-                    f"## Approved Plan:\n{plan_content}"
-                ),
-                message="Plan approved",
-                display=[BriefDisplayBlock(text="Plan approved")],
-            )
-        elif chose_reject:
+        if chose_reject:
             return ToolRejectedError(
                 message=(
                     "Plan rejected by user. Stay in plan mode. "
@@ -167,22 +192,80 @@ class ExitPlanMode(CallableTool2[Params]):
                 ),
                 brief="Plan rejected",
             )
-        else:
-            # Revise — extract feedback text
-            feedback = ""
-            for v in answers.values():
-                if v not in ("Approve", "Reject"):
-                    feedback = v
 
-            msg = (
-                "Plan needs revision. Please revise your plan based on "
-                "feedback and call ExitPlanMode again."
-            )
-            if feedback:
-                msg += f"\n\nUser feedback: {feedback}"
-            return ToolReturnValue(
-                is_error=False,
-                output=msg,
-                message="Plan revised",
-                display=[BriefDisplayBlock(text="Plan revised")],
-            )
+        if has_options:
+            assert params.options is not None
+            option_labels = {opt.label for opt in params.options}
+            chosen_option = None
+            for v in answers.values():
+                if v in option_labels:
+                    chosen_option = v
+                    break
+
+            if chosen_option:
+                await self._toggle_callback()
+                return ToolReturnValue(
+                    is_error=False,
+                    output=(
+                        f'Plan approved by user. Selected approach: "{chosen_option}"\n'
+                        f"Plan mode deactivated. All tools are now available.\n"
+                        f"Plan saved to: {plan_path}\n\n"
+                        f'IMPORTANT: Execute ONLY the selected approach "{chosen_option}". '
+                        f"Ignore other approaches in the plan.\n\n"
+                        f"## Approved Plan:\n{plan_content}"
+                    ),
+                    message=f"Plan approved: {chosen_option}",
+                    display=[BriefDisplayBlock(text=f"Plan approved: {chosen_option}")],
+                )
+            else:
+                # Revise — extract feedback text
+                feedback = ""
+                for v in answers.values():
+                    if v != "Reject" and v not in option_labels:
+                        feedback = v
+                msg = (
+                    "Plan needs revision. Please revise your plan based on "
+                    "feedback and call ExitPlanMode again."
+                )
+                if feedback:
+                    msg += f"\n\nUser feedback: {feedback}"
+                return ToolReturnValue(
+                    is_error=False,
+                    output=msg,
+                    message="Plan revised",
+                    display=[BriefDisplayBlock(text="Plan revised")],
+                )
+        else:
+            chose_approve = any(v == "Approve" for v in answers.values())
+            if chose_approve:
+                await self._toggle_callback()
+                return ToolReturnValue(
+                    is_error=False,
+                    output=(
+                        f"Plan approved by user. Plan mode deactivated. "
+                        f"All tools are now available.\n"
+                        f"Plan saved to: {plan_path}\n\n"
+                        f"## Approved Plan:\n{plan_content}"
+                    ),
+                    message="Plan approved",
+                    display=[BriefDisplayBlock(text="Plan approved")],
+                )
+            else:
+                # Revise — extract feedback text
+                feedback = ""
+                for v in answers.values():
+                    if v not in ("Approve", "Reject"):
+                        feedback = v
+
+                msg = (
+                    "Plan needs revision. Please revise your plan based on "
+                    "feedback and call ExitPlanMode again."
+                )
+                if feedback:
+                    msg += f"\n\nUser feedback: {feedback}"
+                return ToolReturnValue(
+                    is_error=False,
+                    output=msg,
+                    message="Plan revised",
+                    display=[BriefDisplayBlock(text="Plan revised")],
+                )

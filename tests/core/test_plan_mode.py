@@ -15,7 +15,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.plan import ExitPlanMode
+from kimi_cli.tools.plan import ExitPlanMode, Params, PlanOption
 from kimi_cli.tools.plan.enter import _DESCRIPTION, EnterPlanMode
 from kimi_cli.tools.plan.heroes import (
     _slug_cache,
@@ -641,3 +641,131 @@ class TestToolRejectedError:
         err = ToolRejectedError(message="Custom rejection")
         assert err.message == "Custom rejection"
         assert err.brief == "Rejected by user"
+
+
+# ---------------------------------------------------------------------------
+# ExitPlanMode — multi-option selection
+# ---------------------------------------------------------------------------
+
+
+class TestExitPlanModeMultiOption:
+    """Tests for ExitPlanMode with the `options` parameter."""
+
+    def _make_params_with_options(self) -> Params:
+        return Params(
+            options=[
+                PlanOption(label="Option A (Recommended)", description="Add new method"),
+                PlanOption(label="Option B", description="Modify call site"),
+            ]
+        )
+
+    async def test_select_option_approves_plan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, plan_path = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(
+            QuestionRequest,
+            "wait",
+            AsyncMock(return_value={"q": "Option A (Recommended)"}),
+        )
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        output = _tool_output_text(result)
+        assert "Option A (Recommended)" in output
+        assert "Selected approach" in output
+        assert "# My Plan" in output
+        toggle_cb.assert_awaited_once()
+
+    async def test_select_second_option(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Option B"}))
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        output = _tool_output_text(result)
+        assert "Option B" in output
+        assert "Selected approach" in output
+        toggle_cb.assert_awaited_once()
+
+    async def test_reject_with_options(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Reject"}))
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolRejectedError)
+        toggle_cb.assert_not_awaited()
+
+    async def test_revise_with_options(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, _, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(
+            QuestionRequest,
+            "wait",
+            AsyncMock(return_value={"q": "I want a third approach using decorator"}),
+        )
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        output = _tool_output_text(result)
+        assert "revision" in output.lower() or "revise" in output.lower()
+        assert "decorator" in output
+
+    async def test_dismissed_with_options(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={}))
+
+        params = self._make_params_with_options()
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        assert "dismissed" in _tool_output_text(result).lower()
+        toggle_cb.assert_not_awaited()
+
+    async def test_no_options_falls_back_to_approve_reject(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When options=None, behaves like the original Approve/Reject flow."""
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Approve"}))
+
+        result = await tool(tool.params())
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        assert "Plan approved" in _tool_output_text(result)
+        toggle_cb.assert_awaited_once()
+
+    async def test_single_option_falls_back_to_approve_reject(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When only 1 option is provided (<2), falls back to Approve/Reject."""
+        tool, toggle_cb, _ = _setup_exit_tool(tmp_path)
+        _mock_wire_and_tool_call(monkeypatch)
+        monkeypatch.setattr(QuestionRequest, "wait", AsyncMock(return_value={"q": "Approve"}))
+
+        params = Params(options=[PlanOption(label="Only one", description="...")])
+        result = await tool(params)
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+        assert "Plan approved" in _tool_output_text(result)
+        toggle_cb.assert_awaited_once()
