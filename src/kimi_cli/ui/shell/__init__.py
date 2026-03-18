@@ -141,11 +141,17 @@ class Shell:
                 resume_prompt.clear()
                 await idle_events.put(_PromptEvent(kind="eof"))
                 return
+            except Exception:
+                logger.exception("Prompt router crashed")
+                resume_prompt.clear()
+                await idle_events.put(_PromptEvent(kind="error"))
+                return
 
-            if prompt_session.last_submission_was_running:
+            if prompt_session.last_submission_was_running:  # noqa: SIM102
                 if user_input and self._running_input_handler is not None:
                     self._running_input_handler(user_input)
-                continue
+                    continue
+                # Handler already unbound — fall through to idle path.
 
             resume_prompt.clear()
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
@@ -221,6 +227,9 @@ class Shell:
 
                     if event.kind == "eof":
                         console.print("Bye!")
+                        break
+
+                    if event.kind == "error":
                         break
 
                     user_input = event.user_input
