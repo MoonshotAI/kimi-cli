@@ -77,7 +77,7 @@ async def test_open_in_external_editor_expands_and_refolds_text_placeholders(mon
     prompt_session._placeholder_manager = PromptPlaceholderManager()
     prompt_session._attachment_cache = prompt_session._placeholder_manager.attachment_cache
 
-    pasted_text = "line1\nline2\nline3"
+    pasted_text = "\n".join([f"line{i}" for i in range(1, 16)])
     token = prompt_session._placeholder_manager.maybe_placeholderize_pasted_text(pasted_text)
 
     app = _DummyApp()
@@ -121,7 +121,7 @@ async def test_open_in_external_editor_leaves_moved_text_expanded_when_refold_is
     prompt_session._placeholder_manager = PromptPlaceholderManager()
     prompt_session._attachment_cache = prompt_session._placeholder_manager.attachment_cache
 
-    pasted_text = "line1\nline2\nline3"
+    pasted_text = "\n".join([f"line{i}" for i in range(1, 16)])
     token = prompt_session._placeholder_manager.maybe_placeholderize_pasted_text(pasted_text)
 
     app = _DummyApp()
