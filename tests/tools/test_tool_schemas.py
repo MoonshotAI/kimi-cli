@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
+from kimi_cli.tools.background import TaskList, TaskOutput, TaskStop
 from kimi_cli.tools.multiagent.create import CreateSubagent
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
@@ -142,12 +143,91 @@ def test_shell_params_schema(shell_tool: Shell):
                 "timeout": {
                     "default": 60,
                     "description": "The timeout in seconds for the command to execute. If the command takes longer than this, it will be killed.",
-                    "maximum": 300,
+                    "maximum": 86400,
+                    "minimum": 1,
+                    "type": "integer",
+                },
+                "run_in_background": {
+                    "default": False,
+                    "description": "Whether to run the command as a background task.",
+                    "type": "boolean",
+                },
+                "description": {
+                    "default": "",
+                    "description": "A short description for the background task. Required when run_in_background=true.",
+                    "type": "string",
+                },
+            },
+            "required": ["command"],
+            "type": "object",
+        }
+    )
+
+
+def test_task_output_params_schema(task_output_tool: TaskOutput):
+    assert task_output_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "task_id": {
+                    "description": "The background task ID to inspect.",
+                    "type": "string",
+                },
+                "block": {
+                    "default": True,
+                    "description": "Whether to wait for the task to finish before returning.",
+                    "type": "boolean",
+                },
+                "timeout": {
+                    "default": 30,
+                    "description": "Maximum number of seconds to wait when block=true.",
+                    "maximum": 3600,
+                    "minimum": 0,
+                    "type": "integer",
+                },
+            },
+            "required": ["task_id"],
+            "type": "object",
+        }
+    )
+
+
+def test_task_list_params_schema(task_list_tool: TaskList):
+    assert task_list_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "active_only": {
+                    "default": True,
+                    "description": "Whether to list only non-terminal background tasks.",
+                    "type": "boolean",
+                },
+                "limit": {
+                    "default": 20,
+                    "description": "Maximum number of tasks to return.",
+                    "maximum": 100,
                     "minimum": 1,
                     "type": "integer",
                 },
             },
-            "required": ["command"],
+            "type": "object",
+        }
+    )
+
+
+def test_task_stop_params_schema(task_stop_tool: TaskStop):
+    assert task_stop_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "task_id": {
+                    "description": "The background task ID to stop.",
+                    "type": "string",
+                },
+                "reason": {
+                    "default": "Stopped by TaskStop",
+                    "description": "Short reason recorded when the task is stopped.",
+                    "type": "string",
+                },
+            },
+            "required": ["task_id"],
             "type": "object",
         }
     )

@@ -481,12 +481,14 @@ class WireServer:
 
         self._cancel_event = asyncio.Event()
         try:
+            runtime = self._soul.runtime if isinstance(self._soul, KimiSoul) else None
             await run_soul(
                 self._soul,
                 msg.params.user_input,
                 self._stream_wire_messages,
                 self._cancel_event,
-                self._soul.wire_file if isinstance(self._soul, KimiSoul) else None,
+                runtime.session.wire_file if runtime else None,
+                runtime,
             )
             return JSONRPCSuccessResponse(
                 id=msg.id,
