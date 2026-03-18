@@ -517,9 +517,8 @@ class TestKimiSoulPlanState:
         soul = _make_soul(runtime, tmp_path)
 
         soul._set_plan_mode(True, source="tool")
-        sid = soul._plan_session_id
         soul._set_plan_mode(False, source="tool")
-        assert soul._plan_session_id == sid
+        assert soul._plan_session_id is None
 
     def test_plan_file_path_none_before_activation(self, runtime: Runtime, tmp_path: Path) -> None:
         soul = _make_soul(runtime, tmp_path)

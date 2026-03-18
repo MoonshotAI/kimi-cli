@@ -262,6 +262,7 @@ class KimiSoul:
             self._pending_plan_activation_injection = source == "manual"
         else:
             self._pending_plan_activation_injection = False
+            self._plan_session_id = None
             self._runtime.session.state.plan_session_id = None
             self._runtime.session.state.plan_slug = None
         # Persist plan mode to session state so it survives process restarts
