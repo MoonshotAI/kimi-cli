@@ -977,6 +977,8 @@ class CustomPromptSession:
         # Keep the old attribute for test compatibility and for any external imports.
         self._attachment_cache = self._placeholder_manager.attachment_cache
         self._tip_rotation_index: int = 0
+        self._last_submission_was_running = False
+        self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
         clipboard_available = is_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available)
@@ -1483,24 +1485,36 @@ class CustomPromptSession:
         event.app.invalidate()
         return bool(parts)
 
-    async def prompt(self) -> UserInput:
-        return await self._prompt_once(append_history=True)
+    async def prompt_next(self) -> UserInput:
+        return await self._prompt_once(append_history=None)
 
-    async def prompt_steer(self, delegate: RunningPromptDelegate) -> UserInput:
-        previous_mode = self._mode
+    @property
+    def last_submission_was_running(self) -> bool:
+        return getattr(self, "_last_submission_was_running", False)
+
+    def attach_running_prompt(self, delegate: RunningPromptDelegate) -> None:
+        current = getattr(self, "_running_prompt_delegate", None)
+        if current is delegate:
+            return
+        if current is None:
+            self._running_prompt_previous_mode = self._mode
         self._running_prompt_delegate = delegate
         self._mode = PromptMode.AGENT
         self._apply_mode()
         self.invalidate()
-        try:
-            return await self._prompt_once(append_history=False)
-        finally:
-            self._mode = previous_mode
-            self._running_prompt_delegate = None
-            self._apply_mode()
-            self.invalidate()
 
-    async def _prompt_once(self, *, append_history: bool) -> UserInput:
+    def detach_running_prompt(self, delegate: RunningPromptDelegate) -> None:
+        if getattr(self, "_running_prompt_delegate", None) is not delegate:
+            return
+        previous_mode = getattr(self, "_running_prompt_previous_mode", None)
+        self._running_prompt_delegate = None
+        self._running_prompt_previous_mode = None
+        if previous_mode is not None:
+            self._mode = previous_mode
+        self._apply_mode()
+        self.invalidate()
+
+    async def _prompt_once(self, *, append_history: bool | None) -> UserInput:
         placeholder = None
         if self._running_prompt_delegate is not None:
             placeholder = self._running_prompt_delegate.running_prompt_placeholder()
@@ -1509,6 +1523,10 @@ class CustomPromptSession:
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
             # Sanitize UTF-16 surrogates that may come from Windows clipboard
             command = sanitize_surrogates(command)
+        was_running = self._running_prompt_delegate is not None
+        self._last_submission_was_running = was_running
+        if append_history is None:
+            append_history = not was_running
         if append_history:
             self._append_history_entry(command)
         self._tip_rotation_index += 1
