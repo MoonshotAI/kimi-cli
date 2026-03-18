@@ -37,6 +37,14 @@ def install_cmd(
             host_values["api_key"] = provider.api_key.get_secret_value()
             host_values["base_url"] = provider.base_url
 
+    if not host_values:
+        typer.echo(
+            "Warning: No LLM provider configured. "
+            "Plugins requiring API key injection will fail. "
+            "Run 'kimi login' or configure a provider first.",
+            err=True,
+        )
+
     try:
         spec = install_plugin(
             source=source,

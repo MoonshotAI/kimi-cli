@@ -189,7 +189,7 @@ async def test_skill_discovery_includes_plugins_dir(tmp_path: Path, monkeypatch)
     )
 
     monkeypatch.setattr(
-        "kimi_cli.skill.get_plugins_dir", lambda: plugins_dir
+        "kimi_cli.plugin.manager.get_plugins_dir", lambda: plugins_dir
     )
 
     roots = await resolve_skills_roots(KaosPath(str(tmp_path)))

@@ -93,17 +93,19 @@ async def resolve_skills_roots(
     Built-in skills load first when supported by the active KAOS backend. When an
     override is provided, user/project discovery is skipped.
     """
+    from kimi_cli.plugin.manager import get_plugins_dir
+
     roots: list[KaosPath] = []
     if _supports_builtin_skills():
         roots.append(KaosPath.unsafe_from_local_path(get_builtin_skills_dir()))
     if skills_dir_override is not None:
         roots.append(skills_dir_override)
-        return roots
-    if user_dir := await find_user_skills_dir():
-        roots.append(user_dir)
-    if project_dir := await find_project_skills_dir(work_dir):
-        roots.append(project_dir)
-    # Plugin directory
+    else:
+        if user_dir := await find_user_skills_dir():
+            roots.append(user_dir)
+        if project_dir := await find_project_skills_dir(work_dir):
+            roots.append(project_dir)
+    # Plugins are always discoverable, even when --skills-dir is set
     plugins_path = get_plugins_dir()
     if plugins_path.exists():
         roots.append(KaosPath.unsafe_from_local_path(plugins_path))

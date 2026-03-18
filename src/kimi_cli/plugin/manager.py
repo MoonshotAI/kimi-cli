@@ -5,8 +5,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from kimi_cli.share import get_share_dir
-
 from kimi_cli.plugin import (
     PLUGIN_JSON,
     PluginError,
@@ -16,6 +14,8 @@ from kimi_cli.plugin import (
     parse_plugin_json,
     write_runtime,
 )
+from kimi_cli.share import get_share_dir
+
 
 def get_plugins_dir() -> Path:
     """Return the plugins installation directory (~/.kimi/plugins/)."""

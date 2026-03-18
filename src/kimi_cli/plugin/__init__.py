@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PluginError(Exception):
@@ -22,6 +22,8 @@ class PluginRuntime(BaseModel):
 
 class PluginSpec(BaseModel):
     """Parsed representation of a plugin.json file."""
+
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     version: str
@@ -89,7 +91,10 @@ def inject_config(plugin_dir: Path, spec: PluginSpec, values: dict[str, str]) ->
 def write_runtime(plugin_dir: Path, runtime: PluginRuntime) -> None:
     """Write runtime info into plugin.json."""
     plugin_json_path = plugin_dir / PLUGIN_JSON
-    data = json.loads(plugin_json_path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(plugin_json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PluginError(f"Failed to read {plugin_json_path}: {exc}") from exc
     data["runtime"] = runtime.model_dump()
     plugin_json_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
