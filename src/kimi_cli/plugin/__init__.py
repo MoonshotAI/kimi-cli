@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -96,7 +97,7 @@ def write_runtime(plugin_dir: Path, runtime: PluginRuntime) -> None:
     )
 
 
-def _set_nested(obj: dict, dotted_path: str, value: object) -> None:
+def _set_nested(obj: dict[str, Any], dotted_path: str, value: object) -> None:
     """Set a value in a nested dict using dot-separated path.
 
     Creates intermediate dicts if they don't exist.
