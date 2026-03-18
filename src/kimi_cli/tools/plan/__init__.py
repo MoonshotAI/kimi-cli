@@ -10,7 +10,7 @@ from typing import override
 from uuid import uuid4
 
 from kosong.tooling import BriefDisplayBlock, CallableTool2, ToolError, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from kimi_cli.soul import get_wire_or_none, wire_send
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
@@ -20,6 +20,8 @@ from kimi_cli.wire.types import QuestionItem, QuestionNotSupported, QuestionOpti
 logger = logging.getLogger(__name__)
 
 NAME = "ExitPlanMode"
+
+_RESERVED_LABELS = {"reject", "revise", "approve"}
 
 
 class PlanOption(BaseModel):
@@ -36,14 +38,26 @@ class PlanOption(BaseModel):
         description="Brief summary of this approach and its trade-offs.",
     )
 
+    @field_validator("label")
+    @classmethod
+    def label_not_reserved(cls, v: str) -> str:
+        if v.strip().lower() in _RESERVED_LABELS:
+            raise ValueError(
+                f"Option label {v!r} is reserved. "
+                "Do not use 'Reject', 'Revise', or 'Approve' as option labels."
+            )
+        return v
+
 
 class Params(BaseModel):
     options: list[PlanOption] | None = Field(
         default=None,
+        max_length=3,
         description=(
             "When the plan contains multiple alternative approaches, list them here "
-            "so the user can choose which one to execute. 2-4 options. "
-            "Each option represents a distinct approach from the plan."
+            "so the user can choose which one to execute. 2-3 options. "
+            "Each option represents a distinct approach from the plan. "
+            "Do not use 'Reject', 'Revise', or 'Approve' as labels."
         ),
     )
 

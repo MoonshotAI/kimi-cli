@@ -14,6 +14,8 @@ If your plan contains multiple alternative approaches:
 - Each option should have a concise label and a brief description of trade-offs.
 - If you recommend one option, append "(Recommended)" to its label.
 - The user will see all options alongside Reject and Revise choices.
+- Provide 2-3 options at most (the system appends a "Reject" option automatically, so the total shown to the user is 3-4).
+- Do NOT use "Reject", "Revise", or "Approve" as option labels — these are reserved by the system.
 
 ## Before Using
 - If you have unresolved questions, use AskUserQuestion first.

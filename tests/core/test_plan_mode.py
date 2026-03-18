@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from kosong.tooling import ToolError, ToolReturnValue
 from kosong.tooling.empty import EmptyToolset
+from pydantic import ValidationError
 
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
@@ -769,3 +770,59 @@ class TestExitPlanModeMultiOption:
         assert not result.is_error
         assert "Plan approved" in _tool_output_text(result)
         toggle_cb.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# PlanOption validator — reserved labels and Params max_length
+# ---------------------------------------------------------------------------
+
+
+class TestPlanOptionValidator:
+    """Tests for PlanOption label validation and Params.options max_length."""
+
+    def test_reserved_label_reject_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="Reject", description="x")
+
+    def test_reserved_label_reject_lowercase_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="reject", description="x")
+
+    def test_reserved_label_revise_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="Revise", description="x")
+
+    def test_reserved_label_approve_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="Approve", description="x")
+
+    def test_reserved_label_with_whitespace_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PlanOption(label="  Reject  ", description="x")
+
+    def test_non_reserved_label_ok(self) -> None:
+        opt = PlanOption(label="Option A", description="x")
+        assert opt.label == "Option A"
+
+    def test_params_max_four_options_raises(self) -> None:
+        """Params.options has max_length=3; passing 4 must raise ValidationError."""
+        with pytest.raises(ValidationError):
+            Params(
+                options=[
+                    PlanOption(label="A", description=""),
+                    PlanOption(label="B", description=""),
+                    PlanOption(label="C", description=""),
+                    PlanOption(label="D", description=""),
+                ]
+            )
+
+    def test_params_three_options_ok(self) -> None:
+        params = Params(
+            options=[
+                PlanOption(label="A", description=""),
+                PlanOption(label="B", description=""),
+                PlanOption(label="C", description=""),
+            ]
+        )
+        assert params.options is not None
+        assert len(params.options) == 3

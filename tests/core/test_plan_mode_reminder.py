@@ -115,7 +115,7 @@ def test_sparse_reminder_contains_turn_ending_constraint() -> None:
     text = _sparse_reminder("/tmp/plan.md")
     assert "WriteFile" in text
     assert "StrReplaceFile" in text
-    assert "approach choices" in text
+    assert "user preferences" in text
     assert "AskUserQuestion" in text
     assert "ExitPlanMode" in text
     assert "Never ask about plan approval" in text
@@ -139,4 +139,4 @@ def test_reentry_reminder_contains_decision_tree() -> None:
     assert "Read the existing plan" in text
     assert "WriteFile" in text
     assert "StrReplaceFile" in text
-    assert "clarifying missing requirements" in text
+    assert "clarify missing requirements" in text
