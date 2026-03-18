@@ -127,6 +127,48 @@ async def test_route_prompt_events_marks_eof_during_run_and_stops_router(
     assert idle_events.empty()
 
 
+@pytest.mark.asyncio
+async def test_empty_enter_during_run_does_not_freeze_prompt(
+    _patched_prompt_router,
+) -> None:
+    """Regression: pressing Enter on an empty buffer during an agent run would
+    fall through to the idle path, clear resume_prompt, and freeze the prompt
+    for the rest of the run."""
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+
+    empty_input = UserInput(mode=PromptMode.AGENT, command="", resolved_command="", content=[])
+    real_input = _make_user_input("follow-up")
+
+    # First submission: empty Enter (running). Second: real input (running).
+    prompt_session = _FakePromptSession(
+        [
+            (True, empty_input),
+            (True, real_input),
+        ]
+    )
+    idle_events: asyncio.Queue[shell_module._PromptEvent] = asyncio.Queue()
+    resume_prompt = asyncio.Event()
+    resume_prompt.set()
+
+    received: list[UserInput] = []
+    shell._bind_running_input(lambda ui: received.append(ui), lambda: None)
+
+    task = asyncio.create_task(
+        shell._route_prompt_events(cast(Any, prompt_session), idle_events, resume_prompt)
+    )
+    try:
+        await asyncio.sleep(0.05)
+        # Empty enter should be ignored; real input should reach handler.
+        assert [ui.command for ui in received] == ["follow-up"]
+        assert idle_events.empty()
+        # resume_prompt must still be set (not cleared by the empty submission).
+        assert resume_prompt.is_set()
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
 def test_unbind_running_input_clears_handlers() -> None:
     shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
     shell._bind_running_input(lambda _user_input: None, lambda: None)

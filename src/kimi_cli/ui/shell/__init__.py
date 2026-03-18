@@ -148,8 +148,9 @@ class Shell:
                 return
 
             if prompt_session.last_submission_was_running:  # noqa: SIM102
-                if user_input and self._running_input_handler is not None:
-                    self._running_input_handler(user_input)
+                if self._running_input_handler is not None:
+                    if user_input:
+                        self._running_input_handler(user_input)
                     continue
                 # Handler already unbound — fall through to idle path.
 
