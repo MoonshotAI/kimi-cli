@@ -13,14 +13,13 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 from kaos.path import KaosPath
-from kosong.tooling import ToolReturnValue
+from kosong.tooling import ToolError, ToolReturnValue
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.file.write import Params, WriteFile
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
-from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.environment import Environment
 from tests.conftest import tool_call_context
 
@@ -57,10 +56,10 @@ class TestWriteFilePlanMode:
         # Approval should NOT have been called for plan file
         request_mock.assert_not_awaited()
 
-    async def test_non_plan_file_needs_approval_in_plan_mode(
+    async def test_non_plan_file_is_blocked_in_plan_mode(
         self, runtime: Runtime, temp_work_dir: KaosPath
     ) -> None:
-        """Non-plan files in plan mode still require approval (rejected when not approved)."""
+        """Plan mode should hard-block writes to non-plan files."""
         approval = Approval(yolo=False)
         target = temp_work_dir / "other.txt"
         plan_path = Path(str(temp_work_dir)) / "plans" / "plan.md"
@@ -71,7 +70,7 @@ class TestWriteFilePlanMode:
                 path_getter=lambda: plan_path,
             )
 
-            # Mock approval.request to return False (rejected)
+            # Approval should never be reached for non-plan files in plan mode.
             request_mock = AsyncMock(return_value=False)
             approval.request = cast(Any, request_mock)
 
@@ -82,9 +81,9 @@ class TestWriteFilePlanMode:
                 )
             )
 
-        assert isinstance(result, ToolRejectedError)
-        # Approval WAS called for non-plan file
-        request_mock.assert_awaited_once()
+        assert isinstance(result, ToolError)
+        assert "only edit the current plan file" in result.message
+        request_mock.assert_not_awaited()
 
     async def test_no_plan_mode_normal_flow(
         self, runtime: Runtime, temp_work_dir: KaosPath
@@ -128,39 +127,6 @@ class TestWriteFilePlanMode:
         assert not result.is_error
         assert plan_path.exists()
         assert plan_path.read_text() == "# Deep Plan"
-
-    async def test_plan_file_write_works_with_session_plan_mode_active(
-        self, runtime: Runtime, temp_work_dir: KaosPath, tmp_path: Path
-    ) -> None:
-        """Plan file writing must work when session.state.plan_mode is True.
-
-        This is the realistic scenario: KimiSoul sets session.state.plan_mode = True
-        AND binds WriteFile with plan_mode checker.  WriteFile plan file writes
-        must be auto-approved without going through the approval dialog.
-        """
-        runtime.session.state.plan_mode = True
-        approval = Approval(yolo=False)
-        plan_path = tmp_path / "plans" / "session-plan.md"
-        with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
-            tool.bind_plan_mode(
-                checker=lambda: runtime.session.state.plan_mode,
-                path_getter=lambda: plan_path,
-            )
-
-            # Mock approval to reject — plan file should bypass it
-            request_mock = AsyncMock(return_value=False)
-            approval.request = cast(Any, request_mock)
-
-            result = await tool(
-                Params(path=str(plan_path), content="# Implementation Plan\n\n## Steps\n1. ...")
-            )
-
-        assert isinstance(result, ToolReturnValue)
-        assert not result.is_error
-        assert plan_path.exists()
-        assert plan_path.read_text().startswith("# Implementation Plan")
-        request_mock.assert_not_awaited()
 
     async def test_plan_file_append_works_in_plan_mode(
         self, runtime: Runtime, temp_work_dir: KaosPath, tmp_path: Path

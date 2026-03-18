@@ -10,9 +10,12 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import ToolRejectedError, load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.path import is_within_workspace
+
+_BASE_DESCRIPTION = load_desc(Path(__file__).parent / "write.md")
 
 
 class Params(BaseModel):
@@ -35,7 +38,7 @@ class Params(BaseModel):
 
 class WriteFile(CallableTool2[Params]):
     name: str = "WriteFile"
-    description: str = load_desc(Path(__file__).parent / "write.md")
+    description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime, approval: Approval):
@@ -88,14 +91,17 @@ class WriteFile(CallableTool2[Params]):
                 return err
             p = p.canonical()
 
-            # Plan mode: auto-approve writes to the plan file (skip approval dialog)
-            is_plan_file_write = False
-            if self._plan_mode_checker and self._plan_mode_checker():
-                plan_path = self._plan_file_path_getter() if self._plan_file_path_getter else None
-                if plan_path is not None and str(p) == str(plan_path.resolve()):
-                    is_plan_file_write = True
-                    # Ensure plan directory exists
-                    plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_target = inspect_plan_edit_target(
+                p,
+                plan_mode_checker=self._plan_mode_checker,
+                plan_file_path_getter=self._plan_file_path_getter,
+            )
+            if isinstance(plan_target, ToolError):
+                return plan_target
+
+            is_plan_file_write = plan_target.is_plan_target
+            if is_plan_file_write and plan_target.plan_path is not None:
+                plan_target.plan_path.parent.mkdir(parents=True, exist_ok=True)
 
             if not await p.parent.exists():
                 return ToolError(

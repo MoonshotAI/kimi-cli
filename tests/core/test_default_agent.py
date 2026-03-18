@@ -860,7 +860,6 @@ Only use this tool for tasks that require planning implementation steps. For res
 Use this tool proactively when you're about to start a non-trivial implementation task.
 Getting user sign-off on your approach before writing code prevents wasted effort.
 
-**Prefer using EnterPlanMode** for implementation tasks unless they're simple.
 Use it when ANY of these conditions apply:
 
 1. New Feature Implementation — e.g. "Add a caching layer to the API"
@@ -870,6 +869,11 @@ Use it when ANY of these conditions apply:
 5. Multi-File Changes — involves more than 2-3 files
 6. Unclear Requirements — need exploration to understand scope
 7. User Preferences Matter — if you'd use AskUserQuestion to clarify approach, use EnterPlanMode instead
+
+Yolo mode note:
+- Yolo mode users chose continuous execution.
+- In yolo mode, use EnterPlanMode only when the user explicitly asks for planning or when
+  there is exceptional architectural ambiguity that requires user input before proceeding.
 
 When NOT to use:
 - Single-line or few-line fixes (typos, obvious bugs, small tweaks)
