@@ -160,11 +160,11 @@ def test_apply_mode_syncs_erase_when_done_with_current_mode() -> None:
     assert prompt_session._session.app.erase_when_done is False
 
 
-@pytest.mark.asyncio
-async def test_prompt_steer_enables_erase_when_done_and_restores_state() -> None:
+def test_attach_running_prompt_enables_erase_when_done_and_detach_restores_state() -> None:
     prompt_session = object.__new__(CustomPromptSession)
     prompt_session._mode = PromptMode.SHELL
     prompt_session._running_prompt_delegate = None
+    prompt_session._running_prompt_previous_mode = None
     prompt_session._session = cast(Any, SimpleNamespace(app=SimpleNamespace(erase_when_done=False)))
 
     delegate = _DummyRunningPrompt()
@@ -204,44 +204,19 @@ async def test_prompt_steer_enables_erase_when_done_and_restores_state() -> None
 
     prompt_session._apply_mode = fake_apply_mode
     prompt_session.invalidate = fake_invalidate
-    prompt_session._prompt_once = fake_prompt_once
 
-    result = await prompt_session.prompt_steer(delegate)
+    prompt_session.attach_running_prompt(delegate)
 
-    assert result.command == "hi"
+    assert prompt_session._mode == PromptMode.AGENT
+    assert prompt_session._running_prompt_delegate is delegate
+    assert prompt_session._session.app.erase_when_done is True
+
+    prompt_session.detach_running_prompt(delegate)
+
     assert prompt_session._mode == PromptMode.SHELL
     assert prompt_session._running_prompt_delegate is None
     assert prompt_session._session.app.erase_when_done is False
-    assert ("prompt", False, True, delegate) in trace
-
-
-@pytest.mark.asyncio
-async def test_prompt_steer_restores_state_on_error() -> None:
-    prompt_session = object.__new__(CustomPromptSession)
-    prompt_session._mode = PromptMode.AGENT
-    prompt_session._running_prompt_delegate = None
-    prompt_session._session = cast(Any, SimpleNamespace(app=SimpleNamespace(erase_when_done=False)))
-
-    def fake_apply_mode(event=None) -> None:
-        prompt_session._session.app.erase_when_done = prompt_session._mode == PromptMode.AGENT
-        return None
-
-    def fake_invalidate() -> None:
-        return None
-
-    async def fake_prompt_once(*, append_history: bool) -> UserInput:
-        raise RuntimeError("boom")
-
-    prompt_session._apply_mode = fake_apply_mode
-    prompt_session.invalidate = fake_invalidate
-    prompt_session._prompt_once = fake_prompt_once
-
-    with pytest.raises(RuntimeError, match="boom"):
-        await prompt_session.prompt_steer(_DummyRunningPrompt())
-
-    assert prompt_session._mode == PromptMode.AGENT
-    assert prompt_session._running_prompt_delegate is None
-    assert prompt_session._session.app.erase_when_done is True
+    assert [entry[0] for entry in trace] == ["apply", "invalidate", "apply", "invalidate"]
 
 
 @pytest.mark.asyncio
@@ -270,3 +245,30 @@ async def test_prompt_once_uses_prompt_delegate_placeholder_contract(running_pro
 
     assert result.command == "hello"
     assert captured == [None]
+
+
+@pytest.mark.asyncio
+async def test_prompt_next_skips_history_for_running_submission() -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._running_prompt_delegate = _DummyRunningPrompt()
+    prompt_session._tip_rotation_index = 0
+    prompt_session._append_history_entry = lambda text: (_ for _ in ()).throw(
+        AssertionError("running submissions must not append history")
+    )
+    prompt_session._build_user_input = lambda command: UserInput(
+        mode=PromptMode.AGENT,
+        command=command,
+        resolved_command=command,
+        content=[],
+    )
+
+    class _DummySession:
+        async def prompt_async(self, **kwargs):
+            return "follow-up"
+
+    prompt_session._session = cast(Any, _DummySession())
+
+    result = await prompt_session.prompt_next()
+
+    assert result.command == "follow-up"
+    assert prompt_session.last_submission_was_running is True

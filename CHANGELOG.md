@@ -15,6 +15,8 @@ Only write entries that are worth mentioning to users.
 - Core: Defer MCP startup and surface loading progress — MCP servers now initialize asynchronously after the shell UI starts, with live progress indicators showing connection status; Shell displays connecting and ready states in the status area, Web shows server connection status
 - Core: Optimize lightweight startup paths — implement lazy-loading for CLI subcommands and version metadata, significantly reducing startup time for common commands like `--version` and `--help`
 - Build: Fix Nix `FileCollisionError` for `bin/kimi` — remove duplicate entry point from `kimi-code` package so `kimi-cli` owns `bin/kimi` exclusively
+- Shell: Preserve unsubmitted input across agent turns — text typed in the prompt while the agent is running is no longer lost when the turn ends; the user can press Enter to submit the draft as the next message
+- Shell: Fix Ctrl-C and Ctrl-D not working correctly after an agent run completes — keyboard interrupts and EOF were silently swallowed instead of showing the tip or exiting the shell
 
 ## 1.23.0 (2026-03-17)
 

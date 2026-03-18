@@ -8,6 +8,8 @@
 - Core：延迟 MCP 启动并展示加载进度——MCP 服务器现在在 Shell UI 启动后异步初始化，并提供实时进度指示器显示连接状态；Shell 在状态区域显示连接中和就绪状态，Web 显示服务器连接状态
 - Core：优化轻量级启动路径——对 CLI 子命令和版本元数据实现延迟加载，显著缩短 `--version` 和 `--help` 等常用命令的启动时间
 - Build：修复 Nix `FileCollisionError` for `bin/kimi`——从 `kimi-code` 包中移除重复的入口点，使 `kimi-cli` 独占 `bin/kimi`
+- Shell：Agent 运行期间保留用户未提交的输入——在模型运行时在提示符中键入的文本不再在轮次结束时丢失，用户可以按回车键将草稿作为下一条消息提交
+- Shell：修复 Agent 运行结束后 Ctrl-C 和 Ctrl-D 无法正常工作的问题——键盘中断和 EOF 信号被静默吞没，而非显示提示信息或退出 Shell
 
 ## 1.23.0 (2026-03-17)
 

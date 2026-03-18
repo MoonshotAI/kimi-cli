@@ -99,6 +99,94 @@ def test_shell_smoke_multiturn_scripted_echo(tmp_path: Path) -> None:
         shell.close()
 
 
+def test_shell_running_prompt_preserves_unsubmitted_draft(tmp_path: Path) -> None:
+    scripts = [
+        "\n".join(
+            [
+                "text: Running long task.",
+                build_shell_tool_call("tc-draft", "sleep 1.5"),
+            ]
+        ),
+        "text: First turn finished.",
+        "text: Draft carried over.",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        first_turn_mark = shell.mark()
+        shell.send_line("start long turn")
+        shell.read_until_contains("Using Shell (sleep 1.5)", after=first_turn_mark, timeout=15.0)
+        time.sleep(0.3)
+        shell.send_text("follow-up draft")
+        shell.read_until_contains("First turn finished.", after=first_turn_mark, timeout=15.0)
+        first_prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=first_prompt_mark)
+
+        second_turn_mark = shell.mark()
+        shell.send_key("enter")
+        shell.read_until_contains("Draft carried over.", after=second_turn_mark, timeout=15.0)
+        second_prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=second_prompt_mark)
+
+        assert list_turn_begin_inputs(home_dir, work_dir) == [
+            "start long turn",
+            "follow-up draft",
+        ]
+    finally:
+        shell.close()
+
+
+def test_shell_running_prompt_ignores_shift_tab_plan_toggle(tmp_path: Path) -> None:
+    scripts = [
+        "\n".join(
+            [
+                "text: Running long task.",
+                build_shell_tool_call("tc-plan-mode", "sleep 1.5"),
+            ]
+        ),
+        "text: First turn finished.",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_line("start long turn")
+        shell.read_until_contains("Using Shell (sleep 1.5)", after=turn_mark, timeout=15.0)
+        shift_tab_mark = shell.mark()
+        shell.send_key("s_tab")
+        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
+        prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=prompt_mark)
+
+        running_segment = shell.normalized_text()[shift_tab_mark:]
+        assert "plan mode ON" not in running_segment
+        assert "plan mode OFF" not in running_segment
+    finally:
+        shell.close()
+
+
 def test_shell_exit_command_from_idle_prompt(tmp_path: Path) -> None:
     config_path = write_scripted_config(tmp_path, [])
     work_dir = make_work_dir(tmp_path)
@@ -180,6 +268,66 @@ def test_shell_shows_mcp_loading_without_blocking_input(tmp_path: Path) -> None:
         shell.close()
 
 
+def test_shell_ctrl_d_from_idle_prompt_after_completed_turn_exits_cleanly(tmp_path: Path) -> None:
+    config_path = write_scripted_config(tmp_path, ["text: First turn finished."])
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_line("run first turn")
+        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
+        prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=prompt_mark)
+
+        eof_mark = shell.mark()
+        shell.send_key("ctrl_d")
+        shell.read_until_contains("Bye!", after=eof_mark, timeout=4.0)
+        assert shell.wait() == 0
+    finally:
+        shell.close()
+
+
+def test_shell_ctrl_c_from_idle_prompt_after_completed_turn_shows_tip(tmp_path: Path) -> None:
+    config_path = write_scripted_config(tmp_path, ["text: First turn finished."])
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_line("run first turn")
+        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
+        prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=prompt_mark)
+
+        interrupt_mark = shell.mark()
+        shell.send_key("ctrl_c")
+        shell.read_until_contains(
+            "Tip: press Ctrl-D or send 'exit' to quit",
+            after=interrupt_mark,
+            timeout=4.0,
+        )
+        _read_until_prompt(shell, after=shell.mark())
+    finally:
+        shell.close()
 def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
     question_payload = [
         {
