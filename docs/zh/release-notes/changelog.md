@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：Plan 模式现在支持增量编辑计划文件——Agent 可以使用 `StrReplaceFile` 精准更新计划文件的特定部分，而无需通过 `WriteFile` 重写整个文件；同时非计划文件的编辑现在会被直接阻止，而非弹出审批请求
+
 ## 1.23.0 (2026-03-17)
 
 - Shell：新增后台 Bash——`Shell` 工具现在支持 `run_in_background=true` 参数，可将耗时命令（构建、测试、服务）作为后台任务启动，Agent 无需等待即可继续工作；新增 `TaskList`、`TaskOutput`、`TaskStop` 工具管理任务生命周期，任务到达终止态时系统自动通知 Agent
