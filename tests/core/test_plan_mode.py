@@ -640,7 +640,10 @@ class TestKimiSoulPlanSessionPersistence:
         path1 = soul1.get_plan_file_path()
         assert path1 is not None
 
-        # Simulate restart: new KimiSoul reads from same (already-saved) session state
+        # Simulate restart: clear in-process slug cache (as would happen in a new process)
+        _slug_cache.clear()
+
+        # New KimiSoul reads from same (already-saved) session state and re-seeds cache
         soul2 = _make_soul(runtime, tmp_path)
         path2 = soul2.get_plan_file_path()
         assert path2 == path1
