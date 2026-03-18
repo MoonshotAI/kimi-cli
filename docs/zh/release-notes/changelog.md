@@ -4,6 +4,13 @@
 
 ## 未发布
 
+- Core：Plan 模式现在支持增量编辑计划文件——Agent 可以使用 `StrReplaceFile` 精准更新计划文件的特定部分，而无需通过 `WriteFile` 重写整个文件；同时非计划文件的编辑现在会被直接阻止，而非弹出审批请求
+- Core：延迟 MCP 启动并展示加载进度——MCP 服务器现在在 Shell UI 启动后异步初始化，并提供实时进度指示器显示连接状态；Shell 在状态区域显示连接中和就绪状态，Web 显示服务器连接状态
+- Core：优化轻量级启动路径——对 CLI 子命令和版本元数据实现延迟加载，显著缩短 `--version` 和 `--help` 等常用命令的启动时间
+- Build：修复 Nix `FileCollisionError` for `bin/kimi`——从 `kimi-code` 包中移除重复的入口点，使 `kimi-cli` 独占 `bin/kimi`
+
+## 1.23.0 (2026-03-17)
+
 - Shell：新增后台 Bash——`Shell` 工具现在支持 `run_in_background=true` 参数，可将耗时命令（构建、测试、服务）作为后台任务启动，Agent 无需等待即可继续工作；新增 `TaskList`、`TaskOutput`、`TaskStop` 工具管理任务生命周期，任务到达终止态时系统自动通知 Agent
 - Shell：新增 `/task` 斜杠命令与交互式任务浏览器——三列 TUI 界面，支持查看、监控和管理后台任务，提供实时刷新、输出预览和键盘驱动的任务停止操作
 - Web：修复切换模型后其他标签页全局配置未刷新的问题——在某个标签页中切换模型时，其他标签页现在能检测到配置更新并自动刷新全局配置
