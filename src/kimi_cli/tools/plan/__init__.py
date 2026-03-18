@@ -52,7 +52,7 @@ class PlanOption(BaseModel):
 class Params(BaseModel):
     options: list[PlanOption] | None = Field(
         default=None,
-        max_length=4,
+        max_length=3,
         description=(
             "When the plan contains multiple alternative approaches, list them here "
             "so the user can choose which one to execute. 2-3 options. "
@@ -60,6 +60,16 @@ class Params(BaseModel):
             "Do not use 'Reject', 'Revise', or 'Approve' as labels."
         ),
     )
+
+    @field_validator("options")
+    @classmethod
+    def options_labels_unique(cls, v: list[PlanOption] | None) -> list[PlanOption] | None:
+        if v is None:
+            return v
+        labels = [opt.label for opt in v]
+        if len(labels) != len(set(labels)):
+            raise ValueError("Option labels must be unique. Found duplicate label(s).")
+        return v
 
 
 class ExitPlanMode(CallableTool2[Params]):

@@ -880,7 +880,7 @@ If your plan contains multiple alternative approaches:
                                         "required": ["label"],
                                         "type": "object",
                                     },
-                                    "maxItems": 4,
+                                    "maxItems": 3,
                                     "type": "array",
                                 },
                                 {"type": "null"},
