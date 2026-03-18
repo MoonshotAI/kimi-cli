@@ -79,11 +79,15 @@ class _PeriodStats:
 class TokenLedger:
     """Accumulate and persist daily / weekly token usage across sessions."""
 
+    # Minimum interval between disk reloads (seconds) to avoid I/O in hot paths
+    _MIN_RELOAD_INTERVAL = 1.0
+
     def __init__(self, stats_file: Path) -> None:
         self._file = stats_file
 
         self._daily = _PeriodStats()
         self._weekly = _PeriodStats()
+        self._last_reload_time: float = 0.0
         self._load()
 
     # ── public interface ──────────────────────────────────────────────────
@@ -94,8 +98,8 @@ class TokenLedger:
         Recomputes period boundaries before recording to handle long-running
         sessions that cross midnight or Monday boundaries.
         """
-        # Reload from disk to pick up any concurrent updates, then add and save
-        self._reload_and_merge()
+        # Reload from disk (force=True) to pick up any concurrent updates, then add and save
+        self._reload_and_merge(force=True)
         self._daily.add(usage)
         self._weekly.add(usage)
         self._save()
@@ -126,12 +130,27 @@ class TokenLedger:
         week_start = today - timedelta(days=today.weekday())
         return week_start.isoformat()
 
-    def _reload_and_merge(self) -> None:
+    def _reload_and_merge(self, *, force: bool = False) -> None:
         """Reload from disk and merge, handling date boundaries.
 
         This ensures that if another process has written stats, we pick them up
         before adding our own.
+
+        Args:
+            force: If True, always reload from disk. If False, throttle reloads
+                   to avoid I/O in hot paths (e.g., UI status updates).
         """
+        import time
+
+        now = time.monotonic()
+        if not force and (now - self._last_reload_time) < self._MIN_RELOAD_INTERVAL:
+            # Throttle reloads to avoid blocking I/O in hot paths
+            # Still need to check date boundaries even if skipping disk reload
+            self._maybe_reset_boundaries()
+            return
+
+        self._last_reload_time = now
+
         # First check if we need to reset due to date boundary
         self._maybe_reset_boundaries()
 
@@ -218,11 +237,14 @@ class TokenLedger:
 
     def _load(self) -> None:
         """Load stats from file, respecting date boundaries."""
+        import time
+
         daily, weekly = self._read_from_disk()
         if daily is not None:
             self._daily = daily
         if weekly is not None:
             self._weekly = weekly
+        self._last_reload_time = time.monotonic()
 
     def _save(self) -> None:
         today_str = self._get_today_str()
