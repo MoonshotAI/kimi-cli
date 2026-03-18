@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -53,10 +54,16 @@ class _PeriodStats:
             if isinstance(v, int):
                 return v
             if isinstance(v, float):
+                # Guard against non-finite numbers (inf, nan)
+                if not math.isfinite(v):
+                    return 0
                 return int(v)
             if isinstance(v, str):
                 try:
-                    return int(float(v))
+                    fv = float(v)
+                    if not math.isfinite(fv):
+                        return 0
+                    return int(fv)
                 except (ValueError, TypeError):
                     return 0
             return 0
@@ -142,9 +149,14 @@ class TokenLedger:
         week_start_str = self._get_week_start_str()
 
         try:
-            data: dict[str, Any] = json.loads(self._file.read_text())
+            raw_data = json.loads(self._file.read_text())
         except (json.JSONDecodeError, OSError):
             return (None, None)
+
+        # Validate root type is a mapping before accessing
+        if not isinstance(raw_data, dict):
+            return (None, None)
+        data: dict[str, Any] = raw_data
 
         daily = None
         weekly = None
