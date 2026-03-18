@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from kimi_cli.plugin import PluginSpec, parse_plugin_json, PluginError
+from kimi_cli.plugin import PluginError, PluginRuntime, PluginSpec, inject_config, parse_plugin_json, write_runtime
 
 
 def _write_plugin(tmp_path: Path, plugin_data: dict) -> Path:
@@ -71,3 +71,99 @@ def test_parse_plugin_json_with_runtime(tmp_path: Path):
     assert spec.runtime is not None
     assert spec.runtime.host == "kimi-code"
     assert spec.runtime.host_version == "1.22.0"
+
+
+def test_parse_plugin_json_missing_version(tmp_path: Path):
+    plugin_dir = tmp_path / "bad"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.json").write_text('{"name": "x"}', encoding="utf-8")
+    with pytest.raises(PluginError, match="version"):
+        parse_plugin_json(plugin_dir / "plugin.json")
+
+
+def test_parse_plugin_json_malformed(tmp_path: Path):
+    plugin_dir = tmp_path / "bad"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.json").write_text("{not json}", encoding="utf-8")
+    with pytest.raises(PluginError, match="Failed to read"):
+        parse_plugin_json(plugin_dir / "plugin.json")
+
+
+def test_inject_config_writes_value(tmp_path: Path):
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+        "config_file": "config/config.json",
+        "inject": {"kimicode.api_key": "api_key"},
+    })
+    config_dir = plugin_dir / "config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(
+        json.dumps({"kimicode": {"api_key": "PLACEHOLDER", "timeout": 30}}),
+        encoding="utf-8",
+    )
+
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    inject_config(plugin_dir, spec, {"api_key": "sk-real-key"})
+
+    result = json.loads((config_dir / "config.json").read_text())
+    assert result["kimicode"]["api_key"] == "sk-real-key"
+    assert result["kimicode"]["timeout"] == 30  # untouched
+
+
+def test_inject_config_creates_nested_path(tmp_path: Path):
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+        "config_file": "c.json",
+        "inject": {"a.b.c": "api_key"},
+    })
+    (plugin_dir / "c.json").write_text("{}", encoding="utf-8")
+
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    inject_config(plugin_dir, spec, {"api_key": "val"})
+
+    result = json.loads((plugin_dir / "c.json").read_text())
+    assert result["a"]["b"]["c"] == "val"
+
+
+def test_inject_config_missing_key_raises(tmp_path: Path):
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+        "config_file": "c.json",
+        "inject": {"x": "api_key"},
+    })
+    (plugin_dir / "c.json").write_text("{}", encoding="utf-8")
+
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    with pytest.raises(PluginError, match="api_key"):
+        inject_config(plugin_dir, spec, {})
+
+
+def test_inject_config_missing_file_raises(tmp_path: Path):
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+        "config_file": "missing.json",
+        "inject": {"x": "api_key"},
+    })
+
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    with pytest.raises(PluginError, match="not found"):
+        inject_config(plugin_dir, spec, {"api_key": "v"})
+
+
+def test_write_runtime(tmp_path: Path):
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+    })
+
+    runtime = PluginRuntime(host="kimi-code", host_version="1.22.0")
+    write_runtime(plugin_dir, runtime)
+
+    data = json.loads((plugin_dir / "plugin.json").read_text())
+    assert data["runtime"]["host"] == "kimi-code"
+    assert data["runtime"]["host_version"] == "1.22.0"
+    assert data["name"] == "p"  # original fields preserved
