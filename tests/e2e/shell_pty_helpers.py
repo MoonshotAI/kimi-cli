@@ -140,10 +140,13 @@ class ShellPTYProcess:
             "enter": b"\r",
             "escape": b"\x1b",
             "tab": b"\t",
+            "s_tab": b"\x1b[Z",
             "up": b"\x1b[A",
             "down": b"\x1b[B",
             "left": b"\x1b[D",
             "right": b"\x1b[C",
+            "ctrl_c": b"\x03",
+            "ctrl_d": b"\x04",
             "ctrl_x": b"\x18",
         }
         payload = key_map.get(key)

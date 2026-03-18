@@ -19,6 +19,7 @@ class _FakePromptSession:
 
     def __init__(self, *args, **kwargs) -> None:
         self.prompt_calls = 0
+        self.last_submission_was_running = False
         _FakePromptSession.instances.append(self)
 
     def __enter__(self) -> _FakePromptSession:
@@ -27,12 +28,18 @@ class _FakePromptSession:
     def __exit__(self, exc_type, exc, tb) -> bool:
         return False
 
-    async def prompt(self) -> UserInput:
+    async def prompt_next(self) -> UserInput:
         self.prompt_calls += 1
         response = _FakePromptSession.responses.popleft()
         if isinstance(response, BaseException):
             raise response
         return response
+
+    def attach_running_prompt(self, delegate) -> None:
+        return None
+
+    def detach_running_prompt(self, delegate) -> None:
+        return None
 
 
 def _make_user_input(
