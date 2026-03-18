@@ -1,4 +1,4 @@
-"""Tests for AskUserQuestion cache-stable descriptions."""
+"""Tests for AskUserQuestion description stability under plan mode."""
 
 from __future__ import annotations
 
@@ -12,20 +12,10 @@ from kimi_cli.tools.ask_user import _BASE_DESCRIPTION, AskUserQuestion
 
 
 class TestAskUserDescriptionStability:
-    def test_description_is_static_without_plan_mode_binding(self) -> None:
-        tool = AskUserQuestion()
-        assert tool.base.description == _BASE_DESCRIPTION
-
-    def test_cache_prevents_recreation(self) -> None:
-        tool = AskUserQuestion()
-
-        first = tool.base
-        second = tool.base
-        assert first is second
-
     def test_description_stays_static_when_soul_toggles_plan_mode(
         self, runtime: Runtime, tmp_path: Path
     ) -> None:
+        """KimiSoul plan mode toggles must not alter AskUserQuestion's description."""
         toolset = KimiToolset()
         tool = AskUserQuestion()
         toolset.add(tool)

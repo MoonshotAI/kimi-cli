@@ -77,6 +77,26 @@ class TestStrReplaceFilePlanMode:
         assert "only edit the current plan file" in result.message
         request_mock.assert_not_awaited()
 
+    async def test_no_plan_mode_normal_flow(
+        self, runtime: Runtime, temp_work_dir: KaosPath
+    ) -> None:
+        """Without plan mode binding, yolo=True auto-approves normally."""
+        approval = Approval(yolo=True)
+        target = temp_work_dir / "normal.txt"
+        await target.write_text("old content")
+
+        with tool_call_context("StrReplaceFile"):
+            tool = StrReplaceFile(runtime, approval)
+            result = await tool(
+                Params(
+                    path=str(target),
+                    edit=Edit(old="old content", new="new content"),
+                )
+            )
+
+        assert isinstance(result, ToolReturnValue)
+        assert not result.is_error
+
     async def test_missing_plan_file_guides_to_write_file(
         self, runtime: Runtime, tmp_path: Path
     ) -> None:

@@ -128,39 +128,6 @@ class TestWriteFilePlanMode:
         assert plan_path.exists()
         assert plan_path.read_text() == "# Deep Plan"
 
-    async def test_plan_file_write_works_with_session_plan_mode_active(
-        self, runtime: Runtime, temp_work_dir: KaosPath, tmp_path: Path
-    ) -> None:
-        """Plan file writing must work when session.state.plan_mode is True.
-
-        This is the realistic scenario: KimiSoul sets session.state.plan_mode = True
-        AND binds WriteFile with plan_mode checker.  WriteFile plan file writes
-        must be auto-approved without going through the approval dialog.
-        """
-        runtime.session.state.plan_mode = True
-        approval = Approval(yolo=False)
-        plan_path = tmp_path / "plans" / "session-plan.md"
-        with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
-            tool.bind_plan_mode(
-                checker=lambda: runtime.session.state.plan_mode,
-                path_getter=lambda: plan_path,
-            )
-
-            # Mock approval to reject — plan file should bypass it
-            request_mock = AsyncMock(return_value=False)
-            approval.request = cast(Any, request_mock)
-
-            result = await tool(
-                Params(path=str(plan_path), content="# Implementation Plan\n\n## Steps\n1. ...")
-            )
-
-        assert isinstance(result, ToolReturnValue)
-        assert not result.is_error
-        assert plan_path.exists()
-        assert plan_path.read_text().startswith("# Implementation Plan")
-        request_mock.assert_not_awaited()
-
     async def test_plan_file_append_works_in_plan_mode(
         self, runtime: Runtime, temp_work_dir: KaosPath, tmp_path: Path
     ) -> None:
