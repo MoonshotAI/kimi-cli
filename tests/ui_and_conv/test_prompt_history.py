@@ -25,7 +25,8 @@ def _read_history_lines(path) -> list[dict[str, str]]:
 
 def test_append_history_entry_expands_text_placeholders_but_preserves_images(tmp_path) -> None:
     manager = PromptPlaceholderManager(attachment_cache=AttachmentCache(root=tmp_path / "cache"))
-    text_token = manager.maybe_placeholderize_pasted_text("alpha\nbeta\ngamma")
+    pasted_text = "\n".join([f"line{i}" for i in range(1, 16)])
+    text_token = manager.maybe_placeholderize_pasted_text(pasted_text)
     image = Image.new("RGB", (4, 4), color=(10, 20, 30))
     image_token = manager.create_image_placeholder(image)
 
@@ -35,7 +36,7 @@ def test_append_history_entry_expands_text_placeholders_but_preserves_images(tmp
     prompt_session._append_history_entry(f"before {text_token} {image_token} after")
 
     assert _read_history_lines(prompt_session._history_file) == [
-        {"content": f"before alpha\nbeta\ngamma {image_token} after"}
+        {"content": f"before {pasted_text} {image_token} after"}
     ]
 
 
@@ -56,7 +57,7 @@ def test_append_history_entry_deduplicates_consecutive_tokens_with_same_expanded
 def test_append_history_entry_writes_sanitized_surrogate_text(tmp_path) -> None:
     manager = PromptPlaceholderManager()
     prompt_session = _make_prompt_session(tmp_path, manager)
-    token = manager.maybe_placeholderize_pasted_text("A" * 300 + "\ud83d")
+    token = manager.maybe_placeholderize_pasted_text("A" * 1000 + "\ud83d")
 
     prompt_session._append_history_entry(token)
 
@@ -64,3 +65,4 @@ def test_append_history_entry_writes_sanitized_surrogate_text(tmp_path) -> None:
     assert len(lines) == 1
     assert "\ud83d" not in lines[0]["content"]
     assert "\ufffd" in lines[0]["content"]
+    assert lines[0]["content"].startswith("A" * 1000)

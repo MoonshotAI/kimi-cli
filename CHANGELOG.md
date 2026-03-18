@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Increase pasted text placeholder thresholds to 1000 characters or 15 lines (previously 300 characters or 3 lines), making voice/typeless workflows less disruptive
+
 ## 1.23.0 (2026-03-17)
 
 - Shell: Add background bash — the `Shell` tool now accepts `run_in_background=true` to launch long-running commands (builds, tests, servers) as background tasks, freeing the agent to continue working; new `TaskList`, `TaskOutput`, and `TaskStop` tools manage task lifecycle, and the system automatically notifies the agent when tasks reach a terminal state
