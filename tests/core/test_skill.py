@@ -173,6 +173,9 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
     user_dir.mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: home_dir)
 
+    # Redirect share dir so plugins dir doesn't interfere
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
     work_dir = tmp_path / "project"
     project_dir = work_dir / ".agents" / "skills"
     project_dir.mkdir(parents=True)
@@ -187,10 +190,13 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_respects_override(tmp_path):
+async def test_resolve_skills_roots_respects_override(tmp_path, monkeypatch):
     work_dir = tmp_path / "project"
     override_dir = tmp_path / "override"
     override_dir.mkdir()
+
+    # Redirect share dir to tmp so ~/.kimi/plugins/ doesn't interfere
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
     roots = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(work_dir),
