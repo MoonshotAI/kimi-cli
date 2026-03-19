@@ -56,6 +56,7 @@ class Terminal(CallableTool2[ShellParams]):
         # Use the `name`, `description`, and `params` from the existing Shell tool,
         # so that when this is added to the toolset, it replaces the original Shell tool.
         super().__init__(shell_tool.name, shell_tool.description, shell_tool.params)
+        self._shell_tool = shell_tool
         self._acp_conn = acp_conn
         self._acp_session_id = acp_session_id
         self._approval = approval
@@ -80,23 +81,21 @@ class Terminal(CallableTool2[ShellParams]):
 
         timeout_seconds = float(params.timeout)
         timeout_label = f"{timeout_seconds:g}s"
-        terminal: acp.TerminalHandle | None = None
+        terminal_id: str | None = None
         exit_status: (
             acp.schema.WaitForTerminalExitResponse | acp.schema.TerminalExitStatus | None
         ) = None
         timed_out = False
 
         try:
+            shell_argv = self._shell_tool.shell_args(params.command)
             term = await self._acp_conn.create_terminal(
-                command=params.command,
+                command=shell_argv[0],
                 session_id=self._acp_session_id,
+                args=list(shell_argv[1:]),
                 output_byte_limit=builder.max_chars,
             )
-            # FIXME: update ACP sdk for the fix
-            assert isinstance(term, acp.TerminalHandle), (
-                "Expected TerminalHandle from create_terminal"
-            )
-            terminal = term
+            terminal_id = term.terminal_id
 
             acp_tool_call_id = get_current_acp_tool_call_id_or_none()
             assert acp_tool_call_id, "Expected to have an ACP tool call ID in context"
@@ -109,7 +108,7 @@ class Terminal(CallableTool2[ShellParams]):
                     content=[
                         acp.schema.TerminalToolCallContent(
                             type="terminal",
-                            terminal_id=terminal.id,
+                            terminal_id=terminal_id,
                         )
                     ],
                 ),
@@ -117,12 +116,21 @@ class Terminal(CallableTool2[ShellParams]):
 
             try:
                 async with asyncio.timeout(timeout_seconds):
-                    exit_status = await terminal.wait_for_exit()
+                    exit_status = await self._acp_conn.wait_for_terminal_exit(
+                        session_id=self._acp_session_id,
+                        terminal_id=terminal_id,
+                    )
             except TimeoutError:
                 timed_out = True
-                await terminal.kill()
+                await self._acp_conn.kill_terminal(
+                    session_id=self._acp_session_id,
+                    terminal_id=terminal_id,
+                )
 
-            output_response = await terminal.current_output()
+            output_response = await self._acp_conn.terminal_output(
+                session_id=self._acp_session_id,
+                terminal_id=terminal_id,
+            )
             builder.write(output_response.output)
             if output_response.exit_status:
                 exit_status = output_response.exit_status
@@ -153,6 +161,9 @@ class Terminal(CallableTool2[ShellParams]):
                 )
             return builder.ok(f"Command executed successfully.{truncated_note}")
         finally:
-            if terminal is not None:
+            if terminal_id is not None:
                 with suppress(Exception):
-                    await terminal.release()
+                    await self._acp_conn.release_terminal(
+                        session_id=self._acp_session_id,
+                        terminal_id=terminal_id,
+                    )

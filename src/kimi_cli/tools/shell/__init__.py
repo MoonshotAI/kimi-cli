@@ -204,7 +204,7 @@ class Shell(CallableTool2[Params]):
                 else:
                     break
 
-        process = await kaos.exec(*self._shell_args(command), env=get_clean_env())
+        process = await kaos.exec(*self.shell_args(command), env=get_clean_env())
 
         try:
             await asyncio.wait_for(
@@ -222,7 +222,10 @@ class Shell(CallableTool2[Params]):
             await process.kill()
             raise
 
-    def _shell_args(self, command: str) -> tuple[str, ...]:
+    def shell_args(self, command: str) -> tuple[str, ...]:
         if self._is_powershell:
             return (str(self._shell_path), "-command", command)
         return (str(self._shell_path), "-c", command)
+
+    def _shell_args(self, command: str) -> tuple[str, ...]:
+        return self.shell_args(command)
