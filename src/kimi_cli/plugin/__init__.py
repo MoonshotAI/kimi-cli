@@ -1,7 +1,5 @@
 """Plugin specification parsing and config injection."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Any
@@ -26,7 +24,7 @@ class PluginToolSpec(BaseModel):
     name: str
     description: str
     command: list[str]
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, object] = Field(default_factory=dict)
 
 
 class PluginSpec(BaseModel):
@@ -39,7 +37,7 @@ class PluginSpec(BaseModel):
     description: str = ""
     config_file: str | None = None
     inject: dict[str, str] = Field(default_factory=dict)
-    tools: list[PluginToolSpec] = Field(default_factory=list)
+    tools: list[PluginToolSpec] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
     runtime: PluginRuntime | None = None
 
 
@@ -58,11 +56,12 @@ def parse_plugin_json(path: Path) -> PluginSpec:
     if "version" not in data:
         raise PluginError(f"Missing required field 'version' in {path}")
     if data.get("inject") and not data.get("config_file"):
-        raise PluginError(
-            f"'inject' requires 'config_file' in {path}"
-        )
+        raise PluginError(f"'inject' requires 'config_file' in {path}")
 
-    return PluginSpec.model_validate(data)
+    try:
+        return PluginSpec.model_validate(data)
+    except Exception as exc:
+        raise PluginError(f"Invalid plugin.json schema in {path}: {exc}") from exc
 
 
 def inject_config(plugin_dir: Path, spec: PluginSpec, values: dict[str, str]) -> None:
@@ -89,9 +88,7 @@ def inject_config(plugin_dir: Path, spec: PluginSpec, values: dict[str, str]) ->
 
     for target_path, source_key in spec.inject.items():
         if source_key not in values:
-            raise PluginError(
-                f"Host does not provide required inject key '{source_key}'"
-            )
+            raise PluginError(f"Host does not provide required inject key '{source_key}'")
         _set_nested(config, target_path, values[source_key])
 
     config_path.write_text(

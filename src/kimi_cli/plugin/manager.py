@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import tempfile
 from pathlib import Path
 
 from kimi_cli.plugin import (
@@ -22,6 +23,14 @@ def get_plugins_dir() -> Path:
     return get_share_dir() / "plugins"
 
 
+def _validate_name(name: str, plugins_dir: Path) -> Path:
+    """Resolve and validate plugin name, returning the safe destination path."""
+    dest = (plugins_dir / name).resolve()
+    if not dest.is_relative_to(plugins_dir.resolve()):
+        raise PluginError(f"Invalid plugin name: {name}")
+    return dest
+
+
 def install_plugin(
     *,
     source: Path,
@@ -32,36 +41,40 @@ def install_plugin(
 ) -> PluginSpec:
     """Install a plugin from a source directory.
 
-    1. Validate source plugin.json
-    2. Copy to plugins_dir/<name>/
-    3. Inject host values into plugin config
-    4. Write runtime into plugin.json
-    5. On failure, rollback (remove copied dir)
+    Stages the new copy to a temp dir first, so a failed upgrade
+    does not destroy the previous installation.
     """
     source_plugin_json = source / PLUGIN_JSON
     if not source_plugin_json.exists():
         raise PluginError(f"No plugin.json found in {source}")
 
     spec = parse_plugin_json(source_plugin_json)
+    dest = _validate_name(spec.name, plugins_dir)
 
-    dest = (plugins_dir / spec.name).resolve()
-    if not dest.is_relative_to(plugins_dir.resolve()):
-        raise PluginError(f"Invalid plugin name: {spec.name}")
-    # For reinstall: remove old copy first
-    if dest.exists():
-        shutil.rmtree(dest)
-
+    # Stage to a temp dir inside plugins_dir so rename is atomic on same fs
     plugins_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, dest)
-
+    staging = Path(tempfile.mkdtemp(prefix=f".{spec.name}-", dir=plugins_dir))
     try:
-        inject_config(dest, spec, host_values)
+        # Copy source into staging
+        staging_plugin = staging / spec.name
+        shutil.copytree(source, staging_plugin)
+
+        # Apply inject + runtime on the staged copy
+        inject_config(staging_plugin, spec, host_values)
         runtime = PluginRuntime(host=host_name, host_version=host_version)
-        write_runtime(dest, runtime)
+        write_runtime(staging_plugin, runtime)
+
+        # Swap: remove old, move staged into place
+        if dest.exists():
+            shutil.rmtree(dest)
+        staging_plugin.rename(dest)
     except Exception:
-        # Rollback on any failure
-        shutil.rmtree(dest, ignore_errors=True)
+        # On any failure, clean up staging but leave existing install intact
+        shutil.rmtree(staging, ignore_errors=True)
         raise
+    finally:
+        # Clean up staging dir shell (may be empty after successful rename)
+        shutil.rmtree(staging, ignore_errors=True)
 
     # Re-read to return the installed spec (with runtime)
     return parse_plugin_json(dest / PLUGIN_JSON)
@@ -85,7 +98,7 @@ def list_plugins(plugins_dir: Path) -> list[PluginSpec]:
 
 def remove_plugin(name: str, plugins_dir: Path) -> None:
     """Remove an installed plugin."""
-    dest = plugins_dir / name
+    dest = _validate_name(name, plugins_dir)
     if not dest.exists():
         raise PluginError(f"Plugin '{name}' not found in {plugins_dir}")
     shutil.rmtree(dest)

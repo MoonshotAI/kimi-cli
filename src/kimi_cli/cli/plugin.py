@@ -12,8 +12,12 @@ from kimi_cli.plugin import PluginError
 cli = typer.Typer(help="Manage plugins.")
 
 
-def _resolve_source(target: str) -> Path:
-    """Resolve a plugin source from a path (directory or zip) or git URL to a local directory."""
+def _resolve_source(target: str) -> tuple[Path, Path | None]:
+    """Resolve plugin source to (local_dir, tmp_to_cleanup).
+
+    Returns the source directory and an optional temp directory that
+    the caller must clean up after use.
+    """
     import shutil
     import tempfile
 
@@ -34,7 +38,7 @@ def _resolve_source(target: str) -> Path:
             shutil.rmtree(tmp, ignore_errors=True)
             typer.echo(f"Error: git clone failed: {result.stderr.strip()}", err=True)
             raise typer.Exit(1)
-        return tmp / "repo"
+        return tmp / "repo", tmp
 
     p = Path(target).expanduser().resolve()
 
@@ -45,22 +49,29 @@ def _resolve_source(target: str) -> Path:
         tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
         typer.echo(f"Extracting {p.name}...")
         with zipfile.ZipFile(p, "r") as zf:
+            # Reject zip members that escape the extraction directory
+            for member in zf.namelist():
+                member_path = (tmp / member).resolve()
+                if not member_path.is_relative_to(tmp.resolve()):
+                    shutil.rmtree(tmp, ignore_errors=True)
+                    typer.echo(f"Error: zip contains unsafe path: {member}", err=True)
+                    raise typer.Exit(1)
             zf.extractall(tmp)
         # Find the directory containing plugin.json (may be nested one level)
         for candidate in [tmp] + sorted(tmp.iterdir()):
             if candidate.is_dir() and (candidate / "plugin.json").exists():
-                return candidate
+                return candidate, tmp
         # Check for __MACOSX and similar artifacts
         dirs = [d for d in tmp.iterdir() if d.is_dir() and not d.name.startswith("_")]
         if len(dirs) == 1 and (dirs[0] / "plugin.json").exists():
-            return dirs[0]
+            return dirs[0], tmp
         shutil.rmtree(tmp, ignore_errors=True)
         typer.echo("Error: No plugin.json found in zip", err=True)
         raise typer.Exit(1)
 
     # Local directory
     if p.is_dir():
-        return p
+        return p, None
 
     typer.echo(f"Error: {target} is not a directory, zip file, or git URL", err=True)
     raise typer.Exit(1)
@@ -68,37 +79,37 @@ def _resolve_source(target: str) -> Path:
 
 @cli.command("install")
 def install_cmd(
-    target: Annotated[
-        str, typer.Argument(help="Plugin source: directory, .zip, or git URL")
-    ],
+    target: Annotated[str, typer.Argument(help="Plugin source: directory, .zip, or git URL")],
 ) -> None:
     """Install a plugin and inject host configuration."""
+    import shutil
+
     from kimi_cli.config import load_config
     from kimi_cli.constant import VERSION
     from kimi_cli.plugin.manager import get_plugins_dir, install_plugin
 
-    source = _resolve_source(target)
-
-    config = load_config()
-
-    # Collect host values from the current default provider
-    host_values: dict[str, str] = {}
-    if config.default_model and config.default_model in config.models:
-        model = config.models[config.default_model]
-        if model.provider in config.providers:
-            provider = config.providers[model.provider]
-            host_values["api_key"] = provider.api_key.get_secret_value()
-            host_values["base_url"] = provider.base_url
-
-    if not host_values:
-        typer.echo(
-            "Warning: No LLM provider configured. "
-            "Plugins requiring API key injection will fail. "
-            "Run 'kimi login' or configure a provider first.",
-            err=True,
-        )
+    source, tmp_dir = _resolve_source(target)
 
     try:
+        config = load_config()
+
+        # Collect host values from the current default provider
+        host_values: dict[str, str] = {}
+        if config.default_model and config.default_model in config.models:
+            model = config.models[config.default_model]
+            if model.provider in config.providers:
+                provider = config.providers[model.provider]
+                host_values["api_key"] = provider.api_key.get_secret_value()
+                host_values["base_url"] = provider.base_url
+
+        if not host_values:
+            typer.echo(
+                "Warning: No LLM provider configured. "
+                "Plugins requiring API key injection will fail. "
+                "Run 'kimi login' or configure a provider first.",
+                err=True,
+            )
+
         spec = install_plugin(
             source=source,
             plugins_dir=get_plugins_dir(),
@@ -109,6 +120,10 @@ def install_cmd(
     except PluginError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
+    finally:
+        # Clean up temp directory from zip/git extraction
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     typer.echo(f"Installed plugin '{spec.name}' v{spec.version}")
     if spec.runtime:
