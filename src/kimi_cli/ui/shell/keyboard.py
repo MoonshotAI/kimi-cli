@@ -162,23 +162,39 @@ def _listen_for_keyboard_unix(
 
             if c == b"\x1b":
                 sequence = c
-                for _ in range(2):
-                    if cancel.is_set():
-                        break
-                    try:
-                        fragment = sys.stdin.buffer.read(1)
-                    except (OSError, ValueError):
-                        fragment = b""
-                    if not fragment:
-                        break
-                    sequence += fragment
-                    if sequence in _ARROW_KEY_MAP:
-                        break
+                try:
+                    next_byte = sys.stdin.buffer.read(1)
+                except (OSError, ValueError):
+                    next_byte = b""
 
-                event = _ARROW_KEY_MAP.get(sequence)
-                if event is not None:
-                    emit(event)
-                elif sequence == b"\x1b":
+                if next_byte == b"[":
+                    # CSI sequence – read until a final byte (0x40–0x7E)
+                    sequence += next_byte
+                    for _ in range(16):
+                        if cancel.is_set():
+                            break
+                        try:
+                            fragment = sys.stdin.buffer.read(1)
+                        except (OSError, ValueError):
+                            fragment = b""
+                        if not fragment:
+                            break
+                        sequence += fragment
+                        if 0x40 <= fragment[0] <= 0x7E:
+                            break
+
+                    event = _ARROW_KEY_MAP.get(sequence)
+                    if event is None:
+                        event = _parse_csi_u(sequence)
+                    if event is not None:
+                        emit(event)
+                elif next_byte:
+                    # Non-CSI escape sequence – try the 2-byte map
+                    sequence += next_byte
+                    event = _ARROW_KEY_MAP.get(sequence)
+                    if event is not None:
+                        emit(event)
+                else:
                     emit(KeyEvent.ESCAPE)
             elif c in (b"\r", b"\n"):
                 emit(KeyEvent.ENTER)
@@ -282,6 +298,30 @@ _ARROW_KEY_MAP: dict[bytes, KeyEvent] = {
     b"\x1b[C": KeyEvent.RIGHT,
     b"\x1b[D": KeyEvent.LEFT,
 }
+
+_CSI_U_KEY_MAP: dict[int, KeyEvent] = {
+    13: KeyEvent.ENTER,
+    9: KeyEvent.TAB,
+    27: KeyEvent.ESCAPE,
+    32: KeyEvent.SPACE,
+}
+
+
+def _parse_csi_u(sequence: bytes) -> KeyEvent | None:
+    """Parse a Kitty keyboard protocol CSI-u sequence.
+
+    Format: ``ESC [ <keycode> [; <modifiers> [; <text>]] u``
+    For example ``\\x1b[13u`` is Enter and ``\\x1b[13;2u`` is Shift+Enter.
+    """
+    if not sequence.startswith(b"\x1b[") or not sequence.endswith(b"u"):
+        return None
+    params = sequence[2:-1]  # between '[' and 'u'
+    parts = params.split(b";")
+    try:
+        keycode = int(parts[0])
+    except (ValueError, IndexError):
+        return None
+    return _CSI_U_KEY_MAP.get(keycode)
 
 _WINDOWS_KEY_MAP: dict[bytes, KeyEvent] = {
     b"H": KeyEvent.UP,  # Up arrow

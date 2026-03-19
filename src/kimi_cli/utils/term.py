@@ -7,6 +7,21 @@ import sys
 import time
 
 
+def disable_kitty_keyboard_protocol() -> None:
+    """Disable the Kitty keyboard protocol by sending the "pop" escape sequence.
+
+    VS Code >= 1.109.0 enables the Kitty keyboard protocol which encodes key
+    presses as CSI-u sequences (e.g. ``\\x1b[13u`` for Enter).
+    ``prompt_toolkit`` 3.x does not recognise these, so raw characters like
+    ``[13u`` leak into user input.  Sending ``\\x1b[<u`` asks the terminal to
+    revert to the standard key encoding.
+    """
+    if not sys.stdout.isatty():
+        return
+    sys.stdout.write("\x1b[<u")
+    sys.stdout.flush()
+
+
 def ensure_new_line() -> None:
     """Ensure the next prompt starts at column 0 regardless of prior command output."""
 

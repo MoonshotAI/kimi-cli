@@ -38,7 +38,7 @@ from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
-from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
+from kimi_cli.utils.term import disable_kitty_keyboard_protocol, ensure_new_line, ensure_tty_sane
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 
 
@@ -159,6 +159,8 @@ class Shell:
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
     async def run(self, command: str | None = None) -> bool:
+        disable_kitty_keyboard_protocol()
+
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
