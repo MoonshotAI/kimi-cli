@@ -173,3 +173,63 @@ def test_write_runtime(tmp_path: Path):
     assert data["runtime"]["host"] == "kimi-code"
     assert data["runtime"]["host_version"] == "1.22.0"
     assert data["name"] == "p"  # original fields preserved
+
+
+def test_inject_config_noop_when_no_inject(tmp_path: Path):
+    """inject_config should be a no-op when spec has no inject mappings."""
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+    })
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    # Should not raise, even with empty values
+    inject_config(plugin_dir, spec, {})
+
+
+def test_inject_config_rejects_path_traversal(tmp_path: Path):
+    """config_file with '..' should be rejected."""
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+        "config_file": "../../etc/passwd",
+        "inject": {"x": "api_key"},
+    })
+    # Create the file so it exists (the guard should trigger before reading)
+    target = (plugin_dir / "../../etc/passwd").resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{}", encoding="utf-8")
+
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    with pytest.raises(PluginError, match="escapes plugin directory"):
+        inject_config(plugin_dir, spec, {"api_key": "v"})
+
+
+def test_parse_plugin_json_with_tools(tmp_path: Path):
+    """Tools should be parsed from plugin.json."""
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "t",
+        "version": "1.0.0",
+        "tools": [
+            {
+                "name": "my_tool",
+                "description": "does stuff",
+                "command": ["python3", "run.py"],
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ],
+    })
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    assert len(spec.tools) == 1
+    assert spec.tools[0].name == "my_tool"
+    assert spec.tools[0].command == ["python3", "run.py"]
+
+
+def test_parse_plugin_json_ignores_unknown_fields(tmp_path: Path):
+    """Unknown fields should be silently ignored (forward compat)."""
+    plugin_dir = _write_plugin(tmp_path, {
+        "name": "p",
+        "version": "1.0.0",
+        "future_field": "whatever",
+    })
+    spec = parse_plugin_json(plugin_dir / "plugin.json")
+    assert spec.name == "p"

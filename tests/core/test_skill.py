@@ -187,10 +187,16 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_respects_override(tmp_path):
+async def test_resolve_skills_roots_respects_override(tmp_path, monkeypatch):
     work_dir = tmp_path / "project"
     override_dir = tmp_path / "override"
     override_dir.mkdir()
+
+    # Ensure no plugins dir is discovered
+    monkeypatch.setattr(
+        "kimi_cli.plugin.manager.get_plugins_dir",
+        lambda: tmp_path / "no-plugins",
+    )
 
     roots = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(work_dir),

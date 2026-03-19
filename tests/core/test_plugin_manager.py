@@ -167,6 +167,25 @@ def test_remove_nonexistent_plugin(tmp_path: Path):
         remove_plugin("ghost", tmp_path / "plugins")
 
 
+def test_install_rejects_path_traversal_name(tmp_path: Path):
+    """Plugin name with '..' should be rejected."""
+    src = tmp_path / "source" / "evil"
+    src.mkdir(parents=True)
+    (src / "plugin.json").write_text(
+        json.dumps({"name": "../../escape", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginError, match="Invalid plugin name"):
+        install_plugin(
+            source=src,
+            plugins_dir=tmp_path / "plugins",
+            host_values={},
+            host_name="kimi-code",
+            host_version="1.0.0",
+        )
+
+
 @pytest.mark.asyncio
 async def test_skill_discovery_includes_plugins_dir(tmp_path: Path, monkeypatch):
     """Plugins dir should be included in skill discovery roots."""
