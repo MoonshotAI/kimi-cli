@@ -20,6 +20,15 @@ class PluginRuntime(BaseModel):
     host_version: str
 
 
+class PluginToolSpec(BaseModel):
+    """A tool declared by a plugin."""
+
+    name: str
+    description: str
+    command: list[str]
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class PluginSpec(BaseModel):
     """Parsed representation of a plugin.json file."""
 
@@ -30,6 +39,7 @@ class PluginSpec(BaseModel):
     description: str = ""
     config_file: str | None = None
     inject: dict[str, str] = Field(default_factory=dict)
+    tools: list[PluginToolSpec] = Field(default_factory=list)
     runtime: PluginRuntime | None = None
 
 

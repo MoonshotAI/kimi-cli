@@ -326,6 +326,13 @@ async def load_agent(
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
     toolset.load_tools(tools, tool_deps)
 
+    # Load plugin tools
+    from kimi_cli.plugin.manager import get_plugins_dir
+    from kimi_cli.plugin.tool import load_plugin_tools
+
+    for plugin_tool in load_plugin_tools(get_plugins_dir()):
+        toolset.add(plugin_tool)
+
     if mcp_configs:
         validated_mcp_configs: list[MCPConfig] = []
         if mcp_configs:
