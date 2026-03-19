@@ -1020,6 +1020,10 @@ class CustomPromptSession:
                 if not completion:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
+                # Auto-submit if the result is a bare slash command (no arguments)
+                text = buff.text.strip()
+                if text.startswith("/") and " " not in text:
+                    buff.validate_and_handle()
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
