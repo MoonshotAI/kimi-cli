@@ -62,8 +62,11 @@ class ACPServer:
         if command.endswith("kimi"):
             args = []
         else:
-            idx = sys.argv.index("kimi")
-            args = sys.argv[1 : idx + 1]
+            try:
+                idx = sys.argv.index("kimi")
+                args = sys.argv[1 : idx + 1]
+            except ValueError:
+                args = []
 
         # Build terminal auth data for error response
         terminal_args = args + ["login"]
