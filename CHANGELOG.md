@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
 - Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
 - Web: Dismiss stale approval and question dialogs on session replay — when replaying a session or when the backend reports idle/stopped/error status, any pending approval/question dialogs are now properly dismissed to prevent orphaned interactive elements
+- Web: Enable inline math formula rendering — single-dollar inline math (`$...$`) is now supported in addition to block math (`$$...$$`)
 
 ## 1.24.0 (2026-03-18)
 
