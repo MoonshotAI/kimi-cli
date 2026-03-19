@@ -107,7 +107,7 @@ async def resolve_skills_roots(
             roots.append(project_dir)
     # Plugins are always discoverable, even when --skills-dir is set
     plugins_path = get_plugins_dir()
-    if plugins_path.exists():
+    if plugins_path.is_dir():
         roots.append(KaosPath.unsafe_from_local_path(plugins_path))
     return roots
 

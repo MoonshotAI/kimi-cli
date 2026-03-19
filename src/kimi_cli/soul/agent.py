@@ -330,7 +330,14 @@ async def load_agent(
     from kimi_cli.plugin.manager import get_plugins_dir
     from kimi_cli.plugin.tool import load_plugin_tools
 
-    for plugin_tool in load_plugin_tools(get_plugins_dir(), runtime.config):
+    plugin_tools = load_plugin_tools(get_plugins_dir(), runtime.config, approval=runtime.approval)
+    for plugin_tool in plugin_tools:
+        if toolset.find(plugin_tool.name) is not None:
+            logger.warning(
+                "Plugin tool '{name}' conflicts with an existing tool, skipping",
+                name=plugin_tool.name,
+            )
+            continue
         toolset.add(plugin_tool)
 
     if mcp_configs:

@@ -13,10 +13,12 @@ from kosong.tooling.error import ToolRuntimeError
 from loguru import logger
 
 from kimi_cli.plugin import PluginToolSpec
+from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import ToolReturnValue
 
 if TYPE_CHECKING:
     from kimi_cli.config import Config
+    from kimi_cli.soul.approval import Approval
 
 
 def _get_host_values(config: Config) -> dict[str, str]:
@@ -51,6 +53,7 @@ class PluginTool(CallableTool):
         *,
         inject: dict[str, str],
         config: Config,
+        approval: Approval | None = None,
         **kwargs: Any,
     ):
         super().__init__(
@@ -63,6 +66,7 @@ class PluginTool(CallableTool):
         self._plugin_dir = plugin_dir
         self._inject = inject  # e.g. {"kimiCodeAPIKey": "api_key"}
         self._config = config
+        self._approval = approval
 
     def _build_env(self) -> dict[str, str]:
         """Build env vars with fresh host credentials for the subprocess."""
@@ -77,6 +81,11 @@ class PluginTool(CallableTool):
         return env
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
+        if self._approval is not None:
+            description = f"Run plugin tool `{self.name}`."
+            if not await self._approval.request(self.name, f"plugin:{self.name}", description):
+                return ToolRejectedError()
+
         params_json = json.dumps(kwargs, ensure_ascii=False)
 
         try:
@@ -88,17 +97,21 @@ class PluginTool(CallableTool):
                 cwd=str(self._plugin_dir),
                 env=self._build_env(),
             )
+        except Exception as exc:
+            return ToolRuntimeError(str(exc))
+
+        try:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(input=params_json.encode("utf-8")),
                 timeout=120,
             )
         except TimeoutError:
+            proc.kill()
+            await proc.wait()
             return ToolError(
                 message=f"Plugin tool '{self.name}' timed out after 120s.",
                 brief="Timeout",
             )
-        except Exception as exc:
-            return ToolRuntimeError(str(exc))
 
         output = stdout.decode("utf-8", errors="replace").strip()
         err_output = stderr.decode("utf-8", errors="replace").strip()
@@ -116,7 +129,9 @@ class PluginTool(CallableTool):
         return ToolOk(output=output)
 
 
-def load_plugin_tools(plugins_dir: Path, config: Config) -> list[PluginTool]:
+def load_plugin_tools(
+    plugins_dir: Path, config: Config, *, approval: Approval | None = None
+) -> list[PluginTool]:
     """Scan installed plugins and create PluginTool instances for declared tools."""
     from kimi_cli.plugin import PLUGIN_JSON, PluginError, parse_plugin_json
 
@@ -139,6 +154,7 @@ def load_plugin_tools(plugins_dir: Path, config: Config) -> list[PluginTool]:
                     plugin_dir=child,
                     inject=spec.inject,
                     config=config,
+                    approval=approval,
                 )
             )
             logger.info(
