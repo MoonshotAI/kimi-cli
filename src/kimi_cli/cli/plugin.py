@@ -12,19 +12,70 @@ from kimi_cli.plugin import PluginError
 cli = typer.Typer(help="Manage plugins.")
 
 
+def _resolve_source(target: str) -> Path:
+    """Resolve a plugin source from a path (directory or zip) or git URL to a local directory."""
+    import shutil
+    import tempfile
+
+    # Git URL
+    if target.startswith(("https://", "git@", "http://")) and (
+        target.endswith(".git") or "github.com/" in target or "gitlab.com/" in target
+    ):
+        import subprocess
+
+        tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
+        typer.echo(f"Cloning {target}...")
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", target, str(tmp / "repo")],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            shutil.rmtree(tmp, ignore_errors=True)
+            typer.echo(f"Error: git clone failed: {result.stderr.strip()}", err=True)
+            raise typer.Exit(1)
+        return tmp / "repo"
+
+    p = Path(target).expanduser().resolve()
+
+    # Zip file
+    if p.is_file() and p.suffix == ".zip":
+        import zipfile
+
+        tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
+        typer.echo(f"Extracting {p.name}...")
+        with zipfile.ZipFile(p, "r") as zf:
+            zf.extractall(tmp)
+        # Find the directory containing plugin.json (may be nested one level)
+        for candidate in [tmp] + sorted(tmp.iterdir()):
+            if candidate.is_dir() and (candidate / "plugin.json").exists():
+                return candidate
+        # Check for __MACOSX and similar artifacts
+        dirs = [d for d in tmp.iterdir() if d.is_dir() and not d.name.startswith("_")]
+        if len(dirs) == 1 and (dirs[0] / "plugin.json").exists():
+            return dirs[0]
+        shutil.rmtree(tmp, ignore_errors=True)
+        typer.echo("Error: No plugin.json found in zip", err=True)
+        raise typer.Exit(1)
+
+    # Local directory
+    if p.is_dir():
+        return p
+
+    typer.echo(f"Error: {target} is not a directory, zip file, or git URL", err=True)
+    raise typer.Exit(1)
+
+
 @cli.command("install")
 def install_cmd(
-    path: Annotated[Path, typer.Argument(help="Path to the plugin source directory")],
+    target: Annotated[str, typer.Argument(help="Plugin source: directory path, .zip file, or git URL")],
 ) -> None:
     """Install a plugin and inject host configuration."""
     from kimi_cli.config import load_config
     from kimi_cli.constant import VERSION
     from kimi_cli.plugin.manager import get_plugins_dir, install_plugin
 
-    source = path.expanduser().resolve()
-    if not source.is_dir():
-        typer.echo(f"Error: {source} is not a directory", err=True)
-        raise typer.Exit(1)
+    source = _resolve_source(target)
 
     config = load_config()
 
