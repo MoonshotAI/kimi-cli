@@ -350,18 +350,39 @@ class GoogleGenAIStreamedMessage:
             yield message_part
 
 
+_UNSUPPORTED_SCHEMA_KEYS = frozenset({"$schema", "$id", "$comment"})
+
+
+def _sanitize_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Strip JSON Schema fields unsupported by the Google GenAI API.
+
+    Resolves local ``$ref`` entries (removing ``$defs``/``definitions``)
+    and drops metadata keys that the API rejects (``$schema``, ``$id``,
+    ``$comment``).
+    """
+    from kosong.utils.jsonschema import deref_json_schema
+
+    sanitized = deref_json_schema(schema)
+    for key in _UNSUPPORTED_SCHEMA_KEYS:
+        sanitized.pop(key, None)
+    return sanitized
+
+
 def tool_to_google_genai(tool: KosongTool) -> Tool:
     """Convert a Kosong tool to GoogleGenAI tool format."""
+    parameters = tool.parameters
+    if isinstance(parameters, dict):
+        parameters = _sanitize_schema(parameters)
+
     # Use parameters_json_schema instead of parameters to bypass the SDK's
     # Pydantic validation (extra='forbid') which rejects standard JSON Schema
-    # metadata fields like $schema, $id, $comment, examples, etc.
-    # This is the SDK's official way to pass raw JSON Schema directly to the API.
+    # metadata fields like examples, etc.
     return Tool(
         function_declarations=[
             FunctionDeclaration(
                 name=tool.name,
                 description=tool.description,
-                parameters_json_schema=tool.parameters,
+                parameters_json_schema=parameters,
             )
         ]
     )
