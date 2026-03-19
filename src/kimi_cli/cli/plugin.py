@@ -68,7 +68,9 @@ def _resolve_source(target: str) -> Path:
 
 @cli.command("install")
 def install_cmd(
-    target: Annotated[str, typer.Argument(help="Plugin source: directory path, .zip file, or git URL")],
+    target: Annotated[
+        str, typer.Argument(help="Plugin source: directory, .zip, or git URL")
+    ],
 ) -> None:
     """Install a plugin and inject host configuration."""
     from kimi_cli.config import load_config

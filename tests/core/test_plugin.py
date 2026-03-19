@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from kimi_cli.plugin import PluginError, PluginRuntime, PluginSpec, inject_config, parse_plugin_json, write_runtime
+from kimi_cli.plugin import (
+    PluginError,
+    PluginRuntime,
+    inject_config,
+    parse_plugin_json,
+    write_runtime,
+)
 
 
 def _write_plugin(tmp_path: Path, plugin_data: dict) -> Path:

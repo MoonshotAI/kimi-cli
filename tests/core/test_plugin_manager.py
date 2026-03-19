@@ -171,6 +171,7 @@ def test_remove_nonexistent_plugin(tmp_path: Path):
 async def test_skill_discovery_includes_plugins_dir(tmp_path: Path, monkeypatch):
     """Plugins dir should be included in skill discovery roots."""
     from kaos.path import KaosPath
+
     from kimi_cli.skill import resolve_skills_roots
 
     plugins_dir = tmp_path / "plugins"
