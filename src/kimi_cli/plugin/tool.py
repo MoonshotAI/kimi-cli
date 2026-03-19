@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +13,7 @@ from loguru import logger
 
 from kimi_cli.plugin import PluginToolSpec
 from kimi_cli.tools.utils import ToolRejectedError
+from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.wire.types import ToolReturnValue
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ class PluginTool(CallableTool):
 
     def _build_env(self) -> dict[str, str]:
         """Build env vars with fresh host credentials for the subprocess."""
-        env = dict(os.environ)
+        env = get_clean_env()
         if self._inject:
             host_values = _get_host_values(self._config)
             for target_key, source_key in self._inject.items():
@@ -105,6 +105,10 @@ class PluginTool(CallableTool):
                 proc.communicate(input=params_json.encode("utf-8")),
                 timeout=120,
             )
+        except asyncio.CancelledError:
+            proc.kill()
+            await proc.wait()
+            raise
         except TimeoutError:
             proc.kill()
             await proc.wait()
@@ -148,15 +152,22 @@ def load_plugin_tools(
         except PluginError:
             continue
         for tool_spec in spec.tools:
-            tools.append(
-                PluginTool(
+            try:
+                tool = PluginTool(
                     tool_spec,
                     plugin_dir=child,
                     inject=spec.inject,
                     config=config,
                     approval=approval,
                 )
-            )
+            except Exception:
+                logger.warning(
+                    "Skipping invalid plugin tool: {name} (from {plugin})",
+                    name=tool_spec.name,
+                    plugin=spec.name,
+                )
+                continue
+            tools.append(tool)
             logger.info(
                 "Loaded plugin tool: {name} (from {plugin})",
                 name=tool_spec.name,
