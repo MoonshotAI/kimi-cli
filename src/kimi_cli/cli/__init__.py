@@ -339,7 +339,8 @@ def kimi(
 
     # Don't redirect stderr yet. Our stderr redirector replaces fd=2 with a pipe, which
     # would swallow Click/Typer startup errors (e.g. config parsing / BadParameter).
-    # We re-enable stderr redirection after KimiCLI.create() succeeds.
+    # We re-enable stderr redirection just before KimiCLI.create(), after CLI parsing
+    # is complete but before MCP servers are loaded.
     enable_logging(debug, redirect_stderr=False)
 
     def _emit_fatal_error(message: str) -> None:
@@ -526,6 +527,11 @@ def kimi(
                 if changed:
                     session.save_state()
 
+            # Enable stderr redirection before MCP loading to capture verbose
+            # debug messages from mcp-remote and similar libraries. CLI parsing
+            # is already complete at this point, so startup errors have been shown.
+            redirect_stderr_to_logger()
+
             instance = await KimiCLI.create(
                 session,
                 config=config,
@@ -542,10 +548,6 @@ def kimi(
                 defer_mcp_loading=ui == "shell" and prompt is None,
             )
             startup_progress.stop()
-
-            # Install stderr redirection only after initialization succeeded, so runtime
-            # stderr noise is captured into logs without hiding startup failures.
-            redirect_stderr_to_logger()
             preserve_background_tasks = False
             try:
                 match ui:
