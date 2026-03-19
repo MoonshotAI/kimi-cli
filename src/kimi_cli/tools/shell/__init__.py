@@ -60,7 +60,8 @@ class Shell(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self, approval: Approval, environment: Environment, runtime: Runtime):
-        is_powershell = environment.shell_name == "Windows PowerShell"
+        is_powershell = environment.shell_name in ("Windows PowerShell", "PowerShell")
+        is_cmd = environment.shell_name == "cmd"
         super().__init__(
             description=load_desc(
                 Path(__file__).parent / ("powershell.md" if is_powershell else "bash.md"),
@@ -69,6 +70,7 @@ class Shell(CallableTool2[Params]):
         )
         self._approval = approval
         self._is_powershell = is_powershell
+        self._is_cmd = is_cmd
         self._shell_path = environment.shell_path
         self._runtime = runtime
 
@@ -224,5 +226,7 @@ class Shell(CallableTool2[Params]):
 
     def _shell_args(self, command: str) -> tuple[str, ...]:
         if self._is_powershell:
-            return (str(self._shell_path), "-command", command)
+            return (str(self._shell_path), "-NoProfile", "-command", command)
+        if self._is_cmd:
+            return (str(self._shell_path), "/c", command)
         return (str(self._shell_path), "-c", command)

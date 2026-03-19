@@ -189,6 +189,11 @@ class Config(BaseModel):
         default="",
         description="Default external editor command (e.g. 'vim', 'code --wait')",
     )
+    default_shell: str = Field(
+        default="",
+        description="Default shell path (e.g. 'pwsh', 'bash', 'cmd.exe'). "
+        "When empty, auto-detects: PowerShell on Windows, bash/sh on Unix.",
+    )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"
