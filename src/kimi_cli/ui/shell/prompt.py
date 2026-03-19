@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shlex
+import sys
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Iterable, Sequence
@@ -940,7 +941,12 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-j: newline",
     ]
     if clipboard_available:
-        tips.append("ctrl-v: paste clipboard")
+        if sys.platform == "win32":
+            tips.append("ctrl-v / alt-v: paste clipboard")
+        elif sys.platform == "darwin":
+            tips.append("cmd-v / ctrl-v: paste clipboard")
+        else:
+            tips.append("ctrl-v: paste clipboard")
     tips.append("@: mention files")
     return tips
 
@@ -1196,6 +1202,19 @@ class CustomPromptSession:
                     return
                 self._insert_pasted_text(event.current_buffer, clipboard_data.text)
                 event.app.invalidate()
+
+            if sys.platform == "win32":
+                # On Windows Terminal, Ctrl+V is intercepted by the terminal
+                # for its own paste. Add Alt+V as an alternative shortcut.
+                @_kb.add("escape", "v", eager=True)
+                def _(event: KeyPressEvent) -> None:
+                    if self._try_paste_media(event):
+                        return
+                    clipboard_data = event.app.clipboard.get_data()
+                    if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                        return
+                    self._insert_pasted_text(event.current_buffer, clipboard_data.text)
+                    event.app.invalidate()
 
             clipboard = PyperclipClipboard()
         else:
