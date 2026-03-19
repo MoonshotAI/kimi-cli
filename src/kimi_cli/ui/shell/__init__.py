@@ -40,7 +40,7 @@ from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
-from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
+from kimi_cli.utils.term import disable_kitty_keyboard_protocol, ensure_new_line, ensure_tty_sane
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 
 
@@ -228,6 +228,8 @@ class Shell:
             _bg_cache.count = sum(1 for v in views if v.spec.kind == "bash")
             _bg_cache.time = now
             return _bg_cache.count
+
+        disable_kitty_keyboard_protocol()
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,

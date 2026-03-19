@@ -6,6 +6,26 @@ import re
 import sys
 import time
 
+# Kitty keyboard protocol pop sequence.
+# Terminals that support the protocol (VS Code ≥ 1.109, Kitty, WezTerm, …)
+# push enhanced key modes on shell startup.  prompt_toolkit does not parse
+# the resulting CSI-u sequences, so keys like Enter arrive as literal "[13u".
+# Emitting the pop sequence ("\x1b[<u") tells the terminal to fall back to
+# legacy key reporting which prompt_toolkit understands.
+_KITTY_KBD_POP = "\x1b[<u"
+
+
+def disable_kitty_keyboard_protocol() -> None:
+    """Disable the Kitty keyboard protocol if the terminal supports it.
+
+    This must be called before prompt_toolkit reads input, otherwise keys
+    like Enter will be misinterpreted as literal characters.
+    """
+    if sys.platform == "win32" or not sys.stdout.isatty():
+        return
+    sys.stdout.write(_KITTY_KBD_POP)
+    sys.stdout.flush()
+
 
 def ensure_new_line() -> None:
     """Ensure the next prompt starts at column 0 regardless of prior command output."""
