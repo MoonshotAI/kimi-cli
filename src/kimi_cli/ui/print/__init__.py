@@ -81,12 +81,14 @@ class Print:
                     logger.info("Running agent with command: {command}", command=command)
                     if self.output_format == "text" and not self.final_only:
                         print(command)
+                    runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
                     await run_soul(
                         self.soul,
                         command,
                         partial(visualize, self.output_format, self.final_only),
                         cancel_event,
-                        self.soul.wire_file if isinstance(self.soul, KimiSoul) else None,
+                        runtime.session.wire_file if runtime else None,
+                        runtime,
                     )
                 else:
                     logger.info("Empty command, skipping")

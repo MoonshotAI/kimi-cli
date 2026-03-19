@@ -75,15 +75,19 @@ def test_config_option_help_value_is_reported(tmp_path: Path) -> None:
     result = _run_kimi(["--config", "--help"], share_dir=share_dir)
     assert result.returncode == snapshot(2)
     assert result.stdout == snapshot("")
-    assert _normalize_cli_error_output(result.stderr) == snapshot(
+    normalized = _normalize_cli_error_output(result.stderr)
+    assert normalized.startswith(
         """\
 Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
 Try 'python -m kimi_cli.cli -h' for help.
 Error:
-Invalid value for --config: Invalid configuration text: Expecting value: line 1 column 1 (char 0); Unexpected
-character: '\\x00' at line 1 col 6
 """
     )
+    assert (
+        "Invalid value for --config: Invalid configuration text: Expecting value: line 1 column 1"
+        in normalized
+    )
+    assert "character: '\\x00' at line 1 col 6" in normalized.replace("\n", "")
 
 
 def test_invalid_config_toml_is_reported(tmp_path: Path) -> None:

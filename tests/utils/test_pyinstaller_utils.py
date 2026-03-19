@@ -84,6 +84,9 @@ def test_pyinstaller_datas():
             "src/kimi_cli/tools/dmail/dmail.md",
             "kimi_cli/tools/dmail",
         ),
+        ("src/kimi_cli/tools/background/list.md", "kimi_cli/tools/background"),
+        ("src/kimi_cli/tools/background/output.md", "kimi_cli/tools/background"),
+        ("src/kimi_cli/tools/background/stop.md", "kimi_cli/tools/background"),
         (
             "src/kimi_cli/tools/file/glob.md",
             "kimi_cli/tools/file",
@@ -112,7 +115,6 @@ def test_pyinstaller_datas():
         ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
         ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
-        ("src/kimi_cli/tools/plan/enter_description_yolo.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
         ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
         (
@@ -145,11 +147,13 @@ def test_pyinstaller_hiddenimports():
         [
             "kimi_cli.tools",
             "kimi_cli.tools.ask_user",
+            "kimi_cli.tools.background",
             "kimi_cli.tools.display",
             "kimi_cli.tools.dmail",
             "kimi_cli.tools.file",
             "kimi_cli.tools.file.glob",
             "kimi_cli.tools.file.grep_local",
+            "kimi_cli.tools.file.plan_mode",
             "kimi_cli.tools.file.read",
             "kimi_cli.tools.file.read_media",
             "kimi_cli.tools.file.replace",

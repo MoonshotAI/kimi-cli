@@ -197,11 +197,35 @@ async def test_timeout_parameter_validation_bounds(shell_tool: Shell):
     with pytest.raises(ValueError, match="timeout"):
         Params(command="echo test", timeout=-1)
 
-    # Test timeout > MAX_TIMEOUT (should fail validation)
-    from kimi_cli.tools.shell import MAX_TIMEOUT
+    # Test timeout > MAX_BACKGROUND_TIMEOUT (should fail validation)
+    from kimi_cli.tools.shell import MAX_BACKGROUND_TIMEOUT, MAX_FOREGROUND_TIMEOUT
 
     with pytest.raises(ValueError, match="timeout"):
-        Params(command="echo test", timeout=MAX_TIMEOUT + 1)
+        Params(command="echo test", timeout=MAX_BACKGROUND_TIMEOUT + 1)
+
+    # Test foreground timeout > MAX_FOREGROUND_TIMEOUT (should fail validation)
+    with pytest.raises(ValueError, match="foreground"):
+        Params(command="echo test", timeout=MAX_FOREGROUND_TIMEOUT + 1)
+
+    # Background commands can use longer timeouts
+    params = Params(
+        command="make build",
+        timeout=MAX_FOREGROUND_TIMEOUT + 1,
+        run_in_background=True,
+        description="long build",
+    )
+    assert params.timeout == MAX_FOREGROUND_TIMEOUT + 1
+
+
+async def test_shell_works_in_plan_mode(shell_tool: Shell, runtime):
+    """Shell should still work in plan mode — plan mode constraints are enforced by
+    the dynamic injection prompt, not by hard-blocking the tool."""
+    runtime.session.state.plan_mode = True
+
+    result = await shell_tool(Params(command="echo plan_ok"))
+
+    assert not result.is_error
+    assert "plan_ok" in result.output
 
 
 async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: pytest.MonkeyPatch):

@@ -16,6 +16,9 @@ from kimi_cli.wire.types import (
     ImageURLPart,
     MCPLoadingBegin,
     MCPLoadingEnd,
+    MCPServerSnapshot,
+    MCPStatusSnapshot,
+    Notification,
     QuestionItem,
     QuestionOption,
     QuestionRequest,
@@ -126,7 +129,16 @@ async def test_wire_message_serde():
     assert serialize_wire_message(msg) == snapshot({"type": "MCPLoadingEnd", "payload": {}})
     _test_serde(msg)
 
-    msg = StatusUpdate(context_usage=0.5)
+    msg = StatusUpdate(
+        context_usage=0.5,
+        mcp_status=MCPStatusSnapshot(
+            loading=True,
+            connected=0,
+            total=1,
+            tools=0,
+            servers=(MCPServerSnapshot(name="context7", status="connecting"),),
+        ),
+    )
     assert serialize_wire_message(msg) == snapshot(
         {
             "type": "StatusUpdate",
@@ -137,6 +149,50 @@ async def test_wire_message_serde():
                 "token_usage": None,
                 "message_id": None,
                 "plan_mode": None,
+                "mcp_status": {
+                    "loading": True,
+                    "connected": 0,
+                    "total": 1,
+                    "tools": 0,
+                    "servers": [
+                        {
+                            "name": "context7",
+                            "status": "connecting",
+                            "tools": [],
+                        }
+                    ],
+                },
+            },
+        }
+    )
+    _test_serde(msg)
+
+    msg = Notification(
+        id="n1234567",
+        category="task",
+        type="task.completed",
+        source_kind="background_task",
+        source_id="b1234567",
+        title="Background task completed",
+        body="Task ID: b1234567",
+        severity="success",
+        created_at=123.456,
+        payload={"task_id": "b1234567"},
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "Notification",
+            "payload": {
+                "id": "n1234567",
+                "category": "task",
+                "type": "task.completed",
+                "source_kind": "background_task",
+                "source_id": "b1234567",
+                "title": "Background task completed",
+                "body": "Task ID: b1234567",
+                "severity": "success",
+                "created_at": 123.456,
+                "payload": {"task_id": "b1234567"},
             },
         }
     )
@@ -395,6 +451,21 @@ async def test_type_inspection():
     assert is_event(msg)
     assert not is_request(msg)
 
+    msg = Notification(
+        id="n1234567",
+        category="system",
+        type="system.info",
+        source_kind="test",
+        source_id="source-1",
+        title="Info",
+        body="body",
+        severity="info",
+        created_at=1.0,
+    )
+    assert is_wire_message(msg)
+    assert is_event(msg)
+    assert not is_request(msg)
+
     msg = TextPart(text="Hello world")
     assert is_wire_message(msg)
     assert is_event(msg)
@@ -494,7 +565,14 @@ def test_wire_message_type_alias():
 
     module = kimi_cli.wire.types
     # Helper types that are BaseModel subclasses but not WireMessage types
-    _NON_WIRE_TYPES = {WireMessageEnvelope, QuestionOption, QuestionItem, QuestionResponse}
+    _NON_WIRE_TYPES = {
+        WireMessageEnvelope,
+        MCPServerSnapshot,
+        MCPStatusSnapshot,
+        QuestionOption,
+        QuestionItem,
+        QuestionResponse,
+    }
 
     wire_message_types = {
         obj

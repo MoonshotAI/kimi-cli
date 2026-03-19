@@ -14,7 +14,7 @@ kimi --agent okabe
 
 默认 Agent，适合通常情况使用。启用的工具：
 
-`Task`、`AskUserQuestion`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`、`EnterPlanMode`、`ExitPlanMode`
+`Task`、`AskUserQuestion`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`、`EnterPlanMode`、`ExitPlanMode`、`TaskList`、`TaskOutput`、`TaskStop`
 
 ### `okabe`
 
@@ -202,7 +202,11 @@ agent:
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `command` | string | 要执行的命令 |
-| `timeout` | int | 超时时间（秒），默认 60，最大 300 |
+| `timeout` | int | 超时时间（秒），默认 60，前台最大 300 / 后台最大 86400 |
+| `run_in_background` | bool | 是否作为后台任务运行，默认 false |
+| `description` | string | 后台任务的简短描述，`run_in_background=true` 时必填 |
+
+设置 `run_in_background=true` 后，命令会作为后台任务启动，工具立即返回任务 ID，AI 可以继续执行其他操作。任务完成时系统自动发送通知。适用于耗时的构建、测试、监控等场景。
 
 ### `ReadFile`
 
@@ -328,9 +332,42 @@ agent:
 ### `ExitPlanMode`
 
 - **路径**：`kimi_cli.tools.plan:ExitPlanMode`
-- **描述**：在 Plan 模式下完成方案后提交审批。调用前需先将方案写入 plan 文件，此工具会读取 plan 文件内容并展示给用户审批。用户可以批准（退出 Plan 模式并开始执行）、拒绝（保持 Plan 模式等待反馈）或提供修改意见。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
+- **描述**：在 Plan 模式下完成方案后提交审批。调用前需先将方案写入 plan 文件，此工具会读取 plan 文件内容并展示给用户审批。用户可以选择某个实施路径（退出 Plan 模式并开始执行）、拒绝（保持 Plan 模式等待反馈）或提供修改意见。详见 [Plan 模式](../guides/interaction.md#plan-模式)。
 
-此工具不接受参数。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `options` | list \| null | 当方案包含多个可选实施路径时，列出 2–3 个选项供用户选择。每个选项有 `label`（1–8 个词的简短标签，可附加 "(Recommended)"）和可选的 `description`（方案摘要）。不可使用 "Approve"、"Reject"、"Revise" 作为标签名。 |
+
+### `TaskList`
+
+- **路径**：`kimi_cli.tools.background:TaskList`
+- **描述**：列出当前会话中的后台任务。适用于上下文压缩后重新获取任务 ID，或检查哪些任务仍在运行。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `active_only` | bool | 是否仅列出活跃任务，默认 true |
+| `limit` | int | 返回的最大任务数（1–100），默认 20 |
+
+### `TaskOutput`
+
+- **路径**：`kimi_cli.tools.background:TaskOutput`
+- **描述**：获取后台任务的输出和状态。支持阻塞等待或非阻塞查询。返回结构化的任务元数据和输出预览；如果输出被截断，可使用 `ReadFile` 分页读取完整日志。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `task_id` | string | 要查询的任务 ID |
+| `block` | bool | 是否等待任务完成，默认 true |
+| `timeout` | int | `block=true` 时的最大等待秒数（0–3600），默认 30 |
+
+### `TaskStop`
+
+- **路径**：`kimi_cli.tools.background:TaskStop`
+- **描述**：停止正在运行的后台任务。需要用户审批。仅在任务必须取消时使用；对于正常完成的任务，应等待自动通知。在 Plan 模式下不可用。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `task_id` | string | 要停止的任务 ID |
+| `reason` | string | 停止原因（可选），默认 "Stopped by TaskStop" |
 
 ### `CreateSubagent`
 
@@ -359,3 +396,4 @@ agent:
 | Shell 命令执行 | 每次执行 |
 | 文件写入/编辑 | 每次操作 |
 | MCP 工具调用 | 每次调用 |
+| 停止后台任务 | 每次停止 |

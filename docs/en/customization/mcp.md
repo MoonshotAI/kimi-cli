@@ -108,9 +108,9 @@ kimi --mcp-config '{"mcpServers": {"test": {"url": "https://..."}}}'
 
 ## Loading status
 
-When Kimi Code CLI starts and connects to MCP servers, shell mode displays a "Connecting to MCP servers..." loading indicator before the first response. The web interface also shows a corresponding status message. The indicator disappears automatically once connections are established.
+MCP servers initialize asynchronously after the shell UI starts, so the interface is usable immediately. The shell status bar shows live connection progress, automatically switching to a ready state once all servers are connected. The web interface also reflects each server's connection status in real time.
 
-If multiple MCP servers are configured, the loading time may be longer. The loading indicator helps you understand the current status.
+If multiple MCP servers are configured, loading may take a moment. The status bar progress indicator keeps you informed while connections are being established.
 
 ## Security
 

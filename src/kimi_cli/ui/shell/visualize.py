@@ -33,6 +33,7 @@ from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
+    UserInput,
 )
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.diff import format_unified_diff
@@ -44,6 +45,7 @@ from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    BackgroundTaskDisplayBlock,
     BriefDisplayBlock,
     CompactionBegin,
     CompactionEnd,
@@ -51,6 +53,7 @@ from kimi_cli.wire.types import (
     DiffDisplayBlock,
     MCPLoadingBegin,
     MCPLoadingEnd,
+    Notification,
     QuestionRequest,
     ShellDisplayBlock,
     StatusUpdate,
@@ -72,6 +75,7 @@ from kimi_cli.wire.types import (
 )
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
+MAX_LIVE_NOTIFICATIONS = 4
 
 # Truncation limits for approval request display
 MAX_PREVIEW_LINES = 4
@@ -84,6 +88,9 @@ async def visualize(
     cancel_event: asyncio.Event | None = None,
     prompt_session: CustomPromptSession | None = None,
     steer: Callable[[str | list[ContentPart]], None] | None = None,
+    bind_running_input: Callable[[Callable[[UserInput], None], Callable[[], None]], None]
+    | None = None,
+    unbind_running_input: Callable[[], None] | None = None,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -100,9 +107,24 @@ async def visualize(
             steer=steer,
             cancel_event=cancel_event,
         )
+        prompt_session.attach_running_prompt(view)
+
+        def _cancel_running_input() -> None:
+            if cancel_event is not None:
+                cancel_event.set()
+
+        if bind_running_input is not None:
+            bind_running_input(view.handle_local_input, _cancel_running_input)
     else:
         view = _LiveView(initial_status, cancel_event)
-    await view.visualize_loop(wire)
+    try:
+        await view.visualize_loop(wire)
+    finally:
+        if prompt_session is not None and steer is not None:
+            if unbind_running_input is not None:
+                unbind_running_input()
+            assert isinstance(view, _PromptLiveView)
+            prompt_session.detach_running_prompt(view)
 
 
 class _ContentBlock:
@@ -252,6 +274,13 @@ class _ToolCallBlock:
                     markdown = self._render_todo_markdown(block)
                     if markdown:
                         lines.append(Markdown(markdown, style="grey50"))
+                elif isinstance(block, BackgroundTaskDisplayBlock):
+                    lines.append(
+                        Markdown(
+                            (f"`{block.task_id}` [{block.status}] {block.description}"),
+                            style="grey50",
+                        )
+                    )
 
         if self.finished:
             assert self._result is not None
@@ -314,6 +343,30 @@ class _ApprovalContentBlock(NamedTuple):
     lines: int
     style: str = ""
     lexer: str = ""
+
+
+class _NotificationBlock:
+    _SEVERITY_STYLE = {
+        "info": "cyan",
+        "success": "green",
+        "warning": "yellow",
+        "error": "red",
+    }
+
+    def __init__(self, notification: Notification):
+        self.notification = notification
+
+    def compose(self) -> RenderableType:
+        style = self._SEVERITY_STYLE.get(self.notification.severity, "cyan")
+        lines: list[RenderableType] = [Text(self.notification.title, style=f"bold {style}")]
+        body = self.notification.body.strip()
+        if body:
+            body_lines = body.splitlines()
+            preview = "\n".join(body_lines[:2])
+            if len(body_lines) > 2:
+                preview += "\n..."
+            lines.append(Text(preview, style="grey50"))
+        return BulletColumns(Group(*lines), bullet_style=style)
 
 
 class _ApprovalRequestPanel:
@@ -854,6 +907,8 @@ class _LiveView:
         self._reject_all_following = False
         self._question_request_queue = deque[QuestionRequest]()
         self._current_question_panel: _QuestionRequestPanel | None = None
+        self._notification_blocks = deque[_NotificationBlock]()
+        self._live_notification_blocks = deque[_NotificationBlock](maxlen=MAX_LIVE_NOTIFICATIONS)
         self._status_block = _StatusBlock(initial_status)
 
         self._need_recompose = False
@@ -996,6 +1051,8 @@ class _LiveView:
             blocks.append(self._current_approval_request_panel.render())
         if self._current_question_panel:
             blocks.append(self._current_question_panel.render())
+        for notification in self._live_notification_blocks:
+            blocks.append(notification.compose())
 
         if include_status:
             blocks.append(self._status_block.render())
@@ -1044,6 +1101,8 @@ class _LiveView:
                 self.refresh_soon()
             case StatusUpdate():
                 self._status_block.update(msg)
+            case Notification():
+                self.append_notification(msg)
             case ContentPart():
                 self.append_content(msg)
             case ToolCall():
@@ -1191,6 +1250,7 @@ class _LiveView:
                 )
         self._last_tool_call_block = None
         self.flush_finished_tool_calls()
+        self.flush_notifications()
 
         while self._approval_request_queue:
             # should not happen, but just in case
@@ -1221,6 +1281,13 @@ class _LiveView:
             console.print(block.compose())
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
+            self.refresh_soon()
+
+    def flush_notifications(self) -> None:
+        """Flush rendered notifications to terminal history."""
+        self._live_notification_blocks.clear()
+        while self._notification_blocks:
+            console.print(self._notification_blocks.popleft().compose())
             self.refresh_soon()
 
     def append_content(self, part: ContentPart) -> None:
@@ -1260,6 +1327,12 @@ class _LiveView:
             block.finish(result.return_value)
             self.flush_finished_tool_calls()
             self.refresh_soon()
+
+    def append_notification(self, notification: Notification) -> None:
+        block = _NotificationBlock(notification)
+        self._notification_blocks.append(block)
+        self._live_notification_blocks.append(block)
+        self.refresh_soon()
 
     def request_approval(self, request: ApprovalRequest) -> None:
         # If we're rejecting all following requests, reject immediately
@@ -1377,7 +1450,6 @@ class _PromptLiveView(_LiveView):
         self._turn_ended = False
 
     async def visualize_loop(self, wire: WireUISide):
-        steer_task = asyncio.create_task(self._steer_loop())
         try:
             while True:
                 try:
@@ -1401,33 +1473,19 @@ class _PromptLiveView(_LiveView):
                 self.dispatch_wire_message(msg)
                 self._flush_prompt_refresh()
         finally:
-            steer_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await steer_task
             self._awaiting_question_other_input = False
             self._pending_local_steers.clear()
             self._turn_ended = False
             self._prompt_session.invalidate()
 
-    async def _steer_loop(self) -> None:
-        while True:
-            try:
-                user_input = await self._prompt_session.prompt_steer(self)
-            except EOFError:
-                if self._cancel_event is not None:
-                    self._cancel_event.set()
-                return
-            except KeyboardInterrupt:
-                if self._cancel_event is not None:
-                    self._cancel_event.set()
-                return
+    def handle_local_input(self, user_input: UserInput) -> None:
+        if not user_input or self._turn_ended:
+            return
 
-            if not user_input:
-                continue
-
-            console.print(render_user_echo_text(user_input.command))
-            self._pending_local_steers.append(list(user_input.content))
-            self._steer(user_input.content)
+        console.print(render_user_echo_text(user_input.command))
+        self._pending_local_steers.append(list(user_input.content))
+        self._steer(user_input.content)
+        self._flush_prompt_refresh()
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
         if isinstance(msg, SteerInput) and self._pending_local_steers:

@@ -30,8 +30,8 @@ _PASTED_TEXT_PLACEHOLDER_RE = re.compile(
     r"\[Pasted text #(?P<id>\d+)(?: \+(?P<lines>\d+) lines?)?\]"
 )
 
-_TEXT_PASTE_CHAR_THRESHOLD = 300
-_TEXT_PASTE_LINE_THRESHOLD = 3
+_TEXT_PASTE_CHAR_THRESHOLD = 1000
+_TEXT_PASTE_LINE_THRESHOLD = 15
 
 
 def sanitize_surrogates(text: str) -> str:

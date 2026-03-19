@@ -14,7 +14,7 @@ kimi --agent okabe
 
 The default agent, suitable for general use. Enabled tools:
 
-`Task`, `AskUserQuestion`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`, `EnterPlanMode`, `ExitPlanMode`
+`Task`, `AskUserQuestion`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`, `EnterPlanMode`, `ExitPlanMode`, `TaskList`, `TaskOutput`, `TaskStop`
 
 ### `okabe`
 
@@ -202,7 +202,11 @@ The following are all built-in tools in Kimi Code CLI.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `command` | string | Command to execute |
-| `timeout` | int | Timeout in seconds, default 60, max 300 |
+| `timeout` | int | Timeout in seconds, default 60, max 300 for foreground / 86400 for background |
+| `run_in_background` | bool | Whether to run as a background task, default false |
+| `description` | string | Short description for the background task, required when `run_in_background=true` |
+
+When `run_in_background=true`, the command is launched as a background task and the tool immediately returns a task ID, allowing the AI to continue working. The system automatically sends a notification when the task completes. Ideal for long-running builds, tests, watchers, and servers.
 
 ### `ReadFile`
 
@@ -328,9 +332,42 @@ This tool takes no parameters.
 ### `ExitPlanMode`
 
 - **Path**: `kimi_cli.tools.plan:ExitPlanMode`
-- **Description**: Submit a plan for user approval while in plan mode. Before calling, the plan must be written to the plan file. This tool reads the plan file content and presents it to the user for approval. The user can approve (exit plan mode and start execution), reject (stay in plan mode and wait for feedback), or provide revision comments. See [Plan mode](../guides/interaction.md#plan-mode).
+- **Description**: Submit a plan for user approval while in plan mode. Before calling, the plan must be written to the plan file. This tool reads the plan file content and presents it to the user for approval. The user can select an implementation path (exit plan mode and start execution), reject (stay in plan mode and wait for feedback), or provide revision comments. See [Plan mode](../guides/interaction.md#plan-mode).
 
-This tool takes no parameters.
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `options` | list \| null | When the plan contains multiple alternative implementation paths, list 2–3 options for the user to choose from. Each option has a `label` (1–8 word short name, may append "(Recommended)") and an optional `description` (brief summary). The labels "Approve", "Reject", and "Revise" are reserved and cannot be used. |
+
+### `TaskList`
+
+- **Path**: `kimi_cli.tools.background:TaskList`
+- **Description**: List background tasks in the current session. Useful for re-enumerating task IDs after context compaction or checking which tasks are still running.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `active_only` | bool | List only active tasks, default true |
+| `limit` | int | Maximum number of tasks to return (1–100), default 20 |
+
+### `TaskOutput`
+
+- **Path**: `kimi_cli.tools.background:TaskOutput`
+- **Description**: Retrieve output and status of a background task. Supports blocking wait or non-blocking query. Returns structured task metadata and an output preview; use `ReadFile` with the returned `output_path` to read the full log if output is truncated.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `task_id` | string | Task ID to query |
+| `block` | bool | Whether to wait for task completion, default true |
+| `timeout` | int | Maximum wait time in seconds when `block=true` (0–3600), default 30 |
+
+### `TaskStop`
+
+- **Path**: `kimi_cli.tools.background:TaskStop`
+- **Description**: Stop a running background task. Requires user approval. Use only when a task must be cancelled; for normal completion, wait for the automatic notification. Not available in plan mode.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `task_id` | string | Task ID to stop |
+| `reason` | string | Reason for stopping (optional), default "Stopped by TaskStop" |
 
 ### `CreateSubagent`
 
@@ -359,3 +396,4 @@ The following operations require user approval:
 | Shell command execution | Each execution |
 | File write/edit | Each operation |
 | MCP tool calls | Each call |
+| Stop background task | Each stop |

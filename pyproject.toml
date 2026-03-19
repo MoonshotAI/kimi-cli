@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "1.22.0"
+version = "1.24.0"
 description = "Kimi Code CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -71,8 +71,8 @@ pykaos = { workspace = true }
 kimi-cli = { workspace = true }
 
 [project.scripts]
-kimi = "kimi_cli.cli:cli"
-kimi-cli = "kimi_cli.cli:cli"
+kimi = "kimi_cli.__main__:main"
+kimi-cli = "kimi_cli.__main__:main"
 
 [tool.ruff]
 line-length = 100

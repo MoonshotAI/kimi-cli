@@ -11,6 +11,28 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Show the current working directory, git branch, dirty state, and ahead/behind sync status directly in the prompt toolbar
+- Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
+- Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
+
+## 1.24.0 (2026-03-18)
+
+- Shell: Increase pasted text placeholder thresholds to 1000 characters or 15 lines (previously 300 characters or 3 lines), making voice/typeless workflows less disruptive
+- Core: Plan mode now supports multiple selectable approach options — when the agent's plan contains distinct alternative paths, `ExitPlanMode` can present 2–3 labeled choices for the user to pick which approach to execute; the chosen option is returned to the agent as the selected approach
+- Core: Persist plan session ID and file path across process restarts — the plan session identifier and file slug are saved to `SessionState`, so restarting Kimi Code mid-plan resumes the same plan file in `~/.kimi/plans/` instead of creating a new one
+- Core: Plan mode now supports incremental plan edits — the agent can use `StrReplaceFile` to surgically update sections of the plan file instead of rewriting the entire file with `WriteFile`, and non-plan file edits are now hard-blocked rather than requiring approval
+- Core: Defer MCP startup and surface loading progress — MCP servers now initialize asynchronously after the shell UI starts, with live progress indicators showing connection status; Shell displays connecting and ready states in the status area, Web shows server connection status
+- Core: Optimize lightweight startup paths — implement lazy-loading for CLI subcommands and version metadata, significantly reducing startup time for common commands like `--version` and `--help`
+- Build: Fix Nix `FileCollisionError` for `bin/kimi` — remove duplicate entry point from `kimi-code` package so `kimi-cli` owns `bin/kimi` exclusively
+- Shell: Preserve unsubmitted input across agent turns — text typed in the prompt while the agent is running is no longer lost when the turn ends; the user can press Enter to submit the draft as the next message
+- Shell: Fix Ctrl-C and Ctrl-D not working correctly after an agent run completes — keyboard interrupts and EOF were silently swallowed instead of showing the tip or exiting the shell
+
+## 1.23.0 (2026-03-17)
+
+- Shell: Add background bash — the `Shell` tool now accepts `run_in_background=true` to launch long-running commands (builds, tests, servers) as background tasks, freeing the agent to continue working; new `TaskList`, `TaskOutput`, and `TaskStop` tools manage task lifecycle, and the system automatically notifies the agent when tasks reach a terminal state
+- Shell: Add `/task` slash command with interactive task browser — a three-column TUI to view, monitor, and manage background tasks with real-time refresh, output preview, and keyboard-driven stopping
+- Web: Fix global config not refreshing on other tabs when model is changed — when the model is changed in one tab, other tabs now detect the config update and automatically refresh their global config
+
 ## 1.22.0 (2026-03-13)
 
 - Shell: Collapse long pasted text into `[Pasted text #n]` placeholders — text pasted via `Ctrl-V` or bracketed paste that exceeds 300 characters or 3 lines is displayed as a compact placeholder token in the prompt buffer while the full content is sent to the model; the external editor (`Ctrl-O`) expands placeholders for editing and re-folds them on save

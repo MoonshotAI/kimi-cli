@@ -241,6 +241,11 @@ HERO_NAMES: list[str] = [
 _slug_cache: dict[str, str] = {}
 
 
+def seed_slug_cache(session_id: str, slug: str) -> None:
+    """Pre-warm the in-process slug cache with a previously persisted slug."""
+    _slug_cache[session_id] = slug
+
+
 def get_or_create_slug(session_id: str) -> str:
     """Get or create a plan file slug for the given session."""
     if session_id in _slug_cache:

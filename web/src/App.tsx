@@ -275,6 +275,12 @@ function App() {
       }
 
       const reason = status.reason ?? "";
+
+      if (reason === "config_update") {
+        console.log("[App] Config update detected, refreshing global config");
+        window.dispatchEvent(new Event("kimi:config-update"));
+      }
+
       if (!reason.startsWith("prompt_")) {
         return;
       }

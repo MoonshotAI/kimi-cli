@@ -21,7 +21,13 @@ from kosong.chat_provider import (
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.llm import ModelCapability
+from kimi_cli.notifications import (
+    NotificationView,
+    build_notification_message,
+    extract_notification_ids,
+)
 from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
@@ -33,7 +39,12 @@ from kimi_cli.soul import (
     wire_send,
 )
 from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.compaction import CompactionResult, SimpleCompaction, should_auto_compact
+from kimi_cli.soul.compaction import (
+    CompactionResult,
+    SimpleCompaction,
+    estimate_text_tokens,
+    should_auto_compact,
+)
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.dynamic_injection import (
     DynamicInjection,
@@ -130,13 +141,20 @@ class KimiSoul:
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
         self._plan_mode: bool = self._runtime.session.state.plan_mode
-        self._plan_session_id: str | None = None
+        self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
+        # Pre-warm slug cache so the persisted slug survives process restarts
+        if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
+            from kimi_cli.tools.plan.heroes import seed_slug_cache
+
+            seed_slug_cache(self._plan_session_id, self._runtime.session.state.plan_slug)
         self._pending_plan_activation_injection: bool = False
         if self._plan_mode:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
         ]
+        if self._runtime.role == "root":
+            self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
 
         # Bind plan mode state to tools that support it
         self._bind_plan_mode_tools()
@@ -200,6 +218,12 @@ class KimiSoul:
         if isinstance(write_tool, WriteFile):
             write_tool.bind_plan_mode(checker, path_getter)
 
+        from kimi_cli.tools.file.replace import StrReplaceFile
+
+        replace_tool = self._agent.toolset.find("StrReplaceFile")
+        if isinstance(replace_tool, StrReplaceFile):
+            replace_tool.bind_plan_mode(checker, path_getter)
+
         # ExitPlanMode has a special bind() method
         from kimi_cli.tools.plan import ExitPlanMode
 
@@ -207,23 +231,12 @@ class KimiSoul:
         if isinstance(exit_tool, ExitPlanMode):
             exit_tool.bind(self.toggle_plan_mode, path_getter, checker)
 
-        # EnterPlanMode has a special bind() with yolo_checker
+        # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-
-            def yolo_checker() -> bool:
-                return self._approval.is_yolo()
-
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, yolo_checker)
-
-        # AskUserQuestion gets plan mode checker for dynamic description
-        from kimi_cli.tools.ask_user import AskUserQuestion
-
-        ask_tool = self._agent.toolset.find("AskUserQuestion")
-        if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_plan_mode(checker)
+            enter_tool.bind(self.toggle_plan_mode, path_getter, checker)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -231,6 +244,13 @@ class KimiSoul:
             import uuid
 
             self._plan_session_id = uuid.uuid4().hex
+            self._runtime.session.state.plan_session_id = self._plan_session_id
+            # Compute and persist slug immediately so the path survives process restarts
+            from kimi_cli.tools.plan.heroes import get_or_create_slug
+
+            slug = get_or_create_slug(self._plan_session_id)
+            self._runtime.session.state.plan_slug = slug
+            self._runtime.session.save_state()
 
     def _set_plan_mode(self, enabled: bool, *, source: Literal["manual", "tool"]) -> bool:
         """Update plan mode state for either manual or tool-driven toggles."""
@@ -242,6 +262,9 @@ class KimiSoul:
             self._pending_plan_activation_injection = source == "manual"
         else:
             self._pending_plan_activation_injection = False
+            self._plan_session_id = None
+            self._runtime.session.state.plan_session_id = None
+            self._runtime.session.state.plan_slug = None
         # Persist plan mode to session state so it survives process restarts
         self._runtime.session.state.plan_mode = self._plan_mode
         self._runtime.session.save_state()
@@ -316,6 +339,7 @@ class KimiSoul:
             plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,
+            mcp_status=self._mcp_status_snapshot(),
         )
 
     @property
@@ -339,6 +363,23 @@ class KimiSoul:
     @property
     def wire_file(self) -> WireFile:
         return self._runtime.session.wire_file
+
+    def _mcp_status_snapshot(self):
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return None
+        return self._agent.toolset.mcp_status_snapshot()
+
+    async def start_background_mcp_loading(self) -> bool:
+        """Start deferred MCP loading, if any, without exposing toolset internals."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return False
+        return await self._agent.toolset.start_deferred_mcp_tool_loading()
+
+    async def wait_for_background_mcp_loading(self) -> None:
+        """Wait for any in-flight MCP startup to finish."""
+        if not isinstance(self._agent.toolset, KimiToolset):
+            return
+        await self._agent.toolset.wait_for_mcp_tools()
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
@@ -506,13 +547,16 @@ class KimiSoul:
             self._steer_queue.get_nowait()
 
         if isinstance(self._agent.toolset, KimiToolset):
-            loading = self._agent.toolset.has_pending_mcp_tools()
+            await self.start_background_mcp_loading()
+            loading = bool((snapshot := self._mcp_status_snapshot()) and snapshot.loading)
             if loading:
+                wire_send(StatusUpdate(mcp_status=snapshot))
                 wire_send(MCPLoadingBegin())
             try:
-                await self._agent.toolset.wait_for_mcp_tools()
+                await self.wait_for_background_mcp_loading()
             finally:
                 if loading:
+                    wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
         async def _pipe_approval_to_wire():
@@ -604,6 +648,18 @@ class KimiSoul:
         # already checked in `run`
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
+
+        if self._runtime.role == "root":
+
+            async def _append_notification(view: NotificationView) -> None:
+                await self._context.append_message(build_notification_message(view, self._runtime))
+
+            await self._runtime.notifications.deliver_pending(
+                "llm",
+                limit=4,
+                before_claim=self._runtime.background_tasks.reconcile,
+                on_notification=_append_notification,
+            )
 
         # Dynamic injection
         injections = await self._collect_injections()
@@ -767,9 +823,26 @@ class KimiSoul:
         await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
+        estimated_token_count = compaction_result.estimated_token_count
+
+        if self._runtime.role == "root":
+            active_task_snapshot = build_active_task_snapshot(self._runtime.background_tasks)
+            if active_task_snapshot is not None:
+                active_task_message = Message(
+                    role="user",
+                    content=[
+                        system(
+                            "The following background tasks are still active after compaction. "
+                            "Use TaskList if you need to re-enumerate them later."
+                        ),
+                        TextPart(text=active_task_snapshot),
+                    ],
+                )
+                await self._context.append_message(active_task_message)
+                estimated_token_count += estimate_text_tokens([active_task_message])
 
         # Estimate token count so context_usage is not reported as 0%
-        await self._context.update_token_count(compaction_result.estimated_token_count)
+        await self._context.update_token_count(estimated_token_count)
 
         wire_send(CompactionEnd())
 

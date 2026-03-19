@@ -11,10 +11,11 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.file import WireFile
-from kimi_cli.wire.types import ContentPart, WireMessage
+from kimi_cli.wire.types import ContentPart, MCPStatusSnapshot, WireMessage
 
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
+    from kimi_cli.soul.agent import Runtime
     from kimi_cli.utils.slashcmd import SlashCommand
 
 
@@ -92,6 +93,8 @@ class StatusSnapshot:
     """The number of tokens currently in the context."""
     max_context_tokens: int = 0
     """The maximum number of tokens the context can hold."""
+    mcp_status: MCPStatusSnapshot | None = None
+    """The current MCP startup snapshot, if MCP is configured."""
 
 
 @runtime_checkable
@@ -161,6 +164,7 @@ async def run_soul(
     ui_loop_fn: UILoopFn,
     cancel_event: asyncio.Event,
     wire_file: WireFile | None = None,
+    runtime: Runtime | None = None,
 ) -> None:
     """
     Run the soul with the given user input, connecting it to the UI loop with a `Wire`.
@@ -183,6 +187,7 @@ async def run_soul(
 
     logger.debug("Starting soul run")
     soul_task = asyncio.create_task(soul.run(user_input))
+    notification_task = asyncio.create_task(_pump_notifications_to_wire(runtime, wire))
 
     cancel_event_task = asyncio.create_task(cancel_event.wait())
     await asyncio.wait(
@@ -205,6 +210,13 @@ async def run_soul(
                 await cancel_event_task
             soul_task.result()  # this will raise if any exception was raised in the run task
     finally:
+        notification_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await notification_task
+        try:
+            await _deliver_notifications_to_wire_once(runtime, wire)
+        except Exception:
+            logger.exception("Failed to flush notifications to wire during shutdown")
         logger.debug("Shutting down the UI loop")
         # shutting down the wire should break the UI loop
         wire.shutdown()
@@ -240,3 +252,31 @@ def wire_send(msg: WireMessage) -> None:
     wire = get_wire_or_none()
     assert wire is not None, "Wire is expected to be set when soul is running"
     wire.soul_side.send(msg)
+
+
+async def _pump_notifications_to_wire(runtime: Runtime | None, wire: Wire) -> None:
+    while True:
+        try:
+            await _deliver_notifications_to_wire_once(runtime, wire)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Notification wire pump failed")
+        await asyncio.sleep(1.0)
+
+
+async def _deliver_notifications_to_wire_once(runtime: Runtime | None, wire: Wire) -> None:
+    if runtime is None or runtime.role != "root":
+        return
+
+    from kimi_cli.notifications import NotificationView, to_wire_notification
+
+    def _send_notification(view: NotificationView) -> None:
+        wire.soul_side.send(to_wire_notification(view))
+
+    await runtime.notifications.deliver_pending(
+        "wire",
+        limit=8,
+        before_claim=runtime.background_tasks.reconcile,
+        on_notification=_send_notification,
+    )

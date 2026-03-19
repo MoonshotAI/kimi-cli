@@ -122,9 +122,16 @@ def _full_reminder(
     if plan_file_path:
         lines.append("")
         if plan_exists:
-            lines.append(f"Plan file: {plan_file_path} (exists — read first, then update)")
+            lines.append(
+                f"Plan file: {plan_file_path} "
+                "(exists — read first, then update it with WriteFile or StrReplaceFile)"
+            )
         else:
-            lines.append(f"Plan file: {plan_file_path} (create with WriteFile)")
+            lines.append(
+                f"Plan file: {plan_file_path} "
+                "(create it with WriteFile; once it exists, you can modify it with "
+                "WriteFile or StrReplaceFile)"
+            )
         lines.append("This is the only file you are allowed to edit.")
     # Workflow
     lines.extend(
@@ -132,18 +139,44 @@ def _full_reminder(
             "",
             "Workflow:",
             "1. Understand — explore the codebase with Glob, Grep, ReadFile",
-            "2. Design — identify approaches, trade-offs, and decisions",
+            "2. Design — converge on the best approach; "
+            "consider trade-offs but aim for a single recommendation",
             "3. Review — re-read key files to verify understanding",
-            "4. Write Plan — write your plan to the plan file with WriteFile",
+            "4. Write Plan — modify the plan file with WriteFile or StrReplaceFile. "
+            "Use WriteFile if the plan file does not exist yet",
             "5. Exit — call ExitPlanMode for user approval",
+        ]
+    )
+    # Multi-approach handling
+    lines.extend(
+        [
+            "",
+            "## Handling multiple approaches",
+            "Keep it focused: at most 2-3 meaningfully different approaches. "
+            "Do NOT pad with minor variations — if one approach is clearly "
+            "superior, just propose that one.",
+            "When the best approach depends on user preferences, constraints, "
+            "or context you don't have, use AskUserQuestion to clarify first. "
+            "This helps you write a better, more targeted plan rather than "
+            "dumping multiple options for the user to sort through.",
+            "When you do include multiple approaches in the plan, you MUST pass them "
+            "as the `options` parameter when calling ExitPlanMode, so the user can select which "
+            "approach to execute at approval time.",
+            "NEVER write multiple approaches in the plan and call ExitPlanMode without the "
+            "`options` parameter — the user will only see Approve/Reject with no way to choose.",
         ]
     )
     # Turn ending constraint + anti-pattern
     lines.extend(
         [
             "",
-            "Your turn must end with either AskUserQuestion (to clarify requirements) "
-            "or ExitPlanMode (to request plan approval). Do NOT end your turn any other way.",
+            "AskUserQuestion is for clarifying missing requirements or user preferences "
+            "that affect the plan.",
+            "Never ask about plan approval via text or AskUserQuestion.",
+            "Your turn must end with either AskUserQuestion "
+            "(to clarify requirements or preferences) "
+            "or ExitPlanMode (to request plan approval). "
+            "Do NOT end your turn any other way.",
             "Do NOT use AskUserQuestion to ask about plan approval or reference "
             '"the plan" — the user cannot see the plan until you call ExitPlanMode.',
         ]
@@ -161,6 +194,12 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
         parts.append("Read-only.")
     parts.extend(
         [
+            "Use WriteFile or StrReplaceFile to modify the plan file. "
+            "If it does not exist yet, create it with WriteFile first.",
+            "Use AskUserQuestion to clarify user preferences "
+            "when it helps you write a better plan.",
+            "If the plan has multiple approaches, "
+            "pass options to ExitPlanMode so the user can choose.",
             "End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for approval).",
             "Never ask about plan approval via text or AskUserQuestion.",
         ]
@@ -185,9 +224,13 @@ def _reentry_reminder(plan_file_path: str | None = None) -> str:
         "Before proceeding:",
         "1. Read the existing plan file to understand what was previously planned",
         "2. Evaluate the user's current request against that plan",
-        "3. If different task: overwrite with a fresh plan. "
+        "3. If different task: replace the old plan with a fresh one. "
         "If same task: update the existing plan.",
-        "4. Always edit the plan file before calling ExitPlanMode.",
+        "4. You may use WriteFile or StrReplaceFile to modify the plan file. "
+        "If the file does not exist yet, create it with WriteFile first.",
+        "5. Use AskUserQuestion to clarify missing requirements "
+        "or user preferences that affect the plan.",
+        "6. Always edit the plan file before calling ExitPlanMode.",
         "",
         "Your turn must end with either AskUserQuestion (to clarify requirements) "
         "or ExitPlanMode (to request plan approval).",

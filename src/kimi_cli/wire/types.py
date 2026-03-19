@@ -25,6 +25,7 @@ from kosong.utils.typing import JsonType
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from kimi_cli.tools.display import (
+    BackgroundTaskDisplayBlock,
     DiffDisplayBlock,
     ShellDisplayBlock,
     TodoDisplayBlock,
@@ -110,6 +111,24 @@ class MCPLoadingEnd(BaseModel):
     pass
 
 
+class MCPServerSnapshot(BaseModel):
+    """A snapshot of one MCP server during startup."""
+
+    name: str
+    status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
+    tools: tuple[str, ...] = ()
+
+
+class MCPStatusSnapshot(BaseModel):
+    """A snapshot of MCP startup progress."""
+
+    loading: bool
+    connected: int
+    total: int
+    tools: int
+    servers: tuple[MCPServerSnapshot, ...] = ()
+
+
 class StatusUpdate(BaseModel):
     """
     An update on the current status of the soul.
@@ -128,6 +147,23 @@ class StatusUpdate(BaseModel):
     """The message ID of the current step."""
     plan_mode: bool | None = None
     """Whether plan mode (read-only) is active. None means no change."""
+    mcp_status: MCPStatusSnapshot | None = None
+    """The current MCP startup snapshot. None means no change."""
+
+
+class Notification(BaseModel):
+    """A generic system notification for UI and client consumption."""
+
+    id: str
+    category: str
+    type: str
+    source_kind: str
+    source_id: str
+    title: str
+    body: str
+    severity: str
+    created_at: float
+    payload: dict[str, JsonType] = Field(default_factory=dict)
 
 
 class SubagentEvent(BaseModel):
@@ -387,6 +423,7 @@ type Event = (
     | MCPLoadingBegin
     | MCPLoadingEnd
     | StatusUpdate
+    | Notification
     | ContentPart
     | ToolCall
     | ToolCallPart
@@ -473,6 +510,9 @@ __all__ = [
     "MCPLoadingBegin",
     "MCPLoadingEnd",
     "StatusUpdate",
+    "MCPServerSnapshot",
+    "MCPStatusSnapshot",
+    "Notification",
     "ContentPart",
     "ToolCall",
     "ToolCallPart",
@@ -506,4 +546,5 @@ __all__ = [
     "TodoDisplayBlock",
     "TodoDisplayItem",
     "ShellDisplayBlock",
+    "BackgroundTaskDisplayBlock",
 ]

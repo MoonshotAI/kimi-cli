@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import pydantic
 from jinja2 import Environment as JinjaEnvironment
@@ -15,9 +15,11 @@ from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
 from kimi_cli.auth.oauth import OAuthManager
+from kimi_cli.background import BackgroundTaskManager
 from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError, SystemPromptTemplateError
 from kimi_cli.llm import LLM
+from kimi_cli.notifications import NotificationManager
 from kimi_cli.session import Session
 from kimi_cli.skill import Skill, discover_skills_from_roots, index_skills, resolve_skills_roots
 from kimi_cli.soul.approval import Approval, ApprovalState
@@ -75,8 +77,11 @@ class Runtime:
     approval: Approval
     labor_market: LaborMarket
     environment: Environment
+    notifications: NotificationManager
+    background_tasks: BackgroundTaskManager
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
+    role: Literal["root", "fixed_subagent", "dynamic_subagent"] = "root"
 
     @staticmethod
     async def create(
@@ -155,6 +160,10 @@ class Runtime:
             auto_approve_actions=saved_actions,
             on_change=_on_approval_change,
         )
+        notifications = NotificationManager(
+            session.context_file.parent / "notifications",
+            config.notifications,
+        )
 
         return Runtime(
             config=config,
@@ -173,8 +182,15 @@ class Runtime:
             approval=Approval(state=approval_state),
             labor_market=LaborMarket(),
             environment=environment,
+            notifications=notifications,
+            background_tasks=BackgroundTaskManager(
+                session,
+                config.background,
+                notifications=notifications,
+            ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
+            role="root",
         )
 
     def copy_for_fixed_subagent(self) -> Runtime:
@@ -189,9 +205,12 @@ class Runtime:
             approval=self.approval.share(),
             labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
             environment=self.environment,
+            notifications=self.notifications,
+            background_tasks=self.background_tasks.copy_for_role("fixed_subagent"),
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
+            role="fixed_subagent",
         )
 
     def copy_for_dynamic_subagent(self) -> Runtime:
@@ -206,9 +225,12 @@ class Runtime:
             approval=self.approval.share(),
             labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
             environment=self.environment,
+            notifications=self.notifications,
+            background_tasks=self.background_tasks.copy_for_role("dynamic_subagent"),
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
+            role="dynamic_subagent",
         )
 
 
@@ -249,6 +271,7 @@ async def load_agent(
     runtime: Runtime,
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    start_mcp_loading: bool = True,
     _restore_dynamic_subagents: bool = True,
 ) -> Agent:
     """
@@ -279,6 +302,7 @@ async def load_agent(
             subagent_spec.path,
             runtime.copy_for_fixed_subagent(),
             mcp_configs=mcp_configs,
+            start_mcp_loading=start_mcp_loading,
             _restore_dynamic_subagents=False,
         )
         runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
@@ -302,6 +326,20 @@ async def load_agent(
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
     toolset.load_tools(tools, tool_deps)
 
+    # Load plugin tools
+    from kimi_cli.plugin.manager import get_plugins_dir
+    from kimi_cli.plugin.tool import load_plugin_tools
+
+    plugin_tools = load_plugin_tools(get_plugins_dir(), runtime.config, approval=runtime.approval)
+    for plugin_tool in plugin_tools:
+        if toolset.find(plugin_tool.name) is not None:
+            logger.warning(
+                "Plugin tool '{name}' conflicts with an existing tool, skipping",
+                name=plugin_tool.name,
+            )
+            continue
+        toolset.add(plugin_tool)
+
     if mcp_configs:
         validated_mcp_configs: list[MCPConfig] = []
         if mcp_configs:
@@ -316,7 +354,10 @@ async def load_agent(
                     )
                 except pydantic.ValidationError as e:
                     raise MCPConfigError(f"Invalid MCP config: {e}") from e
-        await toolset.load_mcp_tools(validated_mcp_configs, runtime)
+        if start_mcp_loading:
+            await toolset.load_mcp_tools(validated_mcp_configs, runtime, in_background=True)
+        else:
+            toolset.defer_mcp_tool_loading(validated_mcp_configs, runtime)
 
     # Restore dynamic subagents from persisted session state
     # Skip for fixed subagents — they have their own isolated LaborMarket

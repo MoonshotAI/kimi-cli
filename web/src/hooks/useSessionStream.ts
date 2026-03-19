@@ -1493,13 +1493,30 @@ export function useSessionStream(
 
           const messageId = tc?.messageId ?? pending?.messageId;
           const nextState =
-            approved === false ? "output-denied" : "approval-responded";
+            approved === false ? "output-denied" : "input-available";
           const nextStreaming = approved !== false;
 
           if (messageId) {
             updateMessageById(messageId, (message) => {
               if (!message.toolCall) {
                 return message;
+              }
+
+              // Don't overwrite terminal states — a late ApprovalRequestResolved
+              // arriving after cancel() must not flip a denied tool back to active.
+              const currentState = message.toolCall.state;
+              if (
+                currentState === "output-denied" ||
+                currentState === "output-available" ||
+                currentState === "output-error"
+              ) {
+                return {
+                  ...message,
+                  toolCall: {
+                    ...message.toolCall,
+                    approval: updatedApproval,
+                  },
+                };
               }
 
               return {
@@ -1738,6 +1755,20 @@ export function useSessionStream(
                   },
                 };
               }
+              // Mark still-running tool calls as interrupted
+              if (
+                msg.variant === "tool" &&
+                (updated.toolCall?.state === "input-streaming" ||
+                  updated.toolCall?.state === "input-available")
+              ) {
+                return {
+                  ...updated,
+                  toolCall: {
+                    ...updated.toolCall,
+                    state: "output-denied",
+                  },
+                };
+              }
               return updated;
             }),
           );
@@ -1904,9 +1935,14 @@ export function useSessionStream(
           return;
         }
 
-        // Check for finished status
-        if (message.result?.status === "finished") {
-          console.log("[SessionStream] Stream finished");
+        // Check for finished or cancelled status
+        if (
+          message.result?.status === "finished" ||
+          message.result?.status === "cancelled"
+        ) {
+          console.log(
+            `[SessionStream] Stream ${message.result.status}`,
+          );
           setStatus("ready");
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
@@ -2119,7 +2155,7 @@ export function useSessionStream(
       pendingApprovalRequestsRef.current.set(requestId, pending);
 
       const tc = currentToolCallsRef.current.get(pending.toolCallId);
-      const nextState = isApproved ? "approval-responded" : "output-denied";
+      const nextState = isApproved ? "input-available" : "output-denied";
       const nextStreaming = isApproved;
 
       if (tc) {
@@ -2485,6 +2521,21 @@ export function useSessionStream(
               },
             };
           }
+          // Mark still-running tool calls as interrupted
+          if (
+            msg.variant === "tool" &&
+            (msg.toolCall?.state === "input-streaming" ||
+              msg.toolCall?.state === "input-available")
+          ) {
+            return {
+              ...msg,
+              isStreaming: false,
+              toolCall: {
+                ...msg.toolCall,
+                state: "output-denied",
+              },
+            };
+          }
           return msg;
         }),
       );
@@ -2538,6 +2589,21 @@ export function useSessionStream(
                     resolved: true,
                   }
                 : undefined,
+            },
+          };
+        }
+        // Mark still-running tool calls as interrupted
+        if (
+          msg.variant === "tool" &&
+          (msg.toolCall?.state === "input-streaming" ||
+            msg.toolCall?.state === "input-available")
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
             },
           };
         }

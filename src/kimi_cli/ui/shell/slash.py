@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
+from kimi_cli import logger
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.cli import Reload, SwitchToWeb
 from kimi_cli.config import load_config, save_config
@@ -12,6 +14,8 @@ from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.mcp_status import render_mcp_console
+from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
@@ -471,6 +475,23 @@ async def list_sessions(app: Shell, args: str):
     raise Reload(session_id=selection)
 
 
+@registry.command(name="task")
+@shell_mode_registry.command(name="task")
+async def task(app: Shell, args: str):
+    """Browse and manage background tasks"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    if args.strip():
+        console.print('[yellow]Usage: "/task" opens the interactive task browser.[/yellow]')
+        return
+    if soul.runtime.role != "root":
+        console.print("[yellow]Background tasks are only available from the root agent.[/yellow]")
+        return
+
+    await TaskBrowserApp(soul).run()
+
+
 @registry.command
 def web(app: Shell, args: str):
     """Open Kimi Code Web UI in browser"""
@@ -482,60 +503,42 @@ def web(app: Shell, args: str):
 @registry.command
 async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
-    from rich.console import Group, RenderableType
-    from rich.text import Text
-
-    from kimi_cli.soul.toolset import KimiToolset
-    from kimi_cli.utils.rich.columns import BulletColumns
+    from rich.live import Live
 
     soul = ensure_kimi_soul(app)
     if soul is None:
         return
-    toolset = soul.agent.toolset
-    if not isinstance(toolset, KimiToolset):
-        console.print("[red]KimiToolset required[/red]")
-        return
-
-    servers = toolset.mcp_servers
-
-    if not servers:
+    await soul.start_background_mcp_loading()
+    snapshot = soul.status.mcp_status
+    if snapshot is None:
         console.print("[yellow]No MCP servers configured.[/yellow]")
         return
 
-    n_conn = sum(1 for s in servers.values() if s.status == "connected")
-    n_tools = sum(len(s.tools) for s in servers.values())
-    console.print(
-        BulletColumns(
-            Text.from_markup(
-                f"[bold]MCP Servers:[/bold] {n_conn}/{len(servers)} connected, {n_tools} tools"
-            )
-        )
-    )
+    if not snapshot.loading:
+        console.print(render_mcp_console(snapshot))
+        return
 
-    status_colors = {
-        "connected": "green",
-        "connecting": "cyan",
-        "pending": "yellow",
-        "failed": "red",
-        "unauthorized": "red",
-    }
-    for name, info in servers.items():
-        color = status_colors.get(info.status, "red")
-        server_text = f"[{color}]{name}[/{color}]"
-        if info.status == "unauthorized":
-            server_text += " [grey50](unauthorized - run: kimi mcp auth {name})[/grey50]"
-        elif info.status != "connected":
-            server_text += f" [grey50]({info.status})[/grey50]"
-
-        lines: list[RenderableType] = [Text.from_markup(server_text)]
-        for tool in info.tools:
-            lines.append(
-                BulletColumns(
-                    Text.from_markup(f"[grey50]{tool.name}[/grey50]"),
-                    bullet_style="grey50",
-                )
-            )
-        console.print(BulletColumns(Group(*lines), bullet_style=color))
+    with Live(
+        render_mcp_console(snapshot),
+        console=console,
+        refresh_per_second=8,
+        transient=False,
+    ) as live:
+        while True:
+            snapshot = soul.status.mcp_status
+            if snapshot is None:
+                break
+            live.update(render_mcp_console(snapshot), refresh=True)
+            if not snapshot.loading:
+                break
+            await asyncio.sleep(0.125)
+        try:
+            await soul.wait_for_background_mcp_loading()
+        except Exception as e:
+            logger.debug("MCP loading completed with error while rendering /mcp: {error}", error=e)
+        snapshot = soul.status.mcp_status
+        if snapshot is not None:
+            live.update(render_mcp_console(snapshot), refresh=True)
 
 
 from . import (  # noqa: E402

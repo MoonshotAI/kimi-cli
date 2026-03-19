@@ -133,7 +133,7 @@ class Task(CallableTool2[Params]):
         soul = KimiSoul(agent, context=context)
 
         try:
-            await run_soul(soul, prompt, _ui_loop_fn, asyncio.Event())
+            await run_soul(soul, prompt, _ui_loop_fn, asyncio.Event(), runtime=soul.runtime)
         except MaxStepsReached as e:
             return ToolError(
                 message=(
@@ -156,7 +156,9 @@ class Task(CallableTool2[Params]):
         # Check if response is too brief, if so, run again with continuation prompt
         n_attempts_remaining = MAX_CONTINUE_ATTEMPTS
         if len(final_response) < 200 and n_attempts_remaining > 0:
-            await run_soul(soul, CONTINUE_PROMPT, _ui_loop_fn, asyncio.Event())
+            await run_soul(
+                soul, CONTINUE_PROMPT, _ui_loop_fn, asyncio.Event(), runtime=soul.runtime
+            )
 
             if len(context.history) == 0 or context.history[-1].role != "assistant":
                 return ToolError(message=_error_msg, brief="Failed to run subagent")
