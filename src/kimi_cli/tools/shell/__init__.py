@@ -13,7 +13,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
-from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
+from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, ToolSkippedError, load_desc
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.subprocess_env import get_clean_env
 
@@ -82,7 +82,7 @@ class Shell(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
 
-        if not await self._approval.request(
+        approval_result = await self._approval.request(
             self.name,
             "run command",
             f"Run command `{params.command}`",
@@ -92,7 +92,10 @@ class Shell(CallableTool2[Params]):
                     command=params.command,
                 )
             ],
-        ):
+        )
+        if approval_result is None:
+            return ToolSkippedError()
+        if not approval_result:
             return ToolRejectedError()
 
         def stdout_cb(line: bytes):
@@ -129,7 +132,7 @@ class Shell(CallableTool2[Params]):
                 brief="No tool call context",
             )
 
-        if not await self._approval.request(
+        bg_approval = await self._approval.request(
             self.name,
             "run background command",
             f"Run background command `{params.command}`",
@@ -139,7 +142,10 @@ class Shell(CallableTool2[Params]):
                     command=params.command,
                 )
             ],
-        ):
+        )
+        if bg_approval is None:
+            return ToolSkippedError()
+        if not bg_approval:
             return ToolRejectedError()
 
         try:

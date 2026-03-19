@@ -22,7 +22,7 @@ class Request:
     display: list[DisplayBlock]
 
 
-type Response = Literal["approve", "approve_for_session", "reject"]
+type Response = Literal["approve", "approve_for_session", "reject", "skip"]
 
 
 class ApprovalState:
@@ -45,7 +45,7 @@ class ApprovalState:
 class Approval:
     def __init__(self, yolo: bool = False, *, state: ApprovalState | None = None):
         self._request_queue = Queue[Request]()
-        self._requests: dict[str, tuple[Request, asyncio.Future[bool]]] = {}
+        self._requests: dict[str, tuple[Request, asyncio.Future[bool | None]]] = {}
         self._state = state or ApprovalState(yolo=yolo)
 
     def share(self) -> Approval:
@@ -65,7 +65,7 @@ class Approval:
         action: str,
         description: str,
         display: list[DisplayBlock] | None = None,
-    ) -> bool:
+    ) -> bool | None:
         """
         Request approval for the given action. Intended to be called by tools.
 
@@ -76,7 +76,7 @@ class Approval:
             description (str): The description of the action. This is used to display to the user.
 
         Returns:
-            bool: True if the action is approved, False otherwise.
+            True if approved, False if rejected, None if skipped.
 
         Raises:
             RuntimeError: If the approval is requested from outside a tool call.
@@ -106,7 +106,7 @@ class Approval:
             description=description,
             display=display or [],
         )
-        approved_future = asyncio.Future[bool]()
+        approved_future = asyncio.Future[bool | None]()
         self._request_queue.put_nowait(request)
         self._requests[request.id] = (request, approved_future)
         return await approved_future
@@ -157,3 +157,5 @@ class Approval:
                 future.set_result(True)
             case "reject":
                 future.set_result(False)
+            case "skip":
+                future.set_result(None)

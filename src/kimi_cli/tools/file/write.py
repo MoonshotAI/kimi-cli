@@ -11,7 +11,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
-from kimi_cli.tools.utils import ToolRejectedError, load_desc
+from kimi_cli.tools.utils import ToolRejectedError, ToolSkippedError, load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.path import is_within_workspace
 
@@ -144,12 +144,15 @@ class WriteFile(CallableTool2[Params]):
                 )
 
                 # Request approval
-                if not await self._approval.request(
+                write_approval = await self._approval.request(
                     self.name,
                     action,
                     f"Write file `{p}`",
                     display=diff_blocks,
-                ):
+                )
+                if write_approval is None:
+                    return ToolSkippedError()
+                if not write_approval:
                     return ToolRejectedError()
 
             # Write content to file

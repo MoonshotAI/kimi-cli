@@ -375,6 +375,7 @@ class _ApprovalRequestPanel:
         self.options: list[tuple[str, ApprovalResponse.Kind]] = [
             ("Approve once", "approve"),
             ("Approve for this session", "approve_for_session"),
+            ("Skip, continue with remaining tasks", "skip"),
             ("Reject, tell Kimi what to do instead", "reject"),
         ]
         self.selected_index = 0
@@ -471,7 +472,7 @@ class _ApprovalRequestPanel:
 
         # Keyboard hints
         lines.append(Text(""))
-        hint = "  \u25b2/\u25bc select  1/2/3 choose  \u21b5 confirm"
+        hint = f"  \u25b2/\u25bc select  1-{len(self.options)} choose  \u21b5 confirm"
         if self.has_expandable_content:
             hint += "  ctrl-e expand"
         lines.append(Text(hint, style="dim"))
@@ -1200,12 +1201,13 @@ class _LiveView:
                     self.refresh_soon()
                 case KeyEvent.ENTER:
                     self._submit_approval()
-                case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3:
+                case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3 | KeyEvent.NUM_4:
                     # Number keys directly select and submit approval option
                     num_map = {
                         KeyEvent.NUM_1: 0,
                         KeyEvent.NUM_2: 1,
                         KeyEvent.NUM_3: 2,
+                        KeyEvent.NUM_4: 3,
                     }
                     idx = num_map[event]
                     if idx < len(self._current_approval_request_panel.options):

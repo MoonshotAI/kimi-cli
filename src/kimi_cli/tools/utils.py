@@ -189,3 +189,22 @@ class ToolRejectedError(ToolError):
             ),
             brief=brief,
         )
+
+
+class ToolSkippedError(ToolError):
+    """Returned when the user chooses to skip a tool call.
+
+    Unlike ``ToolRejectedError`` this does **not** abort the current step —
+    the agent loop continues executing any remaining tool calls and proceeds
+    to the next turn.
+    """
+
+    def __init__(self, message: str | None = None, brief: str = "Skipped by user"):
+        super().__init__(
+            message=message
+            or (
+                "The user chose to skip this tool call. "
+                "Continue with the remaining tasks without retrying this action."
+            ),
+            brief=brief,
+        )

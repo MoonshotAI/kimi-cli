@@ -9,7 +9,7 @@ from kimi_cli.background import TaskStatus, TaskView, format_task, format_task_l
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock
-from kimi_cli.tools.utils import ToolRejectedError, load_desc
+from kimi_cli.tools.utils import ToolRejectedError, ToolSkippedError, load_desc
 
 TASK_OUTPUT_PREVIEW_BYTES = 32 << 10
 TASK_OUTPUT_READ_HINT_LINES = 300
@@ -297,12 +297,15 @@ class TaskStop(CallableTool2[TaskStopParams]):
         if view is None:
             return ToolError(message=f"Task not found: {params.task_id}", brief="Task not found")
 
-        if not await self._approval.request(
+        stop_approval = await self._approval.request(
             self.name,
             "stop background task",
             f"Stop background task `{params.task_id}`",
             display=[_task_display(self._runtime, params.task_id)],
-        ):
+        )
+        if stop_approval is None:
+            return ToolSkippedError()
+        if not stop_approval:
             return ToolRejectedError()
 
         view = self._runtime.background_tasks.kill(
