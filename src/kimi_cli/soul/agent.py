@@ -330,7 +330,7 @@ async def load_agent(
     from kimi_cli.plugin.manager import get_plugins_dir
     from kimi_cli.plugin.tool import load_plugin_tools
 
-    for plugin_tool in load_plugin_tools(get_plugins_dir()):
+    for plugin_tool in load_plugin_tools(get_plugins_dir(), runtime.config):
         toolset.add(plugin_tool)
 
     if mcp_configs:

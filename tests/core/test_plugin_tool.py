@@ -6,8 +6,14 @@ from pathlib import Path
 
 import pytest
 
+from kimi_cli.config import Config
 from kimi_cli.plugin import PluginToolSpec
 from kimi_cli.plugin.tool import PluginTool, load_plugin_tools
+
+
+def _dummy_config() -> Config:
+    """Create a minimal Config for testing."""
+    return Config()
 
 
 def _make_plugin_with_tool(tmp_path: Path, script_content: str) -> Path:
@@ -56,7 +62,7 @@ print(f"hello {params.get('msg', 'world')}")
         description="test",
         command=[sys.executable, "scripts/tool.py"],
     )
-    tool = PluginTool(tool_spec, plugin_dir=plugin_dir)
+    tool = PluginTool(tool_spec, plugin_dir=plugin_dir, inject={}, config=_dummy_config())
     result = await tool(msg="agent")
     assert "hello agent" in str(result)
 
@@ -77,7 +83,7 @@ sys.exit(1)
         description="test",
         command=[sys.executable, "scripts/tool.py"],
     )
-    tool = PluginTool(tool_spec, plugin_dir=plugin_dir)
+    tool = PluginTool(tool_spec, plugin_dir=plugin_dir, inject={}, config=_dummy_config())
     result = await tool()
     assert "failed" in str(result).lower() or "error" in str(result).lower()
 
@@ -98,9 +104,53 @@ print(f"mode={params.get('mode', 'default')}")
         description="test",
         command=[sys.executable, "scripts/tool.py"],
     )
-    tool = PluginTool(tool_spec, plugin_dir=plugin_dir)
+    tool = PluginTool(tool_spec, plugin_dir=plugin_dir, inject={}, config=_dummy_config())
     result = await tool()
     assert "mode=default" in str(result)
+
+
+@pytest.mark.asyncio
+async def test_plugin_tool_injects_env_vars(tmp_path: Path):
+    """Host credentials should be injected as env vars at runtime."""
+    from pydantic import SecretStr
+
+    from kimi_cli.config import Config, LLMModel, LLMProvider
+
+    plugin_dir = _make_plugin_with_tool(
+        tmp_path,
+        """
+import os, json
+print(json.dumps({"key": os.environ.get("myApiKey", ""), "url": os.environ.get("myUrl", "")}))
+""",
+    )
+
+    config = Config(
+        default_model="test",
+        models={"test": LLMModel(provider="p", model="m", max_context_size=1000)},
+        providers={
+            "p": LLMProvider(
+                type="openai_responses",
+                base_url="https://test.api/v1",
+                api_key=SecretStr("sk-fresh-token"),
+            )
+        },
+    )
+
+    tool_spec = PluginToolSpec(
+        name="test_tool",
+        description="test",
+        command=[sys.executable, "scripts/tool.py"],
+    )
+    tool = PluginTool(
+        tool_spec,
+        plugin_dir=plugin_dir,
+        inject={"myApiKey": "api_key", "myUrl": "base_url"},
+        config=config,
+    )
+    result = await tool()
+    data = json.loads(str(result.output))
+    assert data["key"] == "sk-fresh-token"
+    assert data["url"] == "https://test.api/v1"
 
 
 def test_load_plugin_tools_discovers_tools(tmp_path: Path):
@@ -124,13 +174,13 @@ def test_load_plugin_tools_discovers_tools(tmp_path: Path):
         encoding="utf-8",
     )
 
-    tools = load_plugin_tools(plugins_dir)
+    tools = load_plugin_tools(plugins_dir, _dummy_config())
     assert len(tools) == 1
     assert tools[0].name == "my_tool"
 
 
 def test_load_plugin_tools_empty_dir(tmp_path: Path):
-    assert load_plugin_tools(tmp_path / "nonexistent") == []
+    assert load_plugin_tools(tmp_path / "nonexistent", _dummy_config()) == []
 
 
 def test_load_plugin_tools_skips_plugins_without_tools(tmp_path: Path):
@@ -142,5 +192,5 @@ def test_load_plugin_tools_skips_plugins_without_tools(tmp_path: Path):
         encoding="utf-8",
     )
 
-    tools = load_plugin_tools(plugins_dir)
+    tools = load_plugin_tools(plugins_dir, _dummy_config())
     assert len(tools) == 0
