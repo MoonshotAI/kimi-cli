@@ -15,6 +15,7 @@ import { Shimmer } from "./shimmer";
 import {
   escapeHtmlOutsideCodeBlocks,
   safeRehypePlugins,
+  safeRemarkPlugins,
   streamdownComponents,
   streamdownRootClass,
 } from "./streamdown";
@@ -212,7 +213,7 @@ export const ReasoningContent = memo(
           className={streamdownRootClass}
           components={streamdownComponents}
           rehypePlugins={safeRehypePlugins}
-          {...props}
+          remarkPlugins={safeRemarkPlugins}
         >
           {escaped}
         </Streamdown>
