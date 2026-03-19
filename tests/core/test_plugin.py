@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+import typer
 
+from kimi_cli.cli.plugin import _parse_git_url, _resolve_source
 from kimi_cli.plugin import (
     PluginError,
     PluginRuntime,
@@ -272,3 +275,217 @@ def test_parse_plugin_json_ignores_unknown_fields(tmp_path: Path):
     )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     assert spec.name == "p"
+
+
+# --- _parse_git_url tests ---
+
+
+@pytest.mark.parametrize(
+    "url, expected_clone, expected_subpath",
+    [
+        # .git URLs — no subpath
+        ("https://host.com/org/repo.git", "https://host.com/org/repo.git", None),
+        ("http://host.com/org/repo.git", "http://host.com/org/repo.git", None),
+        # .git URLs — with subpath
+        (
+            "https://host.com/org/repo.git/my-plugin",
+            "https://host.com/org/repo.git",
+            "my-plugin",
+        ),
+        (
+            "https://host.com/org/repo.git/packages/my-plugin",
+            "https://host.com/org/repo.git",
+            "packages/my-plugin",
+        ),
+        # .git URLs — trailing slash (no subpath)
+        ("https://host.com/org/repo.git/", "https://host.com/org/repo.git", None),
+        # SSH URLs
+        ("git@github.com:org/repo.git", "git@github.com:org/repo.git", None),
+        (
+            "git@github.com:org/repo.git/my-plugin",
+            "git@github.com:org/repo.git",
+            "my-plugin",
+        ),
+        # .github in hostname should not false-match
+        (
+            "https://github.com/my.github.io/tools.git/plugin",
+            "https://github.com/my.github.io/tools.git",
+            "plugin",
+        ),
+        # GitHub short URLs — no subpath
+        ("https://github.com/org/repo", "https://github.com/org/repo", None),
+        # GitHub short URLs — with subpath
+        (
+            "https://github.com/org/repo/my-plugin",
+            "https://github.com/org/repo",
+            "my-plugin",
+        ),
+        (
+            "https://github.com/org/repo/packages/my-plugin",
+            "https://github.com/org/repo",
+            "packages/my-plugin",
+        ),
+        # GitHub short URLs — trailing slash
+        ("https://github.com/org/repo/", "https://github.com/org/repo", None),
+        # GitHub browser URL with tree/branch
+        (
+            "https://github.com/org/repo/tree/main/my-plugin",
+            "https://github.com/org/repo",
+            "my-plugin",
+        ),
+        (
+            "https://github.com/org/repo/tree/develop/packages/my-plugin",
+            "https://github.com/org/repo",
+            "packages/my-plugin",
+        ),
+        # GitLab short URLs
+        (
+            "https://gitlab.com/org/repo/my-plugin",
+            "https://gitlab.com/org/repo",
+            "my-plugin",
+        ),
+        (
+            "https://gitlab.com/org/repo/tree/main/my-plugin",
+            "https://gitlab.com/org/repo",
+            "my-plugin",
+        ),
+        # Edge case: fewer than 2 path segments — returned as-is
+        ("https://github.com/org", "https://github.com/org", None),
+    ],
+)
+def test_parse_git_url(url: str, expected_clone: str, expected_subpath: str | None):
+    clone_url, subpath = _parse_git_url(url)
+    assert clone_url == expected_clone
+    assert subpath == expected_subpath
+
+
+# --- _resolve_source git subpath tests ---
+
+
+def _mock_git_clone(plugins: list[str] | None = None, root_plugin: bool = False):
+    """Create a mock for subprocess.run that simulates git clone."""
+
+    def side_effect(cmd, **kwargs):
+        dest = Path(cmd[-1])
+        dest.mkdir(parents=True)
+        if root_plugin:
+            (dest / "plugin.json").write_text(
+                json.dumps({"name": "root-plugin", "version": "1.0.0"}),
+                encoding="utf-8",
+            )
+        for name in plugins or []:
+            sub = dest / name
+            sub.mkdir(parents=True, exist_ok=True)
+            (sub / "plugin.json").write_text(
+                json.dumps({"name": name, "version": "1.0.0"}),
+                encoding="utf-8",
+            )
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = ""
+        return result
+
+    return side_effect
+
+
+def test_resolve_source_git_with_subpath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Git URL with subpath returns the sub-directory."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with patch(
+        "subprocess.run",
+        side_effect=_mock_git_clone(plugins=["my-plugin"]),
+    ):
+        source, tmp_dir = _resolve_source("https://github.com/org/repo.git/my-plugin")
+    assert source.name == "my-plugin"
+    assert (source / "plugin.json").exists()
+    assert tmp_dir is not None
+
+
+def test_resolve_source_git_subpath_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Git URL with non-existent subpath raises Exit."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with (
+        patch("subprocess.run", side_effect=_mock_git_clone(plugins=[])),
+        pytest.raises(typer.Exit),
+    ):
+        _resolve_source("https://github.com/org/repo.git/no-such-plugin")
+
+
+def test_resolve_source_git_no_subpath_suggests_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    """No subpath + no root plugin.json -> list available plugins."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with (
+        patch(
+            "subprocess.run",
+            side_effect=_mock_git_clone(plugins=["alpha", "beta"]),
+        ),
+        pytest.raises(typer.Exit),
+    ):
+        _resolve_source("https://github.com/org/repo.git")
+    captured = capsys.readouterr()
+    assert "alpha" in captured.err
+    assert "beta" in captured.err
+
+
+def test_resolve_source_git_no_subpath_root_plugin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """No subpath + root plugin.json -> returns root (existing behavior)."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with patch("subprocess.run", side_effect=_mock_git_clone(root_plugin=True)):
+        source, _ = _resolve_source("https://github.com/org/repo.git")
+    assert (source / "plugin.json").exists()
+
+
+def test_resolve_source_git_subpath_traversal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Subpath with '..' should be rejected."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with (
+        patch("subprocess.run", side_effect=_mock_git_clone(plugins=[])),
+        pytest.raises(typer.Exit),
+    ):
+        _resolve_source("https://github.com/org/repo.git/../../etc")
+
+
+def test_resolve_source_git_no_subpath_no_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    """No subpath + no root plugin.json + no sub-plugins -> plain error."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with (
+        patch("subprocess.run", side_effect=_mock_git_clone(plugins=[])),
+        pytest.raises(typer.Exit),
+    ):
+        _resolve_source("https://github.com/org/repo.git")
+    captured = capsys.readouterr()
+    assert "No plugin.json found" in captured.err
+
+
+def test_resolve_source_git_short_url_with_subpath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """GitHub short URL with subpath (no .git) returns the sub-directory."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with patch(
+        "subprocess.run",
+        side_effect=_mock_git_clone(plugins=["my-plugin"]),
+    ):
+        source, _ = _resolve_source("https://github.com/org/repo/my-plugin")
+    assert source.name == "my-plugin"
+    assert (source / "plugin.json").exists()
