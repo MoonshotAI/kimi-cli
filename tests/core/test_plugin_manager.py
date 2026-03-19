@@ -18,12 +18,14 @@ def _make_source_plugin(tmp_path: Path, name: str = "test-plugin") -> Path:
     src = tmp_path / "source" / name
     src.mkdir(parents=True)
     (src / "plugin.json").write_text(
-        json.dumps({
-            "name": name,
-            "version": "1.0.0",
-            "config_file": "config/config.json",
-            "inject": {"app.api_key": "api_key"},
-        }),
+        json.dumps(
+            {
+                "name": name,
+                "version": "1.0.0",
+                "config_file": "config/config.json",
+                "inject": {"app.api_key": "api_key"},
+            }
+        ),
         encoding="utf-8",
     )
     (src / "SKILL.md").write_text(
@@ -115,9 +117,7 @@ def test_reinstall_plugin(tmp_path: Path):
         host_version="1.22.0",
     )
 
-    config = json.loads(
-        (plugins_dir / "test-plugin" / "config" / "config.json").read_text()
-    )
+    config = json.loads((plugins_dir / "test-plugin" / "config" / "config.json").read_text())
     assert config["app"]["api_key"] == "sk-new"
 
     pj = json.loads((plugins_dir / "test-plugin" / "plugin.json").read_text())

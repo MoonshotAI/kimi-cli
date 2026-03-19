@@ -18,23 +18,23 @@ def _make_plugin_with_tool(tmp_path: Path, script_content: str) -> Path:
     scripts_dir.mkdir()
     (scripts_dir / "tool.py").write_text(script_content, encoding="utf-8")
     (plugin_dir / "plugin.json").write_text(
-        json.dumps({
-            "name": "test-plugin",
-            "version": "1.0.0",
-            "tools": [
-                {
-                    "name": "test_tool",
-                    "description": "A test tool",
-                    "command": [sys.executable, "scripts/tool.py"],
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "msg": {"type": "string"}
+        json.dumps(
+            {
+                "name": "test-plugin",
+                "version": "1.0.0",
+                "tools": [
+                    {
+                        "name": "test_tool",
+                        "description": "A test tool",
+                        "command": [sys.executable, "scripts/tool.py"],
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"msg": {"type": "string"}},
                         },
-                    },
-                }
-            ],
-        }),
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     return plugin_dir
@@ -42,11 +42,14 @@ def _make_plugin_with_tool(tmp_path: Path, script_content: str) -> Path:
 
 @pytest.mark.asyncio
 async def test_plugin_tool_executes_and_returns_stdout(tmp_path: Path):
-    plugin_dir = _make_plugin_with_tool(tmp_path, """
+    plugin_dir = _make_plugin_with_tool(
+        tmp_path,
+        """
 import json, sys
 params = json.loads(sys.stdin.read())
 print(f"hello {params.get('msg', 'world')}")
-""")
+""",
+    )
 
     tool_spec = PluginToolSpec(
         name="test_tool",
@@ -60,11 +63,14 @@ print(f"hello {params.get('msg', 'world')}")
 
 @pytest.mark.asyncio
 async def test_plugin_tool_returns_error_on_nonzero_exit(tmp_path: Path):
-    plugin_dir = _make_plugin_with_tool(tmp_path, """
+    plugin_dir = _make_plugin_with_tool(
+        tmp_path,
+        """
 import sys
 print("something went wrong", file=sys.stderr)
 sys.exit(1)
-""")
+""",
+    )
 
     tool_spec = PluginToolSpec(
         name="test_tool",
@@ -78,11 +84,14 @@ sys.exit(1)
 
 @pytest.mark.asyncio
 async def test_plugin_tool_empty_stdin(tmp_path: Path):
-    plugin_dir = _make_plugin_with_tool(tmp_path, """
+    plugin_dir = _make_plugin_with_tool(
+        tmp_path,
+        """
 import json, sys
 params = json.loads(sys.stdin.read()) if not sys.stdin.isatty() else {}
 print(f"mode={params.get('mode', 'default')}")
-""")
+""",
+    )
 
     tool_spec = PluginToolSpec(
         name="test_tool",
@@ -99,17 +108,19 @@ def test_load_plugin_tools_discovers_tools(tmp_path: Path):
     plugin_dir = plugins_dir / "my-plugin"
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "plugin.json").write_text(
-        json.dumps({
-            "name": "my-plugin",
-            "version": "1.0.0",
-            "tools": [
-                {
-                    "name": "my_tool",
-                    "description": "does things",
-                    "command": ["echo", "hi"],
-                }
-            ],
-        }),
+        json.dumps(
+            {
+                "name": "my-plugin",
+                "version": "1.0.0",
+                "tools": [
+                    {
+                        "name": "my_tool",
+                        "description": "does things",
+                        "command": ["echo", "hi"],
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
 

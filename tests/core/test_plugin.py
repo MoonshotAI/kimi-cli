@@ -23,10 +23,13 @@ def _write_plugin(tmp_path: Path, plugin_data: dict) -> Path:
 
 
 def test_parse_minimal_plugin_json(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "my-plugin",
-        "version": "1.0.0",
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "my-plugin",
+            "version": "1.0.0",
+        },
+    )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     assert spec.name == "my-plugin"
     assert spec.version == "1.0.0"
@@ -36,13 +39,16 @@ def test_parse_minimal_plugin_json(tmp_path: Path):
 
 
 def test_parse_full_plugin_json(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "stock-assistant",
-        "version": "1.0.0",
-        "description": "Stock helper",
-        "config_file": "config/config.json",
-        "inject": {"kimicode.api_key": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "stock-assistant",
+            "version": "1.0.0",
+            "description": "Stock helper",
+            "config_file": "config/config.json",
+            "inject": {"kimicode.api_key": "api_key"},
+        },
+    )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     assert spec.name == "stock-assistant"
     assert spec.config_file == "config/config.json"
@@ -58,21 +64,27 @@ def test_parse_plugin_json_missing_name(tmp_path: Path):
 
 
 def test_parse_plugin_json_inject_requires_config_file(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "bad-plugin",
-        "version": "1.0.0",
-        "inject": {"some.key": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "bad-plugin",
+            "version": "1.0.0",
+            "inject": {"some.key": "api_key"},
+        },
+    )
     with pytest.raises(PluginError, match="config_file"):
         parse_plugin_json(plugin_dir / "plugin.json")
 
 
 def test_parse_plugin_json_with_runtime(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "installed-plugin",
-        "version": "1.0.0",
-        "runtime": {"host": "kimi-code", "host_version": "1.22.0"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "installed-plugin",
+            "version": "1.0.0",
+            "runtime": {"host": "kimi-code", "host_version": "1.22.0"},
+        },
+    )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     assert spec.runtime is not None
     assert spec.runtime.host == "kimi-code"
@@ -96,12 +108,15 @@ def test_parse_plugin_json_malformed(tmp_path: Path):
 
 
 def test_inject_config_writes_value(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-        "config_file": "config/config.json",
-        "inject": {"kimicode.api_key": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+            "config_file": "config/config.json",
+            "inject": {"kimicode.api_key": "api_key"},
+        },
+    )
     config_dir = plugin_dir / "config"
     config_dir.mkdir()
     (config_dir / "config.json").write_text(
@@ -118,12 +133,15 @@ def test_inject_config_writes_value(tmp_path: Path):
 
 
 def test_inject_config_creates_nested_path(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-        "config_file": "c.json",
-        "inject": {"a.b.c": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+            "config_file": "c.json",
+            "inject": {"a.b.c": "api_key"},
+        },
+    )
     (plugin_dir / "c.json").write_text("{}", encoding="utf-8")
 
     spec = parse_plugin_json(plugin_dir / "plugin.json")
@@ -134,12 +152,15 @@ def test_inject_config_creates_nested_path(tmp_path: Path):
 
 
 def test_inject_config_missing_key_raises(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-        "config_file": "c.json",
-        "inject": {"x": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+            "config_file": "c.json",
+            "inject": {"x": "api_key"},
+        },
+    )
     (plugin_dir / "c.json").write_text("{}", encoding="utf-8")
 
     spec = parse_plugin_json(plugin_dir / "plugin.json")
@@ -148,12 +169,15 @@ def test_inject_config_missing_key_raises(tmp_path: Path):
 
 
 def test_inject_config_missing_file_raises(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-        "config_file": "missing.json",
-        "inject": {"x": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+            "config_file": "missing.json",
+            "inject": {"x": "api_key"},
+        },
+    )
 
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     with pytest.raises(PluginError, match="not found"):
@@ -161,10 +185,13 @@ def test_inject_config_missing_file_raises(tmp_path: Path):
 
 
 def test_write_runtime(tmp_path: Path):
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+        },
+    )
 
     runtime = PluginRuntime(host="kimi-code", host_version="1.22.0")
     write_runtime(plugin_dir, runtime)
@@ -177,10 +204,13 @@ def test_write_runtime(tmp_path: Path):
 
 def test_inject_config_noop_when_no_inject(tmp_path: Path):
     """inject_config should be a no-op when spec has no inject mappings."""
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+        },
+    )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     # Should not raise, even with empty values
     inject_config(plugin_dir, spec, {})
@@ -188,12 +218,15 @@ def test_inject_config_noop_when_no_inject(tmp_path: Path):
 
 def test_inject_config_rejects_path_traversal(tmp_path: Path):
     """config_file with '..' should be rejected."""
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-        "config_file": "../../etc/passwd",
-        "inject": {"x": "api_key"},
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+            "config_file": "../../etc/passwd",
+            "inject": {"x": "api_key"},
+        },
+    )
     # Create the file so it exists (the guard should trigger before reading)
     target = (plugin_dir / "../../etc/passwd").resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -206,18 +239,21 @@ def test_inject_config_rejects_path_traversal(tmp_path: Path):
 
 def test_parse_plugin_json_with_tools(tmp_path: Path):
     """Tools should be parsed from plugin.json."""
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "t",
-        "version": "1.0.0",
-        "tools": [
-            {
-                "name": "my_tool",
-                "description": "does stuff",
-                "command": ["python3", "run.py"],
-                "parameters": {"type": "object", "properties": {}},
-            }
-        ],
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "t",
+            "version": "1.0.0",
+            "tools": [
+                {
+                    "name": "my_tool",
+                    "description": "does stuff",
+                    "command": ["python3", "run.py"],
+                    "parameters": {"type": "object", "properties": {}},
+                }
+            ],
+        },
+    )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     assert len(spec.tools) == 1
     assert spec.tools[0].name == "my_tool"
@@ -226,10 +262,13 @@ def test_parse_plugin_json_with_tools(tmp_path: Path):
 
 def test_parse_plugin_json_ignores_unknown_fields(tmp_path: Path):
     """Unknown fields should be silently ignored (forward compat)."""
-    plugin_dir = _write_plugin(tmp_path, {
-        "name": "p",
-        "version": "1.0.0",
-        "future_field": "whatever",
-    })
+    plugin_dir = _write_plugin(
+        tmp_path,
+        {
+            "name": "p",
+            "version": "1.0.0",
+            "future_field": "whatever",
+        },
+    )
     spec = parse_plugin_json(plugin_dir / "plugin.json")
     assert spec.name == "p"
