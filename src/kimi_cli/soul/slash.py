@@ -101,6 +101,26 @@ async def yolo(soul: KimiSoul, args: str):
 
 
 @registry.command
+async def timeout(soul: KimiSoul, args: str):
+    """Set the default timeout for shell commands. Usage: /timeout <seconds>"""
+    arg = args.strip()
+    if not arg:
+        current = soul.runtime.shell_timeout_s
+        wire_send(TextPart(text=f"Current shell timeout: {current}s. Usage: /timeout <seconds>"))
+        return
+    try:
+        value = int(arg)
+    except ValueError:
+        wire_send(TextPart(text=f"Invalid timeout value: {arg!r}. Please provide a number in seconds."))
+        return
+    if value < 1:
+        wire_send(TextPart(text="Timeout must be at least 1 second."))
+        return
+    soul.runtime.shell_timeout_s = value
+    wire_send(TextPart(text=f"Shell timeout set to {value}s."))
+
+
+@registry.command
 async def plan(soul: KimiSoul, args: str):
     """Toggle plan mode. Usage: /plan [on|off|view|clear]"""
     subcmd = args.strip().lower()

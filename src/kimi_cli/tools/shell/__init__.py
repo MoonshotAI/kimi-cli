@@ -104,8 +104,9 @@ class Shell(CallableTool2[Params]):
             builder.write(line_str)
 
         try:
+            effective_timeout = max(params.timeout, self._runtime.shell_timeout_s)
             exitcode = await self._run_shell_command(
-                params.command, stdout_cb, stderr_cb, params.timeout
+                params.command, stdout_cb, stderr_cb, effective_timeout
             )
 
             if exitcode == 0:
@@ -117,8 +118,8 @@ class Shell(CallableTool2[Params]):
                 )
         except TimeoutError:
             return builder.error(
-                f"Command killed by timeout ({params.timeout}s)",
-                brief=f"Killed by timeout ({params.timeout}s)",
+                f"Command killed by timeout ({effective_timeout}s)",
+                brief=f"Killed by timeout ({effective_timeout}s)",
             )
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:

@@ -81,6 +81,8 @@ class Runtime:
     background_tasks: BackgroundTaskManager
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
+    shell_timeout_s: int = 5 * 60
+    """User-configurable default timeout for foreground shell commands (seconds)."""
     role: Literal["root", "fixed_subagent", "dynamic_subagent"] = "root"
 
     @staticmethod
