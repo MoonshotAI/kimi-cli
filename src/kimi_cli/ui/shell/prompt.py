@@ -979,6 +979,13 @@ def _get_git_status() -> tuple[bool, int, int]:
             except Exception:
                 pass
             state.proc = None
+        elif now - state.timestamp > _GIT_STATUS_TTL:
+            # Subprocess is stuck (e.g. OS pipe buffer full from many untracked files).
+            # Terminate it so the toolbar is not permanently frozen; retry after next TTL.
+            with contextlib.suppress(Exception):
+                state.proc.terminate()
+            state.proc = None
+            state.timestamp = now  # delay next spawn by one full TTL
 
     if state.timestamp + _GIT_STATUS_TTL <= now and state.proc is None:
         state.timestamp = now
@@ -1027,6 +1034,8 @@ def _display_width(text: str) -> int:
 
 def _truncate_left(text: str, max_cols: int) -> str:
     """Truncate *text* from the left, prepending '…' if it exceeds *max_cols*."""
+    if max_cols <= 0:
+        return ""
     if _display_width(text) <= max_cols:
         return text
     ellipsis = "…"
@@ -1044,6 +1053,8 @@ def _truncate_left(text: str, max_cols: int) -> str:
 
 def _truncate_right(text: str, max_cols: int) -> str:
     """Truncate *text* from the right, appending '…' if it exceeds *max_cols*."""
+    if max_cols <= 0:
+        return ""
     if _display_width(text) <= max_cols:
         return text
     ellipsis = "…"
@@ -1817,11 +1828,19 @@ class CustomPromptSession:
             fragments.extend([("bold fg:#00aaff", "plan"), ("", "  ")])
             remaining -= 6
 
-        # Mode indicator (agent / shell) + model name + thinking indicator
+        # Mode indicator (agent / shell) + model name + thinking indicator.
+        # Degrade gracefully on narrow terminals:
+        #   full: "agent (model-name ○)"  → mid: "agent ○"  → bare: "agent"
         mode = str(self._mode)
         if self._mode == PromptMode.AGENT and self._model_name:
             thinking_dot = "●" if self._thinking else "○"
-            mode = f"{mode} ({self._model_name} {thinking_dot})"
+            mode_full = f"{mode} ({self._model_name} {thinking_dot})"
+            mode_mid = f"{mode} {thinking_dot}"
+            if _display_width(mode_full) <= remaining - 2:
+                mode = mode_full
+            elif _display_width(mode_mid) <= remaining - 2:
+                mode = mode_mid
+            # else: keep bare mode name — model_name and dot are both dropped
         fragments.extend([("", mode), ("", "  ")])
         remaining -= _display_width(mode) + 2
 
@@ -1829,8 +1848,8 @@ class CustomPromptSession:
         # Degrade gracefully on narrow terminals: full → cwd-only → truncated cwd → skip
         cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
         branch = _get_git_branch()
-        dirty, ahead, behind = _get_git_status()
         if branch:
+            dirty, ahead, behind = _get_git_status()
             branch = _truncate_right(branch, _MAX_BRANCH_COLS)
             badge = _format_git_badge(branch, dirty, ahead, behind)
             cwd_text = f"{cwd}  {badge}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, cast
@@ -11,6 +12,7 @@ import pytest
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import (
+    _GIT_STATUS_TTL,
     PROMPT_SYMBOL,
     CustomPromptSession,
     PromptMode,
@@ -19,6 +21,7 @@ from kimi_cli.ui.shell.prompt import (
     _display_width,
     _format_git_badge,
     _get_git_branch,
+    _get_git_status,
     _git_branch_state,
     _git_status_state,
     _shorten_cwd,
@@ -175,6 +178,18 @@ def test_truncate_right_cjk_exceeds_limit() -> None:
     assert _display_width(result) == 5
 
 
+def test_truncate_right_zero_max_cols_returns_empty() -> None:
+    # Contract: output width must be ≤ max_cols; when max_cols=0, must return ""
+    assert _truncate_right("hello", 0) == ""
+    assert _truncate_right("中文", 0) == ""
+
+
+def test_truncate_left_zero_max_cols_returns_empty() -> None:
+    # Contract: output width must be ≤ max_cols; when max_cols=0, must return ""
+    assert _truncate_left("hello", 0) == ""
+    assert _truncate_left("中文", 0) == ""
+
+
 # ── _shorten_cwd ──────────────────────────────────────────────────────────────
 
 
@@ -297,6 +312,44 @@ def test_bottom_toolbar_narrow_terminal_with_full_decoration(width: int, monkeyp
     )
 
 
+def test_mode_shows_full_with_model_name_on_wide_terminal(monkeypatch: Any) -> None:
+    """On a wide terminal the full mode string (with model name and thinking dot) is shown."""
+    session = _make_toolbar_session(model_name="fast-model")
+    session._thinking = False
+    lines = _render_toolbar_lines(session, 80, monkeypatch)
+    assert "fast-model" in lines[1], f"model name missing on wide terminal: {lines[1]!r}"
+    assert "○" in lines[1], f"thinking dot missing on wide terminal: {lines[1]!r}"
+
+
+def test_mode_drops_model_name_on_narrow_terminal(monkeypatch: Any) -> None:
+    """On a terminal too narrow for the full mode string, model name is dropped but
+    the thinking dot is still shown."""
+    # "agent (a-very-long-model-name-that-is-40-chars ○)" is ~50 cols;
+    # a 30-col terminal forces mid-level degradation.
+    long_model = "a-very-long-model-name-that-is-40-chars"
+    session = _make_toolbar_session(model_name=long_model)
+    session._thinking = True
+    lines = _render_toolbar_lines(session, 30, monkeypatch)
+    assert long_model not in lines[1], (
+        f"model name should be dropped on 30-col terminal: {lines[1]!r}"
+    )
+    assert "●" in lines[1], f"thinking dot should still appear at mid level: {lines[1]!r}"
+    assert _display_width(lines[1]) <= 30
+
+
+def test_mode_drops_model_name_and_dot_on_very_narrow_terminal(monkeypatch: Any) -> None:
+    """On a terminal too narrow even for 'agent ○', only the bare mode name is shown."""
+    # Force remaining to be tiny by using a very short model name but very narrow width.
+    # "agent ○" = 8 cols; needs 10 cols with spacing. Use width=8 to force bare mode.
+    session = _make_toolbar_session(model_name="m")
+    session._thinking = False
+    lines = _render_toolbar_lines(session, 8, monkeypatch)
+    assert "m" not in lines[1] or lines[1].startswith("agent"), (
+        f"bare mode expected on 8-col terminal: {lines[1]!r}"
+    )
+    assert _display_width(lines[1]) <= 8
+
+
 # ── Line 2 structural correctness ─────────────────────────────────────────────
 
 
@@ -376,6 +429,74 @@ def test_git_branch_change_terminates_in_flight_status_proc(monkeypatch: Any) ->
     assert _git_status_state.proc is None
     assert _git_status_state.timestamp == 0.0
     assert _git_branch_state.branch == "feature-branch"
+
+
+def test_git_status_stuck_subprocess_terminated_after_ttl(monkeypatch: Any) -> None:
+    """Regression: a subprocess that never exits (pipe buffer deadlock) must be
+    terminated after TTL to prevent the toolbar from being permanently frozen."""
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # subprocess never finishes (deadlocked)
+
+    spawn_time = time.monotonic() - _GIT_STATUS_TTL - 1.0  # spawned > TTL ago
+    monkeypatch.setattr(_git_status_state, "proc", mock_proc)
+    monkeypatch.setattr(_git_status_state, "timestamp", spawn_time)
+    monkeypatch.setattr(_git_status_state, "dirty", True)  # stale value preserved
+
+    result = _get_git_status()
+
+    # Must have been terminated
+    mock_proc.terminate.assert_called_once()
+    assert _git_status_state.proc is None
+    # timestamp reset to ~now so next spawn is delayed by one full TTL
+    assert time.monotonic() - _git_status_state.timestamp < 2.0
+    # Stale cached values are still returned (better than crashing)
+    assert result == (True, 0, 0)
+
+
+def test_git_status_recent_subprocess_not_terminated(monkeypatch: Any) -> None:
+    """A subprocess that is still within TTL must not be terminated prematurely."""
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # not finished yet but within TTL
+
+    monkeypatch.setattr(_git_status_state, "proc", mock_proc)
+    monkeypatch.setattr(_git_status_state, "timestamp", time.monotonic() - 1.0)  # only 1s old
+
+    _get_git_status()
+
+    mock_proc.terminate.assert_not_called()
+    assert _git_status_state.proc is mock_proc  # unchanged
+
+
+def test_git_status_not_called_when_branch_is_none(monkeypatch: Any) -> None:
+    """When not in a git repo (branch=None), _get_git_status must not be called.
+
+    Avoids spawning a subprocess that will immediately fail in non-git directories.
+    """
+    status_call_count = 0
+
+    def _fake_status() -> tuple[bool, int, int]:
+        nonlocal status_call_count
+        status_call_count += 1
+        return (False, 0, 0)
+
+    class _DummyOutput:
+        @staticmethod
+        def get_size() -> Any:
+            return SimpleNamespace(columns=80)
+
+    monkeypatch.setattr(
+        shell_prompt, "get_app_or_none", lambda: SimpleNamespace(output=_DummyOutput())
+    )
+    monkeypatch.setattr(shell_prompt, "_get_git_branch", lambda: None)
+    monkeypatch.setattr(shell_prompt, "_get_git_status", _fake_status)
+    monkeypatch.setattr(shell_prompt, "_shorten_cwd", lambda _: "~/proj")
+    _toast_queues["left"].clear()
+    _toast_queues["right"].clear()
+
+    prompt_session = _make_toolbar_session()
+    prompt_session._render_bottom_toolbar()
+
+    assert status_call_count == 0, "_get_git_status must not be called when branch is None"
 
 
 # ── Prompt layout (separator, running/idle message) ───────────────────────────
