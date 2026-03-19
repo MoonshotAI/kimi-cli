@@ -44,7 +44,9 @@ def install_plugin(
 
     spec = parse_plugin_json(source_plugin_json)
 
-    dest = plugins_dir / spec.name
+    dest = (plugins_dir / spec.name).resolve()
+    if not dest.is_relative_to(plugins_dir.resolve()):
+        raise PluginError(f"Invalid plugin name: {spec.name}")
     # For reinstall: remove old copy first
     if dest.exists():
         shutil.rmtree(dest)
