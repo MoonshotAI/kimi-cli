@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shlex
+import sys
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Iterable, Sequence
@@ -940,7 +941,8 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-j: newline",
     ]
     if clipboard_available:
-        tips.append("ctrl-v: paste clipboard")
+        paste_key = "cmd-v / ctrl-v" if sys.platform == "darwin" else "ctrl-v"
+        tips.append(f"{paste_key}: paste clipboard")
     tips.append("@: mention files")
     return tips
 
@@ -985,6 +987,7 @@ class CustomPromptSession:
         self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
         clipboard_available = is_clipboard_available()
+        self._clipboard_available = clipboard_available
         self._tips = _build_toolbar_tips(clipboard_available)
 
         history_entries = _load_history_entries(self._history_file)
@@ -1476,6 +1479,8 @@ class CustomPromptSession:
         buffer.insert_text(token_or_text)
 
     def _handle_bracketed_paste(self, event: KeyPressEvent) -> None:
+        if self._clipboard_available and self._try_paste_media(event):
+            return
         self._insert_pasted_text(event.current_buffer, event.data)
         event.app.invalidate()
 
