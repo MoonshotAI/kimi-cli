@@ -408,6 +408,57 @@ export function useSessionStream(
     );
   }, [setMessages]);
 
+  // Mark all non-terminal tool calls as interrupted and dismiss stale
+  // approval/question dialogs.  Called only when the backend confirms no
+  // active turn (idle / stopped / error), so it won't dismiss legitimate
+  // pending approvals on a busy session (e.g. after a tab switch).
+  const interruptStaleToolCalls = useCallback(() => {
+    pendingApprovalRequestsRef.current.clear();
+    pendingQuestionRequestsRef.current.clear();
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.variant !== "tool" || !msg.toolCall) return msg;
+        const state = msg.toolCall.state;
+        if (
+          state === "approval-requested" ||
+          state === "question-requested" ||
+          state === "input-streaming" ||
+          state === "input-available"
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
+              ...(state === "approval-requested" && msg.toolCall.approval
+                ? {
+                    approval: {
+                      ...msg.toolCall.approval,
+                      submitted: true,
+                      resolved: true,
+                      approved: false,
+                      response: "reject",
+                    },
+                  }
+                : {}),
+              ...(state === "question-requested" && msg.toolCall.question
+                ? {
+                    question: {
+                      ...msg.toolCall.question,
+                      submitted: true,
+                      resolved: true,
+                    },
+                  }
+                : {}),
+            },
+          };
+        }
+        return msg;
+      }),
+    );
+  }, [setMessages]);
+
   const applySessionStatus = useCallback(
     (payload: SessionStatusPayload) => {
       const normalized = normalizeSessionStatus(payload);
@@ -437,6 +488,7 @@ export function useSessionStream(
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
           completeStreamingMessages();
+          interruptStaleToolCalls();
           break;
         }
         case "stopped":
@@ -445,6 +497,7 @@ export function useSessionStream(
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
           completeStreamingMessages();
+          interruptStaleToolCalls();
 
           // Trigger onFirstTurnComplete only after at least one turn has completed
           if (hasTurnStartedRef.current && !firstTurnCompleteCalledRef.current) {
@@ -457,6 +510,7 @@ export function useSessionStream(
     },
     [
       completeStreamingMessages,
+      interruptStaleToolCalls,
       normalizeSessionStatus,
       onSessionStatus,
       setAwaitingFirstResponse,
