@@ -6,6 +6,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Shell: Show the current working directory, git branch, dirty state, and ahead/behind sync status directly in the prompt toolbar
 - Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
+- Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
 
 ## 1.24.0 (2026-03-18)
 
