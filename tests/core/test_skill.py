@@ -192,11 +192,8 @@ async def test_resolve_skills_roots_respects_override(tmp_path, monkeypatch):
     override_dir = tmp_path / "override"
     override_dir.mkdir()
 
-    # Ensure no plugins dir is discovered
-    monkeypatch.setattr(
-        "kimi_cli.plugin.manager.get_plugins_dir",
-        lambda: tmp_path / "no-plugins",
-    )
+    # Redirect share dir to tmp so ~/.kimi/plugins/ doesn't interfere
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
     roots = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(work_dir),
