@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Enable `trust_env` in aiohttp client session to respect proxy environment variables (`https_proxy`, `http_proxy`, etc.)
+
 ## 1.30.0 (2026-04-02)
 
 - Shell: Refine idle background completion auto-trigger — resumed shell sessions no longer auto-start a foreground turn from stale pending background notifications before the user sends a message, and fresh background completions now wait briefly while the user is actively typing to avoid stealing the prompt or breaking CJK IME composition

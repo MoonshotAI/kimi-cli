@@ -117,6 +117,35 @@ export OPENAI_API_KEY="sk-xxx"
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | 粘贴文本折叠的字符数阈值（默认 `1000`） |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | 粘贴文本折叠的行数阈值（默认 `15`） |
 
+### 代理环境变量
+
+Kimi Code CLI 支持通过标准的代理环境变量配置 HTTP/HTTPS 代理。这些变量会影响所有对外部 API 的 HTTP 请求（包括 Kimi API、OAuth 服务、网页抓取等）。
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `http_proxy` / `HTTP_PROXY` | HTTP 代理服务器地址 |
+| `https_proxy` / `HTTPS_PROXY` | HTTPS 代理服务器地址 |
+| `all_proxy` / `ALL_PROXY` | 所有协议的代理服务器地址 |
+| `no_proxy` / `NO_PROXY` | 不使用代理的地址列表（逗号分隔） |
+
+**设置代理示例**
+
+```sh
+# 设置 HTTPS 代理
+export https_proxy="http://proxy.example.com:8080"
+
+# 设置带有认证的代理
+export https_proxy="http://username:password@proxy.example.com:8080"
+
+# 对某些地址不使用代理
+export no_proxy="localhost,127.0.0.1,api.moonshot.cn"
+```
+
+::: tip 提示
+- 同时设置 `http_proxy` 和 `https_proxy` 可以确保所有类型的请求都经过代理
+- `no_proxy` 中的地址支持通配符，如 `.example.com` 会匹配所有 `example.com` 的子域名
+:::
+
 ### `KIMI_SHARE_DIR`
 
 自定义 Kimi Code CLI 的共享目录路径。默认路径为 `~/.kimi`，配置、会话、日志等运行时数据存储在此目录下。
