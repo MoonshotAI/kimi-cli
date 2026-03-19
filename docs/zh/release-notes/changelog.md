@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Web：在 aiohttp 客户端会话中启用 `trust_env`，以支持代理环境变量（`https_proxy`、`http_proxy` 等）
+
 ## 1.26.0 (2026-03-25)
 
 - Kosong：修复 Google GenAI 提供商在 `FunctionCall`/`FunctionResponse` 中包含 `id` 字段的问题——Gemini API 在包含 `id` 时返回 HTTP 400；从 wire 格式中移除该字段，同时保持内部 `tool_call_id` 跟踪不变
