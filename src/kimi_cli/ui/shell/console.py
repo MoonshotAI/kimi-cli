@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from rich.console import Console
 from rich.theme import Theme
 
@@ -29,4 +31,10 @@ NEUTRAL_MARKDOWN_THEME = Theme(
 )
 
 _NEUTRAL_MARKDOWN_THEME = NEUTRAL_MARKDOWN_THEME
-console = Console(highlight=False, theme=NEUTRAL_MARKDOWN_THEME)
+
+_force_utf8 = sys.platform == "win32"
+console = Console(
+    highlight=False,
+    theme=NEUTRAL_MARKDOWN_THEME,
+    **({"force_terminal": True} if _force_utf8 else {}),
+)
