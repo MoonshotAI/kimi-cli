@@ -76,7 +76,9 @@ def inject_config(plugin_dir: Path, spec: PluginSpec, values: dict[str, str]) ->
     if not spec.inject or not spec.config_file:
         return
 
-    config_path = plugin_dir / spec.config_file
+    config_path = (plugin_dir / spec.config_file).resolve()
+    if not config_path.is_relative_to(plugin_dir.resolve()):
+        raise PluginError(f"config_file escapes plugin directory: {spec.config_file}")
     if not config_path.exists():
         raise PluginError(f"Config file not found: {config_path}")
 
