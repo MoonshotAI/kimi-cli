@@ -523,9 +523,7 @@ def test_resolve_source_git_tree_url_passes_branch(tmp_path: Path, monkeypatch: 
         "subprocess.run",
         side_effect=_mock_git_clone(plugins=["my-plugin"]),
     ) as mock_run:
-        source, _ = _resolve_source(
-            "https://github.com/org/repo/tree/develop/my-plugin"
-        )
+        source, _ = _resolve_source("https://github.com/org/repo/tree/develop/my-plugin")
     # Verify --branch develop was passed to git clone
     cmd = mock_run.call_args[0][0]
     assert "--branch" in cmd
