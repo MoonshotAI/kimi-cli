@@ -281,82 +281,105 @@ def test_parse_plugin_json_ignores_unknown_fields(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "url, expected_clone, expected_subpath",
+    "url, expected_clone, expected_subpath, expected_branch",
     [
         # .git URLs — no subpath
-        ("https://host.com/org/repo.git", "https://host.com/org/repo.git", None),
-        ("http://host.com/org/repo.git", "http://host.com/org/repo.git", None),
+        ("https://host.com/org/repo.git", "https://host.com/org/repo.git", None, None),
+        ("http://host.com/org/repo.git", "http://host.com/org/repo.git", None, None),
         # .git URLs — with subpath
         (
             "https://host.com/org/repo.git/my-plugin",
             "https://host.com/org/repo.git",
             "my-plugin",
+            None,
         ),
         (
             "https://host.com/org/repo.git/packages/my-plugin",
             "https://host.com/org/repo.git",
             "packages/my-plugin",
+            None,
         ),
         # .git URLs — trailing slash (no subpath)
-        ("https://host.com/org/repo.git/", "https://host.com/org/repo.git", None),
+        ("https://host.com/org/repo.git/", "https://host.com/org/repo.git", None, None),
         # SSH URLs
-        ("git@github.com:org/repo.git", "git@github.com:org/repo.git", None),
+        ("git@github.com:org/repo.git", "git@github.com:org/repo.git", None, None),
         (
             "git@github.com:org/repo.git/my-plugin",
             "git@github.com:org/repo.git",
             "my-plugin",
+            None,
         ),
         # .github in hostname should not false-match
         (
             "https://github.com/my.github.io/tools.git/plugin",
             "https://github.com/my.github.io/tools.git",
             "plugin",
+            None,
         ),
         # GitHub short URLs — no subpath
-        ("https://github.com/org/repo", "https://github.com/org/repo", None),
+        ("https://github.com/org/repo", "https://github.com/org/repo", None, None),
         # GitHub short URLs — with subpath
         (
             "https://github.com/org/repo/my-plugin",
             "https://github.com/org/repo",
             "my-plugin",
+            None,
         ),
         (
             "https://github.com/org/repo/packages/my-plugin",
             "https://github.com/org/repo",
             "packages/my-plugin",
+            None,
         ),
         # GitHub short URLs — trailing slash
-        ("https://github.com/org/repo/", "https://github.com/org/repo", None),
-        # GitHub browser URL with tree/branch
+        ("https://github.com/org/repo/", "https://github.com/org/repo", None, None),
+        # GitHub browser URL with tree/branch — extracts branch
         (
             "https://github.com/org/repo/tree/main/my-plugin",
             "https://github.com/org/repo",
             "my-plugin",
+            "main",
         ),
         (
             "https://github.com/org/repo/tree/develop/packages/my-plugin",
             "https://github.com/org/repo",
             "packages/my-plugin",
+            "develop",
         ),
         # GitLab short URLs
         (
             "https://gitlab.com/org/repo/my-plugin",
             "https://gitlab.com/org/repo",
             "my-plugin",
+            None,
         ),
         (
             "https://gitlab.com/org/repo/tree/main/my-plugin",
             "https://gitlab.com/org/repo",
             "my-plugin",
+            "main",
+        ),
+        # GitLab /-/tree/ format
+        (
+            "https://gitlab.com/org/repo/-/tree/main/my-plugin",
+            "https://gitlab.com/org/repo",
+            "my-plugin",
+            "main",
         ),
         # Edge case: fewer than 2 path segments — returned as-is
-        ("https://github.com/org", "https://github.com/org", None),
+        ("https://github.com/org", "https://github.com/org", None, None),
     ],
 )
-def test_parse_git_url(url: str, expected_clone: str, expected_subpath: str | None):
-    clone_url, subpath = _parse_git_url(url)
+def test_parse_git_url(
+    url: str,
+    expected_clone: str,
+    expected_subpath: str | None,
+    expected_branch: str | None,
+):
+    clone_url, subpath, branch = _parse_git_url(url)
     assert clone_url == expected_clone
     assert subpath == expected_subpath
+    assert branch == expected_branch
 
 
 # --- _resolve_source git subpath tests ---

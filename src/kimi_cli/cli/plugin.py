@@ -12,22 +12,23 @@ from kimi_cli.plugin import PluginError
 cli = typer.Typer(help="Manage plugins.")
 
 
-def _parse_git_url(target: str) -> tuple[str, str | None]:
-    """Parse a git URL into (clone_url, subpath).
+def _parse_git_url(target: str) -> tuple[str, str | None, str | None]:
+    """Parse a git URL into (clone_url, subpath, branch).
 
     Splits .git URLs at the .git boundary. For GitHub/GitLab short URLs,
     treats the first two path segments as owner/repo and the rest as subpath.
-    Strips ``tree/{branch}/`` prefixes from browser-copied URLs.
+    Strips ``tree/{branch}/`` or ``-/tree/{branch}/`` prefixes from
+    browser-copied URLs and returns the branch name.
     """
     # Path 1: URL contains .git followed by / or end-of-string
     idx = target.find(".git/")
     if idx == -1 and target.endswith(".git"):
-        return target, None
+        return target, None, None
     if idx != -1:
         clone_url = target[: idx + 4]  # up to and including ".git"
         rest = target[idx + 5 :]  # after ".git/"
         subpath = rest.strip("/") or None
-        return clone_url, subpath
+        return clone_url, subpath, None
 
     # Path 2: GitHub/GitLab short URL (no .git)
     from urllib.parse import urlparse
@@ -35,18 +36,24 @@ def _parse_git_url(target: str) -> tuple[str, str | None]:
     parsed = urlparse(target)
     segments = [s for s in parsed.path.split("/") if s]
     if len(segments) < 2:
-        return target, None
+        return target, None, None
 
     owner_repo = "/".join(segments[:2])
     clone_url = f"{parsed.scheme}://{parsed.netloc}/{owner_repo}"
     rest_segments = segments[2:]
 
-    # Strip tree/{branch}/ prefix (single-segment branch only)
+    # GitLab uses /-/tree/{branch}/, strip leading "-"
+    if rest_segments and rest_segments[0] == "-":
+        rest_segments = rest_segments[1:]
+
+    # Strip tree/{branch}/ prefix and extract branch
+    branch: str | None = None
     if len(rest_segments) >= 2 and rest_segments[0] == "tree":
+        branch = rest_segments[1]
         rest_segments = rest_segments[2:]
 
     subpath = "/".join(rest_segments) or None
-    return clone_url, subpath
+    return clone_url, subpath, branch
 
 
 def _resolve_source(target: str) -> tuple[Path, Path | None]:
@@ -67,12 +74,16 @@ def _resolve_source(target: str) -> tuple[Path, Path | None]:
     ):
         import subprocess
 
-        clone_url, subpath = _parse_git_url(target)
+        clone_url, subpath, branch = _parse_git_url(target)
 
         tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
         typer.echo(f"Cloning {clone_url}...")
+        clone_cmd = ["git", "clone", "--depth", "1"]
+        if branch:
+            clone_cmd += ["--branch", branch]
+        clone_cmd += [clone_url, str(tmp / "repo")]
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", clone_url, str(tmp / "repo")],
+            clone_cmd,
             capture_output=True,
             text=True,
         )
