@@ -123,7 +123,9 @@ class KimiToolset:
             tool = self._tool_dict[tool_call.function.name]
 
             try:
-                arguments: JsonType = json.loads(tool_call.function.arguments or "{}")
+                arguments: JsonType = json.loads(
+                    tool_call.function.arguments or "{}", strict=False
+                )
             except json.JSONDecodeError as e:
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
