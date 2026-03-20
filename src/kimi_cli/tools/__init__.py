@@ -1,4 +1,5 @@
 import json
+import shutil
 from typing import cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
@@ -8,10 +9,21 @@ from kosong.utils.typing import JsonType
 from kimi_cli.utils.string import shorten_middle
 
 
+# Overhead chars in tool headline: bullet + "Used " + tool_name + " (" + ")"
+_HEADLINE_OVERHEAD = 25
+
+
 class SkipThisTool(Exception):
     """Raised when a tool decides to skip itself from the loading process."""
 
     pass
+
+
+def _get_argument_display_width() -> int:
+    """Calculate available width for the key argument based on terminal size."""
+    cols = shutil.get_terminal_size((80, 24)).columns
+    width = max(30, cols - _HEADLINE_OVERHEAD)
+    return width
 
 
 def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str) -> str | None:
@@ -98,7 +110,7 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
                 key_argument = "".join(content)
             else:
                 key_argument = json_content
-    key_argument = shorten_middle(key_argument, width=50)
+    key_argument = shorten_middle(key_argument, width=_get_argument_display_width())
     return key_argument
 
 

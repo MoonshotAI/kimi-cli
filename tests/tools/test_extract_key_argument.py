@@ -40,8 +40,9 @@ class TestExtractKeyArgument:
         long_url = "https://example.com/" + "a" * 200
         result = extract_key_argument(f'{{"url": "{long_url}"}}', "FetchURL")
         assert result is not None
-        # shorten_middle(text, width=50) -> text[:25] + "..." + text[-25:]  => length 53
-        assert len(result) <= 53
+        # Dynamic width based on terminal size; result should be truncated
+        assert len(result) < len(long_url)
+        assert "..." in result
 
     def test_unknown_tool_returns_raw_content(self):
         result = extract_key_argument('{"a": 1}', "UnknownTool")
