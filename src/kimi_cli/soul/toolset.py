@@ -265,9 +265,8 @@ class KimiToolset:
         """
         Load MCP tools from specified MCP configs.
 
-        Raises:
-            MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
-                connected.
+        Failed MCP server connections are logged as warnings and skipped.
+        The CLI continues with the successfully connected servers.
         """
         import fastmcp
         from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
@@ -357,11 +356,17 @@ class KimiToolset:
                     continue
 
             if failed_servers:
-                _toast_mcp("mcp connection failed")
-                raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
+                for name, error in failed_servers.items():
+                    logger.warning(
+                        "MCP server '{name}' failed to connect: {error}. "
+                        "Its tools will be unavailable.",
+                        name=name,
+                        error=error,
+                    )
+                _toast_mcp("mcp connection failed (partial)")
             if unauthorized_servers:
                 _toast_mcp("mcp authorization needed")
-            else:
+            elif not failed_servers:
                 _toast_mcp("mcp servers connected")
 
         for mcp_config in mcp_configs:

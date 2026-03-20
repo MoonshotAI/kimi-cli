@@ -108,8 +108,6 @@ class KimiCLI:
                 template is invalid.
             InvalidToolError(KimiCLIException, ValueError): When any tool cannot be loaded.
             MCPConfigError(KimiCLIException, ValueError): When any MCP configuration is invalid.
-            MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
-                connected.
         """
         if startup_progress is not None:
             startup_progress("Loading configuration...")
