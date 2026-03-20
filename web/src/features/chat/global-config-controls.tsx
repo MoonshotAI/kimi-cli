@@ -203,6 +203,7 @@ export function GlobalConfigControls({
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <Button
+        type="button"
         variant="ghost"
         size="icon"
         className="size-9 border-0"
@@ -217,6 +218,7 @@ export function GlobalConfigControls({
       <ModelSelector open={isSelectorOpen} onOpenChange={setIsSelectorOpen}>
         <ModelSelectorTrigger asChild>
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             className="h-9 max-w-[160px] justify-start gap-2 border-0"
@@ -308,6 +310,7 @@ export function GlobalConfigControls({
 
       {lastBusySkip && lastBusySkip.length > 0 ? (
         <Button
+          type="button"
           variant="outline"
           size="icon"
           className="size-9"
@@ -322,6 +325,7 @@ export function GlobalConfigControls({
 
       {error ? (
         <Button
+          type="button"
           variant="outline"
           size="icon"
           className="size-9"
