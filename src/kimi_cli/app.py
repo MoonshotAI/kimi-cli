@@ -172,6 +172,20 @@ class KimiCLI:
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
 
+        # Refresh plugin configs with fresh credentials (e.g. OAuth tokens)
+        try:
+            from kimi_cli.plugin.manager import (
+                collect_host_values,
+                get_plugins_dir,
+                refresh_plugin_configs,
+            )
+
+            host_values = collect_host_values(config, oauth)
+            if host_values.get("api_key"):
+                refresh_plugin_configs(get_plugins_dir(), host_values)
+        except Exception:
+            logger.debug("Failed to refresh plugin configs, skipping")
+
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
         if startup_progress is not None:

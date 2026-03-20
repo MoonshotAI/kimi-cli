@@ -199,20 +199,13 @@ def install_cmd(
     try:
         config = load_config()
 
-        # Collect host values from the current default provider
-        host_values: dict[str, str] = {}
-        if config.default_model and config.default_model in config.models:
-            model = config.models[config.default_model]
-            if model.provider in config.providers:
-                from kimi_cli.auth.oauth import OAuthManager
+        from kimi_cli.auth.oauth import OAuthManager
+        from kimi_cli.plugin.manager import collect_host_values
 
-                provider = config.providers[model.provider]
-                oauth = OAuthManager(config)
-                api_key = oauth.resolve_api_key(provider.api_key, provider.oauth)
-                host_values["api_key"] = api_key
-                host_values["base_url"] = provider.base_url
+        oauth = OAuthManager(config)
+        host_values = collect_host_values(config, oauth)
 
-        if not host_values or not host_values.get("api_key"):
+        if not host_values.get("api_key"):
             typer.echo(
                 "Warning: No LLM provider configured. "
                 "Plugins requiring API key injection will fail. "
