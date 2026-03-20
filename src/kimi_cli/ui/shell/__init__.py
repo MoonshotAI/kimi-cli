@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import shlex
 import time
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
@@ -59,6 +61,7 @@ class Shell:
         self._running_input_handler: Callable[[UserInput], None] | None = None
         self._running_interrupt_handler: Callable[[], None] | None = None
         self._exit_after_run = False
+        self._shell_cwd: Path = Path.cwd()
         self._available_slash_commands: dict[str, SlashCommand[Any]] = {
             **{cmd.name: cmd for cmd in soul.available_slash_commands},
             **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
@@ -361,18 +364,36 @@ class Shell:
                 )
                 return
 
-        # Check if user is trying to use 'cd' command
+        # Handle 'cd' command: update pseudo-cwd for subsequent commands
         stripped_cmd = command.strip()
         split_cmd: list[str] | None = None
         try:
             split_cmd = shlex.split(stripped_cmd)
         except ValueError as exc:
             logger.debug("Failed to parse shell command for cd check: {error}", error=exc)
-        if split_cmd and len(split_cmd) == 2 and split_cmd[0] == "cd":
-            console.print(
-                "[yellow]Warning: Directory changes are not preserved across command executions."
-                "[/yellow]"
-            )
+        if split_cmd and split_cmd[0] == "cd":
+            if len(split_cmd) == 1:
+                target = Path.home()
+            elif len(split_cmd) == 2:
+                raw_target = split_cmd[1]
+                if raw_target == "-":
+                    console.print("[yellow]cd - is not supported in shell mode.[/yellow]")
+                    return
+                target = Path(os.path.expanduser(raw_target))
+                if not target.is_absolute():
+                    target = self._shell_cwd / target
+            else:
+                console.print("[red]cd: too many arguments[/red]")
+                return
+            try:
+                target = target.resolve(strict=True)
+            except OSError:
+                console.print(f"[red]cd: no such directory: {split_cmd[1] if len(split_cmd) > 1 else '~'}[/red]")
+                return
+            if not target.is_dir():
+                console.print(f"[red]cd: not a directory: {target}[/red]")
+                return
+            self._shell_cwd = target
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
@@ -393,7 +414,9 @@ class Shell:
                 kwargs: dict[str, Any] = {}
                 if stderr is not None:
                     kwargs["stderr"] = stderr
-                proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
+                proc = await asyncio.create_subprocess_shell(
+                    command, env=get_clean_env(), cwd=self._shell_cwd, **kwargs
+                )
                 await proc.wait()
         except Exception as e:
             logger.exception("Failed to run shell command:")
