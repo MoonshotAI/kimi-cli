@@ -24,18 +24,24 @@ def acp_mcp_servers_to_mcp_config(mcp_servers: list[MCPServer]) -> MCPConfig:
 
 def _convert_acp_mcp_server(server: MCPServer) -> dict[str, Any]:
     """Convert an ACP MCP server to a dictionary representation."""
+    from kimi_cli.constant import USER_AGENT
+
     match server:
         case acp.schema.HttpMcpServer():
+            headers = {header.name: header.value for header in server.headers}
+            headers.setdefault("User-Agent", USER_AGENT)
             return {
                 "url": server.url,
                 "transport": "http",
-                "headers": {header.name: header.value for header in server.headers},
+                "headers": headers,
             }
         case acp.schema.SseMcpServer():
+            headers = {header.name: header.value for header in server.headers}
+            headers.setdefault("User-Agent", USER_AGENT)
             return {
                 "url": server.url,
                 "transport": "sse",
-                "headers": {header.name: header.value for header in server.headers},
+                "headers": headers,
             }
         case acp.schema.McpServerStdio():
             return {

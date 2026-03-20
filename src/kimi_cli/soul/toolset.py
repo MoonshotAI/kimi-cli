@@ -46,9 +46,23 @@ if TYPE_CHECKING:
     import mcp
     from fastmcp.client.client import CallToolResult
     from fastmcp.client.transports import ClientTransport
-    from fastmcp.mcp_config import MCPConfig
+    from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
     from kimi_cli.soul.agent import Runtime
+
+
+def _ensure_user_agent(server_config: RemoteMCPServer) -> None:
+    """Inject a default User-Agent header for HTTP/SSE MCP servers if none is set.
+
+    Some CDNs (e.g. CloudFlare) block requests without a User-Agent header,
+    causing MCP connections to fail silently.
+    """
+    has_ua = any(k.lower() == "user-agent" for k in server_config.headers)
+    if not has_ua:
+        from kimi_cli.constant import USER_AGENT
+
+        server_config.headers["User-Agent"] = USER_AGENT
+
 
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
 
@@ -370,8 +384,10 @@ class KimiToolset:
                 continue
 
             for server_name, server_config in mcp_config.mcpServers.items():
-                if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
-                    oauth_servers[server_name] = server_config.url
+                if isinstance(server_config, RemoteMCPServer):
+                    if server_config.auth == "oauth":
+                        oauth_servers[server_name] = server_config.url
+                    _ensure_user_agent(server_config)
 
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
