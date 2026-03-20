@@ -242,6 +242,26 @@ def create_app(
     # Mount static files as fallback (must be last)
     if STATIC_DIR.exists():
         application.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    else:
+        logger.warning(
+            f"Web UI static files not found at {STATIC_DIR}. "
+            "Run 'make build-web' to build the frontend, or install kimi-cli from PyPI."
+        )
+
+        @application.get("/")
+        async def _static_missing() -> HTMLResponse:
+            return HTMLResponse(
+                content=(
+                    "<html><body style='font-family:system-ui;max-width:600px;margin:80px auto;'>"
+                    "<h2>Kimi Code Web UI</h2>"
+                    "<p>The Web UI static files were not found.</p>"
+                    "<p>If you installed from source, run <code>make build-web</code> first.</p>"
+                    "<p>If you installed from PyPI, try <code>pip install --force-reinstall kimi-cli</code>.</p>"
+                    f"<p><small>Expected path: <code>{STATIC_DIR}</code></small></p>"
+                    "</body></html>"
+                ),
+                status_code=200,
+            )
 
     return application
 
