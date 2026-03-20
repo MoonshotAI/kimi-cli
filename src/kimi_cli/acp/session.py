@@ -411,6 +411,11 @@ class ACPSession:
                         kind="allow_always",
                     ),
                     acp.schema.PermissionOption(
+                        option_id="approve_yolo",
+                        name="Approve all (enable yolo mode)",
+                        kind="allow_always",
+                    ),
+                    acp.schema.PermissionOption(
                         option_id="reject",
                         name="Reject",
                         kind="reject_once",
@@ -435,6 +440,9 @@ class ACPSession:
                 elif option_id == "approve_for_session":
                     logger.debug("Permission granted for session: {action}", action=request.action)
                     request.resolve("approve_for_session")
+                elif option_id == "approve_yolo":
+                    logger.debug("Yolo mode enabled via: {action}", action=request.action)
+                    request.resolve("approve_yolo")
                 else:
                     logger.debug("Permission denied for: {action}", action=request.action)
                     request.resolve("reject")

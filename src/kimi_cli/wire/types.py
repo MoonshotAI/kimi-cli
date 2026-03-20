@@ -208,7 +208,7 @@ class ApprovalResponse(BaseModel):
     Indicates that an approval request has been resolved.
     """
 
-    type Kind = Literal["approve", "approve_for_session", "reject"]
+    type Kind = Literal["approve", "approve_for_session", "approve_yolo", "reject"]
 
     request_id: str
     """The ID of the resolved approval request."""

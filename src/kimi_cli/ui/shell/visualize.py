@@ -375,6 +375,7 @@ class _ApprovalRequestPanel:
         self.options: list[tuple[str, ApprovalResponse.Kind]] = [
             ("Approve once", "approve"),
             ("Approve for this session", "approve_for_session"),
+            ("Approve all (enable yolo mode)", "approve_yolo"),
             ("Reject, tell Kimi what to do instead", "reject"),
         ]
         self.selected_index = 0
@@ -1220,7 +1221,11 @@ class _LiveView:
         assert self._current_approval_request_panel is not None
         resp = self._current_approval_request_panel.get_selected_response()
         self._current_approval_request_panel.request.resolve(resp)
-        if resp == "approve_for_session":
+        if resp == "approve_yolo":
+            # yolo mode: approve all queued requests immediately
+            while self._approval_request_queue:
+                self._approval_request_queue.popleft().resolve("approve")
+        elif resp == "approve_for_session":
             to_remove_from_queue: list[ApprovalRequest] = []
             for request in self._approval_request_queue:
                 # approve all queued requests with the same action

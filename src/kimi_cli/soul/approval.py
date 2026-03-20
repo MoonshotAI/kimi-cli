@@ -22,7 +22,7 @@ class Request:
     display: list[DisplayBlock]
 
 
-type Response = Literal["approve", "approve_for_session", "reject"]
+type Response = Literal["approve", "approve_for_session", "approve_yolo", "reject"]
 
 
 class ApprovalState:
@@ -153,6 +153,10 @@ class Approval:
                 future.set_result(True)
             case "approve_for_session":
                 self._state.auto_approve_actions.add(request.action)
+                self._state.notify_change()
+                future.set_result(True)
+            case "approve_yolo":
+                self._state.yolo = True
                 self._state.notify_change()
                 future.set_result(True)
             case "reject":
