@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import re
 from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
@@ -18,6 +19,13 @@ from kosong.chat_provider import (
 )
 from kosong.tooling import Tool
 
+_ILLEGAL_HEADER_CHAR_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
+
+
+def _sanitize_header_value(value: str) -> str:
+    """Strip control characters that are illegal in HTTP header values."""
+    return _ILLEGAL_HEADER_CHAR_RE.sub("", value).strip()
+
 
 def create_openai_client(
     *,
@@ -25,7 +33,13 @@ def create_openai_client(
     base_url: str | None,
     client_kwargs: Mapping[str, Any],
 ) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+    kwargs = dict(client_kwargs)
+    if "default_headers" in kwargs and isinstance(kwargs["default_headers"], dict):
+        kwargs["default_headers"] = {
+            k: _sanitize_header_value(v) if isinstance(v, str) else v
+            for k, v in kwargs["default_headers"].items()
+        }
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:

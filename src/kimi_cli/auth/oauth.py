@@ -195,10 +195,13 @@ def get_device_id() -> str:
 def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
     try:
         value.encode("ascii")
-        return value.strip()
     except UnicodeEncodeError:
-        sanitized = value.encode("ascii", errors="ignore").decode("ascii").strip()
-        return sanitized or fallback
+        value = value.encode("ascii", errors="ignore").decode("ascii")
+    # Strip control characters that are illegal in HTTP header values
+    import re
+
+    value = re.sub(r"[\x00-\x08\x0a-\x1f\x7f]", "", value).strip()
+    return value or fallback
 
 
 def _common_headers() -> dict[str, str]:
