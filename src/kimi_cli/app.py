@@ -227,8 +227,11 @@ class KimiCLI:
 
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:
+        from kimi_cli.utils.proctitle import update_terminal_title_with_cwd
+
         original_cwd = KaosPath.cwd()
         await kaos.chdir(self._runtime.session.work_dir)
+        update_terminal_title_with_cwd(str(self._runtime.session.work_dir))
         try:
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -236,6 +239,7 @@ class KimiCLI:
                 yield
         finally:
             await kaos.chdir(original_cwd)
+            update_terminal_title_with_cwd(str(original_cwd))
 
     async def run(
         self,

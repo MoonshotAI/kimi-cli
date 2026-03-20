@@ -1,6 +1,20 @@
 from __future__ import annotations
 
+import os
 import sys
+from pathlib import Path
+
+_APP_NAME = "Kimi Code"
+
+
+def _shorten_home(path: str) -> str:
+    """Replace the home directory prefix with ``~``."""
+    home = str(Path.home())
+    if path == home:
+        return "~"
+    if path.startswith(home + os.sep):
+        return "~" + path[len(home):]
+    return path
 
 
 def set_process_title(title: str) -> None:
@@ -27,7 +41,18 @@ def set_terminal_title(title: str) -> None:
         pass
 
 
-def init_process_name(name: str = "Kimi Code") -> None:
-    """Initialize process name: OS process title + terminal tab title."""
+def update_terminal_title_with_cwd(cwd: str | None = None) -> None:
+    """Update the terminal title to include the current working directory.
+
+    Format: ``Kimi Code — ~/path/to/project``
+    """
+    if cwd is None:
+        cwd = os.getcwd()
+    short_cwd = _shorten_home(cwd)
+    set_terminal_title(f"{_APP_NAME} — {short_cwd}")
+
+
+def init_process_name(name: str = _APP_NAME) -> None:
+    """Initialize process name: OS process title + terminal tab title with cwd."""
     set_process_title(name)
-    set_terminal_title(name)
+    update_terminal_title_with_cwd()
