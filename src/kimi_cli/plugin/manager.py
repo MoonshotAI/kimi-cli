@@ -125,7 +125,7 @@ def refresh_plugin_configs(plugins_dir: Path, host_values: dict[str, str]) -> No
             spec = parse_plugin_json(plugin_json)
             if spec.inject and spec.config_file:
                 inject_config(child, spec, host_values)
-        except PluginError:
+        except Exception:
             continue
 
 
