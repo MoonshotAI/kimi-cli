@@ -512,3 +512,36 @@ def test_resolve_source_git_short_url_with_subpath(tmp_path: Path, monkeypatch: 
         source, _ = _resolve_source("https://github.com/org/repo/my-plugin")
     assert source.name == "my-plugin"
     assert (source / "plugin.json").exists()
+
+
+def test_resolve_source_git_tree_url_passes_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """tree/{branch}/ URL should pass --branch to git clone."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with patch(
+        "subprocess.run",
+        side_effect=_mock_git_clone(plugins=["my-plugin"]),
+    ) as mock_run:
+        source, _ = _resolve_source(
+            "https://github.com/org/repo/tree/develop/my-plugin"
+        )
+    # Verify --branch develop was passed to git clone
+    cmd = mock_run.call_args[0][0]
+    assert "--branch" in cmd
+    assert "develop" in cmd
+    assert source.name == "my-plugin"
+
+
+def test_resolve_source_git_no_branch_omits_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Non-tree URL should not pass --branch to git clone."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    with patch(
+        "subprocess.run",
+        side_effect=_mock_git_clone(plugins=["my-plugin"]),
+    ) as mock_run:
+        _resolve_source("https://github.com/org/repo.git/my-plugin")
+    cmd = mock_run.call_args[0][0]
+    assert "--branch" not in cmd
