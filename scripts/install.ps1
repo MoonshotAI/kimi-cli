@@ -1,7 +1,24 @@
 $ErrorActionPreference = "Stop"
 
 function Install-Uv {
-  Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" | Invoke-Expression
+  try {
+    Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" | Invoke-Expression
+  } catch {
+    Write-Host ""
+    Write-Host "ERROR: Failed to download or execute the uv installer." -ForegroundColor Red
+    Write-Host "  $_" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "This is usually caused by a restrictive PowerShell execution policy." -ForegroundColor Yellow
+    Write-Host "To fix this, run the following command first:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Then re-run the installation command." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Press any key to exit..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+  }
 }
 
 if (Get-Command uv -ErrorAction SilentlyContinue) {
@@ -12,7 +29,9 @@ if (Get-Command uv -ErrorAction SilentlyContinue) {
 }
 
 if (-not (Get-Command $uvBin -ErrorAction SilentlyContinue)) {
-  Write-Error "Error: uv not found after installation."
+  Write-Host "Error: uv not found after installation." -ForegroundColor Red
+  Write-Host "Press any key to exit..."
+  $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
   exit 1
 }
 
