@@ -31,13 +31,12 @@ def get_plugins_dir() -> Path:
 def collect_host_values(config: Config, oauth: OAuthManager) -> dict[str, str]:
     """Collect host values (api_key, base_url) for plugin injection.
 
-    Resolves credentials from the default provider, handling:
-    - Environment variable overrides (KIMI_API_KEY, OPENAI_API_KEY, etc.)
-    - OAuth access tokens (managed providers)
-    - Static API keys from config
+    Resolves credentials from the default provider, handling OAuth tokens
+    and static API keys.  Callers that run outside the normal startup flow
+    (e.g. ``install_cmd``) should apply environment-variable overrides
+    (``augment_provider_with_env_vars``) to the provider **before** calling
+    this function; the main app startup already does that.
     """
-    from kimi_cli.llm import augment_provider_with_env_vars
-
     values: dict[str, str] = {}
     if not config.default_model or config.default_model not in config.models:
         return values
@@ -45,8 +44,6 @@ def collect_host_values(config: Config, oauth: OAuthManager) -> dict[str, str]:
     if model.provider not in config.providers:
         return values
     provider = config.providers[model.provider]
-    # Apply env var overrides (KIMI_API_KEY, etc.) to provider
-    augment_provider_with_env_vars(provider, model)
     api_key = oauth.resolve_api_key(provider.api_key, provider.oauth)
     if api_key:
         values["api_key"] = api_key
