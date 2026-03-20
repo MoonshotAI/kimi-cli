@@ -6,6 +6,7 @@ from kaos import get_current_kaos
 from kaos.local import local_kaos
 from kosong.tooling import CallableTool2, ToolReturnValue
 
+from kimi_cli.acp.terminal import TerminalHandle, create_terminal
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import KimiToolset
@@ -80,23 +81,19 @@ class Terminal(CallableTool2[ShellParams]):
 
         timeout_seconds = float(params.timeout)
         timeout_label = f"{timeout_seconds:g}s"
-        terminal: acp.TerminalHandle | None = None
+        terminal: TerminalHandle | None = None
         exit_status: (
             acp.schema.WaitForTerminalExitResponse | acp.schema.TerminalExitStatus | None
         ) = None
         timed_out = False
 
         try:
-            term = await self._acp_conn.create_terminal(
+            terminal = await create_terminal(
+                self._acp_conn,
                 command=params.command,
                 session_id=self._acp_session_id,
                 output_byte_limit=builder.max_chars,
             )
-            # FIXME: update ACP sdk for the fix
-            assert isinstance(term, acp.TerminalHandle), (
-                "Expected TerminalHandle from create_terminal"
-            )
-            terminal = term
 
             acp_tool_call_id = get_current_acp_tool_call_id_or_none()
             assert acp_tool_call_id, "Expected to have an ACP tool call ID in context"

@@ -10,6 +10,8 @@ from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, St
 from kaos.local import local_kaos
 from kaos.path import KaosPath
 
+from kimi_cli.acp.terminal import TerminalHandle
+
 _DEFAULT_TERMINAL_OUTPUT_LIMIT = 50_000
 _DEFAULT_POLL_INTERVAL = 0.2
 _TRUNCATION_NOTICE = "[acp output truncated]\n"
@@ -46,7 +48,7 @@ class ACPProcess:
 
     def __init__(
         self,
-        terminal: acp.TerminalHandle,
+        terminal: TerminalHandle,
         *,
         poll_interval: float = _DEFAULT_POLL_INTERVAL,
     ) -> None:
