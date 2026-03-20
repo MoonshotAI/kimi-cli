@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from pydantic import SecretStr
 
 from kimi_cli.plugin import PluginError
 from kimi_cli.plugin.manager import (
+    collect_host_values,
     install_plugin,
     list_plugins,
     remove_plugin,
@@ -214,3 +217,66 @@ async def test_skill_discovery_includes_plugins_dir(tmp_path: Path, monkeypatch)
     roots = await resolve_skills_roots(KaosPath(str(tmp_path)))
     root_strs = [str(r) for r in roots]
     assert str(plugins_dir) in root_strs
+
+
+# --- collect_host_values tests ---
+
+
+def _make_config(*, api_key: str = "sk-test", oauth: object = None):
+    """Build a minimal mock Config with a default model and provider."""
+    provider = MagicMock()
+    provider.api_key = SecretStr(api_key)
+    provider.oauth = oauth
+    provider.base_url = "https://api.example.com/v1"
+
+    model = MagicMock()
+    model.provider = "test-provider"
+
+    config = MagicMock()
+    config.default_model = "test-model"
+    config.models = {"test-model": model}
+    config.providers = {"test-provider": provider}
+    return config
+
+
+def test_collect_host_values_static_key():
+    """Static API key (no OAuth) is returned correctly."""
+    config = _make_config(api_key="sk-static-key")
+    oauth = MagicMock()
+    oauth.resolve_api_key.return_value = "sk-static-key"
+
+    values = collect_host_values(config, oauth)
+    assert values["api_key"] == "sk-static-key"
+    assert values["base_url"] == "https://api.example.com/v1"
+
+
+def test_collect_host_values_oauth_token():
+    """OAuth token is returned when provider has OAuth configured."""
+    oauth_ref = MagicMock()
+    config = _make_config(api_key="", oauth=oauth_ref)
+    oauth = MagicMock()
+    oauth.resolve_api_key.return_value = "eyJ-oauth-token"
+
+    values = collect_host_values(config, oauth)
+    assert values["api_key"] == "eyJ-oauth-token"
+    oauth.resolve_api_key.assert_called_once()
+
+
+def test_collect_host_values_no_default_model():
+    """Returns empty dict when no default_model is configured."""
+    config = MagicMock()
+    config.default_model = None
+    oauth = MagicMock()
+
+    values = collect_host_values(config, oauth)
+    assert values == {}
+
+
+def test_collect_host_values_empty_key():
+    """Empty API key is not included in values."""
+    config = _make_config(api_key="")
+    oauth = MagicMock()
+    oauth.resolve_api_key.return_value = ""
+
+    values = collect_host_values(config, oauth)
+    assert "api_key" not in values
