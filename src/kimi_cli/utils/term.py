@@ -6,6 +6,8 @@ import re
 import sys
 import time
 
+from kimi_cli.utils.envvar import get_env_bool
+
 
 def ensure_new_line() -> None:
     """Ensure the next prompt starts at column 0 regardless of prior command output."""
@@ -48,6 +50,33 @@ def ensure_tty_sane() -> None:
     attrs[3] |= desired
     with contextlib.suppress(OSError):
         termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
+
+
+def maybe_disable_kitty_keyboard_protocol() -> None:
+    """Disable kitty keyboard protocol in terminals that send CSI-u sequences.
+
+    This is primarily a workaround for VS Code's integrated terminal, which can
+    emit CSI-u key sequences that prompt_toolkit doesn't parse.
+    """
+    if sys.platform == "win32":
+        return
+    if not sys.stdout.isatty() or not sys.stdin.isatty():
+        return
+    if not _should_disable_kitty_keyboard_protocol():
+        return
+
+    _write_escape("\x1b[<u")
+
+
+def _should_disable_kitty_keyboard_protocol() -> bool:
+    env_value = os.getenv("KIMI_CLI_DISABLE_KITTY_KEYS")
+    if env_value is not None:
+        return get_env_bool("KIMI_CLI_DISABLE_KITTY_KEYS", default=False)
+    return _is_vscode_terminal()
+
+
+def _is_vscode_terminal() -> bool:
+    return os.getenv("TERM_PROGRAM") == "vscode" or "VSCODE_IPC_HOOK_CLI" in os.environ
 
 
 def _cursor_position_unix() -> tuple[int, int] | None:
@@ -146,6 +175,11 @@ def _cursor_column_windows() -> int | None:
 
 def _write_newline() -> None:
     sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
+def _write_escape(value: str) -> None:
+    sys.stdout.write(value)
     sys.stdout.flush()
 
 

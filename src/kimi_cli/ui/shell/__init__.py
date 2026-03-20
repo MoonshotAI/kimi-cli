@@ -40,7 +40,7 @@ from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
-from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
+from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane, maybe_disable_kitty_keyboard_protocol
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 
 
@@ -197,37 +197,7 @@ class Shell:
                 return await self.soul.toggle_plan_mode_from_manual()
             return False
 
-        def _mcp_status_block(columns: int):
-            if not isinstance(self.soul, KimiSoul):
-                return None
-            snapshot = self.soul.status.mcp_status
-            if snapshot is None:
-                return None
-            return render_mcp_prompt(snapshot)
-
-        def _mcp_status_loading() -> bool:
-            if not isinstance(self.soul, KimiSoul):
-                return False
-            snapshot = self.soul.status.mcp_status
-            return bool(snapshot and snapshot.loading)
-
-        @dataclass
-        class _BgCountCache:
-            time: float = 0.0
-            count: int = 0
-
-        _bg_cache = _BgCountCache()
-
-        def _bg_task_count() -> int:
-            if not isinstance(self.soul, KimiSoul):
-                return 0
-            now = time.monotonic()
-            if now - _bg_cache.time < 1.0:
-                return _bg_cache.count
-            views = list_task_views(self.soul.runtime.background_tasks, active_only=True)
-            _bg_cache.count = sum(1 for v in views if v.spec.kind == "bash")
-            _bg_cache.time = now
-            return _bg_cache.count
+        maybe_disable_kitty_keyboard_protocol()
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
