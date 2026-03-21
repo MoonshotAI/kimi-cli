@@ -186,6 +186,14 @@ class KimiCLI:
         except Exception:
             logger.debug("Failed to refresh plugin configs, skipping")
 
+        if config.loop_control.compaction_plugin is not None:
+            from kimi_cli.plugin.compaction import resolve_plugin_compactor
+            from kimi_cli.plugin.manager import get_plugins_dir
+
+            runtime.compaction = resolve_plugin_compactor(
+                get_plugins_dir(), config.loop_control.compaction_plugin
+            )
+
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
         if startup_progress is not None:

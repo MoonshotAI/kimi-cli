@@ -28,8 +28,6 @@ from kimi_cli.notifications import (
     build_notification_message,
     extract_notification_ids,
 )
-from kimi_cli.plugin.compaction import resolve_plugin_compactor
-from kimi_cli.plugin.manager import get_plugins_dir
 from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
@@ -43,7 +41,6 @@ from kimi_cli.soul import (
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
     CompactionResult,
-    SimpleCompaction,
     estimate_text_tokens,
     should_auto_compact,
 )
@@ -132,7 +129,7 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = resolve_plugin_compactor(get_plugins_dir()) or SimpleCompaction()
+        self._compaction = agent.runtime.compaction
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -493,7 +490,7 @@ class KimiSoul:
             command_name = f"{FLOW_COMMAND_PREFIX}{skill.name}"
             if command_name in seen_names:
                 logger.warning(
-                    "Skipping prompt flow slash command /{name}: name already registered",
+                    "Skipping flow slash command /{name}: name already registered",
                     name=command_name,
                 )
                 continue

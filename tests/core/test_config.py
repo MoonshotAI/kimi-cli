@@ -31,6 +31,7 @@ def test_default_config_dump():
                 "max_steps_per_turn": 100,
                 "max_retries_per_step": 3,
                 "max_ralph_iterations": 0,
+                "compaction_plugin": None,
                 "reserved_context_size": 50000,
                 "compaction_trigger_ratio": 0.85,
             },
@@ -117,6 +118,11 @@ def test_load_config_compaction_trigger_ratio():
 def test_load_config_compaction_trigger_ratio_default():
     config = load_config_from_string("{}")
     assert config.loop_control.compaction_trigger_ratio == 0.85
+
+
+def test_load_config_compaction_plugin():
+    config = load_config_from_string('{"loop_control": {"compaction_plugin": "alpha-plugin"}}')
+    assert config.loop_control.compaction_plugin == "alpha-plugin"
 
 
 def test_load_config_compaction_trigger_ratio_too_low():

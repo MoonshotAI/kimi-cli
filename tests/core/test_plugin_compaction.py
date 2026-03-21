@@ -6,14 +6,21 @@ from pathlib import Path
 import pytest
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.message import Message
+from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.llm import LLM
 from kimi_cli.plugin import PluginError, parse_plugin_json
 from kimi_cli.plugin.compaction import resolve_plugin_compactor
-from kimi_cli.wire.types import TextPart
+from kimi_cli.soul import _current_wire
+from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.context import Context
+from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.wire import Wire
+from kimi_cli.wire.types import CompactionBegin, CompactionEnd, TextPart
 
 
 def _write_alpha_compactor(plugin_root: Path) -> None:
+    plugin_root.mkdir(parents=True, exist_ok=True)
     (plugin_root / "alpha_compaction.py").write_text(
         """
 from collections.abc import Sequence
@@ -22,21 +29,30 @@ from kosong.message import Message
 
 from kimi_cli.llm import LLM
 from kimi_cli.soul.compaction import CompactionResult
+from kimi_cli.wire.types import TextPart
 
 
 class AlphaCompaction:
     PLUGIN_MARK = "alpha"
 
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def compact(
         self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
     ) -> CompactionResult:
-        return CompactionResult(messages=messages, usage=None)
+        self.calls += 1
+        return CompactionResult(
+            messages=[Message(role="user", content=[TextPart(text="plugin compacted")])],
+            usage=None,
+        )
 """.strip(),
         encoding="utf-8",
     )
 
 
 def _write_beta_compactor(plugin_root: Path) -> None:
+    plugin_root.mkdir(parents=True, exist_ok=True)
     (plugin_root / "beta_compaction.py").write_text(
         """
 from collections.abc import Sequence
@@ -59,6 +75,53 @@ class BetaCompaction:
     )
 
 
+def _write_plugin(plugin_root: Path, *, name: str, entrypoint: str) -> None:
+    plugin_root.mkdir(parents=True, exist_ok=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": name,
+                "version": "1.0.0",
+                "compaction": {"entrypoint": entrypoint},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _make_soul(runtime: Runtime, tmp_path: Path) -> tuple[KimiSoul, Context]:
+    llm = LLM(
+        chat_provider=EchoChatProvider(),
+        max_context_size=100_000,
+        capabilities=set(),
+    )
+    runtime = Runtime(
+        config=runtime.config,
+        llm=llm,
+        session=runtime.session,
+        builtin_args=runtime.builtin_args,
+        denwa_renji=runtime.denwa_renji,
+        approval=runtime.approval,
+        labor_market=runtime.labor_market,
+        environment=runtime.environment,
+        notifications=runtime.notifications,
+        background_tasks=runtime.background_tasks,
+        skills=runtime.skills,
+        oauth=runtime.oauth,
+        additional_dirs=runtime.additional_dirs,
+        compaction=runtime.compaction,
+        role=runtime.role,
+    )
+    agent = Agent(
+        name="Plugin Compaction Agent",
+        system_prompt="System prompt.",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    context = Context(file_backend=tmp_path / "history.jsonl")
+    return KimiSoul(agent, context=context), context
+
+
 def test_parse_plugin_json_rejects_compaction_entrypoint_without_dot(tmp_path: Path) -> None:
     path = tmp_path / "plugin.json"
     path.write_text(
@@ -75,24 +138,22 @@ def test_parse_plugin_json_rejects_compaction_entrypoint_without_dot(tmp_path: P
         parse_plugin_json(path)
 
 
+def test_resolve_plugin_compactor_returns_none_when_unconfigured(tmp_path: Path) -> None:
+    assert resolve_plugin_compactor(tmp_path / "plugins", None) is None
+
+
 @pytest.mark.asyncio
-async def test_resolve_plugin_compactor_loads_entrypoint(tmp_path: Path) -> None:
+async def test_resolve_plugin_compactor_loads_selected_plugin(tmp_path: Path) -> None:
     plugins = tmp_path / "plugins"
     pdir = plugins / "alpha-plugin"
-    pdir.mkdir(parents=True)
     _write_alpha_compactor(pdir)
-    (pdir / "plugin.json").write_text(
-        json.dumps(
-            {
-                "name": "alpha-plugin",
-                "version": "1.0.0",
-                "compaction": {"entrypoint": "alpha_compaction.AlphaCompaction"},
-            }
-        ),
-        encoding="utf-8",
+    _write_plugin(
+        pdir,
+        name="alpha-plugin",
+        entrypoint="alpha_compaction.AlphaCompaction",
     )
 
-    comp = resolve_plugin_compactor(plugins)
+    comp = resolve_plugin_compactor(plugins, "alpha-plugin")
     assert comp is not None
     assert getattr(type(comp), "PLUGIN_MARK", None) == "alpha"
 
@@ -101,69 +162,66 @@ async def test_resolve_plugin_compactor_loads_entrypoint(tmp_path: Path) -> None
         max_context_size=1000,
         capabilities=set(),
     )
-    msgs = [Message(role="user", content=[TextPart(text="hi")])]
-    result = await comp.compact(msgs, llm)
-    assert result.messages == msgs
+    result = await comp.compact([Message(role="user", content=[TextPart(text="hi")])], llm)
+    assert result.messages[0].extract_text("\n") == "plugin compacted"
 
 
-def test_resolve_plugin_compactor_first_wins_sorted_order(tmp_path: Path) -> None:
+def test_resolve_plugin_compactor_requires_explicit_selected_plugin(tmp_path: Path) -> None:
     plugins = tmp_path / "plugins"
-    for name, writer in (
-        ("alpha-plugin", _write_alpha_compactor),
-        ("beta-plugin", _write_beta_compactor),
-    ):
-        pdir = plugins / name
-        pdir.mkdir(parents=True)
-        writer(pdir)
-        entry = "alpha_compaction.AlphaCompaction" if name == "alpha-plugin" else "beta_compaction.BetaCompaction"
-        (pdir / "plugin.json").write_text(
-            json.dumps(
-                {
-                    "name": name,
-                    "version": "1.0.0",
-                    "compaction": {"entrypoint": entry},
-                }
-            ),
-            encoding="utf-8",
-        )
+    alpha = plugins / "alpha-plugin"
+    beta = plugins / "beta-plugin"
+    _write_alpha_compactor(alpha)
+    _write_beta_compactor(beta)
+    _write_plugin(alpha, name="alpha-plugin", entrypoint="alpha_compaction.AlphaCompaction")
+    _write_plugin(beta, name="beta-plugin", entrypoint="beta_compaction.BetaCompaction")
 
-    comp = resolve_plugin_compactor(plugins)
+    comp = resolve_plugin_compactor(plugins, "beta-plugin")
     assert comp is not None
-    assert getattr(type(comp), "PLUGIN_MARK", None) == "alpha"
+    assert getattr(type(comp), "PLUGIN_MARK", None) == "beta"
 
 
-def test_resolve_plugin_compactor_returns_none_for_missing_dir(tmp_path: Path) -> None:
-    assert resolve_plugin_compactor(tmp_path / "nope") is None
+def test_resolve_plugin_compactor_raises_for_missing_plugin(tmp_path: Path) -> None:
+    (tmp_path / "plugins").mkdir()
+    with pytest.raises(PluginError, match="missing-plugin"):
+        resolve_plugin_compactor(tmp_path / "plugins", "missing-plugin")
 
 
-def test_resolve_plugin_compactor_skips_broken_plugin(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_compact_context_uses_runtime_plugin_compactor(
+    runtime: Runtime, tmp_path: Path
+) -> None:
     plugins = tmp_path / "plugins"
-    bad = plugins / "bad-plugin"
-    bad.mkdir(parents=True)
-    (bad / "plugin.json").write_text(
-        json.dumps(
-            {
-                "name": "bad-plugin",
-                "version": "1.0.0",
-                "compaction": {"entrypoint": "missing.Mod"},
-            }
-        ),
-        encoding="utf-8",
+    pdir = plugins / "alpha-plugin"
+    _write_alpha_compactor(pdir)
+    _write_plugin(
+        pdir,
+        name="alpha-plugin",
+        entrypoint="alpha_compaction.AlphaCompaction",
     )
-    good = plugins / "good-plugin"
-    good.mkdir(parents=True)
-    _write_alpha_compactor(good)
-    (good / "plugin.json").write_text(
-        json.dumps(
-            {
-                "name": "good-plugin",
-                "version": "1.0.0",
-                "compaction": {"entrypoint": "alpha_compaction.AlphaCompaction"},
-            }
-        ),
-        encoding="utf-8",
+    runtime.compaction = resolve_plugin_compactor(plugins, "alpha-plugin")
+    assert runtime.compaction is not None
+
+    soul, context = _make_soul(runtime, tmp_path)
+    await context.append_message(
+        [
+            Message(role="user", content=[TextPart(text="message 1")]),
+            Message(role="assistant", content=[TextPart(text="message 2")]),
+            Message(role="user", content=[TextPart(text="message 3")]),
+            Message(role="assistant", content=[TextPart(text="message 4")]),
+        ]
     )
 
-    comp = resolve_plugin_compactor(plugins)
-    assert comp is not None
-    assert getattr(type(comp), "PLUGIN_MARK", None) == "alpha"
+    wire = Wire()
+    wire_ui = wire.ui_side(merge=False)
+    token = _current_wire.set(wire)
+    try:
+        await soul.compact_context()
+    finally:
+        _current_wire.reset(token)
+
+    begin = await wire_ui.receive()
+    end = await wire_ui.receive()
+    assert isinstance(begin, CompactionBegin)
+    assert isinstance(end, CompactionEnd)
+    assert getattr(runtime.compaction, "calls", 0) == 1
+    assert [message.extract_text("\n") for message in context.history] == ["plugin compacted"]

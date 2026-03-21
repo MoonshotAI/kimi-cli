@@ -1,4 +1,4 @@
-"""Load optional compaction implementations from installed plugins."""
+"""Load an explicitly selected compaction implementation from an installed plugin."""
 
 from __future__ import annotations
 
@@ -6,20 +6,33 @@ import importlib
 import sys
 from contextlib import suppress
 from pathlib import Path
+from types import ModuleType
 from typing import cast
-
-from loguru import logger
 
 from kimi_cli.plugin import PLUGIN_JSON, PluginError, parse_plugin_json
 from kimi_cli.soul.compaction import Compaction
 
 
-def _purge_top_level_module(dotted: str) -> None:
-    """Drop a previously imported top-level package so another plugin can reuse the name."""
-    top, _, _ = dotted.partition(".")
-    doomed = [k for k in list(sys.modules) if k == top or k.startswith(f"{top}.")]
-    for key in doomed:
-        del sys.modules[key]
+def _purge_module_path(module_path: str) -> None:
+    prefixes = (module_path, f"{module_path}.")
+    for key in list(sys.modules):
+        if key == prefixes[0] or key.startswith(prefixes[1]):
+            del sys.modules[key]
+
+
+def _ensure_module_is_from_plugin(
+    module: ModuleType, *, module_path: str, plugin_dir: Path
+) -> None:
+    module_file = getattr(module, "__file__", None)
+    if module_file is None:
+        raise PluginError(f"Compaction module {module_path!r} has no file location")
+
+    resolved_module = Path(module_file).resolve()
+    resolved_plugin = plugin_dir.resolve()
+    if not resolved_module.is_relative_to(resolved_plugin):
+        raise PluginError(
+            f"Compaction module {module_path!r} resolved outside plugin directory {resolved_plugin}"
+        )
 
 
 def _instantiate_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
@@ -33,13 +46,16 @@ def _instantiate_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
         inserted = True
     else:
         inserted = False
+
     try:
-        _purge_top_level_module(module_path)
+        _purge_module_path(module_path)
         module = importlib.import_module(module_path)
     finally:
         if inserted:
             with suppress(ValueError):
                 sys.path.remove(plugin_root)
+
+    _ensure_module_is_from_plugin(module, module_path=module_path, plugin_dir=plugin_dir)
 
     try:
         cls = getattr(module, class_name)
@@ -55,46 +71,28 @@ def _instantiate_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
     return cast(Compaction, instance)
 
 
-def resolve_plugin_compactor(plugins_dir: Path) -> Compaction | None:
-    """Return the first successfully loaded compactor from installed plugins, if any.
+def resolve_plugin_compactor(plugins_dir: Path, plugin_name: str | None) -> Compaction | None:
+    """Load one explicitly selected plugin compactor.
 
-    Plugins are scanned in sorted directory order. If more than one declares ``compaction``,
-    only the first loaded implementation is used; others are skipped with a warning.
+    Returns ``None`` when no plugin compactor is configured.
+    Raises ``PluginError`` when the selected plugin is missing, invalid, or does not declare
+    a compaction entrypoint.
     """
-    if not plugins_dir.is_dir():
+    if plugin_name is None:
         return None
+    if not plugins_dir.is_dir():
+        raise PluginError(f"Plugins directory not found: {plugins_dir}")
 
-    chosen: Compaction | None = None
-    for child in sorted(plugins_dir.iterdir()):
-        plugin_json = child / PLUGIN_JSON
-        if not child.is_dir() or not plugin_json.is_file():
-            continue
-        try:
-            spec = parse_plugin_json(plugin_json)
-        except PluginError:
-            continue
-        if spec.compaction is None:
-            continue
-        if chosen is not None:
-            logger.warning(
-                "Ignoring compaction from plugin {plugin}: already using another plugin compactor",
-                plugin=spec.name,
-            )
-            continue
-        try:
-            chosen = _instantiate_compactor(child, spec.compaction.entrypoint)
-        except Exception:
-            logger.warning(
-                "Failed to load compaction from plugin {plugin}: {entrypoint}",
-                plugin=spec.name,
-                entrypoint=spec.compaction.entrypoint,
-                exc_info=True,
-            )
-            continue
-        logger.info(
-            "Loaded plugin compaction: {entrypoint} (plugin {plugin})",
-            entrypoint=spec.compaction.entrypoint,
-            plugin=spec.name,
-        )
+    plugin_dir = (plugins_dir / plugin_name).resolve()
+    if not plugin_dir.is_relative_to(plugins_dir.resolve()):
+        raise PluginError(f"Invalid plugin name: {plugin_name}")
 
-    return chosen
+    plugin_json = plugin_dir / PLUGIN_JSON
+    if not plugin_dir.is_dir() or not plugin_json.is_file():
+        raise PluginError(f"Plugin {plugin_name!r} not found in {plugins_dir}")
+
+    spec = parse_plugin_json(plugin_json)
+    if spec.compaction is None:
+        raise PluginError(f"Plugin {plugin_name!r} does not declare compaction.entrypoint")
+
+    return _instantiate_compactor(plugin_dir, spec.compaction.entrypoint)
