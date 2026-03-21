@@ -134,6 +134,11 @@ class _ContentBlock:
         self.raw_text = ""
 
     def compose(self) -> RenderableType:
+        if self.is_think and self.raw_text:
+            return BulletColumns(
+                Markdown(self.raw_text, style="grey50 italic"),
+                bullet_style="grey50",
+            )
         return self._spinner
 
     def compose_final(self) -> RenderableType:
