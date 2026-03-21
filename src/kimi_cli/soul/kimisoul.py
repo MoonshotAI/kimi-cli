@@ -28,6 +28,8 @@ from kimi_cli.notifications import (
     build_notification_message,
     extract_notification_ids,
 )
+from kimi_cli.plugin.compaction import resolve_plugin_compactor
+from kimi_cli.plugin.manager import get_plugins_dir
 from kimi_cli.skill import Skill, read_skill_text
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode, parse_choice
 from kimi_cli.soul import (
@@ -130,7 +132,7 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._compaction = resolve_plugin_compactor(get_plugins_dir()) or SimpleCompaction()
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:

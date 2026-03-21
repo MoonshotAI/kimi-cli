@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PluginError(Exception):
@@ -27,6 +27,23 @@ class PluginToolSpec(BaseModel):
     parameters: dict[str, object] = Field(default_factory=dict)
 
 
+class PluginCompactionSpec(BaseModel):
+    """In-process compaction hook: a class importable from the plugin directory."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entrypoint: str
+    """Dotted path ``module.Class`` resolved with the plugin directory on ``sys.path``."""
+
+    @field_validator("entrypoint")
+    @classmethod
+    def entrypoint_must_include_class(cls, value: str) -> str:
+        cleaned = value.strip()
+        if "." not in cleaned:
+            raise ValueError("compaction.entrypoint must look like 'module.ClassName'")
+        return cleaned
+
+
 class PluginSpec(BaseModel):
     """Parsed representation of a plugin.json file."""
 
@@ -38,6 +55,7 @@ class PluginSpec(BaseModel):
     config_file: str | None = None
     inject: dict[str, str] = Field(default_factory=dict)
     tools: list[PluginToolSpec] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
+    compaction: PluginCompactionSpec | None = None
     runtime: PluginRuntime | None = None
 
 
