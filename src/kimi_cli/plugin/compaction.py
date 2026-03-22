@@ -80,6 +80,8 @@ def resolve_plugin_compactor(plugins_dir: Path, plugin_name: str | None) -> Comp
     """
     if plugin_name is None:
         return None
+    if plugin_name == "":
+        raise PluginError("Plugin name cannot be empty")
     if not plugins_dir.is_dir():
         raise PluginError(f"Plugins directory not found: {plugins_dir}")
 

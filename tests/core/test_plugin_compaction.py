@@ -136,6 +136,12 @@ def test_resolve_plugin_compactor_returns_none_when_unconfigured(tmp_path: Path)
     assert resolve_plugin_compactor(tmp_path / "plugins", None) is None
 
 
+def test_resolve_plugin_compactor_rejects_empty_plugin_name(tmp_path: Path) -> None:
+    (tmp_path / "plugins").mkdir()
+    with pytest.raises(PluginError, match="Plugin name cannot be empty"):
+        resolve_plugin_compactor(tmp_path / "plugins", "")
+
+
 @pytest.mark.asyncio
 async def test_resolve_plugin_compactor_loads_selected_plugin(tmp_path: Path) -> None:
     plugins = tmp_path / "plugins"

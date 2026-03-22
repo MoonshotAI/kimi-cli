@@ -128,8 +128,21 @@ class KimiCLI:
         selected_model = model_name or config.default_model
         if selected_model and selected_model in config.models:
             model = config.models[selected_model]
-            provider = config.providers[model.provider]
+            provider = config.providers.get(model.provider)
+            if provider is None:
+                logger.warning(
+                    "Provider {provider!r} for model {model!r} missing; using placeholder",
+                    provider=model.provider,
+                    model=selected_model,
+                )
+                model = LLMModel(provider="", model="", max_context_size=100_000)
+                provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
         else:
+            if selected_model:
+                logger.warning(
+                    "Model {model!r} not found in config, using placeholder",
+                    model=selected_model,
+                )
             model = LLMModel(provider="", model="", max_context_size=100_000)
             provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
 
@@ -156,28 +169,43 @@ class KimiCLI:
 
         compaction_llm = None
         if config.loop_control.compaction_model is not None:
-            compaction_model = config.models[config.loop_control.compaction_model]
-            compaction_provider = config.providers[compaction_model.provider]
-            env_overrides.update(
-                augment_provider_with_env_vars(compaction_provider, compaction_model)
-            )
-            compaction_llm = create_llm(
-                compaction_provider,
-                compaction_model,
-                thinking=thinking,
-                session_id=session.id,
-                oauth=oauth,
-            )
-            if compaction_llm is not None:
-                logger.info(
-                    "Using compaction LLM model: {model}",
-                    model=compaction_model,
+            compaction_model_name = config.loop_control.compaction_model
+            compaction_model = config.models.get(compaction_model_name)
+            if compaction_model is None:
+                logger.warning(
+                    "Compaction model {model!r} not found in config, skipping",
+                    model=compaction_model_name,
                 )
+            else:
+                compaction_provider = config.providers.get(compaction_model.provider)
+                if compaction_provider is None:
+                    logger.warning(
+                        "Compaction provider {provider!r} not found in config, skipping",
+                        provider=compaction_model.provider,
+                    )
+                else:
+                    env_overrides.update(
+                        augment_provider_with_env_vars(compaction_provider, compaction_model)
+                    )
+                    compaction_llm = create_llm(
+                        compaction_provider,
+                        compaction_model,
+                        thinking=thinking,
+                        session_id=session.id,
+                        oauth=oauth,
+                    )
+                    if compaction_llm is not None:
+                        logger.info(
+                            "Using compaction LLM model: {model}",
+                            model=compaction_model,
+                        )
 
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
-        runtime = await Runtime.create(config, oauth, llm, compaction_llm, session, yolo, skills_dir)
+        runtime = await Runtime.create(
+            config, oauth, llm, compaction_llm, session, yolo, skills_dir
+        )
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
 
