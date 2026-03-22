@@ -30,6 +30,7 @@ class SessionState(BaseModel):
     approval: ApprovalStateData = Field(default_factory=ApprovalStateData)
     dynamic_subagents: list[DynamicSubagentSpec] = Field(default_factory=_default_dynamic_subagents)
     additional_dirs: list[str] = Field(default_factory=list)
+    custom_title: str | None = None
     plan_mode: bool = False
     plan_session_id: str | None = None
     plan_slug: str | None = None

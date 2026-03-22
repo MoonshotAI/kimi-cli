@@ -87,6 +87,10 @@ class Session:
         self.title = f"Untitled ({self.id})"
         self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
 
+        if self.state.custom_title:
+            self.title = f"{self.state.custom_title} ({self.id})"
+            return
+
         try:
             async for record in self.wire_file.iter_records():
                 wire_msg = record.to_wire_message()
