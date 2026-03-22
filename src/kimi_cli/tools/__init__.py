@@ -5,7 +5,7 @@ import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kaos.path import KaosPath
 from kosong.utils.typing import JsonType
 
-from kimi_cli.utils.string import shorten_middle
+from kimi_cli.utils.string import shorten_middle, shorten_path
 
 
 class SkipThisTool(Exception):
@@ -62,15 +62,15 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
         case "ReadFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            key_argument = _normalize_path(str(curr_args["path"]))
+            key_argument = shorten_path(_normalize_path(str(curr_args["path"])), width=50)
         case "ReadMediaFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            key_argument = _normalize_path(str(curr_args["path"]))
+            key_argument = shorten_path(_normalize_path(str(curr_args["path"])), width=50)
         case "Glob":
             if not isinstance(curr_args, dict) or not curr_args.get("pattern"):
                 return None
-            key_argument = str(curr_args["pattern"])
+            key_argument = shorten_path(str(curr_args["pattern"]), width=50)
         case "Grep":
             if not isinstance(curr_args, dict) or not curr_args.get("pattern"):
                 return None
@@ -78,11 +78,11 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
         case "WriteFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            key_argument = _normalize_path(str(curr_args["path"]))
+            key_argument = shorten_path(_normalize_path(str(curr_args["path"])), width=50)
         case "StrReplaceFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None
-            key_argument = _normalize_path(str(curr_args["path"]))
+            key_argument = shorten_path(_normalize_path(str(curr_args["path"])), width=50)
         case "SearchWeb":
             if not isinstance(curr_args, dict) or not curr_args.get("query"):
                 return None
@@ -98,7 +98,9 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
                 key_argument = "".join(content)
             else:
                 key_argument = json_content
-    key_argument = shorten_middle(key_argument, width=50)
+    # Apply shortening for non-path arguments (paths are already shortened above)
+    if tool_name not in {"ReadFile", "ReadMediaFile", "WriteFile", "StrReplaceFile", "Glob"}:
+        key_argument = shorten_middle(key_argument, width=50)
     return key_argument
 
 
