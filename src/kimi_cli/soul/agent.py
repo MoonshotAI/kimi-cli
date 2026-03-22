@@ -96,7 +96,6 @@ class Runtime:
         session: Session,
         yolo: bool,
         skills_dir: KaosPath | None = None,
-        debug_hooks: bool = False,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
@@ -173,7 +172,7 @@ class Runtime:
 
         # Initialize hook discovery and manager (AgentHooks standard)
         hook_discovery = HookDiscovery(session.work_dir)
-        hook_manager = HookManager(hook_discovery, None, debug_hooks)
+        hook_manager = HookManager(hook_discovery, None)
 
         session_start_time = datetime.now()
 
