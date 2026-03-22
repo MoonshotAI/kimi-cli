@@ -78,6 +78,8 @@ class LoopControl(BaseModel):
     """Maximum number of retries in one step"""
     max_ralph_iterations: int = Field(default=0, ge=-1)
     """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
+    compaction_model: str | None = Field(default=None)
+    """Optional model name to use for context compaction."""
     compaction_plugin: str | None = Field(default=None)
     """Installed plugin name to use for context compaction."""
     reserved_context_size: int = Field(default=50_000, ge=1000)
@@ -209,6 +211,13 @@ class Config(BaseModel):
     def validate_model(self) -> Self:
         if self.default_model and self.default_model not in self.models:
             raise ValueError(f"Default model {self.default_model} not found in models")
+        if (
+            self.loop_control.compaction_model
+            and self.loop_control.compaction_model not in self.models
+        ):
+            raise ValueError(
+                f"Compaction model {self.loop_control.compaction_model} not found in models"
+            )
         for model in self.models.values():
             if model.provider not in self.providers:
                 raise ValueError(f"Provider {model.provider} not found in providers")

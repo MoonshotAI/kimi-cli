@@ -8,6 +8,7 @@ from kosong.chat_provider.echo import EchoChatProvider
 from kosong.message import Message
 from kosong.tooling.empty import EmptyToolset
 
+from kimi_cli.config import LLMModel
 from kimi_cli.llm import LLM
 from kimi_cli.plugin import PluginError, parse_plugin_json
 from kimi_cli.plugin.compaction import resolve_plugin_compactor
@@ -37,13 +38,15 @@ class AlphaCompaction:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.last_model = None
 
     async def compact(
         self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
     ) -> CompactionResult:
         self.calls += 1
+        self.last_model = llm.model_config.model if llm.model_config is not None else None
         return CompactionResult(
-            messages=[Message(role="user", content=[TextPart(text="plugin compacted")])],
+            messages=[Message(role="user", content=[TextPart(text=f"plugin compacted via {self.last_model}")])],
             usage=None,
         )
 """.strip(),
@@ -89,15 +92,23 @@ def _write_plugin(plugin_root: Path, *, name: str, entrypoint: str) -> None:
     )
 
 
-def _make_soul(runtime: Runtime, tmp_path: Path) -> tuple[KimiSoul, Context]:
-    llm = LLM(
+def _make_test_llm(model_name: str) -> LLM:
+    return LLM(
         chat_provider=EchoChatProvider(),
         max_context_size=100_000,
         capabilities=set(),
+        model_config=LLMModel(
+            provider="_echo",
+            model=model_name,
+            max_context_size=100_000,
+        ),
     )
+
+
+def _make_soul(runtime: Runtime, tmp_path: Path) -> tuple[KimiSoul, Context]:
     runtime = Runtime(
         config=runtime.config,
-        llm=llm,
+        llm=runtime.llm,
         session=runtime.session,
         builtin_args=runtime.builtin_args,
         denwa_renji=runtime.denwa_renji,
@@ -109,6 +120,7 @@ def _make_soul(runtime: Runtime, tmp_path: Path) -> tuple[KimiSoul, Context]:
         skills=runtime.skills,
         oauth=runtime.oauth,
         additional_dirs=runtime.additional_dirs,
+        compaction_llm=runtime.compaction_llm,
         compaction=runtime.compaction,
         role=runtime.role,
     )
@@ -157,13 +169,9 @@ async def test_resolve_plugin_compactor_loads_selected_plugin(tmp_path: Path) ->
     assert comp is not None
     assert getattr(type(comp), "PLUGIN_MARK", None) == "alpha"
 
-    llm = LLM(
-        chat_provider=EchoChatProvider(),
-        max_context_size=1000,
-        capabilities=set(),
-    )
+    llm = _make_test_llm("main-chat")
     result = await comp.compact([Message(role="user", content=[TextPart(text="hi")])], llm)
-    assert result.messages[0].extract_text("\n") == "plugin compacted"
+    assert result.messages[0].extract_text("\n") == "plugin compacted via main-chat"
 
 
 def test_resolve_plugin_compactor_requires_explicit_selected_plugin(tmp_path: Path) -> None:
@@ -198,6 +206,8 @@ async def test_compact_context_uses_runtime_plugin_compactor(
         name="alpha-plugin",
         entrypoint="alpha_compaction.AlphaCompaction",
     )
+    runtime.llm = _make_test_llm("main-chat")
+    runtime.compaction_llm = _make_test_llm("compact-chat")
     runtime.compaction = resolve_plugin_compactor(plugins, "alpha-plugin")
     assert runtime.compaction is not None
 
@@ -224,4 +234,7 @@ async def test_compact_context_uses_runtime_plugin_compactor(
     assert isinstance(begin, CompactionBegin)
     assert isinstance(end, CompactionEnd)
     assert getattr(runtime.compaction, "calls", 0) == 1
-    assert [message.extract_text("\n") for message in context.history] == ["plugin compacted"]
+    assert getattr(runtime.compaction, "last_model", None) == "compact-chat"
+    assert [message.extract_text("\n") for message in context.history] == [
+        "plugin compacted via compact-chat"
+    ]

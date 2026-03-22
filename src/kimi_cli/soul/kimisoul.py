@@ -793,13 +793,14 @@ class KimiSoul:
             ChatProviderError: When the chat provider returns an error.
         """
 
-        chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_llm = self._runtime.compaction_llm or self._runtime.llm
+        chat_provider = compaction_llm.chat_provider if compaction_llm is not None else None
 
         async def _run_compaction_once() -> CompactionResult:
-            if self._runtime.llm is None:
+            if compaction_llm is None:
                 raise LLMNotSet()
             return await self._compaction.compact(
-                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+                self._context.history, compaction_llm, custom_instruction=custom_instruction
             )
 
         @tenacity.retry(
