@@ -52,21 +52,6 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
         redirect_stderr_to_logger()
 
 
-def _resolve_model_and_provider(
-    config: Config, model_name: str | None
-) -> tuple[LLMModel, LLMProvider]:
-    if model_name is None and config.default_model:
-        model = config.models[config.default_model]
-        return model, config.providers[model.provider]
-    if model_name is not None and model_name in config.models:
-        model = config.models[model_name]
-        return model, config.providers[model.provider]
-    return (
-        LLMModel(provider="", model="", max_context_size=100_000),
-        LLMProvider(type="kimi", base_url="", api_key=SecretStr("")),
-    )
-
-
 class KimiCLI:
     @staticmethod
     async def create(
@@ -140,7 +125,13 @@ class KimiCLI:
 
         oauth = OAuthManager(config)
 
-        model, provider = _resolve_model_and_provider(config, model_name)
+        selected_model = model_name or config.default_model
+        if selected_model and selected_model in config.models:
+            model = config.models[selected_model]
+            provider = config.providers[model.provider]
+        else:
+            model = LLMModel(provider="", model="", max_context_size=100_000)
+            provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
 
         # try overwrite with environment variables
         env_overrides = augment_provider_with_env_vars(provider, model)
@@ -165,9 +156,8 @@ class KimiCLI:
 
         compaction_llm = None
         if config.loop_control.compaction_model is not None:
-            compaction_model, compaction_provider = _resolve_model_and_provider(
-                config, config.loop_control.compaction_model
-            )
+            compaction_model = config.models[config.loop_control.compaction_model]
+            compaction_provider = config.providers[compaction_model.provider]
             env_overrides.update(
                 augment_provider_with_env_vars(compaction_provider, compaction_model)
             )
@@ -187,15 +177,7 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
-        runtime = await Runtime.create(
-            config,
-            oauth,
-            llm,
-            compaction_llm,
-            session,
-            yolo,
-            skills_dir,
-        )
+        runtime = await Runtime.create(config, oauth, llm, compaction_llm, session, yolo, skills_dir)
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
 

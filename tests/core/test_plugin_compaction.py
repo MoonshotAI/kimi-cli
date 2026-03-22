@@ -106,24 +106,6 @@ def _make_test_llm(model_name: str) -> LLM:
 
 
 def _make_soul(runtime: Runtime, tmp_path: Path) -> tuple[KimiSoul, Context]:
-    runtime = Runtime(
-        config=runtime.config,
-        llm=runtime.llm,
-        session=runtime.session,
-        builtin_args=runtime.builtin_args,
-        denwa_renji=runtime.denwa_renji,
-        approval=runtime.approval,
-        labor_market=runtime.labor_market,
-        environment=runtime.environment,
-        notifications=runtime.notifications,
-        background_tasks=runtime.background_tasks,
-        skills=runtime.skills,
-        oauth=runtime.oauth,
-        additional_dirs=runtime.additional_dirs,
-        compaction_llm=runtime.compaction_llm,
-        compaction=runtime.compaction,
-        role=runtime.role,
-    )
     agent = Agent(
         name="Plugin Compaction Agent",
         system_prompt="System prompt.",

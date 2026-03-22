@@ -195,7 +195,6 @@ class Runtime:
             skills=skills_by_name,
             additional_dirs=additional_dirs,
             compaction_llm=compaction_llm,
-            compaction=SimpleCompaction(),
             role="root",
         )
 
