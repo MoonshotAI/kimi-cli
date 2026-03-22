@@ -541,6 +541,165 @@ async def mcp(app: Shell, args: str):
             live.update(render_mcp_console(snapshot), refresh=True)
 
 
+@registry.command
+async def loop(app: Shell, args: str):
+    """Create a repeating task that runs at a specified interval.
+
+    Usage: /loop <interval> <prompt>
+
+    Examples:
+      /loop 5m check for new emails
+      /loop 30s monitor the build status
+      /loop 1h summarize git commits
+
+    Intervals: s (seconds), m (minutes), h (hours), d (days)
+    Minimum interval is 60 seconds.
+    """
+    from rich.table import Table
+
+    from kimi_cli.ui.shell.console import console
+    from kimi_cli.ui.shell.loop_scheduler import get_loop_scheduler
+
+    args = args.strip()
+    if not args:
+        # Show active loops
+        scheduler = get_loop_scheduler(app)
+        tasks = scheduler.list_tasks(active_only=True)
+
+        if not tasks:
+            console.print("[yellow]No active loop tasks.[/yellow]")
+            console.print("[dim]Use /loop <interval> <prompt> to create one.[/dim]")
+            return
+
+        table = Table(title="Active Loop Tasks")
+        table.add_column("ID", style="cyan")
+        table.add_column("Interval", style="green")
+        table.add_column("Runs", style="yellow")
+        table.add_column("Prompt", style="white", max_width=50)
+
+        for task in tasks:
+            interval_str = (
+                f"{task.interval_s / 60:.1f}m"
+                if task.interval_s < 3600
+                else f"{task.interval_s / 3600:.1f}h"
+            )
+            runs_str = f"{task.run_count}/{task.max_runs}" if task.max_runs else str(task.run_count)
+            prompt_preview = task.prompt[:47] + "..." if len(task.prompt) > 50 else task.prompt
+            table.add_row(task.id, interval_str, runs_str, prompt_preview)
+
+        console.print(table)
+        return
+
+    # Parse interval and prompt
+    parts = args.split(None, 1)
+    if len(parts) < 2:
+        console.print("[red]Usage: /loop <interval> <prompt>[/red]")
+        console.print("[dim]Example: /loop 5m check for new emails[/dim]")
+        return
+
+    interval_str, prompt = parts
+
+    try:
+        scheduler = get_loop_scheduler(app)
+        task = await scheduler.create_task(interval_str, prompt)
+
+        interval_display = (
+            f"{task.interval_s / 60:.1f}m"
+            if task.interval_s < 3600
+            else f"{task.interval_s / 3600:.1f}h"
+        )
+        console.print(f"[green]Created loop task {task.id}[/green]")
+        prompt_display = prompt[:80] + "..." if len(prompt) > 80 else prompt
+        console.print(f"[dim]Interval: {interval_display} | Prompt: {prompt_display}[/dim]")
+        console.print(f"[dim]Use /loop-cancel {task.id} to cancel[/dim]")
+    except ValueError as e:
+        console.print(f"[red]Invalid interval: {e}[/red]")
+        console.print("[dim]Supported formats: 30s, 5m, 2h, 1d (minimum 60s)[/dim]")
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+
+
+@registry.command(aliases=["loop-cancel"])
+async def loop_cancel(app: Shell, args: str):
+    """Cancel a loop task by ID."""
+    from kimi_cli.ui.shell.console import console
+    from kimi_cli.ui.shell.loop_scheduler import get_loop_scheduler
+
+    task_id = args.strip()
+    if not task_id:
+        # List active tasks and prompt
+        scheduler = get_loop_scheduler(app)
+        tasks = scheduler.list_tasks(active_only=True)
+
+        if not tasks:
+            console.print("[yellow]No active loop tasks to cancel.[/yellow]")
+            return
+
+        if len(tasks) == 1:
+            task_id = tasks[0].id
+        else:
+            console.print("[yellow]Multiple active loop tasks found:[/yellow]")
+            for task in tasks:
+                prompt_display = task.prompt[:60] + "..." if len(task.prompt) > 60 else task.prompt
+                console.print(f"  [cyan]{task.id}[/cyan]: {prompt_display}")
+            console.print("[dim]Usage: /loop-cancel <task_id>[/dim]")
+            return
+
+    scheduler = get_loop_scheduler(app)
+    if await scheduler.cancel_task(task_id):
+        console.print(f"[green]Cancelled loop task {task_id}[/green]")
+    else:
+        console.print(f"[red]Task {task_id} not found or already completed[/red]")
+
+
+@registry.command(aliases=["loop-list"])
+def loop_list(app: Shell, args: str):
+    """List all loop tasks (including completed ones)."""
+    from rich.table import Table
+
+    from kimi_cli.ui.shell.console import console
+    from kimi_cli.ui.shell.loop_scheduler import get_loop_scheduler
+
+    scheduler = get_loop_scheduler(app)
+    tasks = scheduler.list_tasks()
+
+    if not tasks:
+        console.print("[yellow]No loop tasks found.[/yellow]")
+        return
+
+    table = Table(title="All Loop Tasks")
+    table.add_column("ID", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Interval", style="yellow")
+    table.add_column("Runs", style="blue")
+    table.add_column("Last Run", style="magenta")
+    table.add_column("Prompt", style="white", max_width=40)
+
+    from kimi_cli.utils.datetime import format_relative_time
+
+    for task in tasks:
+        if task.cancelled:
+            status = "[red]cancelled[/red]"
+        elif task.is_complete:
+            status = "[dim]completed[/dim]"
+        else:
+            status = "[green]active[/green]"
+
+        interval_str = (
+            f"{task.interval_s / 60:.1f}m"
+            if task.interval_s < 3600
+            else f"{task.interval_s / 3600:.1f}h"
+        )
+        runs_str = f"{task.run_count}/{task.max_runs}" if task.max_runs else str(task.run_count)
+        last_run = format_relative_time(task.last_run_at) if task.last_run_at else "never"
+        prompt_preview = task.prompt[:37] + "..." if len(task.prompt) > 40 else task.prompt
+
+        table.add_row(task.id, status, interval_str, runs_str, last_run, prompt_preview)
+
+    console.print(table)
+    console.print(f"[dim]Total: {len(tasks)} tasks[/dim]")
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401 # type: ignore[reportUnusedImport]
     export_import,  # noqa: F401 # type: ignore[reportUnusedImport]

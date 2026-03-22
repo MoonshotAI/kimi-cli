@@ -340,6 +340,10 @@ class Shell:
                 self._running_interrupt_handler = None
                 self._prompt_session = None
                 self._cancel_background_tasks()
+                # Shutdown loop scheduler
+                from kimi_cli.ui.shell.loop_scheduler import remove_loop_scheduler
+
+                remove_loop_scheduler(self)
                 ensure_tty_sane()
 
         return shell_ok
