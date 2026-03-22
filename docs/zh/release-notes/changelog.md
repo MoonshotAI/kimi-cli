@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：支持通过插件提供自定义上下文压缩实现——插件可在 `plugin.json` 中声明 `compaction.entrypoint` 提供自定义压缩器；通过 `loop_control.compaction_plugin` 配置项指定使用哪个插件的压缩器
+- Core：新增 `loop_control.compaction_model` 配置项，可为上下文压缩指定专用模型
 - Shell：在提示工具栏中显示当前工作目录、Git 分支、脏状态以及与远端的 ahead/behind 同步状态
 - Shell：在工具栏中显示活跃后台 Bash 任务数量，按时间轮换快捷键提示，并在窄终端中优雅截断内容以避免溢出
 - Web：修复取消和审批时工具执行状态同步问题——停止生成时工具现在正确过渡到 `output-denied` 状态，审批通过后执行期间显示加载动画（而非勾选图标）

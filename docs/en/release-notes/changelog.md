@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Support custom context compaction via plugins — plugins can declare a `compaction.entrypoint` in `plugin.json` to provide their own compaction implementation; use `loop_control.compaction_plugin` to select which plugin to use
+- Core: Add `loop_control.compaction_model` config option to use a dedicated model for context compaction
 - Shell: Show the current working directory, git branch, dirty state, and ahead/behind sync status directly in the prompt toolbar
 - Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
 - Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
