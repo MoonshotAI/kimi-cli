@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix `Ctrl+Z` suspending the process when the raw keyboard listener is active — clear `ISIG` and `IEXTEN` terminal flags in raw mode so control characters (`Ctrl+Z`, `Ctrl+C`) are received as byte events instead of kernel signals; `Ctrl+C` now cancels the active run in the standalone visualization path
+
 - Shell: Show the current working directory, git branch, dirty state, and ahead/behind sync status directly in the prompt toolbar
 - Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
 - Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
