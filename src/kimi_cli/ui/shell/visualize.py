@@ -1184,8 +1184,8 @@ class _LiveView:
             self.refresh_soon()
             return
 
-        # handle ESC key to cancel the run
-        if event == KeyEvent.ESCAPE and self._cancel_event is not None:
+        # handle ESC / Ctrl+C to cancel the run
+        if event in (KeyEvent.ESCAPE, KeyEvent.CTRL_C) and self._cancel_event is not None:
             self._cancel_event.set()
             return
 

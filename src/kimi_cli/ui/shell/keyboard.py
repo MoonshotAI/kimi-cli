@@ -19,6 +19,7 @@ class KeyEvent(Enum):
     ESCAPE = auto()
     TAB = auto()
     SPACE = auto()
+    CTRL_C = auto()
     CTRL_E = auto()
     NUM_1 = auto()
     NUM_2 = auto()
@@ -117,7 +118,7 @@ def _listen_for_keyboard_unix(
     fd = sys.stdin.fileno()
     oldterm = termios.tcgetattr(fd)
     rawattr = termios.tcgetattr(fd)
-    rawattr[3] = rawattr[3] & ~termios.ICANON & ~termios.ECHO
+    rawattr[3] = rawattr[3] & ~termios.ICANON & ~termios.ECHO & ~termios.ISIG & ~termios.IEXTEN
     rawattr[6][termios.VMIN] = 0
     rawattr[6][termios.VTIME] = 0
     raw_enabled = False
@@ -186,6 +187,8 @@ def _listen_for_keyboard_unix(
                 emit(KeyEvent.SPACE)
             elif c == b"\t":
                 emit(KeyEvent.TAB)
+            elif c == b"\x03":  # Ctrl+C
+                emit(KeyEvent.CTRL_C)
             elif c == b"\x05":  # Ctrl+E
                 emit(KeyEvent.CTRL_E)
             elif c == b"1":
