@@ -11,6 +11,8 @@ from kimi_cli.utils.logging import logger
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
 
+DEFAULT_EXPIRY_DAYS = 3
+
 
 @dataclass
 class LoopTask:
@@ -24,7 +26,7 @@ class LoopTask:
     run_count: int = 0
     max_runs: int | None = None
     cancelled: bool = False
-    expires_at: float | None = None  # Expiration timestamp (None = no expiration)
+    expires_at: float = field(default=0.0)  # Expiration timestamp (0.0 = use default)
 
     @property
     def next_run_at(self) -> float | None:
@@ -34,21 +36,23 @@ class LoopTask:
             return self.created_at
         return self.last_run_at + self.interval_s
 
+    def __post_init__(self) -> None:
+        if self.expires_at == 0.0:
+            self.expires_at = self.created_at + (DEFAULT_EXPIRY_DAYS * 86400)
+
     @property
     def is_complete(self) -> bool:
         if self.cancelled:
             return True
         if self.max_runs is not None and self.run_count >= self.max_runs:
             return True
-        if self.expires_at is not None and time.time() >= self.expires_at:
+        if time.time() >= self.expires_at:
             return True
         return False
     
     @property
     def is_expired(self) -> bool:
         """Check if task has expired."""
-        if self.expires_at is None:
-            return False
         return time.time() >= self.expires_at
 
 
@@ -59,7 +63,6 @@ class LoopScheduler:
     """
 
     MAX_TASKS = 50
-    DEFAULT_EXPIRY_DAYS = 3  # Tasks expire after 3 days by default (like Claude Code)
 
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
@@ -112,35 +115,12 @@ class LoopScheduler:
         # Minimum 60 seconds
         return max(60.0, seconds)
 
-    def _parse_expiry(self, expiry_str: str) -> float:
-        """
-        Parse expiry duration string like '1d', '2h', '30m' into seconds.
-        Returns expiry timestamp (created_at + duration).
-        """
-        expiry_str = expiry_str.strip().lower()
-        
-        match = re.match(r"^(\d+(?:\.\d+)?)\s*([smhd])$", expiry_str)
-        if not match:
-            raise ValueError(f"Invalid expiry format: {expiry_str}")
-        
-        value = float(match.group(1))
-        unit = match.group(2)
-        
-        multipliers = {
-            "s": 1,
-            "m": 60,
-            "h": 3600,
-            "d": 86400,
-        }
-        
-        return value * multipliers[unit]
-
     async def create_task(
         self,
         interval: str,
         prompt: str,
         max_runs: int | None = None,
-        expires_in: str | None = None,
+        expires_in: int | None = None,
     ) -> LoopTask:
         """
         Create a new loop task.
@@ -149,7 +129,7 @@ class LoopScheduler:
             interval: Time interval like '5m', '2h', '1d', '30s'
             prompt: The prompt to send to the AI
             max_runs: Maximum number of times to run (None for infinite)
-            expires_in: Expiry duration like '1d', '2h' (None for default 3 days)
+            expires_in: Expiration time in days (None for default 3 days)
 
         Returns:
             The created LoopTask
@@ -163,15 +143,10 @@ class LoopScheduler:
 
             interval_s = self._parse_interval(interval)
             task_id = self._generate_task_id()
-            
-            # Calculate expiration time
+
             created_at = time.time()
-            if expires_in:
-                expiry_seconds = self._parse_expiry(expires_in)
-                expires_at = created_at + expiry_seconds
-            else:
-                # Default: 3 days from creation
-                expires_at = created_at + (self.DEFAULT_EXPIRY_DAYS * 86400)
+            expiry_days = expires_in if expires_in is not None else DEFAULT_EXPIRY_DAYS
+            expires_at = created_at + (expiry_days * 86400)
 
             task = LoopTask(
                 id=task_id,
