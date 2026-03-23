@@ -99,6 +99,32 @@ class CompactionEnd(BaseModel):
     pass
 
 
+class HookTriggered(BaseModel):
+    """A batch of hooks has been triggered and is now executing."""
+
+    event: str
+    """The hook event type, e.g. 'PreToolUse', 'Stop'."""
+    target: str = ""
+    """What the hooks are targeting: tool name for tool hooks, agent name for subagent hooks, etc."""
+    hook_count: int = 1
+    """Number of matched hooks running in parallel."""
+
+
+class HookResolved(BaseModel):
+    """A batch of hooks has finished executing."""
+
+    event: str
+    """The hook event type, e.g. 'PreToolUse', 'Stop'."""
+    target: str = ""
+    """Same as HookTriggered.target."""
+    action: Literal["allow", "block"] = "allow"
+    """Aggregate decision: 'block' if any hook blocked, 'allow' otherwise."""
+    reason: str = ""
+    """Reason for blocking. Empty if allowed."""
+    duration_ms: int = 0
+    """Wall-clock time for the entire batch, in milliseconds."""
+
+
 class MCPLoadingBegin(BaseModel):
     """Indicates that MCP tool loading is in progress."""
 
@@ -455,6 +481,8 @@ type Event = (
     | TurnEnd
     | StepBegin
     | StepInterrupted
+    | HookTriggered
+    | HookResolved
     | CompactionBegin
     | CompactionEnd
     | MCPLoadingBegin

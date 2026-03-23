@@ -91,11 +91,21 @@ class ClientCapabilities(BaseModel):
     """Whether the client supports plan mode (EnterPlanMode / ExitPlanMode)."""
 
 
+class WireHookDef(BaseModel):
+    """Hook definition sent by the wire client during initialization."""
+
+    event: str
+    command: str
+    matcher: str = ""
+    timeout: int = 30
+
+
 class JSONRPCInitializeMessage(_MessageBase):
     class Params(BaseModel):
         protocol_version: str
         client: ClientInfo | None = None
         external_tools: list[ExternalTool] | None = None
+        hooks: list[WireHookDef] | None = None
         capabilities: ClientCapabilities | None = None
 
     method: Literal["initialize"] = "initialize"
