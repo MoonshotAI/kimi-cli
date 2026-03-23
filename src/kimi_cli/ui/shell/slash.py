@@ -541,6 +541,14 @@ async def mcp(app: Shell, args: str):
             live.update(render_mcp_console(snapshot), refresh=True)
 
 
+def _format_interval(interval_s: float) -> str:
+    """Format interval in seconds to human-readable string."""
+    if interval_s < 3600:
+        return f"{interval_s / 60:.1f}m"
+    else:
+        return f"{interval_s / 3600:.1f}h"
+
+
 @registry.command
 async def loop(app: Shell, args: str):
     """Create a repeating task that runs at a specified interval.
@@ -578,11 +586,7 @@ async def loop(app: Shell, args: str):
         table.add_column("Prompt", style="white", max_width=50)
 
         for task in tasks:
-            interval_str = (
-                f"{task.interval_s / 60:.1f}m"
-                if task.interval_s < 3600
-                else f"{task.interval_s / 3600:.1f}h"
-            )
+            interval_str = _format_interval(task.interval_s)
             runs_str = f"{task.run_count}/{task.max_runs}" if task.max_runs else str(task.run_count)
             prompt_preview = task.prompt[:47] + "..." if len(task.prompt) > 50 else task.prompt
             table.add_row(task.id, interval_str, runs_str, prompt_preview)
@@ -603,11 +607,7 @@ async def loop(app: Shell, args: str):
         scheduler = get_loop_scheduler(app)
         task = await scheduler.create_task(interval_str, prompt)
 
-        interval_display = (
-            f"{task.interval_s / 60:.1f}m"
-            if task.interval_s < 3600
-            else f"{task.interval_s / 3600:.1f}h"
-        )
+        interval_display = _format_interval(task.interval_s)
         console.print(f"[green]Created loop task {task.id}[/green]")
         prompt_display = prompt[:80] + "..." if len(prompt) > 80 else prompt
         console.print(f"[dim]Interval: {interval_display} | Prompt: {prompt_display}[/dim]")
@@ -685,11 +685,7 @@ def loop_list(app: Shell, args: str):
         else:
             status = "[green]active[/green]"
 
-        interval_str = (
-            f"{task.interval_s / 60:.1f}m"
-            if task.interval_s < 3600
-            else f"{task.interval_s / 3600:.1f}h"
-        )
+        interval_str = _format_interval(task.interval_s)
         runs_str = f"{task.run_count}/{task.max_runs}" if task.max_runs else str(task.run_count)
         last_run = format_relative_time(task.last_run_at) if task.last_run_at else "never"
         prompt_preview = task.prompt[:37] + "..." if len(task.prompt) > 40 else task.prompt

@@ -182,17 +182,18 @@ class LoopScheduler:
 
     async def _execute_task(self, task: LoopTask) -> None:
         """Execute a single loop task."""
-        try:
-            from kimi_cli.ui.shell.console import console
+        from kimi_cli.ui.shell.console import console
 
+        try:
             prompt_preview = task.prompt[:80] + "..." if len(task.prompt) > 80 else task.prompt
             console.print(f"[dim][Loop {task.id}] Running: {prompt_preview}[/dim]")
 
             # Execute the prompt via the shell
             await self._shell.run_soul_command(task.prompt)
 
-            task.last_run_at = time.time()
-            task.run_count += 1
+            async with self._lock:
+                task.last_run_at = time.time()
+                task.run_count += 1
 
             logger.info(
                 "Executed loop task {task_id} (run {run_count}/{max_runs})",
@@ -201,8 +202,9 @@ class LoopScheduler:
                 max_runs=task.max_runs or "∞",
             )
 
-        except Exception:
+        except Exception as e:
             logger.exception("Loop task {task_id} failed", task_id=task.id)
+            console.print(f"[red][Loop {task.id}] Failed: {e}[/red]")
 
     async def _run_scheduler(self) -> None:
         """Main scheduler loop."""
@@ -220,8 +222,8 @@ class LoopScheduler:
                         logger.info("No active loop tasks, scheduler stopping")
                         break
 
-                    # Find tasks ready to run
-                    now = time.time()
+                    # Find tasks ready to run (using monotonic clock)
+                    now = asyncio.get_event_loop().time()
                     ready_tasks: list[LoopTask] = []
                     next_wakeup: float | None = None
 
@@ -236,14 +238,16 @@ class LoopScheduler:
                         elif next_wakeup is None or next_run < next_wakeup:
                             next_wakeup = next_run
 
-                # Execute ready tasks
+                # Execute ready tasks (re-check is_complete before executing)
                 for task in ready_tasks:
+                    if task.is_complete:
+                        continue
                     # Run without holding the lock to avoid blocking
                     await self._execute_task(task)
 
-                # Calculate sleep time
+                # Calculate sleep time using monotonic clock
                 if next_wakeup is not None:
-                    sleep_time = max(0.1, next_wakeup - time.time())
+                    sleep_time = max(0.1, next_wakeup - asyncio.get_event_loop().time())
                 else:
                     sleep_time = 60.0  # Default check interval
 
