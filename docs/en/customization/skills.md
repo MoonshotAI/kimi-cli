@@ -8,6 +8,15 @@ A skill is a directory containing a `SKILL.md` file. When Kimi Code CLI starts, 
 
 For example, you can create a "code style" skill to tell the AI your project's naming conventions, comment styles, etc.; or create a "security audit" skill to have the AI focus on specific security issues when reviewing code.
 
+**Skills vs plugins**
+
+Kimi Code CLI supports two extension mechanisms:
+
+- **Skills**: Provide knowledge-based guidance through `SKILL.md`; the AI reads and follows the specifications. Suitable for defining code styles, workflows, and best practices.
+- **Plugins**: Declare executable tools through `plugin.json`; the AI can directly invoke tools to get results. Suitable for wrapping scripts, API calls, and database queries.
+
+For details about plugins, see the [Plugins](./plugins.md) documentation.
+
 ## Skill discovery
 
 Kimi Code CLI uses a layered loading mechanism to discover skills, loading in the following priority order (later ones override skills with the same name):
