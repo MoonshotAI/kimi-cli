@@ -42,11 +42,11 @@ kimi plugin install https://github.com/user/repo.git
 # Install a plugin from a subdirectory (multi-plugin repo)
 kimi plugin install https://github.com/user/repo.git/plugins/my-plugin
 
-# Specify a branch
-kimi plugin install https://github.com/user/repo.git/plugins/my-plugin/tree/develop
+# Specify a branch (use browser-style GitHub URL without .git)
+kimi plugin install https://github.com/user/repo/tree/develop/plugins/my-plugin
 ```
 
-When a Git repository has no `plugin.json` at the root, Kimi Code CLI scans subdirectories and lists available plugins for you to choose from.
+When a Git repository has no `plugin.json` at the root, Kimi Code CLI checks the root and its immediate subdirectories, then lists available plugins for you to choose from.
 
 **List installed plugins**
 
@@ -171,10 +171,19 @@ If your plugin needs to call LLM APIs, you can use the `inject` configuration to
 }
 ```
 
-During installation, Kimi Code CLI injects the currently configured API key and base URL into the specified config file. If OAuth is configured, a valid token is automatically obtained and injected.
+During installation, Kimi Code CLI injects the currently configured API key and base URL into the specified config file. If OAuth is configured, a valid token is automatically obtained and injected. Later, when the application starts, Kimi Code CLI will also try to write the latest credentials (such as the refreshed OAuth token) into the configuration file of the installed plugin.
 
-::: warning Note
-Credential injection happens once during installation. If you later switch LLM providers or re-authorize, you need to reinstall the plugin to update credentials.
+::: tip
+Generally, there is no need to reinstall the plugin in order to update credentials: after switching the LLM provider or re-authorizing, restarting Kimi Code CLI will automatically refresh the credentials in the configuration file. The plugin tool will also obtain the currently valid credentials through environment variables when it is actually run. The plugin needs to be reinstalled only when the configuration structure of the plugin itself (such as `config_file` or `inject` mapping) is modified.
+:::
+
+::: info About inject keys
+The keys under `inject` (for example, `llm.api_key`) are also exposed as environment variable names to your plugin tool subprocesses. Because these names contain dots, some runtimes cannot access them using the usual identifier syntax (for example, `$llm.api_key` is not valid in POSIX shells), but you can still read them via map/dictionary access, such as:
+
+- **Node.js**: `process.env["llm.api_key"]`
+- **Python**: `os.environ["llm.api_key"]`
+
+If you prefer env-var-friendly names that work smoothly across shells and tooling, consider using keys like `LLM_API_KEY` or `LLM_ENDPOINT` in your own plugins instead of dotted names, and structure your config file accordingly.
 :::
 
 ## Tool script specification
@@ -193,7 +202,7 @@ Scripts receive a JSON object from `stdin`:
 
 **Output format**
 
-Scripts output a JSON object to `stdout`:
+Content written to `stdout` by the script is returned to the Agent as a string. If structured output is needed, emitting JSON text is recommended:
 
 ```json
 {

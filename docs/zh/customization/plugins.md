@@ -42,11 +42,11 @@ kimi plugin install https://github.com/user/repo.git
 # 安装子目录中的插件（多插件仓库）
 kimi plugin install https://github.com/user/repo.git/plugins/my-plugin
 
-# 指定分支
-kimi plugin install https://github.com/user/repo.git/plugins/my-plugin/tree/develop
+# 指定分支（使用浏览器 URL 格式）
+kimi plugin install https://github.com/user/repo/tree/develop/plugins/my-plugin
 ```
 
-当 Git 仓库根目录没有 `plugin.json` 时，Kimi Code CLI 会扫描子目录并列出可用的插件供你选择。
+当 Git 仓库根目录没有 `plugin.json` 时，Kimi Code CLI 会检查根目录及其直接子目录，并列出可用的插件供你选择。
 
 **列出已安装插件**
 
@@ -171,10 +171,19 @@ my-plugin/
 }
 ```
 
-安装时，Kimi Code CLI 会将当前配置的 API 密钥和 base URL 注入到指定的配置文件中。如果配置了 OAuth，会自动获取并注入有效的 token。
+安装时，Kimi Code CLI 会将当前配置的 API 密钥和 base URL 注入到指定的配置文件中。如果配置了 OAuth，会自动获取并注入有效的 token。之后在应用启动时，Kimi Code CLI 也会尝试将最新的凭证（如刷新后的 OAuth token）写入已安装插件的配置文件中。
 
-::: warning 注意
-凭证注入只在安装时执行一次。如果之后切换了 LLM 提供商或重新授权，需要重新安装插件以更新凭证。
+::: tip 提示
+一般情况下，不需要为了更新凭证而重新安装插件：切换 LLM 提供商或重新授权后，重启 Kimi Code CLI 即可自动刷新配置文件中的凭证，插件工具在实际运行时也会通过环境变量获得当前有效的凭证。只有在修改了插件本身的配置结构（例如 `config_file` 或 `inject` 映射）时，才需要重新安装插件。
+:::
+
+::: info 关于 inject 键名
+`inject` 中的键名（如 `llm.api_key`）也会被用作环境变量名传递给插件工具子进程。由于这些名称包含点号，在某些运行环境中访问可能不便（例如 POSIX shell 中 `$llm.api_key` 是无效的）。你可以通过字典/映射方式访问：
+
+- **Node.js**: `process.env["llm.api_key"]`
+- **Python**: `os.environ["llm.api_key"]`
+
+如果希望使用更友好的环境变量名，建议在插件中使用大写下划线格式（如 `LLM_API_KEY`），并相应调整配置文件结构。
 :::
 
 ## 工具脚本规范
@@ -193,7 +202,7 @@ my-plugin/
 
 **输出格式**
 
-脚本向 `stdout` 输出 JSON 对象：
+脚本向 `stdout` 输出的内容会作为字符串返回给 Agent。如果需要结构化输出，建议输出 JSON 文本：
 
 ```json
 {
