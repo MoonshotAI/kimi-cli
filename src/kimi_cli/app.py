@@ -377,9 +377,9 @@ class KimiCLI:
                         await stop_task
                     with contextlib.suppress(asyncio.CancelledError):
                         await queue_task
-                    for task in approval_bridge_tasks.values():
+                    for task in list(approval_bridge_tasks.values()):
                         task.cancel()
-                    for task in approval_bridge_tasks.values():
+                    for task in list(approval_bridge_tasks.values()):
                         with contextlib.suppress(asyncio.CancelledError):
                             await task
                     approval_bridge_tasks.clear()
