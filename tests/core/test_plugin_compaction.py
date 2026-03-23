@@ -207,14 +207,14 @@ def test_subagent_copies_get_fresh_compaction_instances(runtime: Runtime, tmp_pa
     runtime.compaction = resolve_plugin_compactor(plugins, "alpha-plugin")
     assert runtime.compaction is not None
 
-    fixed = runtime.copy_for_fixed_subagent()
-    dynamic = runtime.copy_for_dynamic_subagent()
+    subagent_a = runtime.copy_for_subagent(agent_id="alpha-one", subagent_type="coder")
+    subagent_b = runtime.copy_for_subagent(agent_id="alpha-two", subagent_type="plan")
 
-    assert fixed.compaction is not runtime.compaction
-    assert dynamic.compaction is not runtime.compaction
-    assert fixed.compaction is not dynamic.compaction
-    assert getattr(type(fixed.compaction), "PLUGIN_MARK", None) == "alpha"
-    assert getattr(type(dynamic.compaction), "PLUGIN_MARK", None) == "alpha"
+    assert subagent_a.compaction is not runtime.compaction
+    assert subagent_b.compaction is not runtime.compaction
+    assert subagent_a.compaction is not subagent_b.compaction
+    assert getattr(type(subagent_a.compaction), "PLUGIN_MARK", None) == "alpha"
+    assert getattr(type(subagent_b.compaction), "PLUGIN_MARK", None) == "alpha"
 
 
 @pytest.mark.asyncio

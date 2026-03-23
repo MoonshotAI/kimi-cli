@@ -11,16 +11,18 @@ from kosong.chat_provider import StreamedMessagePart, ThinkingEffort, TokenUsage
 from kosong.message import Message, TextPart
 from kosong.tooling.empty import EmptyToolset
 
+from kimi_cli.app import KimiCLI
+from kimi_cli.approval_runtime import ApprovalSource
 from kimi_cli.background import TaskRuntime, TaskSpec
 from kimi_cli.llm import LLM
 from kimi_cli.notifications import NotificationEvent
-from kimi_cli.soul import _current_wire, run_soul
+from kimi_cli.soul import StatusSnapshot, _current_wire, run_soul
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
-from kimi_cli.wire.types import Notification
+from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, Notification
 
 
 class _SequenceStream:
@@ -192,6 +194,202 @@ async def test_run_soul_emits_wire_notifications(runtime: Runtime, tmp_path: Pat
     assert len(seen) == 1
     assert seen[0].title == "Test notification"
     assert seen[0].body == "hello from notification"
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_run_yields_root_hub_approvals(runtime: Runtime) -> None:
+    class _ApprovalOnlySoul:
+        def __init__(self, runtime: Runtime) -> None:
+            self.runtime = runtime
+
+        @property
+        def name(self) -> str:
+            return "Approval Soul"
+
+        @property
+        def model_name(self) -> str:
+            return ""
+
+        @property
+        def model_capabilities(self):
+            return None
+
+        @property
+        def thinking(self):
+            return None
+
+        @property
+        def status(self) -> StatusSnapshot:
+            return StatusSnapshot(context_usage=0.0)
+
+        @property
+        def available_slash_commands(self):
+            return []
+
+        async def run(self, _user_input: str) -> None:
+            assert self.runtime.approval_runtime is not None
+            self.runtime.approval_runtime.create_request(
+                request_id="req-run-1",
+                tool_call_id="call-run-1",
+                sender="WriteFile",
+                action="write_file",
+                description="write file",
+                display=[],
+                source=ApprovalSource(kind="foreground_turn", id="turn-run-1"),
+            )
+
+    cli = KimiCLI(_ApprovalOnlySoul(runtime), runtime, {})  # type: ignore[arg-type]
+
+    seen: list[ApprovalRequest] = []
+    async for msg in cli.run("ping", asyncio.Event()):
+        if isinstance(msg, ApprovalRequest):
+            seen.append(msg)
+            break
+
+    assert len(seen) == 1
+    assert seen[0].id == "req-run-1"
+    assert seen[0].sender == "WriteFile"
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_run_bridges_approval_resolution_back_to_runtime(runtime: Runtime) -> None:
+    class _ApprovalRoundTripSoul:
+        def __init__(self, runtime: Runtime) -> None:
+            self.runtime = runtime
+            self.response: str | None = None
+            self.feedback: str = ""
+
+        @property
+        def name(self) -> str:
+            return "Approval Round Trip Soul"
+
+        @property
+        def model_name(self) -> str:
+            return ""
+
+        @property
+        def model_capabilities(self):
+            return None
+
+        @property
+        def thinking(self):
+            return None
+
+        @property
+        def status(self) -> StatusSnapshot:
+            return StatusSnapshot(context_usage=0.0)
+
+        @property
+        def available_slash_commands(self):
+            return []
+
+        async def run(self, _user_input: str) -> None:
+            assert self.runtime.approval_runtime is not None
+            request = self.runtime.approval_runtime.create_request(
+                request_id="req-run-bridge-1",
+                tool_call_id="call-run-bridge-1",
+                sender="WriteFile",
+                action="edit file",
+                description="write file",
+                display=[],
+                source=ApprovalSource(kind="foreground_turn", id="turn-run-bridge-1"),
+            )
+            self.response, self.feedback = await self.runtime.approval_runtime.wait_for_response(
+                request.id
+            )
+
+    soul = _ApprovalRoundTripSoul(runtime)
+    cli = KimiCLI(soul, runtime, {})  # type: ignore[arg-type]
+
+    seen_responses: list[ApprovalResponse] = []
+
+    async def _collect() -> None:
+        async for msg in cli.run("ping", asyncio.Event()):
+            if isinstance(msg, ApprovalRequest):
+                msg.resolve("approve")
+            elif isinstance(msg, ApprovalResponse):
+                seen_responses.append(msg)
+
+    await asyncio.wait_for(_collect(), timeout=1.0)
+
+    assert soul.response == "approve"
+    assert soul.feedback == ""
+    assert runtime.approval_runtime is not None
+    record = runtime.approval_runtime.get_request("req-run-bridge-1")
+    assert record is not None
+    assert record.status == "resolved"
+    assert record.response == "approve"
+    assert [response.request_id for response in seen_responses] == ["req-run-bridge-1"]
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_run_replays_pending_approvals_from_previous_turn(runtime: Runtime) -> None:
+    assert runtime.approval_runtime is not None
+    runtime.approval_runtime.create_request(
+        request_id="req-run-replay-1",
+        tool_call_id="call-run-replay-1",
+        sender="WriteFile",
+        action="edit file",
+        description="write file",
+        display=[],
+        source=ApprovalSource(kind="background_agent", id="task-run-replay-1"),
+    )
+
+    class _PendingApprovalSoul:
+        def __init__(self, runtime: Runtime) -> None:
+            self.runtime = runtime
+            self.response: str | None = None
+            self.feedback: str = ""
+
+        @property
+        def name(self) -> str:
+            return "Pending Approval Soul"
+
+        @property
+        def model_name(self) -> str:
+            return ""
+
+        @property
+        def model_capabilities(self):
+            return None
+
+        @property
+        def thinking(self):
+            return None
+
+        @property
+        def status(self) -> StatusSnapshot:
+            return StatusSnapshot(context_usage=0.0)
+
+        @property
+        def available_slash_commands(self):
+            return []
+
+        async def run(self, _user_input: str) -> None:
+            assert self.runtime.approval_runtime is not None
+            self.response, self.feedback = await self.runtime.approval_runtime.wait_for_response(
+                "req-run-replay-1"
+            )
+
+    soul = _PendingApprovalSoul(runtime)
+    cli = KimiCLI(soul, runtime, {})  # type: ignore[arg-type]
+
+    seen_requests: list[ApprovalRequest] = []
+
+    async def _collect() -> None:
+        async for msg in cli.run("ping", asyncio.Event()):
+            if isinstance(msg, ApprovalRequest):
+                seen_requests.append(msg)
+                msg.resolve("approve")
+
+    await asyncio.wait_for(_collect(), timeout=1.0)
+
+    assert [request.id for request in seen_requests] == ["req-run-replay-1"]
+    assert seen_requests[0].source_kind == "background_agent"
+    assert soul.response == "approve"
+    assert soul.feedback == ""
+    assert runtime.approval_runtime is not None
+    assert runtime.approval_runtime.list_pending() == []
 
 
 @pytest.mark.asyncio

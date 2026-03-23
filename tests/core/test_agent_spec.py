@@ -20,10 +20,13 @@ def test_load_default_agent_spec():
     assert spec.name == snapshot("")
     assert spec.system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
     assert spec.system_prompt_args == snapshot({"ROLE_ADDITIONAL": ""})
+    assert spec.when_to_use == snapshot("")
+    assert spec.model == snapshot(None)
+    assert spec.allowed_tools == snapshot(None)
     assert spec.exclude_tools == snapshot([])
     assert spec.tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
+            "kimi_cli.tools.agent:Agent",
             "kimi_cli.tools.ask_user:AskUserQuestion",
             "kimi_cli.tools.todo:SetTodoList",
             "kimi_cli.tools.shell:Shell",
@@ -47,22 +50,46 @@ def test_load_default_agent_spec():
         for name, spec in spec.subagents.items()
     }
     assert subagents == snapshot(
-        {"coder": ("sub.yaml", "Good at general software engineering tasks.")}
+        {
+            "coder": ("coder.yaml", "Good at general software engineering tasks."),
+            "explore": (
+                "explore.yaml",
+                "Fast codebase exploration with prompt-enforced read-only behavior.",
+            ),
+            "plan": ("plan.yaml", "Read-only implementation planning and architecture design."),
+        }
     )
 
     subagent_specs = {name: load_agent_spec(spec.path) for name, spec in spec.subagents.items()}
+
     assert subagent_specs["coder"].name == snapshot("")
     assert subagent_specs["coder"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
     assert subagent_specs["coder"].system_prompt_args == snapshot(
         {
-            "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You need to provide a comprehensive summary on what you have done and learned in your final message. If you wrote or modified any files, you must mention them in the summary.\n"  # noqa: E501
+            "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.\n"  # noqa: E501
         }
+    )
+    assert subagent_specs["coder"].when_to_use == snapshot(
+        "Use this agent for non-trivial software engineering work that may require reading files, editing code, running commands, and returning a compact but technically complete summary to the parent agent.\n"
+    )
+    assert subagent_specs["coder"].model == snapshot(None)
+    assert subagent_specs["coder"].allowed_tools == snapshot(
+        [
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+        ]
     )
     assert subagent_specs["coder"].exclude_tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
-            "kimi_cli.tools.multiagent:CreateSubagent",
-            "kimi_cli.tools.dmail:SendDMail",
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
             "kimi_cli.tools.todo:SetTodoList",
             "kimi_cli.tools.plan:ExitPlanMode",
             "kimi_cli.tools.plan.enter:EnterPlanMode",
@@ -70,7 +97,7 @@ def test_load_default_agent_spec():
     )
     assert subagent_specs["coder"].tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
+            "kimi_cli.tools.agent:Agent",
             "kimi_cli.tools.ask_user:AskUserQuestion",
             "kimi_cli.tools.todo:SetTodoList",
             "kimi_cli.tools.shell:Shell",
@@ -92,6 +119,126 @@ def test_load_default_agent_spec():
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
         for name, spec in subagent_specs["coder"].subagents.items()
+    }
+    assert sub_subagents == snapshot({})
+
+    assert subagent_specs["explore"].name == snapshot("")
+    assert subagent_specs["explore"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
+    assert subagent_specs["explore"].system_prompt_args == snapshot(
+        {
+            "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.\n"  # noqa: E501
+        }
+    )
+    assert subagent_specs["explore"].when_to_use == snapshot(
+        "Use this agent when you need fast, broad, prompt-enforced read-only exploration across the repository or the web. Prefer it when the task is mostly searching, grepping, reading, and summarizing.\n"
+    )
+    assert subagent_specs["explore"].model == snapshot(None)
+    assert subagent_specs["explore"].allowed_tools == snapshot(
+        [
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+        ]
+    )
+    assert subagent_specs["explore"].exclude_tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+        ]
+    )
+    assert subagent_specs["explore"].tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.background:TaskList",
+            "kimi_cli.tools.background:TaskOutput",
+            "kimi_cli.tools.background:TaskStop",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+        ]
+    )
+    sub_subagents = {
+        name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
+        for name, spec in subagent_specs["explore"].subagents.items()
+    }
+    assert sub_subagents == snapshot({})
+
+    assert subagent_specs["plan"].name == snapshot("")
+    assert subagent_specs["plan"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
+    assert subagent_specs["plan"].system_prompt_args == snapshot(
+        {
+            "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.\n"  # noqa: E501
+        }
+    )
+    assert subagent_specs["plan"].when_to_use == snapshot(
+        "Use this agent when the parent agent needs a step-by-step implementation plan, key file identification, and architectural trade-off analysis before code changes are made.\n"
+    )
+    assert subagent_specs["plan"].model == snapshot(None)
+    assert subagent_specs["plan"].allowed_tools == snapshot(
+        [
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+        ]
+    )
+    assert subagent_specs["plan"].exclude_tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+        ]
+    )
+    assert subagent_specs["plan"].tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.background:TaskList",
+            "kimi_cli.tools.background:TaskOutput",
+            "kimi_cli.tools.background:TaskStop",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+        ]
+    )
+    sub_subagents = {
+        name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
+        for name, spec in subagent_specs["plan"].subagents.items()
     }
     assert sub_subagents == snapshot({})
 
@@ -166,7 +313,7 @@ agent:
         )
         assert spec.tools == snapshot(
             [
-                "kimi_cli.tools.multiagent:Task",
+                "kimi_cli.tools.agent:Agent",
                 "kimi_cli.tools.ask_user:AskUserQuestion",
                 "kimi_cli.tools.todo:SetTodoList",
                 "kimi_cli.tools.shell:Shell",

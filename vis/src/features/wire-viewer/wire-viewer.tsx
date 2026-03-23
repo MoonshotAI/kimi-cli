@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type WireEvent, getWireEvents } from "@/lib/api";
+import { type WireEvent, getWireEvents, getSubagentWireEvents } from "@/lib/api";
 import { WireEventCard, isErrorEvent } from "./wire-event-card";
 import { WireFilters } from "./wire-filters";
 import { TurnTree } from "./turn-tree";
@@ -24,6 +24,8 @@ interface WireViewerProps {
   scrollToToolCallId?: string | null;
   /** Called after the scroll target has been consumed */
   onScrollTargetConsumed?: () => void;
+  /** When set, show wire events for this sub-agent instead of the main agent */
+  agentScope?: string | null;
 }
 
 /** Metadata attached to each event for tool call grouping */
@@ -89,7 +91,7 @@ function buildToolGrouping(events: WireEvent[]): Map<number, EventMeta> {
   return meta;
 }
 
-export function WireViewer({ sessionId, refreshKey = 0, onNavigateToContext, scrollToToolCallId, onScrollTargetConsumed }: WireViewerProps) {
+export function WireViewer({ sessionId, refreshKey = 0, onNavigateToContext, scrollToToolCallId, onScrollTargetConsumed, agentScope }: WireViewerProps) {
   const [events, setEvents] = useState<WireEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,11 +115,14 @@ export function WireViewer({ sessionId, refreshKey = 0, onNavigateToContext, scr
       setSearchQuery("");
       setErrorsOnly(false);
     }
-    getWireEvents(sessionId, refreshKey > 0)
+    const fetch = agentScope
+      ? getSubagentWireEvents(sessionId, agentScope, refreshKey > 0)
+      : getWireEvents(sessionId, refreshKey > 0);
+    fetch
       .then((res) => setEvents(res.events))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sessionId, refreshKey]);
+  }, [sessionId, refreshKey, agentScope]);
 
   const allTypes = useMemo(() => {
     const types = new Set<string>();

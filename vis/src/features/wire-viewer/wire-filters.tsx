@@ -27,6 +27,7 @@ const FILTER_PRESETS: FilterPreset[] = [
   { label: "Tool Calls", types: new Set(["ToolCall", "ToolResult", "ToolCallPart"]), errorsOnly: false },
   { label: "Thinking", types: new Set(["ThinkPart", "TextPart"]), errorsOnly: false },
   { label: "Approvals", types: new Set(["ApprovalRequest", "ApprovalResponse"]), errorsOnly: false },
+  { label: "Sub-agents", types: new Set(["SubagentEvent"]), errorsOnly: false },
 ];
 
 function setsEqual(a: Set<string>, b: Set<string>): boolean {

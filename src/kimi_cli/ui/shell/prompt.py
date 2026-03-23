@@ -38,12 +38,13 @@ from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout.containers import (
     ConditionalContainer,
+    DynamicContainer,
     Float,
     FloatContainer,
     HSplit,
     Window,
 )
-from prompt_toolkit.layout.controls import UIContent, UIControl
+from prompt_toolkit.layout.controls import BufferControl, UIContent, UIControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -270,6 +271,60 @@ def _extract_float_container(container: object) -> FloatContainer | None:
         if isinstance(container.alternative_content, FloatContainer):
             return container.alternative_content
     return None
+
+
+def _find_default_buffer_container(
+    layout_container: object,
+    target_buffer: Buffer,
+) -> ConditionalContainer | None:
+    seen: set[int] = set()
+
+    def _walk(node: object) -> ConditionalContainer | None:
+        if id(node) in seen:
+            return None
+        seen.add(id(node))
+
+        if isinstance(node, ConditionalContainer):
+            content = getattr(node, "content", None)
+            if isinstance(content, Window):
+                control = content.content
+                if isinstance(control, BufferControl) and control.buffer is target_buffer:
+                    return node
+
+        if isinstance(node, DynamicContainer):
+            with contextlib.suppress(Exception):
+                found = _walk(node.get_container())
+                if found is not None:
+                    return found
+
+        for attr in ("children", "content", "floats", "container"):
+            if not hasattr(node, attr):
+                continue
+            value = getattr(node, attr)
+            if attr == "children" and isinstance(value, Sequence):
+                for child in value:  # pyright: ignore[reportUnknownVariableType]
+                    found = _walk(child)  # pyright: ignore[reportUnknownArgumentType]
+                    if found is not None:
+                        return found
+            elif attr == "floats" and isinstance(value, Sequence):
+                for float_ in value:  # pyright: ignore[reportUnknownVariableType]
+                    content = getattr(float_, "content", None)  # pyright: ignore[reportUnknownArgumentType]
+                    if content is None:
+                        continue
+                    found = _walk(content)
+                    if found is not None:
+                        return found
+            elif (
+                attr in {"content", "container"}
+                and value is not None
+                and type(value).__module__.startswith("prompt_toolkit")
+            ):
+                found = _walk(value)
+                if found is not None:
+                    return found
+        return None
+
+    return _walk(layout_container)
 
 
 class SlashCommandMenuControl(UIControl):
@@ -858,6 +913,12 @@ class PromptMode(Enum):
         return self.value
 
 
+class PromptUIState(Enum):
+    NORMAL_INPUT = "normal_input"
+    MODAL_HIDDEN_INPUT = "modal_hidden_input"
+    MODAL_TEXT_INPUT = "modal_text_input"
+
+
 class UserInput(BaseModel):
     mode: PromptMode
     command: str
@@ -1079,9 +1140,17 @@ class _ToastEntry:
 
 
 class RunningPromptDelegate(Protocol):
+    modal_priority: int
+
     def render_running_prompt_body(self, columns: int) -> AnyFormattedText: ...
 
     def running_prompt_placeholder(self) -> AnyFormattedText | None: ...
+
+    def running_prompt_allows_text_input(self) -> bool: ...
+
+    def running_prompt_hides_input_buffer(self) -> bool: ...
+
+    def running_prompt_accepts_submission(self) -> bool: ...
 
     def should_handle_running_prompt_key(self, key: str) -> bool: ...
 
@@ -1181,6 +1250,10 @@ class CustomPromptSession:
         self._last_submission_was_running = False
         self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
+        self._modal_delegates: list[RunningPromptDelegate] = []
+        self._prompt_buffer_container: ConditionalContainer | None = None
+        self._last_ui_state: PromptUIState = PromptUIState.NORMAL_INPUT
+        self._suspended_buffer_document: Document | None = None
         clipboard_available = is_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available)
 
@@ -1220,7 +1293,7 @@ class CustomPromptSession:
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
-            if self._running_prompt_delegate is not None:
+            if self._active_prompt_delegate() is not None:
                 return
             self._mode = self._mode.toggle()
             # Apply mode-specific settings
@@ -1231,7 +1304,7 @@ class CustomPromptSession:
         @_kb.add("s-tab", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Toggle plan mode with Shift+Tab."""
-            if self._running_prompt_delegate is not None:
+            if self._active_prompt_delegate() is not None:
                 return
             if self._plan_mode_toggle_callback is not None:
 
@@ -1321,6 +1394,22 @@ class CustomPromptSession:
         )
         def _(event: KeyPressEvent) -> None:
             self._handle_running_prompt_key("c-e", event)
+
+        @_kb.add(
+            "c-c",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("c-c")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("c-c", event)
+
+        @_kb.add(
+            "c-d",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("c-d")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("c-d", event)
 
         @_kb.add(
             "escape",
@@ -1424,7 +1513,14 @@ class CustomPromptSession:
                 }
             ),
         )
+        self._session.default_buffer.read_only = Condition(
+            lambda: (
+                (delegate := self._active_prompt_delegate()) is not None
+                and not delegate.running_prompt_allows_text_input()
+            )
+        )
         self._install_slash_completion_menu()
+        self._install_prompt_buffer_visibility()
         self._apply_mode()
 
         # Allow completion to be triggered when the text is changed,
@@ -1482,6 +1578,18 @@ class CustomPromptSession:
             filter=~Condition(self._should_show_slash_completion_menu),
         )
 
+    def _install_prompt_buffer_visibility(self) -> None:
+        buffer_container = _find_default_buffer_container(
+            self._session.layout.container,
+            self._session.default_buffer,
+        )
+        if buffer_container is None:
+            return
+        buffer_container.filter = buffer_container.filter & Condition(
+            self._should_render_input_buffer
+        )
+        self._prompt_buffer_container = buffer_container
+
     def _should_show_slash_completion_menu(self) -> bool:
         document = self._session.default_buffer.document
         return SlashCommandCompleter.should_complete(document)
@@ -1503,11 +1611,14 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_status_block(columns)
+        body = self._render_agent_prompt_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+        if self._active_modal_delegate() is not None:
+            return fragments
+        if body:
             fragments.append(("", "\n"))
             fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
             fragments.append(("", "\n"))
@@ -1562,21 +1673,72 @@ class CustomPromptSession:
         if app is not None:
             app.erase_when_done = self._mode == PromptMode.AGENT
 
+    def _active_modal_delegate(self) -> RunningPromptDelegate | None:
+        modal_delegates = getattr(self, "_modal_delegates", [])
+        if not modal_delegates:
+            return None
+        _, delegate = max(
+            enumerate(modal_delegates),
+            key=lambda item: (item[1].modal_priority, item[0]),
+        )
+        return delegate
+
+    def _active_prompt_delegate(self) -> RunningPromptDelegate | None:
+        if delegate := self._active_modal_delegate():
+            return delegate
+        return getattr(self, "_running_prompt_delegate", None)
+
+    def _active_ui_state(self) -> PromptUIState:
+        delegate = self._active_modal_delegate()
+        if delegate is None:
+            return PromptUIState.NORMAL_INPUT
+        if delegate.running_prompt_hides_input_buffer():
+            return PromptUIState.MODAL_HIDDEN_INPUT
+        if delegate.running_prompt_allows_text_input():
+            return PromptUIState.MODAL_TEXT_INPUT
+        return PromptUIState.NORMAL_INPUT
+
+    def _should_render_input_buffer(self) -> bool:
+        return self._active_ui_state() != PromptUIState.MODAL_HIDDEN_INPUT
+
     def _should_handle_running_prompt_key(self, key: str) -> bool:
-        running_prompt = getattr(self, "_running_prompt_delegate", None)
-        return running_prompt is not None and running_prompt.should_handle_running_prompt_key(key)
+        delegate = self._active_prompt_delegate()
+        return delegate is not None and delegate.should_handle_running_prompt_key(key)
 
     def _handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
-        running_prompt = self._running_prompt_delegate
-        if running_prompt is None:
+        delegate = self._active_prompt_delegate()
+        if delegate is None:
             return
-        running_prompt.handle_running_prompt_key(key, event)
+        delegate.handle_running_prompt_key(key, event)
         event.app.invalidate()
 
     def invalidate(self) -> None:
+        self._sync_prompt_ui_state()
         app = get_app_or_none()
         if app is not None:
             app.invalidate()
+
+    def _sync_prompt_ui_state(self) -> None:
+        new_state = self._active_ui_state()
+        old_state = getattr(self, "_last_ui_state", PromptUIState.NORMAL_INPUT)
+        buffer = self._session.default_buffer
+
+        if (
+            old_state != PromptUIState.MODAL_HIDDEN_INPUT
+            and new_state == PromptUIState.MODAL_HIDDEN_INPUT
+        ):
+            if self._suspended_buffer_document is None and buffer.text:
+                self._suspended_buffer_document = buffer.document
+                buffer.set_document(Document(), bypass_readonly=True)
+        elif (
+            old_state == PromptUIState.MODAL_HIDDEN_INPUT
+            and new_state != PromptUIState.MODAL_HIDDEN_INPUT
+        ):
+            if self._suspended_buffer_document is not None and not buffer.text:
+                buffer.set_document(self._suspended_buffer_document, bypass_readonly=True)
+            self._suspended_buffer_document = None
+
+        self._last_ui_state = new_state
 
     def _render_agent_prompt_message(self) -> FormattedText:
         app = get_app_or_none()
@@ -1587,6 +1749,8 @@ class CustomPromptSession:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+        if self._active_modal_delegate() is not None:
+            return fragments
         fragments.append(("", "\n"))
         fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
         fragments.append(("", "\n"))
@@ -1594,10 +1758,10 @@ class CustomPromptSession:
         return fragments
 
     def _render_agent_prompt_body(self, columns: int) -> FormattedText:
-        running_prompt = self._running_prompt_delegate
-        if running_prompt is None:
+        delegate = self._active_prompt_delegate()
+        if delegate is None:
             return self._render_status_block(columns)
-        return to_formatted_text(running_prompt.render_running_prompt_body(columns))
+        return to_formatted_text(delegate.render_running_prompt_body(columns))
 
     def _render_status_block(self, columns: int) -> FormattedText:
         status_block_provider = getattr(self, "_status_block_provider", None)
@@ -1635,7 +1799,7 @@ class CustomPromptSession:
 
                     interval = (
                         _RUNNING_REFRESH_INTERVAL
-                        if self._running_prompt_delegate is not None
+                        if self._active_prompt_delegate() is not None
                         or (
                             self._fast_refresh_provider is not None
                             and self._fast_refresh_provider()
@@ -1751,16 +1915,41 @@ class CustomPromptSession:
         self._apply_mode()
         self.invalidate()
 
+    def attach_modal(self, delegate: RunningPromptDelegate) -> None:
+        modal_delegates: list[RunningPromptDelegate] | None = getattr(
+            self, "_modal_delegates", None
+        )
+        if modal_delegates is None:
+            modal_delegates = []
+            self._modal_delegates = modal_delegates
+        if delegate in modal_delegates:
+            return
+        modal_delegates.append(delegate)
+        self.invalidate()
+
+    def detach_modal(self, delegate: RunningPromptDelegate) -> None:
+        modal_delegates = getattr(self, "_modal_delegates", None)
+        if not modal_delegates or delegate not in modal_delegates:
+            return
+        modal_delegates.remove(delegate)
+        self.invalidate()
+
+    def running_prompt_accepts_submission(self) -> bool:
+        delegate = self._active_prompt_delegate()
+        if delegate is None:
+            return False
+        return delegate.running_prompt_accepts_submission()
+
     async def _prompt_once(self, *, append_history: bool | None) -> UserInput:
         placeholder = None
-        if self._running_prompt_delegate is not None:
-            placeholder = self._running_prompt_delegate.running_prompt_placeholder()
+        if (delegate := self._active_prompt_delegate()) is not None:
+            placeholder = delegate.running_prompt_placeholder()
         with patch_stdout(raw=True):
             command = str(await self._session.prompt_async(placeholder=placeholder)).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
             # Sanitize UTF-16 surrogates that may come from Windows clipboard
             command = sanitize_surrogates(command)
-        was_running = self._running_prompt_delegate is not None
+        was_running = self.running_prompt_accepts_submission()
         self._last_submission_was_running = was_running
         if append_history is None:
             append_history = not was_running

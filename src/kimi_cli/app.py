@@ -28,7 +28,7 @@ from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
-from kimi_cli.wire.types import ContentPart, WireMessage
+from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, ContentPart, WireMessage
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
@@ -51,6 +51,24 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
     )
     if redirect_stderr:
         redirect_stderr_to_logger()
+
+
+def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
+    subagent_store = getattr(runtime, "subagent_store", None)
+    if subagent_store is None:
+        return
+
+    stale_agent_ids = [
+        record.agent_id
+        for record in subagent_store.list_instances()
+        if record.status == "running_foreground"
+    ]
+    for agent_id in stale_agent_ids:
+        logger.warning(
+            "Marking stale foreground subagent instance as failed during startup: {agent_id}",
+            agent_id=agent_id,
+        )
+        subagent_store.update_instance(agent_id, status="failed")
 
 
 class KimiCLI:
@@ -216,6 +234,7 @@ class KimiCLI:
         )
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
+        _cleanup_stale_foreground_subagents(runtime)
 
         # Refresh plugin configs with fresh credentials (e.g. OAuth tokens)
         try:
@@ -337,10 +356,95 @@ class KimiCLI:
         async with self._env():
             wire_future = asyncio.Future[WireUISide]()
             stop_ui_loop = asyncio.Event()
+            approval_bridge_tasks: dict[str, asyncio.Task[None]] = {}
+            forwarded_approval_requests: dict[str, ApprovalRequest] = {}
+
+            async def _bridge_approval_request(request: ApprovalRequest) -> None:
+                try:
+                    response = await request.wait()
+                    assert self._runtime.approval_runtime is not None
+                    self._runtime.approval_runtime.resolve(
+                        request.id, response, feedback=request.feedback
+                    )
+                finally:
+                    approval_bridge_tasks.pop(request.id, None)
+                    forwarded_approval_requests.pop(request.id, None)
+
+            def _forward_approval_request(wire: Wire, request: ApprovalRequest) -> None:
+                if request.id in forwarded_approval_requests:
+                    return
+                forwarded_approval_requests[request.id] = request
+                if request.id not in approval_bridge_tasks:
+                    approval_bridge_tasks[request.id] = asyncio.create_task(
+                        _bridge_approval_request(request)
+                    )
+                wire.soul_side.send(request)
 
             async def _ui_loop_fn(wire: Wire) -> None:
                 wire_future.set_result(wire.ui_side(merge=merge_wire_messages))
-                await stop_ui_loop.wait()
+                assert self._runtime.root_wire_hub is not None
+                assert self._runtime.approval_runtime is not None
+                root_hub_queue = self._runtime.root_wire_hub.subscribe()
+                stop_task = asyncio.create_task(stop_ui_loop.wait())
+                queue_task = asyncio.create_task(root_hub_queue.get())
+                try:
+                    for pending in self._runtime.approval_runtime.list_pending():
+                        _forward_approval_request(
+                            wire,
+                            ApprovalRequest(
+                                id=pending.id,
+                                tool_call_id=pending.tool_call_id,
+                                sender=pending.sender,
+                                action=pending.action,
+                                description=pending.description,
+                                display=pending.display,
+                                source_kind=pending.source.kind,
+                                source_id=pending.source.id,
+                                agent_id=pending.source.agent_id,
+                                subagent_type=pending.source.subagent_type,
+                            ),
+                        )
+                    while True:
+                        done, _ = await asyncio.wait(
+                            [stop_task, queue_task],
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if stop_task in done:
+                            break
+                        try:
+                            msg = queue_task.result()
+                        except QueueShutDown:
+                            break
+                        match msg:
+                            case ApprovalRequest() as request:
+                                _forward_approval_request(wire, request)
+                                queue_task = asyncio.create_task(root_hub_queue.get())
+                                continue
+                            case ApprovalResponse() as response:
+                                if (
+                                    request := forwarded_approval_requests.get(response.request_id)
+                                ) and not request.resolved:
+                                    request.resolve(response.response, response.feedback)
+                            case _:
+                                pass
+                        wire.soul_side.send(msg)
+                        queue_task = asyncio.create_task(root_hub_queue.get())
+                finally:
+                    stop_task.cancel()
+                    queue_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await stop_task
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await queue_task
+                    for task in list(approval_bridge_tasks.values()):
+                        task.cancel()
+                    for task in list(approval_bridge_tasks.values()):
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
+                    approval_bridge_tasks.clear()
+                    forwarded_approval_requests.clear()
+                    assert self._runtime.root_wire_hub is not None
+                    self._runtime.root_wire_hub.unsubscribe(root_hub_queue)
 
             soul_task = asyncio.create_task(
                 run_soul(

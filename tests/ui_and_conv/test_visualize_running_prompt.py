@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 from collections import deque
+from contextlib import asynccontextmanager, suppress
 from typing import Any, cast
 
 import pytest
@@ -9,7 +10,7 @@ from prompt_toolkit.document import Document
 from rich.text import Text
 
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
-from kimi_cli.wire.types import StatusUpdate, SteerInput, TextPart
+from kimi_cli.wire.types import ApprovalRequest, StatusUpdate, SteerInput, TextPart
 
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
 _LiveView = shell_visualize._LiveView
@@ -68,7 +69,6 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
 
 def test_render_running_prompt_body_omits_internal_status_block() -> None:
     view = object.__new__(_PromptLiveView)
-    view._awaiting_question_other_input = False
     view._turn_ended = False
 
     calls: list[bool] = []
@@ -87,10 +87,65 @@ def test_render_running_prompt_body_omits_internal_status_block() -> None:
 
 def test_running_prompt_hides_placeholder() -> None:
     view = object.__new__(_PromptLiveView)
-    view._awaiting_question_other_input = False
     view._turn_ended = False
+    view._current_approval_request_panel = None
+    view._current_question_panel = None
 
     assert view.running_prompt_placeholder() is None
+    assert view.running_prompt_allows_text_input() is True
+
+
+def test_running_prompt_shows_approval_placeholder_and_locks_text_input() -> None:
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = False
+    view._current_question_panel = None
+    view._current_approval_request_panel = object()
+
+    placeholder = view.running_prompt_placeholder()
+
+    assert isinstance(placeholder, str)
+    assert "1/2/3" in placeholder
+    assert view.running_prompt_allows_text_input() is False
+
+
+def test_running_prompt_allows_text_input_for_question_other_answer() -> None:
+    QuestionPromptDelegate = shell_visualize.QuestionPromptDelegate
+    panel = type(
+        "_Panel",
+        (),
+        {
+            "has_expandable_content": False,
+            "is_multi_select": False,
+            "should_prompt_other_input": staticmethod(lambda: False),
+        },
+    )()
+    delegate = QuestionPromptDelegate(
+        panel,
+        on_advance=lambda: None,
+        on_invalidate=lambda: None,
+    )
+    delegate._awaiting_other_input = True
+
+    assert delegate.running_prompt_allows_text_input() is True
+    assert delegate.running_prompt_accepts_submission() is True
+
+
+def test_running_prompt_does_not_accept_submission_after_turn_end_without_panels() -> None:
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = True
+    view._current_question_panel = None
+    view._current_approval_request_panel = None
+
+    assert view.running_prompt_accepts_submission() is False
+
+
+def test_running_prompt_keeps_accepting_submission_for_active_approval_after_turn_end() -> None:
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = True
+    view._current_question_panel = None
+    view._current_approval_request_panel = object()
+
+    assert view.running_prompt_accepts_submission() is True
 
 
 def test_live_view_renders_steer_input_as_user_echo(monkeypatch) -> None:
@@ -127,6 +182,274 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
 
     assert order[:2] == ["flush_content", "flush_tools"]
     assert order[-1] == ("print", "✨ A steer follow-up")
+
+
+@pytest.mark.asyncio
+async def test_live_view_processes_external_approval_messages(monkeypatch) -> None:
+    updates: list[object] = []
+
+    class _FakeLive:
+        def __init__(self, *args, **kwargs) -> None:
+            self._live_render = type("_Render", (), {"_shape": None})()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        def update(self, renderable, refresh: bool = True) -> None:
+            updates.append(renderable)
+
+        def stop(self) -> None:
+            return None
+
+        def start(self) -> None:
+            return None
+
+    class _Wire:
+        async def receive(self):
+            await asyncio.Event().wait()
+
+    @asynccontextmanager
+    async def _no_keyboard_listener(*args, **kwargs):
+        yield
+
+    monkeypatch.setattr(shell_visualize, "Live", _FakeLive)
+    monkeypatch.setattr(shell_visualize, "_keyboard_listener", _no_keyboard_listener)
+
+    view = _LiveView(StatusUpdate())
+    task = asyncio.create_task(view.visualize_loop(cast(Any, _Wire())))
+    try:
+        await asyncio.sleep(0)
+        view.enqueue_external_message(
+            ApprovalRequest(
+                id="req-ext-1",
+                tool_call_id="call-ext-1",
+                sender="Shell",
+                action="run command",
+                description="pwd",
+            )
+        )
+        for _ in range(10):
+            if view._current_approval_request_panel is not None:
+                break
+            await asyncio.sleep(0)
+        assert view._current_approval_request_panel is not None
+        assert updates
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
+async def test_prompt_live_view_processes_external_approval_messages() -> None:
+    invalidations: list[str] = []
+
+    class _PromptSession:
+        def invalidate(self) -> None:
+            invalidations.append("invalidate")
+
+    class _Wire:
+        async def receive(self):
+            await asyncio.Event().wait()
+
+    view = _PromptLiveView(
+        StatusUpdate(),
+        prompt_session=cast(Any, _PromptSession()),
+        steer=lambda _content: None,
+    )
+    task = asyncio.create_task(view.visualize_loop(cast(Any, _Wire())))
+    try:
+        await asyncio.sleep(0)
+        view.enqueue_external_message(
+            ApprovalRequest(
+                id="req-prompt-ext-1",
+                tool_call_id="call-prompt-ext-1",
+                sender="WriteFile",
+                action="edit file",
+                description="Write file `/tmp/bg.txt`",
+            )
+        )
+        for _ in range(10):
+            if view._current_approval_request_panel is not None:
+                break
+            await asyncio.sleep(0)
+        assert view._current_approval_request_panel is not None
+        assert invalidations
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
+async def test_prompt_live_view_keeps_processing_external_approvals_after_turn_end() -> None:
+    invalidations: list[str] = []
+    gate = asyncio.Event()
+
+    class _PromptSession:
+        def invalidate(self) -> None:
+            invalidations.append("invalidate")
+
+    class _Wire:
+        def __init__(self) -> None:
+            self._seen_turn_end = False
+
+        async def receive(self):
+            if not self._seen_turn_end:
+                self._seen_turn_end = True
+                return shell_visualize.TurnEnd()
+            await gate.wait()
+            raise shell_visualize.QueueShutDown
+
+    view = _PromptLiveView(
+        StatusUpdate(),
+        prompt_session=cast(Any, _PromptSession()),
+        steer=lambda _content: None,
+    )
+    task = asyncio.create_task(view.visualize_loop(cast(Any, _Wire())))
+    try:
+        for _ in range(10):
+            if view._turn_ended:
+                break
+            await asyncio.sleep(0)
+        assert view._turn_ended is True
+
+        view.enqueue_external_message(
+            ApprovalRequest(
+                id="req-prompt-turn-end",
+                tool_call_id="call-prompt-turn-end",
+                sender="WriteFile",
+                action="edit file",
+                description="Write file `/tmp/bg.txt`",
+            )
+        )
+        for _ in range(10):
+            if view._current_approval_request_panel is not None:
+                break
+            await asyncio.sleep(0)
+        assert view._current_approval_request_panel is not None
+        assert invalidations
+    finally:
+        gate.set()
+        await task
+
+
+@pytest.mark.asyncio
+async def test_live_view_reject_does_not_reject_background_requests_from_other_sources() -> None:
+    view = _LiveView(StatusUpdate())
+    request_one = ApprovalRequest(
+        id="req-bg-source-1",
+        tool_call_id="call-bg-source-1",
+        sender="Shell",
+        action="run command",
+        description="echo first",
+        source_kind="background_agent",
+        source_id="task-1",
+    )
+    request_two = ApprovalRequest(
+        id="req-bg-source-2",
+        tool_call_id="call-bg-source-2",
+        sender="Shell",
+        action="run command",
+        description="echo second",
+        source_kind="background_agent",
+        source_id="task-2",
+    )
+
+    view.request_approval(request_one)
+    view.request_approval(request_two)
+    assert view._current_approval_request_panel is not None
+    view._current_approval_request_panel.selected_index = 2
+
+    view._submit_approval()
+
+    assert request_one.resolved is True
+    assert await request_one.wait() == "reject"
+    assert request_two.resolved is False
+    assert view._current_approval_request_panel is not None
+    assert view._current_approval_request_panel.request is request_two
+
+
+@pytest.mark.asyncio
+async def test_live_view_reject_does_not_auto_reject_later_requests_from_same_source() -> None:
+    view = _LiveView(StatusUpdate())
+    request_one = ApprovalRequest(
+        id="req-bg-same-source-1",
+        tool_call_id="call-bg-same-source-1",
+        sender="Shell",
+        action="run command",
+        description="echo first",
+        source_kind="background_agent",
+        source_id="task-shared",
+    )
+    request_two = ApprovalRequest(
+        id="req-bg-same-source-2",
+        tool_call_id="call-bg-same-source-2",
+        sender="Shell",
+        action="run command",
+        description="echo second",
+        source_kind="background_agent",
+        source_id="task-shared",
+    )
+
+    view.request_approval(request_one)
+    assert view._current_approval_request_panel is not None
+    view._current_approval_request_panel.selected_index = 2
+
+    view._submit_approval()
+    view.request_approval(request_two)
+
+    assert request_two.resolved is False
+    assert view._current_approval_request_panel is not None
+    assert view._current_approval_request_panel.request is request_two
+
+
+@pytest.mark.asyncio
+async def test_live_view_approval_num4_selects_feedback_option() -> None:
+    """Pressing NUM_4 in _LiveView should select the feedback (4th) approval option."""
+    view = _LiveView(StatusUpdate())
+    request = ApprovalRequest(
+        id="req-num4",
+        tool_call_id="call-num4",
+        sender="Shell",
+        action="run command",
+        description="echo hello",
+    )
+    view.request_approval(request)
+    assert view._current_approval_request_panel is not None
+
+    # NUM_4 selects the feedback option (index 3) and submits as "reject"
+    view.dispatch_keyboard_event(shell_visualize.KeyEvent.NUM_4)
+
+    assert request.resolved is True
+    assert await request.wait() == "reject"
+
+
+@pytest.mark.asyncio
+async def test_approval_prompt_delegate_ctrl_c_rejects_current_request() -> None:
+    resolved: list[tuple[str, str]] = []
+    request = ApprovalRequest(
+        id="req-ctrl-c",
+        tool_call_id="call-ctrl-c",
+        sender="Shell",
+        action="run command",
+        description="pwd",
+    )
+    delegate = shell_visualize.ApprovalPromptDelegate(
+        request,
+        on_response=lambda req, resp, feedback="": resolved.append((req.id, resp)),
+    )
+
+    assert delegate.should_handle_running_prompt_key("c-c") is True
+    delegate.handle_running_prompt_key(
+        "c-c", type("_Event", (), {"app": None, "current_buffer": Buffer()})()
+    )
+
+    assert request.resolved is True
+    assert resolved == [("req-ctrl-c", "reject")]
 
 
 def test_running_prompt_suppresses_duplicate_steer_echo_from_wire(monkeypatch) -> None:
@@ -277,36 +600,57 @@ def test_submit_question_other_text_resolves_request_when_done() -> None:
     assert resolved == [{"q": "custom"}]
 
 
-def test_handle_running_prompt_key_clears_buffer_for_question_panel_actions() -> None:
-    view = object.__new__(_PromptLiveView)
-    view._awaiting_question_other_input = False
-    view._turn_ended = False
-    view._current_question_panel = type(
-        "_Panel",
-        (),
-        {
-            "is_multi_select": False,
-            "should_prompt_other_input": staticmethod(lambda: False),
-        },
-    )()
-    view._current_approval_request_panel = None
+def test_question_delegate_clears_buffer_for_key_actions() -> None:
+    QuestionPromptDelegate = shell_visualize.QuestionPromptDelegate
 
-    dispatched: list[object] = []
-    view.dispatch_keyboard_event = lambda event: dispatched.append(event)
-    view._flush_prompt_refresh = lambda: None
+    submitted: list[bool] = []
+
+    class _Panel:
+        has_expandable_content = False
+        is_multi_select = False
+        is_other_selected = False
+        request = type("_Req", (), {"resolve": lambda self, x: None})()
+
+        @staticmethod
+        def should_prompt_other_input() -> bool:
+            return False
+
+        def submit(self) -> bool:
+            submitted.append(True)
+            return True
+
+        def get_answers(self) -> dict[str, str]:
+            return {}
+
+        def move_up(self) -> None:
+            pass
+
+        def move_down(self) -> None:
+            pass
+
+        def save_other_draft(self, text: str) -> None:
+            pass
+
+        def get_other_draft(self) -> str:
+            return ""
+
+    delegate = QuestionPromptDelegate(
+        _Panel(),
+        on_advance=lambda: None,
+        on_invalidate=lambda: None,
+    )
 
     buffer = Buffer(document=Document(text="draft", cursor_position=5))
     event = type("_Event", (), {"current_buffer": buffer})()
 
-    view.handle_running_prompt_key("enter", event)
+    delegate.handle_running_prompt_key("enter", event)
 
     assert buffer.text == ""
-    assert dispatched == [shell_visualize.KeyEvent.ENTER]
+    assert submitted == [True]
 
 
 def test_running_prompt_handles_approval_panel_keys_and_clears_buffer() -> None:
     view = object.__new__(_PromptLiveView)
-    view._awaiting_question_other_input = False
     view._turn_ended = False
     view._current_question_panel = None
     view._current_approval_request_panel = object()
@@ -326,17 +670,438 @@ def test_running_prompt_handles_approval_panel_keys_and_clears_buffer() -> None:
     assert dispatched == [shell_visualize.KeyEvent.DOWN]
 
 
-def test_handle_running_prompt_key_clears_buffer_when_exiting_other_input_mode() -> None:
-    view = object.__new__(_PromptLiveView)
-    view._awaiting_question_other_input = True
-    view._turn_ended = False
-    view.refresh_soon = lambda: None
-    view._flush_prompt_refresh = lambda: None
+def test_question_delegate_clears_buffer_when_exiting_other_input_mode() -> None:
+    QuestionPromptDelegate = shell_visualize.QuestionPromptDelegate
+
+    resolved: list[object] = []
+
+    class _Panel:
+        has_expandable_content = False
+        is_multi_select = False
+
+        class request:
+            @staticmethod
+            def resolve(x):
+                resolved.append(x)
+
+        @staticmethod
+        def should_prompt_other_input() -> bool:
+            return False
+
+    advanced: list[bool] = []
+    delegate = QuestionPromptDelegate(
+        _Panel(),
+        on_advance=lambda: (advanced.append(True), None)[-1],
+        on_invalidate=lambda: None,
+    )
+    delegate._awaiting_other_input = True
 
     buffer = Buffer(document=Document(text="draft", cursor_position=5))
     event = type("_Event", (), {"current_buffer": buffer})()
 
-    view.handle_running_prompt_key("escape", event)
+    delegate.handle_running_prompt_key("escape", event)
 
-    assert view._awaiting_question_other_input is False
+    assert delegate._awaiting_other_input is False
     assert buffer.text == ""
+    assert resolved == [{}]
+    assert advanced == [True]
+
+
+# ---------------------------------------------------------------------------
+# Inline Other input: draft save/restore across navigation
+# ---------------------------------------------------------------------------
+
+QuestionRequestPanel = shell_visualize.QuestionRequestPanel
+QuestionPromptDelegate = shell_visualize.QuestionPromptDelegate
+
+
+def _make_two_question_request():
+    """Create a QuestionRequest with two single-select questions."""
+    from kimi_cli.wire.types import QuestionItem, QuestionOption
+    from kimi_cli.wire.types import QuestionRequest as QR
+
+    return QR(
+        id="qr-test",
+        tool_call_id="tc-test",
+        questions=[
+            QuestionItem(
+                question="Pick a framework",
+                header="Q1",
+                options=[
+                    QuestionOption(label="React"),
+                    QuestionOption(label="Vue"),
+                ],
+            ),
+            QuestionItem(
+                question="Pick a language",
+                header="Q2",
+                options=[
+                    QuestionOption(label="TypeScript"),
+                    QuestionOption(label="JavaScript"),
+                ],
+            ),
+        ],
+    )
+
+
+def _make_delegate_with_panel(panel):
+    """Create a QuestionPromptDelegate with a buffer text provider backed by a real Buffer."""
+    buf = Buffer()
+    delegate = QuestionPromptDelegate(
+        panel,
+        on_advance=lambda: None,
+        on_invalidate=lambda: None,
+        buffer_text_provider=lambda: buf.text,
+    )
+    return delegate, buf
+
+
+def test_inline_other_draft_survives_up_down_navigation():
+    """Type in Other, press UP to leave, press DOWN to return — draft is restored."""
+    panel = QuestionRequestPanel(_make_two_question_request())
+    delegate, buf = _make_delegate_with_panel(panel)
+
+    # Navigate to Other (last option, index 2)
+    panel._selected_index = len(panel._options) - 1
+    assert panel.is_other_selected
+
+    # Simulate typing
+    buf.set_document(Document(text="my custom answer", cursor_position=16), bypass_readonly=True)
+
+    # Press UP — should save draft and move away
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("up", event)
+
+    assert not panel.is_other_selected
+    assert buf.text == ""  # buffer cleared
+
+    # Press DOWN — should return to Other and restore draft
+    delegate.handle_running_prompt_key("down", event)
+
+    assert panel.is_other_selected
+    assert buf.text == "my custom answer"
+
+
+def test_inline_other_draft_survives_tab_switch():
+    """Type in Other on Q1, switch to Q2, switch back — draft is restored."""
+    panel = QuestionRequestPanel(_make_two_question_request())
+    delegate, buf = _make_delegate_with_panel(panel)
+
+    # Navigate to Other on Q1
+    panel._selected_index = len(panel._options) - 1
+    assert panel.is_other_selected
+
+    # Simulate typing
+    buf.set_document(Document(text="custom framework", cursor_position=16), bypass_readonly=True)
+
+    event = type("_Event", (), {"current_buffer": buf})()
+
+    # Press RIGHT — switch to Q2
+    delegate.handle_running_prompt_key("right", event)
+
+    assert panel._current_question_index == 1
+    assert buf.text == ""  # buffer cleared on Q2
+
+    # Press LEFT — switch back to Q1
+    delegate.handle_running_prompt_key("left", event)
+
+    assert panel._current_question_index == 0
+    assert panel.is_other_selected
+    assert buf.text == "custom framework"
+
+
+def test_inline_other_draft_cleared_after_submit():
+    """After submitting Other text, the draft should not reappear."""
+    panel = QuestionRequestPanel(_make_two_question_request())
+
+    advanced: list[bool] = []
+    delegate, buf = _make_delegate_with_panel(panel)
+    delegate._on_advance = lambda: (advanced.append(True), None)[-1]
+
+    # Navigate to Other on Q1
+    panel._selected_index = len(panel._options) - 1
+
+    # Type and submit
+    buf.set_document(Document(text="Svelte", cursor_position=6), bypass_readonly=True)
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("enter", event)
+
+    # Q1 should be answered
+    assert panel._answers.get("Pick a framework") == "Svelte"
+    assert buf.text == ""
+
+    # Verify draft is cleared (check on the panel directly since advance was called)
+    assert panel._other_drafts.get(0) is None
+
+
+def test_question_panel_hides_input_buffer():
+    """Question modal should always hide the input buffer, not just when Other is selected."""
+    panel = QuestionRequestPanel(_make_two_question_request())
+    delegate, _buf = _make_delegate_with_panel(panel)
+
+    # Non-Other selected
+    panel._selected_index = 0
+    assert not panel.is_other_selected
+    assert delegate.running_prompt_hides_input_buffer() is True
+
+    # Other selected
+    panel._selected_index = len(panel._options) - 1
+    assert panel.is_other_selected
+    assert delegate.running_prompt_hides_input_buffer() is True
+
+
+def test_inline_other_renders_typed_text_in_panel():
+    """When Other is selected, the panel renders the buffer text inline."""
+    panel = QuestionRequestPanel(_make_two_question_request())
+    delegate, buf = _make_delegate_with_panel(panel)
+
+    # Navigate to Other
+    panel._selected_index = len(panel._options) - 1
+
+    # Type something
+    buf.set_document(Document(text="Solid.js", cursor_position=8), bypass_readonly=True)
+
+    # Render — should contain the typed text
+    rendered = delegate.render_running_prompt_body(120)
+    import re
+
+    plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
+    assert "Solid.js" in plain
+
+
+def test_inline_other_allows_text_input_only_when_other_selected():
+    """Text input is only allowed when Other is the selected option."""
+    panel = QuestionRequestPanel(_make_two_question_request())
+    delegate, _buf = _make_delegate_with_panel(panel)
+
+    # Non-Other: no text input
+    panel._selected_index = 0
+    assert delegate.running_prompt_allows_text_input() is False
+
+    # Other: text input allowed
+    panel._selected_index = len(panel._options) - 1
+    assert delegate.running_prompt_allows_text_input() is True
+
+
+# ---------------------------------------------------------------------------
+# Approval inline feedback tests
+# ---------------------------------------------------------------------------
+
+ApprovalPromptDelegate = shell_visualize.ApprovalPromptDelegate
+ApprovalRequestPanel = shell_visualize.ApprovalRequestPanel
+
+
+def _make_approval_request(request_id: str = "req-1") -> ApprovalRequest:
+    return ApprovalRequest(
+        id=request_id,
+        tool_call_id=f"call-{request_id}",
+        sender="Shell",
+        action="run command",
+        description="echo hello",
+    )
+
+
+def _make_approval_delegate(request=None):
+    """Create an ApprovalPromptDelegate with a real buffer for feedback testing."""
+    if request is None:
+        request = _make_approval_request()
+    buf = Buffer()
+    responses: list[tuple[str, str, str]] = []
+    delegate = ApprovalPromptDelegate(
+        request,
+        on_response=lambda req, resp, feedback="": responses.append((req.id, resp, feedback)),
+        buffer_text_provider=lambda: buf.text,
+    )
+    return delegate, buf, responses
+
+
+def test_approval_panel_has_four_options():
+    """Approval panel should have 4 options: approve, approve_session, reject, reject+feedback."""
+    panel = ApprovalRequestPanel(_make_approval_request())
+    assert len(panel.options) == 4
+    assert panel.options[0][1] == "approve"
+    assert panel.options[1][1] == "approve_for_session"
+    assert panel.options[2][1] == "reject"
+    assert panel.options[3][1] == "reject"
+
+
+def test_approval_feedback_option_enables_text_input():
+    """Selecting option 4 should enable inline text input."""
+    delegate, _buf, _ = _make_approval_delegate()
+
+    # Options 0-2: no text input
+    for i in range(3):
+        delegate._panel.selected_index = i
+        assert delegate.running_prompt_allows_text_input() is False
+
+    # Option 3 (feedback): text input enabled
+    delegate._panel.selected_index = 3
+    assert delegate.running_prompt_allows_text_input() is True
+    assert delegate.running_prompt_hides_input_buffer() is True
+
+
+def test_approval_feedback_renders_inline_input():
+    """When feedback option is selected, panel renders typed text inline."""
+    delegate, buf, _ = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+
+    buf.set_document(Document(text="use a safer command", cursor_position=19), bypass_readonly=True)
+
+    rendered = delegate.render_running_prompt_body(120)
+    import re
+
+    plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
+    assert "use a safer command" in plain
+    assert "Type your feedback" in plain
+
+
+@pytest.mark.asyncio
+async def test_approval_feedback_submit_sends_reject_with_text():
+    """Enter with text in feedback mode should reject with feedback."""
+    delegate, buf, responses = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+
+    buf.set_document(Document(text="use rm -i instead", cursor_position=17), bypass_readonly=True)
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("enter", event)
+
+    assert len(responses) == 1
+    assert responses[0][1] == "reject"
+    assert responses[0][2] == "use rm -i instead"
+    assert buf.text == ""
+
+
+def test_approval_feedback_empty_enter_does_not_submit():
+    """Enter with empty buffer in feedback mode should not submit."""
+    delegate, buf, responses = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("enter", event)
+
+    assert len(responses) == 0
+    assert not delegate._panel.request.resolved
+
+
+@pytest.mark.asyncio
+async def test_approval_feedback_escape_rejects_without_feedback():
+    """Escape in feedback mode should reject without feedback text."""
+    delegate, buf, responses = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+    buf.set_document(Document(text="draft", cursor_position=5), bypass_readonly=True)
+
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("escape", event)
+
+    assert len(responses) == 1
+    assert responses[0][1] == "reject"
+    assert responses[0][2] == ""
+    assert buf.text == ""
+
+
+def test_approval_feedback_up_navigates_away():
+    """UP in feedback mode should navigate to option 3 and clear buffer."""
+    delegate, buf, _ = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+    buf.set_document(Document(text="draft", cursor_position=5), bypass_readonly=True)
+
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("up", event)
+
+    assert delegate._panel.selected_index == 2  # moved to "Reject"
+    assert buf.text == ""
+
+
+def test_approval_number_4_selects_feedback_without_submitting():
+    """Pressing 4 should select the feedback option but NOT auto-submit."""
+    delegate, buf, responses = _make_approval_delegate()
+    event = type("_Event", (), {"current_buffer": buf})()
+
+    delegate.handle_running_prompt_key("4", event)
+
+    assert delegate._panel.selected_index == 3
+    assert delegate._is_inline_feedback_active()
+    assert len(responses) == 0  # should NOT submit yet
+
+
+def test_approval_feedback_draft_survives_navigation():
+    """Type in feedback, navigate away, navigate back — draft is restored."""
+    delegate, buf, _ = _make_approval_delegate()
+    delegate._panel.selected_index = 3  # feedback option
+
+    buf.set_document(Document(text="use safer cmd", cursor_position=13), bypass_readonly=True)
+    event = type("_Event", (), {"current_buffer": buf})()
+
+    # UP — leave feedback option, draft saved
+    delegate.handle_running_prompt_key("up", event)
+    assert delegate._panel.selected_index == 2
+    assert buf.text == ""
+    assert delegate._feedback_draft == "use safer cmd"
+
+    # DOWN — back to feedback option, draft restored
+    delegate.handle_running_prompt_key("down", event)
+    assert delegate._panel.selected_index == 3
+    assert buf.text == "use safer cmd"
+
+
+@pytest.mark.asyncio
+async def test_approval_feedback_draft_cleared_after_submit():
+    """After submitting feedback, draft should be cleared."""
+    delegate, buf, responses = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+
+    buf.set_document(Document(text="do X instead", cursor_position=12), bypass_readonly=True)
+    event = type("_Event", (), {"current_buffer": buf})()
+
+    delegate.handle_running_prompt_key("enter", event)
+
+    assert responses[0][2] == "do X instead"
+    assert delegate._feedback_draft == ""
+
+
+def test_approval_feedback_draft_cleared_on_new_request():
+    """set_request should clear feedback draft."""
+    delegate, buf, _ = _make_approval_delegate()
+    delegate._feedback_draft = "old draft"
+
+    delegate.set_request(_make_approval_request("req-new"))
+    assert delegate._feedback_draft == ""
+
+
+# ---------------------------------------------------------------------------
+# ApprovalRequest wire-level feedback propagation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_approval_request_resolve_carries_feedback():
+    """ApprovalRequest.resolve() should store feedback accessible via .feedback property."""
+    request = _make_approval_request("req-fb-wire")
+
+    request.resolve("reject", feedback="use a different command")
+
+    assert request.resolved is True
+    assert await request.wait() == "reject"
+    assert request.feedback == "use a different command"
+
+
+@pytest.mark.asyncio
+async def test_approval_request_resolve_without_feedback_defaults_empty():
+    """ApprovalRequest.resolve() without feedback should default to empty string."""
+    request = _make_approval_request("req-fb-default")
+
+    request.resolve("approve")
+
+    assert request.resolved is True
+    assert request.feedback == ""
+
+
+@pytest.mark.asyncio
+async def test_approval_request_feedback_available_before_wait():
+    """Feedback should be readable immediately after resolve, without awaiting wait()."""
+    request = _make_approval_request("req-fb-sync")
+
+    request.resolve("reject", feedback="try rm -i instead")
+
+    # feedback is available synchronously, no need to await
+    assert request.feedback == "try rm -i instead"

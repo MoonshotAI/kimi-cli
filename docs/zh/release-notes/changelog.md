@@ -6,12 +6,27 @@
 
 - Core：支持通过插件提供自定义上下文压缩实现——插件可在 `plugin.json` 中声明 `compaction.entrypoint` 提供自定义压缩器；通过 `loop_control.compaction_plugin` 配置项指定使用哪个插件的压缩器
 - Core：新增 `loop_control.compaction_model` 配置项，可为上下文压缩指定专用模型
+
+## 1.25.0 (2026-03-23)
+
+- Core：新增插件系统（Skills + Tools）——插件通过 `plugin.json` 为 Kimi Code CLI 扩展自定义工具；工具是在独立子进程中运行的命令，其 stdout 返回给 Agent；插件支持通过 `inject` 配置自动注入凭证
+- Core：支持多插件仓库——`kimi plugin install` 接受带 subpath 的 Git URL，从 monorepo 中安装特定插件（如 `https://github.com/org/repo.git/plugins/my-plugin`）；当未提供 subpath 且根目录无 `plugin.json` 时，CLI 会列出直接子目录中可用的插件
+- Core：统一插件凭证注入——插件可在 `plugin.json` 中声明 `inject` 字段，从主机的 LLM 提供商配置接收 `api_key` 和 `base_url`；支持 OAuth 托管 token 和静态 API key 两种凭证类型
+- Core：新增 `Agent` 工具支持子 Agent 委派——Agent 现在可以创建持久的子 Agent 实例，内置三种类型（`coder`、`explore`、`plan`）处理聚焦的子任务；每个实例在会话内维护独立的上下文历史，支持前台或后台运行并自动汇总结果
+- Core：统一审批运行时——前台工具调用和后台子 Agent 的审批请求现在通过统一的运行时协调，并由根 UI 通道呈现；拒绝响应可包含反馈文本以指导模型的下一次尝试
+- Shell：新增交互式审批请求面板——内联面板展示工具调用详情（Diff、Shell 命令等），提供批准一次、批准本次会话、拒绝或附带反馈文字拒绝等选项
+- Wire：协议版本升级至 1.6——`SubagentEvent` 新增 `agent_id`、`subagent_type`、`parent_tool_call_id` 字段；`ApprovalRequest` 包含来源元数据（`source_kind`、`source_id`）；`ApprovalResponse` 支持 `feedback` 字段
+- Vis：新增 Agents 面板——`kimi vis` 中新增 "Agents" 标签页，可查看子 Agent 实例及其事件，并按 Agent 范围筛选 Wire 时间线
+- Core：`TaskOutput` 的 `block` 参数默认值从 `true` 改为 `false`——`TaskOutput` 现在默认返回非阻塞的状态/输出快照；仅在需要等待任务完成时设置 `block=true`
 - Shell：在提示工具栏中显示当前工作目录、Git 分支、脏状态以及与远端的 ahead/behind 同步状态
 - Shell：在工具栏中显示活跃后台 Bash 任务数量，按时间轮换快捷键提示，并在窄终端中优雅截断内容以避免溢出
 - Web：修复取消和审批时工具执行状态同步问题——停止生成时工具现在正确过渡到 `output-denied` 状态，审批通过后执行期间显示加载动画（而非勾选图标）
 - Web：会话重放时消除过期的审批和问答对话框——重放会话或后端报告 idle/stopped/error 状态时，所有待处理的审批/问答对话框现在会被正确消除，防止产生孤立的交互元素
 - Web：支持行内数学公式渲染——除块级数学公式（`$$...$$`）外，新增支持单美元符号行内数学公式（`$...$`）
 - Web：优化 Switch 切换开关的比例和对齐——切换轨道现在更大（36×20），拇指按钮保持 16px 并具备更平滑的 16px 位移动画
+- Web：在活动面板中显示子 Agent 类型标签——子 Agent 活动现在显示其类型（如 "Coder agent working"）而非通用的 "Agent" 标签
+- Web：审批对话框新增反馈模式——按 `4` 可附带反馈文字拒绝，指导模型的下一次尝试；来自子 Agent 的审批请求会显示来源标签和预览内容（Diff、命令等）
+- Web：视觉区分子 Agent 来源的工具调用——来自子 Agent 的 Tool 消息以左边框和来源类型标签渲染，便于区分归属
 
 ## 1.24.0 (2026-03-18)
 

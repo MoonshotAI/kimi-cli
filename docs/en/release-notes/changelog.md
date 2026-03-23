@@ -6,12 +6,27 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Core: Support custom context compaction via plugins — plugins can declare a `compaction.entrypoint` in `plugin.json` to provide their own compaction implementation; use `loop_control.compaction_plugin` to select which plugin to use
 - Core: Add `loop_control.compaction_model` config option to use a dedicated model for context compaction
+
+## 1.25.0 (2026-03-23)
+
+- Core: Add plugin system (Skills + Tools) — plugins extend Kimi Code CLI with custom tools packaged as `plugin.json`; tools are commands that run in isolated subprocesses and return their stdout to the agent; plugins support automatic credential injection via `inject` configuration
+- Core: Support multi-plugin repositories — `kimi plugin install` accepts git URLs with subpath to install a specific plugin from a monorepo (e.g., `https://github.com/org/repo.git/plugins/my-plugin`); when no subpath is provided and no root `plugin.json` exists, the CLI lists available plugins in immediate subdirectories
+- Core: Unify plugin credential injection — plugins can declare `inject` fields in `plugin.json` to receive `api_key` and `base_url` from the host's configured LLM provider; works with both OAuth-managed tokens and static API keys
+- Core: Add `Agent` tool for subagent delegation — the agent can now spawn persistent subagent instances with three built-in types (`coder`, `explore`, `plan`) to handle focused subtasks; each instance maintains its own context history within the session and can run in foreground or background with automatic result summarization
+- Core: Unified approval runtime — approval requests from both foreground tool calls and background subagents are now coordinated through a single runtime and surfaced through the root UI channel; rejection responses can include feedback text to guide the model's next attempt
+- Shell: Add interactive approval request panel — a new inline panel displays tool call details (diffs, shell commands) with options to approve once, approve for session, reject, or reject with written feedback to instruct the model on what to do instead
+- Wire: Bump protocol version to 1.6 — `SubagentEvent` now includes `agent_id`, `subagent_type`, and `parent_tool_call_id` fields; `ApprovalRequest` includes source metadata (`source_kind`, `source_id`); `ApprovalResponse` supports a `feedback` field
+- Vis: Add agents panel — new "Agents" tab in `kimi vis` to inspect subagent instances, view their events, and filter the wire timeline by agent scope
+- Core: Change `TaskOutput` `block` parameter default from `true` to `false` — `TaskOutput` now returns a non-blocking status/output snapshot by default; set `block=true` only when you intentionally want to wait for task completion
 - Shell: Show the current working directory, git branch, dirty state, and ahead/behind sync status directly in the prompt toolbar
 - Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
 - Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
 - Web: Dismiss stale approval and question dialogs on session replay — when replaying a session or when the backend reports idle/stopped/error status, any pending approval/question dialogs are now properly dismissed to prevent orphaned interactive elements
 - Web: Enable inline math formula rendering — single-dollar inline math (`$...$`) is now supported in addition to block math (`$$...$$`)
 - Web: Improve Switch toggle proportions and alignment — the toggle track is now larger (36×20) with a consistent 16px thumb and smoother 16px travel animation
+- Web: Show subagent type labels in activity panels — subagent activities now display their type (e.g. "Coder agent working") instead of the generic "Agent" label
+- Web: Add feedback mode to approval dialog — press `4` to reject with written feedback text that guides the model's next attempt; approval requests from subagents show a source label and preview content (diffs, commands)
+- Web: Visually distinguish sub-agent origin tool calls — tool messages originating from a subagent are rendered with a left border and a source type label for clearer attribution
 
 ## 1.24.0 (2026-03-18)
 

@@ -9,7 +9,6 @@ import pytest
 
 from kimi_cli.session_state import (
     ApprovalStateData,
-    DynamicSubagentSpec,
     SessionState,
     load_session_state,
     save_session_state,
@@ -27,7 +26,6 @@ class TestSessionState:
         assert state.version == 1
         assert state.approval.yolo is False
         assert state.approval.auto_approve_actions == set()
-        assert state.dynamic_subagents == []
 
     def test_save_and_load_roundtrip(self, state_dir: Path):
         state_dir.mkdir(parents=True)
@@ -36,9 +34,6 @@ class TestSessionState:
                 yolo=True,
                 auto_approve_actions={"Shell", "WriteFile"},
             ),
-            dynamic_subagents=[
-                DynamicSubagentSpec(name="researcher", system_prompt="You are a researcher."),
-            ],
         )
         save_session_state(state, state_dir)
 
@@ -46,9 +41,6 @@ class TestSessionState:
         assert loaded.version == 1
         assert loaded.approval.yolo is True
         assert loaded.approval.auto_approve_actions == {"Shell", "WriteFile"}
-        assert len(loaded.dynamic_subagents) == 1
-        assert loaded.dynamic_subagents[0].name == "researcher"
-        assert loaded.dynamic_subagents[0].system_prompt == "You are a researcher."
 
     def test_load_missing_file_returns_default(self, state_dir: Path):
         state_dir.mkdir(parents=True)
@@ -90,20 +82,26 @@ class TestSessionState:
         assert loaded.approval.yolo is True
         assert loaded.approval.auto_approve_actions == {"Shell", "WriteFile"}
 
-    def test_multiple_dynamic_subagents(self, state_dir: Path):
+    def test_legacy_removed_subagent_field_is_ignored(self, state_dir: Path):
         state_dir.mkdir(parents=True)
-        state = SessionState(
-            dynamic_subagents=[
-                DynamicSubagentSpec(name="researcher", system_prompt="Research things."),
-                DynamicSubagentSpec(name="coder", system_prompt="Write code."),
-            ],
+        state_file = state_dir / "state.json"
+        legacy_field = "dynamic_" + "subagents"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "approval": {"yolo": False, "auto_approve_actions": []},
+                    legacy_field: [
+                        {"name": "researcher", "system_prompt": "Research things."},
+                        {"name": "coder", "system_prompt": "Write code."},
+                    ],
+                }
+            ),
+            encoding="utf-8",
         )
-        save_session_state(state, state_dir)
 
         loaded = load_session_state(state_dir)
-        assert len(loaded.dynamic_subagents) == 2
-        assert loaded.dynamic_subagents[0].name == "researcher"
-        assert loaded.dynamic_subagents[1].name == "coder"
+        assert loaded == SessionState()
 
     def test_load_truncated_json_returns_default(self, state_dir: Path):
         """Simulates a crash mid-write leaving a truncated JSON file."""
@@ -235,16 +233,52 @@ class TestApprovalStateCallback:
             request_task = asyncio.create_task(
                 approval.request(sender="Shell", action="shell_exec", description="ls")
             )
-            # Wait for the request to be queued
-            request = await approval.fetch_request()
-            approval.resolve_request(request.id, "approve_for_session")
+            while not approval.runtime.list_pending():
+                await asyncio.sleep(0)
+            request = approval.runtime.list_pending()[0]
+            approval.runtime.resolve(request.id, "approve_for_session")
             result = await request_task
         finally:
             current_tool_call.reset(token)
 
-        assert result is True
+        assert result.approved is True
         assert "shell_exec" in state.auto_approve_actions
         assert len(changes) == 1
+
+    @pytest.mark.asyncio
+    async def test_approve_for_session_resolves_already_pending_same_action(self):
+        import asyncio
+
+        from kimi_cli.soul.approval import Approval, ApprovalState
+        from kimi_cli.soul.toolset import current_tool_call
+        from kimi_cli.wire.types import ToolCall
+
+        state = ApprovalState()
+        approval = Approval(state=state)
+
+        token = current_tool_call.set(
+            ToolCall(id="test", function=ToolCall.FunctionBody(name="WriteFile", arguments=None))
+        )
+        try:
+            first = asyncio.create_task(
+                approval.request(sender="WriteFile", action="write_file", description="write one")
+            )
+            second = asyncio.create_task(
+                approval.request(sender="WriteFile", action="write_file", description="write two")
+            )
+            while len(approval.runtime.list_pending()) < 2:
+                await asyncio.sleep(0)
+            pending = approval.runtime.list_pending()
+            approval.runtime.resolve(pending[0].id, "approve_for_session")
+            first_result = await first
+            second_result = await second
+            assert first_result.approved is True
+            assert second_result.approved is True
+        finally:
+            current_tool_call.reset(token)
+
+        assert "write_file" in state.auto_approve_actions
+        assert approval.runtime.list_pending() == []
 
     def test_no_callback_does_not_raise(self):
         from kimi_cli.soul.approval import Approval, ApprovalState

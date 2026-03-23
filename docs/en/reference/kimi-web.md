@@ -255,9 +255,14 @@ When the agent sends an approval request, you can use keyboard shortcuts to resp
 | `1` | Approve |
 | `2` | Approve for session |
 | `3` | Decline |
+| `4` | Decline with feedback |
+
+Press `4` to enter feedback mode, where you can type a reason for declining or instructions on how the agent should adjust, then press Enter to submit. The feedback text is passed to the agent to guide its next attempt.
+
+When an approval request originates from a subagent, the dialog shows a source label (e.g. "coder agent") so you know which agent initiated the request.
 
 ::: info Added
-Approval keyboard shortcuts added in version 1.10.
+Approval keyboard shortcuts added in version 1.10. Feedback mode added in version 1.25.
 :::
 
 ### Tool output
@@ -271,8 +276,10 @@ Web UI provides rich display for tool call output:
 - **Context compaction**: A compaction indicator is shown when context compaction is in progress
 - **Quick URL open**: The URL parameter of the `FetchURL` tool supports Cmd/Ctrl+Click to open the link in a new tab
 
+- **Subagent origin indicators**: Tool calls originating from a subagent are rendered with a left border and a source type label (e.g. "coder agent") for clearer attribution; subagent activity panels display the specific agent type (e.g. "Coder agent working") instead of a generic label
+
 ::: info Added
-Media preview, shell command, and todo list display components added in version 1.9. Quick URL open added in version 1.14.
+Media preview, shell command, and todo list display components added in version 1.9. Quick URL open added in version 1.14. Subagent origin indicators added in version 1.25.
 :::
 
 ### Rich media support

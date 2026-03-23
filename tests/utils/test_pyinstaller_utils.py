@@ -26,7 +26,7 @@ def test_pyinstaller_datas():
         for path, dst in datas
     ]
 
-    datas = [(p, d) for p, d in datas if "web/static" not in d]
+    datas = [(p, d) for p, d in datas if "web/static" not in d and "vis/static" not in d]
 
     expected_datas = [
         (
@@ -66,7 +66,9 @@ def test_pyinstaller_datas():
             "kimi_cli",
         ),
         ("src/kimi_cli/agents/default/agent.yaml", "kimi_cli/agents/default"),
-        ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
+        ("src/kimi_cli/agents/default/coder.yaml", "kimi_cli/agents/default"),
+        ("src/kimi_cli/agents/default/explore.yaml", "kimi_cli/agents/default"),
+        ("src/kimi_cli/agents/default/plan.yaml", "kimi_cli/agents/default"),
         ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
         ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
         ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
@@ -79,6 +81,7 @@ def test_pyinstaller_datas():
             "src/kimi_cli/skills/skill-creator/SKILL.md",
             "kimi_cli/skills/skill-creator",
         ),
+        ("src/kimi_cli/tools/agent/description.md", "kimi_cli/tools/agent"),
         ("src/kimi_cli/tools/ask_user/description.md", "kimi_cli/tools/ask_user"),
         (
             "src/kimi_cli/tools/dmail/dmail.md",
@@ -111,8 +114,6 @@ def test_pyinstaller_datas():
             "src/kimi_cli/tools/file/write.md",
             "kimi_cli/tools/file",
         ),
-        ("src/kimi_cli/tools/multiagent/create.md", "kimi_cli/tools/multiagent"),
-        ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
         ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
@@ -137,7 +138,7 @@ def test_pyinstaller_datas():
     if has_rg_binary:
         expected_datas.append((f"src/kimi_cli/deps/bin/{rg_binary}", "kimi_cli/deps/bin"))
 
-    assert sorted(datas) == snapshot(sorted(expected_datas))
+    assert sorted(datas) == sorted(expected_datas)
 
 
 def test_pyinstaller_hiddenimports():
@@ -146,6 +147,7 @@ def test_pyinstaller_hiddenimports():
     assert sorted(hiddenimports) == snapshot(
         [
             "kimi_cli.tools",
+            "kimi_cli.tools.agent",
             "kimi_cli.tools.ask_user",
             "kimi_cli.tools.background",
             "kimi_cli.tools.display",
@@ -159,9 +161,6 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
-            "kimi_cli.tools.multiagent",
-            "kimi_cli.tools.multiagent.create",
-            "kimi_cli.tools.multiagent.task",
             "kimi_cli.tools.plan",
             "kimi_cli.tools.plan.enter",
             "kimi_cli.tools.plan.heroes",

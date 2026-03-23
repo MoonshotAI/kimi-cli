@@ -48,6 +48,7 @@ export interface SessionInfo {
   total_size: number;
   turns: number;
   imported?: boolean;
+  subagent_count?: number;
 }
 
 export interface SessionSummary {
@@ -285,6 +286,47 @@ export async function importSession(file: File): Promise<{ session_id: string; w
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export type SubagentStatus =
+  | "idle"
+  | "running_foreground"
+  | "running_background"
+  | "completed"
+  | "failed"
+  | "killed";
+
+export interface SubagentInfo {
+  agent_id: string;
+  subagent_type: string;
+  status: SubagentStatus;
+  description: string;
+  created_at: number;
+  updated_at: number;
+  last_task_id: string | null;
+  wire_size: number;
+  context_size: number;
+  launch_spec: Record<string, unknown>;
+}
+
+export function getSubagents(sessionId: string, forceRefresh = false): Promise<SubagentInfo[]> {
+  const key = `subagents:${sessionId}`;
+  if (forceRefresh) apiCache.invalidate(key);
+  return apiCache.get(key, () => fetchJSON<SubagentInfo[]>(`/sessions/${sessionId}/subagents`));
+}
+
+export function getSubagentWireEvents(sessionId: string, agentId: string, forceRefresh = false): Promise<WireResponse> {
+  const key = `subagent-wire:${sessionId}:${agentId}`;
+  if (forceRefresh) apiCache.invalidate(key);
+  return apiCache.get(key, () =>
+    fetchJSON<WireResponse>(`/sessions/${sessionId}/subagents/${agentId}/wire`).then(normalizeWireEvents),
+  );
+}
+
+export function getSubagentContextMessages(sessionId: string, agentId: string, forceRefresh = false): Promise<ContextResponse> {
+  const key = `subagent-context:${sessionId}:${agentId}`;
+  if (forceRefresh) apiCache.invalidate(key);
+  return apiCache.get(key, () => fetchJSON<ContextResponse>(`/sessions/${sessionId}/subagents/${agentId}/context`));
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

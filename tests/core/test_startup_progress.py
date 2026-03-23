@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pydantic import SecretStr
@@ -193,6 +193,55 @@ async def test_kimi_cli_create_passes_compaction_llm(session, config, monkeypatc
         "session": session,
     }
     write_system_prompt.assert_awaited_once_with("Test system prompt")
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
+    session, config, monkeypatch
+) -> None:
+    update_instance = Mock()
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+        subagent_store=SimpleNamespace(
+            list_instances=lambda: [
+                SimpleNamespace(agent_id="afg1", status="running_foreground"),
+                SimpleNamespace(agent_id="abg1", status="running_background"),
+                SimpleNamespace(agent_id="aidle1", status="idle"),
+            ],
+            update_instance=update_instance,
+        ),
+    )
+    fake_agent = SimpleNamespace(name="Test Agent", system_prompt="Test system prompt")
+    fake_context = SimpleNamespace(system_prompt=None)
+    write_system_prompt = AsyncMock()
+
+    async def fake_runtime_create(*args, **kwargs):
+        return fake_runtime
+
+    async def fake_load_agent(*args, **kwargs):
+        return fake_agent
+
+    async def fake_restore() -> None:
+        return None
+
+    fake_context.restore = fake_restore
+    fake_context.write_system_prompt = write_system_prompt
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+    monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    await KimiCLI.create(session, config=config)
+
+    update_instance.assert_called_once_with("afg1", status="failed")
 
 
 @pytest.mark.asyncio

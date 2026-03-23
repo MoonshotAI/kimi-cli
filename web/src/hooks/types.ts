@@ -19,7 +19,7 @@ export type { Session } from "../lib/api/models";
 
 /**
  * A single step recorded from a subagent's activity.
- * Accumulated as SubagentEvents arrive and rendered inside the parent Task tool call.
+ * Accumulated as SubagentEvents arrive and rendered inside the parent Agent tool call.
  */
 export type SubagentStep =
   | { kind: "thinking"; text: string }
@@ -114,6 +114,9 @@ export type LiveMessage = {
       approved?: boolean;
       reason?: string;
       response?: unknown;
+      feedback?: string;
+      sourceKind?: "foreground_turn" | "background_agent" | null;
+      sourceDescription?: string | null;
     };
     question?: {
       id: string;
@@ -124,10 +127,17 @@ export type LiveMessage = {
       resolved?: boolean;
       answers?: Record<string, string>;
     };
-    /** Steps from a subagent (Task tool) — populated by SubagentEvent processing */
+    /** Steps from a subagent (Agent tool) — populated by SubagentEvent processing */
     subagentSteps?: SubagentStep[];
     /** Whether the subagent is still actively running */
     subagentRunning?: boolean;
+    /** Built-in subagent type (coder / explore / plan) */
+    subagentType?: string;
+    /** Subagent instance ID */
+    subagentAgentId?: string;
+    /** True when this tool message was created from a sub-agent's ApprovalRequest
+     *  (the tool_call_id belongs to the sub-agent, not the main agent) */
+    isSubagentOrigin?: boolean;
   };
   codeSnippet?: {
     title: string;

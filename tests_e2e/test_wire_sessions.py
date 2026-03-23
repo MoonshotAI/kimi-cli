@@ -425,8 +425,8 @@ def test_replay_streams_wire_history(tmp_path) -> None:
         assert resp.get("result") == snapshot(
             {
                 "status": "finished",
-                "events": 11,
-                "requests": 1,
+                "events": 10,
+                "requests": 0,
             }
         )
         assert summarize_messages(messages) == snapshot(
@@ -464,23 +464,6 @@ def test_replay_streams_wire_history(tmp_path) -> None:
                         "plan_mode": False,
                         "mcp_status": None,
                     },
-                },
-                {
-                    "method": "request",
-                    "type": "ApprovalRequest",
-                    "payload": {
-                        "id": "<uuid>",
-                        "tool_call_id": "tc-1",
-                        "sender": "Shell",
-                        "action": "run command",
-                        "description": "Run command `echo ok`",
-                        "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
-                    },
-                },
-                {
-                    "method": "event",
-                    "type": "ApprovalResponse",
-                    "payload": {"request_id": "<uuid>", "response": "approve"},
                 },
                 {
                     "method": "event",

@@ -5,7 +5,6 @@ import json
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from io import StringIO
 from typing import Any, NamedTuple, cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
@@ -16,31 +15,43 @@ from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyPressEvent
-from rich.console import Console as RichConsole
 from rich.console import Group, RenderableType
 from rich.live import Live
-from rich.markup import escape
-from rich.padding import Padding
-from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text
 
 from kimi_cli.soul import format_context_status
 from kimi_cli.tools import extract_key_argument
-from kimi_cli.ui.shell.console import NEUTRAL_MARKDOWN_THEME, console
+from kimi_cli.ui.shell.approval_panel import (
+    ApprovalPromptDelegate as ApprovalPromptDelegate,  # noqa: F401 — re-exported
+)
+from kimi_cli.ui.shell.approval_panel import (
+    ApprovalRequestPanel,
+    show_approval_in_pager,
+)
+from kimi_cli.ui.shell.approval_panel import (
+    render_approval_request_for_terminal as render_approval_request_for_terminal,  # noqa: F401 — re-exported
+)
+from kimi_cli.ui.shell.console import console, render_to_ansi
 from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
     UserInput,
 )
-from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.utils.diff import format_unified_diff
+from kimi_cli.ui.shell.question_panel import (
+    QuestionPromptDelegate as QuestionPromptDelegate,  # noqa: F401 — re-exported
+)
+from kimi_cli.ui.shell.question_panel import (
+    QuestionRequestPanel,
+    prompt_other_input,
+    show_question_body_in_pager,
+)
+from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.markdown import Markdown
-from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
@@ -50,12 +61,10 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
-    DiffDisplayBlock,
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
     QuestionRequest,
-    ShellDisplayBlock,
     StatusUpdate,
     SteerInput,
     StepBegin,
@@ -76,9 +85,7 @@ from kimi_cli.wire.types import (
 
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 MAX_LIVE_NOTIFICATIONS = 4
-
-# Truncation limits for approval request display
-MAX_PREVIEW_LINES = 4
+EXTERNAL_MESSAGE_GRACE_S = 0.1
 
 
 async def visualize(
@@ -91,6 +98,8 @@ async def visualize(
     bind_running_input: Callable[[Callable[[UserInput], None], Callable[[], None]], None]
     | None = None,
     unbind_running_input: Callable[[], None] | None = None,
+    on_view_ready: Callable[[Any], None] | None = None,
+    on_view_closed: Callable[[], None] | None = None,
 ):
     """
     A loop to consume agent events and visualize the agent behavior.
@@ -117,6 +126,8 @@ async def visualize(
             bind_running_input(view.handle_local_input, _cancel_running_input)
     else:
         view = _LiveView(initial_status, cancel_event)
+    if on_view_ready is not None:
+        on_view_ready(view)
     try:
         await view.visualize_loop(wire)
     finally:
@@ -125,6 +136,8 @@ async def visualize(
                 unbind_running_input()
             assert isinstance(view, _PromptLiveView)
             prompt_session.detach_running_prompt(view)
+        if on_view_closed is not None:
+            on_view_closed()
 
 
 class _ContentBlock:
@@ -163,6 +176,8 @@ class _ToolCallBlock:
         self._argument = extract_key_argument(self._lexer, self._tool_name)
         self._full_url = self._extract_full_url(tool_call.function.arguments, self._tool_name)
         self._result: ToolReturnValue | None = None
+        self._subagent_id: str | None = None
+        self._subagent_type: str | None = None
 
         self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
         self._last_subagent_tool_call: ToolCall | None = None
@@ -228,10 +243,27 @@ class _ToolCallBlock:
         self._n_finished_subagent_tool_calls += 1
         self._renderable = self._compose()
 
+    def set_subagent_metadata(self, agent_id: str, subagent_type: str) -> None:
+        changed = (self._subagent_id, self._subagent_type) != (agent_id, subagent_type)
+        self._subagent_id = agent_id
+        self._subagent_type = subagent_type
+        if changed:
+            self._renderable = self._compose()
+
     def _compose(self) -> RenderableType:
         lines: list[RenderableType] = [
             self._build_headline_text(),
         ]
+        if self._subagent_id is not None and self._subagent_type is not None:
+            lines.append(
+                BulletColumns(
+                    Text(
+                        f"subagent {self._subagent_type} ({self._subagent_id})",
+                        style="grey50",
+                    ),
+                    bullet_style="grey50",
+                )
+            )
 
         if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
             n_hidden = self._n_finished_subagent_tool_calls - MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
@@ -336,15 +368,6 @@ class _ToolCallBlock:
         return "\n".join(lines)
 
 
-class _ApprovalContentBlock(NamedTuple):
-    """A pre-rendered content block for approval request with line count."""
-
-    text: str
-    lines: int
-    style: str = ""
-    lexer: str = ""
-
-
 class _NotificationBlock:
     _SEVERITY_STYLE = {
         "info": "cyan",
@@ -367,461 +390,6 @@ class _NotificationBlock:
                 preview += "\n..."
             lines.append(Text(preview, style="grey50"))
         return BulletColumns(Group(*lines), bullet_style=style)
-
-
-class _ApprovalRequestPanel:
-    def __init__(self, request: ApprovalRequest):
-        self.request = request
-        self.options: list[tuple[str, ApprovalResponse.Kind]] = [
-            ("Approve once", "approve"),
-            ("Approve for this session", "approve_for_session"),
-            ("Reject, tell Kimi what to do instead", "reject"),
-        ]
-        self.selected_index = 0
-
-        # Pre-render all content blocks with line counts
-        self._content_blocks: list[_ApprovalContentBlock] = []
-        last_diff_path: str | None = None
-
-        # Handle description (only if no display blocks)
-        if request.description and not request.display:
-            text = request.description.rstrip("\n")
-            self._content_blocks.append(
-                _ApprovalContentBlock(text=text, lines=text.count("\n") + 1)
-            )
-
-        # Handle display blocks
-        for block in request.display:
-            if isinstance(block, DiffDisplayBlock):
-                # File path or ellipsis
-                if block.path != last_diff_path:
-                    self._content_blocks.append(
-                        _ApprovalContentBlock(text=block.path, lines=1, style="bold")
-                    )
-                    last_diff_path = block.path
-                else:
-                    self._content_blocks.append(
-                        _ApprovalContentBlock(text="⋮", lines=1, style="dim")
-                    )
-                # Diff content
-                diff_text = format_unified_diff(
-                    block.old_text,
-                    block.new_text,
-                    block.path,
-                    include_file_header=False,
-                ).rstrip("\n")
-                self._content_blocks.append(
-                    _ApprovalContentBlock(
-                        text=diff_text, lines=diff_text.count("\n") + 1, lexer="diff"
-                    )
-                )
-            elif isinstance(block, ShellDisplayBlock):
-                text = block.command.rstrip("\n")
-                self._content_blocks.append(
-                    _ApprovalContentBlock(
-                        text=text, lines=text.count("\n") + 1, lexer=block.language
-                    )
-                )
-                last_diff_path = None
-            elif isinstance(block, BriefDisplayBlock) and block.text:
-                text = block.text.rstrip("\n")
-                self._content_blocks.append(
-                    _ApprovalContentBlock(text=text, lines=text.count("\n") + 1, style="grey50")
-                )
-                last_diff_path = None
-
-        self._total_lines = sum(b.lines for b in self._content_blocks)
-        self.has_expandable_content = self._total_lines > MAX_PREVIEW_LINES
-
-    def render(self) -> RenderableType:
-        """Render the approval menu as a bordered panel."""
-        content_lines: list[RenderableType] = [
-            Text.from_markup(
-                "[yellow]"
-                f"{escape(self.request.sender)} is requesting approval to "
-                f"{escape(self.request.action)}:[/yellow]"
-            )
-        ]
-        content_lines.append(Text(""))
-
-        # Render content with line budget
-        remaining = MAX_PREVIEW_LINES
-        for block in self._content_blocks:
-            if remaining <= 0:
-                break
-            content_lines.append(self._render_block(block, remaining))
-            remaining -= min(block.lines, remaining)
-
-        if self.has_expandable_content:
-            content_lines.append(Text("... (truncated, ctrl-e to expand)", style="dim italic"))
-
-        lines: list[RenderableType] = []
-        if content_lines:
-            lines.append(Padding(Group(*content_lines), (0, 0, 0, 1)))
-
-        # Add menu options with number key labels
-        if lines:
-            lines.append(Text(""))
-        for i, (option_text, _) in enumerate(self.options):
-            num = i + 1
-            if i == self.selected_index:
-                lines.append(Text(f"\u2192 [{num}] {option_text}", style="cyan"))
-            else:
-                lines.append(Text(f"  [{num}] {option_text}", style="grey50"))
-
-        # Keyboard hints
-        lines.append(Text(""))
-        hint = "  \u25b2/\u25bc select  1/2/3 choose  \u21b5 confirm"
-        if self.has_expandable_content:
-            hint += "  ctrl-e expand"
-        lines.append(Text(hint, style="dim"))
-
-        return Panel(
-            Group(*lines),
-            border_style="bold yellow",
-            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
-            title_align="left",
-            padding=(0, 1),
-        )
-
-    def _render_block(
-        self, block: _ApprovalContentBlock, max_lines: int | None = None
-    ) -> RenderableType:
-        """Render a content block, optionally truncated."""
-        text = block.text
-        if max_lines is not None and block.lines > max_lines:
-            # Truncate to max_lines
-            text = "\n".join(text.split("\n")[:max_lines])
-
-        if block.lexer:
-            return KimiSyntax(text, block.lexer)
-        return Text(text, style=block.style)
-
-    def render_full(self) -> list[RenderableType]:
-        """Render full content for pager (no truncation)."""
-        return [self._render_block(block) for block in self._content_blocks]
-
-    def move_up(self):
-        """Move selection up."""
-        self.selected_index = (self.selected_index - 1) % len(self.options)
-
-    def move_down(self):
-        """Move selection down."""
-        self.selected_index = (self.selected_index + 1) % len(self.options)
-
-    def get_selected_response(self) -> ApprovalResponse.Kind:
-        """Get the approval response based on selected option."""
-        return self.options[self.selected_index][1]
-
-
-def _show_approval_in_pager(panel: _ApprovalRequestPanel) -> None:
-    """Show the full approval request content in a pager."""
-    with console.screen(), console.pager(styles=True):
-        # Header: matches the style in _ApprovalRequestPanel.render()
-        console.print(
-            Text.from_markup(
-                "[yellow]⚠ "
-                f"{escape(panel.request.sender)} is requesting approval to "
-                f"{escape(panel.request.action)}:[/yellow]"
-            )
-        )
-        console.print()
-
-        # Render full content (no truncation)
-        for renderable in panel.render_full():
-            console.print(renderable)
-
-
-OTHER_OPTION_LABEL = "Other"
-
-
-class _QuestionRequestPanel:
-    """Renders structured questions for the user to answer interactively."""
-
-    def __init__(self, request: QuestionRequest):
-        self.request = request
-        self._current_question_index = 0
-        self._answers: dict[str, str] = {}
-        self._saved_selections: dict[int, tuple[int, set[int]]] = {}
-        self._selected_index = 0
-        self._multi_selected: set[int] = set()
-        self._body_text: str = ""
-        self.has_expandable_content: bool = False
-        self._setup_current_question()
-
-    def _setup_current_question(self) -> None:
-        q = self._current_question
-        self._options = [(o.label, o.description) for o in q.options]
-        other_label = q.other_label or OTHER_OPTION_LABEL
-        other_desc = q.other_description or ""
-        self._options.append((other_label, other_desc))
-        idx = self._current_question_index
-        if idx in self._saved_selections:
-            saved_idx, saved_multi = self._saved_selections[idx]
-            self._selected_index = min(saved_idx, len(self._options) - 1)
-            self._multi_selected = saved_multi
-        elif q.question in self._answers:
-            answer = self._answers[q.question]
-            if q.multi_select:
-                answer_labels = [a.strip() for a in answer.split(", ")]
-                known_labels = {label for label, _ in self._options[:-1]}
-                self._multi_selected = set()
-                for i, (label, _) in enumerate(self._options[:-1]):
-                    if label in answer_labels:
-                        self._multi_selected.add(i)
-                # Unmatched labels = Other text
-                if any(answer_label not in known_labels for answer_label in answer_labels):
-                    self._multi_selected.add(len(self._options) - 1)
-                self._selected_index = min(self._multi_selected) if self._multi_selected else 0
-            else:
-                for i, (label, _) in enumerate(self._options):
-                    if label == answer:
-                        self._selected_index = i
-                        break
-                else:
-                    # Unknown submitted label should map to the synthetic "Other" option.
-                    self._selected_index = len(self._options) - 1
-                self._multi_selected = set()
-        else:
-            self._selected_index = 0
-            self._multi_selected = set()
-        self._recompute_body()
-
-    def _recompute_body(self) -> None:
-        """Recompute body content state for the current question."""
-        body = self._current_question.body
-        self._body_text = body.rstrip("\n") if body else ""
-        self.has_expandable_content = bool(self._body_text)
-
-    @property
-    def _current_question(self):
-        return self.request.questions[self._current_question_index]
-
-    @property
-    def is_other_selected(self) -> bool:
-        return self._selected_index == len(self._options) - 1
-
-    @property
-    def is_multi_select(self) -> bool:
-        return self._current_question.multi_select
-
-    @property
-    def current_question_text(self) -> str:
-        return self._current_question.question
-
-    def should_prompt_other_input(self) -> bool:
-        """Whether pressing ENTER should open free-text input for the current question."""
-        if not self.is_multi_select:
-            return self.is_other_selected
-        other_idx = len(self._options) - 1
-        return other_idx in self._multi_selected
-
-    def select_index(self, index: int) -> bool:
-        """Select an option by index. Returns False when index is out of range."""
-        if not (0 <= index < len(self._options)):
-            return False
-        self._selected_index = index
-        return True
-
-    def render(self) -> RenderableType:
-        q = self._current_question
-        lines: list[RenderableType] = []
-
-        # Tab bar for multi-question navigation
-        if len(self.request.questions) > 1:
-            tab_parts: list[str] = []
-            for i, qi in enumerate(self.request.questions):
-                label = escape(qi.header or f"Q{i + 1}")
-                if i == self._current_question_index:
-                    icon, style = "\u25cf", "bold cyan"
-                elif qi.question in self._answers:
-                    icon, style = "\u2713", "green"
-                else:
-                    icon, style = "\u25cb", "grey50"
-                tab_parts.append(f"[{style}]({icon}) {label}[/{style}]")
-            lines.append(Text.from_markup("  ".join(tab_parts)))
-            lines.append(Text(""))
-
-        # Question text (header is now shown in the tab bar)
-        lines.append(Text.from_markup(f"[yellow]? {escape(q.question)}[/yellow]"))
-        if q.multi_select:
-            lines.append(Text("  (SPACE to toggle, ENTER to submit)", style="dim italic"))
-        lines.append(Text(""))
-
-        # Body hint: prompt user to view full content
-        if self._body_text:
-            lines.append(
-                Text.from_markup(
-                    "[bold cyan]  \u25b6 Press ctrl-e to view full content[/bold cyan]"
-                )
-            )
-            lines.append(Text(""))
-
-        # Options with number key labels
-        for i, (label, description) in enumerate(self._options):
-            num = i + 1
-            if q.multi_select:
-                checked = "\u2713" if i in self._multi_selected else " "
-                prefix = f"\\[{checked}]"
-                if i == self._selected_index:
-                    option_line = Text.from_markup(f"[cyan]{prefix} {escape(label)}[/cyan]")
-                else:
-                    option_line = Text.from_markup(f"[grey50]{prefix} {escape(label)}[/grey50]")
-            else:
-                if i == self._selected_index:
-                    option_line = Text.from_markup(f"[cyan]\u2192 \\[{num}] {escape(label)}[/cyan]")
-                else:
-                    option_line = Text.from_markup(f"[grey50]  \\[{num}] {escape(label)}[/grey50]")
-            lines.append(option_line)
-
-            if description:
-                lines.append(Text(f"      {description}", style="dim"))
-
-        # Keyboard hints
-        if len(self.request.questions) > 1:
-            lines.append(Text(""))
-            lines.append(
-                Text(
-                    "  \u25c4/\u25ba switch question  "
-                    "\u25b2/\u25bc select  \u21b5 submit  esc exit",
-                    style="dim",
-                )
-            )
-
-        return Panel(
-            Group(*lines),
-            border_style="bold cyan",
-            title="[bold cyan]? QUESTION[/bold cyan]",
-            title_align="left",
-            padding=(0, 1),
-        )
-
-    def go_to(self, index: int) -> None:
-        """Jump to a specific question by index, saving current UI state first."""
-        if index == self._current_question_index:
-            return
-        if not (0 <= index < len(self.request.questions)):
-            return
-        # Save current cursor state (not as an answer — only submit() writes answers)
-        self._saved_selections[self._current_question_index] = (
-            self._selected_index,
-            set(self._multi_selected),
-        )
-        self._current_question_index = index
-        self._setup_current_question()
-
-    def next_tab(self) -> None:
-        """Switch to the next question tab (no wrap)."""
-        if self._current_question_index < len(self.request.questions) - 1:
-            self.go_to(self._current_question_index + 1)
-
-    def prev_tab(self) -> None:
-        """Switch to the previous question tab (no wrap)."""
-        if self._current_question_index > 0:
-            self.go_to(self._current_question_index - 1)
-
-    def move_up(self) -> None:
-        self._selected_index = (self._selected_index - 1) % len(self._options)
-
-    def move_down(self) -> None:
-        self._selected_index = (self._selected_index + 1) % len(self._options)
-
-    def toggle_select(self) -> None:
-        """Toggle selection for multi-select mode."""
-        if not self.is_multi_select:
-            return
-        if self._selected_index in self._multi_selected:
-            self._multi_selected.discard(self._selected_index)
-        else:
-            self._multi_selected.add(self._selected_index)
-
-    def submit(self) -> bool:
-        """Submit the current answer and advance. Returns True if all questions are answered."""
-        q = self._current_question
-        if q.multi_select:
-            # Check if "Other" is among the selected
-            other_idx = len(self._options) - 1
-            if other_idx in self._multi_selected:
-                return False  # caller should handle Other input
-            selected_labels = [
-                self._options[i][0] for i in sorted(self._multi_selected) if i < len(q.options)
-            ]
-            if not selected_labels:
-                return False  # don't allow empty multi-select submission
-            self._answers[q.question] = ", ".join(selected_labels)
-        else:
-            if self.is_other_selected:
-                return False  # caller should handle Other input
-            self._answers[q.question] = self._options[self._selected_index][0]
-        # Clear stale draft so returning to this question uses the submitted answer
-        self._saved_selections.pop(self._current_question_index, None)
-        return self._advance()
-
-    def submit_other(self, text: str) -> bool:
-        """Submit 'Other' text for the current question. Returns True if all done."""
-        q = self._current_question
-        if q.multi_select:
-            # Include both selected options and the custom text
-            other_idx = len(self._options) - 1
-            selected_labels = [
-                self._options[i][0]
-                for i in sorted(self._multi_selected)
-                if i < len(q.options) and i != other_idx
-            ]
-            if text:
-                selected_labels.append(text)
-            self._answers[q.question] = ", ".join(selected_labels) if selected_labels else text
-        else:
-            self._answers[q.question] = text
-        # Clear stale draft so returning to this question uses the submitted answer
-        self._saved_selections.pop(self._current_question_index, None)
-        return self._advance()
-
-    def _advance(self) -> bool:
-        """Move to the next unanswered question. Returns True if all questions are done."""
-        total = len(self.request.questions)
-        # Check if all questions have been answered
-        if len(self._answers) >= total:
-            return True
-        # Find the next unanswered question (starting from current + 1, wrapping)
-        for offset in range(1, total + 1):
-            idx = (self._current_question_index + offset) % total
-            if self.request.questions[idx].question not in self._answers:
-                self._current_question_index = idx
-                self._setup_current_question()
-                return False
-        return True
-
-    def get_answers(self) -> dict[str, str]:
-        return self._answers
-
-    def render_full_body(self) -> list[RenderableType]:
-        """Render full body content for pager display (no truncation)."""
-        if not self._body_text:
-            return []
-        return [Markdown(self._body_text)]
-
-
-def _show_question_body_in_pager(panel: _QuestionRequestPanel) -> None:
-    """Show the full question body content in a pager."""
-    with console.screen(), console.pager(styles=True):
-        console.print(Text.from_markup(f"[yellow]? {escape(panel.current_question_text)}[/yellow]"))
-        console.print()
-        for renderable in panel.render_full_body():
-            console.print(renderable)
-
-
-async def _prompt_other_input(question_text: str) -> str:
-    """Prompt the user for free-text input when 'Other' is selected."""
-    from prompt_toolkit import PromptSession
-
-    console.print(Text.from_markup(f"\n[yellow]? {escape(question_text)}[/yellow]"))
-    console.print(Text("  Enter your answer:", style="dim"))
-    try:
-        session: PromptSession[str] = PromptSession()
-        return (await session.prompt_async("  > ")).strip()
-    except (EOFError, KeyboardInterrupt):
-        return ""
 
 
 class _StatusBlock:
@@ -848,21 +416,6 @@ class _StatusBlock:
                 self._context_tokens,
                 self._max_context_tokens,
             )
-
-
-def _render_renderable_to_ansi(renderable: RenderableType, *, columns: int) -> str:
-    width = max(20, columns)
-    buf = StringIO()
-    render_console = RichConsole(
-        file=buf,
-        force_terminal=True,
-        color_system="truecolor",
-        width=width,
-        theme=NEUTRAL_MARKDOWN_THEME,
-        highlight=False,
-    )
-    render_console.print(renderable, end="")
-    return buf.getvalue()
 
 
 @asynccontextmanager
@@ -903,21 +456,34 @@ class _LiveView:
         It is possible that multiple subagents request approvals at the same time,
         in which case we will have to queue them up and show them one by one.
         """
-        self._current_approval_request_panel: _ApprovalRequestPanel | None = None
-        self._reject_all_following = False
+        self._current_approval_request_panel: ApprovalRequestPanel | None = None
         self._question_request_queue = deque[QuestionRequest]()
-        self._current_question_panel: _QuestionRequestPanel | None = None
+        self._current_question_panel: QuestionRequestPanel | None = None
         self._notification_blocks = deque[_NotificationBlock]()
         self._live_notification_blocks = deque[_NotificationBlock](maxlen=MAX_LIVE_NOTIFICATIONS)
         self._status_block = _StatusBlock(initial_status)
 
         self._need_recompose = False
+        self._external_messages: Queue[WireMessage] = Queue()
 
     def _reset_live_shape(self, live: Live) -> None:
         # Rich doesn't expose a public API to clear Live's cached render height.
         # After leaving the pager, stale height causes cursor restores to jump,
         # so we reset the private _shape to re-anchor the next refresh.
         live._live_render._shape = None  # type: ignore[reportPrivateUsage]
+
+    async def _drain_external_message_after_wire_shutdown(
+        self,
+        external_task: asyncio.Task[WireMessage],
+    ) -> tuple[WireMessage | None, asyncio.Task[WireMessage]]:
+        try:
+            msg = await asyncio.wait_for(
+                asyncio.shield(external_task),
+                timeout=EXTERNAL_MESSAGE_GRACE_S,
+            )
+        except (TimeoutError, QueueShutDown):
+            return None, external_task
+        return msg, asyncio.create_task(self._external_messages.get())
 
     async def visualize_loop(self, wire: WireUISide):
         with Live(
@@ -952,7 +518,7 @@ class _LiveView:
                     await listener.pause()
                     live.stop()
                     try:
-                        text = await _prompt_other_input(question_text)
+                        text = await prompt_other_input(question_text)
                     finally:
                         self._reset_live_shape(live)
                         live.start()
@@ -968,10 +534,30 @@ class _LiveView:
                     self._need_recompose = False
 
             async with _keyboard_listener(keyboard_handler):
+                wire_task = asyncio.create_task(wire.receive())
+                external_task = asyncio.create_task(self._external_messages.get())
                 while True:
                     try:
-                        msg = await wire.receive()
+                        done, _ = await asyncio.wait(
+                            [wire_task, external_task],
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if wire_task in done:
+                            msg = wire_task.result()
+                            wire_task = asyncio.create_task(wire.receive())
+                        else:
+                            msg = external_task.result()
+                            external_task = asyncio.create_task(self._external_messages.get())
                     except QueueShutDown:
+                        msg, external_task = await self._drain_external_message_after_wire_shutdown(
+                            external_task
+                        )
+                        if msg is not None:
+                            self.dispatch_wire_message(msg)
+                            if self._need_recompose:
+                                live.update(self.compose(), refresh=True)
+                                self._need_recompose = False
+                            continue
                         self.cleanup(is_interrupt=False)
                         live.update(self.compose(), refresh=True)
                         break
@@ -985,9 +571,26 @@ class _LiveView:
                     if self._need_recompose:
                         live.update(self.compose(), refresh=True)
                         self._need_recompose = False
+                wire_task.cancel()
+                external_task.cancel()
+                self._external_messages.shutdown(immediate=True)
+                with suppress(asyncio.CancelledError, QueueShutDown):
+                    await wire_task
+                with suppress(asyncio.CancelledError, QueueShutDown):
+                    await external_task
 
     def refresh_soon(self) -> None:
         self._need_recompose = True
+
+    def _on_question_panel_state_changed(self) -> None:
+        """Hook for subclasses to react when question panel visibility changes."""
+        return None
+
+    def enqueue_external_message(self, msg: WireMessage) -> None:
+        try:
+            self._external_messages.put_nowait(msg)
+        except QueueShutDown:
+            logger.debug("Ignoring external wire message after live view shutdown: {msg}", msg=msg)
 
     def has_expandable_panel(self) -> bool:
         return (
@@ -995,13 +598,13 @@ class _LiveView:
             or self._expandable_question_panel() is not None
         )
 
-    def _expandable_approval_panel(self) -> _ApprovalRequestPanel | None:
+    def _expandable_approval_panel(self) -> ApprovalRequestPanel | None:
         panel = self._current_approval_request_panel
         if panel is not None and panel.has_expandable_content:
             return panel
         return None
 
-    def _expandable_question_panel(self) -> _QuestionRequestPanel | None:
+    def _expandable_question_panel(self) -> QuestionRequestPanel | None:
         panel = self._current_question_panel
         if panel is not None and panel.has_expandable_content:
             return panel
@@ -1009,10 +612,10 @@ class _LiveView:
 
     def _show_expandable_panel_content(self) -> bool:
         if approval_panel := self._expandable_approval_panel():
-            _show_approval_in_pager(approval_panel)
+            show_approval_in_pager(approval_panel)
             return True
         if question_panel := self._expandable_question_panel():
-            _show_question_body_in_pager(question_panel)
+            show_question_body_in_pager(question_panel)
             return True
         return False
 
@@ -1112,8 +715,7 @@ class _LiveView:
             case ToolResult():
                 self.append_tool_result(msg)
             case ApprovalResponse():
-                # we don't need to handle this because the request is resolved on UI
-                pass
+                self._reconcile_approval_requests()
             case SubagentEvent():
                 self.handle_subagent_event(msg)
             case ApprovalRequest():
@@ -1200,12 +802,13 @@ class _LiveView:
                     self.refresh_soon()
                 case KeyEvent.ENTER:
                     self._submit_approval()
-                case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3:
+                case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3 | KeyEvent.NUM_4:
                     # Number keys directly select and submit approval option
                     num_map = {
                         KeyEvent.NUM_1: 0,
                         KeyEvent.NUM_2: 1,
                         KeyEvent.NUM_3: 2,
+                        KeyEvent.NUM_4: 3,
                     }
                     idx = num_map[event]
                     if idx < len(self._current_approval_request_panel.options):
@@ -1218,8 +821,9 @@ class _LiveView:
     def _submit_approval(self) -> None:
         """Submit the currently selected approval response."""
         assert self._current_approval_request_panel is not None
+        request = self._current_approval_request_panel.request
         resp = self._current_approval_request_panel.get_selected_response()
-        self._current_approval_request_panel.request.resolve(resp)
+        request.resolve(resp)
         if resp == "approve_for_session":
             to_remove_from_queue: list[ApprovalRequest] = []
             for request in self._approval_request_queue:
@@ -1229,11 +833,6 @@ class _LiveView:
                     to_remove_from_queue.append(request)
             for request in to_remove_from_queue:
                 self._approval_request_queue.remove(request)
-        elif resp == "reject":
-            # one rejection should stop the step immediately
-            while self._approval_request_queue:
-                self._approval_request_queue.popleft().resolve("reject")
-            self._reject_all_following = True
         self.show_next_approval_request()
 
     def cleanup(self, is_interrupt: bool) -> None:
@@ -1256,7 +855,6 @@ class _LiveView:
             # should not happen, but just in case
             self._approval_request_queue.popleft().resolve("reject")
         self._current_approval_request_panel = None
-        self._reject_all_following = False
 
         while self._question_request_queue:
             self._question_request_queue.popleft().resolve({})
@@ -1335,16 +933,24 @@ class _LiveView:
         self.refresh_soon()
 
     def request_approval(self, request: ApprovalRequest) -> None:
-        # If we're rejecting all following requests, reject immediately
-        if self._reject_all_following:
-            request.resolve("reject")
-            return
-
         self._approval_request_queue.append(request)
 
         if self._current_approval_request_panel is None:
             console.bell()
             self.show_next_approval_request()
+
+    def _reconcile_approval_requests(self) -> None:
+        self._approval_request_queue = deque(
+            request for request in self._approval_request_queue if not request.resolved
+        )
+        if (
+            self._current_approval_request_panel is not None
+            and self._current_approval_request_panel.request.resolved
+        ):
+            self._current_approval_request_panel = None
+            self.show_next_approval_request()
+        else:
+            self.refresh_soon()
 
     def show_next_approval_request(self) -> None:
         """
@@ -1362,7 +968,7 @@ class _LiveView:
             if request.resolved:
                 # skip resolved requests
                 continue
-            self._current_approval_request_panel = _ApprovalRequestPanel(request)
+            self._current_approval_request_panel = ApprovalRequestPanel(request)
             self.refresh_soon()
             break
         else:
@@ -1383,25 +989,32 @@ class _LiveView:
             if self._current_question_panel is not None:
                 self._current_question_panel = None
                 self.refresh_soon()
+                self._on_question_panel_state_changed()
             return
 
         while self._question_request_queue:
             request = self._question_request_queue.popleft()
             if request.resolved:
                 continue
-            self._current_question_panel = _QuestionRequestPanel(request)
+            self._current_question_panel = QuestionRequestPanel(request)
             self.refresh_soon()
+            self._on_question_panel_state_changed()
             break
         else:
             # All queued requests were already resolved
             if self._current_question_panel is not None:
                 self._current_question_panel = None
                 self.refresh_soon()
+                self._on_question_panel_state_changed()
 
     def handle_subagent_event(self, event: SubagentEvent) -> None:
-        block = self._tool_call_blocks.get(event.task_tool_call_id)
+        if event.parent_tool_call_id is None:
+            return
+        block = self._tool_call_blocks.get(event.parent_tool_call_id)
         if block is None:
             return
+        if event.agent_id is not None and event.subagent_type is not None:
+            block.set_subagent_metadata(event.agent_id, event.subagent_type)
 
         match event.event:
             case ToolCall() as tool_call:
@@ -1418,21 +1031,7 @@ class _LiveView:
 
 
 class _PromptLiveView(_LiveView):
-    _KEY_MAP: dict[str, KeyEvent] = {
-        "up": KeyEvent.UP,
-        "down": KeyEvent.DOWN,
-        "left": KeyEvent.LEFT,
-        "right": KeyEvent.RIGHT,
-        "tab": KeyEvent.TAB,
-        "enter": KeyEvent.ENTER,
-        "space": KeyEvent.SPACE,
-        "escape": KeyEvent.ESCAPE,
-        "1": KeyEvent.NUM_1,
-        "2": KeyEvent.NUM_2,
-        "3": KeyEvent.NUM_3,
-        "4": KeyEvent.NUM_4,
-        "5": KeyEvent.NUM_5,
-    }
+    modal_priority = 0
 
     def __init__(
         self,
@@ -1445,16 +1044,34 @@ class _PromptLiveView(_LiveView):
         super().__init__(initial_status, cancel_event)
         self._prompt_session = prompt_session
         self._steer = steer
-        self._awaiting_question_other_input = False
         self._pending_local_steers: deque[str | list[ContentPart]] = deque()
         self._turn_ended = False
+        self._question_modal: QuestionPromptDelegate | None = None
 
     async def visualize_loop(self, wire: WireUISide):
         try:
+            wire_task = asyncio.create_task(wire.receive())
+            external_task = asyncio.create_task(self._external_messages.get())
             while True:
                 try:
-                    msg = await wire.receive()
+                    done, _ = await asyncio.wait(
+                        [wire_task, external_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if wire_task in done:
+                        msg = wire_task.result()
+                        wire_task = asyncio.create_task(wire.receive())
+                    else:
+                        msg = external_task.result()
+                        external_task = asyncio.create_task(self._external_messages.get())
                 except QueueShutDown:
+                    msg, external_task = await self._drain_external_message_after_wire_shutdown(
+                        external_task
+                    )
+                    if msg is not None:
+                        self.dispatch_wire_message(msg)
+                        self._flush_prompt_refresh()
+                        continue
                     self.cleanup(is_interrupt=False)
                     self._flush_prompt_refresh()
                     break
@@ -1466,16 +1083,24 @@ class _PromptLiveView(_LiveView):
 
                 if isinstance(msg, TurnEnd):
                     self._turn_ended = True
-                    self.cleanup(is_interrupt=False)
                     self._flush_prompt_refresh()
-                    break
+                    continue
 
                 self.dispatch_wire_message(msg)
                 self._flush_prompt_refresh()
         finally:
-            self._awaiting_question_other_input = False
+            self._external_messages.shutdown(immediate=True)
+            for task in (locals().get("wire_task"), locals().get("external_task")):
+                if task is None:
+                    continue
+                task.cancel()
+                with suppress(asyncio.CancelledError, QueueShutDown):
+                    await task
             self._pending_local_steers.clear()
             self._turn_ended = False
+            if self._question_modal is not None:
+                self._prompt_session.detach_modal(self._question_modal)
+                self._question_modal = None
             self._prompt_session.invalidate()
 
     def handle_local_input(self, user_input: UserInput) -> None:
@@ -1496,44 +1121,47 @@ class _PromptLiveView(_LiveView):
         super().dispatch_wire_message(msg)
 
     def render_running_prompt_body(self, columns: int) -> ANSI:
-        if self._turn_ended:
+        if (
+            self._turn_ended
+            and self._current_approval_request_panel is None
+            and self._current_question_panel is None
+        ):
             return ANSI("")
         renderable = self.compose(include_status=False)
-        body = _render_renderable_to_ansi(renderable, columns=columns).rstrip("\n")
-        lines = [body] if body else [""]
-        if self._awaiting_question_other_input:
-            lines.append("\x1b[2mEnter the custom answer, then press Enter.\x1b[0m")
-        return ANSI("\n".join(lines))
+        body = render_to_ansi(renderable, columns=columns).rstrip("\n")
+        return ANSI(body if body else "")
 
     def running_prompt_placeholder(self) -> str | None:
+        if self._current_approval_request_panel is not None:
+            return "Use ↑/↓ or 1/2/3, then press Enter to respond to the approval request."
         return None
 
-    def should_handle_running_prompt_key(self, key: str) -> bool:
-        if self._turn_ended:
+    def running_prompt_hides_input_buffer(self) -> bool:
+        return False
+
+    def running_prompt_allows_text_input(self) -> bool:
+        if self._current_approval_request_panel is not None:
             return False
+        if self._current_question_panel is not None:
+            return False
+        return not self._turn_ended
+
+    def running_prompt_accepts_submission(self) -> bool:
+        if self._current_approval_request_panel is not None:
+            return True
+        if self._current_question_panel is not None:
+            return True
+        return not self._turn_ended
+
+    def should_handle_running_prompt_key(self, key: str) -> bool:
         if key == "c-e":
             return self.has_expandable_panel()
-        if self._awaiting_question_other_input:
-            return key in {"enter", "escape"}
-        if key == "escape":
-            return self._cancel_event is not None or self._current_question_panel is not None
-        if self._current_question_panel is not None:
-            return key in {
-                "up",
-                "down",
-                "left",
-                "right",
-                "tab",
-                "space",
-                "enter",
-                "1",
-                "2",
-                "3",
-                "4",
-                "5",
-            }
         if self._current_approval_request_panel is not None:
-            return key in {"up", "down", "enter", "1", "2", "3"}
+            return key in {"up", "down", "enter", "1", "2", "3", "4"}
+        if self._turn_ended:
+            return False
+        if key == "escape":
+            return self._cancel_event is not None
         return False
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
@@ -1541,34 +1169,19 @@ class _PromptLiveView(_LiveView):
             event.app.create_background_task(self._show_panel_in_pager())
             return
 
-        if self._awaiting_question_other_input:
-            if key == "enter":
-                self._submit_question_other_input(event.current_buffer)
-            elif key == "escape":
-                self._clear_buffer(event.current_buffer)
-                self._awaiting_question_other_input = False
-                self.refresh_soon()
-            self._flush_prompt_refresh()
-            return
-
-        mapped = self._KEY_MAP.get(key)
-        if mapped is not None and self._should_prompt_question_other_for_key(mapped):
-            text = event.current_buffer.text.strip()
-            if text:
-                self._submit_question_other_input(event.current_buffer)
-            else:
-                self._clear_buffer(event.current_buffer)
-                self._awaiting_question_other_input = True
-                self.refresh_soon()
-                self._flush_prompt_refresh()
-            return
-
+        mapped = {
+            "up": KeyEvent.UP,
+            "down": KeyEvent.DOWN,
+            "enter": KeyEvent.ENTER,
+            "escape": KeyEvent.ESCAPE,
+            "1": KeyEvent.NUM_1,
+            "2": KeyEvent.NUM_2,
+            "3": KeyEvent.NUM_3,
+            "4": KeyEvent.NUM_4,
+        }.get(key)
         if mapped is None:
             return
-        if (
-            self._current_question_panel is not None
-            or self._current_approval_request_panel is not None
-        ):
+        if self._current_approval_request_panel is not None:
             self._clear_buffer(event.current_buffer)
         self.dispatch_keyboard_event(mapped)
         self._flush_prompt_refresh()
@@ -1576,18 +1189,6 @@ class _PromptLiveView(_LiveView):
     async def _show_panel_in_pager(self) -> None:
         await run_in_terminal(self._show_expandable_panel_content)
         self._prompt_session.invalidate()
-
-    def _submit_question_other_input(self, buffer: Buffer) -> None:
-        panel = self._current_question_panel
-        if panel is None:
-            self._clear_buffer(buffer)
-            self._awaiting_question_other_input = False
-            return
-
-        text = buffer.text.strip()
-        self._clear_buffer(buffer)
-        self._awaiting_question_other_input = False
-        self._submit_question_other_text(text)
 
     @staticmethod
     def _clear_buffer(buffer: Buffer) -> None:
@@ -1600,5 +1201,28 @@ class _PromptLiveView(_LiveView):
             self._need_recompose = False
 
     def cleanup(self, is_interrupt: bool) -> None:
-        self._awaiting_question_other_input = False
         super().cleanup(is_interrupt)
+
+    def _on_question_panel_state_changed(self) -> None:
+        panel = self._current_question_panel
+        if panel is None:
+            if self._question_modal is not None:
+                self._prompt_session.detach_modal(self._question_modal)
+                self._question_modal = None
+            return
+        if self._question_modal is None:
+            self._question_modal = QuestionPromptDelegate(
+                panel,
+                on_advance=self._advance_question,
+                on_invalidate=self._flush_prompt_refresh,
+                buffer_text_provider=lambda: self._prompt_session._session.default_buffer.text,  # pyright: ignore[reportPrivateUsage]
+            )
+            self._prompt_session.attach_modal(self._question_modal)
+        else:
+            self._question_modal.set_panel(panel)
+        self._prompt_session.invalidate()
+
+    def _advance_question(self) -> QuestionRequestPanel | None:
+        """Advance to the next question in the queue, returning the new panel or None."""
+        self.show_next_question_request()
+        return self._current_question_panel
