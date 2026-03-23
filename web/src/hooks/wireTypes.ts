@@ -172,6 +172,13 @@ export type ApprovalRequestEvent = {
     description: string;
     sender: string;
     tool_call_id: string;
+    /** Display blocks with preview content (diffs, shell commands) */
+    display?: Array<{ type: string; data: unknown }>;
+    source_kind?: "foreground_turn" | "background_agent" | null;
+    source_id?: string | null;
+    agent_id?: string | null;
+    subagent_type?: string | null;
+    source_description?: string | null;
   };
 };
 
@@ -180,6 +187,8 @@ export type ApprovalRequestResolvedEvent = {
   payload: {
     request_id: string;
     response: unknown;
+    /** Feedback text provided with a rejection (Wire 1.6+) */
+    feedback?: string;
   };
 };
 
@@ -213,14 +222,16 @@ export type QuestionRequestEvent = {
 };
 
 /**
- * A SubagentEvent wraps an inner event produced by a subagent (Task tool).
+ * A SubagentEvent wraps an inner event produced by a subagent (Agent tool).
  * The inner `event` field is a {type, payload} envelope that may itself be
  * a SubagentEvent (for nested subagents).
  */
 export type SubagentEventWire = {
   type: "SubagentEvent";
   payload: {
-    task_tool_call_id: string;
+    parent_tool_call_id?: string | null;
+    agent_id?: string | null;
+    subagent_type?: string | null;
     event: { type: string; payload: unknown };
   };
 };
@@ -314,6 +325,9 @@ export type ToolApprovalState = {
   approved?: boolean;
   reason?: string;
   response?: unknown;
+  feedback?: string;
+  sourceKind?: "foreground_turn" | "background_agent" | null;
+  sourceDescription?: string | null;
 };
 
 // Content part for accumulated content
