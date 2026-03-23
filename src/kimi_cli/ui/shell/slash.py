@@ -553,15 +553,16 @@ def _format_interval(interval_s: float) -> str:
 async def loop(app: Shell, args: str):
     """Create a repeating task that runs at a specified interval.
 
-    Usage: /loop <interval> <prompt>
+    Usage: /loop [interval] <prompt>
 
     Examples:
-      /loop 5m check for new emails
-      /loop 30s monitor the build status
-      /loop 1h summarize git commits
+      /loop 5m check for new emails          # Every 5 minutes
+      /loop 30s monitor the build status     # Every 30 seconds
+      /loop 1h summarize git commits         # Every hour
+      /loop check for new emails             # Default: every 10 minutes
 
     Intervals: s (seconds), m (minutes), h (hours), d (days)
-    Minimum interval is 60 seconds.
+    Default interval is 10 minutes. Minimum is 60 seconds.
     """
     from rich.table import Table
 
@@ -595,13 +596,39 @@ async def loop(app: Shell, args: str):
         return
 
     # Parse interval and prompt
+    DEFAULT_INTERVAL = "10m"
+    
     parts = args.split(None, 1)
-    if len(parts) < 2:
-        console.print("[red]Usage: /loop <interval> <prompt>[/red]")
+    
+    # Check if first token looks like an interval
+    def _is_interval_format(s: str) -> bool:
+        import re
+        return bool(re.match(r"^(\d+(?:\.\d+)?)\s*([smhd]?)$", s, re.IGNORECASE))
+    
+    if len(parts) == 0:
+        console.print("[red]Usage: /loop [interval] <prompt>[/red]")
         console.print("[dim]Example: /loop 5m check for new emails[/dim]")
+        console.print("[dim]Default interval: 10m (if not specified)[/dim]")
         return
-
-    interval_str, prompt = parts
+    
+    if len(parts) == 1:
+        # Only one token - check if it's an interval or a prompt
+        if _is_interval_format(parts[0]):
+            console.print("[red]Usage: /loop [interval] <prompt>[/red]")
+            console.print("[dim]Example: /loop 5m check for new emails[/dim]")
+            return
+        # Use default interval
+        interval_str = DEFAULT_INTERVAL
+        prompt = parts[0]
+    else:
+        # Two or more parts
+        if _is_interval_format(parts[0]):
+            interval_str = parts[0]
+            prompt = parts[1]
+        else:
+            # First token is not an interval, use default
+            interval_str = DEFAULT_INTERVAL
+            prompt = args
 
     try:
         scheduler = get_loop_scheduler(app)
