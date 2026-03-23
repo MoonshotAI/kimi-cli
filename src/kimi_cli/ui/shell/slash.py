@@ -639,7 +639,7 @@ async def loop(app: Shell, args: str):
         console.print(f"[dim]  Interval:[/dim] {interval_display}")
         prompt_display = prompt[:60] + "..." if len(prompt) > 63 else prompt
         console.print(f"[dim]  Prompt:[/dim] {prompt_display}")
-        console.print(f"[dim]  Cancel:[/dim] /loop-cancel {task.id}")
+        console.print(f"[dim]  Cancel:[/dim] /loop_cancel {task.id}")
     except ValueError as e:
         console.print(f"[red]Invalid interval: {e}[/red]")
         console.print("[dim]Supported formats: 30s, 5m, 2h, 1d (minimum 60s)[/dim]")
@@ -670,7 +670,7 @@ async def loop_cancel(app: Shell, args: str):
             for task in tasks:
                 prompt_display = task.prompt[:60] + "..." if len(task.prompt) > 60 else task.prompt
                 console.print(f"  [cyan]{task.id}[/cyan]: {prompt_display}")
-            console.print("[dim]Usage: /loop-cancel <task_id>[/dim]")
+            console.print("[dim]Usage: /loop_cancel <task_id>[/dim]")
             return
 
     scheduler = get_loop_scheduler(app)
