@@ -61,6 +61,7 @@ from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
+from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
@@ -159,6 +160,8 @@ class KimiSoul:
             PlanModeInjectionProvider(),
             YoloModeInjectionProvider(),
         ]
+        self._hook_engine: HookEngine | None = None
+        self._stop_hook_active: bool = False
         if self._runtime.role == "root":
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
 
@@ -191,6 +194,17 @@ class KimiSoul:
     def plan_mode(self) -> bool:
         """Whether plan mode (read-only research and planning) is active."""
         return self._plan_mode
+
+    @property
+    def hook_engine(self) -> HookEngine | None:
+        return self._hook_engine
+
+    def set_hook_engine(self, engine: HookEngine) -> None:
+        from kimi_cli.hooks.engine import HookEngine as _HE  # for type check
+
+        self._hook_engine = engine
+        if isinstance(self._agent.toolset, KimiToolset):
+            self._agent.toolset.set_hook_engine(engine)
 
     def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
         """Register an additional dynamic injection provider."""
@@ -446,6 +460,29 @@ class KimiSoul:
             # Refresh OAuth tokens on each turn to avoid idle-time expirations.
             await self._runtime.oauth.ensure_fresh(self._runtime)
 
+            # Set session_id ContextVar for toolset hooks
+            from kimi_cli.soul.toolset import set_session_id
+            set_session_id(self._runtime.session.id)
+
+            # --- UserPromptSubmit hook ---
+            text_input_for_hook = user_input if isinstance(user_input, str) else ""
+            if self._hook_engine and self._hook_engine.has_hooks_for("UserPromptSubmit"):
+                from kimi_cli.hooks import events
+                hook_results = await self._hook_engine.trigger(
+                    "UserPromptSubmit",
+                    input_data=events.user_prompt_submit(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        prompt=text_input_for_hook,
+                    ),
+                )
+                for r in hook_results:
+                    if r.action == "block":
+                        wire_send(TurnBegin(user_input=user_input))
+                        wire_send(TextPart(text=r.reason or "Prompt blocked by hook."))
+                        wire_send(TurnEnd())
+                        return
+
             wire_send(TurnBegin(user_input=user_input))
             user_message = Message(role="user", content=user_input)
             text_input = user_message.extract_text(" ").strip()
@@ -467,6 +504,26 @@ class KimiSoul:
                 await runner.run(self, "")
             else:
                 await self._turn(user_message)
+
+            # --- Stop hook (max 1 re-trigger to prevent infinite loop) ---
+            if not self._stop_hook_active and self._hook_engine and self._hook_engine.has_hooks_for("Stop"):
+                from kimi_cli.hooks import events
+                stop_results = await self._hook_engine.trigger(
+                    "Stop",
+                    input_data=events.stop(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        stop_hook_active=False,
+                    ),
+                )
+                for r in stop_results:
+                    if r.action == "block" and r.reason:
+                        self._stop_hook_active = True
+                        try:
+                            await self._turn(Message(role="user", content=r.reason))
+                        finally:
+                            self._stop_hook_active = False
+                        break
 
             wire_send(TurnEnd())
         finally:
@@ -612,9 +669,20 @@ class KimiSoul:
                 step_outcome = await self._step()
             except BackToTheFuture as e:
                 back_to_the_future = e
-            except Exception:
+            except Exception as e:
                 # any other exception should interrupt the step
                 wire_send(StepInterrupted())
+                # --- StopFailure hook ---
+                if self._hook_engine and self._hook_engine.has_hooks_for("StopFailure"):
+                    from kimi_cli.hooks import events
+                    _bg = asyncio.create_task(self._hook_engine.trigger(
+                        "StopFailure",
+                        input_data=events.stop_failure(
+                            session_id=self._runtime.session.id, cwd=str(Path.cwd()),
+                            error_type=type(e).__name__, error_message=str(e),
+                        ),
+                    ))
+                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 # break the agent loop
                 raise
 
@@ -651,6 +719,23 @@ class KimiSoul:
 
             async def _append_notification(view: NotificationView) -> None:
                 await self._context.append_message(build_notification_message(view, self._runtime))
+                # --- Notification hook ---
+                if self._hook_engine and self._hook_engine.has_hooks_for("Notification"):
+                    from kimi_cli.hooks import events
+                    _bg = asyncio.create_task(self._hook_engine.trigger(
+                        "Notification",
+                        matcher_value=view.event.type,
+                        input_data=events.notification(
+                            session_id=self._runtime.session.id,
+                            cwd=str(Path.cwd()),
+                            sink="llm",
+                            notification_type=view.event.type,
+                            title=view.event.title,
+                            body=view.event.body,
+                            severity=view.event.severity,
+                        ),
+                    ))
+                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             await self._runtime.notifications.deliver_pending(
                 "llm",
@@ -826,6 +911,17 @@ class KimiSoul:
                 chat_provider=chat_provider,
             )
 
+        trigger_reason = "manual" if custom_instruction else "auto"
+        if self._hook_engine and self._hook_engine.has_hooks_for("PreCompact"):
+            from kimi_cli.hooks import events
+            await self._hook_engine.trigger(
+                "PreCompact", matcher_value=trigger_reason,
+                input_data=events.pre_compact(
+                    session_id=self._runtime.session.id, cwd=str(Path.cwd()),
+                    trigger=trigger_reason, token_count=self._context.token_count,
+                ),
+            )
+
         wire_send(CompactionBegin())
         compaction_result = await _compact_with_retry()
         await self._context.clear()
@@ -854,6 +950,17 @@ class KimiSoul:
         await self._context.update_token_count(estimated_token_count)
 
         wire_send(CompactionEnd())
+
+        if self._hook_engine and self._hook_engine.has_hooks_for("PostCompact"):
+            from kimi_cli.hooks import events
+            _bg = asyncio.create_task(self._hook_engine.trigger(
+                "PostCompact", matcher_value=trigger_reason,
+                input_data=events.post_compact(
+                    session_id=self._runtime.session.id, cwd=str(Path.cwd()),
+                    trigger=trigger_reason, estimated_token_count=estimated_token_count,
+                ),
+            ))
+            _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
