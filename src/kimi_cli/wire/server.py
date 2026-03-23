@@ -24,6 +24,7 @@ from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
     HookRequest,
+    HookResponse,
     QuestionNotSupported,
     QuestionRequest,
     QuestionResponse,
@@ -903,12 +904,25 @@ class WireServer:
                     request.resolve("allow")
                     return
 
-                result_data = msg.result if isinstance(msg.result, dict) else {}
-                action = result_data.get("action", "allow")
-                reason = result_data.get("reason", "")
-                if action not in ("allow", "block"):
-                    action = "allow"
-                request.resolve(action, reason)
+                try:
+                    result = HookResponse.model_validate(msg.result)
+                except pydantic.ValidationError as e:
+                    logger.error(
+                        "Invalid hook response for request id={id}: {error}",
+                        id=msg.id,
+                        error=e,
+                    )
+                    request.resolve("allow")
+                    return
+
+                if result.request_id != request.id:
+                    logger.warning(
+                        "Hook response id mismatch: request={request_id}, "
+                        "response={response_id}",
+                        request_id=request.id,
+                        response_id=result.request_id,
+                    )
+                request.resolve(result.action, result.reason)
 
     async def _stream_wire_messages(self, wire: Wire) -> None:
         wire_ui = wire.ui_side(merge=False)

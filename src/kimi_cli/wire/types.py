@@ -500,6 +500,19 @@ type Event = (
 """Any event, including control flow and content/tooling events."""
 
 
+class HookResponse(BaseModel):
+    """
+    Client response to a HookRequest.
+    """
+
+    request_id: str
+    """The ID of the HookRequest being responded to."""
+    action: Literal["allow", "block"] = "allow"
+    """The decision: allow the action or block it."""
+    reason: str = ""
+    """Reason for blocking. Empty if allowed."""
+
+
 class HookRequest(BaseModel):
     """
     A request for the wire client to handle a hook event.
