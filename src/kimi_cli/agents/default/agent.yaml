@@ -28,9 +28,9 @@ agent:
     coder:
       path: ./coder.yaml
       description: "Good at general software engineering tasks."
-    Explore:
+    explore:
       path: ./explore.yaml
       description: "Fast codebase exploration with prompt-enforced read-only behavior."
-    Plan:
+    plan:
       path: ./plan.yaml
       description: "Read-only implementation planning and architecture design."

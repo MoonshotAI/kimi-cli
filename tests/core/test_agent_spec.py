@@ -52,11 +52,11 @@ def test_load_default_agent_spec():
     assert subagents == snapshot(
         {
             "coder": ("coder.yaml", "Good at general software engineering tasks."),
-            "Explore": (
+            "explore": (
                 "explore.yaml",
                 "Fast codebase exploration with prompt-enforced read-only behavior.",
             ),
-            "Plan": ("plan.yaml", "Read-only implementation planning and architecture design."),
+            "plan": ("plan.yaml", "Read-only implementation planning and architecture design."),
         }
     )
 
@@ -122,18 +122,18 @@ def test_load_default_agent_spec():
     }
     assert sub_subagents == snapshot({})
 
-    assert subagent_specs["Explore"].name == snapshot("")
-    assert subagent_specs["Explore"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
-    assert subagent_specs["Explore"].system_prompt_args == snapshot(
+    assert subagent_specs["explore"].name == snapshot("")
+    assert subagent_specs["explore"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
+    assert subagent_specs["explore"].system_prompt_args == snapshot(
         {
             "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.\n"  # noqa: E501
         }
     )
-    assert subagent_specs["Explore"].when_to_use == snapshot(
+    assert subagent_specs["explore"].when_to_use == snapshot(
         "Use this agent when you need fast, broad, prompt-enforced read-only exploration across the repository or the web. Prefer it when the task is mostly searching, grepping, reading, and summarizing.\n"
     )
-    assert subagent_specs["Explore"].model == snapshot(None)
-    assert subagent_specs["Explore"].allowed_tools == snapshot(
+    assert subagent_specs["explore"].model == snapshot(None)
+    assert subagent_specs["explore"].allowed_tools == snapshot(
         [
             "kimi_cli.tools.shell:Shell",
             "kimi_cli.tools.file:ReadFile",
@@ -144,7 +144,7 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.web:FetchURL",
         ]
     )
-    assert subagent_specs["Explore"].exclude_tools == snapshot(
+    assert subagent_specs["explore"].exclude_tools == snapshot(
         [
             "kimi_cli.tools.agent:Agent",
             "kimi_cli.tools.ask_user:AskUserQuestion",
@@ -155,7 +155,7 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.file:StrReplaceFile",
         ]
     )
-    assert subagent_specs["Explore"].tools == snapshot(
+    assert subagent_specs["explore"].tools == snapshot(
         [
             "kimi_cli.tools.agent:Agent",
             "kimi_cli.tools.ask_user:AskUserQuestion",
@@ -178,22 +178,22 @@ def test_load_default_agent_spec():
     )
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
-        for name, spec in subagent_specs["Explore"].subagents.items()
+        for name, spec in subagent_specs["explore"].subagents.items()
     }
     assert sub_subagents == snapshot({})
 
-    assert subagent_specs["Plan"].name == snapshot("")
-    assert subagent_specs["Plan"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
-    assert subagent_specs["Plan"].system_prompt_args == snapshot(
+    assert subagent_specs["plan"].name == snapshot("")
+    assert subagent_specs["plan"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
+    assert subagent_specs["plan"].system_prompt_args == snapshot(
         {
             "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.\n"  # noqa: E501
         }
     )
-    assert subagent_specs["Plan"].when_to_use == snapshot(
+    assert subagent_specs["plan"].when_to_use == snapshot(
         "Use this agent when the parent agent needs a step-by-step implementation plan, key file identification, and architectural trade-off analysis before code changes are made.\n"
     )
-    assert subagent_specs["Plan"].model == snapshot(None)
-    assert subagent_specs["Plan"].allowed_tools == snapshot(
+    assert subagent_specs["plan"].model == snapshot(None)
+    assert subagent_specs["plan"].allowed_tools == snapshot(
         [
             "kimi_cli.tools.file:ReadFile",
             "kimi_cli.tools.file:ReadMediaFile",
@@ -203,7 +203,7 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.web:FetchURL",
         ]
     )
-    assert subagent_specs["Plan"].exclude_tools == snapshot(
+    assert subagent_specs["plan"].exclude_tools == snapshot(
         [
             "kimi_cli.tools.agent:Agent",
             "kimi_cli.tools.ask_user:AskUserQuestion",
@@ -215,7 +215,7 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.file:StrReplaceFile",
         ]
     )
-    assert subagent_specs["Plan"].tools == snapshot(
+    assert subagent_specs["plan"].tools == snapshot(
         [
             "kimi_cli.tools.agent:Agent",
             "kimi_cli.tools.ask_user:AskUserQuestion",
@@ -238,7 +238,7 @@ def test_load_default_agent_spec():
     )
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
-        for name, spec in subagent_specs["Plan"].subagents.items()
+        for name, spec in subagent_specs["plan"].subagents.items()
     }
     assert sub_subagents == snapshot({})
 

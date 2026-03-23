@@ -184,7 +184,12 @@ class Shell:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self.run_soul_command(command)
+            if isinstance(self.soul, KimiSoul):
+                self._start_background_task(self._watch_root_wire_hub())
+            try:
+                return await self.run_soul_command(command)
+            finally:
+                self._cancel_background_tasks()
 
         # Start auto-update background task if not disabled
         if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):

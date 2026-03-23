@@ -958,3 +958,48 @@ async def test_question_delegate_on_invalidate_called_on_key_press() -> None:
     delegate.handle_running_prompt_key("1", event)
 
     assert len(invalidations) >= 1
+
+
+# ===========================================================================
+# Shell.run(command=...) starts root_wire_hub watcher
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_shell_command_mode_starts_root_wire_hub_watcher(
+    runtime,
+    tmp_path,
+) -> None:
+    """Shell.run(command=...) must start _watch_root_wire_hub so that
+    approval requests emitted through the root hub are delivered to the
+    visualize live view.  Without this, approval-gated tools block
+    indefinitely in --command mode."""
+    from unittest.mock import AsyncMock
+
+    from kosong.tooling.empty import EmptyToolset
+
+    from kimi_cli.soul.agent import Agent
+    from kimi_cli.soul.context import Context
+    from kimi_cli.soul.kimisoul import KimiSoul
+    from kimi_cli.ui.shell import Shell
+
+    agent = Agent(
+        name="Test",
+        system_prompt="test",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "h.jsonl"))
+    shell = Shell(soul)
+
+    # Mock run_soul_command so we don't need a real LLM
+    shell.run_soul_command = AsyncMock(return_value=True)
+
+    hub = runtime.root_wire_hub
+    assert len(hub._queue._queues) == 0, "no subscribers before run"
+
+    await shell.run(command="hello")
+
+    shell.run_soul_command.assert_awaited_once_with("hello")
+    # After run completes, background tasks are cleaned up
+    assert len(hub._queue._queues) == 0, "subscriber cleaned up after run"

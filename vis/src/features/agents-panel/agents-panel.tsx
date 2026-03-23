@@ -18,7 +18,7 @@ interface AgentsPanelProps {
   sessionId: string;
   refreshKey?: number;
   /** Called when user wants to view a specific sub-agent's data */
-  onSelectAgent: (agentId: string, agentType: string) => void;
+  onSelectAgent: (agentId: string) => void;
   /** Currently selected agent ID (null = main agent) */
   selectedAgentId: string | null;
   /** Called when user wants to go back to main agent view */
@@ -185,7 +185,7 @@ export function AgentsPanel({
                   key={agent.agent_id}
                   agent={agent}
                   isSelected={selectedAgentId === agent.agent_id}
-                  onSelect={() => onSelectAgent(agent.agent_id, agent.subagent_type)}
+                  onSelect={() => onSelectAgent(agent.agent_id)}
                 />
               ))}
             </div>

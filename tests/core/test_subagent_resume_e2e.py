@@ -160,7 +160,7 @@ async def test_resume_preserves_identity(agent_tool, runtime, monkeypatch):
     _register_coder(runtime)
     runtime.labor_market.add_builtin_type(
         AgentTypeDefinition(
-            name="Explore",
+            name="explore",
             description="Read-only exploration.",
             agent_file=runtime.subagent_store.root / "explore.yaml",
             tool_policy=ToolPolicy(mode="allowlist", tools=("Glob", "Grep")),
@@ -187,14 +187,14 @@ async def test_resume_preserves_identity(agent_tool, runtime, monkeypatch):
         agent_tool.params(
             description="resume as explore",
             prompt="second",
-            subagent_type="Explore",
+            subagent_type="explore",
             resume=agent_id,
         )
     )
     assert not result2.is_error
     assert _extract(result2.output, "agent_id") == agent_id
     assert _extract(result2.output, "actual_subagent_type") == "coder"
-    assert _extract(result2.output, "requested_subagent_type") == "Explore"
+    assert _extract(result2.output, "requested_subagent_type") == "explore"
 
 
 # ---------------------------------------------------------------------------

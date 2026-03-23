@@ -241,7 +241,7 @@ def test_foreground_explore_agent(tmp_path: Path) -> None:
                             {
                                 "description": "list py files",
                                 "prompt": f"List all .py files in {work_dir}.",
-                                "subagent_type": "Explore",
+                                "subagent_type": "explore",
                                 "model": "sub",
                             },
                         ),
@@ -292,7 +292,7 @@ def test_foreground_explore_agent(tmp_path: Path) -> None:
         agent_dirs = list((session_dir / "subagents").iterdir())
         assert len(agent_dirs) == 1
         meta = json.loads((agent_dirs[0] / "meta.json").read_text(encoding="utf-8"))
-        assert meta["subagent_type"] == "Explore"
+        assert meta["subagent_type"] == "explore"
         assert meta["status"] == "idle"
     finally:
         shell.close()
@@ -433,7 +433,7 @@ def test_sequential_foreground_agents(tmp_path: Path) -> None:
                             {
                                 "description": "second task",
                                 "prompt": "Say goodbye.",
-                                "subagent_type": "Explore",
+                                "subagent_type": "explore",
                                 "model": "sub",
                             },
                         ),
@@ -490,7 +490,7 @@ def test_sequential_foreground_agents(tmp_path: Path) -> None:
             meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
             types.add(meta["subagent_type"])
             assert meta["status"] == "idle"
-        assert types == {"coder", "Explore"}
+        assert types == {"coder", "explore"}
     finally:
         shell.close()
 

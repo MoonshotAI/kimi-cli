@@ -199,7 +199,7 @@ At any time, you should be HELPFUL and POLITE, CONCISE and ACCURATE, PATIENT and
                 ),
             ),
             (
-                "Explore",
+                "explore",
                 "Fast codebase exploration with prompt-enforced read-only behavior.",
                 "explore.yaml",
                 None,
@@ -215,7 +215,7 @@ At any time, you should be HELPFUL and POLITE, CONCISE and ACCURATE, PATIENT and
                 ),
             ),
             (
-                "Plan",
+                "plan",
                 "Read-only implementation planning and architecture design.",
                 "plan.yaml",
                 None,
@@ -276,8 +276,8 @@ instance can preserve previous findings and work.
 
 - `mocker`: The mock agent for testing purposes. (Tools: *, Model: inherit, Background: yes).
 - `coder`: Good at general software engineering tasks. (Tools: Shell, ReadFile, ReadMediaFile, Glob, Grep, WriteFile, StrReplaceFile, SearchWeb, FetchURL, Model: inherit, Background: yes). When to use: Use this agent for non-trivial software engineering work that may require reading files, editing code, running commands, and returning a compact but technically complete summary to the parent agent.
-- `Explore`: Fast codebase exploration with prompt-enforced read-only behavior. (Tools: Shell, ReadFile, ReadMediaFile, Glob, Grep, SearchWeb, FetchURL, Model: inherit, Background: yes). When to use: Use this agent when you need fast, broad, prompt-enforced read-only exploration across the repository or the web. Prefer it when the task is mostly searching, grepping, reading, and summarizing.
-- `Plan`: Read-only implementation planning and architecture design. (Tools: ReadFile, ReadMediaFile, Glob, Grep, SearchWeb, FetchURL, Model: inherit, Background: yes). When to use: Use this agent when the parent agent needs a step-by-step implementation plan, key file identification, and architectural trade-off analysis before code changes are made.
+- `explore`: Fast codebase exploration with prompt-enforced read-only behavior. (Tools: Shell, ReadFile, ReadMediaFile, Glob, Grep, SearchWeb, FetchURL, Model: inherit, Background: yes). When to use: Use this agent when you need fast, broad, prompt-enforced read-only exploration across the repository or the web. Prefer it when the task is mostly searching, grepping, reading, and summarizing.
+- `plan`: Read-only implementation planning and architecture design. (Tools: ReadFile, ReadMediaFile, Glob, Grep, SearchWeb, FetchURL, Model: inherit, Background: yes). When to use: Use this agent when the parent agent needs a step-by-step implementation plan, key file identification, and architectural trade-off analysis before code changes are made.
 
 **Usage**
 

@@ -277,7 +277,6 @@ export function App() {
   const [openInSupported, setOpenInSupported] = useState(false);
   // Agent scope: null = main agent, string = sub-agent ID
   const [agentScope, setAgentScope] = useState<string | null>(null);
-  const [agentScopeType, setAgentScopeType] = useState<string | null>(null);
   // Cross-reference navigation targets
   const [contextScrollTarget, setContextScrollTarget] = useState<string | null>(null);
   const [wireScrollTarget, setWireScrollTarget] = useState<string | null>(null);
@@ -295,7 +294,6 @@ export function App() {
   const handleSessionChange = useCallback((id: string | null) => {
     setSessionId(id);
     setAgentScope(null);
-    setAgentScopeType(null);
     const url = new URL(window.location.href);
     if (id) {
       url.searchParams.set("session", id);
@@ -464,7 +462,6 @@ export function App() {
               selectedAgentId={agentScope}
               onSelectAgent={(id) => {
                 setAgentScope(id);
-                if (!id) setAgentScopeType(null);
               }}
             />
           )}
@@ -498,14 +495,12 @@ export function App() {
                 sessionId={sessionId}
                 refreshKey={refreshKey}
                 selectedAgentId={agentScope}
-                onSelectAgent={(agentId, agentType) => {
+                onSelectAgent={(agentId) => {
                   setAgentScope(agentId);
-                  setAgentScopeType(agentType);
                   setActiveTab("wire");
                 }}
                 onSelectMain={() => {
                   setAgentScope(null);
-                  setAgentScopeType(null);
                   setActiveTab("wire");
                 }}
               />

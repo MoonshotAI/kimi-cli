@@ -42,10 +42,10 @@ async def test_builder_builds_explore_read_only_with_shell(runtime):
     builder = SubagentBuilder(runtime)
     explore = await builder.build_builtin_instance(
         agent_id="aexplore",
-        type_def=runtime.labor_market.require_builtin_type("Explore"),
+        type_def=runtime.labor_market.require_builtin_type("explore"),
         launch_spec=AgentLaunchSpec(
             agent_id="aexplore",
-            subagent_type="Explore",
+            subagent_type="explore",
             model_override=None,
             effective_model=None,
         ),
@@ -67,10 +67,10 @@ async def test_builder_builds_plan_without_shell_or_write_tools(runtime):
     builder = SubagentBuilder(runtime)
     plan = await builder.build_builtin_instance(
         agent_id="aplan",
-        type_def=runtime.labor_market.require_builtin_type("Plan"),
+        type_def=runtime.labor_market.require_builtin_type("plan"),
         launch_spec=AgentLaunchSpec(
             agent_id="aplan",
-            subagent_type="Plan",
+            subagent_type="plan",
             model_override=None,
             effective_model=None,
         ),
@@ -103,7 +103,7 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
 
     builder = SubagentBuilder(runtime)
     type_def = AgentTypeDefinition(
-        name="Explore",
+        name="explore",
         description="Fast codebase exploration.",
         agent_file=DEFAULT_AGENT_FILE.parent / "explore.yaml",
         default_model="type-default",
@@ -115,7 +115,7 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
         type_def=type_def,
         launch_spec=AgentLaunchSpec(
             agent_id="aoverride",
-            subagent_type="Explore",
+            subagent_type="explore",
             model_override="tool-override",
             effective_model="type-default",
         ),
@@ -125,7 +125,7 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
         type_def=type_def,
         launch_spec=AgentLaunchSpec(
             agent_id="atype-default",
-            subagent_type="Explore",
+            subagent_type="explore",
             model_override=None,
             effective_model="type-default",
         ),
@@ -133,7 +133,7 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
     await builder.build_builtin_instance(
         agent_id="ainherit",
         type_def=AgentTypeDefinition(
-            name="Plan",
+            name="plan",
             description="Planning agent.",
             agent_file=DEFAULT_AGENT_FILE.parent / "plan.yaml",
             default_model=None,
@@ -141,7 +141,7 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
         ),
         launch_spec=AgentLaunchSpec(
             agent_id="ainherit",
-            subagent_type="Plan",
+            subagent_type="plan",
             model_override=None,
             effective_model=None,
         ),
