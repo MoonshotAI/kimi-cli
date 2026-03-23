@@ -8,15 +8,15 @@ def _base(event: str, session_id: str, cwd: str) -> dict[str, Any]:
     return {"hook_event_name": event, "session_id": session_id, "cwd": cwd}
 
 
-def pre_tool_use(*, session_id: str, cwd: str, tool_name: str, tool_input: dict, tool_call_id: str = "") -> dict[str, Any]:
+def pre_tool_use(*, session_id: str, cwd: str, tool_name: str, tool_input: dict[str, Any], tool_call_id: str = "") -> dict[str, Any]:
     return {**_base("PreToolUse", session_id, cwd), "tool_name": tool_name, "tool_input": tool_input, "tool_call_id": tool_call_id}
 
 
-def post_tool_use(*, session_id: str, cwd: str, tool_name: str, tool_input: dict, tool_output: str = "", tool_call_id: str = "") -> dict[str, Any]:
+def post_tool_use(*, session_id: str, cwd: str, tool_name: str, tool_input: dict[str, Any], tool_output: str = "", tool_call_id: str = "") -> dict[str, Any]:
     return {**_base("PostToolUse", session_id, cwd), "tool_name": tool_name, "tool_input": tool_input, "tool_output": tool_output, "tool_call_id": tool_call_id}
 
 
-def post_tool_use_failure(*, session_id: str, cwd: str, tool_name: str, tool_input: dict, error: str, tool_call_id: str = "") -> dict[str, Any]:
+def post_tool_use_failure(*, session_id: str, cwd: str, tool_name: str, tool_input: dict[str, Any], error: str, tool_call_id: str = "") -> dict[str, Any]:
     return {**_base("PostToolUseFailure", session_id, cwd), "tool_name": tool_name, "tool_input": tool_input, "error": error, "tool_call_id": tool_call_id}
 
 

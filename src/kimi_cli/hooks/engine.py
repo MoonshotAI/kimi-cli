@@ -40,7 +40,7 @@ class WireHookHandle:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     event: str = ""
     target: str = ""
-    input_data: dict[str, Any] = field(default_factory=dict)
+    input_data: dict[str, Any] = field(default_factory=lambda: {})
     _future: asyncio.Future[HookResult] | None = field(default=None, repr=False)
 
     def _get_future(self) -> asyncio.Future[HookResult]:

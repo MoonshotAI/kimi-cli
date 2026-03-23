@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from kimi_cli import logger
 
@@ -60,13 +60,14 @@ async def run_hook(
     # Exit 0 + JSON stdout = structured decision
     if exit_code == 0 and stdout.strip():
         try:
-            parsed = json.loads(stdout)
-            if isinstance(parsed, dict):
-                hook_output = parsed.get("hookSpecificOutput", {})
+            raw = json.loads(stdout)
+            if isinstance(raw, dict):
+                parsed = cast(dict[str, Any], raw)
+                hook_output = cast(dict[str, Any], parsed.get("hookSpecificOutput", {}))
                 if hook_output.get("permissionDecision") == "deny":
                     return HookResult(
                         action="block",
-                        reason=hook_output.get("permissionDecisionReason", ""),
+                        reason=str(hook_output.get("permissionDecisionReason", "")),
                         stdout=stdout, stderr=stderr, exit_code=0,
                     )
         except (json.JSONDecodeError, TypeError):
