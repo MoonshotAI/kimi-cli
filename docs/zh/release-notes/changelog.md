@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Core：新增插件系统（Skills + Tools）——插件通过 `plugin.json` 为 Kimi Code CLI 扩展自定义工具；工具是在独立子进程中运行的命令，其 stdout 返回给 Agent；插件支持通过 `inject` 配置自动注入凭证
+- Core：支持多插件仓库——`kimi plugin install` 接受带 subpath 的 Git URL，从 monorepo 中安装特定插件（如 `https://github.com/org/repo.git/plugins/my-plugin`）；当未提供 subpath 且根目录无 `plugin.json` 时，CLI 会列出直接子目录中可用的插件
+- Core：统一插件凭证注入——插件可在 `plugin.json` 中声明 `inject` 字段，从主机的 LLM 提供商配置接收 `api_key` 和 `base_url`；支持 OAuth 托管 token 和静态 API key 两种凭证类型
 - Core：新增 `Agent` 工具支持子 Agent 委派——Agent 现在可以创建持久的子 Agent 实例，内置三种类型（`coder`、`explore`、`plan`）处理聚焦的子任务；每个实例在会话内维护独立的上下文历史，支持前台或后台运行并自动汇总结果
 - Core：统一审批运行时——前台工具调用和后台子 Agent 的审批请求现在通过统一的运行时协调，并由根 UI 通道呈现；拒绝响应可包含反馈文本以指导模型的下一次尝试
 - Shell：新增交互式审批请求面板——内联面板展示工具调用详情（Diff、Shell 命令等），提供批准一次、批准本次会话、拒绝或附带反馈文字拒绝等选项
