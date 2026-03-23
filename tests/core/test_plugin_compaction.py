@@ -182,6 +182,41 @@ def test_resolve_plugin_compactor_raises_for_missing_plugin(tmp_path: Path) -> N
         resolve_plugin_compactor(tmp_path / "plugins", "missing-plugin")
 
 
+def test_resolve_plugin_compactor_rejects_stdlib_module_collisions(tmp_path: Path) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "collision-plugin"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "json.py").write_text(
+        "class MyCompactor:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        return None\n",
+        encoding="utf-8",
+    )
+    _write_plugin(pdir, name="collision-plugin", entrypoint="json.MyCompactor")
+
+    with pytest.raises(PluginError, match="resolved outside plugin directory"):
+        resolve_plugin_compactor(plugins, "collision-plugin")
+
+    assert json.dumps({"ok": True}) == '{"ok": true}'
+
+
+def test_subagent_copies_get_fresh_compaction_instances(runtime: Runtime, tmp_path: Path) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "alpha-plugin"
+    _write_alpha_compactor(pdir)
+    _write_plugin(pdir, name="alpha-plugin", entrypoint="alpha_compaction.AlphaCompaction")
+
+    runtime.compaction = resolve_plugin_compactor(plugins, "alpha-plugin")
+    assert runtime.compaction is not None
+
+    fixed = runtime.copy_for_fixed_subagent()
+    dynamic = runtime.copy_for_dynamic_subagent()
+
+    assert fixed.compaction is not runtime.compaction
+    assert dynamic.compaction is not runtime.compaction
+    assert fixed.compaction is not dynamic.compaction
+    assert getattr(type(fixed.compaction), "PLUGIN_MARK", None) == "alpha"
+    assert getattr(type(dynamic.compaction), "PLUGIN_MARK", None) == "alpha"
+
+
 @pytest.mark.asyncio
 async def test_compact_context_uses_runtime_plugin_compactor(
     runtime: Runtime, tmp_path: Path

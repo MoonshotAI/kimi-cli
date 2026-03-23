@@ -12,6 +12,7 @@ from pydantic import (
     SecretStr,
     ValidationError,
     field_serializer,
+    field_validator,
     model_validator,
 )
 from tomlkit.exceptions import TOMLKitError
@@ -90,6 +91,14 @@ class LoopControl(BaseModel):
     """Context usage ratio threshold for auto-compaction. Default is 0.85 (85%).
     Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio
     or when context_tokens + reserved_context_size >= max_context_size."""
+
+    @field_validator("compaction_model", "compaction_plugin", mode="before")
+    @classmethod
+    def normalize_optional_compaction_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
 
 
 class BackgroundConfig(BaseModel):

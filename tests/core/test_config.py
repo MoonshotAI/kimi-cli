@@ -112,7 +112,16 @@ def test_load_config_reserved_context_size_too_low():
 
 
 def test_load_config_compaction_model():
-    config = load_config_from_string('{"loop_control": {"compaction_model": "compact"}, "models": {"compact": {"provider": "p", "model": "compact-model", "max_context_size": 4096}}, "providers": {"p": {"type": "_echo", "base_url": "", "api_key": ""}}}')
+    config = load_config_from_string(
+        '{"loop_control": {"compaction_model": "compact"}, "models": {"compact": {"provider": "p", "model": "compact-model", "max_context_size": 4096}}, "providers": {"p": {"type": "_echo", "base_url": "", "api_key": ""}}}'
+    )
+    assert config.loop_control.compaction_model == "compact"
+
+
+def test_load_config_compaction_model_strips_whitespace():
+    config = load_config_from_string(
+        '{"loop_control": {"compaction_model": "  compact  "}, "models": {"compact": {"provider": "p", "model": "compact-model", "max_context_size": 4096}}, "providers": {"p": {"type": "_echo", "base_url": "", "api_key": ""}}}'
+    )
     assert config.loop_control.compaction_model == "compact"
 
 
@@ -134,6 +143,11 @@ def test_load_config_compaction_trigger_ratio_default():
 def test_load_config_compaction_plugin():
     config = load_config_from_string('{"loop_control": {"compaction_plugin": "alpha-plugin"}}')
     assert config.loop_control.compaction_plugin == "alpha-plugin"
+
+
+def test_load_config_compaction_plugin_empty_becomes_none():
+    config = load_config_from_string('{"loop_control": {"compaction_plugin": "   "}}')
+    assert config.loop_control.compaction_plugin is None
 
 
 def test_load_config_compaction_trigger_ratio_too_low():

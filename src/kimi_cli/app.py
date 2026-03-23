@@ -16,6 +16,7 @@ from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
+from kimi_cli.exception import ConfigError
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
@@ -177,6 +178,13 @@ class KimiCLI:
                     model=compaction_model_name,
                 )
             else:
+                if compaction_model.max_context_size < model.max_context_size:
+                    raise ConfigError(
+                        "Compaction model "
+                        f"{compaction_model_name!r} has max_context_size "
+                        f"{compaction_model.max_context_size}, smaller than active model "
+                        f"{selected_model!r} ({model.max_context_size})"
+                    )
                 compaction_provider = config.providers.get(compaction_model.provider)
                 if compaction_provider is None:
                     logger.warning(
@@ -224,12 +232,18 @@ class KimiCLI:
             logger.debug("Failed to refresh plugin configs, skipping")
 
         if config.loop_control.compaction_plugin is not None:
+            from kimi_cli.plugin import PluginError
             from kimi_cli.plugin.compaction import resolve_plugin_compactor
             from kimi_cli.plugin.manager import get_plugins_dir
 
-            runtime.compaction = resolve_plugin_compactor(
-                get_plugins_dir(), config.loop_control.compaction_plugin
-            )
+            try:
+                runtime.compaction = resolve_plugin_compactor(
+                    get_plugins_dir(), config.loop_control.compaction_plugin
+                )
+            except PluginError as exc:
+                raise ConfigError(
+                    f"Invalid compaction plugin {config.loop_control.compaction_plugin!r}: {exc}"
+                ) from exc
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE

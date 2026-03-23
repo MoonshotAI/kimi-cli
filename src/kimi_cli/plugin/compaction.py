@@ -4,19 +4,40 @@ from __future__ import annotations
 
 import importlib
 import sys
-from contextlib import suppress
 from pathlib import Path
+from threading import Lock
 from types import ModuleType
 from typing import cast
 
 from kimi_cli.plugin import PLUGIN_JSON, PluginError, parse_plugin_json
 from kimi_cli.soul.compaction import Compaction
 
+_IMPORT_LOCK = Lock()
 
-def _purge_module_path(module_path: str) -> None:
+
+def _is_module_from_any_plugins_dir(module: ModuleType) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if module_file is None:
+        return False
+    return any(parent.name == "plugins" for parent in Path(module_file).resolve().parents)
+
+
+def _is_module_from_plugin(module: ModuleType, plugin_dir: Path) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if module_file is None:
+        return False
+    return Path(module_file).resolve().is_relative_to(plugin_dir.resolve())
+
+
+def _purge_module_path(module_path: str, plugin_dir: Path) -> None:
     prefixes = (module_path, f"{module_path}.")
     for key in list(sys.modules):
-        if key == prefixes[0] or key.startswith(prefixes[1]):
+        module = sys.modules.get(key)
+        if module is None:
+            continue
+        if (key == prefixes[0] or key.startswith(prefixes[1])) and (
+            _is_module_from_plugin(module, plugin_dir) or _is_module_from_any_plugins_dir(module)
+        ):
             del sys.modules[key]
 
 
@@ -47,12 +68,12 @@ def _instantiate_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
     else:
         inserted = False
 
-    try:
-        _purge_module_path(module_path)
-        module = importlib.import_module(module_path)
-    finally:
-        if inserted:
-            with suppress(ValueError):
+    with _IMPORT_LOCK:
+        try:
+            _purge_module_path(module_path, plugin_dir)
+            module = importlib.import_module(module_path)
+        finally:
+            if inserted and plugin_root in sys.path:
                 sys.path.remove(plugin_root)
 
     _ensure_module_is_from_plugin(module, module_path=module_path, plugin_dir=plugin_dir)

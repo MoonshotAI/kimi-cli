@@ -198,6 +198,9 @@ class Runtime:
             role="root",
         )
 
+    def _new_compaction(self) -> Compaction:
+        return type(self.compaction)()
+
     def copy_for_fixed_subagent(self) -> Runtime:
         """Clone runtime for fixed subagent."""
         return Runtime(
@@ -216,7 +219,7 @@ class Runtime:
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
             compaction_llm=self.compaction_llm,
-            compaction=self.compaction,
+            compaction=self._new_compaction(),
             role="fixed_subagent",
         )
 
@@ -238,7 +241,7 @@ class Runtime:
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
             compaction_llm=self.compaction_llm,
-            compaction=self.compaction,
+            compaction=self._new_compaction(),
             role="dynamic_subagent",
         )
 

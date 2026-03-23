@@ -10,6 +10,8 @@ import kimi_cli.app as app_module
 import kimi_cli.ui.shell.startup as startup_module
 from kimi_cli.app import KimiCLI
 from kimi_cli.config import LLMModel, LLMProvider
+from kimi_cli.exception import ConfigError
+from kimi_cli.plugin import PluginError
 from kimi_cli.ui.shell.startup import ShellStartupProgress
 
 
@@ -157,7 +159,9 @@ async def test_kimi_cli_create_passes_compaction_llm(session, config, monkeypatc
             return main_llm
         raise AssertionError(f"Unexpected model {model.model!r}")
 
-    async def fake_runtime_create(config_arg, oauth, llm, compaction_llm, session_arg, yolo, skills_dir):
+    async def fake_runtime_create(
+        config_arg, oauth, llm, compaction_llm, session_arg, yolo, skills_dir
+    ):
         captured["llm"] = llm
         captured["compaction_llm"] = compaction_llm
         captured["session"] = session_arg
@@ -285,9 +289,7 @@ async def test_kimi_cli_create_warns_for_missing_model_provider(
     cli = await KimiCLI.create(session, config=config)
 
     assert isinstance(cli, KimiCLI)
-    assert warnings == [
-        "Provider 'missing-provider' for model 'main' missing; using placeholder"
-    ]
+    assert warnings == ["Provider 'missing-provider' for model 'main' missing; using placeholder"]
     write_system_prompt.assert_awaited_once_with("Test system prompt")
 
 
@@ -332,7 +334,9 @@ async def test_kimi_cli_create_skips_compaction_llm_when_provider_is_missing(
         assert model.model == "main-model"
         return main_llm
 
-    async def fake_runtime_create(config_arg, oauth, llm, compaction_llm, session_arg, yolo, skills_dir):
+    async def fake_runtime_create(
+        config_arg, oauth, llm, compaction_llm, session_arg, yolo, skills_dir
+    ):
         captured["llm"] = llm
         captured["compaction_llm"] = compaction_llm
         captured["session"] = session_arg
@@ -369,3 +373,76 @@ async def test_kimi_cli_create_skips_compaction_llm_when_provider_is_missing(
     }
     assert warnings == ["Compaction provider 'missing-provider' not found in config, skipping"]
     write_system_prompt.assert_awaited_once_with("Test system prompt")
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_rejects_smaller_compaction_model(
+    session, config, monkeypatch
+) -> None:
+    config.default_model = "main"
+    config.models = {
+        "main": LLMModel(provider="main-provider", model="main-model", max_context_size=8192),
+        "compact": LLMModel(
+            provider="compact-provider",
+            model="compact-model",
+            max_context_size=4096,
+        ),
+    }
+    config.providers = {
+        "main-provider": LLMProvider(type="_echo", base_url="", api_key=SecretStr("")),
+        "compact-provider": LLMProvider(type="_echo", base_url="", api_key=SecretStr("")),
+    }
+    config.loop_control.compaction_model = "compact"
+
+    runtime_create_called = False
+
+    def fake_create_llm(provider, model, **kwargs):
+        return SimpleNamespace(name=model.model)
+
+    async def fake_runtime_create(*args, **kwargs):
+        nonlocal runtime_create_called
+        runtime_create_called = True
+        raise AssertionError("Runtime.create should not be called for invalid compaction sizing")
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(app_module, "create_llm", fake_create_llm)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+
+    with pytest.raises(ConfigError, match="smaller than active model"):
+        await KimiCLI.create(session, config=config)
+
+    assert runtime_create_called is False
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_surfaces_invalid_compaction_plugin(
+    session, config, monkeypatch
+) -> None:
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+    )
+
+    async def fake_runtime_create(*args, **kwargs):
+        return fake_runtime
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr(
+        "kimi_cli.plugin.compaction.resolve_plugin_compactor",
+        lambda *args, **kwargs: (_ for _ in ()).throw(PluginError("broken entrypoint")),
+    )
+    monkeypatch.setattr(
+        "kimi_cli.plugin.manager.get_plugins_dir", lambda: session.context_file.parent
+    )
+
+    config.loop_control.compaction_plugin = "broken-plugin"
+
+    with pytest.raises(ConfigError, match="Invalid compaction plugin 'broken-plugin'"):
+        await KimiCLI.create(session, config=config)
