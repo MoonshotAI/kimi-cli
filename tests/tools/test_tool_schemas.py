@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
+from kimi_cli.tools.agent import Agent as AgentTool
 from kimi_cli.tools.background import TaskList, TaskOutput, TaskStop
-from kimi_cli.tools.multiagent.create import CreateSubagent
-from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
@@ -14,52 +13,48 @@ from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.multiagent.task import Task
+from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
 
 
-def test_task_params_schema(task_tool: Task):
-    """Test the schema of Task tool parameters."""
-    assert task_tool.base.parameters == snapshot(
+def test_agent_params_schema(agent_tool: AgentTool):
+    """Test the schema of Agent tool parameters."""
+    assert agent_tool.base.parameters == snapshot(
         {
             "properties": {
                 "description": {
                     "description": "A short (3-5 word) description of the task",
                     "type": "string",
                 },
-                "subagent_name": {
-                    "description": "The name of the specialized subagent to use for this task",
-                    "type": "string",
-                },
                 "prompt": {
-                    "description": "The task for the subagent to perform. You must provide a detailed prompt with all necessary background information because the subagent cannot see anything in your context.",
+                    "description": "The task for the agent to perform",
                     "type": "string",
+                },
+                "subagent_type": {
+                    "default": "coder",
+                    "description": "The built-in agent type to use. Defaults to `coder`.",
+                    "type": "string",
+                },
+                "model": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Optional model override. Selection priority is: this parameter, then the built-in type default model, then the parent agent's current model.",
+                },
+                "resume": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Optional agent ID to resume instead of creating a new instance.",
+                },
+                "run_in_background": {
+                    "default": False,
+                    "description": "Whether to run the agent in the background. Prefer false unless the task can continue independently and there is a clear benefit to returning control before the result is needed.",
+                    "type": "boolean",
                 },
             },
-            "required": ["description", "subagent_name", "prompt"],
-            "type": "object",
-        }
-    )
-
-
-def test_create_subagent_params_schema(create_subagent_tool: CreateSubagent):
-    """Test the schema of CreateSubagent tool parameters."""
-    assert create_subagent_tool.base.parameters == snapshot(
-        {
-            "properties": {
-                "name": {
-                    "description": "Unique name for this agent configuration (e.g., 'summarizer', 'code_reviewer'). This name will be used to reference the agent in the Task tool.",
-                    "type": "string",
-                },
-                "system_prompt": {
-                    "description": "System prompt defining the agent's role, capabilities, and boundaries.",
-                    "type": "string",
-                },
-            },
-            "required": ["name", "system_prompt"],
+            "required": ["description", "prompt"],
             "type": "object",
         }
     )
@@ -173,7 +168,7 @@ def test_task_output_params_schema(task_output_tool: TaskOutput):
                     "type": "string",
                 },
                 "block": {
-                    "default": True,
+                    "default": False,
                     "description": "Whether to wait for the task to finish before returning.",
                     "type": "boolean",
                 },

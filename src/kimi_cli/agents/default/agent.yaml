@@ -5,8 +5,7 @@ agent:
   system_prompt_args:
     ROLE_ADDITIONAL: ""
   tools:
-    - "kimi_cli.tools.multiagent:Task"
-    # - "kimi_cli.tools.multiagent:CreateSubagent"
+    - "kimi_cli.tools.agent:Agent"
     # - "kimi_cli.tools.dmail:SendDMail"
     # - "kimi_cli.tools.think:Think"
     - "kimi_cli.tools.ask_user:AskUserQuestion"
@@ -27,5 +26,11 @@ agent:
     - "kimi_cli.tools.plan.enter:EnterPlanMode"
   subagents:
     coder:
-      path: ./sub.yaml
+      path: ./coder.yaml
       description: "Good at general software engineering tasks."
+    Explore:
+      path: ./explore.yaml
+      description: "Fast codebase exploration with prompt-enforced read-only behavior."
+    Plan:
+      path: ./plan.yaml
+      description: "Read-only implementation planning and architecture design."

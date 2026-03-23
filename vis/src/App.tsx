@@ -4,11 +4,14 @@ import { StatisticsView } from "@/features/statistics/statistics-view";
 import { WireViewer } from "@/features/wire-viewer/wire-viewer";
 import { ContextViewer } from "@/features/context-viewer/context-viewer";
 import { StateViewer } from "@/features/state-viewer/state-viewer";
+import { AgentsPanel } from "@/features/agents-panel/agents-panel";
+import { AgentScopeBar } from "@/features/agents-panel/agent-scope-bar";
 import { useTheme } from "@/hooks/use-theme";
 import {
   type SessionInfo,
   type WireEvent,
   getSessionDownloadUrl,
+  getSubagents,
   getVisCapabilities,
   getWireEvents,
   listSessions,
@@ -18,6 +21,7 @@ import { isErrorEvent } from "@/features/wire-viewer/wire-event-card";
 import {
   ArrowLeft,
   BarChart3,
+  Bot,
   Check,
   Columns,
   Copy,
@@ -32,7 +36,7 @@ import {
 import { DualView } from "@/features/dual-view/dual-view";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-type Tab = "wire" | "context" | "state" | "dual";
+type Tab = "wire" | "context" | "state" | "dual" | "agents";
 
 interface SessionStatsData {
   turns: number;
@@ -65,6 +69,18 @@ function computeStats(events: WireEvent[]): SessionStatsData {
       if (tu) {
         inputTokens += (tu.input_other ?? 0) + (tu.input_cache_read ?? 0) + (tu.input_cache_creation ?? 0);
         outputTokens += tu.output ?? 0;
+      }
+    }
+    // Count tokens from SubagentEvent-wrapped StatusUpdate
+    if (e.type === "SubagentEvent") {
+      const inner = e.payload.event as Record<string, unknown> | undefined;
+      if (inner?.type === "StatusUpdate") {
+        const innerPayload = inner.payload as Record<string, unknown> | undefined;
+        const tu = innerPayload?.token_usage as Record<string, number> | undefined;
+        if (tu) {
+          inputTokens += (tu.input_other ?? 0) + (tu.input_cache_read ?? 0) + (tu.input_cache_creation ?? 0);
+          outputTokens += tu.output ?? 0;
+        }
       }
     }
   }
@@ -174,6 +190,7 @@ function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey
   const [copied, setCopied] = useState(false);
   const [events, setEvents] = useState<WireEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [agentCount, setAgentCount] = useState(0);
 
   useEffect(() => {
     setLoaded(false);
@@ -181,6 +198,9 @@ function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey
       .then((res) => setEvents(res.events))
       .catch(() => setEvents([]))
       .finally(() => setLoaded(true));
+    getSubagents(sessionId, refreshKey > 0)
+      .then((agents) => setAgentCount(agents.length))
+      .catch(() => setAgentCount(0));
   }, [sessionId, refreshKey]);
 
   const stats = useMemo(() => computeStats(events), [events]);
@@ -194,6 +214,7 @@ function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey
   ];
   if (stats.errors > 0) parts.push(`${stats.errors} error${stats.errors !== 1 ? "s" : ""}`);
   if (stats.compactions > 0) parts.push(`${stats.compactions} compaction${stats.compactions !== 1 ? "s" : ""}`);
+  if (agentCount > 0) parts.push(`${agentCount} agent${agentCount !== 1 ? "s" : ""}`);
 
   return (
     <div className="min-w-0 flex flex-1 items-center gap-2 overflow-x-auto px-4 py-1.5 text-xs text-muted-foreground">
@@ -254,6 +275,9 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [openInSupported, setOpenInSupported] = useState(false);
+  // Agent scope: null = main agent, string = sub-agent ID
+  const [agentScope, setAgentScope] = useState<string | null>(null);
+  const [agentScopeType, setAgentScopeType] = useState<string | null>(null);
   // Cross-reference navigation targets
   const [contextScrollTarget, setContextScrollTarget] = useState<string | null>(null);
   const [wireScrollTarget, setWireScrollTarget] = useState<string | null>(null);
@@ -270,6 +294,8 @@ export function App() {
 
   const handleSessionChange = useCallback((id: string | null) => {
     setSessionId(id);
+    setAgentScope(null);
+    setAgentScopeType(null);
     const url = new URL(window.location.href);
     if (id) {
       url.searchParams.set("session", id);
@@ -337,6 +363,7 @@ export function App() {
       else if (e.key === "2") setActiveTab("context");
       else if (e.key === "3") setActiveTab("state");
       else if (e.key === "4") setActiveTab("dual");
+      else if (e.key === "5") setActiveTab("agents");
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -408,6 +435,7 @@ export function App() {
                 { key: "context", label: "Context Messages", icon: null },
                 { key: "state", label: "State", icon: null },
                 { key: "dual", label: "Dual", icon: <Columns size={14} /> },
+                { key: "agents", label: "Agents", icon: <Bot size={14} /> },
               ] as const
             ).map(({ key, label, icon }) => (
               <button
@@ -428,6 +456,19 @@ export function App() {
             ))}
           </div>
 
+          {/* Agent Scope Bar - shown on wire/context/dual tabs */}
+          {(activeTab === "wire" || activeTab === "context" || activeTab === "dual") && (
+            <AgentScopeBar
+              sessionId={sessionId}
+              refreshKey={refreshKey}
+              selectedAgentId={agentScope}
+              onSelectAgent={(id) => {
+                setAgentScope(id);
+                if (!id) setAgentScopeType(null);
+              }}
+            />
+          )}
+
           {/* Tab Content */}
           <div className="flex-1 overflow-hidden">
             {activeTab === "wire" && (
@@ -437,6 +478,7 @@ export function App() {
                 onNavigateToContext={handleNavigateToContext}
                 scrollToToolCallId={wireScrollTarget}
                 onScrollTargetConsumed={() => setWireScrollTarget(null)}
+                agentScope={agentScope}
               />
             )}
             {activeTab === "context" && (
@@ -446,10 +488,28 @@ export function App() {
                 onNavigateToWire={handleNavigateToWire}
                 scrollToToolCallId={contextScrollTarget}
                 onScrollTargetConsumed={() => setContextScrollTarget(null)}
+                agentScope={agentScope}
               />
             )}
             {activeTab === "state" && <StateViewer sessionId={sessionId} refreshKey={refreshKey} />}
-            {activeTab === "dual" && <DualView sessionId={sessionId} refreshKey={refreshKey} />}
+            {activeTab === "dual" && <DualView sessionId={sessionId} refreshKey={refreshKey} agentScope={agentScope} />}
+            {activeTab === "agents" && (
+              <AgentsPanel
+                sessionId={sessionId}
+                refreshKey={refreshKey}
+                selectedAgentId={agentScope}
+                onSelectAgent={(agentId, agentType) => {
+                  setAgentScope(agentId);
+                  setAgentScopeType(agentType);
+                  setActiveTab("wire");
+                }}
+                onSelectMain={() => {
+                  setAgentScope(null);
+                  setAgentScopeType(null);
+                  setActiveTab("wire");
+                }}
+              />
+            )}
           </div>
         </>
       )}
@@ -516,6 +576,7 @@ export function App() {
                   <ShortcutRow keys="2" desc="Context Messages" />
                   <ShortcutRow keys="3" desc="State" />
                   <ShortcutRow keys="4" desc="Dual View" />
+                  <ShortcutRow keys="5" desc="Agents" />
                   <ShortcutRow keys="?" desc="Show shortcuts" />
                 </div>
               </div>

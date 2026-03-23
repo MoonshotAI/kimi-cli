@@ -147,8 +147,9 @@ class BackgroundTaskStore:
         max_bytes: int,
         *,
         status: TaskStatus,
+        path_override: Path | None = None,
     ) -> TaskOutputChunk:
-        path = self.output_path(task_id)
+        path = path_override if path_override is not None else self.output_path(task_id)
         if not path.exists():
             return TaskOutputChunk(
                 task_id=task_id,

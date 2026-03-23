@@ -13,7 +13,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
-from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder, load_desc
+from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.subprocess_env import get_clean_env
 
@@ -82,7 +82,7 @@ class Shell(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
 
-        if not await self._approval.request(
+        result = await self._approval.request(
             self.name,
             "run command",
             f"Run command `{params.command}`",
@@ -92,8 +92,9 @@ class Shell(CallableTool2[Params]):
                     command=params.command,
                 )
             ],
-        ):
-            return ToolRejectedError()
+        )
+        if not result:
+            return result.rejection_error()
 
         def stdout_cb(line: bytes):
             line_str = line.decode(encoding="utf-8", errors="replace")
@@ -129,7 +130,7 @@ class Shell(CallableTool2[Params]):
                 brief="No tool call context",
             )
 
-        if not await self._approval.request(
+        result = await self._approval.request(
             self.name,
             "run background command",
             f"Run background command `{params.command}`",
@@ -139,8 +140,9 @@ class Shell(CallableTool2[Params]):
                     command=params.command,
                 )
             ],
-        ):
-            return ToolRejectedError()
+        )
+        if not result:
+            return result.rejection_error()
 
         try:
             view = self._runtime.background_tasks.create_bash_task(
@@ -167,8 +169,9 @@ class Shell(CallableTool2[Params]):
                     "automatic_notification: true",
                     "next_step: You will be automatically notified when it completes.",
                     (
-                        "next_step: Use TaskOutput with this task_id "
-                        "if you need progress or want to wait."
+                        "next_step: Use TaskOutput with this task_id for a non-blocking "
+                        "status/output snapshot. Only set block=true when you intentionally "
+                        "want to wait."
                     ),
                     "next_step: Use TaskStop only if the task must be cancelled.",
                     (

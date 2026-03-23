@@ -34,9 +34,15 @@ def _make_fake_soul():
 
 
 class _FakePromptSession:
-    def __init__(self, responses: list[tuple[bool, UserInput | BaseException]]) -> None:
+    def __init__(
+        self,
+        responses: list[tuple[bool, UserInput | BaseException]],
+        *,
+        running_accepts_submission: bool = True,
+    ) -> None:
         self._responses = deque(responses)
         self.last_submission_was_running = False
+        self._running_accepts_submission = running_accepts_submission
 
     async def prompt_next(self) -> UserInput:
         if self._responses:
@@ -47,6 +53,9 @@ class _FakePromptSession:
             return response
         await asyncio.sleep(3600)
         raise AssertionError("prompt_next should have been cancelled before retry")
+
+    def running_prompt_accepts_submission(self) -> bool:
+        return self._running_accepts_submission
 
 
 @pytest.fixture
@@ -194,6 +203,7 @@ async def test_ctrl_d_after_agent_run_posts_eof_not_swallowed_by_stale_handler(
         def __init__(self) -> None:
             self.call_count = 0
             self.last_submission_was_running = False
+            self._running_accepts_submission = True
 
         async def prompt_next(self) -> UserInput:
             self.call_count += 1
@@ -202,7 +212,11 @@ async def test_ctrl_d_after_agent_run_posts_eof_not_swallowed_by_stale_handler(
                 return _make_user_input("steer-msg")
             await gate.wait()
             self.last_submission_was_running = False
+            self._running_accepts_submission = False
             raise EOFError()
+
+        def running_prompt_accepts_submission(self) -> bool:
+            return self._running_accepts_submission
 
     prompt_session = _GatedPromptSession()
     idle_events: asyncio.Queue[shell_module._PromptEvent] = asyncio.Queue()

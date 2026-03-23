@@ -20,6 +20,8 @@ interface ToolCallNode {
 interface SubagentNode {
   eventIndex: number;
   taskToolCallId: string;
+  agentType?: string;
+  agentId?: string;
   innerEvents: { type: string; summary: string }[];
 }
 
@@ -43,7 +45,7 @@ interface TurnNode {
 function buildTree(events: WireEvent[]): TurnNode[] {
   const turns: TurnNode[] = [];
   const toolCallIdMap = new Map<string, ToolCallNode>();
-  // Track subagent events grouped by task_tool_call_id per step
+  // Track subagent events grouped by parent_tool_call_id per step
   const subagentMap = new Map<string, SubagentNode>();
   let currentTurn: TurnNode | null = null;
   let currentStep: StepNode | null = null;
@@ -97,7 +99,7 @@ function buildTree(events: WireEvent[]): TurnNode[] {
         if (tc) tc.hasError = true;
       }
     } else if (event.type === "SubagentEvent" && currentStep) {
-      const taskId = event.payload.task_tool_call_id as string ?? "";
+      const taskId = event.payload.parent_tool_call_id as string ?? "";
       const inner = event.payload.event as Record<string, unknown> | undefined;
       const innerType = (inner?.type as string) ?? "";
       const innerPayload = (inner?.payload as Record<string, unknown>) ?? {};
@@ -111,7 +113,13 @@ function buildTree(events: WireEvent[]): TurnNode[] {
 
       let node = subagentMap.get(taskId);
       if (!node) {
-        node = { eventIndex: event.index, taskToolCallId: taskId, innerEvents: [] };
+        node = {
+          eventIndex: event.index,
+          taskToolCallId: taskId,
+          agentType: event.payload.subagent_type as string | undefined,
+          agentId: event.payload.agent_id as string | undefined,
+          innerEvents: [],
+        };
         subagentMap.set(taskId, node);
         currentStep.subagents.push(node);
       }
@@ -347,7 +355,9 @@ function SubagentNodeItem({
           <span className="shrink-0 w-[8px]" />
         )}
         <Bot size={9} className="shrink-0" />
-        <span className="truncate">task:{node.taskToolCallId.slice(0, 8)}</span>
+        <span className="truncate">
+          {node.agentType ? `[${node.agentType}]` : `task:${node.taskToolCallId.slice(0, 8)}`}
+        </span>
         <span className="opacity-60 shrink-0">
           {turns > 0 && `${turns}T `}{toolCalls.length > 0 && `${toolCalls.length}TC`}
         </span>

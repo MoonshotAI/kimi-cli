@@ -165,6 +165,8 @@ function getSummary(event: WireEvent): string {
       const inner = p.event as Record<string, unknown> | undefined;
       const innerType = inner?.type as string | undefined;
       const innerPayload = inner?.payload as Record<string, unknown> | undefined;
+      const agentType = p.subagent_type as string | undefined;
+      const agentId = p.agent_id as string | undefined;
       let detail = "";
       if (innerType === "ToolCall" && innerPayload) {
         const fn = innerPayload.function as Record<string, unknown> | undefined;
@@ -175,7 +177,9 @@ function getSummary(event: WireEvent): string {
       } else if (innerType) {
         detail = ` ${innerType}`;
       }
-      return `task:${String(p.task_tool_call_id ?? "").slice(0, 8)}${detail}`;
+      const prefix = agentType ? `[${agentType}]` : `task:${String(p.parent_tool_call_id ?? "").slice(0, 8)}`;
+      const idSuffix = agentId ? ` (${agentId.slice(0, 6)})` : "";
+      return `${prefix}${idSuffix}${detail}`;
     }
     default:
       return "";
@@ -351,7 +355,9 @@ const MAX_SUBAGENT_DEPTH = 5;
 
 function SubagentContent({ payload, depth }: { payload: Record<string, unknown>; depth: number }) {
   const [showRaw, setShowRaw] = useState(false);
-  const taskId = String(payload.task_tool_call_id ?? "").slice(0, 12);
+  const taskId = String(payload.parent_tool_call_id ?? "").slice(0, 12);
+  const agentType = payload.subagent_type as string | undefined;
+  const agentId = payload.agent_id as string | undefined;
   const inner = payload.event as Record<string, unknown> | undefined;
 
   if (!inner) return <ExpandedPayload payload={payload} />;
@@ -383,8 +389,13 @@ function SubagentContent({ payload, depth }: { payload: Record<string, unknown>;
       {/* Subagent header */}
       <div className="flex items-center gap-2 mb-1.5">
         <Bot size={12} className="text-indigo-500 shrink-0" />
+        {agentType && (
+          <span className="text-[9px] font-medium rounded border px-1 py-0 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+            {agentType}
+          </span>
+        )}
         <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400">
-          task:{taskId}
+          {agentId ? agentId.slice(0, 8) : `task:${taskId}`}
         </span>
         <button
           onClick={() => setShowRaw((v) => !v)}

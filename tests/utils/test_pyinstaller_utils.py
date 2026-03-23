@@ -66,7 +66,9 @@ def test_pyinstaller_datas():
             "kimi_cli",
         ),
         ("src/kimi_cli/agents/default/agent.yaml", "kimi_cli/agents/default"),
-        ("src/kimi_cli/agents/default/sub.yaml", "kimi_cli/agents/default"),
+        ("src/kimi_cli/agents/default/coder.yaml", "kimi_cli/agents/default"),
+        ("src/kimi_cli/agents/default/explore.yaml", "kimi_cli/agents/default"),
+        ("src/kimi_cli/agents/default/plan.yaml", "kimi_cli/agents/default"),
         ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
         ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
         ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
@@ -79,6 +81,7 @@ def test_pyinstaller_datas():
             "src/kimi_cli/skills/skill-creator/SKILL.md",
             "kimi_cli/skills/skill-creator",
         ),
+        ("src/kimi_cli/tools/agent/description.md", "kimi_cli/tools/agent"),
         ("src/kimi_cli/tools/ask_user/description.md", "kimi_cli/tools/ask_user"),
         (
             "src/kimi_cli/tools/dmail/dmail.md",
@@ -111,8 +114,6 @@ def test_pyinstaller_datas():
             "src/kimi_cli/tools/file/write.md",
             "kimi_cli/tools/file",
         ),
-        ("src/kimi_cli/tools/multiagent/create.md", "kimi_cli/tools/multiagent"),
-        ("src/kimi_cli/tools/multiagent/task.md", "kimi_cli/tools/multiagent"),
         ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
@@ -137,7 +138,108 @@ def test_pyinstaller_datas():
     if has_rg_binary:
         expected_datas.append((f"src/kimi_cli/deps/bin/{rg_binary}", "kimi_cli/deps/bin"))
 
-    assert sorted(datas) == snapshot(sorted(expected_datas))
+    assert sorted(datas) == snapshot(
+        [
+            (
+                ".venv/lib/python3.14/site-packages/dateparser/data/dateparser_tz_cache.pkl",
+                "dateparser/data",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/INSTALLER",
+                "fastmcp/../fastmcp-2.12.5.dist-info",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/METADATA",
+                "fastmcp/../fastmcp-2.12.5.dist-info",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/RECORD",
+                "fastmcp/../fastmcp-2.12.5.dist-info",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/REQUESTED",
+                "fastmcp/../fastmcp-2.12.5.dist-info",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/WHEEL",
+                "fastmcp/../fastmcp-2.12.5.dist-info",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/entry_points.txt",
+                "fastmcp/../fastmcp-2.12.5.dist-info",
+            ),
+            (
+                ".venv/lib/python3.14/site-packages/fastmcp/../fastmcp-2.12.5.dist-info/licenses/LICENSE",
+                "fastmcp/../fastmcp-2.12.5.dist-info/licenses",
+            ),
+            ("src/kimi_cli/CHANGELOG.md", "kimi_cli"),
+            ("src/kimi_cli/agents/default/agent.yaml", "kimi_cli/agents/default"),
+            ("src/kimi_cli/agents/default/coder.yaml", "kimi_cli/agents/default"),
+            ("src/kimi_cli/agents/default/explore.yaml", "kimi_cli/agents/default"),
+            ("src/kimi_cli/agents/default/plan.yaml", "kimi_cli/agents/default"),
+            ("src/kimi_cli/agents/default/system.md", "kimi_cli/agents/default"),
+            ("src/kimi_cli/agents/okabe/agent.yaml", "kimi_cli/agents/okabe"),
+            ("src/kimi_cli/prompts/compact.md", "kimi_cli/prompts"),
+            ("src/kimi_cli/prompts/init.md", "kimi_cli/prompts"),
+            ("src/kimi_cli/skills/kimi-cli-help/SKILL.md", "kimi_cli/skills/kimi-cli-help"),
+            ("src/kimi_cli/skills/skill-creator/SKILL.md", "kimi_cli/skills/skill-creator"),
+            ("src/kimi_cli/tools/agent/description.md", "kimi_cli/tools/agent"),
+            ("src/kimi_cli/tools/ask_user/description.md", "kimi_cli/tools/ask_user"),
+            ("src/kimi_cli/tools/background/list.md", "kimi_cli/tools/background"),
+            ("src/kimi_cli/tools/background/output.md", "kimi_cli/tools/background"),
+            ("src/kimi_cli/tools/background/stop.md", "kimi_cli/tools/background"),
+            ("src/kimi_cli/tools/dmail/dmail.md", "kimi_cli/tools/dmail"),
+            ("src/kimi_cli/tools/file/glob.md", "kimi_cli/tools/file"),
+            ("src/kimi_cli/tools/file/grep.md", "kimi_cli/tools/file"),
+            ("src/kimi_cli/tools/file/read.md", "kimi_cli/tools/file"),
+            ("src/kimi_cli/tools/file/read_media.md", "kimi_cli/tools/file"),
+            ("src/kimi_cli/tools/file/replace.md", "kimi_cli/tools/file"),
+            ("src/kimi_cli/tools/file/write.md", "kimi_cli/tools/file"),
+            ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
+            ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
+            ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
+            ("src/kimi_cli/tools/think/think.md", "kimi_cli/tools/think"),
+            ("src/kimi_cli/tools/todo/set_todo_list.md", "kimi_cli/tools/todo"),
+            ("src/kimi_cli/tools/web/fetch.md", "kimi_cli/tools/web"),
+            ("src/kimi_cli/tools/web/search.md", "kimi_cli/tools/web"),
+            (
+                "src/kimi_cli/vis/static/assets/highlighted-body-B3W2YXNL-DNvXcaVH.js",
+                "kimi_cli/vis/static/assets",
+            ),
+            ("src/kimi_cli/vis/static/assets/index-CoCHSz_J.js", "kimi_cli/vis/static/assets"),
+            ("src/kimi_cli/vis/static/assets/index-DF-EKki3.css", "kimi_cli/vis/static/assets"),
+            (
+                "src/kimi_cli/vis/static/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            (
+                "src/kimi_cli/vis/static/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            (
+                "src/kimi_cli/vis/static/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            (
+                "src/kimi_cli/vis/static/assets/inter-greek-wght-normal-CkhJZR-_.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            (
+                "src/kimi_cli/vis/static/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            (
+                "src/kimi_cli/vis/static/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            (
+                "src/kimi_cli/vis/static/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2",
+                "kimi_cli/vis/static/assets",
+            ),
+            ("src/kimi_cli/vis/static/index.html", "kimi_cli/vis/static"),
+        ]
+    )
 
 
 def test_pyinstaller_hiddenimports():
@@ -146,6 +248,7 @@ def test_pyinstaller_hiddenimports():
     assert sorted(hiddenimports) == snapshot(
         [
             "kimi_cli.tools",
+            "kimi_cli.tools.agent",
             "kimi_cli.tools.ask_user",
             "kimi_cli.tools.background",
             "kimi_cli.tools.display",
@@ -159,9 +262,6 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
-            "kimi_cli.tools.multiagent",
-            "kimi_cli.tools.multiagent.create",
-            "kimi_cli.tools.multiagent.task",
             "kimi_cli.tools.plan",
             "kimi_cli.tools.plan.enter",
             "kimi_cli.tools.plan.heroes",

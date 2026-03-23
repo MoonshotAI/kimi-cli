@@ -42,7 +42,7 @@ type TooltipPayload =
       action: string;
       response: string;
     }
-  | { kind: "subagent"; taskToolCallId: string; eventCount: number };
+  | { kind: "subagent"; taskToolCallId: string; eventCount: number; subagentType?: string; agentId?: string };
 
 interface TimelineBar {
   label: string;
@@ -137,7 +137,7 @@ function buildTimeline(events: WireEvent[]): BuildTimelineResult {
   let genIsThinking = false;
 
   // ── Track sub-agents ──
-  const subagentData = new Map<string, { startTime: number; endTime: number; eventIndex: number; eventCount: number }>();
+  const subagentData = new Map<string, { startTime: number; endTime: number; eventIndex: number; eventCount: number; subagentType?: string; agentId?: string }>();
 
   const closeGeneration = (t: number) => {
     if (genStart !== null) {
@@ -365,10 +365,14 @@ function buildTimeline(events: WireEvent[]): BuildTimelineResult {
           : ((e.payload.thinking as string) ?? (e.payload.think as string) ?? "");
       genCharCount += text.length;
     } else if (e.type === "SubagentEvent") {
-      const taskId = e.payload.task_tool_call_id as string | undefined;
+      const taskId = e.payload.parent_tool_call_id as string | undefined;
       if (taskId) {
         if (!subagentData.has(taskId)) {
-          subagentData.set(taskId, { startTime: t, endTime: t, eventIndex: e.index, eventCount: 0 });
+          subagentData.set(taskId, {
+            startTime: t, endTime: t, eventIndex: e.index, eventCount: 0,
+            subagentType: (e.payload.subagent_type as string) ?? undefined,
+            agentId: (e.payload.agent_id as string) ?? undefined,
+          });
         }
         const sa = subagentData.get(taskId)!;
         sa.endTime = Math.max(sa.endTime, t);
@@ -415,20 +419,29 @@ function buildTimeline(events: WireEvent[]): BuildTimelineResult {
   }
 
   // ── Build sub-agent bars ──
+  const SUBAGENT_COLORS: Record<string, string> = {
+    coder: "violet",
+    explore: "cyan",
+    plan: "amber",
+    "general-purpose": "blue",
+  };
   for (const [taskId, sa] of subagentData) {
     if (sa.eventCount === 0) continue;
+    const typeLabel = sa.subagentType ? ` [${sa.subagentType}]` : "";
     bars.push({
-      label: `Sub-agent`,
+      label: `Sub-agent${typeLabel}`,
       eventIndex: sa.eventIndex,
       startSec: sa.startTime,
       endSec: sa.endTime,
       durationSec: sa.endTime - sa.startTime,
       depth: 3,
-      color: "indigo",
+      color: (sa.subagentType && SUBAGENT_COLORS[sa.subagentType]) || "indigo",
       tooltipData: {
         kind: "subagent",
         taskToolCallId: taskId.slice(0, 12),
         eventCount: sa.eventCount,
+        subagentType: sa.subagentType,
+        agentId: sa.agentId?.slice(0, 8),
       },
     });
   }
@@ -613,6 +626,11 @@ function BarTooltipContent({ bar }: { bar: TimelineBar }) {
 
       {d.kind === "subagent" && (
         <>
+          {d.subagentType && (
+            <div className="font-medium text-indigo-600 dark:text-indigo-400">
+              {d.subagentType}{d.agentId ? ` (${d.agentId})` : ""}
+            </div>
+          )}
           <div className="font-mono text-[10px] text-muted-foreground/70">
             task: {d.taskToolCallId}
           </div>

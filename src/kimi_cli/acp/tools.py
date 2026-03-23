@@ -11,7 +11,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
-from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder
+from kimi_cli.tools.utils import ToolResultBuilder
 from kimi_cli.wire.types import DisplayBlock
 
 
@@ -71,12 +71,13 @@ class Terminal(CallableTool2[ShellParams]):
         if not params.command:
             return builder.error("Command cannot be empty.", brief="Empty command")
 
-        if not await self._approval.request(
+        approval_result = await self._approval.request(
             self.name,
             "run shell command",
             f"Run command `{params.command}`",
-        ):
-            return ToolRejectedError()
+        )
+        if not approval_result:
+            return approval_result.rejection_error()
 
         timeout_seconds = float(params.timeout)
         timeout_label = f"{timeout_seconds:g}s"

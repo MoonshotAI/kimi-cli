@@ -345,7 +345,8 @@ async def test_ralph_loop_stops_on_tool_rejected(runtime: Runtime, tmp_path: Pat
                         TextPart(
                             text=(
                                 "<system>ERROR: The tool call is rejected by the user. "
-                                "Please follow the new instructions from the user.</system>"
+                                "Stop what you are doing and wait for the user to tell you "
+                                "how to proceed.</system>"
                             )
                         )
                     ],

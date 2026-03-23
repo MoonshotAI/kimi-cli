@@ -1,4 +1,4 @@
-"""Tests for _QuestionRequestPanel state machine logic."""
+"""Tests for QuestionRequestPanel state machine logic."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ from io import StringIO
 
 from rich.console import Console
 
-from kimi_cli.ui.shell.visualize import _QuestionRequestPanel
+from kimi_cli.ui.shell.visualize import QuestionRequestPanel
 from kimi_cli.wire.types import QuestionItem, QuestionOption, QuestionRequest
 
 
-def _render_to_str(panel: _QuestionRequestPanel) -> str:
+def _render_to_str(panel: QuestionRequestPanel) -> str:
     """Render the panel to a plain-text string via a Rich Console."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, width=120)
@@ -46,7 +46,7 @@ def _make_request(
 def test_single_select_submit():
     """Default selection (index 0) should submit the first option."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Default selected_index is 0, submit should complete all questions
     all_done = panel.submit()
@@ -57,7 +57,7 @@ def test_single_select_submit():
 def test_single_select_navigate_and_submit():
     """Navigate down twice and submit should select the third option."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     panel.move_down()
     panel.move_down()
@@ -69,7 +69,7 @@ def test_single_select_navigate_and_submit():
 def test_single_select_other():
     """Selecting 'Other' should require custom text input."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Move to Other (last option = index 3: A, B, C, Other)
     panel.move_down()  # index 1 (B)
@@ -98,7 +98,7 @@ def test_multi_select_toggle_and_submit():
             }
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Toggle option 0
     panel.toggle_select()  # cursor at 0, toggle X
@@ -123,7 +123,7 @@ def test_multi_select_with_other():
             }
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Toggle Auth (index 0)
     panel.toggle_select()
@@ -157,7 +157,7 @@ def test_multi_question_advance():
             },
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Submit first question (default selection = A1)
     all_done = panel.submit()
@@ -183,7 +183,7 @@ def test_multi_select_other_cursor_not_on_other():
             }
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Toggle Auth (index 0)
     panel.toggle_select()
@@ -216,7 +216,7 @@ def test_multi_select_empty_submit_blocked():
             }
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Don't select anything, try to submit
     all_done = panel.submit()
@@ -229,7 +229,7 @@ def test_multi_select_empty_submit_blocked():
 def test_wrap_around_navigation():
     """move_up at first option should wrap to the last option (Other)."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # At index 0, move_up should wrap to last (Other at index 3)
     panel.move_up()
@@ -275,7 +275,7 @@ def _make_multi_question_request() -> QuestionRequest:
 
 def test_tab_navigation_no_wraparound():
     """prev_tab at first and next_tab at last should be no-ops."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     assert panel._current_question_index == 0
     panel.prev_tab()  # already at first — should stay
@@ -289,7 +289,7 @@ def test_tab_navigation_no_wraparound():
 
 def test_tab_navigation_preserves_cursor():
     """Switching tabs should save and restore cursor position."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Move cursor to option 2 on Q1
     panel.move_down()  # index 1
@@ -313,7 +313,7 @@ def test_tab_navigation_preserves_cursor():
 
 def test_tab_navigation_preserves_multi_select():
     """Switching tabs should save and restore multi-select checkbox state."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Go to Q3 (multi-select)
     panel.go_to(2)
@@ -338,7 +338,7 @@ def test_tab_navigation_preserves_multi_select():
 
 def test_go_to_same_index_is_noop():
     """go_to(current_index) should not overwrite saved state."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
     panel.move_down()
     panel.go_to(0)  # same index — should be no-op
     assert panel._selected_index == 1  # cursor unchanged
@@ -346,7 +346,7 @@ def test_go_to_same_index_is_noop():
 
 def test_go_to_out_of_bounds():
     """go_to with invalid index should be no-op."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
     panel.go_to(-1)
     assert panel._current_question_index == 0
     panel.go_to(99)
@@ -360,7 +360,7 @@ def test_go_to_out_of_bounds():
 
 def test_submit_clears_saved_selections():
     """After submit(), stale draft should be cleared so answer is used for restoration."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Move cursor to Noodle (index 1) on Q1, then switch to Q2 (saves draft)
     panel.move_down()  # index 1 (Noodle)
@@ -393,7 +393,7 @@ def test_submit_other_clears_saved_selections():
             {"question": "Q2?", "options": [("C", ""), ("D", "")]},
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Move to Other on Q1
     panel.move_down()  # B
@@ -426,7 +426,7 @@ def test_submit_other_clears_saved_selections():
 
 def test_multi_select_answer_restoration():
     """Returning to a submitted multi-select question should restore checkboxes."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Go to Q3 (multi-select: Cake, IceCream)
     panel.go_to(2)
@@ -460,7 +460,7 @@ def test_multi_select_answer_restoration_after_revisit():
             {"question": "Q2?", "options": [("B", "")]},
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Select A and submit Q1
     panel.toggle_select()  # A
@@ -486,7 +486,7 @@ def test_multi_select_answer_restoration_with_other():
             {"question": "Q2?", "options": [("Z", "")]},
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Select X and Other
     panel.toggle_select()  # X (index 0)
@@ -516,7 +516,7 @@ def test_single_select_answer_restoration():
             {"question": "Q2?", "options": [("D", ""), ("E", "")]},
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     # Select B (index 1) and submit Q1
     panel.move_down()
@@ -534,7 +534,7 @@ def test_single_select_answer_restoration():
 
 def test_advance_skips_answered_questions():
     """After submitting Q1, advance should go to Q2, not Q3 if Q2 is unanswered."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Submit Q1 default (Rice) → should advance to Q2
     panel.submit()
@@ -549,7 +549,7 @@ def test_advance_skips_answered_questions():
 
 def test_advance_finds_first_unanswered():
     """After answering Q1 and Q3, submitting should cycle back to Q2."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Answer Q1
     panel.submit()  # Rice → advance to Q2
@@ -575,7 +575,7 @@ def test_advance_finds_first_unanswered():
 
 def test_render_does_not_crash():
     """render() should not raise for any state."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     # Render initial state
     _render_to_str(panel)
@@ -597,7 +597,7 @@ def test_render_does_not_crash():
 
 def test_render_tab_bar_status():
     """Tab bar should show correct ●/✓/○ status indicators."""
-    panel = _QuestionRequestPanel(_make_multi_question_request())
+    panel = QuestionRequestPanel(_make_multi_question_request())
 
     rendered = _render_to_str(panel)
 
@@ -619,7 +619,7 @@ def test_render_tab_bar_status():
 def test_render_number_labels_in_single_select():
     """Single-select options should display [1], [2], etc. as literal text."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
     rendered = _render_to_str(panel)
 
     # Number labels should appear as literal text, not be consumed as Rich markup
@@ -631,7 +631,7 @@ def test_render_number_labels_in_single_select():
 def test_single_question_no_tab_bar():
     """Single-question request should not render tab bar."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
     rendered = _render_to_str(panel)
 
     # No tab indicators since there's only one question
@@ -646,7 +646,7 @@ def test_header_fallback():
             {"question": "Second?", "options": [("B", "")]},
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
     rendered = _render_to_str(panel)
     assert "Q1" in rendered
     assert "Q2" in rendered
@@ -660,7 +660,7 @@ def test_submit_all_questions_returns_true():
             {"question": "Q2?", "options": [("B", "")]},
         ]
     )
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     assert panel.submit() is False  # Q2 still pending
     assert panel.submit() is True  # all done
@@ -670,7 +670,7 @@ def test_submit_all_questions_returns_true():
 def test_toggle_select_noop_in_single_select():
     """toggle_select should do nothing in single-select mode."""
     request = _make_request()
-    panel = _QuestionRequestPanel(request)
+    panel = QuestionRequestPanel(request)
 
     panel.toggle_select()  # should be no-op
     assert panel._multi_selected == set()

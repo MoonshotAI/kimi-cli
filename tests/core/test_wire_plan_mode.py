@@ -35,7 +35,7 @@ class TestSyncPlanModeToolVisibility:
         soul = MagicMock()
         soul.agent = MagicMock()
         soul.agent.runtime = MagicMock()
-        soul.agent.runtime.labor_market.fixed_subagents = {}
+        soul.agent.runtime.labor_market.builtin_types = {}
 
         server = WireServer.__new__(WireServer)
         server._soul = soul

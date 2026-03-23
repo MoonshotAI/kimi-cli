@@ -13,7 +13,7 @@ from kimi_cli.constant import USER_AGENT
 
 if TYPE_CHECKING:
     from kimi_cli.auth.oauth import OAuthManager
-    from kimi_cli.config import LLMModel, LLMProvider
+    from kimi_cli.config import Config, LLMModel, LLMProvider
 
 type ProviderType = Literal[
     "kimi",
@@ -234,6 +234,34 @@ def create_llm(
         capabilities=capabilities,
         model_config=model,
         provider_config=provider,
+    )
+
+
+def clone_llm_with_model_alias(
+    llm: LLM | None,
+    config: Config,
+    model_alias: str | None,
+    *,
+    session_id: str,
+    oauth: OAuthManager | None,
+) -> LLM | None:
+    if model_alias is None:
+        return llm
+    if model_alias not in config.models:
+        raise KeyError(f"Unknown model alias: {model_alias}")
+    model = config.models[model_alias]
+    provider = config.providers[model.provider]
+    thinking: bool | None = None
+    if llm is not None:
+        effort = getattr(llm.chat_provider, "thinking_effort", None)
+        if effort is not None:
+            thinking = effort != "off"
+    return create_llm(
+        provider,
+        model,
+        thinking=thinking,
+        session_id=session_id,
+        oauth=oauth,
     )
 
 
