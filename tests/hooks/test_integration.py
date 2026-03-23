@@ -166,3 +166,143 @@ async def test_session_hooks_payload():
         input_data=events.session_start(session_id="test-123", cwd="/tmp", source="resume"),
     )
     assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_post_tool_use_failure_hook():
+    """PostToolUseFailure hook fires for matching tool."""
+    hooks = [HookDef(event="PostToolUseFailure", matcher="Shell", command="echo failure_caught", timeout=5)]
+    engine = HookEngine(hooks)
+    results = await engine.trigger(
+        "PostToolUseFailure",
+        matcher_value="Shell",
+        input_data={"tool_name": "Shell", "tool_input": {}, "error": "command not found"},
+    )
+    assert len(results) == 1
+    assert results[0].action == "allow"
+    assert "failure_caught" in results[0].stdout
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_block():
+    """UserPromptSubmit hook can block a prompt."""
+    hooks = [HookDef(event="UserPromptSubmit", command="echo 'no profanity' >&2; exit 2", timeout=5)]
+    engine = HookEngine(hooks)
+    results = await engine.trigger(
+        "UserPromptSubmit",
+        input_data={"prompt": "bad words here"},
+    )
+    assert len(results) == 1
+    assert results[0].action == "block"
+    assert "no profanity" in results[0].reason
+
+
+@pytest.mark.asyncio
+async def test_stop_failure_hook():
+    """StopFailure hook fires on error."""
+    hooks = [HookDef(event="StopFailure", command="echo error_logged", timeout=5)]
+    engine = HookEngine(hooks)
+    results = await engine.trigger(
+        "StopFailure",
+        input_data={"error_type": "ChatProviderError", "error_message": "rate limited"},
+    )
+    assert len(results) == 1
+    assert "error_logged" in results[0].stdout
+
+
+@pytest.mark.asyncio
+async def test_session_end_hook():
+    """SessionEnd hook fires only for matching reason."""
+    hooks = [HookDef(event="SessionEnd", matcher="exit", command="echo goodbye", timeout=5)]
+    engine = HookEngine(hooks)
+
+    # Matching reason
+    results = await engine.trigger(
+        "SessionEnd",
+        matcher_value="exit",
+        input_data={"session_id": "s1", "reason": "exit"},
+    )
+    assert len(results) == 1
+
+    # Non-matching reason
+    results = await engine.trigger(
+        "SessionEnd",
+        matcher_value="clear",
+        input_data={"session_id": "s1", "reason": "clear"},
+    )
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_subagent_start_hook():
+    """SubagentStart hook fires for matching agent name."""
+    hooks = [HookDef(event="SubagentStart", matcher="coder", command="echo agent_starting", timeout=5)]
+    engine = HookEngine(hooks)
+    results = await engine.trigger(
+        "SubagentStart",
+        matcher_value="coder",
+        input_data={"agent_name": "coder", "prompt": "Fix the bug"},
+    )
+    assert len(results) == 1
+    assert "agent_starting" in results[0].stdout
+
+
+@pytest.mark.asyncio
+async def test_subagent_stop_hook():
+    """SubagentStop hook fires for matching agent name."""
+    hooks = [HookDef(event="SubagentStop", matcher="coder", command="echo agent_done", timeout=5)]
+    engine = HookEngine(hooks)
+    results = await engine.trigger(
+        "SubagentStop",
+        matcher_value="coder",
+        input_data={"agent_name": "coder", "response": "Bug fixed"},
+    )
+    assert len(results) == 1
+    assert "agent_done" in results[0].stdout
+
+
+@pytest.mark.asyncio
+async def test_compact_hooks():
+    """PreCompact and PostCompact hooks fire for matching trigger."""
+    hooks = [
+        HookDef(event="PreCompact", matcher="auto", command="echo pre_compact", timeout=5),
+        HookDef(event="PostCompact", matcher="auto", command="echo post_compact", timeout=5),
+    ]
+    engine = HookEngine(hooks)
+
+    pre = await engine.trigger(
+        "PreCompact",
+        matcher_value="auto",
+        input_data={"trigger": "auto", "token_count": 150000},
+    )
+    assert len(pre) == 1
+    assert "pre_compact" in pre[0].stdout
+
+    post = await engine.trigger(
+        "PostCompact",
+        matcher_value="auto",
+        input_data={"trigger": "auto", "estimated_token_count": 50000},
+    )
+    assert len(post) == 1
+    assert "post_compact" in post[0].stdout
+
+
+@pytest.mark.asyncio
+async def test_wire_callbacks_fired():
+    """Wire callbacks on_triggered and on_resolved are called."""
+    triggered = []
+    resolved = []
+
+    hooks = [HookDef(event="PreToolUse", matcher="Shell", command="exit 0", timeout=5)]
+    engine = HookEngine(
+        hooks,
+        on_triggered=lambda e, t, c: triggered.append((e, t, c)),
+        on_resolved=lambda e, t, a, r, d: resolved.append((e, t, a)),
+    )
+
+    await engine.trigger("PreToolUse", matcher_value="Shell", input_data={})
+
+    assert len(triggered) == 1
+    assert triggered[0] == ("PreToolUse", "Shell", 1)
+    assert len(resolved) == 1
+    assert resolved[0] == ("PreToolUse", "Shell", "allow")
