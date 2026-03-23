@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -28,6 +28,7 @@ from kimi_cli.skill import (
     resolve_skills_roots,
 )
 from kimi_cli.soul.approval import Approval, ApprovalState
+from kimi_cli.soul.compaction import Compaction, SimpleCompaction
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.subagents.models import AgentTypeDefinition, ToolPolicy
@@ -90,6 +91,8 @@ class Runtime:
     background_tasks: BackgroundTaskManager
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
+    compaction_llm: LLM | None = None
+    compaction: Compaction = field(default_factory=SimpleCompaction)
     subagent_store: SubagentStore | None = None
     approval_runtime: ApprovalRuntime | None = None
     root_wire_hub: RootWireHub | None = None
@@ -113,6 +116,7 @@ class Runtime:
         config: Config,
         oauth: OAuthManager,
         llm: LLM | None,
+        compaction_llm: LLM | None,
         session: Session,
         yolo: bool,
         skills_dir: KaosPath | None = None,
@@ -215,11 +219,15 @@ class Runtime:
             ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
+            compaction_llm=compaction_llm,
             subagent_store=SubagentStore(session),
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
             role="root",
         )
+
+    def _new_compaction(self) -> Compaction:
+        return type(self.compaction)()
 
     def copy_for_subagent(
         self,
@@ -244,6 +252,8 @@ class Runtime:
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
+            compaction_llm=self.compaction_llm,
+            compaction=self._new_compaction(),
             subagent_store=self.subagent_store,
             approval_runtime=self.approval_runtime,
             root_wire_hub=self.root_wire_hub,

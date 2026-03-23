@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Core：支持通过插件提供自定义上下文压缩实现——插件可在 `plugin.json` 中声明 `compaction.entrypoint` 提供自定义压缩器；通过 `loop_control.compaction_plugin` 配置项指定使用哪个插件的压缩器
+- Core：新增 `loop_control.compaction_model` 配置项，可为上下文压缩指定专用模型
+
 ## 1.25.0 (2026-03-23)
 
 - Core：新增插件系统（Skills + Tools）——插件通过 `plugin.json` 为 Kimi Code CLI 扩展自定义工具；工具是在独立子进程中运行的命令，其 stdout 返回给 Agent；插件支持通过 `inject` 配置自动注入凭证

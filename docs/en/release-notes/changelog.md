@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Support custom context compaction via plugins — plugins can declare a `compaction.entrypoint` in `plugin.json` to provide their own compaction implementation; use `loop_control.compaction_plugin` to select which plugin to use
+- Core: Add `loop_control.compaction_model` config option to use a dedicated model for context compaction
+
 ## 1.25.0 (2026-03-23)
 
 - Core: Add plugin system (Skills + Tools) — plugins extend Kimi Code CLI with custom tools packaged as `plugin.json`; tools are commands that run in isolated subprocesses and return their stdout to the agent; plugins support automatic credential injection via `inject` configuration
