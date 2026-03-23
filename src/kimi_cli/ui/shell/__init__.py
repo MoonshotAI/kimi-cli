@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import shlex
+import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from rich.table import Table
 from rich.text import Text
 
 from kimi_cli import logger
+from kimi_cli.background import list_task_views
 from kimi_cli.notifications import NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -230,10 +232,29 @@ class Shell:
             snapshot = self.soul.status.mcp_status
             return bool(snapshot and snapshot.loading)
 
+        @dataclass
+        class _BgCountCache:
+            time: float = 0.0
+            count: int = 0
+
+        _bg_cache = _BgCountCache()
+
+        def _bg_task_count() -> int:
+            if not isinstance(self.soul, KimiSoul):
+                return 0
+            now = time.monotonic()
+            if now - _bg_cache.time < 1.0:
+                return _bg_cache.count
+            views = list_task_views(self.soul.runtime.background_tasks, active_only=True)
+            _bg_cache.count = sum(1 for v in views if v.spec.kind == "bash")
+            _bg_cache.time = now
+            return _bg_cache.count
+
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             status_block_provider=_mcp_status_block,
             fast_refresh_provider=_mcp_status_loading,
+            background_task_count_provider=_bg_task_count,
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=self.soul.model_name,
             thinking=self.soul.thinking or False,
@@ -720,7 +741,6 @@ class Shell:
         return None
 
     async def _auto_update(self) -> None:
-        toast("checking for updates...", topic="update", duration=2.0)
         result = await do_update(print=False, check_only=True)
         if result == UpdateResult.UPDATE_AVAILABLE:
             while True:
