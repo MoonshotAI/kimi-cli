@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.25.0
+
 ### Wire 协议 1.6——子 Agent 与审批字段变更
 
 `SubagentEvent` 的 `task_tool_call_id` 字段重命名为 `parent_tool_call_id`，新增可选字段 `agent_id`、`subagent_type`。`ApprovalRequest` 新增 `source_kind`、`source_id`、`agent_id`、`subagent_type`、`source_description` 字段。`ApprovalResponse` 新增 `feedback` 字段。

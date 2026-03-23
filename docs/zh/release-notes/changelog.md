@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.25.0 (2026-03-23)
+
 - Core：新增插件系统（Skills + Tools）——插件通过 `plugin.json` 为 Kimi Code CLI 扩展自定义工具；工具是在独立子进程中运行的命令，其 stdout 返回给 Agent；插件支持通过 `inject` 配置自动注入凭证
 - Core：支持多插件仓库——`kimi plugin install` 接受带 subpath 的 Git URL，从 monorepo 中安装特定插件（如 `https://github.com/org/repo.git/plugins/my-plugin`）；当未提供 subpath 且根目录无 `plugin.json` 时，CLI 会列出直接子目录中可用的插件
 - Core：统一插件凭证注入——插件可在 `plugin.json` 中声明 `inject` 字段，从主机的 LLM 提供商配置接收 `api_key` 和 `base_url`；支持 OAuth 托管 token 和静态 API key 两种凭证类型
