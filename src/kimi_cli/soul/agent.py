@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +13,7 @@ from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
 from kimi_cli.agentspec import load_agent_spec
+from kimi_cli.approval_runtime import ApprovalRuntime
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.background import BackgroundTaskManager
 from kimi_cli.config import Config
@@ -21,13 +21,22 @@ from kimi_cli.exception import MCPConfigError, SystemPromptTemplateError
 from kimi_cli.llm import LLM
 from kimi_cli.notifications import NotificationManager
 from kimi_cli.session import Session
-from kimi_cli.skill import Skill, discover_skills_from_roots, index_skills, resolve_skills_roots
+from kimi_cli.skill import (
+    Skill,
+    discover_skills_from_roots,
+    index_skills,
+    resolve_skills_roots,
+)
 from kimi_cli.soul.approval import Approval, ApprovalState
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.subagents.models import AgentTypeDefinition, ToolPolicy
+from kimi_cli.subagents.registry import LaborMarket
+from kimi_cli.subagents.store import SubagentStore
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import list_directory
+from kimi_cli.wire.root_hub import RootWireHub
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
@@ -81,7 +90,23 @@ class Runtime:
     background_tasks: BackgroundTaskManager
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
-    role: Literal["root", "fixed_subagent", "dynamic_subagent"] = "root"
+    subagent_store: SubagentStore | None = None
+    approval_runtime: ApprovalRuntime | None = None
+    root_wire_hub: RootWireHub | None = None
+    subagent_id: str | None = None
+    subagent_type: str | None = None
+    role: Literal["root", "subagent"] = "root"
+
+    def __post_init__(self) -> None:
+        if self.subagent_store is None:
+            self.subagent_store = SubagentStore(self.session)
+        if self.root_wire_hub is None:
+            self.root_wire_hub = RootWireHub()
+        if self.approval_runtime is None:
+            self.approval_runtime = ApprovalRuntime()
+        self.approval_runtime.bind_root_wire_hub(self.root_wire_hub)
+        self.approval.set_runtime(self.approval_runtime)
+        self.background_tasks.bind_runtime(self)
 
     @staticmethod
     async def create(
@@ -190,47 +215,41 @@ class Runtime:
             ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
+            subagent_store=SubagentStore(session),
+            approval_runtime=ApprovalRuntime(),
+            root_wire_hub=RootWireHub(),
             role="root",
         )
 
-    def copy_for_fixed_subagent(self) -> Runtime:
-        """Clone runtime for fixed subagent."""
+    def copy_for_subagent(
+        self,
+        *,
+        agent_id: str,
+        subagent_type: str,
+        llm_override: LLM | None = None,
+    ) -> Runtime:
+        """Clone runtime for a subagent."""
         return Runtime(
             config=self.config,
             oauth=self.oauth,
-            llm=self.llm,
+            llm=llm_override if llm_override is not None else self.llm,
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval.share(),
-            labor_market=LaborMarket(),  # fixed subagent has its own LaborMarket
+            labor_market=self.labor_market,
             environment=self.environment,
             notifications=self.notifications,
-            background_tasks=self.background_tasks.copy_for_role("fixed_subagent"),
+            background_tasks=self.background_tasks.copy_for_role("subagent"),
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
-            role="fixed_subagent",
-        )
-
-    def copy_for_dynamic_subagent(self) -> Runtime:
-        """Clone runtime for dynamic subagent."""
-        return Runtime(
-            config=self.config,
-            oauth=self.oauth,
-            llm=self.llm,
-            session=self.session,
-            builtin_args=self.builtin_args,
-            denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
-            approval=self.approval.share(),
-            labor_market=self.labor_market,  # dynamic subagent shares LaborMarket with main agent
-            environment=self.environment,
-            notifications=self.notifications,
-            background_tasks=self.background_tasks.copy_for_role("dynamic_subagent"),
-            skills=self.skills,
-            # Share the same list reference so /add-dir mutations propagate to all agents
-            additional_dirs=self.additional_dirs,
-            role="dynamic_subagent",
+            subagent_store=self.subagent_store,
+            approval_runtime=self.approval_runtime,
+            root_wire_hub=self.root_wire_hub,
+            subagent_id=agent_id,
+            subagent_type=subagent_type,
+            role="subagent",
         )
 
 
@@ -245,34 +264,12 @@ class Agent:
     """Each agent has its own runtime, which should be derived from its main agent."""
 
 
-class LaborMarket:
-    def __init__(self):
-        self.fixed_subagents: dict[str, Agent] = {}
-        self.fixed_subagent_descs: dict[str, str] = {}
-        self.dynamic_subagents: dict[str, Agent] = {}
-
-    @property
-    def subagents(self) -> Mapping[str, Agent]:
-        """Get all subagents in the labor market."""
-        return {**self.fixed_subagents, **self.dynamic_subagents}
-
-    def add_fixed_subagent(self, name: str, agent: Agent, description: str):
-        """Add a fixed subagent."""
-        self.fixed_subagents[name] = agent
-        self.fixed_subagent_descs[name] = description
-
-    def add_dynamic_subagent(self, name: str, agent: Agent):
-        """Add a dynamic subagent."""
-        self.dynamic_subagents[name] = agent
-
-
 async def load_agent(
     agent_file: Path,
     runtime: Runtime,
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
     start_mcp_loading: bool = True,
-    _restore_dynamic_subagents: bool = True,
 ) -> Agent:
     """
     Load agent from specification file.
@@ -295,17 +292,28 @@ async def load_agent(
         runtime.builtin_args,
     )
 
-    # load subagents before loading tools because Task tool depends on LaborMarket on initialization
+    # Register built-in subagent types before loading tools because some tools render
+    # descriptions from the labor market on initialization.
     for subagent_name, subagent_spec in agent_spec.subagents.items():
-        logger.debug("Loading subagent: {subagent_name}", subagent_name=subagent_name)
-        subagent = await load_agent(
-            subagent_spec.path,
-            runtime.copy_for_fixed_subagent(),
-            mcp_configs=mcp_configs,
-            start_mcp_loading=start_mcp_loading,
-            _restore_dynamic_subagents=False,
+        logger.debug(
+            "Registering builtin subagent type: {subagent_name}", subagent_name=subagent_name
         )
-        runtime.labor_market.add_fixed_subagent(subagent_name, subagent, subagent_spec.description)
+        builtin_spec = load_agent_spec(subagent_spec.path)
+        tool_policy = (
+            ToolPolicy(mode="allowlist", tools=tuple(builtin_spec.allowed_tools))
+            if builtin_spec.allowed_tools is not None
+            else ToolPolicy(mode="inherit")
+        )
+        runtime.labor_market.add_builtin_type(
+            AgentTypeDefinition(
+                name=subagent_name,
+                description=subagent_spec.description,
+                agent_file=subagent_spec.path,
+                when_to_use=builtin_spec.when_to_use,
+                default_model=builtin_spec.model,
+                tool_policy=tool_policy,
+            )
+        )
 
     toolset = KimiToolset()
     tool_deps = {
@@ -320,7 +328,7 @@ async def load_agent(
         LaborMarket: runtime.labor_market,
         Environment: runtime.environment,
     }
-    tools = agent_spec.tools
+    tools = agent_spec.allowed_tools if agent_spec.allowed_tools is not None else agent_spec.tools
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)
         tools = [tool for tool in tools if tool not in agent_spec.exclude_tools]
@@ -358,19 +366,6 @@ async def load_agent(
             await toolset.load_mcp_tools(validated_mcp_configs, runtime, in_background=True)
         else:
             toolset.defer_mcp_tool_loading(validated_mcp_configs, runtime)
-
-    # Restore dynamic subagents from persisted session state
-    # Skip for fixed subagents — they have their own isolated LaborMarket
-    if _restore_dynamic_subagents:
-        for subagent_spec in runtime.session.state.dynamic_subagents:
-            if subagent_spec.name not in runtime.labor_market.subagents:
-                subagent = Agent(
-                    name=subagent_spec.name,
-                    system_prompt=subagent_spec.system_prompt,
-                    toolset=toolset,
-                    runtime=runtime.copy_for_dynamic_subagent(),
-                )
-                runtime.labor_market.add_dynamic_subagent(subagent_spec.name, subagent)
 
     return Agent(
         name=agent_spec.name,

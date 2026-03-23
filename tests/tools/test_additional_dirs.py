@@ -187,14 +187,14 @@ async def test_add_dir_dynamically_affects_tools(runtime: Runtime, approval: App
 
 async def test_subagent_shares_additional_dirs(runtime: Runtime):
     """Subagent runtime should share the same additional_dirs list."""
-    fixed = runtime.copy_for_fixed_subagent()
-    dynamic = runtime.copy_for_dynamic_subagent()
+    subagent_a = runtime.copy_for_subagent(agent_id="a-one", subagent_type="coder")
+    subagent_b = runtime.copy_for_subagent(agent_id="a-two", subagent_type="mocker")
 
     # They should be the exact same list object
-    assert fixed.additional_dirs is runtime.additional_dirs
-    assert dynamic.additional_dirs is runtime.additional_dirs
+    assert subagent_a.additional_dirs is runtime.additional_dirs
+    assert subagent_b.additional_dirs is runtime.additional_dirs
 
     # Mutation on parent should be visible to subagents
     runtime.additional_dirs.append(KaosPath("/test/shared"))
-    assert KaosPath("/test/shared") in fixed.additional_dirs
-    assert KaosPath("/test/shared") in dynamic.additional_dirs
+    assert KaosPath("/test/shared") in subagent_a.additional_dirs
+    assert KaosPath("/test/shared") in subagent_b.additional_dirs

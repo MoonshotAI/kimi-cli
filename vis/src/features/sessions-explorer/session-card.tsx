@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertCircle, Clock, Download, RefreshCw, Trash2, Zap } from "lucide-react";
+import { AlertCircle, Bot, Clock, Download, RefreshCw, Trash2, Zap } from "lucide-react";
 
 function formatRelativeTime(epochSec: number): string {
   if (!epochSec) return "";
@@ -241,6 +241,12 @@ export function SessionCard({ session, onSelect, compact, searchQuery, onDeleted
           {session.has_state && (
             <span className="rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0 text-[10px] border border-purple-500/20">
               state
+            </span>
+          )}
+          {(session.subagent_count ?? 0) > 0 && (
+            <span className="flex items-center gap-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0 text-[10px] border border-indigo-500/20">
+              <Bot size={9} />
+              {session.subagent_count}
             </span>
           )}
           <span className="text-[10px] text-muted-foreground ml-auto">

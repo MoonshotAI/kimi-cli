@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -83,20 +84,25 @@ class Context:
         """
         prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
 
-        if not self._file_backend.exists() or self._file_backend.stat().st_size == 0:
-            async with aiofiles.open(self._file_backend, "w", encoding="utf-8") as f:
-                await f.write(prompt_line)
-        else:
+        def _write_system_prompt_sync() -> None:
+            if not self._file_backend.exists() or self._file_backend.stat().st_size == 0:
+                self._file_backend.write_text(prompt_line, encoding="utf-8")
+                return
+
             tmp_path = self._file_backend.with_suffix(".tmp")
-            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as tmp_f:
-                await tmp_f.write(prompt_line)
-                async with aiofiles.open(self._file_backend, encoding="utf-8") as src_f:
-                    while True:
-                        chunk = await src_f.read(64 * 1024)
-                        if not chunk:
-                            break
-                        await tmp_f.write(chunk)
-            await aiofiles.os.replace(tmp_path, self._file_backend)
+            with (
+                tmp_path.open("w", encoding="utf-8") as tmp_f,
+                self._file_backend.open(encoding="utf-8") as src_f,
+            ):
+                tmp_f.write(prompt_line)
+                while True:
+                    chunk = src_f.read(64 * 1024)
+                    if not chunk:
+                        break
+                    tmp_f.write(chunk)
+            tmp_path.replace(self._file_backend)
+
+        await asyncio.to_thread(_write_system_prompt_sync)
 
         self._system_prompt = prompt
 

@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import time
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 type TaskKind = Literal["bash", "agent"]
-type TaskStatus = Literal["created", "starting", "running", "completed", "failed", "killed", "lost"]
-type TaskOwnerRole = Literal["root", "fixed_subagent", "dynamic_subagent"]
+type TaskStatus = Literal[
+    "created",
+    "starting",
+    "running",
+    "awaiting_approval",
+    "completed",
+    "failed",
+    "killed",
+    "lost",
+]
+type TaskOwnerRole = Literal["root", "subagent"]
 
 TERMINAL_TASK_STATUSES: tuple[TaskStatus, ...] = ("completed", "failed", "killed", "lost")
 
@@ -28,13 +37,20 @@ class TaskSpec(BaseModel):
     owner_role: TaskOwnerRole = "root"
     created_at: float = Field(default_factory=time.time)
 
+    @field_validator("owner_role", mode="before")
+    @classmethod
+    def _normalize_owner_role(cls, v: str) -> str:
+        if v in ("fixed_subagent", "dynamic_subagent"):
+            return "subagent"
+        return v
+
     # Bash-specific fields for V1. Future task types can use kind_payload.
     command: str | None = None
     shell_name: str | None = None
     shell_path: str | None = None
     cwd: str | None = None
     timeout_s: int | None = None
-    kind_payload: dict[str, str] | None = None
+    kind_payload: dict[str, Any] | None = None
 
 
 class TaskRuntime(BaseModel):

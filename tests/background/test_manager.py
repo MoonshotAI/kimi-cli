@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import time
 
 import pytest
+from kosong.message import Message
+from kosong.tooling.empty import EmptyToolset
 
+from kimi_cli.approval_runtime import ApprovalRequestRecord, ApprovalRuntimeEvent, ApprovalSource
 from kimi_cli.background import TaskRuntime, TaskSpec
+from kimi_cli.background.agent_runner import BackgroundAgentRunner
 from kimi_cli.notifications import NotificationDelivery, NotificationEvent, NotificationView
+from kimi_cli.soul.agent import Agent as SoulAgent
+from kimi_cli.soul.context import Context
+from kimi_cli.subagents import AgentLaunchSpec, AgentTypeDefinition, ToolPolicy
+from kimi_cli.wire.types import TextPart
 
 
 def test_create_bash_task_persists_starting_state(runtime, monkeypatch):
@@ -121,6 +131,353 @@ def test_create_bash_task_records_failed_runtime_when_worker_launch_fails(runtim
     assert views[0].runtime.failure_reason == "Failed to launch worker: launch boom"
 
 
+@pytest.mark.asyncio
+async def test_create_agent_task_persists_starting_state(runtime, monkeypatch):
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    manager = runtime.background_tasks
+
+    async def _noop(self):
+        return None
+
+    monkeypatch.setattr("kimi_cli.background.agent_runner.BackgroundAgentRunner.run", _noop)
+
+    view = manager.create_agent_task(
+        agent_id="a1234567",
+        subagent_type="coder",
+        prompt="investigate",
+        description="investigate bug",
+        tool_call_id="tool-agent-1",
+        model_override=None,
+    )
+
+    assert view.spec.id.startswith("a")
+    assert view.spec.kind == "agent"
+    assert view.runtime.status == "starting"
+    assert view.spec.kind_payload["agent_id"] == "a1234567"
+    assert view.spec.kind_payload["subagent_type"] == "coder"
+    task = manager._live_agent_tasks.pop(view.spec.id)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_background_agent_resume_restores_system_prompt_from_context(runtime, monkeypatch):
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="aexisting",
+        description="existing agent",
+        launch_spec=AgentLaunchSpec(
+            agent_id="aexisting",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+    context = Context(runtime.subagent_store.context_path("aexisting"))
+    await context.write_system_prompt("old system prompt")
+
+    seen_prompts: list[str] = []
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="new system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul,
+        user_input,
+        ui_loop_fn,
+        cancel_event,
+        wire_file=None,
+        runtime=None,
+    ):
+        seen_prompts.append(soul.agent.system_prompt)
+        await soul.context.append_message(
+            Message(role="assistant", content=[TextPart(text="x" * 250)])
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    view = runtime.background_tasks.create_agent_task(
+        agent_id="aexisting",
+        subagent_type="coder",
+        prompt="continue the work",
+        description="resume task",
+        tool_call_id="tool-agent-resume",
+        model_override=None,
+    )
+    task = runtime.background_tasks._live_agent_tasks[view.spec.id]
+    await task
+
+    assert seen_prompts == ["old system prompt"]
+    record = runtime.subagent_store.require_instance("aexisting")
+    assert record.status == "idle"
+
+
+@pytest.mark.asyncio
+async def test_background_agent_runner_records_wire_file_and_stage_markers(runtime, monkeypatch):
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="awiretest",
+        description="wire test agent",
+        launch_spec=AgentLaunchSpec(
+            agent_id="awiretest",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+
+    seen_wire_paths: list[str] = []
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul,
+        user_input,
+        ui_loop_fn,
+        cancel_event,
+        wire_file=None,
+        runtime=None,
+    ):
+        seen_wire_paths.append(str(wire_file.path) if wire_file is not None else "")
+        await soul.context.append_message(
+            Message(role="assistant", content=[TextPart(text="x" * 250)])
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    view = runtime.background_tasks.create_agent_task(
+        agent_id="awiretest",
+        subagent_type="coder",
+        prompt="do work",
+        description="wire test agent",
+        tool_call_id="tool-agent-wire",
+        model_override=None,
+    )
+    task = runtime.background_tasks._live_agent_tasks[view.spec.id]
+    await task
+
+    assert seen_wire_paths == [str(runtime.subagent_store.wire_path("awiretest"))]
+    output = runtime.background_tasks.store.output_path(view.spec.id).read_text(encoding="utf-8")
+    assert "[stage] runner_started" in output
+    assert "[stage] agent_built" in output
+    assert "[stage] context_ready" in output
+    assert "[stage] run_soul_start" in output
+    assert "[stage] run_soul_finished" in output
+
+
+@pytest.mark.asyncio
+async def test_background_agent_runner_reports_rejected_tool_calls_clearly(runtime, monkeypatch):
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="arejectedbg",
+        description="rejected background agent",
+        launch_spec=AgentLaunchSpec(
+            agent_id="arejectedbg",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul,
+        user_input,
+        ui_loop_fn,
+        cancel_event,
+        wire_file=None,
+        runtime=None,
+    ):
+        # Subagents continue after rejection — the LLM sees the rejection and
+        # produces an assistant response instead of stopping.
+        await soul.context.append_message(
+            Message(role="assistant", content=[TextPart(text="x" * 250)])
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    view = runtime.background_tasks.create_agent_task(
+        agent_id="arejectedbg",
+        subagent_type="coder",
+        prompt="do work",
+        description="rejected background agent",
+        tool_call_id="tool-agent-reject",
+        model_override=None,
+    )
+    task = runtime.background_tasks._live_agent_tasks[view.spec.id]
+    await task
+
+    runtime_after = runtime.background_tasks.store.read_runtime(view.spec.id)
+    assert runtime_after.status == "completed"
+    record = runtime.subagent_store.require_instance("arejectedbg")
+    assert record.status == "idle"
+
+
+@pytest.mark.asyncio
+async def test_background_agent_approval_callback_defers_state_update(runtime, monkeypatch):
+    calls: list[tuple[str, str, str | None]] = []
+
+    def fake_mark_task_awaiting_approval(task_id: str, reason: str) -> None:
+        calls.append(("awaiting", task_id, reason))
+
+    def fake_mark_task_running(task_id: str) -> None:
+        calls.append(("running", task_id, None))
+
+    monkeypatch.setattr(
+        runtime.background_tasks,
+        "_mark_task_awaiting_approval",
+        fake_mark_task_awaiting_approval,
+    )
+    monkeypatch.setattr(
+        runtime.background_tasks,
+        "_mark_task_running",
+        fake_mark_task_running,
+    )
+
+    runner = BackgroundAgentRunner(
+        runtime=runtime,
+        manager=runtime.background_tasks,
+        task_id="a-task-approval",
+        agent_id="a1234567",
+        subagent_type="coder",
+        prompt="continue",
+        model_override=None,
+    )
+    request = ApprovalRequestRecord(
+        id="req-approval",
+        tool_call_id="call-approval",
+        sender="WriteFile",
+        action="edit file",
+        description="Edit target file",
+        display=[],
+        source=ApprovalSource(kind="background_agent", id="a-task-approval"),
+    )
+
+    runner._on_approval_runtime_event(ApprovalRuntimeEvent(kind="request_created", request=request))
+    assert calls == []
+    await asyncio.gather(*list(runner._approval_update_tasks))
+    assert calls == [("awaiting", "a-task-approval", "Edit target file")]
+
+    runner._on_approval_runtime_event(
+        ApprovalRuntimeEvent(kind="request_resolved", request=request)
+    )
+    assert calls == [("awaiting", "a-task-approval", "Edit target file")]
+    await asyncio.gather(*list(runner._approval_update_tasks))
+    assert calls == [
+        ("awaiting", "a-task-approval", "Edit target file"),
+        ("running", "a-task-approval", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_background_agent_stays_awaiting_when_other_approvals_are_still_pending(
+    runtime, monkeypatch
+):
+    calls: list[tuple[str, str, str | None]] = []
+
+    def fake_mark_task_awaiting_approval(task_id: str, reason: str) -> None:
+        calls.append(("awaiting", task_id, reason))
+
+    def fake_mark_task_running(task_id: str) -> None:
+        calls.append(("running", task_id, None))
+
+    monkeypatch.setattr(
+        runtime.background_tasks,
+        "_mark_task_awaiting_approval",
+        fake_mark_task_awaiting_approval,
+    )
+    monkeypatch.setattr(
+        runtime.background_tasks,
+        "_mark_task_running",
+        fake_mark_task_running,
+    )
+
+    runner = BackgroundAgentRunner(
+        runtime=runtime,
+        manager=runtime.background_tasks,
+        task_id="a-task-multi-approval",
+        agent_id="a1234567",
+        subagent_type="coder",
+        prompt="continue",
+        model_override=None,
+    )
+    resolved_request = ApprovalRequestRecord(
+        id="req-approval-1",
+        tool_call_id="call-approval-1",
+        sender="WriteFile",
+        action="edit file",
+        description="Edit target file",
+        display=[],
+        source=ApprovalSource(kind="background_agent", id="a-task-multi-approval"),
+    )
+    runtime.approval_runtime.create_request(
+        request_id="req-approval-2",
+        tool_call_id="call-approval-2",
+        sender="WriteFile",
+        action="edit file",
+        description="Edit target file again",
+        display=[],
+        source=ApprovalSource(kind="background_agent", id="a-task-multi-approval"),
+    )
+
+    runner._on_approval_runtime_event(
+        ApprovalRuntimeEvent(kind="request_resolved", request=resolved_request)
+    )
+    await asyncio.gather(*list(runner._approval_update_tasks))
+
+    assert calls == []
+
+
 def test_get_task_missing_does_not_create_directory(runtime):
     manager = runtime.background_tasks
 
@@ -157,6 +514,92 @@ def test_recover_marks_stale_running_task_as_lost(runtime):
     recovered = store.merged_view(spec.id)
     assert recovered.runtime.status == "lost"
     assert recovered.runtime.failure_reason == "Background worker heartbeat expired"
+
+
+def test_recover_marks_stale_agent_task_lost_and_clears_instance_running_state(runtime):
+    manager = runtime.background_tasks
+    store = manager.store
+    runtime.subagent_store.create_instance(
+        agent_id="alostagent",
+        description="lost background agent",
+        launch_spec=AgentLaunchSpec(
+            agent_id="alostagent",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+    runtime.subagent_store.update_instance("alostagent", status="running_background")
+
+    spec = TaskSpec(
+        id="alosttask1",
+        kind="agent",
+        session_id=runtime.session.id,
+        description="lost agent task",
+        tool_call_id="tool-lost-agent",
+        owner_role="root",
+        kind_payload={
+            "agent_id": "alostagent",
+            "subagent_type": "coder",
+            "prompt": "do work",
+            "model_override": None,
+            "launch_mode": "background",
+        },
+    )
+    store.create_task(spec)
+    store.write_runtime(
+        spec.id,
+        TaskRuntime(
+            status="running",
+            updated_at=time.time() - 60,
+            heartbeat_at=time.time() - 60,
+        ),
+    )
+
+    manager.recover()
+
+    recovered = store.merged_view(spec.id)
+    assert recovered.runtime.status == "lost"
+    assert recovered.runtime.failure_reason == "In-process background agent is no longer running"
+    instance = runtime.subagent_store.require_instance("alostagent")
+    assert instance.status == "failed"
+
+
+def test_mark_task_running_does_not_overwrite_terminal_state(runtime):
+    manager = runtime.background_tasks
+    store = manager.store
+    spec = TaskSpec(
+        id="aterminal1",
+        kind="agent",
+        session_id=runtime.session.id,
+        description="terminal task",
+        tool_call_id="tool-terminal-1",
+        owner_role="root",
+        kind_payload={
+            "agent_id": "a1234567",
+            "subagent_type": "coder",
+            "prompt": "do work",
+            "model_override": None,
+            "launch_mode": "background",
+        },
+    )
+    store.create_task(spec)
+    store.write_runtime(
+        spec.id,
+        TaskRuntime(
+            status="killed",
+            updated_at=time.time(),
+            finished_at=time.time(),
+            interrupted=True,
+            failure_reason="Killed by user",
+        ),
+    )
+
+    manager._mark_task_running(spec.id)
+
+    runtime_after = store.read_runtime(spec.id)
+    assert runtime_after.status == "killed"
+    assert runtime_after.failure_reason == "Killed by user"
 
 
 def test_recover_marks_stale_starting_task_without_heartbeat_as_lost(runtime):
@@ -226,6 +669,45 @@ def test_recover_marks_stale_kill_requested_task_as_killed(runtime):
     assert recovered.runtime.status == "killed"
     assert recovered.runtime.interrupted is True
     assert recovered.runtime.failure_reason == "user stop"
+
+
+def test_mark_task_running_and_completed_clear_approval_reason(runtime):
+    manager = runtime.background_tasks
+    store = manager.store
+    spec = TaskSpec(
+        id="a3333333",
+        kind="agent",
+        session_id=runtime.session.id,
+        description="approval task",
+        tool_call_id="tool-approval-clear",
+        owner_role="root",
+        kind_payload={"agent_id": "aagent", "subagent_type": "coder"},
+    )
+    store.create_task(spec)
+    store.write_runtime(
+        spec.id,
+        TaskRuntime(
+            status="awaiting_approval",
+            updated_at=time.time(),
+            failure_reason="Need approval to edit file",
+        ),
+    )
+
+    manager._mark_task_running(spec.id)
+    running = store.merged_view(spec.id)
+    assert running.runtime.status == "running"
+    assert running.runtime.failure_reason is None
+
+    store.write_runtime(
+        spec.id,
+        running.runtime.model_copy(
+            update={"status": "awaiting_approval", "failure_reason": "Need approval again"}
+        ),
+    )
+    manager._mark_task_completed(spec.id)
+    completed = store.merged_view(spec.id)
+    assert completed.runtime.status == "completed"
+    assert completed.runtime.failure_reason is None
 
 
 def test_publish_terminal_notifications_creates_notification(runtime):

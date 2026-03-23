@@ -3,7 +3,9 @@ import {
   type WireEvent,
   type ContextMessage,
   getWireEvents,
+  getSubagentWireEvents,
   getContextMessages,
+  getSubagentContextMessages,
   normalizeContent,
 } from "@/lib/api";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -12,6 +14,7 @@ import { formatTimestamp } from "@/features/wire-viewer/wire-event-card";
 interface DualViewProps {
   sessionId: string;
   refreshKey?: number;
+  agentScope?: string | null;
 }
 
 // ── Type badge colors (simplified from wire-event-card) ──
@@ -140,7 +143,7 @@ function getContextToolCallIds(msg: ContextMessage): string[] {
   return ids;
 }
 
-export function DualView({ sessionId, refreshKey = 0 }: DualViewProps) {
+export function DualView({ sessionId, refreshKey = 0, agentScope }: DualViewProps) {
   const [wireEvents, setWireEvents] = useState<WireEvent[]>([]);
   const [contextMessages, setContextMessages] = useState<ContextMessage[]>([]);
   const [wireLoading, setWireLoading] = useState(true);
@@ -158,18 +161,24 @@ export function DualView({ sessionId, refreshKey = 0 }: DualViewProps) {
     const forceRefresh = refreshKey > 0;
     setWireLoading(true);
     setWireError(null);
-    getWireEvents(sessionId, forceRefresh)
+    const wireFetch = agentScope
+      ? getSubagentWireEvents(sessionId, agentScope, forceRefresh)
+      : getWireEvents(sessionId, forceRefresh);
+    wireFetch
       .then((res) => setWireEvents(res.events))
       .catch((err) => setWireError(err.message))
       .finally(() => setWireLoading(false));
 
     setContextLoading(true);
     setContextError(null);
-    getContextMessages(sessionId, forceRefresh)
+    const ctxFetch = agentScope
+      ? getSubagentContextMessages(sessionId, agentScope, forceRefresh)
+      : getContextMessages(sessionId, forceRefresh);
+    ctxFetch
       .then((res) => setContextMessages(res.messages.filter((m) => !m.role.startsWith("_"))))
       .catch((err) => setContextError(err.message))
       .finally(() => setContextLoading(false));
-  }, [sessionId, refreshKey]);
+  }, [sessionId, refreshKey, agentScope]);
 
   // Build bidirectional mapping: tool_call_id -> wire event index
   const wireToolCallIdToIndex = useMemo(() => {

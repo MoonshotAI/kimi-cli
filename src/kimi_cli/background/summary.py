@@ -23,6 +23,11 @@ def format_task(view: TaskView, *, include_command: bool = False) -> str:
         f"status: {view.runtime.status}",
         f"description: {view.spec.description}",
     ]
+    if view.spec.kind == "agent" and view.spec.kind_payload:
+        if agent_id := view.spec.kind_payload.get("agent_id"):
+            lines.append(f"agent_id: {agent_id}")
+        if subagent_type := view.spec.kind_payload.get("subagent_type"):
+            lines.append(f"subagent_type: {subagent_type}")
     if include_command and view.spec.command:
         lines.append(f"command: {view.spec.command}")
     if view.runtime.exit_code is not None:

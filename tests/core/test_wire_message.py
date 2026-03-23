@@ -272,25 +272,44 @@ async def test_wire_message_serde():
     assert serialize_wire_message(msg) == snapshot(
         {
             "type": "ApprovalResponse",
-            "payload": {"request_id": "request_123", "response": "approve"},
+            "payload": {"request_id": "request_123", "response": "approve", "feedback": ""},
         }
     )
     _test_serde(msg)
 
     msg = SubagentEvent(
-        task_tool_call_id="task_789",
+        parent_tool_call_id="call_parent_789",
+        agent_id="a1234567",
+        subagent_type="coder",
         event=StepBegin(n=2),
     )
     assert serialize_wire_message(msg) == snapshot(
         {
             "type": "SubagentEvent",
             "payload": {
-                "task_tool_call_id": "task_789",
+                "parent_tool_call_id": "call_parent_789",
+                "agent_id": "a1234567",
+                "subagent_type": "coder",
                 "event": {"type": "StepBegin", "payload": {"n": 2}},
             },
         }
     )
     _test_serde(msg)
+
+    legacy_msg = deserialize_wire_message(
+        {
+            "type": "SubagentEvent",
+            "payload": {
+                "task_tool_call_id": "call_parent_legacy",
+                "event": {"type": "StepBegin", "payload": {"n": 3}},
+            },
+        }
+    )
+    assert isinstance(legacy_msg, SubagentEvent)
+    assert legacy_msg.parent_tool_call_id == "call_parent_legacy"
+    assert legacy_msg.agent_id is None
+    assert legacy_msg.subagent_type is None
+    assert legacy_msg.event == StepBegin(n=3)
 
     with pytest.raises(ValueError):
         ApprovalResponse(request_id="request_123", response="invalid_response")  # type: ignore
@@ -311,6 +330,11 @@ async def test_wire_message_serde():
                 "sender": "bash",
                 "action": "Execute dangerous command",
                 "description": "This command will delete files",
+                "source_kind": None,
+                "source_id": None,
+                "agent_id": None,
+                "subagent_type": None,
+                "source_description": None,
                 "display": [],
             },
         }

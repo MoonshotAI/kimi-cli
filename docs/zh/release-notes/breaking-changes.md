@@ -4,6 +4,27 @@
 
 ## 未发布
 
+### Wire 协议 1.6——子 Agent 与审批字段变更
+
+`SubagentEvent` 的 `task_tool_call_id` 字段重命名为 `parent_tool_call_id`，新增可选字段 `agent_id`、`subagent_type`。`ApprovalRequest` 新增 `source_kind`、`source_id`、`agent_id`、`subagent_type`、`source_description` 字段。`ApprovalResponse` 新增 `feedback` 字段。
+
+- **受影响**：解析 `SubagentEvent` 或 `ApprovalRequest`/`ApprovalResponse` 载荷的 Wire 模式客户端
+- **迁移**：在事件处理器中将 `task_tool_call_id` 重命名为 `parent_tool_call_id`；根据需要处理新增的可选字段
+
+### `CreateSubagent` 和 `Task`（multiagent）工具移除
+
+`kimi_cli.tools.multiagent` 下的 `CreateSubagent` 和 `Task` 工具已移除，由新的 `Agent` 工具替代。
+
+- **受影响**：在 Agent YAML 中引用 `kimi_cli.tools.multiagent:Task` 或 `kimi_cli.tools.multiagent:CreateSubagent` 的自定义 Agent 配置
+- **迁移**：在 Agent YAML 的 `allowed_tools` 中替换为 `kimi_cli.tools.agent:Agent`
+
+### `TaskOutput` `block` 参数默认值变更
+
+`TaskOutput` 工具的 `block` 参数默认值从 `true` 改为 `false`。`TaskOutput` 现在默认返回非阻塞的状态/输出快照。
+
+- **受影响**：依赖 `TaskOutput` 默认阻塞行为的自定义 Agent 或 Wire 模式客户端
+- **迁移**：如需等待任务完成，显式传入 `block=true`
+
 ## 0.81 - Prompt Flow 被 Flow Skills 取代
 
 ### `--prompt-flow` 选项移除
