@@ -103,10 +103,22 @@ Session state file, stores the session's runtime state, including:
 - `plan_mode`: Plan mode on/off status
 - `plan_session_id`: Unique identifier for the current plan session, used to associate the plan file
 - `plan_slug`: The file path identifier for the plan (the slug in `~/.kimi/plans/<slug>.md`), preserved so restarts resume the same file
-- `dynamic_subagents`: Dynamically created subagent definitions
+- `subagent_instances`: Subagent instance state and metadata
 - `additional_dirs`: Additional workspace directories added via `--add-dir` or `/add-dir`
 
 When resuming a session, Kimi Code CLI reads this file to restore the session state. This file uses atomic writes to prevent data corruption on crash.
+
+### `subagents/<agent_id>/`
+
+Each subagent instance created via the `Agent` tool has its own storage directory under the session directory, containing:
+
+- `context.jsonl`: Subagent conversation history
+- `wire.jsonl`: Subagent Wire event log
+- `meta.json`: Instance metadata (status, type, creation time, etc.)
+- `prompt.txt`: Last executed prompt
+- `output`: Execution output
+
+When resuming a session, subagent instance context and state are automatically restored, allowing continuation via the `resume` parameter.
 
 ## Plan files
 

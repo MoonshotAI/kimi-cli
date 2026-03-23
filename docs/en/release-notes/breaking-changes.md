@@ -4,6 +4,27 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+### Wire protocol 1.6 — subagent and approval field changes
+
+The `SubagentEvent` field `task_tool_call_id` has been renamed to `parent_tool_call_id`, and new optional fields (`agent_id`, `subagent_type`) have been added. `ApprovalRequest` gains `source_kind`, `source_id`, `agent_id`, `subagent_type`, and `source_description` fields. `ApprovalResponse` gains a `feedback` field.
+
+- **Affected**: Wire mode clients that parse `SubagentEvent` or `ApprovalRequest`/`ApprovalResponse` payloads
+- **Migration**: Rename `task_tool_call_id` to `parent_tool_call_id` in your event handlers; handle the new optional fields as needed
+
+### `CreateSubagent` and `Task` (multiagent) tools removed
+
+The `CreateSubagent` and `Task` tools under `kimi_cli.tools.multiagent` have been removed. Use the new `Agent` tool instead.
+
+- **Affected**: Custom agent configurations referencing `kimi_cli.tools.multiagent:Task` or `kimi_cli.tools.multiagent:CreateSubagent`
+- **Migration**: Replace with `kimi_cli.tools.agent:Agent` in your agent YAML `allowed_tools`
+
+### `TaskOutput` `block` parameter default changed
+
+The `block` parameter of the `TaskOutput` tool now defaults to `false` (previously `true`). `TaskOutput` returns a non-blocking status/output snapshot by default.
+
+- **Affected**: Custom agents or Wire mode clients relying on `TaskOutput` blocking by default
+- **Migration**: Explicitly pass `block=true` if you need to wait for task completion
+
 ## 0.81 - Prompt Flow replaced by Flow Skills
 
 ### `--prompt-flow` option removed

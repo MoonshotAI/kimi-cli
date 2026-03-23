@@ -690,17 +690,27 @@ interface ApprovalResponse {
   request_id: string
   /** Approval result */
   response: "approve" | "approve_for_session" | "reject"
+  /** Optional feedback text when rejecting, may be absent in JSON */
+  feedback?: string
 }
 ```
 
 ### `SubagentEvent`
 
+::: info Changed
+Changed in Wire 1.6. `task_tool_call_id` renamed to `parent_tool_call_id`; added `agent_id` and `subagent_type` fields.
+:::
+
 Subagent event.
 
 ```typescript
 interface SubagentEvent {
-  /** Associated Task tool call ID */
-  task_tool_call_id: string
+  /** Associated parent Agent tool call ID, may be absent in JSON */
+  parent_tool_call_id?: string | null
+  /** Subagent instance ID, may be absent in JSON */
+  agent_id?: string | null
+  /** Built-in subagent type used by this instance, may be absent in JSON */
+  subagent_type?: string | null
   /** Event from subagent, nested Wire message format */
   event: { type: string; payload: object }
 }
@@ -723,6 +733,10 @@ interface SteerInput {
 
 ### `ApprovalRequest`
 
+::: info Changed
+Changed in Wire 1.6. Added `source_kind`, `source_id`, `agent_id`, `subagent_type`, and `source_description` fields.
+:::
+
 Approval request, sent via `request` method, client must respond before agent can continue.
 
 ```typescript
@@ -739,10 +753,24 @@ interface ApprovalRequest {
   description: string
   /** Display blocks shown to user, may be absent in JSON, defaults to [] */
   display?: DisplayBlock[]
+  /** Where the request originated: foreground turn or background agent, may be absent in JSON */
+  source_kind?: "foreground_turn" | "background_agent" | null
+  /** Source identifier (e.g. background agent ID), may be absent in JSON */
+  source_id?: string | null
+  /** Subagent instance ID if from a subagent, may be absent in JSON */
+  agent_id?: string | null
+  /** Subagent type if from a subagent, may be absent in JSON */
+  subagent_type?: string | null
+  /** Human-readable source description, may be absent in JSON */
+  source_description?: string | null
 }
 ```
 
 **Response format**
+
+::: info Changed
+Changed in Wire 1.6. Added optional `feedback` field.
+:::
 
 Client needs to return `ApprovalResponse` as the response result:
 
@@ -750,6 +778,8 @@ Client needs to return `ApprovalResponse` as the response result:
 interface ApprovalResponse {
   request_id: string
   response: "approve" | "approve_for_session" | "reject"
+  /** Optional feedback text when rejecting, may be absent in JSON */
+  feedback?: string
 }
 ```
 
@@ -757,7 +787,7 @@ interface ApprovalResponse {
 |----------|-------------|
 | `approve` | Approve this operation |
 | `approve_for_session` | Approve similar operations for this session |
-| `reject` | Reject operation |
+| `reject` | Reject operation; optionally include `feedback` to instruct the model on what to do instead |
 
 ### `ToolCallRequest`
 

@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.5`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.6`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -690,17 +690,27 @@ interface ApprovalResponse {
   request_id: string
   /** 审批结果 */
   response: "approve" | "approve_for_session" | "reject"
+  /** 拒绝时的可选反馈文本，JSON 中可能不存在 */
+  feedback?: string
 }
 ```
 
 ### `SubagentEvent`
 
+::: info 变更
+变更于 Wire 1.6。`task_tool_call_id` 重命名为 `parent_tool_call_id`；新增 `agent_id` 和 `subagent_type` 字段。
+:::
+
 子 Agent 事件。
 
 ```typescript
 interface SubagentEvent {
-  /** 关联的 Task 工具调用 ID */
-  task_tool_call_id: string
+  /** 关联的父 Agent 工具调用 ID，JSON 中可能不存在 */
+  parent_tool_call_id?: string | null
+  /** 子 Agent 实例 ID，JSON 中可能不存在 */
+  agent_id?: string | null
+  /** 此实例使用的内置子 Agent 类型，JSON 中可能不存在 */
+  subagent_type?: string | null
   /** 子 Agent 产生的事件，嵌套的 Wire 消息格式 */
   event: { type: string; payload: object }
 }
@@ -723,6 +733,10 @@ interface SteerInput {
 
 ### `ApprovalRequest`
 
+::: info 变更
+变更于 Wire 1.6。新增 `source_kind`、`source_id`、`agent_id`、`subagent_type`、`source_description` 字段。
+:::
+
 审批请求，通过 `request` 方法发送，Client 必须响应后 Agent 才能继续。
 
 ```typescript
@@ -739,10 +753,24 @@ interface ApprovalRequest {
   description: string
   /** 显示给用户的内容块，JSON 中可能不存在，默认为 [] */
   display?: DisplayBlock[]
+  /** 请求来源：前台轮次或后台 Agent，JSON 中可能不存在 */
+  source_kind?: "foreground_turn" | "background_agent" | null
+  /** 来源标识符（如后台 Agent ID），JSON 中可能不存在 */
+  source_id?: string | null
+  /** 子 Agent 实例 ID（如来自子 Agent），JSON 中可能不存在 */
+  agent_id?: string | null
+  /** 子 Agent 类型（如来自子 Agent），JSON 中可能不存在 */
+  subagent_type?: string | null
+  /** 可读的来源描述，JSON 中可能不存在 */
+  source_description?: string | null
 }
 ```
 
 **响应格式**
+
+::: info 变更
+变更于 Wire 1.6。新增可选的 `feedback` 字段。
+:::
 
 Client 需要返回 `ApprovalResponse` 作为响应结果：
 
@@ -750,6 +778,8 @@ Client 需要返回 `ApprovalResponse` 作为响应结果：
 interface ApprovalResponse {
   request_id: string
   response: "approve" | "approve_for_session" | "reject"
+  /** 拒绝时的可选反馈文本，JSON 中可能不存在 */
+  feedback?: string
 }
 ```
 
@@ -757,7 +787,7 @@ interface ApprovalResponse {
 |----------|------|
 | `approve` | 批准本次操作 |
 | `approve_for_session` | 批准本会话中的同类操作 |
-| `reject` | 拒绝操作 |
+| `reject` | 拒绝操作；可通过 `feedback` 指示模型应如何调整 |
 
 ### `ToolCallRequest`
 
