@@ -42,8 +42,8 @@ def test_loop_command_registered() -> None:
 
 
 def test_loop_cancel_command_registered() -> None:
-    """/loop-cancel should be registered with alias."""
-    cmd = shell_slash.registry.find_command("loop-cancel")
+    """/loop_cancel should be registered with alias loop-cancel."""
+    cmd = shell_slash.registry.find_command("loop_cancel")
     assert cmd is not None
     # Check alias
     assert shell_slash.registry.find_command("loop-cancel") is cmd
@@ -440,7 +440,7 @@ class TestLoopSlashCommands:
     async def test_loop_cancel_no_args_shows_tasks(
         self, runtime: Runtime, tmp_path: Path, monkeypatch
     ) -> None:
-        """/loop-cancel with no args shows active tasks."""
+        """/loop_cancel with no args shows active tasks."""
         app = _make_shell_app(runtime, tmp_path)
         print_mock = Mock()
         monkeypatch.setattr(shell_slash.console, "print", print_mock)
