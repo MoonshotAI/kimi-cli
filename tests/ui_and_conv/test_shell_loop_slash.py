@@ -375,10 +375,37 @@ class TestLoopSlashCommands:
         assert any("Created loop task" in str(c) for c in calls)
 
     @pytest.mark.asyncio
-    async def test_loop_command_invalid_interval(
+    async def test_loop_command_uses_default_interval(
         self, runtime: Runtime, tmp_path: Path, monkeypatch
     ) -> None:
-        """/loop with invalid interval shows error."""
+        """/loop with only prompt uses default 10m interval."""
+        app = _make_shell_app(runtime, tmp_path)
+        print_mock = Mock()
+        monkeypatch.setattr(shell_slash.console, "print", print_mock)
+
+        # Clear any existing scheduler
+        from kimi_cli.ui.shell.loop_scheduler import _loop_schedulers
+
+        _loop_schedulers.clear()
+
+        await shell_slash.loop(app, "check emails without interval")  # type: ignore[arg-type]
+
+        # Should show success message with task ID and default interval
+        calls = print_mock.call_args_list
+        assert any("Created loop task" in str(c) for c in calls)
+        # Verify the scheduler has the task with default 10m (600s) interval
+        from kimi_cli.ui.shell.loop_scheduler import get_loop_scheduler
+
+        scheduler = get_loop_scheduler(app)  # type: ignore[arg-type]
+        tasks = scheduler.list_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].interval_s == 600.0  # 10 minutes default
+
+    @pytest.mark.asyncio
+    async def test_loop_command_default_interval_for_non_interval_prefix(
+        self, runtime: Runtime, tmp_path: Path, monkeypatch
+    ) -> None:
+        """/loop with non-interval prefix uses default interval."""
         app = _make_shell_app(runtime, tmp_path)
         print_mock = Mock()
         monkeypatch.setattr(shell_slash.console, "print", print_mock)
@@ -390,9 +417,9 @@ class TestLoopSlashCommands:
 
         await shell_slash.loop(app, "invalid check emails")  # type: ignore[arg-type]
 
-        # Should show error message
+        # Should create task with default interval (not show error)
         calls = print_mock.call_args_list
-        assert any("Invalid interval" in str(c) for c in calls)
+        assert any("Created loop task" in str(c) for c in calls)
 
     @pytest.mark.asyncio
     async def test_loop_command_missing_prompt(
