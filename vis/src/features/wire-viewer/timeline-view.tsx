@@ -17,7 +17,7 @@ interface TimelineViewProps {
   onScrollToIndex: (eventIndex: number) => void;
 }
 
-type BarColor = "blue" | "purple" | "amber" | "green" | "cyan" | "indigo";
+type BarColor = "blue" | "purple" | "amber" | "green" | "cyan" | "indigo" | "violet";
 
 type TooltipPayload =
   | {
@@ -419,7 +419,7 @@ function buildTimeline(events: WireEvent[]): BuildTimelineResult {
   }
 
   // ── Build sub-agent bars ──
-  const SUBAGENT_COLORS: Record<string, string> = {
+  const SUBAGENT_COLORS: Record<string, BarColor> = {
     coder: "violet",
     explore: "cyan",
     plan: "amber",
@@ -542,6 +542,11 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = 
     bg: "bg-indigo-500/20",
     text: "text-indigo-700 dark:text-indigo-300",
     border: "border-indigo-500/30",
+  },
+  violet: {
+    bg: "bg-violet-500/20",
+    text: "text-violet-700 dark:text-violet-300",
+    border: "border-violet-500/30",
   },
 };
 
