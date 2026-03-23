@@ -241,6 +241,60 @@ The task browser automatically refreshes every second, showing real-time task st
 Background tasks are started by the AI using the `Shell` tool with `run_in_background=true`. The system automatically notifies the AI when background tasks complete.
 :::
 
+### `/loop`
+
+Create a scheduled loop task that runs repeatedly at a specified interval. Similar to Claude Code's `/loop` command.
+
+Usage:
+
+- `/loop`: Display active loop tasks
+- `/loop <interval> <prompt>`: Create a new scheduled task
+
+Examples:
+
+```
+/loop 5m check for new emails
+/loop 30s monitor build status
+/loop 1h summarize git commits
+/loop 1d clean up temp files
+```
+
+Supported intervals (minimum 60 seconds):
+
+- `30s` - 30 seconds
+- `5m` - 5 minutes
+- `2h` - 2 hours
+- `1d` - 1 day
+
+You can also use plain numbers which are treated as minutes: `/loop 10 check status` (every 10 minutes).
+
+Features:
+
+- Maximum 50 active tasks per session
+- Tasks automatically expire after 3 days (like Claude Code)
+- The scheduler runs in the background and automatically stops when the session ends
+
+### `/loop-cancel`
+
+Cancel a loop task by ID.
+
+Usage:
+
+- `/loop-cancel <task_id>`: Cancel a specific task
+- `/loop-cancel`: When only one active task exists, cancels it directly; otherwise, lists active tasks
+
+Alias: `loop-cancel`
+
+### `/loop-list`
+
+List all loop tasks, including completed and cancelled ones.
+
+Usage:
+
+- `/loop-list`: Display all tasks with their status, interval, run count, and last run time
+
+Alias: `loop-list`
+
 ### `/yolo`
 
 Toggle YOLO mode. When enabled, all operations are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable.
