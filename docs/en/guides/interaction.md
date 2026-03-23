@@ -162,6 +162,7 @@ The confirmation prompt will show operation details, including shell command and
 - **Allow**: Execute this operation
 - **Allow for this session**: Automatically approve similar operations in the current session (this decision is persisted with the session and automatically restored when resuming)
 - **Reject**: Do not execute this operation
+- **Reject with feedback**: Decline the operation and provide written feedback telling the agent how to adjust
 
 If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all requests:
 

@@ -26,6 +26,9 @@ Only write entries that are worth mentioning to users.
 - Web: Dismiss stale approval and question dialogs on session replay — when replaying a session or when the backend reports idle/stopped/error status, any pending approval/question dialogs are now properly dismissed to prevent orphaned interactive elements
 - Web: Enable inline math formula rendering — single-dollar inline math (`$...$`) is now supported in addition to block math (`$$...$$`)
 - Web: Improve Switch toggle proportions and alignment — the toggle track is now larger (36×20) with a consistent 16px thumb and smoother 16px travel animation
+- Web: Show subagent type labels in activity panels — subagent activities now display their type (e.g. "Coder agent working") instead of the generic "Agent" label
+- Web: Add feedback mode to approval dialog — press `4` to reject with written feedback text that guides the model's next attempt; approval requests from subagents show a source label and preview content (diffs, commands)
+- Web: Visually distinguish sub-agent origin tool calls — tool messages originating from a subagent are rendered with a left border and a source type label for clearer attribution
 
 ## 1.24.0 (2026-03-18)
 
