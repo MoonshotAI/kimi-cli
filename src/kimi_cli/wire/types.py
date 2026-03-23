@@ -500,7 +500,48 @@ type Event = (
 """Any event, including control flow and content/tooling events."""
 
 
-type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
+class HookRequest(BaseModel):
+    """
+    A request for the wire client to handle a hook event.
+    The client runs its own logic and responds with allow/block.
+    """
+
+    type Action = Literal["allow", "block"]
+
+    id: str
+    """Unique request ID."""
+    event: str
+    """The hook event type, e.g. 'PreToolUse', 'Stop'."""
+    target: str = ""
+    """What triggered the hook: tool name, agent name, etc."""
+    input_data: dict[str, Any] = Field(default_factory=dict)
+    """Full event payload (same as what shell hooks get on stdin)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._future: asyncio.Future[tuple[Action, str]] | None = None
+
+    def _get_future(self) -> asyncio.Future[tuple[Action, str]]:
+        if self._future is None:
+            self._future = asyncio.get_event_loop().create_future()
+        return self._future
+
+    async def wait(self) -> tuple[Action, str]:
+        """Wait for client response. Returns (action, reason)."""
+        return await self._get_future()
+
+    def resolve(self, action: Action, reason: str = "") -> None:
+        """Resolve with client's decision."""
+        future = self._get_future()
+        if not future.done():
+            future.set_result((action, reason))
+
+    @property
+    def resolved(self) -> bool:
+        return self._future is not None and self._future.done()
+
+
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest | HookRequest
 """Any request. Request is a message that expects a response."""
 
 type WireMessage = Event | Request

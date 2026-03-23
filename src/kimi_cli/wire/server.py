@@ -23,6 +23,7 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    HookRequest,
     QuestionNotSupported,
     QuestionRequest,
     QuestionResponse,
@@ -417,26 +418,19 @@ class WireServer:
         from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
         from kimi_cli.wire.types import HookResolved, HookTriggered
 
-        # Register client-provided hooks
+        # Register client hook subscriptions
         if isinstance(self._soul, KimiSoul) and self._soul.hook_engine and msg.params.hooks:
-            client_hooks = []
-            for wh in msg.params.hooks:
-                try:
-                    client_hooks.append(HookDef(
-                        event=wh.event,  # type: ignore[arg-type]
-                        command=wh.command,
-                        matcher=wh.matcher,
-                        timeout=wh.timeout,
-                    ))
-                except Exception:
-                    logger.warning("Invalid hook from client: {}", wh)
-            if client_hooks:
-                self._soul.hook_engine.add_hooks(client_hooks)
-                logger.info("Registered {} hooks from wire client", len(client_hooks))
+            from kimi_cli.hooks.engine import WireHookSubscription as _Sub
 
-        # Wire up HookTriggered/HookResolved callbacks
+            wire_subs = [_Sub(event=wh.event, matcher=wh.matcher) for wh in msg.params.hooks]
+            self._soul.hook_engine.add_wire_subscriptions(wire_subs)
+            logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
+
+        # Wire up HookTriggered/HookResolved/HookRequest callbacks
         if isinstance(self._soul, KimiSoul) and self._soul.hook_engine:
+            from kimi_cli.hooks.engine import WireHookHandle
             from kimi_cli.soul import wire_send
+            from kimi_cli.wire.types import HookRequest
 
             def _on_triggered(event: str, target: str, count: int) -> None:
                 wire_send(HookTriggered(event=event, target=target, hook_count=count))
@@ -444,9 +438,24 @@ class WireServer:
             def _on_resolved(event: str, target: str, action: str, reason: str, duration_ms: int) -> None:
                 wire_send(HookResolved(event=event, target=target, action=action, reason=reason, duration_ms=duration_ms))
 
+            async def _on_wire_hook(handle: WireHookHandle) -> None:
+                """Send HookRequest to client, wire response back to handle."""
+                request = HookRequest(
+                    id=handle.id,
+                    event=handle.event,
+                    target=handle.target,
+                    input_data=handle.input_data,
+                )
+                self._pending_requests[handle.id] = request
+                await self._send_msg(JSONRPCRequestMessage(id=handle.id, params=request))
+                # Wait for client response (resolved via _handle_response)
+                action, reason = await request.wait()
+                handle.resolve(action, reason)
+
             self._soul.hook_engine.set_callbacks(
                 on_triggered=_on_triggered,
                 on_resolved=_on_resolved,
+                on_wire_hook=_on_wire_hook,
             )
 
         hooks_info: dict[str, JsonType] = {}
@@ -889,6 +898,17 @@ class WireServer:
                         response_id=result.request_id,
                     )
                 request.resolve(result.answers)
+            case HookRequest():
+                if isinstance(msg, JSONRPCErrorResponse):
+                    request.resolve("allow")
+                    return
+
+                result_data = msg.result if isinstance(msg.result, dict) else {}
+                action = result_data.get("action", "allow")
+                reason = result_data.get("reason", "")
+                if action not in ("allow", "block"):
+                    action = "allow"
+                request.resolve(action, reason)
 
     async def _stream_wire_messages(self, wire: Wire) -> None:
         wire_ui = wire.ui_side(merge=False)

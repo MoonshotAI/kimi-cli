@@ -91,13 +91,18 @@ class ClientCapabilities(BaseModel):
     """Whether the client supports plan mode (EnterPlanMode / ExitPlanMode)."""
 
 
-class WireHookDef(BaseModel):
-    """Hook definition sent by the wire client during initialization."""
+class WireHookSubscription(BaseModel):
+    """Hook event subscription from the wire client.
+
+    Unlike config.toml hooks (which have a shell command), wire hooks
+    are handled client-side. The server sends a HookRequest when the
+    event fires, and the client responds with allow/block.
+    """
 
     event: str
-    command: str
+    """Which event to subscribe to, e.g. 'PreToolUse', 'Stop'."""
     matcher: str = ""
-    timeout: int = 30
+    """Regex filter. Empty matches everything."""
 
 
 class JSONRPCInitializeMessage(_MessageBase):
@@ -105,7 +110,7 @@ class JSONRPCInitializeMessage(_MessageBase):
         protocol_version: str
         client: ClientInfo | None = None
         external_tools: list[ExternalTool] | None = None
-        hooks: list[WireHookDef] | None = None
+        hooks: list[WireHookSubscription] | None = None
         capabilities: ClientCapabilities | None = None
 
     method: Literal["initialize"] = "initialize"
