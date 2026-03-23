@@ -413,7 +413,15 @@ class WireServer:
             )
 
         from kimi_cli.constant import NAME, VERSION
+        from kimi_cli.hooks.config import HOOK_EVENT_TYPES
         from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
+
+        hooks_info: dict[str, JsonType] = {}
+        if isinstance(self._soul, KimiSoul) and self._soul.hook_engine:
+            hooks_info = cast(JsonType, {
+                "supported_events": HOOK_EVENT_TYPES,
+                "configured": self._soul.hook_engine.summary,
+            })
 
         result: dict[str, JsonType] = {
             "protocol_version": WIRE_PROTOCOL_VERSION,
@@ -428,6 +436,9 @@ class WireServer:
                     "rejected": rejected,
                 },
             )
+
+        if hooks_info:
+            result["hooks"] = cast(JsonType, hooks_info)
 
         self._apply_wire_client_info(msg.params.client)
 
