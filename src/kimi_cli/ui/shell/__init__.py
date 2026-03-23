@@ -625,6 +625,28 @@ class Shell:
 
     def _clear_active_approval_sink(self) -> None:
         self._active_approval_sink = None
+        # Re-queue any approval requests that were forwarded to the sink
+        # but not yet resolved.  Without this, those requests would be
+        # silently lost when the live view closes between turns.
+        if not isinstance(self.soul, KimiSoul) or self.soul.runtime.approval_runtime is None:
+            return
+        for record in self.soul.runtime.approval_runtime.list_pending():
+            self._queue_approval_request(
+                self._enrich_approval_request_for_ui(
+                    ApprovalRequest(
+                        id=record.id,
+                        tool_call_id=record.tool_call_id,
+                        sender=record.sender,
+                        action=record.action,
+                        description=record.description,
+                        display=record.display,
+                        source_kind=record.source.kind,
+                        source_id=record.source.id,
+                        agent_id=record.source.agent_id,
+                        subagent_type=record.source.subagent_type,
+                    )
+                )
+            )
 
     def _forward_approval_to_sink(self, request: ApprovalRequest) -> None:
         """Forward an approval request to the active live view sink and bridge the response."""

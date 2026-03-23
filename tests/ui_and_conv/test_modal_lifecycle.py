@@ -1003,3 +1003,56 @@ async def test_shell_command_mode_starts_root_wire_hub_watcher(
     shell.run_soul_command.assert_awaited_once_with("hello")
     # After run completes, background tasks are cleaned up
     assert len(hub._queue._queues) == 0, "subscriber cleaned up after run"
+
+
+@pytest.mark.asyncio
+async def test_clear_active_approval_sink_requeues_pending_requests(
+    runtime,
+    tmp_path,
+) -> None:
+    """When the live view closes, any approval requests that were forwarded
+    to the sink but not yet resolved must be re-queued so they can be
+    presented in the next turn or via the prompt modal."""
+    from kosong.tooling.empty import EmptyToolset
+
+    from kimi_cli.approval_runtime import ApprovalSource
+    from kimi_cli.soul.agent import Agent
+    from kimi_cli.soul.context import Context
+    from kimi_cli.soul.kimisoul import KimiSoul
+    from kimi_cli.ui.shell import Shell
+
+    agent = Agent(
+        name="Test",
+        system_prompt="test",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "h.jsonl"))
+    shell = Shell(soul)
+
+    # Create a pending approval in the runtime
+    runtime.approval_runtime.create_request(
+        request_id="sink-r1",
+        tool_call_id="c1",
+        sender="Shell",
+        action="run command",
+        description="cmd1",
+        display=[],
+        source=ApprovalSource(kind="background_agent", id="t1"),
+    )
+
+    # Simulate: sink was active, request was forwarded (not queued)
+    assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]
+
+    # Now the live view closes
+    shell._clear_active_approval_sink()  # type: ignore[attr-defined]
+
+    # The pending request should have been re-queued
+    pending_ids = [r.id for r in shell._pending_approval_requests]  # type: ignore[attr-defined]
+    assert "sink-r1" in pending_ids
+
+    # Already-resolved requests should NOT be re-queued
+    runtime.approval_runtime.resolve("sink-r1", "approve")
+    shell._pending_approval_requests.clear()  # type: ignore[attr-defined]
+    shell._clear_active_approval_sink()  # type: ignore[attr-defined]
+    assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]
