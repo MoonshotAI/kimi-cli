@@ -103,6 +103,8 @@ class WireHookSubscription(BaseModel):
     """Which event to subscribe to, e.g. 'PreToolUse', 'Stop'."""
     matcher: str = ""
     """Regex filter. Empty matches everything."""
+    timeout: int = 30
+    """Seconds to wait for client response before fail-open."""
 
 
 class JSONRPCInitializeMessage(_MessageBase):

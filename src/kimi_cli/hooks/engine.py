@@ -30,6 +30,7 @@ class WireHookSubscription:
 
     event: str
     matcher: str = ""
+    timeout: int = 30
 
 
 @dataclass
@@ -191,7 +192,7 @@ class HookEngine:
         # Wire-side: send request to client, wait for response
         for s in wire_matched:
             tasks.append(asyncio.create_task(
-                self._dispatch_wire_hook(event, matcher_value, input_data)
+                self._dispatch_wire_hook(event, matcher_value, input_data, timeout=s.timeout)
             ))
 
         results = list(await asyncio.gather(*tasks))
@@ -213,7 +214,7 @@ class HookEngine:
         return results
 
     async def _dispatch_wire_hook(
-        self, event: str, target: str, input_data: dict[str, Any]
+        self, event: str, target: str, input_data: dict[str, Any], *, timeout: int = 30
     ) -> HookResult:
         """Send a hook request to the wire client and wait for response."""
         if not self._on_wire_hook:
@@ -222,7 +223,7 @@ class HookEngine:
         handle = WireHookHandle(event=event, target=target, input_data=input_data)
         try:
             await self._on_wire_hook(handle)
-            return await asyncio.wait_for(handle.wait(), timeout=30)
+            return await asyncio.wait_for(handle.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             logger.warning("Wire hook timed out: {} {}", event, target)
             return HookResult(action="allow", timed_out=True)

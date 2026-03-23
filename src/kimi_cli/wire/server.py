@@ -422,7 +422,7 @@ class WireServer:
         if isinstance(self._soul, KimiSoul) and self._soul.hook_engine and msg.params.hooks:
             from kimi_cli.hooks.engine import WireHookSubscription as _Sub
 
-            wire_subs = [_Sub(event=wh.event, matcher=wh.matcher) for wh in msg.params.hooks]
+            wire_subs = [_Sub(event=wh.event, matcher=wh.matcher, timeout=wh.timeout) for wh in msg.params.hooks]
             self._soul.hook_engine.add_wire_subscriptions(wire_subs)
             logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
 
