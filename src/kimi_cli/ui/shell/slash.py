@@ -630,6 +630,37 @@ async def mcp(app: Shell, args: str):
             live.update(render_mcp_console(snapshot), refresh=True)
 
 
+@registry.command
+@shell_mode_registry.command
+def hooks(app: Shell, args: str):
+    """List configured hooks"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    engine = soul.hook_engine
+    if engine is None or not engine.summary:
+        console.print(
+            "[yellow]No hooks configured. "
+            "Add [[hooks]] sections to your config.toml to set up hooks.[/yellow]"
+        )
+        return
+
+    from rich.text import Text
+
+    console.print()
+    console.print("[bold]Configured Hooks:[/bold]")
+    console.print()
+
+    for event, count in engine.summary.items():
+        console.print(f"  [cyan]{event}[/cyan]: {count} hook(s)")
+        for hook_def in engine._by_event.get(event, []):
+            matcher_label = f"[{hook_def.matcher}]" if hook_def.matcher else "[(all)]"
+            console.print(f"    [dim]{matcher_label}[/dim] {hook_def.command}")
+
+    console.print()
+
+
 from . import (  # noqa: E402
     debug,  # noqa: F401 # type: ignore[reportUnusedImport]
     export_import,  # noqa: F401 # type: ignore[reportUnusedImport]
