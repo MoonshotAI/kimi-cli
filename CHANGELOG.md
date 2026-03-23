@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.25.0 (2026-03-23)
+
 - Core: Add plugin system (Skills + Tools) — plugins extend Kimi Code CLI with custom tools packaged as `plugin.json`; tools are commands that run in isolated subprocesses and return their stdout to the agent; plugins support automatic credential injection via `inject` configuration
 - Core: Support multi-plugin repositories — `kimi plugin install` accepts git URLs with subpath to install a specific plugin from a monorepo (e.g., `https://github.com/org/repo.git/plugins/my-plugin`); when no subpath is provided and no root `plugin.json` exists, the CLI lists available plugins in immediate subdirectories
 - Core: Unify plugin credential injection — plugins can declare `inject` fields in `plugin.json` to receive `api_key` and `base_url` from the host's configured LLM provider; works with both OAuth-managed tokens and static API keys

@@ -4,6 +4,8 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.25.0
+
 ### Wire protocol 1.6 — subagent and approval field changes
 
 The `SubagentEvent` field `task_tool_call_id` has been renamed to `parent_tool_call_id`, and new optional fields (`agent_id`, `subagent_type`) have been added. `ApprovalRequest` gains `source_kind`, `source_id`, `agent_id`, `subagent_type`, and `source_description` fields. `ApprovalResponse` gains a `feedback` field.
