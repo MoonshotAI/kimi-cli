@@ -608,10 +608,11 @@ async def loop(app: Shell, args: str):
         task = await scheduler.create_task(interval_str, prompt)
 
         interval_display = _format_interval(task.interval_s)
-        console.print(f"[green]Created loop task {task.id}[/green]")
-        prompt_display = prompt[:80] + "..." if len(prompt) > 80 else prompt
-        console.print(f"[dim]Interval: {interval_display} | Prompt: {prompt_display}[/dim]")
-        console.print(f"[dim]Use /loop-cancel {task.id} to cancel[/dim]")
+        console.print(f"[green]✓ Created loop task[/green] [bold cyan]#{task.id}[/bold cyan]")
+        console.print(f"[dim]  Interval:[/dim] {interval_display}")
+        prompt_display = prompt[:60] + "..." if len(prompt) > 63 else prompt
+        console.print(f"[dim]  Prompt:[/dim] {prompt_display}")
+        console.print(f"[dim]  Cancel:[/dim] /loop-cancel {task.id}")
     except ValueError as e:
         console.print(f"[red]Invalid interval: {e}[/red]")
         console.print("[dim]Supported formats: 30s, 5m, 2h, 1d (minimum 60s)[/dim]")

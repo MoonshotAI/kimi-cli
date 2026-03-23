@@ -24,6 +24,7 @@ class LoopTask:
     run_count: int = 0
     max_runs: int | None = None
     cancelled: bool = False
+    expires_at: float | None = None  # Expiration timestamp (None = no expiration)
 
     @property
     def next_run_at(self) -> float | None:
@@ -35,7 +36,20 @@ class LoopTask:
 
     @property
     def is_complete(self) -> bool:
-        return self.cancelled or (self.max_runs is not None and self.run_count >= self.max_runs)
+        if self.cancelled:
+            return True
+        if self.max_runs is not None and self.run_count >= self.max_runs:
+            return True
+        if self.expires_at is not None and time.time() >= self.expires_at:
+            return True
+        return False
+    
+    @property
+    def is_expired(self) -> bool:
+        """Check if task has expired."""
+        if self.expires_at is None:
+            return False
+        return time.time() >= self.expires_at
 
 
 class LoopScheduler:
@@ -45,6 +59,7 @@ class LoopScheduler:
     """
 
     MAX_TASKS = 50
+    DEFAULT_EXPIRY_DAYS = 3  # Tasks expire after 3 days by default (like Claude Code)
 
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
@@ -97,11 +112,35 @@ class LoopScheduler:
         # Minimum 60 seconds
         return max(60.0, seconds)
 
+    def _parse_expiry(self, expiry_str: str) -> float:
+        """
+        Parse expiry duration string like '1d', '2h', '30m' into seconds.
+        Returns expiry timestamp (created_at + duration).
+        """
+        expiry_str = expiry_str.strip().lower()
+        
+        match = re.match(r"^(\d+(?:\.\d+)?)\s*([smhd])$", expiry_str)
+        if not match:
+            raise ValueError(f"Invalid expiry format: {expiry_str}")
+        
+        value = float(match.group(1))
+        unit = match.group(2)
+        
+        multipliers = {
+            "s": 1,
+            "m": 60,
+            "h": 3600,
+            "d": 86400,
+        }
+        
+        return value * multipliers[unit]
+
     async def create_task(
         self,
         interval: str,
         prompt: str,
         max_runs: int | None = None,
+        expires_in: str | None = None,
     ) -> LoopTask:
         """
         Create a new loop task.
@@ -110,6 +149,7 @@ class LoopScheduler:
             interval: Time interval like '5m', '2h', '1d', '30s'
             prompt: The prompt to send to the AI
             max_runs: Maximum number of times to run (None for infinite)
+            expires_in: Expiry duration like '1d', '2h' (None for default 3 days)
 
         Returns:
             The created LoopTask
@@ -123,11 +163,22 @@ class LoopScheduler:
 
             interval_s = self._parse_interval(interval)
             task_id = self._generate_task_id()
+            
+            # Calculate expiration time
+            created_at = time.time()
+            if expires_in:
+                expiry_seconds = self._parse_expiry(expires_in)
+                expires_at = created_at + expiry_seconds
+            else:
+                # Default: 3 days from creation
+                expires_at = created_at + (self.DEFAULT_EXPIRY_DAYS * 86400)
 
             task = LoopTask(
                 id=task_id,
                 interval_s=interval_s,
                 prompt=prompt,
+                created_at=created_at,
+                expires_at=expires_at,
                 max_runs=max_runs,
             )
             self._tasks[task_id] = task
@@ -201,6 +252,10 @@ class LoopScheduler:
                 run_count=task.run_count,
                 max_runs=task.max_runs or "∞",
             )
+            
+            # Check if task expired after this run
+            if task.is_expired:
+                console.print(f"[yellow][Loop {task.id}] Task has expired and will be cleaned up.[/yellow]")
 
         except Exception as e:
             logger.exception("Loop task {task_id} failed", task_id=task.id)
@@ -208,15 +263,28 @@ class LoopScheduler:
 
     async def _run_scheduler(self) -> None:
         """Main scheduler loop."""
+        from kimi_cli.ui.shell.console import console
+        
         logger.info("Loop scheduler started")
 
         while True:
             try:
+                expired_count = 0
                 async with self._lock:
                     # Clean up completed tasks
-                    completed_ids = [tid for tid, t in self._tasks.items() if t.is_complete]
+                    completed_ids = []
+                    for tid, t in self._tasks.items():
+                        if t.is_complete:
+                            completed_ids.append(tid)
+                            if t.is_expired:
+                                expired_count += 1
+                    
                     for tid in completed_ids:
                         del self._tasks[tid]
+                    
+                    # Show expiration message
+                    if expired_count > 0:
+                        console.print(f"[dim][Loop] Cleaned up {expired_count} expired task(s).[/dim]")
 
                     if not self._tasks:
                         logger.info("No active loop tasks, scheduler stopping")
