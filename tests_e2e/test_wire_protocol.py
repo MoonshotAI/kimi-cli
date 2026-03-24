@@ -90,8 +90,24 @@ def test_initialize_handshake(tmp_path) -> None:
                             "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Kimi's capabilities with specialized knowledge, workflows, or tool integrations.",
                             "aliases": [],
                         },
-                    ],
-                    "capabilities": {"supports_question": True},
+                    ], "hooks": {
+    "supported_events": [
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "UserPromptSubmit",
+        "Stop",
+        "StopFailure",
+        "SessionStart",
+        "SessionEnd",
+        "SubagentStart",
+        "SubagentStop",
+        "PreCompact",
+        "PostCompact",
+        "Notification",
+    ],
+    "configured": {},
+}, "capabilities": {"supports_question": True},
                 }
             }
         )
@@ -181,8 +197,24 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                     "external_tools": {
                         "accepted": [],
                         "rejected": [{"name": "Shell", "reason": "conflicts with builtin tool"}],
-                    },
-                    "capabilities": {"supports_question": True},
+                    }, "hooks": {
+    "supported_events": [
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "UserPromptSubmit",
+        "Stop",
+        "StopFailure",
+        "SessionStart",
+        "SessionEnd",
+        "SubagentStart",
+        "SubagentStop",
+        "PreCompact",
+        "PostCompact",
+        "Notification",
+    ],
+    "configured": {},
+}, "capabilities": {"supports_question": True},
                 }
             }
         )
