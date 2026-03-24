@@ -20,7 +20,10 @@ from kimi_cli.auth.oauth import (
     KIMI_CODE_OAUTH_KEY,
     load_tokens,
     request_device_authorization,
+    _request_device_token,
+    save_tokens,
     DeviceAuthorization,
+    OAuthToken,
 )
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
@@ -107,12 +110,32 @@ class ACPServer:
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
-    def _check_auth(self) -> None:
-        """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
+    async def _check_auth(self) -> None:
+        """Check if Kimi Code authentication is complete. Auto-trigger OAuth device flow if not."""
         ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
         token = load_tokens(ref)
 
         if token is None or not token.access_token:
+            # Try to auto-trigger OAuth device flow
+            logger.info("No valid token found, attempting auto-authentication via OAuth device flow")
+            
+            # Use a temporary session ID for auth progress notifications
+            # This allows the auth progress to be sent even without a real session
+            temp_session_id = "__auto_auth__"
+            
+            # Try OAuth device flow
+            success = await self._trigger_oauth_device_flow(temp_session_id)
+            
+            if success:
+                # Re-check token after successful authentication
+                token = load_tokens(ref)
+                if token and token.access_token:
+                    logger.info("Auto-authentication successful")
+                    return
+            
+            # If auto-authentication failed, build AUTH_REQUIRED error for manual authentication
+            logger.warning("Auto-authentication failed, requesting manual authentication")
+            
             # Build AUTH_REQUIRED error data for clients
             auth_methods_data: list[dict[str, Any]] = []
             for m in self._auth_methods:
@@ -131,7 +154,6 @@ class ACPServer:
                         }
                     )
 
-            logger.warning("Authentication required, no valid token found")
             raise acp.RequestError.auth_required({"authMethods": auth_methods_data})
 
     async def new_session(
@@ -456,6 +478,9 @@ class ACPServer:
             logger.error("ACP client not connected, cannot trigger OAuth device flow")
             return False
         
+        # Check if this is a real session or a temporary session ID
+        is_real_session = session_id in self.sessions
+        
         try:
             # 获取设备授权
             auth: DeviceAuthorization = await request_device_authorization()
@@ -463,63 +488,92 @@ class ACPServer:
             logger.info("OAuth device authorization obtained, verification URL: {url}", 
                        url=auth.verification_uri_complete)
             
-            # 发送认证URI给客户端
-            await self._send_auth_progress(
-                session_id,
-                "verification_url",
-                f"Please visit: {auth.verification_uri_complete}",
-                data={
-                    "verification_url": auth.verification_uri_complete,
-                    "user_code": auth.user_code,
-                },
-            )
+            # 发送认证URI给客户端（仅当有真正session时）
+            if is_real_session:
+                await self._send_auth_progress(
+                    session_id,
+                    "verification_url",
+                    f"Please visit: {auth.verification_uri_complete}",
+                    data={
+                        "verification_url": auth.verification_uri_complete,
+                        "user_code": auth.user_code,
+                    },
+                )
+            else:
+                # 对于自动认证，直接打印URL到日志
+                logger.info("Please visit: {url}", url=auth.verification_uri_complete)
+                logger.info("User code: {code}", code=auth.user_code)
             
-            # 等待用户授权
+            # 等待用户授权 - 轮询服务器获取令牌
             interval = max(auth.interval, 1)
             max_wait_time = 300  # 最多等待5分钟
             elapsed_time = 0
+            next_update_time = 10  # 下一次发送状态更新的时间
             
             while elapsed_time < max_wait_time:
                 await asyncio.sleep(interval)
                 elapsed_time += interval
                 
-                # 检查是否已有有效令牌
-                ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
-                token = load_tokens(ref)
+                # 调用服务器交换设备代码获取令牌
+                status, data = await _request_device_token(auth)
                 
-                if token and token.access_token:
+                if status == 200 and "access_token" in data:
+                    # 成功获取令牌，保存它
+                    token = OAuthToken.from_response(data)
+                    ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
+                    save_tokens(ref, token)
+                    
                     logger.info("OAuth device flow completed successfully")
-                    await self._send_auth_progress(
-                        session_id,
-                        "completed",
-                        "Login successful!",
-                    )
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "completed",
+                            "Login successful!",
+                        )
                     return True
                 
-                # 发送等待状态
-                if elapsed_time % 10 == 0:  # 每10秒发送一次状态
-                    await self._send_auth_progress(
-                        session_id,
-                        "waiting",
-                        f"Waiting for user authorization... ({elapsed_time}s)",
-                    )
+                # 检查错误
+                error_code = str(data.get("error") or "")
+                if error_code == "expired_token":
+                    logger.warning("Device code expired")
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "failed",
+                            "Device code expired. Please try again.",
+                        )
+                    return False
+                
+                # 发送等待状态（使用独立计数器避免模运算问题）
+                if elapsed_time >= next_update_time:
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "waiting",
+                            f"Waiting for user authorization... ({elapsed_time}s)",
+                        )
+                    else:
+                        logger.info("Waiting for user authorization... ({elapsed_time}s)", elapsed_time=elapsed_time)
+                    next_update_time += 10
             
             # 超时
             logger.warning("OAuth device flow timed out")
-            await self._send_auth_progress(
-                session_id,
-                "timeout",
-                "Login timed out. Please try again.",
-            )
+            if is_real_session:
+                await self._send_auth_progress(
+                    session_id,
+                    "timeout",
+                    "Login timed out. Please try again.",
+                )
             return False
             
         except Exception as e:
             logger.error("Failed to trigger OAuth device flow: {error}", error=e)
-            await self._send_auth_progress(
-                session_id,
-                "failed",
-                f"Login failed: {e}",
-            )
+            if is_real_session:
+                await self._send_auth_progress(
+                    session_id,
+                    "failed",
+                    f"Login failed: {e}",
+                )
             return False
 
     async def _send_auth_progress(
@@ -586,32 +640,49 @@ class ACPServer:
                 logger.info("Authentication successful for method: {id}", id=method_id)
                 return acp.AuthenticateResponse()
             
-            # 尝试通过ACP协议在终端中触发登录
+            # 获取session_id - 如果没有session，使用临时ID
+            # 注意：authenticate在session/new之前调用，所以可能没有session
             session_id = next(iter(self.sessions.keys()), None)
             
-            if session_id:
-                # 检查客户端是否支持终端
-                if self.client_capabilities and self.client_capabilities.terminal:
-                    # 通过ACP协议打开终端执行登录
-                    login_success = await self._trigger_login_in_terminal(session_id)
-                    
-                    if login_success:
-                        logger.info("Authentication successful after terminal login")
-                        return acp.AuthenticateResponse()
-                    else:
-                        logger.warning("Terminal login did not complete successfully")
+            # 创建认证任务并存储到_active_auth_sessions中，以便cancel_auth可以取消
+            async def _run_auth() -> bool:
+                """运行认证任务"""
+                # 只有当有真正的session且客户端支持终端时，才使用终端登录
+                # 终端登录需要一个真正的session来调用ACP协议方法
+                if session_id and self.client_capabilities and self.client_capabilities.terminal:
+                    return await self._trigger_login_in_terminal(session_id)
                 else:
-                    # 客户端不支持终端，尝试OAuth Device Flow
-                    logger.info("Client does not support terminal, trying OAuth device flow")
-                    login_success = await self._trigger_oauth_device_flow(session_id)
-                    
-                    if login_success:
-                        logger.info("Authentication successful after OAuth device flow")
-                        return acp.AuthenticateResponse()
-                    else:
-                        logger.warning("OAuth device flow did not complete successfully")
+                    # 其他情况使用OAuth Device Flow
+                    # OAuth device flow不需要session支持
+                    logger.info("Using OAuth device flow for authentication")
+                    return await self._trigger_oauth_device_flow(session_id)
             
-            # 如果没有session或登录失败，抛出auth_required错误
+            # 创建并存储任务
+            auth_task = asyncio.create_task(_run_auth())
+            self._active_auth_sessions[session_id] = auth_task
+            
+            try:
+                # 等待认证任务完成
+                login_success = await auth_task
+                
+                if login_success:
+                    logger.info("Authentication successful")
+                    return acp.AuthenticateResponse()
+                else:
+                    logger.warning("Authentication failed")
+            except asyncio.CancelledError:
+                logger.info("Authentication was cancelled")
+                if session_id:
+                    await self._send_auth_progress(
+                        session_id,
+                        "cancelled",
+                        "Login cancelled by user.",
+                    )
+            finally:
+                # 清理任务
+                self._active_auth_sessions.pop(session_id, None)
+            
+            # 登录失败，抛出auth_required错误
             logger.warning("Authentication not complete for method: {id}", id=method_id)
             raise acp.RequestError.auth_required(
                 {

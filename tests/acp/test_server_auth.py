@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import acp
 import pytest
 
 from kimi_cli.acp.server import ACPServer
@@ -111,35 +112,37 @@ class TestTriggerOAuthDeviceFlow:
         with patch("kimi_cli.acp.server.request_device_authorization") as mock_request:
             mock_request.return_value = mock_auth
 
-            # Mock load_tokens to return a valid token after a delay
+            # Mock _request_device_token to return success after a few calls
             call_count = 0
 
-            def mock_load_tokens(ref):
+            async def mock_request_device_token(auth):
                 nonlocal call_count
                 call_count += 1
                 if call_count <= 2:
-                    return None
-                return OAuthToken(
-                    access_token="test-token",
-                    refresh_token="test-refresh",
-                    expires_at=9999999999.0,
-                    scope="test",
-                    token_type="Bearer",
-                )
+                    # Return pending status
+                    return 400, {"error": "authorization_pending"}
+                # Return success with access token
+                return 200, {
+                    "access_token": "test-token",
+                    "refresh_token": "test-refresh",
+                    "expires_in": 3600,
+                    "scope": "test",
+                    "token_type": "Bearer",
+                }
 
-            with patch("kimi_cli.acp.server.load_tokens") as mock_load:
-                mock_load.side_effect = mock_load_tokens
+            with patch("kimi_cli.acp.server._request_device_token", side_effect=mock_request_device_token):
+                with patch("kimi_cli.acp.server.save_tokens") as mock_save:
+                    # Mock asyncio.sleep to speed up the test
+                    with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
+                        mock_sleep.return_value = None
 
-                # Mock asyncio.sleep to speed up the test
-                with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
-                    mock_sleep.return_value = None
+                        # Call the method
+                        result = await server_with_conn._trigger_oauth_device_flow("test-session")
 
-                    # Call the method
-                    result = await server_with_conn._trigger_oauth_device_flow("test-session")
-
-                    # Verify
-                    assert result is True
-                    mock_request.assert_called_once()
+                        # Verify
+                        assert result is True
+                        mock_request.assert_called_once()
+                        mock_save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_oauth_device_flow_timeout(self, server_with_conn, mock_conn):
@@ -157,13 +160,46 @@ class TestTriggerOAuthDeviceFlow:
         with patch("kimi_cli.acp.server.request_device_authorization") as mock_request:
             mock_request.return_value = mock_auth
 
-            # Mock load_tokens to always return None (no token)
-            with patch("kimi_cli.acp.server.load_tokens") as mock_load:
-                mock_load.return_value = None
+            # Mock _request_device_token to always return pending
+            async def mock_request_device_token(auth):
+                return 400, {"error": "authorization_pending"}
 
-                # Call the method with a short timeout for testing
+            with patch("kimi_cli.acp.server._request_device_token", side_effect=mock_request_device_token):
+                # Mock asyncio.sleep to speed up the test
                 with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
-                    mock_sleep.side_effect = lambda x: asyncio.sleep(0.01)
+                    mock_sleep.return_value = None
+
+                    # Call the method
+                    result = await server_with_conn._trigger_oauth_device_flow("test-session")
+
+                    # Verify
+                    assert result is False
+                    mock_request.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_oauth_device_flow_expired_token(self, server_with_conn, mock_conn):
+        """Test OAuth device flow with expired device code."""
+        # Mock request_device_authorization
+        mock_auth = DeviceAuthorization(
+            user_code="ABC123",
+            device_code="device-abc",
+            verification_uri="https://auth.example.com/device",
+            verification_uri_complete="https://auth.example.com/device?user_code=ABC123",
+            expires_in=600,
+            interval=1,
+        )
+
+        with patch("kimi_cli.acp.server.request_device_authorization") as mock_request:
+            mock_request.return_value = mock_auth
+
+            # Mock _request_device_token to return expired token error
+            async def mock_request_device_token(auth):
+                return 400, {"error": "expired_token"}
+
+            with patch("kimi_cli.acp.server._request_device_token", side_effect=mock_request_device_token):
+                # Mock asyncio.sleep to speed up the test
+                with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
+                    mock_sleep.return_value = None
 
                     # Call the method
                     result = await server_with_conn._trigger_oauth_device_flow("test-session")
@@ -246,30 +282,47 @@ class TestAuthenticate:
         with patch("kimi_cli.acp.server.request_device_authorization") as mock_request:
             mock_request.return_value = mock_auth
 
-            # First call returns None (no token), second call returns token after login
-            call_count = 0
+            # Mock _request_device_token to return success immediately
+            async def mock_request_device_token(auth):
+                return 200, {
+                    "access_token": "test-token",
+                    "refresh_token": "test-refresh",
+                    "expires_in": 3600,
+                    "scope": "test",
+                    "token_type": "Bearer",
+                }
 
-            def mock_load_tokens_side_effect(ref):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    return None
-                return OAuthToken(
-                    access_token="test-token",
-                    refresh_token="test-refresh",
-                    expires_at=9999999999.0,
-                    scope="test",
-                    token_type="Bearer",
-                )
+            with patch("kimi_cli.acp.server._request_device_token", side_effect=mock_request_device_token):
+                with patch("kimi_cli.acp.server.save_tokens") as mock_save:
+                    # Mock asyncio.sleep to speed up the test
+                    with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
+                        mock_sleep.return_value = None
 
-            with patch("kimi_cli.acp.server.load_tokens") as mock_load_tokens:
-                mock_load_tokens.side_effect = mock_load_tokens_side_effect
+                        # First call returns None (no token), second call returns token after login
+                        call_count = 0
 
-                result = await server_with_conn.authenticate("login")
+                        def mock_load_tokens_side_effect(ref):
+                            nonlocal call_count
+                            call_count += 1
+                            if call_count == 1:
+                                return None
+                            return OAuthToken(
+                                access_token="test-token",
+                                refresh_token="test-refresh",
+                                expires_at=9999999999.0,
+                                scope="test",
+                                token_type="Bearer",
+                            )
 
-                # Verify
-                assert result is not None
-                mock_request.assert_called_once()
+                        with patch("kimi_cli.acp.server.load_tokens") as mock_load_tokens:
+                            mock_load_tokens.side_effect = mock_load_tokens_side_effect
+
+                            result = await server_with_conn.authenticate("login")
+
+                            # Verify
+                            assert result is not None
+                            mock_request.assert_called_once()
+                            mock_save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_authenticate_unknown_method(self, server_with_conn):
@@ -344,3 +397,118 @@ class TestSendAuthProgress:
             "started",
             "Test message",
         )
+
+
+class TestCheckAuth:
+    """Tests for _check_auth method."""
+
+    @pytest.mark.asyncio
+    async def test_check_auth_with_existing_token(self, server_with_conn):
+        """Test _check_auth when token already exists."""
+        with patch("kimi_cli.acp.server.load_tokens") as mock_load_tokens:
+            mock_load_tokens.return_value = OAuthToken(
+                access_token="existing-token",
+                refresh_token="test-refresh",
+                expires_at=9999999999.0,
+                scope="test",
+                token_type="Bearer",
+            )
+
+            # Should not raise an error
+            await server_with_conn._check_auth()
+            mock_load_tokens.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_auth_auto_authentication_success(self, server_with_conn, mock_conn):
+        """Test _check_auth auto-triggers OAuth device flow and succeeds."""
+        # Mock request_device_authorization
+        mock_auth = DeviceAuthorization(
+            user_code="ABC123",
+            device_code="device-abc",
+            verification_uri="https://auth.example.com/device",
+            verification_uri_complete="https://auth.example.com/device?user_code=ABC123",
+            expires_in=600,
+            interval=1,
+        )
+
+        with patch("kimi_cli.acp.server.request_device_authorization") as mock_request:
+            mock_request.return_value = mock_auth
+
+            # Mock _request_device_token to return success immediately
+            async def mock_request_device_token(auth):
+                return 200, {
+                    "access_token": "test-token",
+                    "refresh_token": "test-refresh",
+                    "expires_in": 3600,
+                    "scope": "test",
+                    "token_type": "Bearer",
+                }
+
+            with patch("kimi_cli.acp.server._request_device_token", side_effect=mock_request_device_token):
+                with patch("kimi_cli.acp.server.save_tokens") as mock_save:
+                    # Mock asyncio.sleep to speed up the test
+                    with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
+                        mock_sleep.return_value = None
+
+                        # First call returns None (no token), second call returns token after login
+                        call_count = 0
+
+                        def mock_load_tokens_side_effect(ref):
+                            nonlocal call_count
+                            call_count += 1
+                            if call_count == 1:
+                                return None
+                            return OAuthToken(
+                                access_token="test-token",
+                                refresh_token="test-refresh",
+                                expires_at=9999999999.0,
+                                scope="test",
+                                token_type="Bearer",
+                            )
+
+                        with patch("kimi_cli.acp.server.load_tokens") as mock_load_tokens:
+                            mock_load_tokens.side_effect = mock_load_tokens_side_effect
+
+                            # Should not raise an error (auto-authentication successful)
+                            await server_with_conn._check_auth()
+
+                            # Verify
+                            mock_request.assert_called_once()
+                            mock_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_check_auth_auto_authentication_failure(self, server_with_conn, mock_conn):
+        """Test _check_auth auto-triggers OAuth device flow but fails."""
+        # Mock request_device_authorization
+        mock_auth = DeviceAuthorization(
+            user_code="ABC123",
+            device_code="device-abc",
+            verification_uri="https://auth.example.com/device",
+            verification_uri_complete="https://auth.example.com/device?user_code=ABC123",
+            expires_in=600,
+            interval=1,
+        )
+
+        with patch("kimi_cli.acp.server.request_device_authorization") as mock_request:
+            mock_request.return_value = mock_auth
+
+            # Mock _request_device_token to always return pending (timeout)
+            async def mock_request_device_token(auth):
+                return 400, {"error": "authorization_pending"}
+
+            with patch("kimi_cli.acp.server._request_device_token", side_effect=mock_request_device_token):
+                # Mock asyncio.sleep to speed up the test
+                with patch("kimi_cli.acp.server.asyncio.sleep") as mock_sleep:
+                    mock_sleep.return_value = None
+
+                    # Mock load_tokens to always return None
+                    with patch("kimi_cli.acp.server.load_tokens") as mock_load_tokens:
+                        mock_load_tokens.return_value = None
+
+                        # Should raise AUTH_REQUIRED error after auto-authentication fails
+                        with pytest.raises(acp.RequestError) as exc_info:
+                            await server_with_conn._check_auth()
+
+                        # Check that it's an auth_required error
+                        assert exc_info.value.code == -32000
+                        mock_request.assert_called_once()
