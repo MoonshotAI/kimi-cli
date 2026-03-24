@@ -1,4 +1,5 @@
 """Input payload builders for each hook event type."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -61,13 +62,19 @@ def post_tool_use_failure(
 
 
 def user_prompt_submit(
-    *, session_id: str, cwd: str, prompt: str,
+    *,
+    session_id: str,
+    cwd: str,
+    prompt: str,
 ) -> dict[str, Any]:
     return {**_base("UserPromptSubmit", session_id, cwd), "prompt": prompt}
 
 
 def stop(
-    *, session_id: str, cwd: str, stop_hook_active: bool = False,
+    *,
+    session_id: str,
+    cwd: str,
+    stop_hook_active: bool = False,
 ) -> dict[str, Any]:
     return {
         **_base("Stop", session_id, cwd),
@@ -76,7 +83,11 @@ def stop(
 
 
 def stop_failure(
-    *, session_id: str, cwd: str, error_type: str, error_message: str,
+    *,
+    session_id: str,
+    cwd: str,
+    error_type: str,
+    error_message: str,
 ) -> dict[str, Any]:
     return {
         **_base("StopFailure", session_id, cwd),
@@ -86,19 +97,29 @@ def stop_failure(
 
 
 def session_start(
-    *, session_id: str, cwd: str, source: str,
+    *,
+    session_id: str,
+    cwd: str,
+    source: str,
 ) -> dict[str, Any]:
     return {**_base("SessionStart", session_id, cwd), "source": source}
 
 
 def session_end(
-    *, session_id: str, cwd: str, reason: str,
+    *,
+    session_id: str,
+    cwd: str,
+    reason: str,
 ) -> dict[str, Any]:
     return {**_base("SessionEnd", session_id, cwd), "reason": reason}
 
 
 def subagent_start(
-    *, session_id: str, cwd: str, agent_name: str, prompt: str,
+    *,
+    session_id: str,
+    cwd: str,
+    agent_name: str,
+    prompt: str,
 ) -> dict[str, Any]:
     return {
         **_base("SubagentStart", session_id, cwd),
@@ -108,7 +129,11 @@ def subagent_start(
 
 
 def subagent_stop(
-    *, session_id: str, cwd: str, agent_name: str, response: str = "",
+    *,
+    session_id: str,
+    cwd: str,
+    agent_name: str,
+    response: str = "",
 ) -> dict[str, Any]:
     return {
         **_base("SubagentStop", session_id, cwd),
@@ -118,7 +143,11 @@ def subagent_stop(
 
 
 def pre_compact(
-    *, session_id: str, cwd: str, trigger: str, token_count: int,
+    *,
+    session_id: str,
+    cwd: str,
+    trigger: str,
+    token_count: int,
 ) -> dict[str, Any]:
     return {
         **_base("PreCompact", session_id, cwd),

@@ -16,7 +16,9 @@ def engine():
 
 @pytest.mark.asyncio
 async def test_match_tool_name(engine):
-    results = await engine.trigger("PreToolUse", matcher_value="Shell", input_data={"tool_name": "Shell"})
+    results = await engine.trigger(
+        "PreToolUse", matcher_value="Shell", input_data={"tool_name": "Shell"}
+    )
     assert len(results) == 1
     assert results[0].action == "allow"
 

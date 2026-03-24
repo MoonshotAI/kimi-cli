@@ -200,7 +200,6 @@ class KimiSoul:
         return self._hook_engine
 
     def set_hook_engine(self, engine: HookEngine) -> None:
-
         self._hook_engine = engine
         if isinstance(self._agent.toolset, KimiToolset):
             self._agent.toolset.set_hook_engine(engine)
@@ -461,12 +460,14 @@ class KimiSoul:
 
             # Set session_id ContextVar for toolset hooks
             from kimi_cli.soul.toolset import set_session_id
+
             set_session_id(self._runtime.session.id)
 
             # --- UserPromptSubmit hook ---
             text_input_for_hook = user_input if isinstance(user_input, str) else ""
             if self._hook_engine and self._hook_engine.has_hooks_for("UserPromptSubmit"):
                 from kimi_cli.hooks import events
+
                 hook_results = await self._hook_engine.trigger(
                     "UserPromptSubmit",
                     input_data=events.user_prompt_submit(
@@ -508,6 +509,7 @@ class KimiSoul:
             _he = self._hook_engine
             if not self._stop_hook_active and _he and _he.has_hooks_for("Stop"):
                 from kimi_cli.hooks import events
+
                 stop_results = await self._hook_engine.trigger(
                     "Stop",
                     input_data=events.stop(
@@ -675,13 +677,18 @@ class KimiSoul:
                 # --- StopFailure hook ---
                 if self._hook_engine and self._hook_engine.has_hooks_for("StopFailure"):
                     from kimi_cli.hooks import events
-                    _bg = asyncio.create_task(self._hook_engine.trigger(
-                        "StopFailure",
-                        input_data=events.stop_failure(
-                            session_id=self._runtime.session.id, cwd=str(Path.cwd()),
-                            error_type=type(e).__name__, error_message=str(e),
-                        ),
-                    ))
+
+                    _bg = asyncio.create_task(
+                        self._hook_engine.trigger(
+                            "StopFailure",
+                            input_data=events.stop_failure(
+                                session_id=self._runtime.session.id,
+                                cwd=str(Path.cwd()),
+                                error_type=type(e).__name__,
+                                error_message=str(e),
+                            ),
+                        )
+                    )
                     _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 # break the agent loop
                 raise
@@ -722,19 +729,22 @@ class KimiSoul:
                 # --- Notification hook ---
                 if self._hook_engine and self._hook_engine.has_hooks_for("Notification"):
                     from kimi_cli.hooks import events
-                    _bg = asyncio.create_task(self._hook_engine.trigger(
-                        "Notification",
-                        matcher_value=view.event.type,
-                        input_data=events.notification(
-                            session_id=self._runtime.session.id,
-                            cwd=str(Path.cwd()),
-                            sink="llm",
-                            notification_type=view.event.type,
-                            title=view.event.title,
-                            body=view.event.body,
-                            severity=view.event.severity,
-                        ),
-                    ))
+
+                    _bg = asyncio.create_task(
+                        self._hook_engine.trigger(
+                            "Notification",
+                            matcher_value=view.event.type,
+                            input_data=events.notification(
+                                session_id=self._runtime.session.id,
+                                cwd=str(Path.cwd()),
+                                sink="llm",
+                                notification_type=view.event.type,
+                                title=view.event.title,
+                                body=view.event.body,
+                                severity=view.event.severity,
+                            ),
+                        )
+                    )
                     _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             await self._runtime.notifications.deliver_pending(
@@ -914,11 +924,15 @@ class KimiSoul:
         trigger_reason = "manual" if custom_instruction else "auto"
         if self._hook_engine and self._hook_engine.has_hooks_for("PreCompact"):
             from kimi_cli.hooks import events
+
             await self._hook_engine.trigger(
-                "PreCompact", matcher_value=trigger_reason,
+                "PreCompact",
+                matcher_value=trigger_reason,
                 input_data=events.pre_compact(
-                    session_id=self._runtime.session.id, cwd=str(Path.cwd()),
-                    trigger=trigger_reason, token_count=self._context.token_count,
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    trigger=trigger_reason,
+                    token_count=self._context.token_count,
                 ),
             )
 
@@ -953,13 +967,19 @@ class KimiSoul:
 
         if self._hook_engine and self._hook_engine.has_hooks_for("PostCompact"):
             from kimi_cli.hooks import events
-            _bg = asyncio.create_task(self._hook_engine.trigger(
-                "PostCompact", matcher_value=trigger_reason,
-                input_data=events.post_compact(
-                    session_id=self._runtime.session.id, cwd=str(Path.cwd()),
-                    trigger=trigger_reason, estimated_token_count=estimated_token_count,
-                ),
-            ))
+
+            _bg = asyncio.create_task(
+                self._hook_engine.trigger(
+                    "PostCompact",
+                    matcher_value=trigger_reason,
+                    input_data=events.post_compact(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        trigger=trigger_reason,
+                        estimated_token_count=estimated_token_count,
+                    ),
+                )
+            )
             _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     @staticmethod

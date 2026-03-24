@@ -646,7 +646,6 @@ def hooks(app: Shell, args: str):
         )
         return
 
-
     console.print()
     console.print("[bold]Configured Hooks:[/bold]")
     console.print()

@@ -238,6 +238,7 @@ class KimiCLI:
 
         # Create and inject hook engine
         from kimi_cli.hooks.engine import HookEngine
+
         hook_engine = HookEngine(config.hooks, cwd=str(session.work_dir))
         soul.set_hook_engine(hook_engine)
 

@@ -11,6 +11,7 @@ from kimi_cli import logger
 @dataclass
 class HookResult:
     """Result of a single hook execution."""
+
     action: Literal["allow", "block"] = "allow"
     reason: str = ""
     stdout: str = ""
@@ -74,7 +75,9 @@ async def run_hook(
                     return HookResult(
                         action="block",
                         reason=str(hook_output.get("permissionDecisionReason", "")),
-                        stdout=stdout, stderr=stderr, exit_code=0,
+                        stdout=stdout,
+                        stderr=stderr,
+                        exit_code=0,
                     )
         except (json.JSONDecodeError, TypeError):
             pass

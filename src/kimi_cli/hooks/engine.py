@@ -141,19 +141,23 @@ class HookEngine:
         for event, hooks in self._by_event.items():
             entries = result.setdefault(event, [])
             for h in hooks:
-                entries.append({
-                    "matcher": h.matcher or "(all)",
-                    "source": "server",
-                    "command": h.command,
-                })
+                entries.append(
+                    {
+                        "matcher": h.matcher or "(all)",
+                        "source": "server",
+                        "command": h.command,
+                    }
+                )
         for event, subs in self._wire_by_event.items():
             entries = result.setdefault(event, [])
             for s in subs:
-                entries.append({
-                    "matcher": s.matcher or "(all)",
-                    "source": "wire",
-                    "command": "(client-side)",
-                })
+                entries.append(
+                    {
+                        "matcher": s.matcher or "(all)",
+                        "source": "wire",
+                        "command": "(client-side)",
+                    }
+                )
         return result
 
     def _match_regex(self, pattern: str, value: str) -> bool:
@@ -196,8 +200,13 @@ class HookEngine:
         if total == 0:
             return []
 
-        logger.debug("Triggering {} hooks for {} ({} server, {} wire)",
-                      total, event, len(server_matched), len(wire_matched))
+        logger.debug(
+            "Triggering {} hooks for {} ({} server, {} wire)",
+            total,
+            event,
+            len(server_matched),
+            len(wire_matched),
+        )
 
         # --- HookTriggered ---
         if self._on_triggered:
@@ -208,15 +217,21 @@ class HookEngine:
 
         # Server-side: run shell commands
         for h in server_matched:
-            tasks.append(asyncio.create_task(
-                run_hook(h.command, input_data, timeout=h.timeout, cwd=self._cwd)
-            ))
+            tasks.append(
+                asyncio.create_task(
+                    run_hook(h.command, input_data, timeout=h.timeout, cwd=self._cwd)
+                )
+            )
 
         # Wire-side: send request to client, wait for response
         for s in wire_matched:
-            tasks.append(asyncio.create_task(
-                self._dispatch_wire_hook(s.id, event, matcher_value, input_data, timeout=s.timeout)
-            ))
+            tasks.append(
+                asyncio.create_task(
+                    self._dispatch_wire_hook(
+                        s.id, event, matcher_value, input_data, timeout=s.timeout
+                    )
+                )
+            )
 
         results = list(await asyncio.gather(*tasks))
         duration_ms = int((time.monotonic() - t0) * 1000)
@@ -237,8 +252,13 @@ class HookEngine:
         return results
 
     async def _dispatch_wire_hook(
-        self, subscription_id: str, event: str, target: str,
-        input_data: dict[str, Any], *, timeout: int = 30
+        self,
+        subscription_id: str,
+        event: str,
+        target: str,
+        input_data: dict[str, Any],
+        *,
+        timeout: int = 30,
     ) -> HookResult:
         """Send a hook request to the wire client and wait for response."""
         if not self._on_wire_hook:

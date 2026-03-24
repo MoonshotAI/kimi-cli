@@ -14,10 +14,10 @@ async def test_pre_tool_use_block_flow():
     with tempfile.TemporaryDirectory() as tmpdir:
         script = Path(tmpdir) / "block-rm.sh"
         script.write_text(
-            '#!/bin/bash\n'
-            'CMD=$(python3 -c "import sys,json; print(json.load(sys.stdin).get(\'tool_input\',{}).get(\'command\',\'\'))")\n'
+            "#!/bin/bash\n"
+            "CMD=$(python3 -c \"import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))\")\n"
             'if echo "$CMD" | grep -q "rm -rf"; then echo "Blocked: rm -rf" >&2; exit 2; fi\n'
-            'exit 0\n'
+            "exit 0\n"
         )
         script.chmod(0o755)
 
@@ -99,7 +99,7 @@ async def test_multiple_hooks_same_event():
 
 def test_config_roundtrip_toml():
     """Hooks survive TOML serialize/deserialize."""
-    toml_str = '''
+    toml_str = """
 default_model = ""
 
 [[hooks]]
@@ -112,7 +112,7 @@ event = "Notification"
 matcher = "permission_prompt"
 command = "notify-send Kimi"
 timeout = 5
-'''
+"""
     from kimi_cli.config import Config
 
     data = tomlkit.parse(toml_str)
@@ -170,7 +170,11 @@ async def test_session_hooks_payload():
 @pytest.mark.asyncio
 async def test_post_tool_use_failure_hook():
     """PostToolUseFailure hook fires for matching tool."""
-    hooks = [HookDef(event="PostToolUseFailure", matcher="Shell", command="echo failure_caught", timeout=5)]
+    hooks = [
+        HookDef(
+            event="PostToolUseFailure", matcher="Shell", command="echo failure_caught", timeout=5
+        )
+    ]
     engine = HookEngine(hooks)
     results = await engine.trigger(
         "PostToolUseFailure",
@@ -185,7 +189,9 @@ async def test_post_tool_use_failure_hook():
 @pytest.mark.asyncio
 async def test_user_prompt_submit_block():
     """UserPromptSubmit hook can block a prompt."""
-    hooks = [HookDef(event="UserPromptSubmit", command="echo 'no profanity' >&2; exit 2", timeout=5)]
+    hooks = [
+        HookDef(event="UserPromptSubmit", command="echo 'no profanity' >&2; exit 2", timeout=5)
+    ]
     engine = HookEngine(hooks)
     results = await engine.trigger(
         "UserPromptSubmit",
@@ -235,7 +241,9 @@ async def test_session_end_hook():
 @pytest.mark.asyncio
 async def test_subagent_start_hook():
     """SubagentStart hook fires for matching agent name."""
-    hooks = [HookDef(event="SubagentStart", matcher="coder", command="echo agent_starting", timeout=5)]
+    hooks = [
+        HookDef(event="SubagentStart", matcher="coder", command="echo agent_starting", timeout=5)
+    ]
     engine = HookEngine(hooks)
     results = await engine.trigger(
         "SubagentStart",

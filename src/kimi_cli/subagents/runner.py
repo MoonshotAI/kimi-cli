@@ -255,16 +255,18 @@ class ForegroundSubagentRunner:
             if hook_engine and hook_engine.has_hooks_for("SubagentStop"):
                 from kimi_cli.hooks import events as hook_events
 
-                _bg = asyncio.create_task(hook_engine.trigger(
-                    "SubagentStop",
-                    matcher_value=actual_type,
-                    input_data=hook_events.subagent_stop(
-                        session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
-                        agent_name=actual_type,
-                        response=(final_response or "")[:500],
-                    ),
-                ))
+                _bg = asyncio.create_task(
+                    hook_engine.trigger(
+                        "SubagentStop",
+                        matcher_value=actual_type,
+                        input_data=hook_events.subagent_stop(
+                            session_id=self._runtime.session.id,
+                            cwd=str(Path.cwd()),
+                            agent_name=actual_type,
+                            response=(final_response or "")[:500],
+                        ),
+                    )
+                )
                 _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         except asyncio.CancelledError:
             self._store.update_instance(agent_id, status="killed")

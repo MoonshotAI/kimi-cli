@@ -535,13 +535,9 @@ class HookRequest(BaseModel):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future: asyncio.Future[
-            tuple[HookRequest.Action, str]
-        ] | None = None
+        self._future: asyncio.Future[tuple[HookRequest.Action, str]] | None = None
 
-    def _get_future(self) -> asyncio.Future[
-        tuple[HookRequest.Action, str]
-    ]:
+    def _get_future(self) -> asyncio.Future[tuple[HookRequest.Action, str]]:
         if self._future is None:
             self._future = asyncio.get_event_loop().create_future()
         return self._future

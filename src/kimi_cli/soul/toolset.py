@@ -193,8 +193,7 @@ class KimiToolset:
                             )
                         )
                         _bg.add_done_callback(
-                            lambda t: t.exception()
-                            if not t.cancelled() else None
+                            lambda t: t.exception() if not t.cancelled() else None
                         )
                     return ToolResult(
                         tool_call_id=tool_call.id,

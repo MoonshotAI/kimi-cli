@@ -105,9 +105,15 @@ def _make_scripted_config(
 
 def _start_wire(config_path: Path, work_dir: Path) -> subprocess.Popen[str]:
     cmd = [
-        "uv", "run", "kimi", "--wire", "--yolo",
-        "--config-file", str(config_path),
-        "--work-dir", str(work_dir),
+        "uv",
+        "run",
+        "kimi",
+        "--wire",
+        "--yolo",
+        "--config-file",
+        str(config_path),
+        "--work-dir",
+        str(work_dir),
     ]
     return subprocess.Popen(
         cmd,
@@ -140,10 +146,15 @@ def _prompt(
     process: subprocess.Popen[str],
     user_input: str,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
-    _send_json(process, {
-        "jsonrpc": "2.0", "id": "prompt-1", "method": "prompt",
-        "params": {"user_input": user_input},
-    })
+    _send_json(
+        process,
+        {
+            "jsonrpc": "2.0",
+            "id": "prompt-1",
+            "method": "prompt",
+            "params": {"user_input": user_input},
+        },
+    )
     return _collect_until_response(process, "prompt-1")
 
 
@@ -204,16 +215,21 @@ command = "echo done"
         process.wait()
 
 
-async def test_wire_hook_subscription_in_initialize(temp_work_dir: KaosPath, tmp_path: Path) -> None:
+async def test_wire_hook_subscription_in_initialize(
+    temp_work_dir: KaosPath, tmp_path: Path
+) -> None:
     """Client-provided hook subscriptions appear in configured count."""
     config_path = _make_scripted_config(tmp_path, scripts=[])
 
     process = _start_wire(config_path, temp_work_dir.unsafe_to_local_path())
     try:
-        result = _initialize(process, hooks=[
-            {"id": "sub_post", "event": "PostToolUse", "matcher": "ReadFile"},
-            {"id": "sub_pre", "event": "PreToolUse", "matcher": "Shell"},
-        ])
+        result = _initialize(
+            process,
+            hooks=[
+                {"id": "sub_post", "event": "PostToolUse", "matcher": "ReadFile"},
+                {"id": "sub_pre", "event": "PreToolUse", "matcher": "Shell"},
+            ],
+        )
         hooks_info = cast(dict[str, object], result.get("hooks", {}))
         configured = cast(dict[str, object], hooks_info.get("configured", {}))
         assert configured.get("PostToolUse") == 1
@@ -228,11 +244,13 @@ async def test_wire_hook_subscription_in_initialize(temp_work_dir: KaosPath, tmp
 async def test_hook_events_fire_during_prompt(temp_work_dir: KaosPath, tmp_path: Path) -> None:
     """HookTriggered and HookResolved events are sent when hooks fire."""
     scripts = [
-        "\n".join([
-            "id: scripted-1",
-            'usage: {"input_other": 10, "output": 2}',
-            "text: Hello world!",
-        ]),
+        "\n".join(
+            [
+                "id: scripted-1",
+                'usage: {"input_other": 10, "output": 2}',
+                "text: Hello world!",
+            ]
+        ),
     ]
     config_path = _make_scripted_config(
         tmp_path,
@@ -263,7 +281,9 @@ command = "echo stop_hook_ok"
         triggered_events = [t.get("event") for t in triggered]
         resolved_events = [r.get("event") for r in resolved]
 
-        assert "UserPromptSubmit" in triggered_events, f"Missing UserPromptSubmit in {triggered_events}"
+        assert "UserPromptSubmit" in triggered_events, (
+            f"Missing UserPromptSubmit in {triggered_events}"
+        )
         assert "Stop" in resolved_events, f"Missing Stop in {resolved_events}"
 
         # All resolved should be "allow"
@@ -277,22 +297,28 @@ command = "echo stop_hook_ok"
         process.wait()
 
 
-async def test_pre_and_post_tool_use_hooks_on_tool_call(temp_work_dir: KaosPath, tmp_path: Path) -> None:
+async def test_pre_and_post_tool_use_hooks_on_tool_call(
+    temp_work_dir: KaosPath, tmp_path: Path
+) -> None:
     """PreToolUse (allow) and PostToolUse hooks fire around a successful tool call."""
     read_args = json.dumps({"path": "test.txt"})
     await (temp_work_dir / "test.txt").write_text("hello")
 
     scripts = [
-        "\n".join([
-            "id: scripted-1",
-            'usage: {"input_other": 10, "output": 2}',
-            f'tool_call: {json.dumps({"id": "tc1", "name": "ReadFile", "arguments": read_args})}',
-        ]),
-        "\n".join([
-            "id: scripted-2",
-            'usage: {"input_other": 10, "output": 2}',
-            "text: File read successfully.",
-        ]),
+        "\n".join(
+            [
+                "id: scripted-1",
+                'usage: {"input_other": 10, "output": 2}',
+                f"tool_call: {json.dumps({'id': 'tc1', 'name': 'ReadFile', 'arguments': read_args})}",
+            ]
+        ),
+        "\n".join(
+            [
+                "id: scripted-2",
+                'usage: {"input_other": 10, "output": 2}',
+                "text: File read successfully.",
+            ]
+        ),
     ]
     config_path = _make_scripted_config(
         tmp_path,
@@ -363,16 +389,20 @@ async def test_pre_tool_use_hook_blocks_tool(temp_work_dir: KaosPath, tmp_path: 
     block_script.chmod(0o755)
 
     scripts = [
-        "\n".join([
-            "id: scripted-1",
-            'usage: {"input_other": 10, "output": 2}',
-            f'tool_call: {json.dumps({"id": "tc1", "name": "Shell", "arguments": json.dumps({"command": "echo hi"})})}',
-        ]),
-        "\n".join([
-            "id: scripted-2",
-            'usage: {"input_other": 10, "output": 2}',
-            "text: OK, shell was blocked.",
-        ]),
+        "\n".join(
+            [
+                "id: scripted-1",
+                'usage: {"input_other": 10, "output": 2}',
+                f"tool_call: {json.dumps({'id': 'tc1', 'name': 'Shell', 'arguments': json.dumps({'command': 'echo hi'})})}",
+            ]
+        ),
+        "\n".join(
+            [
+                "id: scripted-2",
+                'usage: {"input_other": 10, "output": 2}',
+                "text: OK, shell was blocked.",
+            ]
+        ),
     ]
     config_path = _make_scripted_config(
         tmp_path,
@@ -409,7 +439,10 @@ timeout = 5
                 if isinstance(rv, dict):
                     rv = cast(dict[str, object], rv)
                     if rv.get("is_error"):
-                        assert "hook" in str(rv.get("message", "")).lower() or "blocked" in str(rv.get("message", "")).lower()
+                        assert (
+                            "hook" in str(rv.get("message", "")).lower()
+                            or "blocked" in str(rv.get("message", "")).lower()
+                        )
     finally:
         if process.stdin:
             process.stdin.close()
