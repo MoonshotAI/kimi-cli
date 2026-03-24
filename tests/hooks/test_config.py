@@ -19,7 +19,7 @@ def test_default_matcher_is_empty():
 
 def test_invalid_event():
     with pytest.raises(ValidationError):
-        HookDef(event="InvalidEvent", command="echo bad")
+        HookDef(event="InvalidEvent", command="echo bad")  # type: ignore[arg-type]
 
 
 def test_all_event_types_defined():

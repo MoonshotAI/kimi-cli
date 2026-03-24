@@ -203,7 +203,7 @@ class Config(BaseModel):
     )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
-    hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")
+    hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

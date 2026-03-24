@@ -575,7 +575,7 @@ def kimi(
             if _he and _he.has_hooks_for("SessionStart"):
                 from kimi_cli.hooks import events
 
-                await instance.soul.hook_engine.trigger(
+                await _he.trigger(
                     "SessionStart",
                     matcher_value=_session_source,
                     input_data=events.session_start(

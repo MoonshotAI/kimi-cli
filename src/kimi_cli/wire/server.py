@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
@@ -300,6 +300,8 @@ class WireServer:
                     )
                 case QuestionRequest():
                     request.resolve({})
+                case HookRequest():
+                    request.resolve("allow")
         self._pending_requests.clear()
 
         if self._cancel_event is not None:
@@ -460,7 +462,7 @@ class WireServer:
                     HookResolved(
                         event=event,
                         target=target,
-                        action=action,
+                        action=cast(Literal["allow", "block"], action),
                         reason=reason,
                         duration_ms=duration_ms,
                     )
@@ -490,7 +492,7 @@ class WireServer:
         hooks_info: dict[str, JsonType] = {}
         if isinstance(self._soul, KimiSoul) and self._soul.hook_engine:
             hooks_info = cast(
-                JsonType,
+                dict[str, JsonType],
                 {
                     "supported_events": HOOK_EVENT_TYPES,
                     "configured": self._soul.hook_engine.summary,
@@ -689,6 +691,8 @@ class WireServer:
                     case QuestionRequest():
                         self._pending_requests.pop(msg_id, None)
                         request.resolve({})
+                    case _:
+                        pass
             self._cancel_event = None
 
     async def _handle_steer(
@@ -965,6 +969,8 @@ class WireServer:
                     await self._request_external_tool(msg)
                 case QuestionRequest():
                     await self._request_question(msg)
+                case HookRequest():
+                    pass  # handled via hook engine callbacks
                 case _:
                     await self._send_msg(JSONRPCEventMessage(method="event", params=msg))
 

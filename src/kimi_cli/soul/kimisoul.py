@@ -510,7 +510,7 @@ class KimiSoul:
             if not self._stop_hook_active and _he and _he.has_hooks_for("Stop"):
                 from kimi_cli.hooks import events
 
-                stop_results = await self._hook_engine.trigger(
+                stop_results = await _he.trigger(
                     "Stop",
                     input_data=events.stop(
                         session_id=self._runtime.session.id,

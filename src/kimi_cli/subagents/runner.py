@@ -26,6 +26,7 @@ from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    HookRequest,
     QuestionRequest,
     SubagentEvent,
     ToolCallRequest,
@@ -359,6 +360,8 @@ class ForegroundSubagentRunner:
                     ApprovalRequest | ApprovalResponse | ToolCallRequest | QuestionRequest,
                 ):
                     super_wire.soul_side.send(msg)
+                    continue
+                if isinstance(msg, HookRequest):
                     continue
                 super_wire.soul_side.send(
                     SubagentEvent(
