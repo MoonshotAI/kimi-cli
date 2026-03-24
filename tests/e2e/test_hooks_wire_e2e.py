@@ -278,6 +278,85 @@ command = "echo stop_hook_ok"
         process.wait()
 
 
+async def test_pre_and_post_tool_use_hooks_on_tool_call(temp_work_dir: KaosPath, tmp_path: Path) -> None:
+    """PreToolUse (allow) and PostToolUse hooks fire around a successful tool call."""
+    read_args = json.dumps({"path": "test.txt"})
+    await (temp_work_dir / "test.txt").write_text("hello")
+
+    scripts = [
+        "\n".join([
+            "id: scripted-1",
+            'usage: {"input_other": 10, "output": 2}',
+            f'tool_call: {json.dumps({"id": "tc1", "name": "ReadFile", "arguments": read_args})}',
+        ]),
+        "\n".join([
+            "id: scripted-2",
+            'usage: {"input_other": 10, "output": 2}',
+            "text: File read successfully.",
+        ]),
+    ]
+    config_path = _make_scripted_config(
+        tmp_path,
+        scripts=scripts,
+        hooks_toml="""
+[[hooks]]
+event = "PreToolUse"
+matcher = "ReadFile"
+command = "echo pre_read_ok"
+
+[[hooks]]
+event = "PostToolUse"
+matcher = "ReadFile"
+command = "echo post_read_ok"
+
+[[hooks]]
+event = "UserPromptSubmit"
+command = "echo prompt_ok"
+
+[[hooks]]
+event = "Stop"
+command = "echo stop_ok"
+""",
+    )
+
+    process = _start_wire(config_path, temp_work_dir.unsafe_to_local_path())
+    try:
+        _initialize(process)
+        resp, events = _prompt(process, "read test.txt")
+
+        result = cast(dict[str, object], resp.get("result", {}))
+        assert result.get("status") == "finished"
+
+        triggered = _find_events(events, "HookTriggered")
+        resolved = _find_events(events, "HookResolved")
+
+        triggered_names = [t.get("event") for t in triggered]
+        resolved_names = [r.get("event") for r in resolved]
+
+        # All 4 hook events should fire
+        assert "UserPromptSubmit" in triggered_names, f"Missing UserPromptSubmit: {triggered_names}"
+        assert "PreToolUse" in triggered_names, f"Missing PreToolUse: {triggered_names}"
+        assert "PostToolUse" in triggered_names, f"Missing PostToolUse: {triggered_names}"
+        assert "Stop" in triggered_names, f"Missing Stop: {triggered_names}"
+
+        # All should allow
+        for r in resolved:
+            assert r.get("action") == "allow", f"Unexpected block: {r}"
+
+        # PreToolUse target should be "ReadFile"
+        pre_tool = [t for t in triggered if t.get("event") == "PreToolUse"]
+        assert pre_tool[0].get("target") == "ReadFile"
+
+        # PostToolUse target should also be "ReadFile"
+        post_tool = [t for t in triggered if t.get("event") == "PostToolUse"]
+        assert post_tool[0].get("target") == "ReadFile"
+    finally:
+        if process.stdin:
+            process.stdin.close()
+        process.kill()
+        process.wait()
+
+
 async def test_pre_tool_use_hook_blocks_tool(temp_work_dir: KaosPath, tmp_path: Path) -> None:
     """PreToolUse hook that exits 2 blocks the tool and feeds reason back to agent."""
     # Create a blocking hook script
