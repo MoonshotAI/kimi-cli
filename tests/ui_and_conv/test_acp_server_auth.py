@@ -42,15 +42,33 @@ class TestInitialize:
         ACP was started in certain ways (e.g., via IDE integration).
         """
         server = ACPServer()
-        with patch("sys.argv", ["python", "-m", "kimi_cli", "acp"]):
+        with patch("sys.argv", ["some_other_cmd", "acp"]):
             # Should not raise ValueError
             response = await server.initialize(protocol_version=1)
 
         assert response.protocol_version == 1
         assert len(response.auth_methods) == 1
-        # When 'kimi' is not found, args should default to empty list
+        # When 'kimi' is not found and no __main__.py, args should default to empty list
         terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
         assert terminal_auth.get("args") == ["login"]
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_main_module(self) -> None:
+        """Test initialize when sys.argv[0] ends with __main__.py (module invocation).
+
+        When running via `python -m kimi_cli acp`, sys.argv[0] is the __main__.py
+        path and -m is consumed by the interpreter. We detect this and construct
+        a runnable command.
+        """
+        server = ACPServer()
+        with patch("sys.argv", ["/path/to/kimi_cli/__main__.py", "acp"]):
+            response = await server.initialize(protocol_version=1)
+
+        assert response.protocol_version == 1
+        terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
+        # command should be "python" and args should include "-m kimi_cli login"
+        assert terminal_auth.get("command") == "python"
+        assert terminal_auth.get("args") == ["-m", "kimi_cli", "login"]
 
 
 @pytest.fixture
