@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -667,4 +668,55 @@ async def test_kimi_cli_create_surfaces_invalid_compaction_plugin(
     config.loop_control.compaction_plugin = "broken-plugin"
 
     with pytest.raises(ConfigError, match="Invalid compaction plugin 'broken-plugin'"):
+        await KimiCLI.create(session, config=config)
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_wraps_plugin_import_failures_as_config_error(
+    session, config, monkeypatch, tmp_path
+) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "broken-plugin"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "broken_compaction.py").write_text(
+        "import missing_helper\n\nclass BrokenCompaction:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        return messages\n",
+        encoding="utf-8",
+    )
+    (pdir / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "broken-plugin",
+                "version": "1.0.0",
+                "compaction": {"entrypoint": "broken_compaction.BrokenCompaction"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+    )
+
+    async def fake_runtime_create(*args, **kwargs):
+        return fake_runtime
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
+    monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr("kimi_cli.plugin.manager.get_plugins_dir", lambda: plugins)
+
+    config.loop_control.compaction_plugin = "broken-plugin"
+
+    with pytest.raises(
+        ConfigError,
+        match="Invalid compaction plugin 'broken-plugin': Failed to import compaction module 'broken_compaction'",
+    ):
         await KimiCLI.create(session, config=config)

@@ -228,6 +228,43 @@ async def test_resolve_plugin_compactor_supports_lazy_sibling_imports(tmp_path: 
     assert result.messages[0].extract_text("\n") == "lazy via main-chat"
 
 
+@pytest.mark.asyncio
+async def test_resolve_plugin_compactor_supports_eager_sibling_imports(tmp_path: Path) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "eager-plugin"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "helper_mod.py").write_text(
+        "def build_message(model_name):\n    return f'eager via {model_name}'\n",
+        encoding="utf-8",
+    )
+    (pdir / "eager_compaction.py").write_text(
+        "import helper_mod\nfrom kosong.message import Message\nfrom kimi_cli.soul.compaction import CompactionResult\nfrom kimi_cli.wire.types import TextPart\n\nclass EagerCompaction:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        model_name = llm.model_config.model if llm.model_config is not None else 'unknown'\n        return CompactionResult(messages=[Message(role='user', content=[TextPart(text=helper_mod.build_message(model_name))])], usage=None)\n",
+        encoding="utf-8",
+    )
+    _write_plugin(pdir, name="eager-plugin", entrypoint="eager_compaction.EagerCompaction")
+
+    comp = resolve_plugin_compactor(plugins, "eager-plugin")
+    assert comp is not None
+    result = await comp.compact(
+        [Message(role="user", content=[TextPart(text="hi")])], _make_test_llm("main-chat")
+    )
+    assert result.messages[0].extract_text("\n") == "eager via main-chat"
+
+
+def test_resolve_plugin_compactor_wraps_import_failures(tmp_path: Path) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "broken-plugin"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "broken_compaction.py").write_text(
+        "import missing_helper\n\nclass BrokenCompaction:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        return messages\n",
+        encoding="utf-8",
+    )
+    _write_plugin(pdir, name="broken-plugin", entrypoint="broken_compaction.BrokenCompaction")
+
+    with pytest.raises(PluginError, match="Failed to import compaction module 'broken_compaction'"):
+        resolve_plugin_compactor(plugins, "broken-plugin")
+
+
 def test_subagent_copies_get_fresh_compaction_instances(runtime: Runtime, tmp_path: Path) -> None:
     plugins = tmp_path / "plugins"
     pdir = plugins / "alpha-plugin"

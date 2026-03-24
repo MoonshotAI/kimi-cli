@@ -48,14 +48,40 @@ def _ensure_package_module(package_name: str, package_dir: Path) -> None:
         sys.modules[package_name] = module
 
 
+def _is_module_from_any_plugin_dir(module: ModuleType) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if module_file is None:
+        return False
+    return any(parent.name == "plugins" for parent in Path(module_file).resolve().parents)
+
+
+def _local_top_level_module_names(plugin_dir: Path) -> set[str]:
+    names: set[str] = set()
+    for child in plugin_dir.iterdir():
+        if child.is_file() and child.suffix == ".py":
+            names.add(child.stem)
+        elif child.is_dir() and (child / "__init__.py").is_file():
+            names.add(child.name)
+    return names
+
+
+def _purge_conflicting_top_level_modules(plugin_dir: Path) -> None:
+    for name in _local_top_level_module_names(plugin_dir):
+        module = sys.modules.get(name)
+        if module is not None and _is_module_from_any_plugin_dir(module):
+            sys.modules.pop(name, None)
+
+
 def _load_plugin_module(plugin_dir: Path, module_path: str) -> ModuleType:
     module_file, is_package = _resolve_module_file(plugin_dir, module_path)
+    plugin_root = str(plugin_dir.resolve())
     package_name = _plugin_package_name(plugin_dir)
     module_parts = module_path.split(".")
     module_name = ".".join((package_name, *module_parts))
 
     with _IMPORT_LOCK:
         _ensure_package_module(package_name, plugin_dir)
+        _purge_conflicting_top_level_modules(plugin_dir)
         parent_dir = plugin_dir
         parent_package = package_name
         for part in module_parts[:-1]:
@@ -74,34 +100,45 @@ def _load_plugin_module(plugin_dir: Path, module_path: str) -> ModuleType:
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
+        _acquire_plugin_path_locked(plugin_root)
         try:
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(module_name, None)
-            raise
+            raise PluginError(f"Failed to import compaction module {module_path!r}: {exc}") from exc
+        finally:
+            _release_plugin_path_locked(plugin_root)
 
     return module
+
+
+def _acquire_plugin_path_locked(plugin_root: str) -> None:
+    count, inserted = _PLUGIN_PATH_REFS.get(plugin_root, (0, plugin_root not in sys.path))
+    if count == 0 and inserted:
+        sys.path.append(plugin_root)
+    _PLUGIN_PATH_REFS[plugin_root] = (count + 1, inserted)
 
 
 def _acquire_plugin_path(plugin_dir: Path) -> str:
     plugin_root = str(plugin_dir.resolve())
     with _IMPORT_LOCK:
-        count, inserted = _PLUGIN_PATH_REFS.get(plugin_root, (0, plugin_root not in sys.path))
-        if count == 0 and inserted:
-            sys.path.append(plugin_root)
-        _PLUGIN_PATH_REFS[plugin_root] = (count + 1, inserted)
+        _acquire_plugin_path_locked(plugin_root)
     return plugin_root
+
+
+def _release_plugin_path_locked(plugin_root: str) -> None:
+    count, inserted = _PLUGIN_PATH_REFS[plugin_root]
+    if count <= 1:
+        _PLUGIN_PATH_REFS.pop(plugin_root, None)
+        if inserted and plugin_root in sys.path:
+            sys.path.remove(plugin_root)
+        return
+    _PLUGIN_PATH_REFS[plugin_root] = (count - 1, inserted)
 
 
 def _release_plugin_path(plugin_root: str) -> None:
     with _IMPORT_LOCK:
-        count, inserted = _PLUGIN_PATH_REFS[plugin_root]
-        if count <= 1:
-            _PLUGIN_PATH_REFS.pop(plugin_root, None)
-            if inserted and plugin_root in sys.path:
-                sys.path.remove(plugin_root)
-            return
-        _PLUGIN_PATH_REFS[plugin_root] = (count - 1, inserted)
+        _release_plugin_path_locked(plugin_root)
 
 
 def _wrap_compactor_for_lazy_imports(instance: Compaction, plugin_dir: Path) -> Compaction:
@@ -114,6 +151,8 @@ def _wrap_compactor_for_lazy_imports(instance: Compaction, plugin_dir: Path) -> 
     async def compact(*args, **kwargs):
         plugin_root = _acquire_plugin_path(plugin_dir)
         try:
+            with _IMPORT_LOCK:
+                _purge_conflicting_top_level_modules(plugin_dir)
             return await original_compact(*args, **kwargs)
         finally:
             _release_plugin_path(plugin_root)
@@ -136,7 +175,13 @@ def instantiate_plugin_compactor(plugin_dir: Path, entrypoint: str) -> Compactio
             f"Compaction class {class_name!r} not found in module {module_path!r}"
         ) from exc
 
-    instance = cls()
+    try:
+        instance = cls()
+    except Exception as exc:
+        raise PluginError(
+            "Failed to initialize compaction class "
+            f"{class_name!r} from module {module_path!r}: {exc}"
+        ) from exc
     if not getattr(instance, "compact", None) or not callable(instance.compact):
         raise PluginError(f"Compaction object from {entrypoint!r} has no callable compact()")
     return cast(Compaction, _wrap_compactor_for_lazy_imports(instance, plugin_dir))
