@@ -12,7 +12,7 @@ class TestInitialize:
 
     @pytest.mark.asyncio
     async def test_initialize_returns_auth_methods(self) -> None:
-        """Test that initialize returns auth methods with simple default."""
+        """Test that initialize returns auth methods with sys.executable."""
         server = ACPServer()
         response = await server.initialize(protocol_version=1)
 
@@ -24,8 +24,8 @@ class TestInitialize:
         assert "terminal-auth" in auth_method.field_meta
         
         terminal_auth = auth_method.field_meta["terminal-auth"]
-        assert terminal_auth.get("command") == "kimi"
-        assert terminal_auth.get("args") == ["login"]
+        assert terminal_auth.get("command") == sys.executable
+        assert terminal_auth.get("args") == ["-m", "kimi_cli", "login"]
         assert terminal_auth.get("label") == "Kimi Code Login"
         assert terminal_auth.get("type") == "terminal"
 

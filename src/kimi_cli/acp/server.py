@@ -57,13 +57,10 @@ class ACPServer:
         )
         self.client_capabilities = client_capabilities
 
-        # Directly use simple default for terminal-auth login
-        # Returns a simple default: "kimi login". This is sufficient because:
-        # 1. The AUTH_REQUIRED error only needs to tell clients how to login
-        # 2. Clients can handle how to run the command themselves
-        # 3. Complex argv parsing with hardcoded names is error-prone
-        command = "kimi"
-        terminal_args = ["login"]
+        # Use sys.executable for reliable login command across all launch methods
+        # This works regardless of how ACP was started (direct, module, or IDE integration)
+        command = sys.executable
+        terminal_args = ["-m", "kimi_cli", "login"]
 
         # Build and cache auth methods for reuse in AUTH_REQUIRED errors
         self._auth_methods = [
@@ -71,7 +68,7 @@ class ACPServer:
                 id="login",
                 name="Login with Kimi account",
                 description=(
-                    "Run `kimi login` command in the terminal, "
+                    "Run login command in the terminal, "
                     "then follow the instructions to finish login."
                 ),
                 # Store auth data in field_meta for building AUTH_REQUIRED error
