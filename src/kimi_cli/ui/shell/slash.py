@@ -652,11 +652,11 @@ def hooks(app: Shell, args: str):
     console.print("[bold]Configured Hooks:[/bold]")
     console.print()
 
-    for event, count in engine.summary.items():
-        console.print(f"  [cyan]{event}[/cyan]: {count} hook(s)")
-        for hook_def in engine._by_event.get(event, []):
-            matcher_label = f"[{hook_def.matcher}]" if hook_def.matcher else "[(all)]"
-            console.print(f"    [dim]{matcher_label}[/dim] {hook_def.command}")
+    for event, entries in engine.details().items():
+        console.print(f"  [cyan]{event}[/cyan]: {len(entries)} hook(s)")
+        for entry in entries:
+            source_tag = f" [dim]({entry['source']})[/dim]" if entry["source"] == "wire" else ""
+            console.print(f"    [dim]{entry['matcher']}[/dim] {entry['command']}{source_tag}")
 
     console.print()
 

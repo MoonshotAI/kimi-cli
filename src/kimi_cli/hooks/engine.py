@@ -133,6 +133,19 @@ class HookEngine:
             counts[event] = counts.get(event, 0) + len(subs)
         return counts
 
+    def details(self) -> dict[str, list[dict[str, str]]]:
+        """Event -> list of {matcher, command/type} for display."""
+        result: dict[str, list[dict[str, str]]] = {}
+        for event, hooks in self._by_event.items():
+            entries = result.setdefault(event, [])
+            for h in hooks:
+                entries.append({"matcher": h.matcher or "(all)", "source": "server", "command": h.command})
+        for event, subs in self._wire_by_event.items():
+            entries = result.setdefault(event, [])
+            for s in subs:
+                entries.append({"matcher": s.matcher or "(all)", "source": "wire", "command": "(client-side)"})
+        return result
+
     def _match_regex(self, pattern: str, value: str) -> bool:
         if not pattern:
             return True

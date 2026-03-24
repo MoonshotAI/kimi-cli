@@ -415,7 +415,7 @@ class WireServer:
             )
 
         from kimi_cli.constant import NAME, VERSION
-        from kimi_cli.hooks.config import HOOK_EVENT_TYPES, HookDef
+        from kimi_cli.hooks.config import HOOK_EVENT_TYPES
         from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
         from kimi_cli.wire.types import HookResolved, HookTriggered
 
@@ -423,9 +423,15 @@ class WireServer:
         if isinstance(self._soul, KimiSoul) and self._soul.hook_engine and msg.params.hooks:
             from kimi_cli.hooks.engine import WireHookSubscription as _Sub
 
-            wire_subs = [_Sub(event=wh.event, matcher=wh.matcher, timeout=wh.timeout) for wh in msg.params.hooks]
-            self._soul.hook_engine.add_wire_subscriptions(wire_subs)
-            logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
+            wire_subs: list[_Sub] = []
+            for wh in msg.params.hooks:
+                if wh.event not in HOOK_EVENT_TYPES:
+                    logger.warning("Ignoring unknown hook event from client: {}", wh.event)
+                    continue
+                wire_subs.append(_Sub(event=wh.event, matcher=wh.matcher, timeout=wh.timeout))
+            if wire_subs:
+                self._soul.hook_engine.add_wire_subscriptions(wire_subs)
+                logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
 
         # Wire up HookTriggered/HookResolved/HookRequest callbacks
         if isinstance(self._soul, KimiSoul) and self._soul.hook_engine:

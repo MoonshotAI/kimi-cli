@@ -209,6 +209,7 @@ class KimiToolset:
                                 cwd=str(Path.cwd()),
                                 tool_name=tool_call.function.name,
                                 tool_input=tool_input_dict,
+                                tool_output=str(ret)[:2000],
                                 tool_call_id=tool_call.id,
                             ),
                         )
