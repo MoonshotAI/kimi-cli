@@ -64,12 +64,14 @@ class ACPServer:
             args = []
         else:
             command = sys.argv[0]
-            if command.endswith("kimi"):
+            if command.endswith(("kimi", "kimi-cli")):
+                # Direct kimi/kimi-cli invocation
                 args = []
-            elif command.endswith("__main__.py"):
+            elif "kimi_cli" in command and command.endswith("__main__.py"):
                 # Module-style invocation (e.g., python -m kimi_cli)
                 # sys.argv[0] is the __main__.py path, -m is consumed by interpreter
-                command = "python"
+                # Use sys.executable for accurate interpreter path
+                command = sys.executable
                 args = ["-m", "kimi_cli"]
             else:
                 try:

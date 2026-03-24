@@ -12,11 +12,14 @@ def _simulate_argv_logic(argv: list[str]) -> tuple[str, list[str]]:
         args = []
     else:
         command = argv[0]
-        if command.endswith("kimi"):
+        if command.endswith(("kimi", "kimi-cli")):
+            # Direct kimi/kimi-cli invocation
             args = []
-        elif command.endswith("__main__.py"):
+        elif "kimi_cli" in command and command.endswith("__main__.py"):
             # Module-style invocation (e.g., python -m kimi_cli)
-            command = "python"
+            # sys.argv[0] is the __main__.py path, -m is consumed by interpreter
+            # Use sys.executable for accurate interpreter path
+            command = sys.executable
             args = ["-m", "kimi_cli"]
         else:
             try:
@@ -38,6 +41,13 @@ def test_argv_with_kimi_command():
     assert terminal_args == ["login"]
 
 
+def test_argv_with_kimi_cli_command():
+    """Test when command ends with 'kimi-cli'."""
+    command, terminal_args = _simulate_argv_logic(["kimi-cli", "acp"])
+    assert command == "kimi-cli"
+    assert terminal_args == ["login"]
+
+
 def test_argv_with_main_module():
     """Test when sys.argv[0] ends with __main__.py (module invocation).
 
@@ -48,7 +58,7 @@ def test_argv_with_main_module():
     command, terminal_args = _simulate_argv_logic(
         ["/path/to/kimi_cli/__main__.py", "acp"]
     )
-    assert command == "python"
+    assert command == sys.executable
     assert terminal_args == ["-m", "kimi_cli", "login"]
 
 
@@ -73,7 +83,7 @@ def test_argv_with_unknown_command():
 def test_argv_with_relative_main_module():
     """Test with relative __main__.py path."""
     command, terminal_args = _simulate_argv_logic(["kimi_cli/__main__.py", "acp"])
-    assert command == "python"
+    assert command == sys.executable
     assert terminal_args == ["-m", "kimi_cli", "login"]
 
 
@@ -99,3 +109,14 @@ def test_argv_with_kimi_in_middle():
     command, terminal_args = _simulate_argv_logic(["python", "-u", "kimi", "acp"])
     assert command == "python"
     assert terminal_args == ["-u", "kimi", "login"]
+
+
+def test_argv_with_other_main_module():
+    """Test when sys.argv[0] ends with __main__.py but is not kimi_cli.
+
+    This should NOT be treated as kimi_cli module invocation.
+    """
+    command, terminal_args = _simulate_argv_logic(["/path/to/other_pkg/__main__.py", "acp"])
+    # Should fallback to kimi login since "kimi_cli" is not in the path
+    assert command == "kimi"
+    assert terminal_args == ["login"]

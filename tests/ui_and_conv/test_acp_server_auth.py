@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import MagicMock, patch
 
 import acp
@@ -58,7 +59,7 @@ class TestInitialize:
 
         When running via `python -m kimi_cli acp`, sys.argv[0] is the __main__.py
         path and -m is consumed by the interpreter. We detect this and construct
-        a runnable command.
+        a runnable command using sys.executable for accurate interpreter path.
         """
         server = ACPServer()
         with patch("sys.argv", ["/path/to/kimi_cli/__main__.py", "acp"]):
@@ -66,8 +67,8 @@ class TestInitialize:
 
         assert response.protocol_version == 1
         terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
-        # command should be "python" and args should include "-m kimi_cli login"
-        assert terminal_auth.get("command") == "python"
+        # command should be sys.executable and args should include "-m kimi_cli login"
+        assert terminal_auth.get("command") == sys.executable
         assert terminal_auth.get("args") == ["-m", "kimi_cli", "login"]
 
 
