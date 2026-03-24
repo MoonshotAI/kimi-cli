@@ -228,7 +228,10 @@ class HookEngine:
 
         # --- HookTriggered ---
         if self._on_triggered:
-            self._on_triggered(event, matcher_value, total)
+            try:
+                self._on_triggered(event, matcher_value, total)
+            except Exception:
+                logger.debug("HookTriggered callback failed, continuing")
 
         t0 = time.monotonic()
         tasks: list[asyncio.Task[HookResult]] = []
@@ -265,7 +268,10 @@ class HookEngine:
 
         # --- HookResolved ---
         if self._on_resolved:
-            self._on_resolved(event, matcher_value, action, reason, duration_ms)
+            try:
+                self._on_resolved(event, matcher_value, action, reason, duration_ms)
+            except Exception:
+                logger.debug("HookResolved callback failed, continuing")
 
         return results
 

@@ -46,6 +46,10 @@ async def run_hook(
             await proc.wait()
             logger.warning("Hook timed out after {}s: {}", timeout, command)
             return HookResult(action="allow", timed_out=True)
+        except asyncio.CancelledError:
+            proc.kill()
+            await proc.wait()
+            raise
     except Exception as e:
         logger.warning("Hook failed: {}: {}", command, e)
         return HookResult(action="allow", stderr=str(e))

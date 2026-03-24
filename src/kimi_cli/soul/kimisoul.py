@@ -470,6 +470,7 @@ class KimiSoul:
 
                 hook_results = await self._hook_engine.trigger(
                     "UserPromptSubmit",
+                    matcher_value=text_input_for_hook,
                     input_data=events.user_prompt_submit(
                         session_id=self._runtime.session.id,
                         cwd=str(Path.cwd()),
@@ -681,6 +682,7 @@ class KimiSoul:
                     _bg = asyncio.create_task(
                         self._hook_engine.trigger(
                             "StopFailure",
+                            matcher_value=type(e).__name__,
                             input_data=events.stop_failure(
                                 session_id=self._runtime.session.id,
                                 cwd=str(Path.cwd()),
