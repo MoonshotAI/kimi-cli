@@ -66,7 +66,15 @@ class ACPServer:
                 idx = sys.argv.index("kimi")
                 args = sys.argv[1 : idx + 1]
             except ValueError:
-                args = []
+                # Preserve module-style invocation (e.g., python -m kimi_cli)
+                try:
+                    idx = sys.argv.index("-m")
+                    if idx + 1 < len(sys.argv) and sys.argv[idx + 1] == "kimi_cli":
+                        args = sys.argv[1 : idx + 2]
+                    else:
+                        args = []
+                except ValueError:
+                    args = []
 
         # Build terminal auth data for error response
         terminal_args = args + ["login"]
