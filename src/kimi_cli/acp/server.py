@@ -111,30 +111,12 @@ class ACPServer:
         )
 
     async def _check_auth(self) -> None:
-        """Check if Kimi Code authentication is complete. Auto-trigger OAuth device flow if not."""
+        """Check if Kimi Code authentication is complete."""
         ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
         token = load_tokens(ref)
 
         if token is None or not token.access_token:
-            # Try to auto-trigger OAuth device flow
-            logger.info("No valid token found, attempting auto-authentication via OAuth device flow")
-            
-            # Use a temporary session ID for auth progress notifications
-            # This allows the auth progress to be sent even without a real session
-            temp_session_id = "__auto_auth__"
-            
-            # Try OAuth device flow
-            success = await self._trigger_oauth_device_flow(temp_session_id)
-            
-            if success:
-                # Re-check token after successful authentication
-                token = load_tokens(ref)
-                if token and token.access_token:
-                    logger.info("Auto-authentication successful")
-                    return
-            
-            # If auto-authentication failed, build AUTH_REQUIRED error for manual authentication
-            logger.warning("Auto-authentication failed, requesting manual authentication")
+            logger.warning("No valid token found, requesting manual authentication")
             
             # Build AUTH_REQUIRED error data for clients
             auth_methods_data: list[dict[str, Any]] = []
@@ -164,7 +146,15 @@ class ACPServer:
         assert self.client_capabilities is not None, "ACP connection not initialized"
 
         # Check authentication before creating session
-        self._check_auth()
+        try:
+            await self._check_auth()
+        except acp.RequestError as e:
+            if e.code == -32000:  # AUTH_REQUIRED
+                # 主动调用 authenticate 方法进行认证
+                logger.info("Authentication required, triggering authenticate method")
+                await self.authenticate("login")
+            else:
+                raise
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
@@ -269,7 +259,7 @@ class ACPServer:
             return
 
         # Check authentication before loading session
-        self._check_auth()
+        await self._check_auth()
 
         await self._setup_session(cwd, session_id, mcp_servers)
         # TODO: replay session history?
