@@ -788,7 +788,7 @@ class KimiSoul:
             ChatProviderError: When the chat provider returns an error.
         """
 
-        compaction_llm = self._runtime.compaction_llm or self._runtime.llm
+        compaction_llm = self._runtime.resolve_compaction_llm()
         chat_provider = compaction_llm.chat_provider if compaction_llm is not None else None
 
         async def _run_compaction_once() -> CompactionResult:

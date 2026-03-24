@@ -93,6 +93,9 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
@@ -136,8 +139,8 @@ async def test_kimi_cli_create_passes_compaction_llm(session, config, monkeypatc
     }
     config.loop_control.compaction_model = "compact"
 
-    main_llm = SimpleNamespace(name="main-llm")
-    compact_llm = SimpleNamespace(name="compact-llm")
+    main_llm = SimpleNamespace(name="main-llm", max_context_size=4096)
+    compact_llm = SimpleNamespace(name="compact-llm", max_context_size=8192)
     captured: dict[str, object] = {}
 
     fake_runtime = SimpleNamespace(
@@ -178,6 +181,9 @@ async def test_kimi_cli_create_passes_compaction_llm(session, config, monkeypatc
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", fake_create_llm)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
@@ -233,6 +239,9 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
@@ -275,6 +284,9 @@ async def test_kimi_cli_create_warns_for_unknown_model_name(session, config, mon
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
@@ -365,7 +377,7 @@ async def test_kimi_cli_create_skips_compaction_llm_when_provider_is_missing(
     config.loop_control.compaction_model = "compact"
 
     warnings: list[str] = []
-    main_llm = SimpleNamespace(name="main-llm")
+    main_llm = SimpleNamespace(name="main-llm", max_context_size=4096)
     captured: dict[str, object] = {}
     fake_runtime = SimpleNamespace(
         session=session,
@@ -405,6 +417,9 @@ async def test_kimi_cli_create_skips_compaction_llm_when_provider_is_missing(
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", fake_create_llm)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
@@ -446,7 +461,7 @@ async def test_kimi_cli_create_rejects_smaller_compaction_model(
     runtime_create_called = False
 
     def fake_create_llm(provider, model, **kwargs):
-        return SimpleNamespace(name=model.model)
+        return SimpleNamespace(name=model.model, max_context_size=model.max_context_size)
 
     async def fake_runtime_create(*args, **kwargs):
         nonlocal runtime_create_called
@@ -455,6 +470,9 @@ async def test_kimi_cli_create_rejects_smaller_compaction_model(
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", fake_create_llm)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
 
@@ -462,6 +480,158 @@ async def test_kimi_cli_create_rejects_smaller_compaction_model(
         await KimiCLI.create(session, config=config)
 
     assert runtime_create_called is False
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_allows_smaller_compaction_model_without_active_llm(
+    session, config, monkeypatch
+) -> None:
+    config.models = {
+        "compact": LLMModel(
+            provider="compact-provider",
+            model="compact-model",
+            max_context_size=4096,
+        ),
+    }
+    config.providers = {
+        "compact-provider": LLMProvider(type="_echo", base_url="", api_key=SecretStr("")),
+    }
+    config.loop_control.compaction_model = "compact"
+
+    captured: dict[str, object] = {}
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        compaction_llm=SimpleNamespace(name="compact-model", max_context_size=4096),
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+    )
+    fake_agent = SimpleNamespace(name="Test Agent", system_prompt="Test system prompt")
+    fake_context = SimpleNamespace(system_prompt=None)
+    write_system_prompt = AsyncMock()
+
+    def fake_create_llm(provider, model, **kwargs):
+        if model.model == "":
+            return None
+        return SimpleNamespace(name=model.model, max_context_size=model.max_context_size)
+
+    async def fake_runtime_create(
+        config_arg, oauth, llm, compaction_llm, session_arg, yolo, skills_dir
+    ):
+        captured["llm"] = llm
+        captured["compaction_llm"] = compaction_llm
+        return fake_runtime
+
+    async def fake_load_agent(*args, **kwargs):
+        return fake_agent
+
+    async def fake_restore() -> None:
+        return None
+
+    fake_context.restore = fake_restore
+    fake_context.write_system_prompt = write_system_prompt
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
+    monkeypatch.setattr(app_module, "create_llm", fake_create_llm)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+    monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    cli = await KimiCLI.create(session, config=config)
+
+    assert isinstance(cli, KimiCLI)
+    assert captured["llm"] is None
+    assert getattr(captured["compaction_llm"], "name", None) == "compact-model"
+    write_system_prompt.assert_awaited_once_with("Test system prompt")
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_keeps_explicit_compaction_model_under_env_override(
+    session, config, monkeypatch
+) -> None:
+    config.default_model = "main"
+    config.models = {
+        "main": LLMModel(provider="main-provider", model="main-model", max_context_size=4096),
+        "compact": LLMModel(
+            provider="compact-provider",
+            model="compact-model",
+            max_context_size=8192,
+        ),
+    }
+    config.providers = {
+        "main-provider": LLMProvider(
+            type="kimi",
+            base_url="https://config.test/v1",
+            api_key=SecretStr("config-main"),
+        ),
+        "compact-provider": LLMProvider(
+            type="kimi",
+            base_url="https://config.test/v1",
+            api_key=SecretStr("config-compact"),
+        ),
+    }
+    config.loop_control.compaction_model = "compact"
+
+    captured_calls: list[tuple[str, int, str, str]] = []
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=SimpleNamespace(name="main-llm"),
+        compaction_llm=SimpleNamespace(name="compact-llm"),
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+    )
+    fake_agent = SimpleNamespace(name="Test Agent", system_prompt="Test system prompt")
+    fake_context = SimpleNamespace(system_prompt=None)
+    write_system_prompt = AsyncMock()
+
+    def fake_create_llm(provider, model, **kwargs):
+        captured_calls.append(
+            (
+                model.model,
+                model.max_context_size,
+                provider.base_url,
+                provider.api_key.get_secret_value(),
+            )
+        )
+        return SimpleNamespace(name=model.model, max_context_size=model.max_context_size)
+
+    async def fake_runtime_create(*args, **kwargs):
+        return fake_runtime
+
+    async def fake_load_agent(*args, **kwargs):
+        return fake_agent
+
+    async def fake_restore() -> None:
+        return None
+
+    fake_context.restore = fake_restore
+    fake_context.write_system_prompt = write_system_prompt
+
+    monkeypatch.setenv("KIMI_MODEL_NAME", "env-main-model")
+    monkeypatch.setenv("KIMI_BASE_URL", "https://env.test/v1")
+    monkeypatch.setenv("KIMI_API_KEY", "env-key")
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "create_llm", fake_create_llm)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+    monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    cli = await KimiCLI.create(session, config=config)
+
+    assert isinstance(cli, KimiCLI)
+    assert captured_calls == [
+        ("env-main-model", 4096, "https://env.test/v1", "env-key"),
+        ("compact-model", 8192, "https://env.test/v1", "env-key"),
+    ]
+    write_system_prompt.assert_awaited_once_with("Test system prompt")
 
 
 @pytest.mark.asyncio
@@ -481,6 +651,9 @@ async def test_kimi_cli_create_surfaces_invalid_compaction_plugin(
 
     monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
     monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(
+        app_module, "augment_provider_credentials_with_env_vars", lambda provider: {}
+    )
     monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(

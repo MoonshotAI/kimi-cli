@@ -227,7 +227,23 @@ class Runtime:
         )
 
     def _new_compaction(self) -> Compaction:
-        return type(self.compaction)()
+        compaction = type(self.compaction)()
+        plugin_dir = getattr(self.compaction, "__kimi_plugin_dir__", None)
+        if plugin_dir is not None:
+            from kimi_cli.plugin.compaction import _wrap_compactor_for_lazy_imports
+
+            return _wrap_compactor_for_lazy_imports(compaction, Path(plugin_dir))
+        return compaction
+
+    def resolve_compaction_llm(self, *, active_llm: LLM | None = None) -> LLM | None:
+        active_llm = self.llm if active_llm is None else active_llm
+        if active_llm is None:
+            return self.compaction_llm
+        if self.compaction_llm is None:
+            return active_llm
+        if self.compaction_llm.max_context_size < active_llm.max_context_size:
+            return active_llm
+        return self.compaction_llm
 
     def copy_for_subagent(
         self,
@@ -237,10 +253,11 @@ class Runtime:
         llm_override: LLM | None = None,
     ) -> Runtime:
         """Clone runtime for a subagent."""
+        active_llm = llm_override if llm_override is not None else self.llm
         return Runtime(
             config=self.config,
             oauth=self.oauth,
-            llm=llm_override if llm_override is not None else self.llm,
+            llm=active_llm,
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
@@ -252,7 +269,7 @@ class Runtime:
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
-            compaction_llm=self.compaction_llm,
+            compaction_llm=self.resolve_compaction_llm(active_llm=active_llm),
             compaction=self._new_compaction(),
             subagent_store=self.subagent_store,
             approval_runtime=self.approval_runtime,

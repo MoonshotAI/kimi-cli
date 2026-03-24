@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
 import sys
+from hashlib import sha1
 from pathlib import Path
 from threading import Lock
 from types import ModuleType
@@ -13,70 +14,120 @@ from kimi_cli.plugin import PLUGIN_JSON, PluginError, parse_plugin_json
 from kimi_cli.soul.compaction import Compaction
 
 _IMPORT_LOCK = Lock()
+_PLUGIN_PATH_REFS: dict[str, tuple[int, bool]] = {}
 
 
-def _is_module_from_any_plugins_dir(module: ModuleType) -> bool:
-    module_file = getattr(module, "__file__", None)
-    if module_file is None:
-        return False
-    return any(parent.name == "plugins" for parent in Path(module_file).resolve().parents)
+def _plugin_package_name(plugin_dir: Path) -> str:
+    digest = sha1(str(plugin_dir.resolve()).encode("utf-8")).hexdigest()[:12]
+    return f"_kimi_plugin_compaction_{digest}"
 
 
-def _is_module_from_plugin(module: ModuleType, plugin_dir: Path) -> bool:
-    module_file = getattr(module, "__file__", None)
-    if module_file is None:
-        return False
-    return Path(module_file).resolve().is_relative_to(plugin_dir.resolve())
+def _resolve_module_file(plugin_dir: Path, module_path: str) -> tuple[Path, bool]:
+    module_parts = module_path.split(".")
+    file_base = plugin_dir.joinpath(*module_parts)
+    module_file = file_base.with_suffix(".py")
+    if module_file.is_file():
+        return module_file, False
+
+    package_init = file_base / "__init__.py"
+    if package_init.is_file():
+        return package_init, True
+
+    raise PluginError(
+        f"Compaction module {module_path!r} not found in plugin directory {plugin_dir}"
+    )
 
 
-def _purge_module_path(module_path: str, plugin_dir: Path) -> None:
-    prefixes = (module_path, f"{module_path}.")
-    for key in list(sys.modules):
-        module = sys.modules.get(key)
-        if module is None:
-            continue
-        if (key == prefixes[0] or key.startswith(prefixes[1])) and (
-            _is_module_from_plugin(module, plugin_dir) or _is_module_from_any_plugins_dir(module)
-        ):
-            del sys.modules[key]
+def _ensure_package_module(package_name: str, package_dir: Path) -> None:
+    module = sys.modules.get(package_name)
+    if module is None:
+        module = ModuleType(package_name)
+        module.__file__ = str(package_dir / "__init__.py")
+        module.__package__ = package_name
+        module.__path__ = [str(package_dir)]
+        sys.modules[package_name] = module
 
 
-def _ensure_module_is_from_plugin(
-    module: ModuleType, *, module_path: str, plugin_dir: Path
-) -> None:
-    module_file = getattr(module, "__file__", None)
-    if module_file is None:
-        raise PluginError(f"Compaction module {module_path!r} has no file location")
+def _load_plugin_module(plugin_dir: Path, module_path: str) -> ModuleType:
+    module_file, is_package = _resolve_module_file(plugin_dir, module_path)
+    package_name = _plugin_package_name(plugin_dir)
+    module_parts = module_path.split(".")
+    module_name = ".".join((package_name, *module_parts))
 
-    resolved_module = Path(module_file).resolve()
-    resolved_plugin = plugin_dir.resolve()
-    if not resolved_module.is_relative_to(resolved_plugin):
-        raise PluginError(
-            f"Compaction module {module_path!r} resolved outside plugin directory {resolved_plugin}"
+    with _IMPORT_LOCK:
+        _ensure_package_module(package_name, plugin_dir)
+        parent_dir = plugin_dir
+        parent_package = package_name
+        for part in module_parts[:-1]:
+            parent_dir = parent_dir / part
+            parent_package = f"{parent_package}.{part}"
+            _ensure_package_module(parent_package, parent_dir)
+
+        sys.modules.pop(module_name, None)
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            module_file,
+            submodule_search_locations=[str(module_file.parent)] if is_package else None,
         )
+        if spec is None or spec.loader is None:
+            raise PluginError(f"Failed to load compaction module {module_path!r}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
+
+    return module
 
 
-def _instantiate_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
+def _acquire_plugin_path(plugin_dir: Path) -> str:
+    plugin_root = str(plugin_dir.resolve())
+    with _IMPORT_LOCK:
+        count, inserted = _PLUGIN_PATH_REFS.get(plugin_root, (0, plugin_root not in sys.path))
+        if count == 0 and inserted:
+            sys.path.append(plugin_root)
+        _PLUGIN_PATH_REFS[plugin_root] = (count + 1, inserted)
+    return plugin_root
+
+
+def _release_plugin_path(plugin_root: str) -> None:
+    with _IMPORT_LOCK:
+        count, inserted = _PLUGIN_PATH_REFS[plugin_root]
+        if count <= 1:
+            _PLUGIN_PATH_REFS.pop(plugin_root, None)
+            if inserted and plugin_root in sys.path:
+                sys.path.remove(plugin_root)
+            return
+        _PLUGIN_PATH_REFS[plugin_root] = (count - 1, inserted)
+
+
+def _wrap_compactor_for_lazy_imports(instance: Compaction, plugin_dir: Path) -> Compaction:
+    original_compact = getattr(instance, "compact", None)
+    if original_compact is None or not callable(original_compact):
+        raise PluginError("Compaction object has no callable compact()")
+
+    instance.__kimi_plugin_dir__ = str(plugin_dir.resolve())
+
+    async def compact(*args, **kwargs):
+        plugin_root = _acquire_plugin_path(plugin_dir)
+        try:
+            return await original_compact(*args, **kwargs)
+        finally:
+            _release_plugin_path(plugin_root)
+
+    instance.compact = compact
+    return instance
+
+
+def instantiate_plugin_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
     module_path, _, class_name = entrypoint.rpartition(".")
     if not module_path:
         raise PluginError(f"Invalid compaction entrypoint: {entrypoint!r}")
 
-    plugin_root = str(plugin_dir.resolve())
-    if plugin_root not in sys.path:
-        sys.path.insert(0, plugin_root)
-        inserted = True
-    else:
-        inserted = False
-
-    with _IMPORT_LOCK:
-        try:
-            _purge_module_path(module_path, plugin_dir)
-            module = importlib.import_module(module_path)
-        finally:
-            if inserted and plugin_root in sys.path:
-                sys.path.remove(plugin_root)
-
-    _ensure_module_is_from_plugin(module, module_path=module_path, plugin_dir=plugin_dir)
+    module = _load_plugin_module(plugin_dir, module_path)
 
     try:
         cls = getattr(module, class_name)
@@ -86,10 +137,9 @@ def _instantiate_compactor(plugin_dir: Path, entrypoint: str) -> Compaction:
         ) from exc
 
     instance = cls()
-    compact = getattr(instance, "compact", None)
-    if compact is None or not callable(compact):
+    if not getattr(instance, "compact", None) or not callable(instance.compact):
         raise PluginError(f"Compaction object from {entrypoint!r} has no callable compact()")
-    return cast(Compaction, instance)
+    return cast(Compaction, _wrap_compactor_for_lazy_imports(instance, plugin_dir))
 
 
 def resolve_plugin_compactor(plugins_dir: Path, plugin_name: str | None) -> Compaction | None:
@@ -118,4 +168,4 @@ def resolve_plugin_compactor(plugins_dir: Path, plugin_name: str | None) -> Comp
     if spec.compaction is None:
         raise PluginError(f"Plugin {plugin_name!r} does not declare compaction.entrypoint")
 
-    return _instantiate_compactor(plugin_dir, spec.compaction.entrypoint)
+    return instantiate_plugin_compactor(plugin_dir, spec.compaction.entrypoint)

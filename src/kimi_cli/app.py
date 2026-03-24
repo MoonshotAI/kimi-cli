@@ -17,7 +17,12 @@ from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.exception import ConfigError
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
+from kimi_cli.llm import (
+    augment_provider_credentials_with_env_vars,
+    augment_provider_with_env_vars,
+    create_llm,
+    model_display_name,
+)
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
@@ -196,7 +201,7 @@ class KimiCLI:
                     model=compaction_model_name,
                 )
             else:
-                if compaction_model.max_context_size < model.max_context_size:
+                if llm is not None and compaction_model.max_context_size < llm.max_context_size:
                     raise ConfigError(
                         "Compaction model "
                         f"{compaction_model_name!r} has max_context_size "
@@ -210,9 +215,9 @@ class KimiCLI:
                         provider=compaction_model.provider,
                     )
                 else:
-                    env_overrides.update(
-                        augment_provider_with_env_vars(compaction_provider, compaction_model)
-                    )
+                    compaction_provider = compaction_provider.model_copy(deep=True)
+                    compaction_model = compaction_model.model_copy(deep=True)
+                    augment_provider_credentials_with_env_vars(compaction_provider)
                     compaction_llm = create_llm(
                         compaction_provider,
                         compaction_model,

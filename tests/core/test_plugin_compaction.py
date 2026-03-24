@@ -92,15 +92,15 @@ def _write_plugin(plugin_root: Path, *, name: str, entrypoint: str) -> None:
     )
 
 
-def _make_test_llm(model_name: str) -> LLM:
+def _make_test_llm(model_name: str, *, max_context_size: int = 100_000) -> LLM:
     return LLM(
         chat_provider=EchoChatProvider(),
-        max_context_size=100_000,
+        max_context_size=max_context_size,
         capabilities=set(),
         model_config=LLMModel(
             provider="_echo",
             model=model_name,
-            max_context_size=100_000,
+            max_context_size=max_context_size,
         ),
     )
 
@@ -182,20 +182,50 @@ def test_resolve_plugin_compactor_raises_for_missing_plugin(tmp_path: Path) -> N
         resolve_plugin_compactor(tmp_path / "plugins", "missing-plugin")
 
 
-def test_resolve_plugin_compactor_rejects_stdlib_module_collisions(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_resolve_plugin_compactor_allows_stdlib_colliding_module_names(
+    tmp_path: Path,
+) -> None:
     plugins = tmp_path / "plugins"
     pdir = plugins / "collision-plugin"
     pdir.mkdir(parents=True, exist_ok=True)
     (pdir / "json.py").write_text(
-        "class MyCompactor:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        return None\n",
+        "from kosong.message import Message\nfrom kimi_cli.soul.compaction import CompactionResult\nfrom kimi_cli.wire.types import TextPart\n\nclass MyCompactor:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        return CompactionResult(messages=[Message(role='user', content=[TextPart(text='json plugin ok')])], usage=None)\n",
         encoding="utf-8",
     )
     _write_plugin(pdir, name="collision-plugin", entrypoint="json.MyCompactor")
 
-    with pytest.raises(PluginError, match="resolved outside plugin directory"):
-        resolve_plugin_compactor(plugins, "collision-plugin")
+    comp = resolve_plugin_compactor(plugins, "collision-plugin")
+    assert comp is not None
+    result = await comp.compact(
+        [Message(role="user", content=[TextPart(text="hi")])], _make_test_llm("main-chat")
+    )
+    assert result.messages[0].extract_text("\n") == "json plugin ok"
 
     assert json.dumps({"ok": True}) == '{"ok": true}'
+
+
+@pytest.mark.asyncio
+async def test_resolve_plugin_compactor_supports_lazy_sibling_imports(tmp_path: Path) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "lazy-plugin"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "helper_mod.py").write_text(
+        "def build_message(model_name):\n    return f'lazy via {model_name}'\n",
+        encoding="utf-8",
+    )
+    (pdir / "lazy_compaction.py").write_text(
+        "from kosong.message import Message\nfrom kimi_cli.soul.compaction import CompactionResult\nfrom kimi_cli.wire.types import TextPart\n\nclass LazyCompaction:\n    async def compact(self, messages, llm, *, custom_instruction=''):\n        import helper_mod\n        model_name = llm.model_config.model if llm.model_config is not None else 'unknown'\n        return CompactionResult(messages=[Message(role='user', content=[TextPart(text=helper_mod.build_message(model_name))])], usage=None)\n",
+        encoding="utf-8",
+    )
+    _write_plugin(pdir, name="lazy-plugin", entrypoint="lazy_compaction.LazyCompaction")
+
+    comp = resolve_plugin_compactor(plugins, "lazy-plugin")
+    assert comp is not None
+    result = await comp.compact(
+        [Message(role="user", content=[TextPart(text="hi")])], _make_test_llm("main-chat")
+    )
+    assert result.messages[0].extract_text("\n") == "lazy via main-chat"
 
 
 def test_subagent_copies_get_fresh_compaction_instances(runtime: Runtime, tmp_path: Path) -> None:
@@ -261,3 +291,39 @@ async def test_compact_context_uses_runtime_plugin_compactor(
     assert [message.extract_text("\n") for message in context.history] == [
         "plugin compacted via compact-chat"
     ]
+
+
+@pytest.mark.asyncio
+async def test_compact_context_falls_back_to_active_llm_when_compaction_llm_is_too_small(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    plugins = tmp_path / "plugins"
+    pdir = plugins / "alpha-plugin"
+    _write_alpha_compactor(pdir)
+    _write_plugin(
+        pdir,
+        name="alpha-plugin",
+        entrypoint="alpha_compaction.AlphaCompaction",
+    )
+    runtime.llm = _make_test_llm("main-chat", max_context_size=200_000)
+    runtime.compaction_llm = _make_test_llm("compact-chat", max_context_size=50_000)
+    runtime.compaction = resolve_plugin_compactor(plugins, "alpha-plugin")
+    assert runtime.compaction is not None
+
+    soul, context = _make_soul(runtime, tmp_path)
+    await context.append_message(
+        [
+            Message(role="user", content=[TextPart(text="message 1")]),
+            Message(role="assistant", content=[TextPart(text="message 2")]),
+            Message(role="user", content=[TextPart(text="message 3")]),
+            Message(role="assistant", content=[TextPart(text="message 4")]),
+        ]
+    )
+
+    token = _current_wire.set(Wire())
+    try:
+        await soul.compact_context()
+    finally:
+        _current_wire.reset(token)
+
+    assert getattr(runtime.compaction, "last_model", None) == "main-chat"
