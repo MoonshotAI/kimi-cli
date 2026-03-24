@@ -8,68 +8,26 @@ from kimi_cli.acp.server import ACPServer
 
 
 class TestInitialize:
-    """Test ACPServer.initialize method with various sys.argv scenarios."""
+    """Test ACPServer.initialize method."""
 
     @pytest.mark.asyncio
-    async def test_initialize_with_kimi_command(self) -> None:
-        """Test initialize when sys.argv[0] ends with 'kimi'."""
+    async def test_initialize_returns_auth_methods(self) -> None:
+        """Test that initialize returns auth methods with simple default."""
         server = ACPServer()
-        with patch("sys.argv", ["kimi", "acp"]):
-            response = await server.initialize(protocol_version=1)
+        response = await server.initialize(protocol_version=1)
 
         assert response.protocol_version == 1
         assert len(response.auth_methods) == 1
-        # When command is 'kimi', args should be empty
-        terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
+        # Verify auth method structure
+        auth_method = response.auth_methods[0]
+        assert auth_method.id == "login"
+        assert "terminal-auth" in auth_method.field_meta
+        
+        terminal_auth = auth_method.field_meta["terminal-auth"]
+        assert terminal_auth.get("command") == "kimi"
         assert terminal_auth.get("args") == ["login"]
-
-    @pytest.mark.asyncio
-    async def test_initialize_with_kimi_in_argv(self) -> None:
-        """Test initialize when 'kimi' appears in sys.argv (e.g., python -m kimi_cli)."""
-        server = ACPServer()
-        with patch("sys.argv", ["python", "-m", "kimi", "acp"]):
-            response = await server.initialize(protocol_version=1)
-
-        assert response.protocol_version == 1
-        terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
-        # Should extract args up to and including 'kimi'
-        assert terminal_auth.get("args") == ["-m", "kimi", "login"]
-
-    @pytest.mark.asyncio
-    async def test_initialize_without_kimi_in_argv(self) -> None:
-        """Test initialize when 'kimi' is NOT in sys.argv - should not crash.
-
-        This was a bug where sys.argv.index('kimi') raised ValueError when
-        ACP was started in certain ways (e.g., via IDE integration).
-        """
-        server = ACPServer()
-        with patch("sys.argv", ["some_other_cmd", "acp"]):
-            # Should not raise ValueError
-            response = await server.initialize(protocol_version=1)
-
-        assert response.protocol_version == 1
-        assert len(response.auth_methods) == 1
-        # When 'kimi' is not found and no __main__.py, args should default to empty list
-        terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
-        assert terminal_auth.get("args") == ["login"]
-
-    @pytest.mark.asyncio
-    async def test_initialize_with_main_module(self) -> None:
-        """Test initialize when sys.argv[0] ends with __main__.py (module invocation).
-
-        When running via `python -m kimi_cli acp`, sys.argv[0] is the __main__.py
-        path and -m is consumed by the interpreter. We detect this and construct
-        a runnable command using sys.executable for accurate interpreter path.
-        """
-        server = ACPServer()
-        with patch("sys.argv", ["/path/to/kimi_cli/__main__.py", "acp"]):
-            response = await server.initialize(protocol_version=1)
-
-        assert response.protocol_version == 1
-        terminal_auth = response.auth_methods[0].field_meta.get("terminal-auth", {})
-        # command should be sys.executable and args should include "-m kimi_cli login"
-        assert terminal_auth.get("command") == sys.executable
-        assert terminal_auth.get("args") == ["-m", "kimi_cli", "login"]
+        assert terminal_auth.get("label") == "Kimi Code Login"
+        assert terminal_auth.get("type") == "terminal"
 
 
 @pytest.fixture
@@ -84,7 +42,9 @@ def server() -> ACPServer:
             field_meta={
                 "terminal-auth": {
                     "type": "terminal",
-                    "args": ["kimi", "login"],
+                    "command": "kimi",
+                    "args": ["login"],
+                    "label": "Kimi Code Login",
                     "env": {},
                 }
             },

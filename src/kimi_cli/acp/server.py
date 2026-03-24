@@ -57,33 +57,13 @@ class ACPServer:
         )
         self.client_capabilities = client_capabilities
 
-        # get command and args of current process for terminal-auth
-        # Handle empty sys.argv edge case
-        if not sys.argv:
-            command = "kimi"
-            args = []
-        else:
-            command = sys.argv[0]
-            if command.endswith(("kimi", "kimi-cli")):
-                # Direct kimi/kimi-cli invocation
-                args = []
-            elif "kimi_cli" in command and command.endswith("__main__.py"):
-                # Module-style invocation (e.g., python -m kimi_cli)
-                # sys.argv[0] is the __main__.py path, -m is consumed by interpreter
-                # Use sys.executable for accurate interpreter path
-                command = sys.executable
-                args = ["-m", "kimi_cli"]
-            else:
-                try:
-                    idx = sys.argv.index("kimi")
-                    args = sys.argv[1 : idx + 1]
-                except ValueError:
-                    # Unknown command, fallback to safe default for login
-                    command = "kimi"
-                    args = []
-
-        # Build terminal auth data for error response
-        terminal_args = args + ["login"]
+        # Directly use simple default for terminal-auth login
+        # Returns a simple default: "kimi login". This is sufficient because:
+        # 1. The AUTH_REQUIRED error only needs to tell clients how to login
+        # 2. Clients can handle how to run the command themselves
+        # 3. Complex argv parsing with hardcoded names is error-prone
+        command = "kimi"
+        terminal_args = ["login"]
 
         # Build and cache auth methods for reuse in AUTH_REQUIRED errors
         self._auth_methods = [
@@ -141,7 +121,9 @@ class ACPServer:
                             "name": m.name,
                             "description": m.description,
                             "type": terminal_auth.get("type", "terminal"),
+                            "command": terminal_auth.get("command", "kimi"),
                             "args": terminal_auth.get("args", []),
+                            "label": terminal_auth.get("label", ""),
                             "env": terminal_auth.get("env", {}),
                         }
                     )
