@@ -1,4 +1,5 @@
 import pytest
+
 from kimi_cli.hooks.config import HookDef
 from kimi_cli.hooks.engine import HookEngine
 

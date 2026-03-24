@@ -28,6 +28,7 @@ from kimi_cli.approval_runtime import (
     set_current_approval_source,
 )
 from kimi_cli.background import build_active_task_snapshot
+from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.llm import ModelCapability
 from kimi_cli.notifications import (
     NotificationView,
@@ -61,7 +62,6 @@ from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
-from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
@@ -200,7 +200,6 @@ class KimiSoul:
         return self._hook_engine
 
     def set_hook_engine(self, engine: HookEngine) -> None:
-        from kimi_cli.hooks.engine import HookEngine as _HE  # for type check
 
         self._hook_engine = engine
         if isinstance(self._agent.toolset, KimiToolset):
@@ -506,7 +505,8 @@ class KimiSoul:
                 await self._turn(user_message)
 
             # --- Stop hook (max 1 re-trigger to prevent infinite loop) ---
-            if not self._stop_hook_active and self._hook_engine and self._hook_engine.has_hooks_for("Stop"):
+            _he = self._hook_engine
+            if not self._stop_hook_active and _he and _he.has_hooks_for("Stop"):
                 from kimi_cli.hooks import events
                 stop_results = await self._hook_engine.trigger(
                     "Stop",

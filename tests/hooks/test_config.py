@@ -1,7 +1,10 @@
 import pytest
 import tomlkit
-from kimi_cli.hooks.config import HookDef, HookEventType, HOOK_EVENT_TYPES
+from pydantic import ValidationError
+
 from kimi_cli.config import Config
+from kimi_cli.hooks.config import HOOK_EVENT_TYPES, HookDef
+
 
 def test_parse_hook_def():
     h = HookDef(event="PreToolUse", command="echo ok", matcher="Shell")
@@ -13,7 +16,7 @@ def test_default_matcher_is_empty():
     assert h.matcher == ""
 
 def test_invalid_event():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         HookDef(event="InvalidEvent", command="echo bad")
 
 def test_all_event_types_defined():

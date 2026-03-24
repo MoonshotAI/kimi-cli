@@ -15,7 +15,6 @@ import subprocess
 from pathlib import Path
 from typing import cast
 
-import pytest
 from kaos.path import KaosPath
 
 
@@ -331,7 +330,6 @@ command = "echo stop_ok"
         resolved = _find_events(events, "HookResolved")
 
         triggered_names = [t.get("event") for t in triggered]
-        resolved_names = [r.get("event") for r in resolved]
 
         # All 4 hook events should fire
         assert "UserPromptSubmit" in triggered_names, f"Missing UserPromptSubmit: {triggered_names}"

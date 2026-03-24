@@ -141,11 +141,19 @@ class HookEngine:
         for event, hooks in self._by_event.items():
             entries = result.setdefault(event, [])
             for h in hooks:
-                entries.append({"matcher": h.matcher or "(all)", "source": "server", "command": h.command})
+                entries.append({
+                    "matcher": h.matcher or "(all)",
+                    "source": "server",
+                    "command": h.command,
+                })
         for event, subs in self._wire_by_event.items():
             entries = result.setdefault(event, [])
             for s in subs:
-                entries.append({"matcher": s.matcher or "(all)", "source": "wire", "command": "(client-side)"})
+                entries.append({
+                    "matcher": s.matcher or "(all)",
+                    "source": "wire",
+                    "command": "(client-side)",
+                })
         return result
 
     def _match_regex(self, pattern: str, value: str) -> bool:
@@ -229,17 +237,23 @@ class HookEngine:
         return results
 
     async def _dispatch_wire_hook(
-        self, subscription_id: str, event: str, target: str, input_data: dict[str, Any], *, timeout: int = 30
+        self, subscription_id: str, event: str, target: str,
+        input_data: dict[str, Any], *, timeout: int = 30
     ) -> HookResult:
         """Send a hook request to the wire client and wait for response."""
         if not self._on_wire_hook:
             return HookResult(action="allow")
 
-        handle = WireHookHandle(subscription_id=subscription_id, event=event, target=target, input_data=input_data)
+        handle = WireHookHandle(
+            subscription_id=subscription_id,
+            event=event,
+            target=target,
+            input_data=input_data,
+        )
         try:
             await self._on_wire_hook(handle)
             return await asyncio.wait_for(handle.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Wire hook timed out: {} {}", event, target)
             return HookResult(action="allow", timed_out=True)
         except Exception as e:

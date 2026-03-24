@@ -105,7 +105,8 @@ class HookTriggered(BaseModel):
     event: str
     """The hook event type, e.g. 'PreToolUse', 'Stop'."""
     target: str = ""
-    """What the hooks are targeting: tool name for tool hooks, agent name for subagent hooks, etc."""
+    """What the hooks are targeting: tool name for tool hooks,
+    agent name for subagent hooks, etc."""
     hook_count: int = 1
     """Number of matched hooks running in parallel."""
 
@@ -534,9 +535,13 @@ class HookRequest(BaseModel):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._future: asyncio.Future[tuple[Action, str]] | None = None
+        self._future: asyncio.Future[
+            tuple[HookRequest.Action, str]
+        ] | None = None
 
-    def _get_future(self) -> asyncio.Future[tuple[Action, str]]:
+    def _get_future(self) -> asyncio.Future[
+        tuple[HookRequest.Action, str]
+    ]:
         if self._future is None:
             self._future = asyncio.get_event_loop().create_future()
         return self._future

@@ -40,7 +40,7 @@ async def run_hook(
                 proc.communicate(input=json.dumps(input_data).encode()),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             logger.warning("Hook timed out after {}s: {}", timeout, command)
@@ -55,7 +55,13 @@ async def run_hook(
 
     # Exit 2 = block
     if exit_code == 2:
-        return HookResult(action="block", reason=stderr.strip(), stdout=stdout, stderr=stderr, exit_code=2)
+        return HookResult(
+            action="block",
+            reason=stderr.strip(),
+            stdout=stdout,
+            stderr=stderr,
+            exit_code=2,
+        )
 
     # Exit 0 + JSON stdout = structured decision
     if exit_code == 0 and stdout.strip():

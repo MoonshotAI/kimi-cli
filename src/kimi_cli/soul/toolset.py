@@ -8,6 +8,7 @@ import json
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from kosong.tooling import (
@@ -27,11 +28,9 @@ from kosong.tooling.error import (
 from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
 
-from pathlib import Path
-
 from kimi_cli import logger
-from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     ContentPart,
@@ -193,8 +192,14 @@ class KimiToolset:
                                 ),
                             )
                         )
-                        _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-                    return ToolResult(tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e)))
+                        _bg.add_done_callback(
+                            lambda t: t.exception()
+                            if not t.cancelled() else None
+                        )
+                    return ToolResult(
+                        tool_call_id=tool_call.id,
+                        return_value=ToolRuntimeError(str(e)),
+                    )
 
                 # --- PostToolUse (fire-and-forget) ---
                 if self._hook_engine and self._hook_engine.has_hooks_for("PostToolUse"):

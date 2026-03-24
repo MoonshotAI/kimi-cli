@@ -646,7 +646,6 @@ def hooks(app: Shell, args: str):
         )
         return
 
-    from rich.text import Text
 
     console.print()
     console.print("[bold]Configured Hooks:[/bold]")

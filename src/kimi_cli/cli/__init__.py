@@ -571,7 +571,8 @@ def kimi(
 
             # --- SessionStart hook ---
             _session_source = "resume" if continue_ else "startup"
-            if instance.soul.hook_engine and instance.soul.hook_engine.has_hooks_for("SessionStart"):
+            _he = instance.soul.hook_engine
+            if _he and _he.has_hooks_for("SessionStart"):
                 from kimi_cli.hooks import events
 
                 await instance.soul.hook_engine.trigger(
@@ -623,13 +624,16 @@ def kimi(
                 raise
             finally:
                 # --- SessionEnd hook ---
-                if instance.soul.hook_engine and instance.soul.hook_engine.has_hooks_for("SessionEnd"):
-                    from kimi_cli.hooks import events
+                _he2 = instance.soul.hook_engine
+                if _he2 and _he2.has_hooks_for("SessionEnd"):
                     import asyncio as _asyncio
+                    import contextlib
 
-                    try:
+                    from kimi_cli.hooks import events
+
+                    with contextlib.suppress(Exception):
                         await _asyncio.wait_for(
-                            instance.soul.hook_engine.trigger(
+                            _he2.trigger(
                                 "SessionEnd",
                                 input_data=events.session_end(
                                     session_id=session.id,
@@ -639,8 +643,6 @@ def kimi(
                             ),
                             timeout=5,
                         )
-                    except Exception:
-                        pass  # Don't block exit on hook failure
 
                 if not preserve_background_tasks:
                     instance.shutdown_background_tasks()
