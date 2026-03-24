@@ -43,6 +43,21 @@ def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPro
     assert builtin_args.KIMI_NOW in prompt
 
 
+def test_load_system_prompt_include(builtin_args: BuiltinSystemPromptArgs):
+    """System prompt should support {% include "file.md" %} directives."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        included = tmpdir / "extra.md"
+        included.write_text("Included content here")
+        system_md = tmpdir / "system.md"
+        system_md.write_text('Main prompt. {% include "extra.md" %} End.')
+        prompt = _load_system_prompt(system_md, {}, builtin_args)
+
+    assert "Main prompt." in prompt
+    assert "Included content here" in prompt
+    assert "End." in prompt
+
+
 def test_load_system_prompt_missing_arg_raises(builtin_args: BuiltinSystemPromptArgs):
     """Missing template args should raise a dedicated error."""
     with tempfile.TemporaryDirectory() as tmpdir:
