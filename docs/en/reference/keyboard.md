@@ -13,7 +13,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | `Alt-Enter` | Insert newline (same as `Ctrl-J`) |
 | `Ctrl-V` | Paste (supports images and video files) |
 | `Ctrl-E` | Expand full approval request content |
-| `1`–`3` | Quick select approval option |
+| `1`–`4` | Quick select approval option (`4` for decline with feedback) |
 | `1`–`5` | Select question option by number |
 | `Ctrl-D` | Exit Kimi Code CLI |
 | `Ctrl-C` | Interrupt current operation |
@@ -92,7 +92,7 @@ Useful for viewing longer shell commands or file diff content.
 
 ### Number key quick selection
 
-In the approval panel, press `1`–`3` to directly select and submit the corresponding approval option without navigating with arrow keys first.
+In the approval panel, press `1`–`3` to directly select and submit the corresponding approval option without navigating with arrow keys first. Press `4` to enter feedback mode, where you can type a reason for declining and press Enter to submit; the feedback text is passed to the agent to guide its next attempt.
 
 ## Structured question operations
 

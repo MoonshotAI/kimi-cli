@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -21,6 +21,12 @@ from kosong.chat_provider import (
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from kimi_cli.approval_runtime import (
+    ApprovalSource,
+    get_current_approval_source_or_none,
+    reset_current_approval_source,
+    set_current_approval_source,
+)
 from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.llm import ModelCapability
 from kimi_cli.notifications import (
@@ -52,6 +58,7 @@ from kimi_cli.soul.dynamic_injection import (
     normalize_history,
 )
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
+from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -61,8 +68,6 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
-    ApprovalRequest,
-    ApprovalResponse,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
@@ -152,6 +157,7 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
+            YoloModeInjectionProvider(),
         ]
         if self._runtime.role == "root":
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
@@ -175,6 +181,11 @@ class KimiSoul:
         if self._runtime.llm is None:
             return None
         return self._runtime.llm.capabilities
+
+    @property
+    def is_yolo(self) -> bool:
+        """Whether yolo (auto-approve / non-interactive) mode is enabled."""
+        return self._approval.is_yolo()
 
     @property
     def plan_mode(self) -> bool:
@@ -229,14 +240,21 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker)
+            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker)
+            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+
+        # AskUserQuestion — bind yolo checker for auto-dismiss
+        from kimi_cli.tools.ask_user import AskUserQuestion
+
+        ask_tool = self._agent.toolset.find("AskUserQuestion")
+        if isinstance(ask_tool, AskUserQuestion):
+            ask_tool.bind_approval(self._approval.is_yolo)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -419,32 +437,41 @@ class KimiSoul:
         return self._slash_commands
 
     async def run(self, user_input: str | list[ContentPart]):
-        # Refresh OAuth tokens on each turn to avoid idle-time expirations.
-        await self._runtime.oauth.ensure_fresh(self._runtime)
-
-        wire_send(TurnBegin(user_input=user_input))
-        user_message = Message(role="user", content=user_input)
-        text_input = user_message.extract_text(" ").strip()
-
-        if command_call := parse_slash_command_call(text_input):
-            command = self._find_slash_command(command_call.name)
-            if command is None:
-                # this should not happen actually, the shell should have filtered it out
-                wire_send(TextPart(text=f'Unknown slash command "/{command_call.name}".'))
-            else:
-                ret = command.func(self, command_call.args)
-                if isinstance(ret, Awaitable):
-                    await ret
-        elif self._loop_control.max_ralph_iterations != 0:
-            runner = FlowRunner.ralph_loop(
-                user_message,
-                self._loop_control.max_ralph_iterations,
+        approval_source_token = None
+        if get_current_approval_source_or_none() is None:
+            approval_source_token = set_current_approval_source(
+                ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
             )
-            await runner.run(self, "")
-        else:
-            await self._turn(user_message)
+        try:
+            # Refresh OAuth tokens on each turn to avoid idle-time expirations.
+            await self._runtime.oauth.ensure_fresh(self._runtime)
 
-        wire_send(TurnEnd())
+            wire_send(TurnBegin(user_input=user_input))
+            user_message = Message(role="user", content=user_input)
+            text_input = user_message.extract_text(" ").strip()
+
+            if command_call := parse_slash_command_call(text_input):
+                command = self._find_slash_command(command_call.name)
+                if command is None:
+                    # this should not happen actually, the shell should have filtered it out
+                    wire_send(TextPart(text=f'Unknown slash command "/{command_call.name}".'))
+                else:
+                    ret = command.func(self, command_call.args)
+                    if isinstance(ret, Awaitable):
+                        await ret
+            elif self._loop_control.max_ralph_iterations != 0:
+                runner = FlowRunner.ralph_loop(
+                    user_message,
+                    self._loop_control.max_ralph_iterations,
+                )
+                await runner.run(self, "")
+            else:
+                await self._turn(user_message)
+
+            wire_send(TurnEnd())
+        finally:
+            if approval_source_token is not None:
+                reset_current_approval_source(approval_source_token)
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -559,27 +586,6 @@ class KimiSoul:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
-        async def _pipe_approval_to_wire():
-            while True:
-                request = await self._approval.fetch_request()
-                # Here we decouple the wire approval request and the soul approval request.
-                wire_request = ApprovalRequest(
-                    id=request.id,
-                    action=request.action,
-                    description=request.description,
-                    sender=request.sender,
-                    tool_call_id=request.tool_call_id,
-                    display=request.display,
-                )
-                wire_send(wire_request)
-                # We wait for the request to be resolved over the wire, which means that,
-                # for each soul, we will have only one approval request waiting on the wire
-                # at a time. However, be aware that subagents (which have their own souls) may
-                # also send approval requests to the root wire.
-                resp = await wire_request.wait()
-                self._approval.resolve_request(request.id, resp)
-                wire_send(ApprovalResponse(request_id=request.id, response=resp))
-
         step_no = 0
         while True:
             step_no += 1
@@ -587,7 +593,6 @@ class KimiSoul:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
             wire_send(StepBegin(n=step_no))
-            approval_task = asyncio.create_task(_pipe_approval_to_wire())
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
             try:
@@ -612,13 +617,6 @@ class KimiSoul:
                 wire_send(StepInterrupted())
                 # break the agent loop
                 raise
-            finally:
-                approval_task.cancel()  # stop piping approval requests to the wire
-                with suppress(asyncio.CancelledError):
-                    try:
-                        await approval_task
-                    except Exception:
-                        logger.exception("Approval piping task failed")
 
             if step_outcome is not None:
                 has_steers = await self._consume_pending_steers()
@@ -727,8 +725,19 @@ class KimiSoul:
         # shield the context manipulation from interruption
         await asyncio.shield(self._grow_context(result, results))
 
-        rejected = any(isinstance(result.return_value, ToolRejectedError) for result in results)
-        if rejected:
+        rejected_errors = [
+            result.return_value
+            for result in results
+            if isinstance(result.return_value, ToolRejectedError)
+        ]
+        if (
+            rejected_errors
+            and not any(e.has_feedback for e in rejected_errors)
+            and self._runtime.role != "subagent"
+        ):
+            # Pure rejection (no user feedback) — stop the turn.
+            # Subagents skip this so the LLM can see the rejection and try
+            # an alternative approach instead of terminating immediately.
             _ = self._denwa_renji.fetch_pending_dmail()
             return StepOutcome(stop_reason="tool_rejected", assistant_message=result.message)
 

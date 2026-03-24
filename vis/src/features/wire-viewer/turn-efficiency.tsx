@@ -65,6 +65,18 @@ function computeTurnMetrics(events: WireEvent[]): TurnMetrics[] {
         turnOutputTokens += usage.output ?? 0;
       }
     }
+    // Also count tokens from SubagentEvent-wrapped StatusUpdate
+    if (event.type === "SubagentEvent" && inTurn) {
+      const inner = event.payload.event as Record<string, unknown> | undefined;
+      if (inner?.type === "StatusUpdate") {
+        const innerPayload = inner.payload as Record<string, unknown> | undefined;
+        const usage = innerPayload?.token_usage as Record<string, number> | undefined;
+        if (usage) {
+          turnInputTokens += (usage.input_other ?? 0) + (usage.input_cache_read ?? 0) + (usage.input_cache_creation ?? 0);
+          turnOutputTokens += usage.output ?? 0;
+        }
+      }
+    }
 
     if (event.type === "TurnBegin") {
       turnNumber++;

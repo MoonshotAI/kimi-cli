@@ -22,7 +22,7 @@ from kosong.tooling import (
     UnknownDisplayBlock,
 )
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from kimi_cli.tools.display import (
     BackgroundTaskDisplayBlock,
@@ -171,11 +171,25 @@ class SubagentEvent(BaseModel):
     An event from a subagent.
     """
 
-    task_tool_call_id: str
-    """The ID of the task tool call associated with this subagent."""
+    parent_tool_call_id: str | None = None
+    """The ID of the parent Agent tool call associated with this subagent."""
+    agent_id: str | None = None
+    """The subagent instance ID."""
+    subagent_type: str | None = None
+    """The built-in subagent type used by this instance."""
     event: Event
     """The event from the subagent."""
     # TODO: maybe restrict the event types? to exclude approval request, etc.
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compat_legacy_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(cast(dict[str, Any], value))
+        if "parent_tool_call_id" not in data and "task_tool_call_id" in data:
+            data["parent_tool_call_id"] = data["task_tool_call_id"]
+        return data
 
     @field_serializer("event", when_used="json")
     def _serialize_event(self, event: Event) -> dict[str, Any]:
@@ -214,6 +228,8 @@ class ApprovalResponse(BaseModel):
     """The ID of the resolved approval request."""
     response: Kind
     """The response to the approval request."""
+    feedback: str = ""
+    """Optional user feedback when rejecting (e.g. instructions for the model)."""
 
 
 class ApprovalRequest(BaseModel):
@@ -226,6 +242,11 @@ class ApprovalRequest(BaseModel):
     sender: str
     action: str
     description: str
+    source_kind: Literal["foreground_turn", "background_agent"] | None = None
+    source_id: str | None = None
+    agent_id: str | None = None
+    subagent_type: str | None = None
+    source_description: str | None = None
     display: list[DisplayBlock] = Field(default_factory=list[DisplayBlock])
     """Defaults to an empty list for backwards-compatible wire.jsonl loading."""
 
@@ -236,6 +257,7 @@ class ApprovalRequest(BaseModel):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._future: asyncio.Future[ApprovalResponse.Kind] | None = None
+        self._feedback: str = ""
 
     def _get_future(self) -> asyncio.Future[ApprovalResponse.Kind]:
         if self._future is None:
@@ -251,14 +273,20 @@ class ApprovalRequest(BaseModel):
         """
         return await self._get_future()
 
-    def resolve(self, response: ApprovalResponse.Kind) -> None:
+    def resolve(self, response: ApprovalResponse.Kind, feedback: str = "") -> None:
         """
         Resolve the approval request with the given response.
         This will cause the `wait()` method to return the response.
         """
+        self._feedback = feedback
         future = self._get_future()
         if not future.done():
             future.set_result(response)
+
+    @property
+    def feedback(self) -> str:
+        """User feedback text provided with a rejection, if any."""
+        return self._feedback
 
     @property
     def resolved(self) -> bool:

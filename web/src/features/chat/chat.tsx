@@ -174,7 +174,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   const isUploading = isUploadingFiles;
 
   const handleApprovalAction = useCallback(
-    async (approval: ToolApproval, decision: ApprovalResponseDecision) => {
+    async (approval: ToolApproval, decision: ApprovalResponseDecision, reason?: string) => {
       if (!(approval?.id && onApprovalResponse)) {
         return;
       }
@@ -185,7 +185,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
       }));
 
       try {
-        await onApprovalResponse(approval.id, decision);
+        await onApprovalResponse(approval.id, decision, reason);
       } catch (error) {
         console.error("[ChatWorkspace] Failed to respond to approval", error);
         toast.error("Approval action failed", {
@@ -205,13 +205,13 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   // Wrapper for ApprovalDialog that routes through handleApprovalAction
   // so pendingApprovalMap is properly managed (prevents duplicate requests)
   const handleDialogApprovalResponse = useCallback(
-    async (requestId: string, decision: ApprovalResponseDecision) => {
+    async (requestId: string, decision: ApprovalResponseDecision, reason?: string) => {
       for (const message of messages) {
         if (
           message.variant === "tool" &&
           message.toolCall?.approval?.id === requestId
         ) {
-          await handleApprovalAction(message.toolCall.approval, decision);
+          await handleApprovalAction(message.toolCall.approval, decision, reason);
           return;
         }
       }

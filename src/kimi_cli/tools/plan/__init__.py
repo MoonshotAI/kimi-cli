@@ -82,17 +82,20 @@ class ExitPlanMode(CallableTool2[Params]):
         self._toggle_callback: Callable[[], Awaitable[bool]] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
         self._plan_mode_checker: Callable[[], bool] | None = None
+        self._is_yolo: Callable[[], bool] | None = None
 
     def bind(
         self,
         toggle_callback: Callable[[], Awaitable[bool]],
         plan_file_path_getter: Callable[[], Path | None],
         plan_mode_checker: Callable[[], bool],
+        is_yolo: Callable[[], bool] | None = None,
     ) -> None:
         """Late-bind soul callbacks after KimiSoul is constructed."""
         self._toggle_callback = toggle_callback
         self._plan_file_path_getter = plan_file_path_getter
         self._plan_mode_checker = plan_mode_checker
+        self._is_yolo = is_yolo
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -120,6 +123,21 @@ class ExitPlanMode(CallableTool2[Params]):
                 message=f"No plan file found. Write your plan to {plan_path} first, "
                 "then call ExitPlanMode.",
                 brief="No plan file",
+            )
+
+        # In yolo mode, auto-approve the plan
+        if self._is_yolo and self._is_yolo():
+            await self._toggle_callback()
+            return ToolReturnValue(
+                is_error=False,
+                output=(
+                    f"Plan approved (auto-approved in non-interactive mode). "
+                    f"Plan mode deactivated. All tools are now available.\n"
+                    f"Plan saved to: {plan_path}\n\n"
+                    f"## Approved Plan:\n{plan_content}"
+                ),
+                message="Plan approved (auto)",
+                display=[BriefDisplayBlock(text="Plan approved (auto)")],
             )
 
         # Present plan to user via QuestionRequest

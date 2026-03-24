@@ -6,9 +6,8 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 
+from kimi_cli.tools.agent import Agent as AgentTool
 from kimi_cli.tools.background import TaskList, TaskOutput, TaskStop
-from kimi_cli.tools.multiagent.create import CreateSubagent
-from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
@@ -16,62 +15,43 @@ from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.multiagent.task import Task
+from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
 
 
-def test_task_description(task_tool: Task):
-    """Test the description of Task tool."""
-    assert task_tool.base.description == snapshot(
+def test_agent_description(agent_tool: AgentTool):
+    """Test the description of Agent tool."""
+    assert agent_tool.base.description == snapshot(
         """\
-Spawn a subagent to perform a specific task. Subagent will be spawned with a fresh context without any history of yours.
+Start a subagent instance to work on a focused task.
 
-**Context Isolation**
+The Agent tool can either create a new subagent instance or resume an existing one by `agent_id`.
+Each instance keeps its own context history under the current session, so repeated use of the same
+instance can preserve previous findings and work.
 
-Context isolation is one of the key benefits of using subagents. By delegating tasks to subagents, you can keep your main context clean and focused on the main goal requested by the user.
+**Available Built-in Agent Types**
 
-Here are some scenarios you may want this tool for context isolation:
+- `mocker`: The mock agent for testing purposes. (Tools: *, Model: inherit, Background: yes).
 
-- You wrote some code and it did not work as expected. In this case you can spawn a subagent to fix the code, asking the subagent to return how it is fixed. This can potentially benefit because the detailed process of fixing the code may not be relevant to your main goal, and may clutter your context.
-- When you need some latest knowledge of a specific library, framework or technology to proceed with your task, you can spawn a subagent to search on the internet for the needed information and return to you the gathered relevant information, for example code examples, API references, etc. This can avoid ton of irrelevant search results in your own context.
+**Usage**
 
-DO NOT directly forward the user prompt to Task tool. DO NOT simply spawn Task tool for each todo item. This will cause the user confused because the user cannot see what the subagent do. Only you can see the response from the subagent. So, only spawn subagents for very specific and narrow tasks like fixing a compilation error, or searching for a specific solution.
+- Always provide a short `description` (3-5 words).
+- Use `subagent_type` to select a built-in agent type. If omitted, `coder` is used.
+- Use `model` when you need to override the built-in type's default model or the parent agent's current model.
+- Use `resume` when you want to continue an existing instance instead of starting a new one.
+- If an existing subagent already has relevant context or the task is a continuation of its prior work, prefer `resume` over creating a new instance.
+- Default to foreground execution. Use `run_in_background=true` only when the task can continue independently, you do not need the result immediately, and there is a clear benefit to returning control before it finishes.
+- Be explicit about whether the subagent should write code or only do research.
+- The subagent result is only visible to you. If the user should see it, summarize it yourself.
 
-**Parallel Multi-Tasking**
+**When Not To Use Agent**
 
-Parallel multi-tasking is another key benefit of this tool. When the user request involves multiple subtasks that are independent of each other, you can use Task tool multiple times in a single response to let subagents work in parallel for you.
-
-Examples:
-
-- User requests to code, refactor or fix multiple modules/files in a project, and they can be tested independently. In this case you can spawn multiple subagents each working on a different module/file.
-- When you need to analyze a huge codebase (> hundreds of thousands of lines), you can spawn multiple subagents each exploring on a different part of the codebase and gather the summarized results.
-- When you need to search the web for multiple queries, you can spawn multiple subagents for better efficiency.
-
-**Available Subagents:**
-
-- `mocker`: The mock agent for testing purposes.
-"""
-    )
-
-
-def test_create_subagent_description(create_subagent_tool: CreateSubagent):
-    """Test the description of CreateSubagent tool."""
-    assert create_subagent_tool.base.description == snapshot(
-        """\
-Create a custom subagent with specific system prompt and name for reuse.
-
-Usage:
-- Define specialized agents with custom roles and boundaries
-- Created agents can be referenced by name in the Task tool
-- Use this when you need a specific agent type not covered by predefined agents
-- The created agent configuration will be saved and can be used immediately
-
-Example workflow:
-1. Use CreateSubagent to define a specialized agent (e.g., 'code_reviewer')
-2. Use the Task tool with agent='code_reviewer' to launch the created agent
+- Reading a known file path
+- Searching a small number of known files
+- Tasks that can be completed in one or two direct tool calls
 """
     )
 
@@ -141,7 +121,7 @@ Execute a bash (`/bin/bash`) command. Use this tool to explore the filesystem, e
 **Output:**
 The stdout and stderr will be combined and returned as a string. The output may be truncated if it is too long. If the command failed, the exit code will be provided in a system tag.
 
-If `run_in_background=true`, the command will be started as a background task and this tool will return a task ID instead of waiting for command completion. When doing that, you must provide a short `description`. You will be automatically notified when the task completes. Use `TaskOutput` if you need progress or want to wait for completion, and use `TaskStop` only if the task must be cancelled. For human users in the interactive shell, background tasks are managed through `/task` only; do not suggest `/task list`, `/task output`, `/task stop`, `/tasks`, or any other invented shell subcommands.
+If `run_in_background=true`, the command will be started as a background task and this tool will return a task ID instead of waiting for command completion. When doing that, you must provide a short `description`. You will be automatically notified when the task completes. Use `TaskOutput` for a non-blocking status/output snapshot, and only set `block=true` when you explicitly want to wait for completion. Use `TaskStop` only if the task must be cancelled. For human users in the interactive shell, background tasks are managed through `/task` only; do not suggest `/task list`, `/task output`, `/task stop`, `/tasks`, or any other invented shell subcommands.
 
 **Guidelines for safety and security:**
 - Each shell tool call will be executed in a fresh shell environment. The shell variables, current working directory changes, and the shell history is not preserved between calls.
@@ -159,7 +139,7 @@ If `run_in_background=true`, the command will be started as a background task an
 - Use `if`, `case`, `for`, `while` control flows to execute complex logic in a single call.
 - Verify directory structure before create/edit/delete files or directories to reduce the risk of failure.
 - Prefer `run_in_background=true` for long-running builds, tests, watchers, or servers when you need the conversation to continue before the command finishes.
-- After starting a background task, do not guess its outcome. Rely on the automatic completion notification whenever possible. Use `TaskOutput` only when you need to inspect progress or block until completion.
+- After starting a background task, do not guess its outcome. Rely on the automatic completion notification whenever possible. Use `TaskOutput` for non-blocking progress snapshots by default, and set `block=true` only when you intentionally want to wait.
 - If you need to tell a human shell user how to manage background tasks, only mention `/task`. Do not invent `/task list`, `/task output`, `/task stop`, or `/tasks`.
 
 **Commands available:**
@@ -184,8 +164,8 @@ Use this after `Shell(run_in_background=true)` when you need to inspect progress
 
 Guidelines:
 - Prefer relying on automatic completion notifications. Use this tool only when you need task output before the automatic notification arrives.
-- Use `block=true` to wait for completion or timeout.
-- Use `block=false` for a non-blocking status and output check.
+- By default this tool is non-blocking and returns a current status/output snapshot.
+- Use `block=true` only when you intentionally want to wait for completion or timeout.
 - This tool returns structured task metadata, a fixed-size output preview, and an `output_path` for the full log.
 - When the preview is truncated, use `ReadFile` with the returned `output_path` to inspect the full log in pages.
 - This tool works with the generic background task system and should remain the primary read path for future task types, not just bash.

@@ -94,9 +94,9 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
       result = result.filter((s) => s.imported);
     }
 
-    // Apply search filter
-    if (search) {
-      const q = search.toLowerCase();
+    // Apply search filter (trim handles pasted IDs with whitespace)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
       result = result.filter(
         (s) =>
           s.session_id.toLowerCase().includes(q) ||

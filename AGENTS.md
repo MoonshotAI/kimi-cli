@@ -35,22 +35,26 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
   model/provider (`src/kimi_cli/llm.py`), builds a `Runtime` (`src/kimi_cli/soul/agent.py`),
   loads an agent spec, restores `Context`, then constructs `KimiSoul`.
 - **Agent specs**: YAML under `src/kimi_cli/agents/` loaded by `src/kimi_cli/agentspec.py`.
-  Specs can `extend` base agents, select tools by import path, and define fixed subagents.
-  System prompts live alongside specs; builtin args include `KIMI_NOW`, `KIMI_WORK_DIR`,
-  `KIMI_WORK_DIR_LS`, `KIMI_AGENTS_MD`, `KIMI_SKILLS` (this file is injected via
-  `KIMI_AGENTS_MD`).
+  Specs can `extend` base agents, select tools by import path, and register builtin subagent
+  types via the `subagents` field. Subagent instances are persisted separately under the session
+  directory and can be resumed by `agent_id`. System prompts live alongside specs; builtin args
+  include `KIMI_NOW`, `KIMI_WORK_DIR`, `KIMI_WORK_DIR_LS`, `KIMI_AGENTS_MD`, `KIMI_SKILLS`
+  (this file is injected via `KIMI_AGENTS_MD`).
 - **Tooling**: `src/kimi_cli/soul/toolset.py` loads tools by import path, injects dependencies,
-  and runs tool calls. Built-in tools live in `src/kimi_cli/tools/` (shell, file, web, todo,
-  multiagent, dmail, think). MCP tools are loaded via `fastmcp`; CLI management is in
-  `src/kimi_cli/mcp.py` and stored in the share dir.
-- **Subagents**: `LaborMarket` in `src/kimi_cli/soul/agent.py` manages fixed and dynamic
-  subagents. The Task tool (`src/kimi_cli/tools/multiagent/`) spawns them.
+  and runs tool calls. Built-in tools live in `src/kimi_cli/tools/` (agent, shell, file, web,
+  todo, background, dmail, think, plan). MCP tools are loaded via `fastmcp`; CLI management is
+  in `src/kimi_cli/mcp.py` and stored in the share dir.
+- **Subagents**: `LaborMarket` in `src/kimi_cli/soul/agent.py` registers builtin subagent types.
+  The `Agent` tool (`src/kimi_cli/tools/agent/`) creates or resumes subagent instances, while
+  `SubagentStore` persists instance metadata, prompts, wire logs, and context under
+  `session/subagents/<agent_id>/`.
 - **Core loop**: `src/kimi_cli/soul/kimisoul.py` is the main agent loop. It accepts user input,
   handles slash commands (`src/kimi_cli/soul/slash.py`), appends to `Context`
   (`src/kimi_cli/soul/context.py`), calls the LLM (kosong), runs tools, and performs compaction
   (`src/kimi_cli/soul/compaction.py`) when needed.
-- **Approvals**: `src/kimi_cli/soul/approval.py` mediates user approvals for tool actions; the
-  soul forwards approval requests over `Wire` for UI handling.
+- **Approvals**: `src/kimi_cli/soul/approval.py` is the tool-facing facade. `ApprovalRuntime`
+  in `src/kimi_cli/approval_runtime/` is the session-level source of truth for pending approvals,
+  and approval requests are projected onto the root wire stream for Shell/Web style UIs.
 - **UI/Wire**: `src/kimi_cli/soul/run_soul` connects `KimiSoul` to a `Wire`
   (`src/kimi_cli/wire/`) so UI loops can stream events. UIs live in `src/kimi_cli/ui/`
   (shell/print/acp/wire).
@@ -66,7 +70,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - `src/kimi_cli/app.py`: `KimiCLI.create(...)` and `KimiCLI.run(...)` are the main programmatic
   entrypoints; this is what UI layers use.
 - `src/kimi_cli/soul/agent.py`: `Runtime` (config, session, builtins), `Agent` (system prompt +
-  toolset), and `LaborMarket` (subagent registry).
+  toolset), and `LaborMarket` (builtin subagent type registry).
 - `src/kimi_cli/soul/kimisoul.py`: `KimiSoul.run(...)` is the loop boundary; it emits Wire
   messages and executes tools via `KimiToolset`.
 - `src/kimi_cli/soul/context.py`: conversation history + checkpoints; used by DMail for

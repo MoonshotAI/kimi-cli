@@ -44,7 +44,7 @@ In addition to conversation history, Kimi Code CLI also automatically saves and 
 
 - **Approval decisions**: YOLO mode on/off status, operation types approved via "allow for this session"
 - **Plan mode**: Plan mode on/off status
-- **Dynamic subagents**: Subagent definitions created via the `CreateSubagent` tool during the session
+- **Subagent instances**: Subagent instance state and context history created via the `Agent` tool during the session
 - **Additional directories**: Workspace directories added via `--add-dir` or `/add-dir`
 
 This means you don't need to reconfigure these settings each time you resume a session. For example, if you approved auto-execution of certain shell commands in your previous session, those approvals remain in effect after resuming.

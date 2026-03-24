@@ -152,17 +152,19 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
+    } == snapshot({"context_before": 6, "context_after": 11, "wire_before": 6, "wire_after": 11})
     assert _read_roles(context_file) == snapshot(
         [
             "_system_prompt",
             "_checkpoint",
             "user",
             "_checkpoint",
+            "user",
             "assistant",
             "_checkpoint",
             "user",
             "_checkpoint",
+            "user",
             "assistant",
         ]
     )
@@ -243,7 +245,7 @@ def test_clear_context_rotates(tmp_path) -> None:
     )
     assert rotated == snapshot(["context_1.jsonl"])
     assert _read_roles(session_dir / rotated[0]) == snapshot(
-        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "assistant"]
+        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "user", "assistant"]
     )
 
 
@@ -300,8 +302,8 @@ def test_manual_compact(tmp_path) -> None:
                     "method": "event",
                     "type": "StatusUpdate",
                     "payload": {
-                        "context_usage": 1e-05,
-                        "context_tokens": 1,
+                        "context_usage": 0.00118,
+                        "context_tokens": 118,
                         "max_context_tokens": 100000,
                         "token_usage": None,
                         "message_id": None,
@@ -425,8 +427,8 @@ def test_replay_streams_wire_history(tmp_path) -> None:
         assert resp.get("result") == snapshot(
             {
                 "status": "finished",
-                "events": 11,
-                "requests": 1,
+                "events": 10,
+                "requests": 0,
             }
         )
         assert summarize_messages(messages) == snapshot(
@@ -464,23 +466,6 @@ def test_replay_streams_wire_history(tmp_path) -> None:
                         "plan_mode": False,
                         "mcp_status": None,
                     },
-                },
-                {
-                    "method": "request",
-                    "type": "ApprovalRequest",
-                    "payload": {
-                        "id": "<uuid>",
-                        "tool_call_id": "tc-1",
-                        "sender": "Shell",
-                        "action": "run command",
-                        "description": "Run command `echo ok`",
-                        "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
-                    },
-                },
-                {
-                    "method": "event",
-                    "type": "ApprovalResponse",
-                    "payload": {"request_id": "<uuid>", "response": "approve"},
                 },
                 {
                     "method": "event",

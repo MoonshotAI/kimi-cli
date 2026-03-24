@@ -16,12 +16,20 @@ from pydantic import BaseModel
 from kimi_cli.llm import LLM, ModelCapability
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import TurnBegin
+
+
+@pytest.fixture
+def approval() -> Approval:
+    """Override global yolo=True fixture; ralph loop tests don't need yolo."""
+    return Approval(yolo=False)
+
 
 T = TypeVar("T")
 RALPH_IMAGE_URL = "https://example.com/test.png"
@@ -345,7 +353,8 @@ async def test_ralph_loop_stops_on_tool_rejected(runtime: Runtime, tmp_path: Pat
                         TextPart(
                             text=(
                                 "<system>ERROR: The tool call is rejected by the user. "
-                                "Please follow the new instructions from the user.</system>"
+                                "Stop what you are doing and wait for the user to tell you "
+                                "how to proceed.</system>"
                             )
                         )
                     ],

@@ -13,7 +13,6 @@ from inline_snapshot import snapshot
 from kimi_cli.config import Config
 from kimi_cli.exception import InvalidToolError, SystemPromptTemplateError
 from kimi_cli.session import Session
-from kimi_cli.session_state import DynamicSubagentSpec
 from kimi_cli.soul.agent import BuiltinSystemPromptArgs, Runtime, _load_system_prompt, load_agent
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
@@ -42,6 +41,21 @@ def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPro
     assert "$100" in prompt
     assert "$PATH" in prompt
     assert builtin_args.KIMI_NOW in prompt
+
+
+def test_load_system_prompt_include(builtin_args: BuiltinSystemPromptArgs):
+    """System prompt should support {% include "file.md" %} directives."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        included = tmpdir / "extra.md"
+        included.write_text("Included content here")
+        system_md = tmpdir / "system.md"
+        system_md.write_text('Main prompt. {% include "extra.md" %} End.')
+        prompt = _load_system_prompt(system_md, {}, builtin_args)
+
+    assert "Main prompt." in prompt
+    assert "Included content here" in prompt
+    assert "End." in prompt
 
 
 def test_load_system_prompt_missing_arg_raises(builtin_args: BuiltinSystemPromptArgs):
@@ -100,13 +114,8 @@ async def test_load_agent_invalid_tools(agent_file_invalid_tools: Path, runtime:
         await load_agent(agent_file_invalid_tools, runtime, mcp_configs=[])
 
 
-async def test_fixed_subagent_does_not_restore_dynamic_subagents(runtime: Runtime):
-    """Fixed subagents should not have dynamic subagents injected into their LaborMarket."""
-    # Inject a dynamic subagent spec into session state
-    runtime.session.state.dynamic_subagents = [
-        DynamicSubagentSpec(name="dynamic-helper", system_prompt="I am dynamic"),
-    ]
-
+async def test_load_agent_registers_builtin_subagent_types(runtime: Runtime):
+    """Agent loading should register builtin subagent types without instantiating them."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -114,15 +123,15 @@ async def test_fixed_subagent_does_not_restore_dynamic_subagents(runtime: Runtim
         (tmpdir / "system.md").write_text("Main agent prompt")
         (tmpdir / "sub_system.md").write_text("Sub agent prompt")
 
-        # Create sub agent YAML (no subagents, minimal tools)
-        sub_yaml = tmpdir / "sub.yaml"
-        sub_yaml.write_text(
+        # Create builtin subagent type YAML (no nested subagents, minimal tools)
+        builtin_type_yaml = tmpdir / "child.yaml"
+        builtin_type_yaml.write_text(
             'version: 1\nagent:\n  name: "Sub"\n'
             "  system_prompt_path: ./sub_system.md\n"
             '  tools: ["kimi_cli.tools.think:Think"]\n'
         )
 
-        # Create main agent YAML with a fixed subagent
+        # Create main agent YAML that registers one builtin subagent type
         agent_yaml = tmpdir / "agent.yaml"
         agent_yaml.write_text(
             'version: 1\nagent:\n  name: "Main"\n'
@@ -130,19 +139,16 @@ async def test_fixed_subagent_does_not_restore_dynamic_subagents(runtime: Runtim
             '  tools: ["kimi_cli.tools.think:Think"]\n'
             "  subagents:\n"
             "    coder:\n"
-            "      path: ./sub.yaml\n"
+            "      path: ./child.yaml\n"
             '      description: "A sub agent"\n'
         )
 
         agent = await load_agent(agent_yaml, runtime, mcp_configs=[])
 
-    # Main agent should have the dynamic subagent restored
-    assert "dynamic-helper" in agent.runtime.labor_market.dynamic_subagents
-
-    # Fixed subagent should NOT have the dynamic subagent
-    fixed_sub = agent.runtime.labor_market.fixed_subagents["coder"]
-    assert "dynamic-helper" not in fixed_sub.runtime.labor_market.dynamic_subagents
-    assert len(fixed_sub.runtime.labor_market.dynamic_subagents) == 0
+        builtin_type = agent.runtime.labor_market.require_builtin_type("coder")
+        assert builtin_type.name == "coder"
+        assert builtin_type.description == "A sub agent"
+        assert builtin_type.agent_file.samefile(builtin_type_yaml)
 
 
 async def test_load_agent_starts_mcp_in_background(runtime: Runtime, monkeypatch):

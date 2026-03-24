@@ -150,6 +150,12 @@ def _scan_session_dir(
         with contextlib.suppress(Exception):
             metadata_info = json.loads(metadata_path.read_text(encoding="utf-8"))
 
+    # Count sub-agents
+    subagent_count = 0
+    subagents_dir = session_dir / "subagents"
+    if subagents_dir.is_dir():
+        subagent_count = sum(1 for p in subagents_dir.iterdir() if p.is_dir())
+
     return {
         "session_id": session_dir.name,
         "session_dir": str(session_dir),
@@ -167,6 +173,7 @@ def _scan_session_dir(
         "total_size": wire_size + context_size + state_size,
         "turns": turn_count,
         "imported": imported,
+        "subagent_count": subagent_count,
     }
 
 
@@ -398,6 +405,151 @@ async def get_session_summary(work_dir_hash: str, session_id: str) -> dict[str, 
     }
 
 
+@router.get("/sessions/{work_dir_hash}/{session_id}/subagents")
+def list_subagents(work_dir_hash: str, session_id: str) -> list[dict[str, Any]]:
+    """List all sub-agents for a session."""
+    session_dir = _find_session_dir(work_dir_hash, session_id)
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    subagents_dir = session_dir / "subagents"
+    if not subagents_dir.is_dir():
+        return []
+
+    results: list[dict[str, Any]] = []
+    for entry in subagents_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        if not _SESSION_ID_RE.match(entry.name):
+            continue
+
+        meta_path = entry / "meta.json"
+        meta: dict[str, Any] = {}
+        if meta_path.exists():
+            with contextlib.suppress(Exception):
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+
+        wire_path = entry / "wire.jsonl"
+        context_path = entry / "context.jsonl"
+        results.append(
+            {
+                "agent_id": meta.get("agent_id", entry.name),
+                "subagent_type": meta.get("subagent_type", "unknown"),
+                "status": meta.get("status", "unknown"),
+                "description": meta.get("description", ""),
+                "created_at": meta.get("created_at", 0),
+                "updated_at": meta.get("updated_at", 0),
+                "last_task_id": meta.get("last_task_id"),
+                "launch_spec": meta.get("launch_spec", {}),
+                "wire_size": wire_path.stat().st_size if wire_path.exists() else 0,
+                "context_size": context_path.stat().st_size if context_path.exists() else 0,
+            }
+        )
+
+    results.sort(key=lambda s: s.get("created_at", 0))
+    return results
+
+
+@router.get("/sessions/{work_dir_hash}/{session_id}/subagents/{agent_id}/wire")
+async def get_subagent_wire_events(
+    work_dir_hash: str, session_id: str, agent_id: str
+) -> dict[str, Any]:
+    """Read and parse wire.jsonl for a specific sub-agent."""
+    if not _SESSION_ID_RE.match(agent_id):
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    session_dir = _find_session_dir(work_dir_hash, session_id)
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    wire_path = session_dir / "subagents" / agent_id / "wire.jsonl"
+    if not wire_path.exists():
+        return {"total": 0, "events": []}
+
+    events: list[dict[str, Any]] = []
+    index = 0
+    async with aiofiles.open(wire_path, encoding="utf-8") as f:
+        async for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                parsed = parse_wire_file_line(line)
+            except Exception:
+                logger.debug("Skipped malformed line in %s", wire_path)
+                continue
+            if isinstance(parsed, WireFileMetadata):
+                continue
+            events.append(
+                {
+                    "index": index,
+                    "timestamp": parsed.timestamp,
+                    "type": parsed.message.type,
+                    "payload": parsed.message.payload,
+                }
+            )
+            index += 1
+
+    return {"total": len(events), "events": events}
+
+
+@router.get("/sessions/{work_dir_hash}/{session_id}/subagents/{agent_id}/context")
+async def get_subagent_context(
+    work_dir_hash: str, session_id: str, agent_id: str
+) -> dict[str, Any]:
+    """Read and parse context.jsonl for a specific sub-agent."""
+    if not _SESSION_ID_RE.match(agent_id):
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    session_dir = _find_session_dir(work_dir_hash, session_id)
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    context_path = session_dir / "subagents" / agent_id / "context.jsonl"
+    if not context_path.exists():
+        return {"total": 0, "messages": []}
+
+    messages: list[dict[str, Any]] = []
+    index = 0
+    async with aiofiles.open(context_path, encoding="utf-8") as f:
+        async for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                logger.debug("Skipped malformed line in %s", context_path)
+                continue
+            msg["index"] = index
+            messages.append(msg)
+            index += 1
+
+    return {"total": len(messages), "messages": messages}
+
+
+@router.get("/sessions/{work_dir_hash}/{session_id}/subagents/{agent_id}/meta")
+async def get_subagent_meta(work_dir_hash: str, session_id: str, agent_id: str) -> dict[str, Any]:
+    """Read meta.json for a specific sub-agent."""
+    if not _SESSION_ID_RE.match(agent_id):
+        raise HTTPException(status_code=400, detail="Invalid agent ID")
+
+    session_dir = _find_session_dir(work_dir_hash, session_id)
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    meta_path = session_dir / "subagents" / agent_id / "meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Sub-agent not found")
+
+    async with aiofiles.open(meta_path, encoding="utf-8") as f:
+        content = await f.read()
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as err:
+        raise HTTPException(status_code=500, detail="Invalid meta.json") from err
+
+
 @router.get("/sessions/{work_dir_hash}/{session_id}/download")
 def download_session(work_dir_hash: str, session_id: str) -> StreamingResponse:
     """Download all files in a session directory as a ZIP archive."""
@@ -407,9 +559,9 @@ def download_session(work_dir_hash: str, session_id: str) -> StreamingResponse:
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file_path in sorted(session_dir.iterdir()):
+        for file_path in sorted(session_dir.rglob("*")):
             if file_path.is_file():
-                zf.write(file_path, arcname=file_path.name)
+                zf.write(file_path, arcname=str(file_path.relative_to(session_dir)))
     buf.seek(0)
 
     filename = f"session-{session_id}.zip"
