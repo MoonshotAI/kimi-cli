@@ -131,7 +131,7 @@ def _initialize(
     hooks: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     params: dict[str, object] = {
-        "protocol_version": "1.6",
+        "protocol_version": "1.7",
         "capabilities": {"supports_question": True, "supports_plan_mode": True},
     }
     if hooks is not None:
