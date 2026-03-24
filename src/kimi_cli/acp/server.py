@@ -16,7 +16,12 @@ from kimi_cli.acp.tools import replace_tools
 from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
-from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, load_tokens
+from kimi_cli.auth.oauth import (
+    KIMI_CODE_OAUTH_KEY,
+    load_tokens,
+    request_device_authorization,
+    DeviceAuthorization,
+)
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
@@ -33,6 +38,7 @@ class ACPServer:
         self.sessions: dict[str, tuple[ACPSession, _ModelIDConv]] = {}
         self.negotiated_version: ACPVersionSpec | None = None
         self._auth_methods: list[acp.schema.AuthMethod] = []
+        self._active_auth_sessions: dict[str, asyncio.Task[bool]] = {}
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -349,26 +355,270 @@ class ACPServer:
         config_for_save.default_thinking = model_id_conv.thinking
         save_config(config_for_save)
 
+    async def _trigger_login_in_terminal(self, session_id: str) -> bool:
+        """
+        通过ACP协议在终端中触发登录流程
+        
+        Args:
+            session_id: ACP会话ID
+            
+        Returns:
+            bool: 登录是否成功
+        """
+        if not self.conn:
+            logger.error("ACP client not connected, cannot trigger terminal login")
+            return False
+        
+        terminal_id: str | None = None
+        try:
+            # 使用ACP协议创建终端并执行登录命令
+            resp = await self.conn.create_terminal(
+                command=f"{sys.executable} -m kimi_cli login",
+                session_id=session_id,
+                output_byte_limit=10000,
+            )
+            terminal_id = resp.terminal_id
+            
+            logger.info("Created terminal for login: {terminal_id}", terminal_id=terminal_id)
+            
+            # 发送进度通知
+            await self._send_auth_progress(
+                session_id,
+                "started",
+                "Login terminal created. Please complete authentication in the terminal.",
+            )
+            
+            # 等待终端命令执行完成
+            exit_status = await self.conn.wait_for_terminal_exit(
+                session_id=session_id,
+                terminal_id=terminal_id,
+            )
+            
+            # 获取终端输出
+            output_response = await self.conn.terminal_output(
+                session_id=session_id,
+                terminal_id=terminal_id,
+            )
+            
+            # 检查登录是否成功
+            ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
+            token = load_tokens(ref)
+            
+            success = token is not None and token.access_token is not None
+            
+            if success:
+                logger.info("Terminal login completed successfully")
+                await self._send_auth_progress(
+                    session_id,
+                    "completed",
+                    "Login successful!",
+                )
+            else:
+                logger.warning("Terminal login did not complete successfully")
+                await self._send_auth_progress(
+                    session_id,
+                    "failed",
+                    "Login failed. Please try again.",
+                )
+            
+            return success
+                
+        except Exception as e:
+            logger.error("Failed to trigger login in terminal: {error}", error=e)
+            await self._send_auth_progress(
+                session_id,
+                "failed",
+                f"Login failed: {e}",
+            )
+            return False
+        finally:
+            # 清理终端资源
+            if terminal_id and self.conn:
+                try:
+                    await self.conn.release_terminal(
+                        session_id=session_id,
+                        terminal_id=terminal_id,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to release terminal: {error}", error=e)
+
+    async def _trigger_oauth_device_flow(self, session_id: str) -> bool:
+        """
+        通过ACP协议触发OAuth Device Flow认证
+        
+        Args:
+            session_id: ACP会话ID
+            
+        Returns:
+            bool: 认证是否成功
+        """
+        if not self.conn:
+            logger.error("ACP client not connected, cannot trigger OAuth device flow")
+            return False
+        
+        try:
+            # 获取设备授权
+            auth: DeviceAuthorization = await request_device_authorization()
+            
+            logger.info("OAuth device authorization obtained, verification URL: {url}", 
+                       url=auth.verification_uri_complete)
+            
+            # 发送认证URI给客户端
+            await self._send_auth_progress(
+                session_id,
+                "verification_url",
+                f"Please visit: {auth.verification_uri_complete}",
+                data={
+                    "verification_url": auth.verification_uri_complete,
+                    "user_code": auth.user_code,
+                },
+            )
+            
+            # 等待用户授权
+            interval = max(auth.interval, 1)
+            max_wait_time = 300  # 最多等待5分钟
+            elapsed_time = 0
+            
+            while elapsed_time < max_wait_time:
+                await asyncio.sleep(interval)
+                elapsed_time += interval
+                
+                # 检查是否已有有效令牌
+                ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
+                token = load_tokens(ref)
+                
+                if token and token.access_token:
+                    logger.info("OAuth device flow completed successfully")
+                    await self._send_auth_progress(
+                        session_id,
+                        "completed",
+                        "Login successful!",
+                    )
+                    return True
+                
+                # 发送等待状态
+                if elapsed_time % 10 == 0:  # 每10秒发送一次状态
+                    await self._send_auth_progress(
+                        session_id,
+                        "waiting",
+                        f"Waiting for user authorization... ({elapsed_time}s)",
+                    )
+            
+            # 超时
+            logger.warning("OAuth device flow timed out")
+            await self._send_auth_progress(
+                session_id,
+                "timeout",
+                "Login timed out. Please try again.",
+            )
+            return False
+            
+        except Exception as e:
+            logger.error("Failed to trigger OAuth device flow: {error}", error=e)
+            await self._send_auth_progress(
+                session_id,
+                "failed",
+                f"Login failed: {e}",
+            )
+            return False
+
+    async def _send_auth_progress(
+        self,
+        session_id: str,
+        status: str,
+        message: str,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        """发送认证进度通知"""
+        if not self.conn:
+            return
+        
+        try:
+            notification_data: dict[str, Any] = {
+                "status": status,
+                "message": message,
+            }
+            if data:
+                notification_data["data"] = data
+            
+            # 使用session_update发送通知
+            await self.conn.session_update(
+                session_id=session_id,
+                update=acp.schema.SessionUpdate(
+                    session_update="auth_progress",
+                    **notification_data,
+                ),
+            )
+        except Exception as e:
+            logger.warning("Failed to send auth progress notification: {error}", error=e)
+
+    async def cancel_auth(self, session_id: str, **kwargs: Any) -> None:
+        """取消正在进行的认证"""
+        if session_id in self._active_auth_sessions:
+            task = self._active_auth_sessions[session_id]
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            del self._active_auth_sessions[session_id]
+            logger.info("Authentication cancelled for session: {id}", id=session_id)
+            
+            await self._send_auth_progress(
+                session_id,
+                "cancelled",
+                "Login cancelled by user.",
+            )
+
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
         """
-        For Terminal Auth, this method is typically not called directly
-        (user completes auth in terminal). Implement for completeness.
+        处理认证请求
+        
+        对于terminal类型的认证，通过ACP协议在终端中触发登录流程
+        支持OAuth Device Flow作为备选方案
         """
         if method_id == "login":
             ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
             token = load_tokens(ref)
-
+            
+            # 如果已有有效令牌，直接返回成功
             if token and token.access_token:
                 logger.info("Authentication successful for method: {id}", id=method_id)
                 return acp.AuthenticateResponse()
-            else:
-                logger.warning("Authentication not complete for method: {id}", id=method_id)
-                raise acp.RequestError.auth_required(
-                    {
-                        "message": "Please complete login in terminal first",
-                        "authMethods": self._auth_methods,
-                    }
-                )
+            
+            # 尝试通过ACP协议在终端中触发登录
+            session_id = next(iter(self.sessions.keys()), None)
+            
+            if session_id:
+                # 检查客户端是否支持终端
+                if self.client_capabilities and self.client_capabilities.terminal:
+                    # 通过ACP协议打开终端执行登录
+                    login_success = await self._trigger_login_in_terminal(session_id)
+                    
+                    if login_success:
+                        logger.info("Authentication successful after terminal login")
+                        return acp.AuthenticateResponse()
+                    else:
+                        logger.warning("Terminal login did not complete successfully")
+                else:
+                    # 客户端不支持终端，尝试OAuth Device Flow
+                    logger.info("Client does not support terminal, trying OAuth device flow")
+                    login_success = await self._trigger_oauth_device_flow(session_id)
+                    
+                    if login_success:
+                        logger.info("Authentication successful after OAuth device flow")
+                        return acp.AuthenticateResponse()
+                    else:
+                        logger.warning("OAuth device flow did not complete successfully")
+            
+            # 如果没有session或登录失败，抛出auth_required错误
+            logger.warning("Authentication not complete for method: {id}", id=method_id)
+            raise acp.RequestError.auth_required(
+                {
+                    "message": "Login failed. Please try again.",
+                    "authMethods": self._auth_methods,
+                }
+            )
 
         logger.error("Unknown auth method: {method_id}", method_id=method_id)
         raise acp.RequestError.invalid_params({"method_id": "Unknown auth method"})
