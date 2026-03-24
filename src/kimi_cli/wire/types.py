@@ -523,6 +523,8 @@ class HookRequest(BaseModel):
 
     id: str
     """Unique request ID."""
+    subscription_id: str = ""
+    """Which subscription triggered this request."""
     event: str
     """The hook event type, e.g. 'PreToolUse', 'Stop'."""
     target: str = ""

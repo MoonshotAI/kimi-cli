@@ -212,8 +212,8 @@ async def test_wire_hook_subscription_in_initialize(temp_work_dir: KaosPath, tmp
     process = _start_wire(config_path, temp_work_dir.unsafe_to_local_path())
     try:
         result = _initialize(process, hooks=[
-            {"event": "PostToolUse", "matcher": "ReadFile"},
-            {"event": "PreToolUse", "matcher": "Shell"},
+            {"id": "sub_post", "event": "PostToolUse", "matcher": "ReadFile"},
+            {"id": "sub_pre", "event": "PreToolUse", "matcher": "Shell"},
         ])
         hooks_info = cast(dict[str, object], result.get("hooks", {}))
         configured = cast(dict[str, object], hooks_info.get("configured", {}))

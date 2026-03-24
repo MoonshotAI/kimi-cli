@@ -428,7 +428,7 @@ class WireServer:
                 if wh.event not in HOOK_EVENT_TYPES:
                     logger.warning("Ignoring unknown hook event from client: {}", wh.event)
                     continue
-                wire_subs.append(_Sub(event=wh.event, matcher=wh.matcher, timeout=wh.timeout))
+                wire_subs.append(_Sub(id=wh.id, event=wh.event, matcher=wh.matcher, timeout=wh.timeout))
             if wire_subs:
                 self._soul.hook_engine.add_wire_subscriptions(wire_subs)
                 logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
@@ -449,6 +449,7 @@ class WireServer:
                 """Send HookRequest to client, wire response back to handle."""
                 request = HookRequest(
                     id=handle.id,
+                    subscription_id=handle.subscription_id,
                     event=handle.event,
                     target=handle.target,
                     input_data=handle.input_data,

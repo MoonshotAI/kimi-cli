@@ -92,19 +92,16 @@ class ClientCapabilities(BaseModel):
 
 
 class WireHookSubscription(BaseModel):
-    """Hook event subscription from the wire client.
+    """Hook event subscription from the wire client."""
 
-    Unlike config.toml hooks (which have a shell command), wire hooks
-    are handled client-side. The server sends a HookRequest when the
-    event fires, and the client responds with allow/block.
-    """
-
+    id: str
+    """Unique subscription ID — referenced in HookRequest."""
     event: str
-    """Which event to subscribe to, e.g. 'PreToolUse', 'Stop'."""
+    """Which event to subscribe to."""
     matcher: str = ""
     """Regex filter. Empty matches everything."""
     timeout: int = 30
-    """Seconds to wait for client response before fail-open."""
+    """Seconds to wait for client response."""
 
 
 class JSONRPCInitializeMessage(_MessageBase):
