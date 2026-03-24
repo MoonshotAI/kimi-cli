@@ -58,20 +58,27 @@ class ACPServer:
         self.client_capabilities = client_capabilities
 
         # get command and args of current process for terminal-auth
-        command = sys.argv[0]
-        if command.endswith("kimi"):
+        # Handle empty sys.argv edge case
+        if not sys.argv:
+            command = "kimi"
             args = []
-        elif command.endswith("__main__.py"):
-            # Module-style invocation (e.g., python -m kimi_cli)
-            # sys.argv[0] is the __main__.py path, -m is consumed by interpreter
-            command = "python"
-            args = ["-m", "kimi_cli"]
         else:
-            try:
-                idx = sys.argv.index("kimi")
-                args = sys.argv[1 : idx + 1]
-            except ValueError:
+            command = sys.argv[0]
+            if command.endswith("kimi"):
                 args = []
+            elif command.endswith("__main__.py"):
+                # Module-style invocation (e.g., python -m kimi_cli)
+                # sys.argv[0] is the __main__.py path, -m is consumed by interpreter
+                command = "python"
+                args = ["-m", "kimi_cli"]
+            else:
+                try:
+                    idx = sys.argv.index("kimi")
+                    args = sys.argv[1 : idx + 1]
+                except ValueError:
+                    # Unknown command, fallback to safe default for login
+                    command = "kimi"
+                    args = []
 
         # Build terminal auth data for error response
         terminal_args = args + ["login"]
