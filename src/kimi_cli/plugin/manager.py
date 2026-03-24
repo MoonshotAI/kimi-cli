@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kimi_cli.plugin import (
     PLUGIN_JSON,
@@ -17,10 +18,37 @@ from kimi_cli.plugin import (
 )
 from kimi_cli.share import get_share_dir
 
+if TYPE_CHECKING:
+    from kimi_cli.auth.oauth import OAuthManager
+    from kimi_cli.config import Config
+
 
 def get_plugins_dir() -> Path:
     """Return the plugins installation directory (~/.kimi/plugins/)."""
     return get_share_dir() / "plugins"
+
+
+def collect_host_values(config: Config, oauth: OAuthManager) -> dict[str, str]:
+    """Collect host values (api_key, base_url) for plugin injection.
+
+    Resolves credentials from the default provider, handling OAuth tokens
+    and static API keys.  Callers that run outside the normal startup flow
+    (e.g. ``install_cmd``) should apply environment-variable overrides
+    (``augment_provider_with_env_vars``) to the provider **before** calling
+    this function; the main app startup already does that.
+    """
+    values: dict[str, str] = {}
+    if not config.default_model or config.default_model not in config.models:
+        return values
+    model = config.models[config.default_model]
+    if model.provider not in config.providers:
+        return values
+    provider = config.providers[model.provider]
+    api_key = oauth.resolve_api_key(provider.api_key, provider.oauth)
+    if api_key:
+        values["api_key"] = api_key
+    values["base_url"] = provider.base_url
+    return values
 
 
 def _validate_name(name: str, plugins_dir: Path) -> Path:
@@ -78,6 +106,27 @@ def install_plugin(
 
     # Re-read to return the installed spec (with runtime)
     return parse_plugin_json(dest / PLUGIN_JSON)
+
+
+def refresh_plugin_configs(plugins_dir: Path, host_values: dict[str, str]) -> None:
+    """Re-inject host values into all installed plugin config files.
+
+    Called at startup so that OAuth tokens and other credentials
+    stay fresh even after the initial install.
+    """
+    if not plugins_dir.is_dir():
+        return
+
+    for child in sorted(plugins_dir.iterdir()):
+        plugin_json = child / PLUGIN_JSON
+        if not child.is_dir() or not plugin_json.is_file():
+            continue
+        try:
+            spec = parse_plugin_json(plugin_json)
+            if spec.inject and spec.config_file:
+                inject_config(child, spec, host_values)
+        except Exception:
+            continue
 
 
 def list_plugins(plugins_dir: Path) -> list[PluginSpec]:

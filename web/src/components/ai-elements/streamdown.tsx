@@ -3,19 +3,32 @@ import type { Element } from "hast";
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 import type { StreamdownProps } from "streamdown";
-import { defaultRehypePlugins } from "streamdown";
+import { defaultRehypePlugins, defaultRemarkPlugins } from "streamdown";
 import { CodeBlock } from "./code-block";
 
 // Selectively enable rehype plugins while maintaining security.
-// The default plugins include:
 // - 'raw': renders raw HTML embedded in markdown (XSS risk - DISABLED)
-// - 'harden': sanitizes HTML (strips tags, which loses content like <script> - DISABLED)
-// - 'sanitize': HTML sanitization
-// - 'katex': math rendering (SAFE - only processes math syntax $...$ and $$...$$)
-// We only enable katex to support math formula rendering while keeping HTML-like
-// text displayed as-is for security.
+// - 'harden': sanitizes HTML (strips tags - DISABLED)
+// - 'katex': math rendering (SAFE - only processes math delimiters)
 export const safeRehypePlugins: StreamdownProps["rehypePlugins"] = [
-  defaultRehypePlugins.katex, // Enable math formula rendering
+  defaultRehypePlugins.katex,
+];
+
+// Override remark-math to enable single-dollar inline math ($...$).
+// Streamdown defaults to singleDollarTextMath: false, which only allows
+// block math ($$...$$). We enable it so both $...$ and $$...$$ work.
+const mathPlugin = defaultRemarkPlugins.math;
+const remarkMathWithInline = (
+  Array.isArray(mathPlugin)
+    ? [mathPlugin[0], { ...mathPlugin[1], singleDollarTextMath: true }]
+    : [mathPlugin, { singleDollarTextMath: true }]
+) as typeof mathPlugin;
+
+export const safeRemarkPlugins: StreamdownProps["remarkPlugins"] = [
+  defaultRemarkPlugins.gfm,
+  remarkMathWithInline,
+  defaultRemarkPlugins.cjkFriendly,
+  defaultRemarkPlugins.cjkFriendlyGfmStrikethrough,
 ];
 
 /**
@@ -25,14 +38,17 @@ export const safeRehypePlugins: StreamdownProps["rehypePlugins"] = [
  *
  * This function:
  * 1. Preserves content inside code blocks (```...``` and `...`)
- * 2. Escapes both < and > in HTML-like tags elsewhere
+ * 2. Preserves content inside math delimiters ($...$ and $$...$$)
+ * 3. Escapes both < and > in HTML-like tags elsewhere
  */
 export const escapeHtmlOutsideCodeBlocks = (text: string): string => {
-  // Match ONLY valid fenced code blocks (``` at line start) and inline code.
-  // Mid-line ``` is a syntax error and should be treated as plain text.
-  // Fenced code blocks: ``` at line start, optional language, content, then \n```
-  // Also match inline code: `..` (single backticks, no newlines inside)
-  const codeBlockRegex = /(^|\n)```[a-z]*\n[\s\S]*?\n```|`[^`\n]+`/g;
+  // Match regions that should NOT be escaped:
+  // 1. Fenced code blocks: ``` at line start, optional language, content, then \n```
+  // 2. Inline code: `..` (single backticks, no newlines inside)
+  // 3. Display math: $$...$$ (can span multiple lines)
+  // 4. Inline math: $...$ (no newlines, non-empty, no leading/trailing space)
+  const codeBlockRegex =
+    /(^|\n)```[a-z]*\n[\s\S]*?\n```|`[^`\n]+`|\$\$[\s\S]*?\$\$|\$(?!\s)[^$\n]+(?<!\s)\$/g;
   const codeBlocks: { start: number; end: number }[] = [];
 
   // Find all valid code blocks

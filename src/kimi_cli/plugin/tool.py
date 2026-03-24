@@ -27,14 +27,11 @@ def _get_host_values(config: Config) -> dict[str, str]:
     Reads the latest provider credentials, which may have been
     refreshed by OAuth since plugin install time.
     """
-    values: dict[str, str] = {}
-    if config.default_model and config.default_model in config.models:
-        model = config.models[config.default_model]
-        if model.provider in config.providers:
-            provider = config.providers[model.provider]
-            values["api_key"] = provider.api_key.get_secret_value()
-            values["base_url"] = provider.base_url
-    return values
+    from kimi_cli.auth.oauth import OAuthManager
+    from kimi_cli.plugin.manager import collect_host_values
+
+    oauth = OAuthManager(config)
+    return collect_host_values(config, oauth)
 
 
 class PluginTool(CallableTool):

@@ -12,6 +12,50 @@ from kimi_cli.plugin import PluginError
 cli = typer.Typer(help="Manage plugins.")
 
 
+def _parse_git_url(target: str) -> tuple[str, str | None, str | None]:
+    """Parse a git URL into (clone_url, subpath, branch).
+
+    Splits .git URLs at the .git boundary. For GitHub/GitLab short URLs,
+    treats the first two path segments as owner/repo and the rest as subpath.
+    Strips ``tree/{branch}/`` or ``-/tree/{branch}/`` prefixes from
+    browser-copied URLs and returns the branch name.
+    """
+    # Path 1: URL contains .git followed by / or end-of-string
+    idx = target.find(".git/")
+    if idx == -1 and target.endswith(".git"):
+        return target, None, None
+    if idx != -1:
+        clone_url = target[: idx + 4]  # up to and including ".git"
+        rest = target[idx + 5 :]  # after ".git/"
+        subpath = rest.strip("/") or None
+        return clone_url, subpath, None
+
+    # Path 2: GitHub/GitLab short URL (no .git)
+    from urllib.parse import urlparse
+
+    parsed = urlparse(target)
+    segments = [s for s in parsed.path.split("/") if s]
+    if len(segments) < 2:
+        return target, None, None
+
+    owner_repo = "/".join(segments[:2])
+    clone_url = f"{parsed.scheme}://{parsed.netloc}/{owner_repo}"
+    rest_segments = segments[2:]
+
+    # GitLab uses /-/tree/{branch}/, strip leading "-"
+    if rest_segments and rest_segments[0] == "-":
+        rest_segments = rest_segments[1:]
+
+    # Strip tree/{branch}/ prefix and extract branch
+    branch: str | None = None
+    if len(rest_segments) >= 2 and rest_segments[0] == "tree":
+        branch = rest_segments[1]
+        rest_segments = rest_segments[2:]
+
+    subpath = "/".join(rest_segments) or None
+    return clone_url, subpath, branch
+
+
 def _resolve_source(target: str) -> tuple[Path, Path | None]:
     """Resolve plugin source to (local_dir, tmp_to_cleanup).
 
@@ -23,22 +67,84 @@ def _resolve_source(target: str) -> tuple[Path, Path | None]:
 
     # Git URL
     if target.startswith(("https://", "git@", "http://")) and (
-        target.endswith(".git") or "github.com/" in target or "gitlab.com/" in target
+        ".git/" in target
+        or target.endswith(".git")
+        or "github.com/" in target
+        or "gitlab.com/" in target
     ):
         import subprocess
 
+        clone_url, subpath, branch = _parse_git_url(target)
+
         tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
-        typer.echo(f"Cloning {target}...")
+        typer.echo(f"Cloning {clone_url}...")
+        clone_cmd = ["git", "clone", "--depth", "1"]
+        if branch:
+            clone_cmd += ["--branch", branch]
+        clone_cmd += [clone_url, str(tmp / "repo")]
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", target, str(tmp / "repo")],
+            clone_cmd,
             capture_output=True,
             text=True,
         )
         if result.returncode != 0:
             shutil.rmtree(tmp, ignore_errors=True)
-            typer.echo(f"Error: git clone failed: {result.stderr.strip()}", err=True)
+            typer.echo(
+                f"Error: git clone failed: {result.stderr.strip()}",
+                err=True,
+            )
             raise typer.Exit(1)
-        return tmp / "repo", tmp
+
+        repo_root = tmp / "repo"
+
+        if subpath:
+            source = (repo_root / subpath).resolve()
+            if not source.is_relative_to(repo_root.resolve()):
+                shutil.rmtree(tmp, ignore_errors=True)
+                typer.echo(
+                    f"Error: subpath escapes repository: {subpath}",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            if not source.is_dir():
+                shutil.rmtree(tmp, ignore_errors=True)
+                typer.echo(
+                    f"Error: subpath '{subpath}' not found in repository",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            if not (source / "plugin.json").exists():
+                shutil.rmtree(tmp, ignore_errors=True)
+                typer.echo(
+                    f"Error: no plugin.json in '{subpath}'",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            return source, tmp
+
+        # No subpath — check root first
+        if (repo_root / "plugin.json").exists():
+            return repo_root, tmp
+
+        # Scan one level for available plugins
+        available = sorted(
+            d.name for d in repo_root.iterdir() if d.is_dir() and (d / "plugin.json").exists()
+        )
+        if available:
+            names = "\n".join(f"  - {n}" for n in available)
+            typer.echo(
+                f"Error: No plugin.json at repository root. "
+                f"Available plugins:\n{names}\n"
+                f"Use: kimi plugin install <url>/<plugin-name>",
+                err=True,
+            )
+        else:
+            typer.echo(
+                "Error: No plugin.json found in repository",
+                err=True,
+            )
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise typer.Exit(1)
 
     p = Path(target).expanduser().resolve()
 
@@ -93,16 +199,20 @@ def install_cmd(
     try:
         config = load_config()
 
-        # Collect host values from the current default provider
-        host_values: dict[str, str] = {}
+        from kimi_cli.auth.oauth import OAuthManager
+        from kimi_cli.llm import augment_provider_with_env_vars
+        from kimi_cli.plugin.manager import collect_host_values
+
+        # Apply env var overrides (install runs outside normal startup)
         if config.default_model and config.default_model in config.models:
             model = config.models[config.default_model]
             if model.provider in config.providers:
-                provider = config.providers[model.provider]
-                host_values["api_key"] = provider.api_key.get_secret_value()
-                host_values["base_url"] = provider.base_url
+                augment_provider_with_env_vars(config.providers[model.provider], model)
 
-        if not host_values:
+        oauth = OAuthManager(config)
+        host_values = collect_host_values(config, oauth)
+
+        if not host_values.get("api_key"):
             typer.echo(
                 "Warning: No LLM provider configured. "
                 "Plugins requiring API key injection will fail. "
