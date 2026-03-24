@@ -204,6 +204,9 @@ class ForegroundSubagentRunner:
         )
 
         soul = KimiSoul(agent, context=context)
+        # Propagate hook engine from parent runtime to subagent soul
+        if self._runtime.hook_engine is not None:
+            soul.set_hook_engine(self._runtime.hook_engine)
         tool_call = get_current_tool_call_or_none()
         ui_loop_fn = self._make_ui_loop_fn(
             parent_tool_call_id=tool_call.id if tool_call is not None else None,

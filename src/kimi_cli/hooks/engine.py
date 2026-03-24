@@ -200,6 +200,24 @@ class HookEngine:
         if total == 0:
             return []
 
+        try:
+            return await self._execute_hooks(
+                event, matcher_value, server_matched, wire_matched, input_data
+            )
+        except Exception:
+            logger.warning("Hook engine error for {}, failing open", event)
+            return []
+
+    async def _execute_hooks(
+        self,
+        event: str,
+        matcher_value: str,
+        server_matched: list[HookDef],
+        wire_matched: list[WireHookSubscription],
+        input_data: dict[str, Any],
+    ) -> list[HookResult]:
+        """Run matched hooks and emit wire events. Separated for fail-open wrapping."""
+        total = len(server_matched) + len(wire_matched)
         logger.debug(
             "Triggering {} hooks for {} ({} server, {} wire)",
             total,
@@ -270,12 +288,17 @@ class HookEngine:
             target=target,
             input_data=input_data,
         )
+        # Run the callback in background so timeout applies to the
+        # full client round-trip, not just handle.wait().
+        hook_task: asyncio.Task[None] = asyncio.ensure_future(self._on_wire_hook(handle))
+        hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         try:
-            await self._on_wire_hook(handle)
             return await asyncio.wait_for(handle.wait(), timeout=timeout)
         except TimeoutError:
+            hook_task.cancel()
             logger.warning("Wire hook timed out: {} {}", event, target)
             return HookResult(action="allow", timed_out=True)
         except Exception as e:
+            hook_task.cancel()
             logger.warning("Wire hook failed: {} {}: {}", event, target, e)
             return HookResult(action="allow")

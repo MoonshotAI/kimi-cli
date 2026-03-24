@@ -97,6 +97,8 @@ class Runtime:
     subagent_id: str | None = None
     subagent_type: str | None = None
     role: Literal["root", "subagent"] = "root"
+    hook_engine: Any = None
+    """HookEngine instance, set by KimiCLI after soul creation."""
 
     def __post_init__(self) -> None:
         if self.subagent_store is None:

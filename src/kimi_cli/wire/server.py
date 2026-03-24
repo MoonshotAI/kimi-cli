@@ -691,6 +691,9 @@ class WireServer:
                     case QuestionRequest():
                         self._pending_requests.pop(msg_id, None)
                         request.resolve({})
+                    case HookRequest():
+                        self._pending_requests.pop(msg_id, None)
+                        request.resolve("allow")
                     case _:
                         pass
             self._cancel_event = None
