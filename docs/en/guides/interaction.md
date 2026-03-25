@@ -95,9 +95,9 @@ How background tasks work:
 
 1. The AI uses the `Shell` tool with `run_in_background=true` to launch the command
 2. The tool immediately returns a task ID, and the AI continues with other work
-3. When the task completes, the system automatically notifies the AI, which will inform you of the results
+3. When the task completes, if the AI is idle (waiting for user input), the system automatically triggers a new agent turn to process the results — no manual input needed
 
-You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time. See [Slash commands reference](../reference/slash-commands.md#task) for details.
+You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time (including tasks that are still running). See [Slash commands reference](../reference/slash-commands.md#task) for details.
 
 ::: tip
 By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. See [Configuration files](../configuration/config-files.md#background).
