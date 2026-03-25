@@ -7,6 +7,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Shell: Auto-trigger agent when background tasks complete while idle — the shell now detects when a background bash command or agent task finishes and automatically starts a new agent turn to process the results, instead of waiting for the user to type something
 - Core: Fix `QuestionRequest` hanging in print mode — `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` now auto-resolve when running in non-interactive (yolo) mode, preventing indefinite tool call hangs in `--print` sessions
 - Core: Strengthen system prompt to encourage tool use for coding tasks — the agent now defaults to taking action with tools instead of outputting code as plain text
+- Core: Retry `httpx.ProtocolError` and `504 Gateway Timeout` during generation — streaming protocol disconnects and transient 504 responses now follow the existing retry path instead of aborting the turn immediately on unstable networks
 - Kosong: Fix `httpx.ReadTimeout` leaking through Anthropic provider during streaming — the exception now correctly converts to `APITimeoutError`, enabling retry logic that was previously bypassed
 
 ## 1.25.0 (2026-03-23)
