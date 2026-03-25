@@ -39,7 +39,7 @@ class Context:
             async for line in f:
                 if not line.strip():
                     continue
-                line_json = json.loads(line)
+                line_json = json.loads(line, strict=False)
                 if line_json["role"] == "_system_prompt":
                     self._system_prompt = line_json["content"]
                     continue
@@ -160,7 +160,7 @@ class Context:
                 if not line.strip():
                     continue
 
-                line_json = json.loads(line)
+                line_json = json.loads(line, strict=False)
                 if line_json["role"] == "_checkpoint" and line_json["id"] == checkpoint_id:
                     break
 
