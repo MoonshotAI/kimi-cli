@@ -39,6 +39,12 @@ InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
 
+def _strip_session_id_suffix(title: str, session_id: str) -> str:
+    """Remove the trailing `` (session_id)`` that `Session.refresh` appends."""
+    suffix = f" ({session_id})"
+    return title.rsplit(suffix, 1)[0] if title.endswith(suffix) else title
+
+
 def _version_callback(value: bool) -> None:
     if value:
         from kimi_cli.constant import get_version
@@ -122,7 +128,7 @@ def kimi(
     sessions: Annotated[
         bool,
         typer.Option(
-            "--sessions",
+            "--pick-session",
             help="Interactively select a session to resume for the working directory.",
         ),
     ] = False,
@@ -399,7 +405,7 @@ def kimi(
         {
             "--continue": continue_,
             "--session": session_id is not None,
-            "--sessions": sessions,
+            "--pick-session": sessions,
             "--list-sessions": list_sessions,
         },
         {
@@ -452,8 +458,8 @@ def kimi(
         )
     if sessions and ui != "shell":
         raise typer.BadParameter(
-            "--sessions is only supported for shell UI",
-            param_hint="--sessions",
+            "--pick-session is only supported for shell UI",
+            param_hint="--pick-session",
         )
 
     config: Config | Path | None = None
@@ -513,7 +519,7 @@ def kimi(
         table.add_column("Title")
         table.add_column("Updated")
         for s in all_sessions:
-            name = s.title.rsplit(f" ({s.id})", 1)[0] if s.title.endswith(f"({s.id})") else s.title
+            name = _strip_session_id_suffix(s.title, s.id)
             table.add_row(s.id, name, format_relative_time(s.updated_at))
 
         console.print(table)
@@ -697,9 +703,7 @@ def kimi(
             for s in all_sessions:
                 time_str = format_relative_time(s.updated_at)
                 short_id = s.id[:8]
-                # s.title is "{content} ({full_id})" – strip the id suffix for display
-                suffix = f" ({s.id})"
-                name = s.title.rsplit(suffix, 1)[0] if s.title.endswith(f"({s.id})") else s.title
+                name = _strip_session_id_suffix(s.title, s.id)
                 label = f"{name} ({short_id}), {time_str}"
                 choices.append((s.id, label))
 
