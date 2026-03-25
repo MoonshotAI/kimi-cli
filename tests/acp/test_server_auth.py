@@ -9,7 +9,7 @@ import acp
 import pytest
 
 from kimi_cli.acp.server import ACPServer
-from kimi_cli.auth.oauth import DeviceAuthorization, OAuthToken
+from kimi_cli.auth.oauth import OAuthToken
 
 
 @pytest.fixture

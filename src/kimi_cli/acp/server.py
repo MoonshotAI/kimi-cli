@@ -20,8 +20,6 @@ from kimi_cli.app import KimiCLI
 from kimi_cli.auth.oauth import (
     KIMI_CODE_OAUTH_KEY,
     load_tokens,
-    save_tokens,
-    OAuthToken,
 )
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
@@ -66,8 +64,13 @@ class ACPServer:
 
         # Use sys.executable for reliable login command across all launch methods
         # This works regardless of how ACP was started (direct, module, or IDE integration)
-        command = sys.executable
-        terminal_args = ["-m", "kimi_cli", "login"]
+        # Handle PyInstaller frozen binary case
+        if getattr(sys, "frozen", False):
+            command = sys.executable
+            terminal_args = ["login"]
+        else:
+            command = sys.executable
+            terminal_args = ["-m", "kimi_cli", "login"]
 
         # Build and cache auth methods for reuse in AUTH_REQUIRED errors
         self._auth_methods = [
@@ -144,15 +147,8 @@ class ACPServer:
         assert self.client_capabilities is not None, "ACP connection not initialized"
 
         # Check authentication before creating session
-        try:
-            await self._check_auth()
-        except acp.RequestError as e:
-            if e.code == -32000:  # AUTH_REQUIRED
-                # 主动调用 authenticate 方法进行认证
-                logger.info("Authentication required, triggering authenticate method")
-                await self.authenticate("login")
-            else:
-                raise
+        # Let AUTH_REQUIRED propagate to client (consistent with load_session)
+        await self._check_auth()
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
@@ -382,8 +378,14 @@ class ACPServer:
         terminal_id: str | None = None
         try:
             # 使用ACP协议创建终端并执行登录命令
+            # Handle PyInstaller frozen binary case
+            if getattr(sys, "frozen", False):
+                login_command = f"{sys.executable} login"
+            else:
+                login_command = f"{sys.executable} -m kimi_cli login"
+            
             resp = await self.conn.create_terminal(
-                command=f"{sys.executable} -m kimi_cli login",
+                command=login_command,
                 session_id=session_id,
                 output_byte_limit=10000,
             )
@@ -573,7 +575,7 @@ class ACPServer:
                 await task
             except asyncio.CancelledError:
                 pass
-            del self._active_auth_sessions[session_id]
+            self._active_auth_sessions.pop(session_id, None)
             logger.info("Authentication cancelled for session: {id}", id=session_id)
             
             await self._send_auth_progress(

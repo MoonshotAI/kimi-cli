@@ -21,7 +21,7 @@
 - `mcp_capabilities`: `http=True`, `sse=False`.
 - Single-session: `load_session=False`, no session list capabilities.
 - Multi-session: `load_session=True`, `session_capabilities.list` supported.
-- `auth_methods=[]` (no authentication methods advertised).
+- `auth_methods`: includes `login` method with terminal-auth metadata.
 
 ## Session lifecycle (implemented behavior)
 - `session/new`
