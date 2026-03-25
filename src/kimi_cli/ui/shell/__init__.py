@@ -544,13 +544,17 @@ class Shell:
 
         target = args[1] if len(args) > 1 else "~"
 
+        # Expand ~ on Python side so shlex.quote won't suppress tilde expansion.
+        if target.startswith("~"):
+            target = os.path.expanduser(target)
+
         # Provide OLDPWD so `cd -` works across invocations.
         env = get_clean_env()
         old_cwd = os.getcwd()
         if "OLDPWD" not in env:
             env["OLDPWD"] = old_cwd
 
-        # Let the shell resolve ~, -, $HOME, CDPATH, etc.
+        # Let the shell resolve -, $HOME, CDPATH, etc.
         probe = await asyncio.create_subprocess_shell(
             f"cd {shlex.quote(target)} && pwd",
             stdout=asyncio.subprocess.PIPE,
@@ -564,7 +568,9 @@ class Shell:
             console.print(f"[red]cd: {err or 'failed'}[/red]")
             return
 
-        new_cwd = stdout.decode("utf-8", errors="replace").strip()
+        # `cd -` prints the destination before `pwd`; take the last non-empty line.
+        lines = [ln for ln in stdout.decode("utf-8", errors="replace").splitlines() if ln.strip()]
+        new_cwd = lines[-1].strip() if lines else ""
         if not new_cwd or not os.path.isdir(new_cwd):
             console.print(f"[red]cd: not a directory: {target}[/red]")
             return

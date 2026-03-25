@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import fcntl
 import os
 import re
 import sys
-import termios
 from collections.abc import Callable, Coroutine
 from typing import Any
+
+# POSIX-only modules — guarded so the module stays importable on Windows.
+if sys.platform != "win32":
+    import fcntl
+    import termios
 
 from kosong.message import Message
 from rich.text import Text
@@ -139,11 +142,16 @@ async def execute_with_pty_capture(
         if data:
             with contextlib.suppress(OSError):
                 os.write(stdout_fd, data)
-            # Cap in-memory capture to avoid unbounded growth (e.g. `cat /dev/urandom`).
-            # We keep the tail, which is usually more informative.
-            if captured_bytes < _CAPTURE_HARD_LIMIT:
-                captured.append(data)
-                captured_bytes += len(data)
+            # Always append; we trim to _CAPTURE_HARD_LIMIT (tail) after the
+            # process exits so the final context injection gets the most recent
+            # output rather than the head.
+            captured.append(data)
+            captured_bytes += len(data)
+            # Evict old chunks once we exceed twice the hard limit to bound memory.
+            if captured_bytes > _CAPTURE_HARD_LIMIT * 2:
+                while captured and captured_bytes > _CAPTURE_HARD_LIMIT:
+                    evicted = captured.pop(0)
+                    captured_bytes -= len(evicted)
         else:
             loop.remove_reader(master_fd)
             eof_event.set()
@@ -213,9 +221,12 @@ async def execute_with_pipe_capture(
             sys.stdout.buffer.flush()
         except (OSError, AttributeError):
             pass
-        if captured_bytes < _CAPTURE_HARD_LIMIT:
-            chunks.append(chunk)
-            captured_bytes += len(chunk)
+        chunks.append(chunk)
+        captured_bytes += len(chunk)
+        if captured_bytes > _CAPTURE_HARD_LIMIT * 2:
+            while chunks and captured_bytes > _CAPTURE_HARD_LIMIT:
+                evicted = chunks.pop(0)
+                captured_bytes -= len(evicted)
     await proc.wait()
     raw = b"".join(chunks).decode("utf-8", errors="replace")
     return proc.returncode, raw
