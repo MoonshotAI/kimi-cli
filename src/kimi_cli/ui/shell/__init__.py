@@ -60,6 +60,78 @@ class _PromptEvent:
     user_input: UserInput | None = None
 
 
+class _BackgroundCompletionWatcher:
+    """Watches for background task completions and auto-triggers the agent.
+
+    Sits between the idle event loop and the soul: when a background task
+    finishes while the agent is idle *and* the LLM hasn't consumed the
+    notification yet, it triggers a soul run.
+    """
+
+    def __init__(self, soul: Soul) -> None:
+        self._event: asyncio.Event | None = None
+        self._notifications: Any = None  # NotificationManager when enabled
+        if isinstance(soul, KimiSoul):
+            self._event = soul.runtime.background_tasks.completion_event
+            self._notifications = soul.runtime.notifications
+
+    @property
+    def enabled(self) -> bool:
+        return self._event is not None
+
+    def clear(self) -> None:
+        """Clear stale signals from the previous soul run."""
+        if self._event is not None:
+            self._event.clear()
+
+    async def wait_for_next(self, idle_events: asyncio.Queue[_PromptEvent]) -> _PromptEvent | None:
+        """Wait for either a user prompt event or a background completion.
+
+        Returns the prompt event if user input arrived first, or ``None``
+        if a background task completed with unclaimed LLM notifications.
+        User input always takes priority over background completions.
+        """
+        if self.enabled and self._has_pending_llm_notifications():
+            return None
+
+        idle_task = asyncio.create_task(idle_events.get())
+        if not self.enabled:
+            return await idle_task
+
+        assert self._event is not None
+        bg_wait_task = asyncio.create_task(self._event.wait())
+
+        done, _ = await asyncio.wait(
+            [idle_task, bg_wait_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for t in (idle_task, bg_wait_task):
+            if t not in done:
+                t.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await t
+
+        if idle_task in done:
+            if bg_wait_task in done:
+                self._event.clear()
+            return idle_task.result()
+
+        # Only bg fired
+        self._event.clear()
+        if self._has_pending_llm_notifications():
+            return None
+        # Event fired but no pending notifications (consumed during run)
+        return _PromptEvent(kind="bg_noop")
+
+    def _has_pending_llm_notifications(self) -> bool:
+        if self._notifications is None:
+            return False
+        return any(
+            (sink := view.delivery.sinks.get("llm")) and sink.status == "pending"
+            for view in self._notifications.store.list_views()
+        )
+
+
 class Shell:
     def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
         self.soul = soul
@@ -296,10 +368,33 @@ class Shell:
             prompt_task = asyncio.create_task(
                 self._route_prompt_events(prompt_session, idle_events, resume_prompt)
             )
+            bg_watcher = _BackgroundCompletionWatcher(self.soul)
+
             shell_ok = True
             try:
                 while True:
-                    event = await idle_events.get()
+                    bg_watcher.clear()
+                    result = await bg_watcher.wait_for_next(idle_events)
+
+                    if result is None:
+                        # Background task completed with pending notifications
+                        logger.info("Background task completed while idle, triggering agent")
+                        resume_prompt.set()
+                        await self.run_soul_command(
+                            "<system-reminder>"
+                            "Background tasks completed while you were idle."
+                            "</system-reminder>"
+                        )
+                        console.print()
+                        if self._exit_after_run:
+                            console.print("Bye!")
+                            break
+                        continue
+
+                    event = result
+
+                    if event.kind == "bg_noop":
+                        continue
 
                     if event.kind == "interrupt":
                         console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
