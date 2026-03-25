@@ -571,19 +571,17 @@ def kimi(
 
             # --- SessionStart hook ---
             _session_source = "resume" if continue_ else "startup"
-            _he = instance.soul.hook_engine
-            if _he and _he.has_hooks_for("SessionStart"):
-                from kimi_cli.hooks import events
+            from kimi_cli.hooks import events
 
-                await _he.trigger(
-                    "SessionStart",
-                    matcher_value=_session_source,
-                    input_data=events.session_start(
-                        session_id=session.id,
-                        cwd=str(work_dir),
-                        source=_session_source,
-                    ),
-                )
+            await instance.soul.hook_engine.trigger(
+                "SessionStart",
+                matcher_value=_session_source,
+                input_data=events.session_start(
+                    session_id=session.id,
+                    cwd=str(work_dir),
+                    source=_session_source,
+                ),
+            )
 
             # Install stderr redirection only after initialization succeeded, so runtime
             # stderr noise is captured into logs without hiding startup failures.
@@ -624,26 +622,22 @@ def kimi(
                 raise
             finally:
                 # --- SessionEnd hook ---
-                _he2 = instance.soul.hook_engine
-                if _he2 and _he2.has_hooks_for("SessionEnd"):
-                    import asyncio as _asyncio
-                    import contextlib
+                import asyncio as _asyncio
+                import contextlib
 
-                    from kimi_cli.hooks import events
-
-                    with contextlib.suppress(Exception):
-                        await _asyncio.wait_for(
-                            _he2.trigger(
-                                "SessionEnd",
-                                matcher_value="exit",
-                                input_data=events.session_end(
-                                    session_id=session.id,
-                                    cwd=str(work_dir),
-                                    reason="exit",
-                                ),
+                with contextlib.suppress(Exception):
+                    await _asyncio.wait_for(
+                        instance.soul.hook_engine.trigger(
+                            "SessionEnd",
+                            matcher_value="exit",
+                            input_data=events.session_end(
+                                session_id=session.id,
+                                cwd=str(work_dir),
+                                reason="exit",
                             ),
-                            timeout=5,
-                        )
+                        ),
+                        timeout=5,
+                    )
 
                 if not preserve_background_tasks:
                     instance.shutdown_background_tasks()

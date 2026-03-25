@@ -639,7 +639,7 @@ def hooks(app: Shell, args: str):
         return
 
     engine = soul.hook_engine
-    if engine is None or not engine.summary:
+    if not engine.summary:
         console.print(
             "[yellow]No hooks configured. "
             "Add [[hooks]] sections to your config.toml to set up hooks.[/yellow]"

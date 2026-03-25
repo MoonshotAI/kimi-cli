@@ -160,7 +160,7 @@ class KimiSoul:
             PlanModeInjectionProvider(),
             YoloModeInjectionProvider(),
         ]
-        self._hook_engine: HookEngine | None = None
+        self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
         if self._runtime.role == "root":
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
@@ -196,7 +196,7 @@ class KimiSoul:
         return self._plan_mode
 
     @property
-    def hook_engine(self) -> HookEngine | None:
+    def hook_engine(self) -> HookEngine:
         return self._hook_engine
 
     def set_hook_engine(self, engine: HookEngine) -> None:
@@ -465,24 +465,23 @@ class KimiSoul:
 
             # --- UserPromptSubmit hook ---
             text_input_for_hook = user_input if isinstance(user_input, str) else ""
-            if self._hook_engine and self._hook_engine.has_hooks_for("UserPromptSubmit"):
-                from kimi_cli.hooks import events
+            from kimi_cli.hooks import events
 
-                hook_results = await self._hook_engine.trigger(
-                    "UserPromptSubmit",
-                    matcher_value=text_input_for_hook,
-                    input_data=events.user_prompt_submit(
-                        session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
-                        prompt=text_input_for_hook,
-                    ),
-                )
-                for r in hook_results:
-                    if r.action == "block":
-                        wire_send(TurnBegin(user_input=user_input))
-                        wire_send(TextPart(text=r.reason or "Prompt blocked by hook."))
-                        wire_send(TurnEnd())
-                        return
+            hook_results = await self._hook_engine.trigger(
+                "UserPromptSubmit",
+                matcher_value=text_input_for_hook,
+                input_data=events.user_prompt_submit(
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    prompt=text_input_for_hook,
+                ),
+            )
+            for r in hook_results:
+                if r.action == "block":
+                    wire_send(TurnBegin(user_input=user_input))
+                    wire_send(TextPart(text=r.reason or "Prompt blocked by hook."))
+                    wire_send(TurnEnd())
+                    return
 
             wire_send(TurnBegin(user_input=user_input))
             user_message = Message(role="user", content=user_input)
@@ -507,11 +506,8 @@ class KimiSoul:
                 await self._turn(user_message)
 
             # --- Stop hook (max 1 re-trigger to prevent infinite loop) ---
-            _he = self._hook_engine
-            if not self._stop_hook_active and _he and _he.has_hooks_for("Stop"):
-                from kimi_cli.hooks import events
-
-                stop_results = await _he.trigger(
+            if not self._stop_hook_active:
+                stop_results = await self._hook_engine.trigger(
                     "Stop",
                     input_data=events.stop(
                         session_id=self._runtime.session.id,
@@ -676,22 +672,21 @@ class KimiSoul:
                 # any other exception should interrupt the step
                 wire_send(StepInterrupted())
                 # --- StopFailure hook ---
-                if self._hook_engine and self._hook_engine.has_hooks_for("StopFailure"):
-                    from kimi_cli.hooks import events
+                from kimi_cli.hooks import events as _hook_events
 
-                    _bg = asyncio.create_task(
-                        self._hook_engine.trigger(
-                            "StopFailure",
-                            matcher_value=type(e).__name__,
-                            input_data=events.stop_failure(
-                                session_id=self._runtime.session.id,
-                                cwd=str(Path.cwd()),
-                                error_type=type(e).__name__,
-                                error_message=str(e),
-                            ),
-                        )
+                _bg = asyncio.create_task(
+                    self._hook_engine.trigger(
+                        "StopFailure",
+                        matcher_value=type(e).__name__,
+                        input_data=_hook_events.stop_failure(
+                            session_id=self._runtime.session.id,
+                            cwd=str(Path.cwd()),
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                        ),
                     )
-                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                )
+                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 # break the agent loop
                 raise
 
@@ -729,25 +724,24 @@ class KimiSoul:
             async def _append_notification(view: NotificationView) -> None:
                 await self._context.append_message(build_notification_message(view, self._runtime))
                 # --- Notification hook ---
-                if self._hook_engine and self._hook_engine.has_hooks_for("Notification"):
-                    from kimi_cli.hooks import events
+                from kimi_cli.hooks import events
 
-                    _bg = asyncio.create_task(
-                        self._hook_engine.trigger(
-                            "Notification",
-                            matcher_value=view.event.type,
-                            input_data=events.notification(
-                                session_id=self._runtime.session.id,
-                                cwd=str(Path.cwd()),
-                                sink="llm",
-                                notification_type=view.event.type,
-                                title=view.event.title,
-                                body=view.event.body,
-                                severity=view.event.severity,
-                            ),
-                        )
+                _bg = asyncio.create_task(
+                    self._hook_engine.trigger(
+                        "Notification",
+                        matcher_value=view.event.type,
+                        input_data=events.notification(
+                            session_id=self._runtime.session.id,
+                            cwd=str(Path.cwd()),
+                            sink="llm",
+                            notification_type=view.event.type,
+                            title=view.event.title,
+                            body=view.event.body,
+                            severity=view.event.severity,
+                        ),
                     )
-                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                )
+                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             await self._runtime.notifications.deliver_pending(
                 "llm",
@@ -924,19 +918,18 @@ class KimiSoul:
             )
 
         trigger_reason = "manual" if custom_instruction else "auto"
-        if self._hook_engine and self._hook_engine.has_hooks_for("PreCompact"):
-            from kimi_cli.hooks import events
+        from kimi_cli.hooks import events
 
-            await self._hook_engine.trigger(
-                "PreCompact",
-                matcher_value=trigger_reason,
-                input_data=events.pre_compact(
-                    session_id=self._runtime.session.id,
-                    cwd=str(Path.cwd()),
-                    trigger=trigger_reason,
-                    token_count=self._context.token_count,
-                ),
-            )
+        await self._hook_engine.trigger(
+            "PreCompact",
+            matcher_value=trigger_reason,
+            input_data=events.pre_compact(
+                session_id=self._runtime.session.id,
+                cwd=str(Path.cwd()),
+                trigger=trigger_reason,
+                token_count=self._context.token_count,
+            ),
+        )
 
         wire_send(CompactionBegin())
         compaction_result = await _compact_with_retry()
@@ -967,22 +960,19 @@ class KimiSoul:
 
         wire_send(CompactionEnd())
 
-        if self._hook_engine and self._hook_engine.has_hooks_for("PostCompact"):
-            from kimi_cli.hooks import events
-
-            _bg = asyncio.create_task(
-                self._hook_engine.trigger(
-                    "PostCompact",
-                    matcher_value=trigger_reason,
-                    input_data=events.post_compact(
-                        session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
-                        trigger=trigger_reason,
-                        estimated_token_count=estimated_token_count,
-                    ),
-                )
+        _bg = asyncio.create_task(
+            self._hook_engine.trigger(
+                "PostCompact",
+                matcher_value=trigger_reason,
+                input_data=events.post_compact(
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    trigger=trigger_reason,
+                    estimated_token_count=estimated_token_count,
+                ),
             )
-            _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        )
+        _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:

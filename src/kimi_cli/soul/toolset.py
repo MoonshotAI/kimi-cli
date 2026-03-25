@@ -88,7 +88,7 @@ class KimiToolset:
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
-        self._hook_engine: HookEngine | None = None
+        self._hook_engine: HookEngine = HookEngine()
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -146,79 +146,70 @@ class KimiToolset:
                 tool_input_dict = arguments if isinstance(arguments, dict) else {}
 
                 # --- PreToolUse ---
-                if self._hook_engine and self._hook_engine.has_hooks_for("PreToolUse"):
-                    from kimi_cli.hooks import events
+                from kimi_cli.hooks import events
 
-                    results = await self._hook_engine.trigger(
-                        "PreToolUse",
-                        matcher_value=tool_call.function.name,
-                        input_data=events.pre_tool_use(
-                            session_id=_get_session_id(),
-                            cwd=str(Path.cwd()),
-                            tool_name=tool_call.function.name,
-                            tool_input=tool_input_dict,
+                results = await self._hook_engine.trigger(
+                    "PreToolUse",
+                    matcher_value=tool_call.function.name,
+                    input_data=events.pre_tool_use(
+                        session_id=_get_session_id(),
+                        cwd=str(Path.cwd()),
+                        tool_name=tool_call.function.name,
+                        tool_input=tool_input_dict,
+                        tool_call_id=tool_call.id,
+                    ),
+                )
+                for r in results:
+                    if r.action == "block":
+                        return ToolResult(
                             tool_call_id=tool_call.id,
-                        ),
-                    )
-                    for r in results:
-                        if r.action == "block":
-                            return ToolResult(
-                                tool_call_id=tool_call.id,
-                                return_value=ToolError(
-                                    message=r.reason or "Blocked by PreToolUse hook",
-                                    brief="Hook blocked",
-                                ),
-                            )
+                            return_value=ToolError(
+                                message=r.reason or "Blocked by PreToolUse hook",
+                                brief="Hook blocked",
+                            ),
+                        )
 
                 # --- Execute tool ---
                 try:
                     ret = await tool.call(arguments)
                 except Exception as e:
                     # --- PostToolUseFailure (fire-and-forget) ---
-                    if self._hook_engine and self._hook_engine.has_hooks_for("PostToolUseFailure"):
-                        from kimi_cli.hooks import events
-
-                        _bg = asyncio.create_task(
-                            self._hook_engine.trigger(
-                                "PostToolUseFailure",
-                                matcher_value=tool_call.function.name,
-                                input_data=events.post_tool_use_failure(
-                                    session_id=_get_session_id(),
-                                    cwd=str(Path.cwd()),
-                                    tool_name=tool_call.function.name,
-                                    tool_input=tool_input_dict,
-                                    error=str(e),
-                                    tool_call_id=tool_call.id,
-                                ),
-                            )
+                    _bg = asyncio.create_task(
+                        self._hook_engine.trigger(
+                            "PostToolUseFailure",
+                            matcher_value=tool_call.function.name,
+                            input_data=events.post_tool_use_failure(
+                                session_id=_get_session_id(),
+                                cwd=str(Path.cwd()),
+                                tool_name=tool_call.function.name,
+                                tool_input=tool_input_dict,
+                                error=str(e),
+                                tool_call_id=tool_call.id,
+                            ),
                         )
-                        _bg.add_done_callback(
-                            lambda t: t.exception() if not t.cancelled() else None
-                        )
+                    )
+                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                     return ToolResult(
                         tool_call_id=tool_call.id,
                         return_value=ToolRuntimeError(str(e)),
                     )
 
                 # --- PostToolUse (fire-and-forget) ---
-                if self._hook_engine and self._hook_engine.has_hooks_for("PostToolUse"):
-                    from kimi_cli.hooks import events
-
-                    _bg = asyncio.create_task(
-                        self._hook_engine.trigger(
-                            "PostToolUse",
-                            matcher_value=tool_call.function.name,
-                            input_data=events.post_tool_use(
-                                session_id=_get_session_id(),
-                                cwd=str(Path.cwd()),
-                                tool_name=tool_call.function.name,
-                                tool_input=tool_input_dict,
-                                tool_output=str(ret)[:2000],
-                                tool_call_id=tool_call.id,
-                            ),
-                        )
+                _bg = asyncio.create_task(
+                    self._hook_engine.trigger(
+                        "PostToolUse",
+                        matcher_value=tool_call.function.name,
+                        input_data=events.post_tool_use(
+                            session_id=_get_session_id(),
+                            cwd=str(Path.cwd()),
+                            tool_name=tool_call.function.name,
+                            tool_input=tool_input_dict,
+                            tool_output=str(ret)[:2000],
+                            tool_call_id=tool_call.id,
+                        ),
                     )
-                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                )
+                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 

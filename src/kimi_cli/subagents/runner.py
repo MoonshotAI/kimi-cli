@@ -228,19 +228,18 @@ class ForegroundSubagentRunner:
         try:
             # --- SubagentStart hook ---
             hook_engine = soul.hook_engine
-            if hook_engine and hook_engine.has_hooks_for("SubagentStart"):
-                from kimi_cli.hooks import events as hook_events
+            from kimi_cli.hooks import events as hook_events
 
-                await hook_engine.trigger(
-                    "SubagentStart",
-                    matcher_value=actual_type,
-                    input_data=hook_events.subagent_start(
-                        session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
-                        agent_name=actual_type,
-                        prompt=req.prompt[:500],
-                    ),
-                )
+            await hook_engine.trigger(
+                "SubagentStart",
+                matcher_value=actual_type,
+                input_data=hook_events.subagent_start(
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    agent_name=actual_type,
+                    prompt=req.prompt[:500],
+                ),
+            )
 
             output_writer.stage("run_soul_start")
             final_response, failure = await run_with_summary_continuation(
@@ -256,22 +255,19 @@ class ForegroundSubagentRunner:
             output_writer.stage("run_soul_finished")
 
             # --- SubagentStop hook ---
-            if hook_engine and hook_engine.has_hooks_for("SubagentStop"):
-                from kimi_cli.hooks import events as hook_events
-
-                _bg = asyncio.create_task(
-                    hook_engine.trigger(
-                        "SubagentStop",
-                        matcher_value=actual_type,
-                        input_data=hook_events.subagent_stop(
-                            session_id=self._runtime.session.id,
-                            cwd=str(Path.cwd()),
-                            agent_name=actual_type,
-                            response=(final_response or "")[:500],
-                        ),
-                    )
+            _bg = asyncio.create_task(
+                hook_engine.trigger(
+                    "SubagentStop",
+                    matcher_value=actual_type,
+                    input_data=hook_events.subagent_stop(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        agent_name=actual_type,
+                        response=(final_response or "")[:500],
+                    ),
                 )
-                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+            )
+            _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         except asyncio.CancelledError:
             self._store.update_instance(agent_id, status="killed")
             output_writer.stage("cancelled")
