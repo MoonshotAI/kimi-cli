@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：空闲时自动响应后台任务完成——Shell 现在会检测后台 Bash 命令或 Agent 任务的完成，并自动发起新的 Agent 轮次处理结果，无需等待用户输入
+
 ## 1.25.0 (2026-03-23)
 
 - Core：新增插件系统（Skills + Tools）——插件通过 `plugin.json` 为 Kimi Code CLI 扩展自定义工具；工具是在独立子进程中运行的命令，其 stdout 返回给 Agent；插件支持通过 `inject` 配置自动注入凭证

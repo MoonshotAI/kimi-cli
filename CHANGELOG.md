@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Auto-trigger agent when background tasks complete while idle — the shell now detects when a background bash command or agent task finishes and automatically starts a new agent turn to process the results, instead of waiting for the user to type something
+
 ## 1.25.0 (2026-03-23)
 
 - Core: Add plugin system (Skills + Tools) — plugins extend Kimi Code CLI with custom tools packaged as `plugin.json`; tools are commands that run in isolated subprocesses and return their stdout to the agent; plugins support automatic credential injection via `inject` configuration
