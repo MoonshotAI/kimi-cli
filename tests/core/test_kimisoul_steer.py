@@ -12,6 +12,7 @@ import kimi_cli.soul.kimisoul as kimisoul_module
 from kimi_cli.llm import LLM, ModelCapability
 from kimi_cli.soul import LLMNotSupported, run_soul
 from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.dynamic_injection import DynamicInjection
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -19,6 +20,12 @@ from kimi_cli.soul.message import is_system_reminder_message
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import ImageURLPart, SteerInput, StepBegin, TextPart, TurnBegin, TurnEnd
+
+
+@pytest.fixture
+def approval() -> Approval:
+    """Override global yolo=True fixture; steer tests don't need yolo."""
+    return Approval(yolo=False)
 
 
 def _make_soul(runtime: Runtime, tmp_path: Path) -> KimiSoul:
@@ -178,13 +185,13 @@ async def test_agent_loop_injects_steer_between_completed_steps(
     sent: list[object] = []
     step_calls = 0
 
-    async def fake_fetch_request() -> None:
+    async def fake_request(sender: str, action: str, description: str, display=None):
         await asyncio.Future()
 
     async def fake_checkpoint() -> None:
         return None
 
-    monkeypatch.setattr(soul._approval, "fetch_request", fake_fetch_request)
+    monkeypatch.setattr(soul._approval, "request", fake_request)
     monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
     monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
     monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: sent.append(msg))
@@ -241,13 +248,13 @@ async def test_agent_loop_continues_after_tool_rejected_when_steer_is_injected(
     sent: list[object] = []
     step_calls = 0
 
-    async def fake_fetch_request() -> None:
+    async def fake_request(sender: str, action: str, description: str, display=None):
         await asyncio.Future()
 
     async def fake_checkpoint() -> None:
         return None
 
-    monkeypatch.setattr(soul._approval, "fetch_request", fake_fetch_request)
+    monkeypatch.setattr(soul._approval, "request", fake_request)
     monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
     monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
     monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: sent.append(msg))

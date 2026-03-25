@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.5`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.6`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -153,13 +153,13 @@ interface ExternalToolsResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.5", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.6", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **Success response example**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.5", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.6", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 If the server does not support the `initialize` method, the client will receive a `-32601 method not found` error and should automatically fall back to no-handshake mode.
@@ -690,17 +690,27 @@ interface ApprovalResponse {
   request_id: string
   /** Approval result */
   response: "approve" | "approve_for_session" | "reject"
+  /** Optional feedback text when rejecting, may be absent in JSON */
+  feedback?: string
 }
 ```
 
 ### `SubagentEvent`
 
+::: info Changed
+Changed in Wire 1.6. `task_tool_call_id` renamed to `parent_tool_call_id`; added `agent_id` and `subagent_type` fields.
+:::
+
 Subagent event.
 
 ```typescript
 interface SubagentEvent {
-  /** Associated Task tool call ID */
-  task_tool_call_id: string
+  /** Associated parent Agent tool call ID, may be absent in JSON */
+  parent_tool_call_id?: string | null
+  /** Subagent instance ID, may be absent in JSON */
+  agent_id?: string | null
+  /** Built-in subagent type used by this instance, may be absent in JSON */
+  subagent_type?: string | null
   /** Event from subagent, nested Wire message format */
   event: { type: string; payload: object }
 }
@@ -723,6 +733,10 @@ interface SteerInput {
 
 ### `ApprovalRequest`
 
+::: info Changed
+Changed in Wire 1.6. Added `source_kind`, `source_id`, `agent_id`, `subagent_type`, and `source_description` fields.
+:::
+
 Approval request, sent via `request` method, client must respond before agent can continue.
 
 ```typescript
@@ -739,10 +753,24 @@ interface ApprovalRequest {
   description: string
   /** Display blocks shown to user, may be absent in JSON, defaults to [] */
   display?: DisplayBlock[]
+  /** Where the request originated: foreground turn or background agent, may be absent in JSON */
+  source_kind?: "foreground_turn" | "background_agent" | null
+  /** Source identifier (e.g. background agent ID), may be absent in JSON */
+  source_id?: string | null
+  /** Subagent instance ID if from a subagent, may be absent in JSON */
+  agent_id?: string | null
+  /** Subagent type if from a subagent, may be absent in JSON */
+  subagent_type?: string | null
+  /** Human-readable source description, may be absent in JSON */
+  source_description?: string | null
 }
 ```
 
 **Response format**
+
+::: info Changed
+Changed in Wire 1.6. Added optional `feedback` field.
+:::
 
 Client needs to return `ApprovalResponse` as the response result:
 
@@ -750,6 +778,8 @@ Client needs to return `ApprovalResponse` as the response result:
 interface ApprovalResponse {
   request_id: string
   response: "approve" | "approve_for_session" | "reject"
+  /** Optional feedback text when rejecting, may be absent in JSON */
+  feedback?: string
 }
 ```
 
@@ -757,7 +787,7 @@ interface ApprovalResponse {
 |----------|-------------|
 | `approve` | Approve this operation |
 | `approve_for_session` | Approve similar operations for this session |
-| `reject` | Reject operation |
+| `reject` | Reject operation; optionally include `feedback` to instruct the model on what to do instead |
 
 ### `ToolCallRequest`
 

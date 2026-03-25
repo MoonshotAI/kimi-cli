@@ -32,6 +32,44 @@ def _read_until_prompt(shell, *, after: int, timeout: float = 15.0) -> str:
     return read_until_prompt_ready(shell, after=after, timeout=timeout)
 
 
+def _build_tool_call_line(tool_call_id: str, name: str, arguments: dict[str, object]) -> str:
+    payload = {
+        "id": tool_call_id,
+        "name": name,
+        "arguments": json.dumps(arguments),
+    }
+    return f"tool_call: {json.dumps(payload)}"
+
+
+def _wait_for_background_task_status(
+    session_dir: Path,
+    *,
+    expected_status: str,
+    timeout: float = 15.0,
+) -> Path:
+    deadline = time.monotonic() + timeout
+    tasks_root = session_dir / "tasks"
+    last_seen: str | None = None
+    while True:
+        task_dirs = (
+            [path for path in tasks_root.iterdir() if path.is_dir()] if tasks_root.exists() else []
+        )
+        if task_dirs:
+            runtime_path = task_dirs[0] / "runtime.json"
+            if runtime_path.exists():
+                runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+                status = runtime.get("status")
+                last_seen = str(status)
+                if status == expected_status:
+                    return runtime_path
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                f"Timed out waiting for background task status {expected_status!r}. "
+                f"Last seen: {last_seen!r}."
+            )
+        time.sleep(0.05)
+
+
 def _exit_shell(shell) -> None:
     last_error: AssertionError | None = None
     for _ in range(2):
@@ -367,7 +405,7 @@ def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:
@@ -396,7 +434,7 @@ def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
         shell.send_key("3")
         shell.send_key("enter")
         shell.read_until_contains(
-            "Enter the custom answer, then press Enter.", after=turn_mark, timeout=15.0
+            "Type your answer, then press Enter to submit.", after=turn_mark, timeout=15.0
         )
         shell.send_line("Custom follow-up")
         shell.read_until_contains("Question flow complete.", after=turn_mark, timeout=15.0)
@@ -456,7 +494,7 @@ def test_shell_approval_roundtrip_and_session_auto_approve(tmp_path: Path) -> No
         first_mark = shell.mark()
         shell.send_line("run first approval flow")
         shell.read_until_contains("requesting approval to run command", after=first_mark)
-        shell.send_key("1")
+        shell.send_key("enter")
         shell.read_until_contains("First approval done.", after=first_mark)
         first_prompt_mark = shell.mark()
         _read_until_prompt(shell, after=first_prompt_mark)
@@ -479,6 +517,196 @@ def test_shell_approval_roundtrip_and_session_auto_approve(tmp_path: Path) -> No
         third_segment = shell.normalized_text()[third_mark:]
         assert "requesting approval to run command" not in third_segment
         assert (work_dir / "approval_three.txt").read_text(encoding="utf-8") == "auto-approved"
+    finally:
+        shell.close()
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Known bug: when an approval modal interrupts an existing draft, confirming the modal "
+        "does not currently resolve the pending approval in the PTY flow."
+    ),
+    strict=False,
+)
+def test_shell_background_agent_approval_preserves_running_draft(tmp_path: Path) -> None:
+    root_scripts_path = tmp_path / "root_scripts.json"
+    sub_scripts_path = tmp_path / "sub_scripts.json"
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    target_path = work_dir / "bg_draft.txt"
+    seed_path = work_dir / "seed.txt"
+    seed_path.write_text(("seed line for delay\n" * 2000), encoding="utf-8")
+
+    root_scripts_path.write_text(
+        json.dumps(
+            [
+                "\n".join(
+                    [
+                        "text: Root starts a background subagent.",
+                        _build_tool_call_line(
+                            "agent-bg-draft-1",
+                            "Agent",
+                            {
+                                "description": "background draft write",
+                                "prompt": (
+                                    f"Write {target_path} with the word approved and then "
+                                    "summarize."
+                                ),
+                                "subagent_type": "coder",
+                                "model": "sub",
+                                "run_in_background": True,
+                            },
+                        ),
+                    ]
+                ),
+                "text: Root finished launching the background subagent.",
+                "text: Draft preserved after approval.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    sub_scripts_path.write_text(
+        json.dumps(
+            [
+                "\n".join(
+                    [
+                        "text: Background subagent is preparing before approval.",
+                        _build_tool_call_line(
+                            "rf-draft-1",
+                            "ReadFile",
+                            {
+                                "path": str(seed_path),
+                            },
+                        ),
+                        _build_tool_call_line(
+                            "rf-draft-2",
+                            "ReadFile",
+                            {
+                                "path": str(seed_path),
+                                "line_offset": 200,
+                                "n_lines": 200,
+                            },
+                        ),
+                    ]
+                ),
+                "\n".join(
+                    [
+                        "text: Background subagent will request approval now.",
+                        _build_tool_call_line(
+                            "wf-draft-1",
+                            "WriteFile",
+                            {
+                                "path": str(target_path),
+                                "content": "approved\n",
+                            },
+                        ),
+                    ]
+                ),
+                # Pad the summary to exceed SUMMARY_MIN_LENGTH (200 chars) to avoid
+                # a continuation turn that would exhaust the scripted provider.
+                "text: Background subagent completed after approval. "
+                + ("The file has been written successfully with the requested content. " * 4),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "default_model": "root",
+                "models": {
+                    "root": {
+                        "provider": "root_provider",
+                        "model": "scripted_echo",
+                        "max_context_size": 100000,
+                    },
+                    "sub": {
+                        "provider": "sub_provider",
+                        "model": "scripted_echo",
+                        "max_context_size": 100000,
+                    },
+                },
+                "providers": {
+                    "root_provider": {
+                        "type": "_scripted_echo",
+                        "base_url": "",
+                        "api_key": "",
+                        "env": {"KIMI_SCRIPTED_ECHO_SCRIPTS": str(root_scripts_path)},
+                    },
+                    "sub_provider": {
+                        "type": "_scripted_echo",
+                        "base_url": "",
+                        "api_key": "",
+                        "env": {"KIMI_SCRIPTED_ECHO_SCRIPTS": str(sub_scripts_path)},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=False,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_line("Launch a background agent that writes a file.")
+        shell.read_until_contains(
+            "Root finished launching the background subagent.",
+            after=turn_mark,
+            timeout=15.0,
+        )
+        draft_text = "keep this draft"
+        shell.read_until_contains(
+            "Root starts a background subagent.", after=turn_mark, timeout=15.0
+        )
+        shell.send_text(draft_text)
+        approval_mark = shell.mark()
+        shell.read_until_contains(
+            "requesting approval to edit file",
+            after=approval_mark,
+            timeout=15.0,
+        )
+        approval_segment = shell.normalized_text()[approval_mark:]
+        assert "WriteFile is requesting approval to edit file" in approval_segment
+
+        shell.send_key("enter")
+        shell.read_until_contains(
+            "Root finished launching the background subagent.",
+            after=turn_mark,
+            timeout=15.0,
+        )
+        session_dir = find_session_dir(home_dir, work_dir)
+        runtime_path = _wait_for_background_task_status(
+            session_dir,
+            expected_status="completed",
+            timeout=15.0,
+        )
+        assert target_path.read_text(encoding="utf-8") == "approved\n"
+
+        prompt_after_approval = shell.mark()
+        _read_until_prompt(shell, after=prompt_after_approval)
+        shell.send_key("enter")
+        shell.read_until_contains("Draft preserved after approval.", after=prompt_after_approval)
+        next_prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=next_prompt_mark)
+
+        assert list_turn_begin_inputs(home_dir, work_dir) == [
+            "Launch a background agent that writes a file.",
+            draft_text,
+        ]
+
+        runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+        assert runtime["failure_reason"] is None
     finally:
         shell.close()
 

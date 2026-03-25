@@ -180,12 +180,20 @@ class ToolResultBuilder:
 
 
 class ToolRejectedError(ToolError):
-    def __init__(self, message: str | None = None, brief: str = "Rejected by user"):
+    has_feedback: bool = False
+
+    def __init__(
+        self,
+        message: str | None = None,
+        brief: str = "Rejected by user",
+        has_feedback: bool = False,
+    ):
         super().__init__(
             message=message
             or (
                 "The tool call is rejected by the user. "
-                "Please follow the new instructions from the user."
+                "Stop what you are doing and wait for the user to tell you how to proceed."
             ),
             brief=brief,
         )
+        self.has_feedback = has_feedback

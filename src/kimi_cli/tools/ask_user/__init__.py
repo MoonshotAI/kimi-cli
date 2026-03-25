@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import override
 from uuid import uuid4
@@ -63,8 +64,27 @@ class AskUserQuestion(CallableTool2[Params]):
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._is_yolo: Callable[[], bool] | None = None
+
+    def bind_approval(self, is_yolo: Callable[[], bool]) -> None:
+        """Late-bind yolo checker so we can auto-dismiss in non-interactive mode."""
+        self._is_yolo = is_yolo
+
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
+        if self._is_yolo and self._is_yolo():
+            return ToolReturnValue(
+                is_error=False,
+                output=(
+                    '{"answers": {}, "note": "Running in non-interactive'
+                    ' (yolo) mode. Make your own decision."}'
+                ),
+                message="Non-interactive mode, auto-dismissed.",
+                display=[BriefDisplayBlock(text="Auto-dismissed (yolo)")],
+            )
+
         wire = get_wire_or_none()
         if wire is None:
             return ToolError(

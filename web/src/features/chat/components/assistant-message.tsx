@@ -204,7 +204,13 @@ const renderToolMessage = ({
     isApprovalRequested
   );
 
-  return (
+  const subagentOriginLabel = toolCall.isSubagentOrigin
+    ? toolCall.subagentType
+      ? `${toolCall.subagentType} agent`
+      : "sub-agent"
+    : null;
+
+  const toolBlock = (
     <>
       <Tool
         key={`${message.id}-${blocksExpanded}`}
@@ -225,6 +231,7 @@ const renderToolMessage = ({
               steps={toolCall.subagentSteps}
               isRunning={toolCall.subagentRunning}
               defaultOpen={blocksExpanded}
+              subagentType={toolCall.subagentType}
             />
           ) : null}
           {shouldShowOutput ? (
@@ -312,6 +319,20 @@ const renderToolMessage = ({
       ) : null}
     </>
   );
+
+  // Sub-agent origin: wrap in a visually demoted container with source label
+  if (subagentOriginLabel) {
+    return (
+      <div className="border-l-2 border-muted-foreground/20 pl-3 opacity-80">
+        <div className="text-[11px] text-muted-foreground/60 mb-0.5">
+          {subagentOriginLabel}
+        </div>
+        {toolBlock}
+      </div>
+    );
+  }
+
+  return toolBlock;
 };
 
 const ThinkToolBlock = ({

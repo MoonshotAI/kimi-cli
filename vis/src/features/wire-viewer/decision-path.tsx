@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { type WireEvent } from "@/lib/api";
 import {
+  Bot,
   Brain,
   Wrench,
   CheckCircle,
@@ -18,6 +19,10 @@ interface DecisionStep {
   toolResultEvent: WireEvent | null;
   isError: boolean;
   durationSec: number;
+  /** When this is an Agent tool call */
+  isAgentCall?: boolean;
+  agentDescription?: string;
+  agentType?: string;
 }
 
 interface DecisionChain {
@@ -123,6 +128,19 @@ function extractDecisionChains(events: WireEvent[]): DecisionChain[] {
         argsSummary = args;
       }
 
+      // Detect Agent tool calls and extract sub-agent info
+      let isAgentCall = false;
+      let agentDescription: string | undefined;
+      let agentType: string | undefined;
+      if (name === "Agent") {
+        isAgentCall = true;
+        try {
+          const parsed = JSON.parse(args) as Record<string, unknown>;
+          agentDescription = parsed.description as string | undefined;
+          agentType = parsed.subagent_type as string | undefined;
+        } catch { /* ignore */ }
+      }
+
       const step: DecisionStep = {
         thinkingEventIndices: thinkingBuffer.map((t) => t.index),
         thinkingSummary,
@@ -132,6 +150,9 @@ function extractDecisionChains(events: WireEvent[]): DecisionChain[] {
         toolResultEvent: resultEvent,
         isError,
         durationSec,
+        isAgentCall,
+        agentDescription,
+        agentType,
       };
 
       if (currentChain) {
@@ -270,12 +291,25 @@ function StepView({
         <div className="absolute -left-[17px] top-[7px] w-[7px] h-[7px] rounded-full bg-purple-500 border border-background z-10" />
         <button
           onClick={() => onScrollToIndex(step.toolCallEvent.index)}
-          className="group flex items-start gap-1.5 w-full text-left border-l-2 border-purple-500/40 pl-2 py-1 hover:bg-purple-500/5 rounded-r transition-colors"
+          className={`group flex items-start gap-1.5 w-full text-left border-l-2 pl-2 py-1 rounded-r transition-colors ${
+            step.isAgentCall
+              ? "border-indigo-500/40 hover:bg-indigo-500/5"
+              : "border-purple-500/40 hover:bg-purple-500/5"
+          }`}
         >
-          <Wrench size={12} className="text-purple-500 shrink-0 mt-0.5" />
+          {step.isAgentCall ? (
+            <Bot size={12} className="text-indigo-500 shrink-0 mt-0.5" />
+          ) : (
+            <Wrench size={12} className="text-purple-500 shrink-0 mt-0.5" />
+          )}
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] font-medium text-purple-600 dark:text-purple-400">
-              {step.toolCallName}
+            <div className={`text-[10px] font-medium ${step.isAgentCall ? "text-indigo-600 dark:text-indigo-400" : "text-purple-600 dark:text-purple-400"}`}>
+              {step.isAgentCall
+                ? `Agent${step.agentType ? ` [${step.agentType}]` : ""}`
+                : step.toolCallName}
+              {step.isAgentCall && step.agentDescription && (
+                <span className="ml-1 font-normal text-muted-foreground">{step.agentDescription.slice(0, 40)}</span>
+              )}
             </div>
             <div className="text-[11px] text-muted-foreground font-mono whitespace-pre-wrap break-all leading-tight">
               {step.toolCallArgsSummary}

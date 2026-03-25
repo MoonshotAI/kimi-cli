@@ -131,13 +131,18 @@ def test_shell_approval_approve(tmp_path) -> None:
                         "sender": "Shell",
                         "action": "run command",
                         "description": "Run command `echo ok`",
+                        "source_kind": "foreground_turn",
+                        "source_id": "<uuid>",
+                        "agent_id": None,
+                        "subagent_type": None,
+                        "source_description": None,
                         "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
                     },
                 },
                 {
                     "method": "event",
                     "type": "ApprovalResponse",
-                    "payload": {"request_id": "<uuid>", "response": "approve"},
+                    "payload": {"request_id": "<uuid>", "response": "approve", "feedback": ""},
                 },
                 {
                     "method": "event",
@@ -257,13 +262,18 @@ def test_shell_approval_reject(tmp_path) -> None:
                         "sender": "Shell",
                         "action": "run command",
                         "description": "Run command `echo ok`",
+                        "source_kind": "foreground_turn",
+                        "source_id": "<uuid>",
+                        "agent_id": None,
+                        "subagent_type": None,
+                        "source_description": None,
                         "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
                     },
                 },
                 {
                     "method": "event",
                     "type": "ApprovalResponse",
-                    "payload": {"request_id": "<uuid>", "response": "reject"},
+                    "payload": {"request_id": "<uuid>", "response": "reject", "feedback": ""},
                 },
                 {
                     "method": "event",
@@ -273,7 +283,7 @@ def test_shell_approval_reject(tmp_path) -> None:
                         "return_value": {
                             "is_error": True,
                             "output": "",
-                            "message": "The tool call is rejected by the user. Please follow the new instructions from the user.",
+                            "message": "The tool call is rejected by the user. Stop what you are doing and wait for the user to tell you how to proceed.",
                             "display": [{"type": "brief", "text": "Rejected by user"}],
                             "extras": None,
                         },
@@ -383,13 +393,22 @@ def test_approve_for_session(tmp_path) -> None:
                         "sender": "Shell",
                         "action": "run command",
                         "description": "Run command `echo first`",
+                        "source_kind": "foreground_turn",
+                        "source_id": "<uuid>",
+                        "agent_id": None,
+                        "subagent_type": None,
+                        "source_description": None,
                         "display": [{"type": "shell", "language": "bash", "command": "echo first"}],
                     },
                 },
                 {
                     "method": "event",
                     "type": "ApprovalResponse",
-                    "payload": {"request_id": "<uuid>", "response": "approve_for_session"},
+                    "payload": {
+                        "request_id": "<uuid>",
+                        "response": "approve_for_session",
+                        "feedback": "",
+                    },
                 },
                 {
                     "method": "event",
@@ -651,6 +670,11 @@ def test_display_block_shell(tmp_path) -> None:
                 "sender": "Shell",
                 "action": "run command",
                 "description": "Run command `echo ok`",
+                "source_kind": "foreground_turn",
+                "source_id": "<uuid>",
+                "agent_id": None,
+                "subagent_type": None,
+                "source_description": None,
                 "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
             }
         )
@@ -705,6 +729,11 @@ def test_display_block_diff_write_file(tmp_path) -> None:
                 "sender": "WriteFile",
                 "action": "edit file",
                 "description": "Write file `<work_dir>/file.txt`",
+                "source_kind": "foreground_turn",
+                "source_id": "<uuid>",
+                "agent_id": None,
+                "subagent_type": None,
+                "source_description": None,
                 "display": [
                     {
                         "type": "diff",
@@ -770,6 +799,11 @@ def test_display_block_diff_str_replace(tmp_path) -> None:
                 "sender": "StrReplaceFile",
                 "action": "edit file",
                 "description": "Edit file `<work_dir>/file.txt`",
+                "source_kind": "foreground_turn",
+                "source_id": "<uuid>",
+                "agent_id": None,
+                "subagent_type": None,
+                "source_description": None,
                 "display": [
                     {
                         "type": "diff",

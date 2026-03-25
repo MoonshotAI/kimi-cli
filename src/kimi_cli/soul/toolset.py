@@ -30,7 +30,6 @@ from kosong.utils.typing import JsonType
 from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.tools import SkipThisTool
-from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
     ContentPart,
     MCPServerSnapshot,
@@ -443,8 +442,9 @@ class MCPTool[T: ClientTransport](CallableTool):
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
         description = f"Call MCP tool `{self._mcp_tool.name}`."
-        if not await self._runtime.approval.request(self.name, self._action_name, description):
-            return ToolRejectedError()
+        result = await self._runtime.approval.request(self.name, self._action_name, description)
+        if not result:
+            return result.rejection_error()
 
         try:
             async with self._client as client:

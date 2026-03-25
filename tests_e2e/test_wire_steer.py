@@ -114,11 +114,11 @@ def test_steer_during_active_turn(tmp_path) -> None:
         wire.close()
 
 
-def test_steer_forces_extra_step_on_no_tool_calls(tmp_path) -> None:
-    """When the model stops with no_tool_calls but a steer is pending,
-    the agent loop should force another LLM step."""
-    # Script: step 1 returns text only (no tool calls → would normally end turn),
-    # but if steer is consumed, step 2 runs and returns more text.
+def test_steer_basic_lifecycle_completes(tmp_path) -> None:
+    """Verify that a turn completes normally when a steer could theoretically
+    be injected.  The scripted provider returns immediately so the steer
+    window is effectively zero — this test only confirms the lifecycle is
+    sound, not that the steer is consumed."""
     scripts = [
         "text: first response",
         "text: steered response",
@@ -136,7 +136,6 @@ def test_steer_forces_extra_step_on_no_tool_calls(tmp_path) -> None:
     )
     try:
         send_initialize(wire)
-        # Start a prompt
         wire.send_json(
             {
                 "jsonrpc": "2.0",
@@ -145,13 +144,6 @@ def test_steer_forces_extra_step_on_no_tool_calls(tmp_path) -> None:
                 "params": {"user_input": "start"},
             }
         )
-        # The scripted provider returns "first response" immediately with
-        # no tool calls.  By the time we can send a steer, the turn may
-        # already have finished.  This is inherently racy in the e2e setup
-        # because the scripted provider doesn't block.
-        #
-        # Instead of trying to race, just verify the basic lifecycle: the
-        # prompt finishes successfully.
         resp, messages = collect_until_response(wire, "prompt-1")
         assert resp.get("result", {}).get("status") == "finished"
     finally:

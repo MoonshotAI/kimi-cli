@@ -11,7 +11,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.shell import Params as ShellParams
 from kimi_cli.tools.shell import Shell
-from kimi_cli.tools.utils import ToolRejectedError, ToolResultBuilder
+from kimi_cli.tools.utils import ToolResultBuilder
 from kimi_cli.wire.types import DisplayBlock
 
 
@@ -71,32 +71,29 @@ class Terminal(CallableTool2[ShellParams]):
         if not params.command:
             return builder.error("Command cannot be empty.", brief="Empty command")
 
-        if not await self._approval.request(
+        approval_result = await self._approval.request(
             self.name,
             "run shell command",
             f"Run command `{params.command}`",
-        ):
-            return ToolRejectedError()
+        )
+        if not approval_result:
+            return approval_result.rejection_error()
 
         timeout_seconds = float(params.timeout)
         timeout_label = f"{timeout_seconds:g}s"
-        terminal: acp.TerminalHandle | None = None
+        terminal_id: str | None = None
         exit_status: (
             acp.schema.WaitForTerminalExitResponse | acp.schema.TerminalExitStatus | None
         ) = None
         timed_out = False
 
         try:
-            term = await self._acp_conn.create_terminal(
+            resp = await self._acp_conn.create_terminal(
                 command=params.command,
                 session_id=self._acp_session_id,
                 output_byte_limit=builder.max_chars,
             )
-            # FIXME: update ACP sdk for the fix
-            assert isinstance(term, acp.TerminalHandle), (
-                "Expected TerminalHandle from create_terminal"
-            )
-            terminal = term
+            terminal_id = resp.terminal_id
 
             acp_tool_call_id = get_current_acp_tool_call_id_or_none()
             assert acp_tool_call_id, "Expected to have an ACP tool call ID in context"
@@ -109,7 +106,7 @@ class Terminal(CallableTool2[ShellParams]):
                     content=[
                         acp.schema.TerminalToolCallContent(
                             type="terminal",
-                            terminal_id=terminal.id,
+                            terminal_id=terminal_id,
                         )
                     ],
                 ),
@@ -117,12 +114,21 @@ class Terminal(CallableTool2[ShellParams]):
 
             try:
                 async with asyncio.timeout(timeout_seconds):
-                    exit_status = await terminal.wait_for_exit()
+                    exit_status = await self._acp_conn.wait_for_terminal_exit(
+                        session_id=self._acp_session_id,
+                        terminal_id=terminal_id,
+                    )
             except TimeoutError:
                 timed_out = True
-                await terminal.kill()
+                await self._acp_conn.kill_terminal(
+                    session_id=self._acp_session_id,
+                    terminal_id=terminal_id,
+                )
 
-            output_response = await terminal.current_output()
+            output_response = await self._acp_conn.terminal_output(
+                session_id=self._acp_session_id,
+                terminal_id=terminal_id,
+            )
             builder.write(output_response.output)
             if output_response.exit_status:
                 exit_status = output_response.exit_status
@@ -153,6 +159,9 @@ class Terminal(CallableTool2[ShellParams]):
                 )
             return builder.ok(f"Command executed successfully.{truncated_note}")
         finally:
-            if terminal is not None:
+            if terminal_id is not None:
                 with suppress(Exception):
-                    await terminal.release()
+                    await self._acp_conn.release_terminal(
+                        session_id=self._acp_session_id,
+                        terminal_id=terminal_id,
+                    )

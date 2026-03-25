@@ -14,7 +14,6 @@ from kaos import get_current_kaos, reset_current_kaos, set_current_kaos
 from kaos.local import LocalKaos
 from kaos.path import KaosPath
 from kosong.chat_provider.mock import MockChatProvider
-from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
 from kimi_cli.auth.oauth import OAuthManager
@@ -25,10 +24,12 @@ from kimi_cli.metadata import WorkDirMeta
 from kimi_cli.notifications import NotificationManager
 from kimi_cli.session import Session
 from kimi_cli.session_state import SessionState
-from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs, LaborMarket, Runtime
+from kimi_cli.soul.agent import BuiltinSystemPromptArgs, LaborMarket, Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.subagents import AgentTypeDefinition, ToolPolicy
+from kimi_cli.tools.agent import Agent as AgentTool
 from kimi_cli.tools.background import (
     TaskList,
     TaskOutput,
@@ -41,8 +42,6 @@ from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.multiagent.create import CreateSubagent
-from kimi_cli.tools.multiagent.task import Task
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
@@ -197,15 +196,13 @@ def runtime(
         additional_dirs=[],
         role="root",
     )
-    rt.labor_market.add_fixed_subagent(
-        "mocker",
-        Agent(
-            name="Mocker",
-            system_prompt="You are a mock agent for testing.",
-            toolset=EmptyToolset(),
-            runtime=rt.copy_for_fixed_subagent(),
-        ),
-        "The mock agent for testing purposes.",
+    rt.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="mocker",
+            description="The mock agent for testing purposes.",
+            agent_file=Path("/tmp/mocker-agent.yaml"),
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
     )
     return rt
 
@@ -231,15 +228,9 @@ def tool_call_context(tool_name: str) -> Generator[None]:
 
 
 @pytest.fixture
-def task_tool(runtime: Runtime) -> Task:
-    """Create a Task tool instance."""
-    return Task(runtime)
-
-
-@pytest.fixture
-def create_subagent_tool(toolset: KimiToolset, runtime: Runtime) -> CreateSubagent:
-    """Create a CreateSubagent tool instance."""
-    return CreateSubagent(toolset, runtime)
+def agent_tool(runtime: Runtime) -> AgentTool:
+    """Create an Agent tool instance."""
+    return AgentTool(runtime)
 
 
 @pytest.fixture

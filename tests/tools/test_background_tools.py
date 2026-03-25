@@ -32,6 +32,44 @@ def _write_task(runtime, task_id: str, *, status: TaskStatus, output: str = ""):
     return spec
 
 
+def _write_agent_task(
+    runtime,
+    task_id: str,
+    agent_id: str,
+    *,
+    status: TaskStatus,
+    task_output: str = "",
+    subagent_output: str = "",
+):
+    """Create an agent-type background task with separate task and subagent output files."""
+    store = runtime.background_tasks.store
+    spec = TaskSpec(
+        id=task_id,
+        kind="agent",
+        session_id=runtime.session.id,
+        description="background agent task",
+        tool_call_id="tool-agent",
+        kind_payload={
+            "agent_id": agent_id,
+            "subagent_type": "coder",
+            "prompt": "do work",
+        },
+    )
+    store.create_task(spec)
+    if task_output:
+        store.output_path(task_id).write_text(task_output, encoding="utf-8")
+    runtime_state = TaskRuntime(status=status, updated_at=time.time())
+    if status in {"completed", "failed", "killed", "lost"}:
+        runtime_state.finished_at = time.time()
+    store.write_runtime(task_id, runtime_state)
+
+    # Write subagent output (the live file)
+    subagent_dir = runtime.subagent_store.instance_dir(agent_id, create=True)
+    subagent_output_path = subagent_dir / "output"
+    subagent_output_path.write_text(subagent_output, encoding="utf-8")
+    return spec
+
+
 @pytest.mark.asyncio
 async def test_shell_background_starts_task(shell_tool, runtime, monkeypatch):
     monkeypatch.setattr(runtime.background_tasks, "_launch_worker", lambda task_dir: 9898)
@@ -129,6 +167,23 @@ async def test_task_output_returns_not_ready_for_running_task(runtime, task_outp
     assert "status: running" in result.output
     assert "output_truncated: false" in result.output
     assert "still working" in result.output
+
+
+@pytest.mark.asyncio
+async def test_task_output_defaults_to_non_blocking_snapshot(runtime, task_output_tool):
+    spec = _write_task(
+        runtime,
+        "b6666668",
+        status="running",
+        output="still working\n",
+    )
+
+    result = await task_output_tool(task_output_tool.params(task_id=spec.id))
+
+    assert not result.is_error
+    assert result.message == "Task snapshot retrieved."
+    assert "retrieval_status: not_ready" in result.output
+    assert "status: running" in result.output
 
 
 @pytest.mark.asyncio
@@ -255,7 +310,7 @@ async def test_task_list_can_include_terminal_tasks(runtime, task_list_tool):
 async def test_background_tools_reject_non_root_runtime(
     runtime, task_list_tool, task_output_tool, task_stop_tool
 ):
-    runtime.role = "fixed_subagent"
+    runtime.role = "subagent"
 
     list_result = await task_list_tool(task_list_tool.params(active_only=True, limit=20))
     output_result = await task_output_tool(
@@ -288,8 +343,10 @@ async def test_task_stop_rejected_by_approval(runtime, task_stop_tool, monkeypat
         output="watching\n",
     )
 
+    from kimi_cli.soul.approval import ApprovalResult
+
     async def _reject(*_args, **_kwargs):
-        return False
+        return ApprovalResult(approved=False)
 
     monkeypatch.setattr(task_stop_tool._approval, "request", _reject)
 
@@ -338,3 +395,87 @@ async def test_task_stop_on_terminal_task_is_noop(runtime, task_stop_tool):
     assert "status: completed" in result.output
     control = runtime.background_tasks.store.read_control(spec.id)
     assert control.kill_requested_at is None
+
+
+# ---------------------------------------------------------------------------
+# Agent task: live output reads from subagent store
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_task_output_reads_live_subagent_output_while_running(runtime, task_output_tool):
+    """While an agent task is running, TaskOutput should read from the subagent's
+    live output file, not the empty task output.log."""
+    _write_agent_task(
+        runtime,
+        "bagent001",
+        "a_live_01",
+        status="running",
+        task_output="",  # task output is empty during execution
+        subagent_output="[stage] runner_started\n[stage] agent_built\nUsed Shell (ls)\n",
+    )
+
+    result = await task_output_tool(task_output_tool.params(task_id="bagent001", block=False))
+
+    assert not result.is_error
+    assert "runner_started" in result.output
+    assert "Used Shell" in result.output
+
+
+@pytest.mark.asyncio
+async def test_task_output_reads_task_output_after_completion(runtime, task_output_tool):
+    """After an agent task completes, TaskOutput should read from the task
+    output.log (the archived copy), not the subagent file."""
+    _write_agent_task(
+        runtime,
+        "bagent002",
+        "a_done_01",
+        status="completed",
+        task_output="[stage] runner_started\nfinal summary\n",
+        subagent_output="[stage] runner_started\nfinal summary\n",
+    )
+
+    result = await task_output_tool(task_output_tool.params(task_id="bagent002", block=False))
+
+    assert not result.is_error
+    assert "retrieval_status: success" in result.output
+    assert "final summary" in result.output
+
+
+@pytest.mark.asyncio
+async def test_task_output_falls_back_to_task_output_if_subagent_file_empty(
+    runtime, task_output_tool
+):
+    """If the subagent output file is empty (agent hasn't written yet),
+    fall back to task output.log gracefully."""
+    _write_agent_task(
+        runtime,
+        "bagent003",
+        "a_empty_01",
+        status="running",
+        task_output="",
+        subagent_output="",  # empty — agent hasn't started writing
+    )
+
+    result = await task_output_tool(task_output_tool.params(task_id="bagent003", block=False))
+
+    # Should not crash, returns not_ready with empty output
+    assert not result.is_error
+    assert "retrieval_status: not_ready" in result.output
+
+
+@pytest.mark.asyncio
+async def test_bash_task_output_unaffected_by_agent_logic(runtime, task_output_tool):
+    """Bash tasks should continue reading from task output.log as before,
+    unaffected by the agent live-output logic."""
+    spec = _write_task(
+        runtime,
+        "b8888888",
+        status="running",
+        output="bash output line\n",
+    )
+
+    result = await task_output_tool(task_output_tool.params(task_id=spec.id, block=False))
+
+    assert not result.is_error
+    assert "bash output line" in result.output

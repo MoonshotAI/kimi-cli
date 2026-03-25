@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import shlex
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
@@ -17,7 +18,7 @@ from rich.text import Text
 
 from kimi_cli import logger
 from kimi_cli.background import list_task_views
-from kimi_cli.notifications import NotificationWatcher
+from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
@@ -34,20 +35,105 @@ from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.slash import shell_mode_registry
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
-from kimi_cli.ui.shell.visualize import visualize
+from kimi_cli.ui.shell.visualize import (
+    ApprovalPromptDelegate,
+    visualize,
+)
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.utils.term import ensure_new_line, ensure_tty_sane
-from kimi_cli.wire.types import ContentPart, StatusUpdate
+from kimi_cli.wire.types import (
+    ApprovalRequest,
+    ApprovalResponse,
+    ContentPart,
+    StatusUpdate,
+    WireMessage,
+)
 
 
 @dataclass(slots=True)
 class _PromptEvent:
     kind: str
     user_input: UserInput | None = None
+
+
+_MAX_BG_AUTO_TRIGGER_FAILURES = 3
+"""Stop auto-triggering after this many consecutive failures."""
+
+
+class _BackgroundCompletionWatcher:
+    """Watches for background task completions and auto-triggers the agent.
+
+    Sits between the idle event loop and the soul: when a background task
+    finishes while the agent is idle *and* the LLM hasn't consumed the
+    notification yet, it triggers a soul run.
+    """
+
+    def __init__(self, soul: Soul) -> None:
+        self._event: asyncio.Event | None = None
+        self._notifications: NotificationManager | None = None
+        if isinstance(soul, KimiSoul):
+            self._event = soul.runtime.background_tasks.completion_event
+            self._notifications = soul.runtime.notifications
+
+    @property
+    def enabled(self) -> bool:
+        return self._event is not None
+
+    def clear(self) -> None:
+        """Clear stale signals from the previous soul run."""
+        if self._event is not None:
+            self._event.clear()
+
+    async def wait_for_next(self, idle_events: asyncio.Queue[_PromptEvent]) -> _PromptEvent | None:
+        """Wait for either a user prompt event or a background completion.
+
+        Returns the prompt event if user input arrived first, or ``None``
+        if a background task completed with unclaimed LLM notifications.
+        User input always takes priority over background completions.
+        """
+        if self.enabled and self._has_pending_llm_notifications():
+            # Pending notifications exist, but user input still wins.
+            try:
+                return idle_events.get_nowait()
+            except asyncio.QueueEmpty:
+                return None
+
+        idle_task = asyncio.create_task(idle_events.get())
+        if not self.enabled:
+            return await idle_task
+
+        assert self._event is not None
+        bg_wait_task = asyncio.create_task(self._event.wait())
+
+        done, _ = await asyncio.wait(
+            [idle_task, bg_wait_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for t in (idle_task, bg_wait_task):
+            if t not in done:
+                t.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await t
+
+        if idle_task in done:
+            if bg_wait_task in done:
+                self._event.clear()
+            return idle_task.result()
+
+        # Only bg fired
+        self._event.clear()
+        if self._has_pending_llm_notifications():
+            return None
+        return _PromptEvent(kind="bg_noop")
+
+    def _has_pending_llm_notifications(self) -> bool:
+        if self._notifications is None:
+            return False
+        return self._notifications.has_pending_for_sink("llm")
 
 
 class Shell:
@@ -58,6 +144,10 @@ class Shell:
         self._prompt_session: CustomPromptSession | None = None
         self._running_input_handler: Callable[[UserInput], None] | None = None
         self._running_interrupt_handler: Callable[[], None] | None = None
+        self._active_approval_sink: Any | None = None
+        self._pending_approval_requests = deque[ApprovalRequest]()
+        self._current_prompt_approval_request: ApprovalRequest | None = None
+        self._approval_modal: ApprovalPromptDelegate | None = None
         self._exit_after_run = False
         self._available_slash_commands: dict[str, SlashCommand[Any]] = {
             **{cmd.name: cmd for cmd in soul.available_slash_commands},
@@ -127,7 +217,10 @@ class Shell:
                 user_input = await prompt_session.prompt_next()
             except KeyboardInterrupt:
                 logger.debug("Prompt router got KeyboardInterrupt")
-                if self._running_input_handler is not None:
+                if (
+                    self._running_input_handler is not None
+                    and prompt_session.running_prompt_accepts_submission()
+                ):
                     if self._running_interrupt_handler is not None:
                         self._running_interrupt_handler()
                     continue
@@ -136,7 +229,10 @@ class Shell:
                 continue
             except EOFError:
                 logger.debug("Prompt router got EOF")
-                if self._running_input_handler is not None:
+                if (
+                    self._running_input_handler is not None
+                    and prompt_session.running_prompt_accepts_submission()
+                ):
                     self._exit_after_run = True
                     if self._running_interrupt_handler is not None:
                         self._running_interrupt_handler()
@@ -164,7 +260,12 @@ class Shell:
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
-            return await self.run_soul_command(command)
+            if isinstance(self.soul, KimiSoul):
+                self._start_background_task(self._watch_root_wire_hub())
+            try:
+                return await self.run_soul_command(command)
+            finally:
+                self._cancel_background_tasks()
 
         # Start auto-update background task if not disabled
         if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
@@ -186,6 +287,7 @@ class Shell:
                 ),
             )
             self._start_background_task(watcher.run_forever())
+            self._start_background_task(self._watch_root_wire_hub())
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
@@ -270,10 +372,46 @@ class Shell:
             prompt_task = asyncio.create_task(
                 self._route_prompt_events(prompt_session, idle_events, resume_prompt)
             )
+            bg_watcher = _BackgroundCompletionWatcher(self.soul)
+
             shell_ok = True
+            bg_auto_failures = 0
             try:
                 while True:
-                    event = await idle_events.get()
+                    bg_watcher.clear()
+                    if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
+                        result = await idle_events.get()
+                    else:
+                        result = await bg_watcher.wait_for_next(idle_events)
+
+                    if result is None:
+                        logger.info("Background task completed while idle, triggering agent")
+                        resume_prompt.set()
+                        ok = await self.run_soul_command(
+                            "<system-reminder>"
+                            "Background tasks completed while you"
+                            " were idle."
+                            "</system-reminder>"
+                        )
+                        console.print()
+                        if not ok:
+                            bg_auto_failures += 1
+                            logger.warning(
+                                "Background auto-trigger failed ({n}/{max})",
+                                n=bg_auto_failures,
+                                max=_MAX_BG_AUTO_TRIGGER_FAILURES,
+                            )
+                        else:
+                            bg_auto_failures = 0
+                        if self._exit_after_run:
+                            console.print("Bye!")
+                            break
+                        continue
+
+                    event = result
+
+                    if event.kind == "bg_noop":
+                        continue
 
                     if event.kind == "interrupt":
                         console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
@@ -290,6 +428,7 @@ class Shell:
 
                     user_input = event.user_input
                     assert user_input is not None
+                    bg_auto_failures = 0
                     if not user_input:
                         logger.debug("Got empty input, skipping")
                         resume_prompt.set()
@@ -338,6 +477,9 @@ class Shell:
                     await prompt_task
                 self._running_input_handler = None
                 self._running_interrupt_handler = None
+                if self._prompt_session is prompt_session and self._approval_modal is not None:
+                    prompt_session.detach_modal(self._approval_modal)
+                    self._approval_modal = None
                 self._prompt_session = None
                 self._cancel_background_tasks()
                 ensure_tty_sane()
@@ -477,6 +619,8 @@ class Shell:
                     steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
                     bind_running_input=self._bind_running_input,
                     unbind_running_input=self._unbind_running_input,
+                    on_view_ready=self._set_active_approval_sink,
+                    on_view_closed=self._clear_active_approval_sink,
                 ),
                 cancel_event,
                 runtime.session.wire_file if runtime else None,
@@ -511,8 +655,230 @@ class Shell:
             console.print(f"[red]Unexpected error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
+            self._maybe_present_pending_approvals()
             remove_sigint()
         return False
+
+    async def _watch_root_wire_hub(self) -> None:
+        if not isinstance(self.soul, KimiSoul):
+            return
+        if self.soul.runtime.root_wire_hub is None:
+            return
+        queue = self.soul.runtime.root_wire_hub.subscribe()
+        try:
+            while True:
+                msg = await queue.get()
+                await self._handle_root_hub_message(msg)
+        finally:
+            self.soul.runtime.root_wire_hub.unsubscribe(queue)
+
+    async def _handle_root_hub_message(self, msg: WireMessage) -> None:
+        if not isinstance(self.soul, KimiSoul):
+            return
+        match msg:
+            case ApprovalRequest() as request:
+                request = self._enrich_approval_request_for_ui(request)
+                if self.soul.runtime.approval_runtime is None:
+                    return
+                record = self.soul.runtime.approval_runtime.get_request(request.id)
+                if record is None or record.status != "pending":
+                    return
+                if self._prompt_session is not None:
+                    # Interactive mode: queue and present via modal
+                    self._queue_approval_request(request)
+                    self._maybe_present_pending_approvals()
+                    self._prompt_session.invalidate()
+                elif self._active_approval_sink is not None:
+                    # Non-interactive with live view: forward to sink
+                    self._forward_approval_to_sink(request)
+                else:
+                    # Queue for later
+                    self._queue_approval_request(request)
+            case ApprovalResponse() as response:
+                # External resolution (e.g. from web UI)
+                if (
+                    self._approval_modal is not None
+                    and self._approval_modal.request.id == response.request_id
+                ):
+                    if not self._approval_modal.request.resolved:
+                        self._approval_modal.request.resolve(response.response)
+                    self._clear_current_prompt_approval_request(response.request_id)
+                    self._activate_prompt_approval_modal()
+                self._remove_pending_approval_request(response.request_id)
+                self._maybe_present_pending_approvals()
+                if self._prompt_session is not None:
+                    self._prompt_session.invalidate()
+            case _:
+                return
+
+    def _enrich_approval_request_for_ui(self, request: ApprovalRequest) -> ApprovalRequest:
+        if not isinstance(self.soul, KimiSoul):
+            return request
+        if request.agent_id is None:
+            return request
+        if self.soul.runtime.subagent_store is None:
+            return request
+        record = self.soul.runtime.subagent_store.get_instance(request.agent_id)
+        if record is None:
+            return request
+        return request.model_copy(update={"source_description": record.description})
+
+    def _set_active_approval_sink(self, sink: Any) -> None:
+        self._active_approval_sink = sink
+        # Flush pending approvals to the newly active sink
+        while self._pending_approval_requests:
+            request = self._pending_approval_requests.popleft()
+
+            if not isinstance(self.soul, KimiSoul) or self.soul.runtime.approval_runtime is None:
+                break
+            record = self.soul.runtime.approval_runtime.get_request(request.id)
+            if record is None or record.status != "pending":
+                continue
+            self._forward_approval_to_sink(request)
+
+    def _clear_active_approval_sink(self) -> None:
+        self._active_approval_sink = None
+        # Re-queue any approval requests that were forwarded to the sink
+        # but not yet resolved.  Without this, those requests would be
+        # silently lost when the live view closes between turns.
+        if not isinstance(self.soul, KimiSoul) or self.soul.runtime.approval_runtime is None:
+            return
+        for record in self.soul.runtime.approval_runtime.list_pending():
+            self._queue_approval_request(
+                self._enrich_approval_request_for_ui(
+                    ApprovalRequest(
+                        id=record.id,
+                        tool_call_id=record.tool_call_id,
+                        sender=record.sender,
+                        action=record.action,
+                        description=record.description,
+                        display=record.display,
+                        source_kind=record.source.kind,
+                        source_id=record.source.id,
+                        agent_id=record.source.agent_id,
+                        subagent_type=record.source.subagent_type,
+                    )
+                )
+            )
+
+    def _forward_approval_to_sink(self, request: ApprovalRequest) -> None:
+        """Forward an approval request to the active live view sink and bridge the response."""
+        if self._active_approval_sink is None:
+            self._queue_approval_request(request)
+            return
+        self._active_approval_sink.enqueue_external_message(request)
+
+        async def _bridge() -> None:
+            try:
+                response = await request.wait()
+                if (
+                    isinstance(self.soul, KimiSoul)
+                    and self.soul.runtime.approval_runtime is not None
+                ):
+                    self.soul.runtime.approval_runtime.resolve(
+                        request.id, response, feedback=request.feedback
+                    )
+            finally:
+                if self._prompt_session is not None:
+                    self._prompt_session.invalidate()
+
+        self._start_background_task(_bridge())
+
+    def _queue_approval_request(self, request: ApprovalRequest) -> None:
+        if self._approval_modal is not None and self._approval_modal.request.id == request.id:
+            return
+        if (
+            self._current_prompt_approval_request is not None
+            and self._current_prompt_approval_request.id == request.id
+        ):
+            return
+        if any(r.id == request.id for r in self._pending_approval_requests):
+            return
+        self._pending_approval_requests.append(request)
+
+    def _remove_pending_approval_request(self, request_id: str) -> None:
+        self._clear_current_prompt_approval_request(request_id)
+        self._pending_approval_requests = deque(
+            r for r in self._pending_approval_requests if r.id != request_id
+        )
+
+    def _clear_current_prompt_approval_request(self, request_id: str) -> None:
+        if (
+            self._current_prompt_approval_request is not None
+            and self._current_prompt_approval_request.id == request_id
+        ):
+            self._current_prompt_approval_request = None
+
+    def _maybe_present_pending_approvals(self) -> None:
+        if self._prompt_session is not None:
+            self._activate_prompt_approval_modal()
+            return
+        if self._active_approval_sink is not None:
+            while self._pending_approval_requests:
+                request = self._pending_approval_requests.popleft()
+
+                if not isinstance(self.soul, KimiSoul):
+                    break
+                if self.soul.runtime.approval_runtime is None:
+                    break
+                record = self.soul.runtime.approval_runtime.get_request(request.id)
+                if record is None or record.status != "pending":
+                    continue
+                self._forward_approval_to_sink(request)
+
+    def _activate_prompt_approval_modal(self) -> None:
+        if self._prompt_session is None:
+            return
+        current_request = self._current_prompt_approval_request
+        if current_request is None:
+            current_request = self._pop_next_pending_approval_request()
+            self._current_prompt_approval_request = current_request
+        if current_request is None:
+            if self._approval_modal is not None:
+                self._prompt_session.detach_modal(self._approval_modal)
+                self._approval_modal = None
+            return
+        if self._approval_modal is None:
+            self._approval_modal = ApprovalPromptDelegate(
+                current_request,
+                on_response=self._handle_prompt_approval_response,
+                buffer_text_provider=(
+                    lambda: self._prompt_session._session.default_buffer.text  # pyright: ignore[reportPrivateUsage]
+                    if self._prompt_session is not None
+                    else ""
+                ),
+            )
+            self._prompt_session.attach_modal(self._approval_modal)
+        else:
+            if self._approval_modal.request.id != current_request.id:
+                self._approval_modal.set_request(current_request)
+        self._prompt_session.invalidate()
+
+    def _handle_prompt_approval_response(
+        self,
+        request: ApprovalRequest,
+        response: ApprovalResponse.Kind,
+        feedback: str = "",
+    ) -> None:
+        if not isinstance(self.soul, KimiSoul):
+            return
+        if self.soul.runtime.approval_runtime is None:
+            return
+        self.soul.runtime.approval_runtime.resolve(request.id, response, feedback=feedback)
+        self._clear_current_prompt_approval_request(request.id)
+        self._activate_prompt_approval_modal()
+
+    def _pop_next_pending_approval_request(self) -> ApprovalRequest | None:
+        if not isinstance(self.soul, KimiSoul) or self.soul.runtime.approval_runtime is None:
+            return None
+        while self._pending_approval_requests:
+            request = self._pending_approval_requests.popleft()
+
+            record = self.soul.runtime.approval_runtime.get_request(request.id)
+            if record is None or record.status != "pending":
+                continue
+            return request
+        return None
 
     async def _auto_update(self) -> None:
         result = await do_update(print=False, check_only=True)

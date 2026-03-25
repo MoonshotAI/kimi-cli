@@ -37,7 +37,7 @@ class Session:
 
     # session state
     state: SessionState
-    """Persisted session state (approval, dynamic subagents, etc.)."""
+    """Persisted session state (approval settings, plan mode, workspace scope, etc.)."""
 
     # refreshable metadata
     title: str
@@ -49,6 +49,13 @@ class Session:
     def dir(self) -> Path:
         """The absolute path of the session directory."""
         path = self.work_dir_meta.sessions_dir / self.id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def subagents_dir(self) -> Path:
+        """The absolute path of the subagent instances directory."""
+        path = self.dir / "subagents"
         path.mkdir(parents=True, exist_ok=True)
         return path
 

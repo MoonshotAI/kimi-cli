@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kaos.local import local_kaos
 
@@ -15,6 +15,9 @@ from kimi_cli.config import BackgroundConfig
 from kimi_cli.notifications import NotificationEvent, NotificationManager
 from kimi_cli.session import Session
 from kimi_cli.utils.logging import logger
+
+if TYPE_CHECKING:
+    from kimi_cli.soul.agent import Runtime
 
 from .ids import generate_task_id
 from .models import (
@@ -42,6 +45,19 @@ class BackgroundTaskManager:
         self._notifications = notifications
         self._owner_role = owner_role
         self._store = BackgroundTaskStore(session.context_file.parent / "tasks")
+        self._runtime: Runtime | None = None
+        self._live_agent_tasks: dict[str, asyncio.Task[None]] = {}
+        self._completion_event: asyncio.Event = asyncio.Event()
+
+    @property
+    def completion_event(self) -> asyncio.Event:
+        """Event set when a new terminal notification is published.
+
+        Not set immediately when a task becomes terminal — only after
+        ``reconcile()`` / ``publish_terminal_notifications()`` runs.
+        Deduplicated notifications do not trigger a repeat signal.
+        """
+        return self._completion_event
 
     @property
     def store(self) -> BackgroundTaskStore:
@@ -52,12 +68,17 @@ class BackgroundTaskManager:
         return self._owner_role
 
     def copy_for_role(self, role: str) -> BackgroundTaskManager:
-        return BackgroundTaskManager(
+        manager = BackgroundTaskManager(
             self._session,
             self._config,
             notifications=self._notifications,
             owner_role=role,
         )
+        manager._runtime = self._runtime
+        return manager
+
+    def bind_runtime(self, runtime: Runtime) -> None:
+        self._runtime = runtime
 
     def _ensure_root(self) -> None:
         if self._owner_role != "root":
@@ -172,6 +193,60 @@ class BackgroundTaskManager:
             self._store.write_runtime(task_id, runtime)
         return self._store.merged_view(task_id)
 
+    def create_agent_task(
+        self,
+        *,
+        agent_id: str,
+        subagent_type: str,
+        prompt: str,
+        description: str,
+        tool_call_id: str,
+        model_override: str | None,
+    ) -> TaskView:
+        from .agent_runner import BackgroundAgentRunner
+
+        self._ensure_root()
+        self._ensure_local_backend()
+        if self._runtime is None:
+            raise RuntimeError("Background task manager is not bound to a runtime.")
+        if self._active_task_count() >= self._config.max_running_tasks:
+            raise RuntimeError("Too many background tasks are already running.")
+
+        task_id = generate_task_id("agent")
+        spec = TaskSpec(
+            id=task_id,
+            kind="agent",
+            session_id=self._session.id,
+            description=description,
+            tool_call_id=tool_call_id,
+            owner_role="root",
+            kind_payload={
+                "agent_id": agent_id,
+                "subagent_type": subagent_type,
+                "prompt": prompt,
+                "model_override": model_override,
+                "launch_mode": "background",
+            },
+        )
+        self._store.create_task(spec)
+        runtime = self._store.read_runtime(task_id)
+        runtime.status = "starting"
+        runtime.updated_at = time.time()
+        self._store.write_runtime(task_id, runtime)
+        task = asyncio.create_task(
+            BackgroundAgentRunner(
+                runtime=self._runtime,
+                manager=self,
+                task_id=task_id,
+                agent_id=agent_id,
+                subagent_type=subagent_type,
+                prompt=prompt,
+                model_override=model_override,
+            ).run()
+        )
+        self._live_agent_tasks[task_id] = task
+        return self._store.merged_view(task_id)
+
     def list_tasks(
         self,
         *,
@@ -260,6 +335,15 @@ class BackgroundTaskManager:
         if is_terminal_status(view.runtime.status):
             return view
 
+        if view.spec.kind == "agent":
+            self._mark_task_killed(task_id, reason)
+            if self._runtime is not None and self._runtime.approval_runtime is not None:
+                self._runtime.approval_runtime.cancel_by_source("background_agent", task_id)
+            task = self._live_agent_tasks.pop(task_id, None)
+            if task is not None:
+                task.cancel()
+            return self._store.merged_view(task_id)
+
         control = view.control.model_copy(
             update={
                 "kill_requested_at": time.time(),
@@ -292,6 +376,25 @@ class BackgroundTaskManager:
         stale_after = self._config.worker_stale_after_ms / 1000
         for view in self._store.list_views():
             if is_terminal_status(view.runtime.status):
+                continue
+            if view.spec.kind == "agent":
+                if view.spec.id in self._live_agent_tasks:
+                    continue
+                runtime = view.runtime.model_copy()
+                runtime.finished_at = now
+                runtime.updated_at = now
+                runtime.status = "lost"
+                runtime.failure_reason = "In-process background agent is no longer running"
+                self._store.write_runtime(view.spec.id, runtime)
+                agent_id = (view.spec.kind_payload or {}).get("agent_id")
+                if (
+                    isinstance(agent_id, str)
+                    and self._runtime is not None
+                    and self._runtime.subagent_store is not None
+                ):
+                    record = self._runtime.subagent_store.get_instance(agent_id)
+                    if record is not None and record.status == "running_background":
+                        self._runtime.subagent_store.update_instance(agent_id, status="failed")
                 continue
             last_progress_at = (
                 view.runtime.heartbeat_at
@@ -400,6 +503,57 @@ class BackgroundTaskManager:
             notification = self._notifications.publish(event)
             if notification.event.id == event.id:
                 published.append(notification.event.id)
+                self._completion_event.set()
             if limit is not None and len(published) >= limit:
                 break
         return published
+
+    def _mark_task_running(self, task_id: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "running"
+        runtime.updated_at = time.time()
+        runtime.heartbeat_at = runtime.updated_at
+        runtime.failure_reason = None
+        self._store.write_runtime(task_id, runtime)
+
+    def _mark_task_awaiting_approval(self, task_id: str, reason: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "awaiting_approval"
+        runtime.updated_at = time.time()
+        runtime.failure_reason = reason
+        self._store.write_runtime(task_id, runtime)
+
+    def _mark_task_completed(self, task_id: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "completed"
+        runtime.updated_at = time.time()
+        runtime.finished_at = runtime.updated_at
+        runtime.failure_reason = None
+        self._store.write_runtime(task_id, runtime)
+
+    def _mark_task_failed(self, task_id: str, reason: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "failed"
+        runtime.updated_at = time.time()
+        runtime.finished_at = runtime.updated_at
+        runtime.failure_reason = reason
+        self._store.write_runtime(task_id, runtime)
+
+    def _mark_task_killed(self, task_id: str, reason: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "killed"
+        runtime.updated_at = time.time()
+        runtime.finished_at = runtime.updated_at
+        runtime.interrupted = True
+        runtime.failure_reason = reason
+        self._store.write_runtime(task_id, runtime)
