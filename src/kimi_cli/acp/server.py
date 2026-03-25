@@ -486,6 +486,8 @@ class ACPServer:
             logger.error("ACP client not connected, cannot trigger OAuth device flow")
             return False
         
+        is_real_session = session_id in self.sessions
+        
         try:
             # 直接调用 login_kimi_code 异步生成器
             from kimi_cli.auth.oauth import login_kimi_code
@@ -495,39 +497,47 @@ class ACPServer:
             async for event in login_kimi_code(config, open_browser=False):
                 if event.type == "verification_url":
                     # 发送认证URI给客户端
-                    await self._send_auth_progress(
-                        session_id,
-                        "verification_url",
-                        event.message,
-                        data=event.data,
-                    )
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "verification_url",
+                            event.message,
+                            data=event.data,
+                        )
+                    else:
+                        logger.info("Please visit: {url}", url=event.data.get("verification_url"))
                 
                 elif event.type == "waiting":
                     # 发送等待状态
-                    await self._send_auth_progress(
-                        session_id,
-                        "waiting",
-                        event.message,
-                    )
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "waiting",
+                            event.message,
+                        )
+                    else:
+                        logger.info("Waiting: {message}", message=event.message)
                 
                 elif event.type == "success":
                     # 登录成功
                     logger.info("OAuth device flow completed successfully")
-                    await self._send_auth_progress(
-                        session_id,
-                        "completed",
-                        event.message,
-                    )
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "completed",
+                            event.message,
+                        )
                     return True
                 
                 elif event.type == "error":
                     # 登录失败
                     logger.error("OAuth device flow failed: {error}", error=event.message)
-                    await self._send_auth_progress(
-                        session_id,
-                        "failed",
-                        event.message,
-                    )
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "failed",
+                            event.message,
+                        )
                     return False
             
             # 如果循环结束没有返回成功，则失败
@@ -535,11 +545,12 @@ class ACPServer:
             
         except Exception as e:
             logger.error("Failed to trigger OAuth device flow: {error}", error=e)
-            await self._send_auth_progress(
-                session_id,
-                "failed",
-                f"Login failed: {e}",
-            )
+            if is_real_session:
+                await self._send_auth_progress(
+                    session_id,
+                    "failed",
+                    f"Login failed: {e}",
+                )
             return False
 
     async def _send_auth_progress(
