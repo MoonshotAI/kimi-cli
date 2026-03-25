@@ -2,6 +2,7 @@ import {
   memo,
   type ReactElement,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -22,6 +23,7 @@ import { ChatConversation } from "./components/chat-conversation";
 import { ChatPromptComposer } from "./components/chat-prompt-composer";
 import { ApprovalDialog } from "./components/approval-dialog";
 import { QuestionDialog, usePendingQuestion } from "./components/question-dialog";
+import { SessionFilesPanel } from "./components/session-files-panel";
 import { useGitDiffStats } from "@/hooks/useGitDiffStats";
 import {
   deriveActivityStatus,
@@ -106,7 +108,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   currentSession,
   isReplayingHistory = false,
   onListSessionDirectory,
-  onGetSessionFileUrl: _onGetSessionFileUrl,
+  onGetSessionFileUrl,
   onGetSessionFile: _onGetSessionFile,
   onCancel,
   isUploadingFiles = false,
@@ -121,6 +123,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   onForkSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
+  const [isFilesPanelOpen, setIsFilesPanelOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [pendingApprovalMap, setPendingApprovalMap] = useState<
     Record<string, boolean>
@@ -172,6 +175,22 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   const isStreaming = status === "streaming";
   const isAwaitingIdle = status === "submitted";
   const isUploading = isUploadingFiles;
+  const canShowFilesPanel = Boolean(
+    selectedSessionId &&
+      currentSession?.workDir &&
+      onListSessionDirectory &&
+      onGetSessionFileUrl,
+  );
+
+  useEffect(() => {
+    if (!(selectedSessionId && currentSession?.workDir)) {
+      setIsFilesPanelOpen(false);
+    }
+  }, [currentSession?.workDir, selectedSessionId]);
+
+  const handleToggleFilesPanel = useCallback(() => {
+    setIsFilesPanelOpen((previous) => !previous);
+  }, []);
 
   const handleApprovalAction = useCallback(
     async (approval: ToolApproval, decision: ApprovalResponseDecision, reason?: string) => {
@@ -254,78 +273,114 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
           sessionDescription={sessionDescription}
           currentSession={currentSession}
           selectedSessionId={selectedSessionId}
+          isFilesPanelOpen={isFilesPanelOpen}
           blocksExpanded={blocksExpanded}
           onToggleBlocks={() => setBlocksExpanded((prev) => !prev)}
+          onToggleFilesPanel={canShowFilesPanel ? handleToggleFilesPanel : undefined}
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenSidebar={onOpenSidebar}
           onRenameSession={onRenameSession}
         />
 
-        <div className="flex-1 overflow-hidden min-h-0">
-          <ChatConversation
-            messages={messages}
-            status={status}
-            selectedSessionId={selectedSessionId}
-            currentSession={currentSession}
-            isReplayingHistory={isReplayingHistory}
-            pendingApprovalMap={pendingApprovalMap}
-            onApprovalAction={
-              onApprovalResponse ? handleApprovalAction : undefined
-            }
-            canRespondToApproval={Boolean(onApprovalResponse)}
-            blocksExpanded={blocksExpanded}
-            onCreateSession={onCreateSession}
-            isSearchOpen={isSearchOpen}
-            onSearchOpenChange={setIsSearchOpen}
-            onForkSession={onForkSession}
-          />
-        </div>
-
-        {/* Approval Dialog - shows above input when approval is needed */}
-        <ApprovalDialog
-          messages={messages}
-          onApprovalResponse={handleDialogApprovalResponse}
-          pendingApprovalMap={pendingApprovalMap}
-          canRespondToApproval={Boolean(onApprovalResponse)}
-        />
-
-        {/* Bottom area: Question Dialog replaces prompt composer when active */}
-        {currentSession && (
-          <div className="mt-auto flex-shrink-0">
-            {hasPendingQuestion ? (
-              <QuestionDialog
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ChatConversation
                 messages={messages}
-                onQuestionResponse={handleQuestionResponse}
-                pendingQuestionMap={pendingQuestionMap}
+                status={status}
+                selectedSessionId={selectedSessionId}
+                currentSession={currentSession}
+                isReplayingHistory={isReplayingHistory}
+                pendingApprovalMap={pendingApprovalMap}
+                onApprovalAction={
+                  onApprovalResponse ? handleApprovalAction : undefined
+                }
+                canRespondToApproval={Boolean(onApprovalResponse)}
+                blocksExpanded={blocksExpanded}
+                onCreateSession={onCreateSession}
+                isSearchOpen={isSearchOpen}
+                onSearchOpenChange={setIsSearchOpen}
+                onForkSession={onForkSession}
               />
-            ) : (
-              <div className="px-0 pb-0 pt-0 sm:px-3 sm:pb-3">
-                <ChatPromptComposer
-                  status={status}
-                  onSubmit={onSubmit}
-                  canSendMessage={canSendMessage}
-                  currentSession={currentSession}
-                  isUploading={isUploading}
-                  isStreaming={isStreaming}
-                  isAwaitingIdle={isAwaitingIdle}
-                  isReplayingHistory={isReplayingHistory}
-                  onCancel={onCancel}
-                  onListSessionDirectory={onListSessionDirectory}
-                  gitDiffStats={gitDiffStats}
-                  isGitDiffLoading={isGitDiffLoading}
-                  slashCommands={slashCommands}
-                  planMode={planMode}
-                  onPlanModeChange={onPlanModeChange}
-                  activityStatus={activityStatus}
-                  usagePercent={usagePercent}
-                  usedTokens={usedTokens}
-                  maxTokens={maxTokens}
-                  tokenUsage={tokenUsage}
-                />
+            </div>
+
+            <ApprovalDialog
+              messages={messages}
+              onApprovalResponse={handleDialogApprovalResponse}
+              pendingApprovalMap={pendingApprovalMap}
+              canRespondToApproval={Boolean(onApprovalResponse)}
+            />
+
+            {currentSession && (
+              <div className="mt-auto flex-shrink-0">
+                {hasPendingQuestion ? (
+                  <QuestionDialog
+                    messages={messages}
+                    onQuestionResponse={handleQuestionResponse}
+                    pendingQuestionMap={pendingQuestionMap}
+                  />
+                ) : (
+                  <div className="px-0 pb-0 pt-0 sm:px-3 sm:pb-3">
+                    <ChatPromptComposer
+                      status={status}
+                      onSubmit={onSubmit}
+                      canSendMessage={canSendMessage}
+                      currentSession={currentSession}
+                      isUploading={isUploading}
+                      isStreaming={isStreaming}
+                      isAwaitingIdle={isAwaitingIdle}
+                      isReplayingHistory={isReplayingHistory}
+                      onCancel={onCancel}
+                      onListSessionDirectory={onListSessionDirectory}
+                      gitDiffStats={gitDiffStats}
+                      isGitDiffLoading={isGitDiffLoading}
+                      slashCommands={slashCommands}
+                      planMode={planMode}
+                      onPlanModeChange={onPlanModeChange}
+                      activityStatus={activityStatus}
+                      usagePercent={usagePercent}
+                      usedTokens={usedTokens}
+                      maxTokens={maxTokens}
+                      tokenUsage={tokenUsage}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+
+          {canShowFilesPanel && isFilesPanelOpen ? (
+            <>
+              <SessionFilesPanel
+                key={`desktop-files:${selectedSessionId ?? "none"}`}
+                className="hidden w-[320px] shrink-0 border-l lg:flex xl:w-[360px]"
+                sessionId={selectedSessionId ?? ""}
+                workDir={currentSession?.workDir}
+                onClose={() => setIsFilesPanelOpen(false)}
+                onListSessionDirectory={onListSessionDirectory}
+                onGetSessionFileUrl={onGetSessionFileUrl}
+              />
+
+              <div className="absolute inset-0 z-20 hidden max-lg:flex">
+                <button
+                  type="button"
+                  aria-label="Close workspace files panel"
+                  className="flex-1 bg-background/40 backdrop-blur-[1px]"
+                  onClick={() => setIsFilesPanelOpen(false)}
+                />
+                <SessionFilesPanel
+                  key={`mobile-files:${selectedSessionId ?? "none"}`}
+                  className="w-[min(24rem,92vw)] shrink-0 border-l shadow-2xl"
+                  sessionId={selectedSessionId ?? ""}
+                  workDir={currentSession?.workDir}
+                  onClose={() => setIsFilesPanelOpen(false)}
+                  onListSessionDirectory={onListSessionDirectory}
+                  onGetSessionFileUrl={onGetSessionFileUrl}
+                />
+              </div>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
