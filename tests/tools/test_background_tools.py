@@ -404,14 +404,14 @@ async def test_task_stop_on_terminal_task_is_noop(runtime, task_stop_tool):
 
 @pytest.mark.asyncio
 async def test_task_output_reads_live_subagent_output_while_running(runtime, task_output_tool):
-    """While an agent task is running, TaskOutput should read from the subagent's
-    live output file, not the empty task output.log."""
+    """While an agent task is running, TaskOutput should read real-time output
+    from task output.log (tee'd by the agent runner)."""
     _write_agent_task(
         runtime,
         "bagent001",
         "a_live_01",
         status="running",
-        task_output="",  # task output is empty during execution
+        task_output="[stage] runner_started\n[stage] agent_built\nUsed Shell (ls)\n",
         subagent_output="[stage] runner_started\n[stage] agent_built\nUsed Shell (ls)\n",
     )
 

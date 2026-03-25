@@ -12,9 +12,12 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Shell: Fix subprocess hang on interactive prompts — the `Shell` tool now closes stdin immediately and sets `GIT_TERMINAL_PROMPT=0` so commands that require credentials (e.g. `git push` over HTTPS) fail fast instead of blocking until timeout
+- Core: Fix JSON parsing error when LLM tool call arguments contain unescaped control characters — use `json.loads(strict=False)` across all LLM output parsing paths to prevent tool execution failure and session corruption
 - Shell: Auto-trigger agent when background tasks complete while idle — the shell now detects when a background bash command or agent task finishes and automatically starts a new agent turn to process the results, instead of waiting for the user to type something
 - Core: Fix `QuestionRequest` hanging in print mode — `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` now auto-resolve when running in non-interactive (yolo) mode, preventing indefinite tool call hangs in `--print` sessions
+- Core: Fix background agent task output not visible until completion — `/task` browser and `TaskOutput` tool now show real-time output while background agent tasks are running, by tee-writing to the task log during execution instead of copying on completion
 - Core: Strengthen system prompt to encourage tool use for coding tasks — the agent now defaults to taking action with tools instead of outputting code as plain text
+- Core: Retry `httpx.ProtocolError` and `504 Gateway Timeout` during generation — streaming protocol disconnects and transient 504 responses now follow the existing retry path instead of aborting the turn immediately on unstable networks
 - Kosong: Fix `httpx.ReadTimeout` leaking through Anthropic provider during streaming — the exception now correctly converts to `APITimeoutError`, enabling retry logic that was previously bypassed
 
 ## 1.25.0 (2026-03-23)

@@ -61,8 +61,11 @@ class BackgroundAgentRunner:
         approval_subscription = self._runtime.approval_runtime.subscribe(
             self._on_approval_runtime_event
         )
-        output = SubagentOutputWriter(self._runtime.subagent_store.output_path(self._agent_id))
         task_output_path = self._manager.store.output_path(self._task_id)
+        output = SubagentOutputWriter(
+            self._runtime.subagent_store.output_path(self._agent_id),
+            extra_paths=[task_output_path],
+        )
 
         try:
             self._manager._mark_task_running(self._task_id)
@@ -136,11 +139,6 @@ class BackgroundAgentRunner:
             self._manager._mark_task_failed(self._task_id, str(exc))
             output.error(str(exc))
         finally:
-            # Copy subagent output to task output so TaskOutput tool can read it.
-            if task_output_path.exists():
-                subagent_output = self._runtime.subagent_store.output_path(self._agent_id)
-                if subagent_output.exists():
-                    task_output_path.write_bytes(subagent_output.read_bytes())
             for task in list(self._approval_update_tasks):
                 task.cancel()
             for task in list(self._approval_update_tasks):
