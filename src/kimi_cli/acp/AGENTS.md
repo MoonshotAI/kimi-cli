@@ -17,7 +17,7 @@
   - Exposed via the `kimi acp` command in `src/kimi_cli/cli/__init__.py`.
 
 ## Capabilities advertised
-- `prompt_capabilities`: `embedded_context=False`, `image=True`, `audio=False`.
+- `prompt_capabilities`: `embedded_context=True`, `image=True`, `audio=False`.
 - `mcp_capabilities`: `http=True`, `sse=False`.
 - Single-session: `load_session=False`, no session list capabilities.
 - Multi-session: `load_session=True`, `session_capabilities.list` supported.

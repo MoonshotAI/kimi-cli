@@ -381,13 +381,13 @@ class ACPServer:
 
     async def _trigger_login_in_terminal(self, session_id: str) -> bool:
         """
-        通过ACP协议在终端中触发登录流程
-        
+        Trigger the login flow in a terminal via ACP protocol.
+
         Args:
-            session_id: ACP会话ID
-            
+            session_id: ACP session ID.
+
         Returns:
-            bool: 登录是否成功
+            bool: Whether the login was successful.
         """
         if not self.conn:
             logger.error("ACP client not connected, cannot trigger terminal login")
@@ -395,7 +395,7 @@ class ACPServer:
         
         terminal_id: str | None = None
         try:
-            # 使用ACP协议创建终端并执行登录命令
+            # Create terminal via ACP protocol and execute login command
             # Handle PyInstaller frozen binary case
             # Use shlex.quote to handle paths with spaces in sys.executable
             if getattr(sys, "frozen", False):
@@ -412,26 +412,26 @@ class ACPServer:
             
             logger.info("Created terminal for login: {terminal_id}", terminal_id=terminal_id)
             
-            # 发送进度通知
+            # Send progress notification
             await self._send_auth_progress(
                 session_id,
                 "started",
                 "Login terminal created. Please complete authentication in the terminal.",
             )
             
-            # 等待终端命令执行完成
+            # Wait for terminal command to complete
             await self.conn.wait_for_terminal_exit(
                 session_id=session_id,
                 terminal_id=terminal_id,
             )
             
-            # 获取终端输出（用于日志记录，实际检查通过 load_tokens 验证）
+            # Get terminal output (for logging only; actual verification via load_tokens)
             await self.conn.terminal_output(
                 session_id=session_id,
                 terminal_id=terminal_id,
             )
             
-            # 检查登录是否成功
+            # Check if login was successful
             ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
             token = load_tokens(ref)
             
@@ -471,7 +471,7 @@ class ACPServer:
             )
             return False
         finally:
-            # 清理终端资源
+            # Clean up terminal resources
             # Use asyncio.shield to prevent CancelledError from interrupting cleanup
             if terminal_id and self.conn:
                 try:
@@ -481,18 +481,23 @@ class ACPServer:
                             terminal_id=terminal_id,
                         )
                     )
-                except (acp.RequestError, Exception) as e:
+                except asyncio.CancelledError:
+                    # The shield protects the inner task, but the outer await
+                    # can still raise CancelledError. We suppress it here to
+                    # ensure cleanup completes (the shielded task continues).
+                    pass
+                except Exception as e:
                     logger.warning("Error while releasing terminal: {error}", error=e)
 
     async def _trigger_oauth_device_flow(self, session_id: str) -> bool:
         """
-        通过ACP协议触发OAuth Device Flow认证
-        
+        Trigger OAuth Device Flow authentication via ACP protocol.
+
         Args:
-            session_id: ACP会话ID
-            
+            session_id: ACP session ID.
+
         Returns:
-            bool: 认证是否成功
+            bool: Whether the authentication was successful.
         """
         if not self.conn:
             logger.error("ACP client not connected, cannot trigger OAuth device flow")
@@ -501,14 +506,14 @@ class ACPServer:
         is_real_session = session_id in self.sessions
         
         try:
-            # 直接调用 login_kimi_code 异步生成器
+            # Directly call the login_kimi_code async generator
             from kimi_cli.auth.oauth import login_kimi_code
             
             config = load_config()
             
             async for event in login_kimi_code(config, open_browser=False):
                 if event.type == "verification_url":
-                    # 发送认证URI给客户端
+                    # Send authentication URI to client
                     if is_real_session:
                         await self._send_auth_progress(
                             session_id,
@@ -523,7 +528,7 @@ class ACPServer:
                         logger.info("Please visit: {url}", url=verification_url)
                 
                 elif event.type == "waiting":
-                    # 发送等待状态
+                    # Send waiting status
                     if is_real_session:
                         await self._send_auth_progress(
                             session_id,
@@ -545,7 +550,7 @@ class ACPServer:
                         logger.info("Auth info: {message}", message=event.message)
 
                 elif event.type == "success":
-                    # 登录成功
+                    # Login successful
                     logger.info("OAuth device flow completed successfully")
                     if is_real_session:
                         await self._send_auth_progress(
@@ -557,7 +562,7 @@ class ACPServer:
                     return True
                 
                 elif event.type == "error":
-                    # 登录失败
+                    # Login failed
                     logger.error("OAuth device flow failed: {error}", error=event.message)
                     if is_real_session:
                         await self._send_auth_progress(
@@ -567,7 +572,7 @@ class ACPServer:
                         )
                     return False
             
-            # 如果循环结束没有返回成功，则失败
+            # If loop ends without returning success, consider it failed
             return False
             
         except Exception as e:
@@ -587,7 +592,7 @@ class ACPServer:
         message: str,
         data: dict[str, Any] | None = None,
     ) -> None:
-        """发送认证进度通知
+        """Send authentication progress notification.
         
         Uses AgentThoughtChunk instead of AgentMessageChunk to avoid polluting
         the session conversation stream. Auth progress messages are auxiliary
@@ -618,7 +623,7 @@ class ACPServer:
             logger.warning("Failed to send auth progress notification: {error}", error=e)
 
     async def cancel_auth(self, session_id: str, **kwargs: Any) -> None:
-        """取消正在进行的认证"""
+        """Cancel in-flight authentication."""
         if session_id in self._active_auth_sessions:
             task = self._active_auth_sessions[session_id]
             task.cancel()
@@ -639,29 +644,29 @@ class ACPServer:
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
         """
-        处理认证请求
-        
-        对于terminal类型的认证，通过ACP协议在终端中触发登录流程
-        支持OAuth Device Flow作为备选方案
+        Handle authentication requests.
+
+        For terminal-based auth, triggers the login flow in a terminal via ACP protocol.
+        Falls back to OAuth Device Flow when terminal auth is not available.
         """
         if method_id == "login":
             ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
             token = load_tokens(ref)
             
-            # 如果已有有效令牌，直接返回成功
+            # If a valid token already exists, return success immediately
             if token and token.access_token:
                 logger.info("Authentication successful for method: {id}", id=method_id)
                 return acp.AuthenticateResponse()
             
-            # 获取session_id - 如果没有session，使用哨兵字符串
-            # 注意：authenticate在session/new之前调用，所以可能没有session
+            # Get session_id - use sentinel string if no session exists
+            # Note: authenticate is called before session/new, so there may be no session
             session_id = next(iter(self.sessions.keys()), "__auth__")
             
-            # 创建认证任务并存储到_active_auth_sessions中，以便cancel_auth可以取消
+            # Create auth task and store in _active_auth_sessions so cancel_auth can cancel it
             async def _run_auth() -> bool:
-                """运行认证任务"""
-                # 只有当有真正的session且客户端支持终端时，才使用终端登录
-                # 终端登录需要一个真正的session来调用ACP协议方法
+                """Run the authentication task."""
+                # Only use terminal login when there is a real session and client supports terminal
+                # Terminal login requires a real session to call ACP protocol methods
                 if (
                     session_id != "__auth__"
                     and self.client_capabilities
@@ -669,8 +674,8 @@ class ACPServer:
                 ):
                     return await self._trigger_login_in_terminal(session_id)
                 else:
-                    # 其他情况使用OAuth Device Flow
-                    # OAuth device flow不需要session支持
+                    # Use OAuth Device Flow for other cases
+                    # OAuth device flow does not require session support
                     logger.info("Using OAuth device flow for authentication")
                     return await self._trigger_oauth_device_flow(session_id)
             
@@ -681,12 +686,12 @@ class ACPServer:
                 with contextlib.suppress(asyncio.CancelledError):
                     await existing_task
 
-            # 创建并存储任务
+            # Create and store the task
             auth_task = asyncio.create_task(_run_auth())
             self._active_auth_sessions[session_id] = auth_task
 
             try:
-                # 等待认证任务完成
+                # Wait for auth task to complete
                 login_success = await auth_task
                 
                 if login_success:
@@ -711,12 +716,14 @@ class ACPServer:
                     auth_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await auth_task
-                # 清理任务
-                self._active_auth_sessions.pop(session_id, None)
+                # Clean up the task - only remove if it matches our task
+                # (defensive: prevents race with concurrent authenticate calls)
+                if self._active_auth_sessions.get(session_id) is auth_task:
+                    self._active_auth_sessions.pop(session_id, None)
                 # Clean up stored verification URL
                 self._auth_verification_urls.pop(session_id, None)
             
-            # 登录失败，抛出auth_required错误
+            # Login failed, raise auth_required error
             logger.warning("Authentication not complete for method: {id}", id=method_id)
             raise acp.RequestError.auth_required(
                 {
