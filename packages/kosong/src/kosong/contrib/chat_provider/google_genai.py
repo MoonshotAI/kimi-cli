@@ -42,6 +42,7 @@ from kosong.chat_provider import (
     StreamedMessagePart,
     ThinkingEffort,
     TokenUsage,
+    convert_httpx_error,
 )
 from kosong.message import (
     AudioURLPart,
@@ -299,6 +300,8 @@ class GoogleGenAIStreamedMessage:
                             yield message_part
         except genai_errors.APIError as exc:
             raise _convert_error(exc) from exc
+        except httpx.HTTPError as exc:
+            raise convert_httpx_error(exc) from exc
 
     def _process_part(self, part: Part):
         """Process a single part and yield message components (synchronous generator).
