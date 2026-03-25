@@ -272,14 +272,14 @@ def kimi(
         ),
     ] = None,
     local_skills_dir: Annotated[
-        Path | None,
+        list[Path] | None,
         typer.Option(
             "--skills-dir",
             exists=True,
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Path to the skills directory. Overrides discovery.",
+            help="Additional skills directories (repeatable). Appended to default discovery.",
         ),
     ] = None,
     # Loop control
@@ -466,9 +466,9 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
-    skills_dir: KaosPath | None = None
-    if local_skills_dir is not None:
-        skills_dir = KaosPath.unsafe_from_local_path(local_skills_dir)
+    extra_skills_dirs: list[KaosPath] | None = None
+    if local_skills_dir:
+        extra_skills_dirs = [KaosPath.unsafe_from_local_path(p) for p in local_skills_dir]
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
@@ -534,7 +534,7 @@ def kimi(
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
-                skills_dir=skills_dir,
+                extra_skills_dirs=extra_skills_dirs,
                 max_steps_per_turn=max_steps_per_turn,
                 max_retries_per_step=max_retries_per_step,
                 max_ralph_iterations=max_ralph_iterations,
