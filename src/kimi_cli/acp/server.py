@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -19,10 +20,7 @@ from kimi_cli.app import KimiCLI
 from kimi_cli.auth.oauth import (
     KIMI_CODE_OAUTH_KEY,
     load_tokens,
-    request_device_authorization,
-    _request_device_token,
     save_tokens,
-    DeviceAuthorization,
     OAuthToken,
 )
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
@@ -416,7 +414,7 @@ class ACPServer:
             ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
             token = load_tokens(ref)
             
-            success = token is not None and token.access_token is not None
+            success = token is not None and bool(token.access_token)
             
             if success:
                 logger.info("Terminal login completed successfully")
@@ -472,120 +470,58 @@ class ACPServer:
         is_real_session = session_id in self.sessions
         
         try:
-            # 获取设备授权
-            auth: DeviceAuthorization = await request_device_authorization()
+            # 直接调用 login_kimi_code 异步生成器
+            from kimi_cli.auth.oauth import login_kimi_code
             
-            logger.info("OAuth device authorization obtained, verification URL: {url}", 
-                       url=auth.verification_uri_complete)
+            config = load_config()
             
-            # 发送认证URI给客户端（仅当有真正session时）
-            if is_real_session:
-                await self._send_auth_progress(
-                    session_id,
-                    "verification_url",
-                    f"Please visit: {auth.verification_uri_complete}",
-                    data={
-                        "verification_url": auth.verification_uri_complete,
-                        "user_code": auth.user_code,
-                    },
-                )
-            else:
-                # 对于自动认证，直接打印URL到日志
-                logger.info("Please visit: {url}", url=auth.verification_uri_complete)
-                logger.info("User code: {code}", code=auth.user_code)
-            
-            # 等待用户授权 - 轮询服务器获取令牌
-            interval = max(auth.interval, 1)
-            max_wait_time = 300  # 最多等待5分钟
-            elapsed_time = 0
-            next_update_time = 10  # 下一次发送状态更新的时间
-            
-            while elapsed_time < max_wait_time:
-                await asyncio.sleep(interval)
-                elapsed_time += interval
+            async for event in login_kimi_code(config, open_browser=False):
+                if event.type == "verification_url":
+                    # 发送认证URI给客户端
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "verification_url",
+                            event.message,
+                            data=event.data,
+                        )
+                    else:
+                        logger.info("Please visit: {url}", url=event.data.get("verification_url"))
                 
-                # 调用服务器交换设备代码获取令牌
-                status, data = await _request_device_token(auth)
+                elif event.type == "waiting":
+                    # 发送等待状态
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "waiting",
+                            event.message,
+                        )
+                    else:
+                        logger.info("Waiting: {message}", message=event.message)
                 
-                if status == 200 and "access_token" in data:
-                    # 成功获取令牌，保存它
-                    token = OAuthToken.from_response(data)
-                    ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
-                    save_tokens(ref, token)
-                    
-                    # 配置 models/providers（与 login_kimi_code 相同的逻辑）
-                    from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
-                    from kimi_cli.auth.platforms import (
-                        get_platform_by_id,
-                        list_models,
-                    )
-                    from kimi_cli.auth.oauth import (
-                        _apply_kimi_code_config,
-                        _select_default_model_and_thinking,
-                    )
-
-                    platform = get_platform_by_id(KIMI_CODE_PLATFORM_ID)
-                    if platform:
-                        try:
-                            models = await list_models(platform, token.access_token)
-                            if models:
-                                selection = _select_default_model_and_thinking(models)
-                                if selection:
-                                    selected_model, thinking = selection
-                                    config = load_config()
-                                    _apply_kimi_code_config(
-                                        config,
-                                        models=models,
-                                        selected_model=selected_model,
-                                        thinking=thinking,
-                                        oauth_ref=ref,
-                                    )
-                                    save_config(config)
-                                    logger.info("Models/providers configured successfully after OAuth")
-                        except Exception as exc:
-                            logger.warning("Failed to configure models after OAuth: {error}", error=exc)
-                    
+                elif event.type == "success":
+                    # 登录成功
                     logger.info("OAuth device flow completed successfully")
                     if is_real_session:
                         await self._send_auth_progress(
                             session_id,
                             "completed",
-                            "Login successful!",
+                            event.message,
                         )
                     return True
                 
-                # 检查错误
-                error_code = str(data.get("error") or "")
-                if error_code == "expired_token":
-                    logger.warning("Device code expired")
+                elif event.type == "error":
+                    # 登录失败
+                    logger.error("OAuth device flow failed: {error}", error=event.message)
                     if is_real_session:
                         await self._send_auth_progress(
                             session_id,
                             "failed",
-                            "Device code expired. Please try again.",
+                            event.message,
                         )
                     return False
-                
-                # 发送等待状态（使用独立计数器避免模运算问题）
-                if elapsed_time >= next_update_time:
-                    if is_real_session:
-                        await self._send_auth_progress(
-                            session_id,
-                            "waiting",
-                            f"Waiting for user authorization... ({elapsed_time}s)",
-                        )
-                    else:
-                        logger.info("Waiting for user authorization... ({elapsed_time}s)", elapsed_time=elapsed_time)
-                    next_update_time += 10
             
-            # 超时
-            logger.warning("OAuth device flow timed out")
-            if is_real_session:
-                await self._send_auth_progress(
-                    session_id,
-                    "timeout",
-                    "Login timed out. Please try again.",
-                )
+            # 如果循环结束没有返回成功，则失败
             return False
             
         except Exception as e:
