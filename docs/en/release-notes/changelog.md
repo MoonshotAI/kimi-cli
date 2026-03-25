@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Core: Fix `QuestionRequest` hanging in print mode — `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` now auto-resolve when running in non-interactive (yolo) mode, preventing indefinite tool call hangs in `--print` sessions
+- Core: Fix background agent task output not visible until completion — `/task` browser and `TaskOutput` tool now show real-time output while background agent tasks are running, by tee-writing to the task log during execution instead of copying on completion
 
 ## 1.25.0 (2026-03-23)
 

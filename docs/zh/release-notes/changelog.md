@@ -5,6 +5,7 @@
 ## 未发布
 
 - Core：修复 Print 模式下 `QuestionRequest` 导致挂起的问题——`AskUserQuestion`、`EnterPlanMode` 和 `ExitPlanMode` 在非交互（yolo）模式下自动处理，避免 `--print` 会话中工具调用无限挂起
+- Core：修复后台 Agent 任务运行期间无法查看输出的问题——`/task` 浏览器和 `TaskOutput` 工具现在可实时显示后台 Agent 任务的输出，通过在执行期间同步写入任务日志替代完成后拷贝的方式实现
 
 ## 1.25.0 (2026-03-23)
 
