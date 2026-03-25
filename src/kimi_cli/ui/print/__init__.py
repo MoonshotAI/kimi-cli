@@ -6,7 +6,7 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from kosong.chat_provider import ChatProviderError
+from kosong.chat_provider import APIStatusError, ChatProviderError
 from kosong.message import Message
 from rich import print
 
@@ -102,7 +102,13 @@ class Print:
             print(str(e))
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
-            print(str(e))
+            if isinstance(e, APIStatusError) and e.status_code == 429:
+                print(
+                    "API rate limit reached. Please wait a moment before retrying,"
+                    " or reduce the number of concurrent agents."
+                )
+            else:
+                print(str(e))
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             print(str(e))
