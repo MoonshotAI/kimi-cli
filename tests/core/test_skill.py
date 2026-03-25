@@ -117,7 +117,7 @@ A --> B
 
 
 @pytest.mark.asyncio
-async def test_discover_skills_from_roots_prefers_later_dirs(tmp_path):
+async def test_discover_skills_from_roots_prefers_earlier_dirs(tmp_path):
     root = tmp_path / "root"
     system_dir = root / "system"
     user_dir = root / "user"
@@ -157,9 +157,9 @@ description: User version
         [
             Skill(
                 name="shared",
-                description="User version",
+                description="System version",
                 type="standard",
-                dir=KaosPath.unsafe_from_local_path(Path("/path/to/user/shared")),
+                dir=KaosPath.unsafe_from_local_path(Path("/path/to/system/shared")),
                 flow=None,
             )
         ]
@@ -190,20 +190,83 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_respects_override(tmp_path, monkeypatch):
-    work_dir = tmp_path / "project"
-    override_dir = tmp_path / "override"
-    override_dir.mkdir()
+async def test_resolve_skills_roots_appends_extra_dirs(tmp_path, monkeypatch):
+    """Extra dirs are appended after user/project, not replacing them."""
+    home_dir = tmp_path / "home"
+    user_dir = home_dir / ".config" / "agents" / "skills"
+    user_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
 
-    # Redirect share dir to tmp so ~/.kimi/plugins/ doesn't interfere
+    work_dir = tmp_path / "project"
+    project_dir = work_dir / ".agents" / "skills"
+    project_dir.mkdir(parents=True)
+
+    extra_a = tmp_path / "extra_a"
+    extra_a.mkdir()
+    extra_b = tmp_path / "extra_b"
+    extra_b.mkdir()
+
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
     roots = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(work_dir),
-        skills_dir_override=KaosPath.unsafe_from_local_path(override_dir),
+        extra_skills_dirs=[
+            KaosPath.unsafe_from_local_path(extra_a),
+            KaosPath.unsafe_from_local_path(extra_b),
+        ],
     )
 
     assert roots == [
         KaosPath.unsafe_from_local_path(get_builtin_skills_dir()),
-        KaosPath.unsafe_from_local_path(override_dir),
+        KaosPath.unsafe_from_local_path(user_dir),
+        KaosPath.unsafe_from_local_path(project_dir),
+        KaosPath.unsafe_from_local_path(extra_a),
+        KaosPath.unsafe_from_local_path(extra_b),
     ]
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_empty_extra_dirs(tmp_path, monkeypatch):
+    """Empty extra_skills_dirs behaves same as None."""
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    roots_none = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(tmp_path),
+        extra_skills_dirs=None,
+    )
+    roots_empty = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(tmp_path),
+        extra_skills_dirs=[],
+    )
+
+    assert roots_none == roots_empty
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_from_roots_first_wins(tmp_path):
+    """When the same skill name appears in multiple roots, the first root wins."""
+    # Root A has skill "greet" with description "A"
+    root_a = tmp_path / "root_a" / "greet"
+    root_a.mkdir(parents=True)
+    (root_a / "SKILL.md").write_text(
+        "---\nname: greet\ndescription: A\n---\nHello from A",
+        encoding="utf-8",
+    )
+
+    # Root B has skill "greet" with description "B"
+    root_b = tmp_path / "root_b" / "greet"
+    root_b.mkdir(parents=True)
+    (root_b / "SKILL.md").write_text(
+        "---\nname: greet\ndescription: B\n---\nHello from B",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills_from_roots(
+        [
+            KaosPath.unsafe_from_local_path(tmp_path / "root_a"),
+            KaosPath.unsafe_from_local_path(tmp_path / "root_b"),
+        ]
+    )
+
+    assert len(skills) == 1
+    assert skills[0].description == "A"
