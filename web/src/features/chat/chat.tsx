@@ -192,6 +192,10 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
     setIsFilesPanelOpen((previous) => !previous);
   }, []);
 
+  const handleCloseFilesPanel = useCallback(() => {
+    setIsFilesPanelOpen(false);
+  }, []);
+
   const handleApprovalAction = useCallback(
     async (approval: ToolApproval, decision: ApprovalResponseDecision, reason?: string) => {
       if (!(approval?.id && onApprovalResponse)) {
@@ -351,29 +355,20 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
 
           {canShowFilesPanel && isFilesPanelOpen ? (
             <>
-              <SessionFilesPanel
-                key={`desktop-files:${selectedSessionId ?? "none"}`}
-                className="hidden w-[320px] shrink-0 border-l lg:flex xl:w-[360px]"
-                sessionId={selectedSessionId ?? ""}
-                workDir={currentSession?.workDir}
-                onClose={() => setIsFilesPanelOpen(false)}
-                onListSessionDirectory={onListSessionDirectory}
-                onGetSessionFileUrl={onGetSessionFileUrl}
+              <button
+                type="button"
+                aria-label="Close workspace files panel"
+                className="absolute inset-0 z-10 bg-background/40 backdrop-blur-[1px] lg:hidden"
+                onClick={handleCloseFilesPanel}
               />
 
-              <div className="absolute inset-0 z-20 hidden max-lg:flex">
-                <button
-                  type="button"
-                  aria-label="Close workspace files panel"
-                  className="flex-1 bg-background/40 backdrop-blur-[1px]"
-                  onClick={() => setIsFilesPanelOpen(false)}
-                />
+              <div className="absolute inset-y-0 right-0 z-20 flex h-full min-h-0 w-[min(24rem,92vw)] lg:static lg:z-auto lg:w-[320px] lg:shrink-0 xl:w-[360px]">
                 <SessionFilesPanel
-                  key={`mobile-files:${selectedSessionId ?? "none"}`}
-                  className="w-[min(24rem,92vw)] shrink-0 border-l shadow-2xl"
+                  key={`files:${selectedSessionId ?? "none"}`}
+                  className="w-full border-l shadow-2xl lg:shadow-none"
                   sessionId={selectedSessionId ?? ""}
                   workDir={currentSession?.workDir}
-                  onClose={() => setIsFilesPanelOpen(false)}
+                  onClose={handleCloseFilesPanel}
                   onListSessionDirectory={onListSessionDirectory}
                   onGetSessionFileUrl={onGetSessionFileUrl}
                 />
