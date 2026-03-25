@@ -100,7 +100,7 @@ class Session:
                 if isinstance(wire_msg, TurnBegin):
                     title = shorten(
                         Message(role="user", content=wire_msg.user_input).extract_text(" "),
-                        width=30,
+                        width=50,
                     )
                     self.title = f"{title} ({self.id})"
                     return
