@@ -756,6 +756,11 @@ class ACPServer:
                 "active": is_active,
                 "verification_url": verification_url,
             }
+        if method == "auth/cancel":
+            # Cancel in-flight authentication for the session
+            session_id = params.get("session_id", "__auth__")
+            await self.cancel_auth(session_id)
+            return {"cancelled": True}
         raise NotImplementedError(f"Unknown extension method: {method}")
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
