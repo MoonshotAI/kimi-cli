@@ -109,8 +109,8 @@ class TestTriggerOAuthDeviceFlow:
             with patch("kimi_cli.acp.server.load_config") as mock_load_config:
                 mock_load_config.return_value = MagicMock()
 
-                # Call the method
-                result = await server_with_conn._trigger_oauth_device_flow("__auth__")
+                # Call the method with a real session ID
+                result = await server_with_conn._trigger_oauth_device_flow("test-session")
 
                 # Verify
                 assert result is True
