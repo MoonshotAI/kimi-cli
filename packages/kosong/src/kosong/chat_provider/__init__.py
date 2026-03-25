@@ -145,3 +145,22 @@ class APIStatusError(ChatProviderError):
 
 class APIEmptyResponseError(ChatProviderError):
     """The error raised when the API returns an empty response."""
+
+
+def convert_httpx_error(error: object) -> ChatProviderError:
+    """Convert an httpx transport error to the corresponding ChatProviderError.
+
+    This is a shared utility for all chat providers. SDK-specific exceptions
+    (e.g. AnthropicError, OpenAIError) should be handled by each provider's
+    own conversion logic; only raw httpx exceptions that leak through
+    (typically during streaming) should be routed here.
+    """
+    import httpx
+
+    if isinstance(error, httpx.TimeoutException):
+        return APITimeoutError(str(error))
+    if isinstance(error, httpx.NetworkError):
+        return APIConnectionError(str(error))
+    if isinstance(error, httpx.HTTPStatusError):
+        return APIStatusError(error.response.status_code, str(error))
+    return ChatProviderError(f"HTTP error: {error}")
