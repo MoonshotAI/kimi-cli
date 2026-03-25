@@ -51,6 +51,8 @@ class TestConvertHttpxError:
             (httpx.WriteTimeout("write timed out"), APITimeoutError),
             (httpx.PoolTimeout("pool timed out"), APITimeoutError),
             (httpx.NetworkError("connection reset"), APIConnectionError),
+            (httpx.RemoteProtocolError("remote protocol error"), APIConnectionError),
+            (httpx.LocalProtocolError("local protocol error"), APIConnectionError),
             (httpx.DecodingError("decode failed"), ChatProviderError),
         ],
         ids=[
@@ -59,6 +61,8 @@ class TestConvertHttpxError:
             "WriteTimeout",
             "PoolTimeout",
             "NetworkError",
+            "RemoteProtocolError",
+            "LocalProtocolError",
             "DecodingError",
         ],
     )
