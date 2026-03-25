@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import shlex
 import sys
 from datetime import datetime
@@ -591,10 +592,8 @@ class ACPServer:
         if session_id in self._active_auth_sessions:
             task = self._active_auth_sessions[session_id]
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
             self._active_auth_sessions.pop(session_id, None)
             logger.info("Authentication cancelled for session: {id}", id=session_id)
             
@@ -629,7 +628,11 @@ class ACPServer:
                 """运行认证任务"""
                 # 只有当有真正的session且客户端支持终端时，才使用终端登录
                 # 终端登录需要一个真正的session来调用ACP协议方法
-                if session_id != "__auth__" and self.client_capabilities and self.client_capabilities.terminal:
+                if (
+                    session_id != "__auth__"
+                    and self.client_capabilities
+                    and self.client_capabilities.terminal
+                ):
                     return await self._trigger_login_in_terminal(session_id)
                 else:
                     # 其他情况使用OAuth Device Flow
@@ -674,7 +677,7 @@ class ACPServer:
                         "message": "Authentication was cancelled.",
                         "authMethods": auth_methods_data,
                     }
-                )
+                ) from None
             finally:
                 # 清理任务
                 self._active_auth_sessions.pop(session_id, None)
