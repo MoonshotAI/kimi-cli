@@ -93,9 +93,9 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 1. AI 使用 `Shell` 工具的 `run_in_background=true` 参数启动命令
 2. 工具立即返回任务 ID，AI 继续处理其他工作
-3. 任务完成后，系统自动通知 AI，AI 会告知你执行结果
+3. 任务完成后，如果 AI 处于空闲状态（等待用户输入），系统会自动触发新的 Agent 轮次来处理结果，无需你手动输入
 
-你可以使用 `/task` 斜杠命令打开交互式任务浏览器，实时查看所有后台任务的状态和输出。详见 [斜杠命令参考](../reference/slash-commands.md#task)。
+你可以使用 `/task` 斜杠命令打开交互式任务浏览器，实时查看所有后台任务的状态和输出（包括正在运行中的任务）。详见 [斜杠命令参考](../reference/slash-commands.md#task)。
 
 ::: tip 提示
 默认最多同时运行 4 个后台任务，可在配置文件的 `[background]` 节中调整。CLI 退出时默认会终止所有后台任务。详见 [配置文件](../configuration/config-files.md#background)。

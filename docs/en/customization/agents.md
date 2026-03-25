@@ -71,7 +71,7 @@ agent:
 
 ## System prompt built-in parameters
 
-The system prompt file is a Markdown template that can use `${VAR}` syntax to reference variables. Built-in variables include:
+The system prompt file is a Markdown template that can use `${VAR}` syntax to reference variables and supports the Jinja2 `{% include %}` directive to include other files. Built-in variables include:
 
 | Variable | Description |
 |----------|-------------|
