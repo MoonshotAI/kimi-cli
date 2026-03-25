@@ -56,7 +56,7 @@ def get_noninteractive_env(base_env: dict[str, str] | None = None) -> dict[str, 
     """
     Get an environment for subprocesses that must not block on interactive prompts.
 
-    Builds on :func:`get_clean_env` and additionally configures git/SSH to fail
+    Builds on :func:`get_clean_env` and additionally configures git to fail
     fast instead of waiting for user input that will never arrive.
 
     Args:
