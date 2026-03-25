@@ -183,7 +183,7 @@ class TaskBrowserModel:
         if view is None:
             return "[no output available]"
 
-        path = self.manager.store.output_path(view.spec.id)
+        path = self.manager.resolve_output_path(view.spec.id)
         total_size = path.stat().st_size if path.exists() else 0
         output = self.manager.tail_output(
             view.spec.id,
