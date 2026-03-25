@@ -504,14 +504,15 @@ class Shell:
                 )
                 return
 
-        # Handle cd — resolve via a real shell, persist globally.
+        # Handle bare `cd` / `cd <path>` — resolve and persist globally.
+        # Compound commands like `cd /tmp && ls` are left to the shell.
         stripped_cmd = command.strip()
         split_cmd: list[str] | None = None
         try:
             split_cmd = shlex.split(stripped_cmd)
         except ValueError as exc:
             logger.debug("Failed to parse shell command for cd check: {error}", error=exc)
-        if split_cmd and split_cmd[0] == "cd":
+        if split_cmd and split_cmd[0] == "cd" and len(split_cmd) <= 2:
             await self._handle_cd(split_cmd)
             return
 
@@ -537,11 +538,10 @@ class Shell:
                 logger.debug("Failed to inject shell output to context", exc_info=True)
 
     async def _handle_cd(self, args: list[str]) -> None:
-        """Resolve ``cd`` via a real shell and persist the directory change."""
-        if len(args) > 2:
-            console.print("[red]cd: too many arguments[/red]")
-            return
+        """Resolve ``cd`` via a real shell and persist the directory change.
 
+        Only called for bare ``cd`` / ``cd <path>`` (at most 2 tokens).
+        """
         target = args[1] if len(args) > 1 else "~"
 
         # Expand ~ on Python side so shlex.quote won't suppress tilde expansion.
