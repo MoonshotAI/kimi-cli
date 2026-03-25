@@ -76,14 +76,15 @@ def convert_error(error: OpenAIError | httpx.HTTPError) -> ChatProviderError:
     # delegate to the shared converter.
     if isinstance(error, httpx.HTTPError):
         return convert_httpx_error(error)
-    # OpenAI SDK errors
+    # OpenAI SDK errors — check subclasses before parents to avoid
+    # misclassification (e.g. APITimeoutError inherits APIConnectionError).
     match error:
         case openai.APIStatusError():
             return APIStatusError(error.status_code, error.message)
-        case openai.APIConnectionError():
-            return APIConnectionError(error.message)
         case openai.APITimeoutError():
             return APITimeoutError(error.message)
+        case openai.APIConnectionError():
+            return APIConnectionError(error.message)
         case _:
             return ChatProviderError(f"Error: {error}")
 
