@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：修复子进程遇到交互式提示时挂起的问题——`Shell` 工具现在会立即关闭 stdin 并设置 `GIT_TERMINAL_PROMPT=0`，使需要凭证的命令（如通过 HTTPS 执行 `git push`）快速失败，而非阻塞至超时
 - Shell：空闲时自动响应后台任务完成——Shell 现在会检测后台 Bash 命令或 Agent 任务的完成，并自动发起新的 Agent 轮次处理结果，无需等待用户输入
 - Core：修复 Print 模式下 `QuestionRequest` 导致挂起的问题——`AskUserQuestion`、`EnterPlanMode` 和 `ExitPlanMode` 在非交互（yolo）模式下自动处理，避免 `--print` 会话中工具调用无限挂起
 - Core：增强系统提示词以鼓励工具调用——Agent 现在默认优先使用工具执行操作，而非将代码作为纯文本输出

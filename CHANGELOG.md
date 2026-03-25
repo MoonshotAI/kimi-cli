@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Fix subprocess hang on interactive prompts — the `Shell` tool now closes stdin immediately and sets `GIT_TERMINAL_PROMPT=0` so commands that require credentials (e.g. `git push` over HTTPS) fail fast instead of blocking until timeout
 - Shell: Auto-trigger agent when background tasks complete while idle — the shell now detects when a background bash command or agent task finishes and automatically starts a new agent turn to process the results, instead of waiting for the user to type something
 - Core: Fix `QuestionRequest` hanging in print mode — `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` now auto-resolve when running in non-interactive (yolo) mode, preventing indefinite tool call hangs in `--print` sessions
 - Core: Strengthen system prompt to encourage tool use for coding tasks — the agent now defaults to taking action with tools instead of outputting code as plain text
