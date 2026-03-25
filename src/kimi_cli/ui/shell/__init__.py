@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import shlex
 import time
 from collections import deque
@@ -21,6 +22,7 @@ from kimi_cli.background import list_task_views
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.ui.shell.capture import execute_with_pty_capture, inject_to_context
 from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
@@ -40,7 +42,6 @@ from kimi_cli.ui.shell.visualize import (
     visualize,
 )
 from kimi_cli.utils.envvar import get_env_bool
-from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall, parse_slash_command_call
 from kimi_cli.utils.subprocess_env import get_clean_env
@@ -487,7 +488,7 @@ class Shell:
         return shell_ok
 
     async def _run_shell_command(self, command: str) -> None:
-        """Run a shell command in foreground."""
+        """Run a shell command in foreground, capturing output for context injection."""
         if not command.strip():
             return
 
@@ -503,45 +504,83 @@ class Shell:
                 )
                 return
 
-        # Check if user is trying to use 'cd' command
+        # Handle cd — resolve via a real shell, persist globally.
         stripped_cmd = command.strip()
         split_cmd: list[str] | None = None
         try:
             split_cmd = shlex.split(stripped_cmd)
         except ValueError as exc:
             logger.debug("Failed to parse shell command for cd check: {error}", error=exc)
-        if split_cmd and len(split_cmd) == 2 and split_cmd[0] == "cd":
-            console.print(
-                "[yellow]Warning: Directory changes are not preserved across command executions."
-                "[/yellow]"
-            )
+        if split_cmd and split_cmd[0] == "cd":
+            await self._handle_cd(split_cmd)
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
 
-        proc: asyncio.subprocess.Process | None = None
-
-        def _handler():
-            logger.debug("SIGINT received.")
-            if proc:
-                proc.terminate()
-
-        loop = asyncio.get_running_loop()
-        remove_sigint = install_sigint_handler(loop, _handler)
+        exit_code: int | None = None
+        raw_output: str | None = None
         try:
-            # TODO: For the sake of simplicity, we now use `create_subprocess_shell`.
-            # Later we should consider making this behave like a real shell.
-            with open_original_stderr() as stderr:
-                kwargs: dict[str, Any] = {}
-                if stderr is not None:
-                    kwargs["stderr"] = stderr
-                proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
-                await proc.wait()
+            exit_code, raw_output = await execute_with_pty_capture(
+                command, env=get_clean_env(), cwd=os.getcwd()
+            )
         except Exception as e:
             logger.exception("Failed to run shell command:")
             console.print(f"[red]Failed to run shell command: {e}[/red]")
-        finally:
-            remove_sigint()
+
+        # Inject captured output into conversation context
+        if raw_output is not None and isinstance(self.soul, KimiSoul):
+            try:
+                await inject_to_context(
+                    self.soul.context.append_message, command, raw_output, exit_code
+                )
+            except Exception:
+                logger.debug("Failed to inject shell output to context", exc_info=True)
+
+    async def _handle_cd(self, args: list[str]) -> None:
+        """Resolve ``cd`` via a real shell and persist the directory change."""
+        if len(args) > 2:
+            console.print("[red]cd: too many arguments[/red]")
+            return
+
+        target = args[1] if len(args) > 1 else "~"
+
+        # Provide OLDPWD so `cd -` works across invocations.
+        env = get_clean_env()
+        old_cwd = os.getcwd()
+        if "OLDPWD" not in env:
+            env["OLDPWD"] = old_cwd
+
+        # Let the shell resolve ~, -, $HOME, CDPATH, etc.
+        probe = await asyncio.create_subprocess_shell(
+            f"cd {shlex.quote(target)} && pwd",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        stdout, stderr = await probe.communicate()
+
+        if probe.returncode != 0:
+            err = stderr.decode("utf-8", errors="replace").strip()
+            console.print(f"[red]cd: {err or 'failed'}[/red]")
+            return
+
+        new_cwd = stdout.decode("utf-8", errors="replace").strip()
+        if not new_cwd or not os.path.isdir(new_cwd):
+            console.print(f"[red]cd: not a directory: {target}[/red]")
+            return
+
+        os.chdir(new_cwd)
+        # Set OLDPWD for the next `cd -` invocation.
+        os.environ["OLDPWD"] = old_cwd
+
+        # Keep the session's work_dir in sync so agent background tasks
+        # (which use session.work_dir as cwd) also see the new directory.
+        if isinstance(self.soul, KimiSoul):
+            from kaos.path import KaosPath
+
+            self.soul.runtime.session.work_dir = KaosPath.unsafe_from_local_path(
+                __import__("pathlib").Path(new_cwd)
+            )
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
         from kimi_cli.cli import Reload, SwitchToWeb
