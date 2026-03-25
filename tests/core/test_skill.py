@@ -117,7 +117,7 @@ A --> B
 
 
 @pytest.mark.asyncio
-async def test_discover_skills_from_roots_prefers_later_dirs(tmp_path):
+async def test_discover_skills_from_roots_prefers_earlier_dirs(tmp_path):
     root = tmp_path / "root"
     system_dir = root / "system"
     user_dir = root / "user"
@@ -157,9 +157,9 @@ description: User version
         [
             Skill(
                 name="shared",
-                description="User version",
+                description="System version",
                 type="standard",
-                dir=KaosPath.unsafe_from_local_path(Path("/path/to/user/shared")),
+                dir=KaosPath.unsafe_from_local_path(Path("/path/to/system/shared")),
                 flow=None,
             )
         ]
@@ -207,3 +207,31 @@ async def test_resolve_skills_roots_respects_override(tmp_path, monkeypatch):
         KaosPath.unsafe_from_local_path(get_builtin_skills_dir()),
         KaosPath.unsafe_from_local_path(override_dir),
     ]
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_from_roots_first_wins(tmp_path):
+    """When the same skill name appears in multiple roots, the first root wins."""
+    # Root A has skill "greet" with description "A"
+    root_a = tmp_path / "root_a" / "greet"
+    root_a.mkdir(parents=True)
+    (root_a / "SKILL.md").write_text(
+        "---\nname: greet\ndescription: A\n---\nHello from A",
+        encoding="utf-8",
+    )
+
+    # Root B has skill "greet" with description "B"
+    root_b = tmp_path / "root_b" / "greet"
+    root_b.mkdir(parents=True)
+    (root_b / "SKILL.md").write_text(
+        "---\nname: greet\ndescription: B\n---\nHello from B",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills_from_roots([
+        KaosPath.unsafe_from_local_path(tmp_path / "root_a"),
+        KaosPath.unsafe_from_local_path(tmp_path / "root_b"),
+    ])
+
+    assert len(skills) == 1
+    assert skills[0].description == "A"

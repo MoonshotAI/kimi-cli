@@ -129,7 +129,7 @@ async def discover_skills_from_roots(skills_dirs: Iterable[KaosPath]) -> list[Sk
     skills_by_name: dict[str, Skill] = {}
     for skills_dir in skills_dirs:
         for skill in await discover_skills(skills_dir):
-            skills_by_name[normalize_skill_name(skill.name)] = skill
+            skills_by_name.setdefault(normalize_skill_name(skill.name), skill)
     return sorted(skills_by_name.values(), key=lambda s: s.name)
 
 
