@@ -112,6 +112,30 @@ class ACPServer:
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
+    def _build_auth_methods_data(self) -> list[dict[str, Any]]:
+        """Build flattened auth methods data for AUTH_REQUIRED errors.
+
+        Returns a list of dicts with terminal-auth metadata in the same format
+        used by _check_auth and authenticate, ensuring consistent error responses.
+        """
+        auth_methods_data: list[dict[str, Any]] = []
+        for m in self._auth_methods:
+            if m.field_meta and "terminal-auth" in m.field_meta:
+                terminal_auth = m.field_meta["terminal-auth"]
+                auth_methods_data.append(
+                    {
+                        "id": m.id,
+                        "name": m.name,
+                        "description": m.description,
+                        "type": terminal_auth.get("type", "terminal"),
+                        "command": terminal_auth.get("command", "kimi"),
+                        "args": terminal_auth.get("args", []),
+                        "label": terminal_auth.get("label", ""),
+                        "env": terminal_auth.get("env", {}),
+                    }
+                )
+        return auth_methods_data
+
     async def _check_auth(self) -> None:
         """Check if Kimi Code authentication is complete."""
         ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
@@ -119,26 +143,9 @@ class ACPServer:
 
         if token is None or not token.access_token:
             logger.warning("No valid token found, requesting manual authentication")
-            
-            # Build AUTH_REQUIRED error data for clients
-            auth_methods_data: list[dict[str, Any]] = []
-            for m in self._auth_methods:
-                if m.field_meta and "terminal-auth" in m.field_meta:
-                    terminal_auth = m.field_meta["terminal-auth"]
-                    auth_methods_data.append(
-                        {
-                            "id": m.id,
-                            "name": m.name,
-                            "description": m.description,
-                            "type": terminal_auth.get("type", "terminal"),
-                            "command": terminal_auth.get("command", "kimi"),
-                            "args": terminal_auth.get("args", []),
-                            "label": terminal_auth.get("label", ""),
-                            "env": terminal_auth.get("env", {}),
-                        }
-                    )
-
-            raise acp.RequestError.auth_required({"authMethods": auth_methods_data})
+            raise acp.RequestError.auth_required(
+                {"authMethods": self._build_auth_methods_data()}
+            )
 
     async def new_session(
         self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
@@ -655,27 +662,13 @@ class ACPServer:
                     logger.warning("Authentication failed")
             except asyncio.CancelledError:
                 logger.info("Authentication was cancelled")
-                # Build auth methods data in the same flattened dict format as _check_auth
-                auth_methods_data: list[dict[str, Any]] = []
-                for m in self._auth_methods:
-                    if m.field_meta and "terminal-auth" in m.field_meta:
-                        terminal_auth = m.field_meta["terminal-auth"]
-                        auth_methods_data.append(
-                            {
-                                "id": m.id,
-                                "name": m.name,
-                                "description": m.description,
-                                "type": terminal_auth.get("type", "terminal"),
-                                "command": terminal_auth.get("command", "kimi"),
-                                "args": terminal_auth.get("args", []),
-                                "label": terminal_auth.get("label", ""),
-                                "env": terminal_auth.get("env", {}),
-                            }
-                        )
+                # Note: Using `from None` to suppress the original CancelledError chain.
+                # This is intentional - we want to expose a clean protocol error to the
+                # client instead of internal asyncio cancellation details.
                 raise acp.RequestError.auth_required(
                     {
                         "message": "Authentication was cancelled.",
-                        "authMethods": auth_methods_data,
+                        "authMethods": self._build_auth_methods_data(),
                     }
                 ) from None
             finally:
@@ -684,27 +677,10 @@ class ACPServer:
             
             # 登录失败，抛出auth_required错误
             logger.warning("Authentication not complete for method: {id}", id=method_id)
-            # Build auth methods data in the same flattened dict format as _check_auth
-            auth_methods_data: list[dict[str, Any]] = []
-            for m in self._auth_methods:
-                if m.field_meta and "terminal-auth" in m.field_meta:
-                    terminal_auth = m.field_meta["terminal-auth"]
-                    auth_methods_data.append(
-                        {
-                            "id": m.id,
-                            "name": m.name,
-                            "description": m.description,
-                            "type": terminal_auth.get("type", "terminal"),
-                            "command": terminal_auth.get("command", "kimi"),
-                            "args": terminal_auth.get("args", []),
-                            "label": terminal_auth.get("label", ""),
-                            "env": terminal_auth.get("env", {}),
-                        }
-                    )
             raise acp.RequestError.auth_required(
                 {
                     "message": "Login failed. Please try again.",
-                    "authMethods": auth_methods_data,
+                    "authMethods": self._build_auth_methods_data(),
                 }
             )
 
