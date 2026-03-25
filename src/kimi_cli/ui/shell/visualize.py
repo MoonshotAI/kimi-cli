@@ -332,7 +332,7 @@ class _ToolCallBlock:
         if tool_name != "FetchURL" or not arguments:
             return None
         try:
-            args = json.loads(arguments)
+            args = json.loads(arguments, strict=False)
         except (json.JSONDecodeError, TypeError):
             return None
         if isinstance(args, dict):

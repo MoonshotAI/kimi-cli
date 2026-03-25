@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Core: Use `json.loads(strict=False)` when parsing tool call arguments to tolerate unescaped control characters from LLM output
 - Core: Treat `httpx.ProtocolError` as `APIConnectionError` in shared `convert_httpx_error()` mapping so streaming protocol disconnects now participate in existing retry logic
 - Anthropic: Fix `httpx.ReadTimeout` leaking through `_convert_stream_response` during streaming — the exception is now caught and converted to `APITimeoutError`, enabling retry logic that was previously bypassed
 - Anthropic: Fix `_convert_error` ordering — `AnthropicAPITimeoutError` is now checked before `AnthropicAPIConnectionError` to avoid misclassification due to inheritance

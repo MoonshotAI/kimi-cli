@@ -96,7 +96,7 @@ class JsonlLinearStorage(MemoryLinearStorage):
                 for line in f:
                     if not line.strip():
                         continue
-                    line_json = json.loads(line)
+                    line_json = json.loads(line, strict=False)
                     if "token_count" in line_json:
                         self._token_count = line_json["token_count"]
                         continue
