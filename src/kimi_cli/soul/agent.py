@@ -124,7 +124,10 @@ class Runtime:
         )
 
         # Discover and format skills
-        skills_roots = await resolve_skills_roots(session.work_dir, skills_dir_override=skills_dir)
+        skills_roots = await resolve_skills_roots(
+            session.work_dir,
+            extra_skills_dirs=[skills_dir] if skills_dir is not None else None,
+        )
         skills = await discover_skills_from_roots(skills_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))

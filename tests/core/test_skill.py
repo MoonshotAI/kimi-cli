@@ -190,23 +190,56 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_respects_override(tmp_path, monkeypatch):
-    work_dir = tmp_path / "project"
-    override_dir = tmp_path / "override"
-    override_dir.mkdir()
+async def test_resolve_skills_roots_appends_extra_dirs(tmp_path, monkeypatch):
+    """Extra dirs are appended after user/project, not replacing them."""
+    home_dir = tmp_path / "home"
+    user_dir = home_dir / ".config" / "agents" / "skills"
+    user_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
 
-    # Redirect share dir to tmp so ~/.kimi/plugins/ doesn't interfere
+    work_dir = tmp_path / "project"
+    project_dir = work_dir / ".agents" / "skills"
+    project_dir.mkdir(parents=True)
+
+    extra_a = tmp_path / "extra_a"
+    extra_a.mkdir()
+    extra_b = tmp_path / "extra_b"
+    extra_b.mkdir()
+
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
     roots = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(work_dir),
-        skills_dir_override=KaosPath.unsafe_from_local_path(override_dir),
+        extra_skills_dirs=[
+            KaosPath.unsafe_from_local_path(extra_a),
+            KaosPath.unsafe_from_local_path(extra_b),
+        ],
     )
 
     assert roots == [
         KaosPath.unsafe_from_local_path(get_builtin_skills_dir()),
-        KaosPath.unsafe_from_local_path(override_dir),
+        KaosPath.unsafe_from_local_path(user_dir),
+        KaosPath.unsafe_from_local_path(project_dir),
+        KaosPath.unsafe_from_local_path(extra_a),
+        KaosPath.unsafe_from_local_path(extra_b),
     ]
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_empty_extra_dirs(tmp_path, monkeypatch):
+    """Empty extra_skills_dirs behaves same as None."""
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    roots_none = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(tmp_path),
+        extra_skills_dirs=None,
+    )
+    roots_empty = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(tmp_path),
+        extra_skills_dirs=[],
+    )
+
+    assert roots_none == roots_empty
 
 
 @pytest.mark.asyncio
