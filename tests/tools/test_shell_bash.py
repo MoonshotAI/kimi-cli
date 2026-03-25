@@ -239,8 +239,13 @@ async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: p
             await asyncio.Event().wait()
             raise AssertionError("unreachable")
 
+    class FakeStdin:
+        def close(self) -> None:
+            pass
+
     class FakeProcess:
         def __init__(self) -> None:
+            self.stdin = FakeStdin()
             self.stdout = BlockingReadable()
             self.stderr = BlockingReadable()
             self.kill_calls = 0
