@@ -340,7 +340,7 @@ class Anthropic:
         for tool_call in message.tool_calls or []:
             if tool_call.function.arguments:
                 try:
-                    parsed_arguments = json.loads(tool_call.function.arguments)
+                    parsed_arguments = json.loads(tool_call.function.arguments, strict=False)
                 except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
                     raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
                 if not isinstance(parsed_arguments, dict):
