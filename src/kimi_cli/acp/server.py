@@ -513,6 +513,38 @@ class ACPServer:
                     ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
                     save_tokens(ref, token)
                     
+                    # 配置 models/providers（与 login_kimi_code 相同的逻辑）
+                    from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
+                    from kimi_cli.auth.platforms import (
+                        get_platform_by_id,
+                        list_models,
+                    )
+                    from kimi_cli.auth.oauth import (
+                        _apply_kimi_code_config,
+                        _select_default_model_and_thinking,
+                    )
+
+                    platform = get_platform_by_id(KIMI_CODE_PLATFORM_ID)
+                    if platform:
+                        try:
+                            models = await list_models(platform, token.access_token)
+                            if models:
+                                selection = _select_default_model_and_thinking(models)
+                                if selection:
+                                    selected_model, thinking = selection
+                                    config = load_config()
+                                    _apply_kimi_code_config(
+                                        config,
+                                        models=models,
+                                        selected_model=selected_model,
+                                        thinking=thinking,
+                                        oauth_ref=ref,
+                                    )
+                                    save_config(config)
+                                    logger.info("Models/providers configured successfully after OAuth")
+                        except Exception as exc:
+                            logger.warning("Failed to configure models after OAuth: {error}", error=exc)
+                    
                     logger.info("OAuth device flow completed successfully")
                     if is_real_session:
                         await self._send_auth_progress(
@@ -630,16 +662,16 @@ class ACPServer:
                 logger.info("Authentication successful for method: {id}", id=method_id)
                 return acp.AuthenticateResponse()
             
-            # 获取session_id - 如果没有session，使用临时ID
+            # 获取session_id - 如果没有session，使用哨兵字符串
             # 注意：authenticate在session/new之前调用，所以可能没有session
-            session_id = next(iter(self.sessions.keys()), None)
+            session_id = next(iter(self.sessions.keys()), "__auth__")
             
             # 创建认证任务并存储到_active_auth_sessions中，以便cancel_auth可以取消
             async def _run_auth() -> bool:
                 """运行认证任务"""
                 # 只有当有真正的session且客户端支持终端时，才使用终端登录
                 # 终端登录需要一个真正的session来调用ACP协议方法
-                if session_id and self.client_capabilities and self.client_capabilities.terminal:
+                if session_id != "__auth__" and self.client_capabilities and self.client_capabilities.terminal:
                     return await self._trigger_login_in_terminal(session_id)
                 else:
                     # 其他情况使用OAuth Device Flow
@@ -662,12 +694,10 @@ class ACPServer:
                     logger.warning("Authentication failed")
             except asyncio.CancelledError:
                 logger.info("Authentication was cancelled")
-                if session_id:
-                    await self._send_auth_progress(
-                        session_id,
-                        "cancelled",
-                        "Login cancelled by user.",
-                    )
+                auth_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await auth_task
+                raise
             finally:
                 # 清理任务
                 self._active_auth_sessions.pop(session_id, None)
