@@ -5,6 +5,8 @@
 ## 未发布
 
 - Core：修复 Print 模式下 `QuestionRequest` 导致挂起的问题——`AskUserQuestion`、`EnterPlanMode` 和 `ExitPlanMode` 在非交互（yolo）模式下自动处理，避免 `--print` 会话中工具调用无限挂起
+- Core：增强系统提示词以鼓励工具调用——Agent 现在默认优先使用工具执行操作，而非将代码作为纯文本输出
+- Kosong：修复 Anthropic 提供商在流式传输期间 `httpx.ReadTimeout` 异常泄漏的问题——异常现在正确转换为 `APITimeoutError`，使此前被绕过的重试逻辑能够正常触发
 
 ## 1.25.0 (2026-03-23)
 
