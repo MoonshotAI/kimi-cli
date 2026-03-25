@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：修复 LLM 工具调用参数包含未转义控制字符时 JSON 解析失败的问题——在所有 LLM 输出解析路径使用 `json.loads(strict=False)`，防止工具执行失败和会话永久损坏
 - Shell：空闲时自动响应后台任务完成——Shell 现在会检测后台 Bash 命令或 Agent 任务的完成，并自动发起新的 Agent 轮次处理结果，无需等待用户输入
 - Core：修复 Print 模式下 `QuestionRequest` 导致挂起的问题——`AskUserQuestion`、`EnterPlanMode` 和 `ExitPlanMode` 在非交互（yolo）模式下自动处理，避免 `--print` 会话中工具调用无限挂起
 - Core：增强系统提示词以鼓励工具调用——Agent 现在默认优先使用工具执行操作，而非将代码作为纯文本输出

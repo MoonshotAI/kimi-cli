@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Fix JSON parsing error when LLM tool call arguments contain unescaped control characters — use `json.loads(strict=False)` across all LLM output parsing paths to prevent tool execution failure and session corruption
 - Shell: Auto-trigger agent when background tasks complete while idle — the shell now detects when a background bash command or agent task finishes and automatically starts a new agent turn to process the results, instead of waiting for the user to type something
 - Core: Fix `QuestionRequest` hanging in print mode — `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` now auto-resolve when running in non-interactive (yolo) mode, preventing indefinite tool call hangs in `--print` sessions
 - Core: Strengthen system prompt to encourage tool use for coding tasks — the agent now defaults to taking action with tools instead of outputting code as plain text
