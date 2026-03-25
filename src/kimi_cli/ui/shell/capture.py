@@ -7,6 +7,8 @@ context injection.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import fcntl
 import os
 import re
@@ -14,8 +16,6 @@ import sys
 import termios
 from collections.abc import Callable, Coroutine
 from typing import Any
-
-import asyncio
 
 from kosong.message import Message
 from rich.text import Text
@@ -33,6 +33,7 @@ _CAPTURE_HARD_LIMIT = 2 * SHELL_OUTPUT_MAX_BYTES
 # ---------------------------------------------------------------------------
 # Output cleaning
 # ---------------------------------------------------------------------------
+
 
 def clean_output(raw: str) -> str:
     """Strip ANSI escapes and resolve carriage-return overwrites.
@@ -68,6 +69,7 @@ def clean_output(raw: str) -> str:
 # PTY-based execution with capture
 # ---------------------------------------------------------------------------
 
+
 async def execute_with_pty_capture(
     command: str,
     env: dict[str, str] | None = None,
@@ -83,6 +85,7 @@ async def execute_with_pty_capture(
 
     Returns ``(exit_code, raw_output)``.
     """
+    logger.debug("PTY capture: running {command!r}", command=command)
     master_fd, slave_fd = os.openpty()
 
     # Match PTY size to real terminal so columnar output renders correctly.
@@ -112,10 +115,8 @@ async def execute_with_pty_capture(
     # Save terminal state so we can restore it if the child corrupts it.
     stdin_fd = sys.stdin.fileno()
     saved_termios: list[Any] | None = None
-    try:
+    with contextlib.suppress(OSError, termios.error):
         saved_termios = termios.tcgetattr(stdin_fd)
-    except (OSError, termios.error):
-        pass
 
     loop = asyncio.get_running_loop()
     captured: list[bytes] = []
@@ -136,10 +137,8 @@ async def execute_with_pty_capture(
             eof_event.set()
             return
         if data:
-            try:
+            with contextlib.suppress(OSError):
                 os.write(stdout_fd, data)
-            except OSError:
-                pass
             # Cap in-memory capture to avoid unbounded growth (e.g. `cat /dev/urandom`).
             # We keep the tail, which is usually more informative.
             if captured_bytes < _CAPTURE_HARD_LIMIT:
@@ -154,27 +153,25 @@ async def execute_with_pty_capture(
     try:
         await proc.wait()
         # Drain any remaining buffered output after process exits.
-        try:
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(eof_event.wait(), timeout=0.5)
-        except asyncio.TimeoutError:
-            pass
     except KeyboardInterrupt:
         # Forward SIGINT to child if it is still running.
+        logger.debug("PTY capture: KeyboardInterrupt, forwarding SIGINT to child")
         if proc.returncode is None:
             proc.send_signal(2)  # SIGINT
             try:
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            except (asyncio.TimeoutError, ProcessLookupError):
+            except (TimeoutError, ProcessLookupError):
+                logger.debug("PTY capture: child did not exit after SIGINT, killing")
                 proc.kill()
     finally:
         loop.remove_reader(master_fd)
         os.close(master_fd)
         # Restore terminal state unconditionally.
         if saved_termios is not None:
-            try:
+            with contextlib.suppress(OSError, termios.error):
                 termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, saved_termios)
-            except (OSError, termios.error):
-                pass
 
     raw = b"".join(captured).decode("utf-8", errors="replace")
     return proc.returncode, raw
@@ -183,6 +180,7 @@ async def execute_with_pty_capture(
 # ---------------------------------------------------------------------------
 # PIPE-based execution with tee (for ``!`` prefix / non-TTY contexts)
 # ---------------------------------------------------------------------------
+
 
 async def execute_with_pipe_capture(
     command: str,
@@ -226,6 +224,7 @@ async def execute_with_pipe_capture(
 # ---------------------------------------------------------------------------
 # Context injection
 # ---------------------------------------------------------------------------
+
 
 async def inject_to_context(
     append_message: Callable[[Message], Coroutine[Any, Any, None]],

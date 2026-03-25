@@ -22,8 +22,8 @@ from kimi_cli.background import list_task_views
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.ui.shell.capture import execute_with_pty_capture, inject_to_context
 from kimi_cli.ui.shell import update as _update_mod
+from kimi_cli.ui.shell.capture import execute_with_pty_capture, inject_to_context
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
