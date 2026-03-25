@@ -261,10 +261,12 @@ async def test_discover_skills_from_roots_first_wins(tmp_path):
         encoding="utf-8",
     )
 
-    skills = await discover_skills_from_roots([
-        KaosPath.unsafe_from_local_path(tmp_path / "root_a"),
-        KaosPath.unsafe_from_local_path(tmp_path / "root_b"),
-    ])
+    skills = await discover_skills_from_roots(
+        [
+            KaosPath.unsafe_from_local_path(tmp_path / "root_a"),
+            KaosPath.unsafe_from_local_path(tmp_path / "root_b"),
+        ]
+    )
 
     assert len(skills) == 1
     assert skills[0].description == "A"
