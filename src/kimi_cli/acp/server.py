@@ -39,6 +39,8 @@ class ACPServer:
         self.negotiated_version: ACPVersionSpec | None = None
         self._auth_methods: list[acp.schema.AuthMethod] = []
         self._active_auth_sessions: dict[str, asyncio.Task[bool]] = {}
+        # Store verification URL for pre-session auth (keyed by session_id sentinel)
+        self._auth_verification_urls: dict[str, str] = {}
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -515,7 +517,10 @@ class ACPServer:
                             data=event.data,
                         )
                     else:
-                        logger.info("Please visit: {url}", url=event.data.get("verification_url"))
+                        verification_url = event.data.get("verification_url") if event.data else None
+                        if verification_url:
+                            self._auth_verification_urls[session_id] = verification_url
+                        logger.info("Please visit: {url}", url=verification_url)
                 
                 elif event.type == "waiting":
                     # 发送等待状态
@@ -548,6 +553,7 @@ class ACPServer:
                             "completed",
                             event.message,
                         )
+                    # Store verification URL for pre-session auth response
                     return True
                 
                 elif event.type == "error":
@@ -581,12 +587,17 @@ class ACPServer:
         message: str,
         data: dict[str, Any] | None = None,
     ) -> None:
-        """发送认证进度通知"""
+        """发送认证进度通知
+        
+        Uses AgentThoughtChunk instead of AgentMessageChunk to avoid polluting
+        the session conversation stream. Auth progress messages are auxiliary
+        information that shouldn't appear as regular agent responses.
+        """
         if not self.conn:
             return
         
         try:
-            # Use AgentMessageChunk which is a valid SessionUpdate subclass.
+            # Use AgentThoughtChunk which doesn't pollute the main conversation.
             # Encode auth progress info in the text content so the client
             # can display it to the user.
             display_message = message
@@ -595,8 +606,8 @@ class ACPServer:
             
             await self.conn.session_update(
                 session_id=session_id,
-                update=acp.schema.AgentMessageChunk(
-                    session_update="agent_message_chunk",
+                update=acp.schema.AgentThoughtChunk(
+                    session_update="agent_thought_chunk",
                     content=acp.schema.TextContentBlock(
                         type="text",
                         text=display_message,
@@ -623,6 +634,8 @@ class ACPServer:
                     "cancelled",
                     "Login cancelled by user.",
                 )
+        # Clean up stored verification URL for this session
+        self._auth_verification_urls.pop(session_id, None)
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
         """
@@ -687,15 +700,11 @@ class ACPServer:
                 auth_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await auth_task
-                # Note: Using `from None` to suppress the original CancelledError chain.
-                # This is intentional - we want to expose a clean protocol error to the
-                # client instead of internal asyncio cancellation details.
-                raise acp.RequestError.auth_required(
-                    {
-                        "message": "Authentication was cancelled.",
-                        "authMethods": self._build_auth_methods_data(),
-                    }
-                ) from None
+                # Re-raise CancelledError to let the ACP framework handle cleanup.
+                # The framework relies on CancelledError propagation for proper
+                # cleanup (e.g., on client disconnect). Converting it to a
+                # protocol error would interfere with this mechanism.
+                raise
             finally:
                 # Ensure the task is cancelled if we exit for any reason
                 if not auth_task.done():
@@ -704,6 +713,8 @@ class ACPServer:
                         await auth_task
                 # 清理任务
                 self._active_auth_sessions.pop(session_id, None)
+                # Clean up stored verification URL
+                self._auth_verification_urls.pop(session_id, None)
             
             # 登录失败，抛出auth_required错误
             logger.warning("Authentication not complete for method: {id}", id=method_id)
@@ -736,7 +747,16 @@ class ACPServer:
         await acp_session.cancel()
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+        if method == "auth/status":
+            # Return authentication status and verification URL for pre-session auth
+            session_id = params.get("session_id", "__auth__")
+            verification_url = self._auth_verification_urls.get(session_id)
+            is_active = session_id in self._active_auth_sessions
+            return {
+                "active": is_active,
+                "verification_url": verification_url,
+            }
+        raise NotImplementedError(f"Unknown extension method: {method}")
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         raise NotImplementedError
