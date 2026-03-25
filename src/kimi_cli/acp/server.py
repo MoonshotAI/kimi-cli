@@ -470,16 +470,17 @@ class ACPServer:
             return False
         finally:
             # 清理终端资源
+            # Use asyncio.shield to prevent CancelledError from interrupting cleanup
             if terminal_id and self.conn:
                 try:
-                    await self.conn.release_terminal(
-                        session_id=session_id,
-                        terminal_id=terminal_id,
+                    await asyncio.shield(
+                        self.conn.release_terminal(
+                            session_id=session_id,
+                            terminal_id=terminal_id,
+                        )
                     )
-                except acp.RequestError as e:
-                    logger.warning("ACP request error while releasing terminal: {error}", error=e)
-                except Exception as e:
-                    logger.warning("Unexpected error while releasing terminal: {error}", error=e)
+                except (acp.RequestError, Exception) as e:
+                    logger.warning("Error while releasing terminal: {error}", error=e)
 
     async def _trigger_oauth_device_flow(self, session_id: str) -> bool:
         """
@@ -526,7 +527,18 @@ class ACPServer:
                         )
                     else:
                         logger.info("Waiting: {message}", message=event.message)
-                
+
+                elif event.type == "info":
+                    # Forward informational messages from login_kimi_code
+                    if is_real_session:
+                        await self._send_auth_progress(
+                            session_id,
+                            "info",
+                            event.message,
+                        )
+                    else:
+                        logger.info("Auth info: {message}", message=event.message)
+
                 elif event.type == "success":
                     # 登录成功
                     logger.info("OAuth device flow completed successfully")
@@ -603,12 +615,14 @@ class ACPServer:
                 await task
             self._active_auth_sessions.pop(session_id, None)
             logger.info("Authentication cancelled for session: {id}", id=session_id)
-            
-            await self._send_auth_progress(
-                session_id,
-                "cancelled",
-                "Login cancelled by user.",
-            )
+
+            # Only send progress notification to real sessions, not sentinel "__auth__"
+            if session_id in self.sessions:
+                await self._send_auth_progress(
+                    session_id,
+                    "cancelled",
+                    "Login cancelled by user.",
+                )
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> acp.AuthenticateResponse | None:
         """
@@ -647,10 +661,17 @@ class ACPServer:
                     logger.info("Using OAuth device flow for authentication")
                     return await self._trigger_oauth_device_flow(session_id)
             
+            # Cancel any existing auth task for this session before starting a new one
+            existing_task = self._active_auth_sessions.get(session_id)
+            if existing_task and not existing_task.done():
+                existing_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await existing_task
+
             # 创建并存储任务
             auth_task = asyncio.create_task(_run_auth())
             self._active_auth_sessions[session_id] = auth_task
-            
+
             try:
                 # 等待认证任务完成
                 login_success = await auth_task
@@ -662,6 +683,10 @@ class ACPServer:
                     logger.warning("Authentication failed")
             except asyncio.CancelledError:
                 logger.info("Authentication was cancelled")
+                # Cancel the child auth task to stop polling/terminal
+                auth_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await auth_task
                 # Note: Using `from None` to suppress the original CancelledError chain.
                 # This is intentional - we want to expose a clean protocol error to the
                 # client instead of internal asyncio cancellation details.
@@ -672,6 +697,11 @@ class ACPServer:
                     }
                 ) from None
             finally:
+                # Ensure the task is cancelled if we exit for any reason
+                if not auth_task.done():
+                    auth_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await auth_task
                 # 清理任务
                 self._active_auth_sessions.pop(session_id, None)
             
