@@ -299,7 +299,7 @@ class TestSendAuthProgress:
         mock_conn.session_update.assert_called_once()
         call_args = mock_conn.session_update.call_args
         assert call_args.kwargs["session_id"] == "test-session"
-        assert call_args.kwargs["update"].session_update == "agent_message_chunk"
+        assert call_args.kwargs["update"].session_update == "agent_thought_chunk"
 
     @pytest.mark.asyncio
     async def test_send_auth_progress_no_connection(self):

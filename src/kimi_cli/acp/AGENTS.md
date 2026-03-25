@@ -79,7 +79,7 @@
 
 ## Authentication
 - `authenticate` supports terminal login (via ACP `terminal/create`) and OAuth Device Flow as fallback.
-- Auth progress is communicated via `AgentMessageChunk` session updates.
+- Auth progress is communicated via `AgentThoughtChunk` session updates (to avoid polluting the conversation stream).
 
 ## Filesystem (ACP client-backed)
 - When the client advertises `fs.readTextFile` / `fs.writeTextFile`, `ACPKaos` routes
