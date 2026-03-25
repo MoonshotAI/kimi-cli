@@ -73,10 +73,13 @@
   `session/request_permission` with allow-once/allow-always/reject options.
 
 ## Current gaps / not implemented
-- `authenticate` method (not used by current Zed ACP client).
 - `session/set_mode` and `session/set_model` (no multi-mode/model switching in kimi-cli).
 - `ext_method` / `ext_notification` for custom ACP extensions are stubbed.
 - Single-session server does not implement `session/load` or `session/list`.
+
+## Authentication
+- `authenticate` supports terminal login (via ACP `terminal/create`) and OAuth Device Flow as fallback.
+- Auth progress is communicated via `AgentMessageChunk` session updates.
 
 ## Filesystem (ACP client-backed)
 - When the client advertises `fs.readTextFile` / `fs.writeTextFile`, `ACPKaos` routes

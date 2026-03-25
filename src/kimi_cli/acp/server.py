@@ -262,11 +262,9 @@ class ACPServer:
         self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.schema.ResumeSessionResponse:
         logger.info("Resuming session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
-
-        # Check authentication before resuming session (consistent with new_session and load_session)
-        await self._check_auth()
-
         if session_id not in self.sessions:
+            # Check authentication only when loading a new session from disk
+            await self._check_auth()
             await self._setup_session(cwd, session_id, mcp_servers)
 
         acp_session, model_id_conv = self.sessions[session_id]
@@ -367,6 +365,9 @@ class ACPServer:
         # Update in-memory config to stay in sync
         config.default_model = model_id_conv.model_key
         config.default_thinking = model_id_conv.thinking
+        # Update the session's stored model so subsequent comparisons and
+        # resume_session report the correct current model.
+        self.sessions[session_id] = (acp_session, model_id_conv)
 
     async def _trigger_login_in_terminal(self, session_id: str) -> bool:
         """
@@ -651,17 +652,56 @@ class ACPServer:
                     logger.warning("Authentication failed")
             except asyncio.CancelledError:
                 logger.info("Authentication was cancelled")
-                raise
+                # Build auth methods data in the same flattened dict format as _check_auth
+                auth_methods_data: list[dict[str, Any]] = []
+                for m in self._auth_methods:
+                    if m.field_meta and "terminal-auth" in m.field_meta:
+                        terminal_auth = m.field_meta["terminal-auth"]
+                        auth_methods_data.append(
+                            {
+                                "id": m.id,
+                                "name": m.name,
+                                "description": m.description,
+                                "type": terminal_auth.get("type", "terminal"),
+                                "command": terminal_auth.get("command", "kimi"),
+                                "args": terminal_auth.get("args", []),
+                                "label": terminal_auth.get("label", ""),
+                                "env": terminal_auth.get("env", {}),
+                            }
+                        )
+                raise acp.RequestError.auth_required(
+                    {
+                        "message": "Authentication was cancelled.",
+                        "authMethods": auth_methods_data,
+                    }
+                )
             finally:
                 # 清理任务
                 self._active_auth_sessions.pop(session_id, None)
             
             # 登录失败，抛出auth_required错误
             logger.warning("Authentication not complete for method: {id}", id=method_id)
+            # Build auth methods data in the same flattened dict format as _check_auth
+            auth_methods_data: list[dict[str, Any]] = []
+            for m in self._auth_methods:
+                if m.field_meta and "terminal-auth" in m.field_meta:
+                    terminal_auth = m.field_meta["terminal-auth"]
+                    auth_methods_data.append(
+                        {
+                            "id": m.id,
+                            "name": m.name,
+                            "description": m.description,
+                            "type": terminal_auth.get("type", "terminal"),
+                            "command": terminal_auth.get("command", "kimi"),
+                            "args": terminal_auth.get("args", []),
+                            "label": terminal_auth.get("label", ""),
+                            "env": terminal_auth.get("env", {}),
+                        }
+                    )
             raise acp.RequestError.auth_required(
                 {
                     "message": "Login failed. Please try again.",
-                    "authMethods": self._auth_methods,
+                    "authMethods": auth_methods_data,
                 }
             )
 
