@@ -58,6 +58,7 @@ from kimi_cli.soul.dynamic_injection import (
     normalize_history,
 )
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
+from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -156,6 +157,7 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
+            YoloModeInjectionProvider(),
         ]
         if self._runtime.role == "root":
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
@@ -179,6 +181,11 @@ class KimiSoul:
         if self._runtime.llm is None:
             return None
         return self._runtime.llm.capabilities
+
+    @property
+    def is_yolo(self) -> bool:
+        """Whether yolo (auto-approve / non-interactive) mode is enabled."""
+        return self._approval.is_yolo()
 
     @property
     def plan_mode(self) -> bool:
@@ -233,14 +240,21 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker)
+            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker)
+            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+
+        # AskUserQuestion — bind yolo checker for auto-dismiss
+        from kimi_cli.tools.ask_user import AskUserQuestion
+
+        ask_tool = self._agent.toolset.find("AskUserQuestion")
+        if isinstance(ask_tool, AskUserQuestion):
+            ask_tool.bind_approval(self._approval.is_yolo)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""

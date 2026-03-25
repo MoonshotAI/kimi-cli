@@ -11,6 +11,7 @@ from kosong.tooling.empty import EmptyToolset
 from pydantic import ValidationError
 
 from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
@@ -30,6 +31,12 @@ from kimi_cli.wire.types import QuestionNotSupported, QuestionRequest, ToolCall
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def approval() -> Approval:
+    """Override global yolo=True fixture; plan mode tests don't need yolo."""
+    return Approval(yolo=False)
 
 
 @pytest.fixture(autouse=True)

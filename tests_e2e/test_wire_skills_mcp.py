@@ -129,7 +129,8 @@ def test_skill_prompt_injects_skill_text(tmp_path) -> None:
     context_file = _session_dir(home_dir, work_dir, session_id) / "context.jsonl"
     user_texts = _read_user_texts(context_file)
     assert user_texts
-    assert _normalize_newlines(user_texts[-1]) == _normalize_newlines(skill_text.strip())
+    normalized_skill = _normalize_newlines(skill_text.strip())
+    assert any(_normalize_newlines(t) == normalized_skill for t in user_texts)
 
 
 def test_flow_skill(tmp_path) -> None:

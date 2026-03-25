@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import pydantic
 from jinja2 import Environment as JinjaEnvironment
-from jinja2 import StrictUndefined, TemplateError, UndefinedError
+from jinja2 import FileSystemLoader, StrictUndefined, TemplateError, UndefinedError
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
@@ -386,6 +386,7 @@ def _load_system_prompt(
         spec_args=args,
     )
     env = JinjaEnvironment(
+        loader=FileSystemLoader(path.parent),
         keep_trailing_newline=True,
         lstrip_blocks=True,
         trim_blocks=True,
