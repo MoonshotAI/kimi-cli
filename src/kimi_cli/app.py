@@ -186,7 +186,14 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
-        runtime = await Runtime.create(config, oauth, llm, session, yolo, extra_skills_dirs)
+        runtime = await Runtime.create(
+            config,
+            oauth,
+            llm,
+            session,
+            yolo,
+            extra_skills_dirs=extra_skills_dirs,
+        )
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
