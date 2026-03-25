@@ -47,6 +47,17 @@ class BackgroundTaskManager:
         self._store = BackgroundTaskStore(session.context_file.parent / "tasks")
         self._runtime: Runtime | None = None
         self._live_agent_tasks: dict[str, asyncio.Task[None]] = {}
+        self._completion_event: asyncio.Event = asyncio.Event()
+
+    @property
+    def completion_event(self) -> asyncio.Event:
+        """Event set when a new terminal notification is published.
+
+        Not set immediately when a task becomes terminal — only after
+        ``reconcile()`` / ``publish_terminal_notifications()`` runs.
+        Deduplicated notifications do not trigger a repeat signal.
+        """
+        return self._completion_event
 
     @property
     def store(self) -> BackgroundTaskStore:
@@ -496,6 +507,7 @@ class BackgroundTaskManager:
             notification = self._notifications.publish(event)
             if notification.event.id == event.id:
                 published.append(notification.event.id)
+                self._completion_event.set()
             if limit is not None and len(published) >= limit:
                 break
         return published

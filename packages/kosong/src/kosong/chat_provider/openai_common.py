@@ -15,6 +15,7 @@ from kosong.chat_provider import (
     APITimeoutError,
     ChatProviderError,
     ThinkingEffort,
+    convert_httpx_error,
 )
 from kosong.tooling import Tool
 
@@ -71,19 +72,19 @@ def close_replaced_openai_client(client: AsyncOpenAI, *, client_kwargs: Mapping[
 
 
 def convert_error(error: OpenAIError | httpx.HTTPError) -> ChatProviderError:
+    # httpx errors may leak through the OpenAI SDK during streaming;
+    # delegate to the shared converter.
+    if isinstance(error, httpx.HTTPError):
+        return convert_httpx_error(error)
+    # OpenAI SDK errors — check subclasses before parents to avoid
+    # misclassification (e.g. APITimeoutError inherits APIConnectionError).
     match error:
         case openai.APIStatusError():
             return APIStatusError(error.status_code, error.message)
-        case openai.APIConnectionError():
-            return APIConnectionError(error.message)
         case openai.APITimeoutError():
             return APITimeoutError(error.message)
-        case httpx.TimeoutException():
-            return APITimeoutError(str(error))
-        case httpx.NetworkError():
-            return APIConnectionError(str(error))
-        case httpx.HTTPStatusError():
-            return APIStatusError(error.response.status_code, str(error))
+        case openai.APIConnectionError():
+            return APIConnectionError(error.message)
         case _:
             return ChatProviderError(f"Error: {error}")
 
