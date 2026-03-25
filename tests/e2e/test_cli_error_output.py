@@ -113,7 +113,7 @@ See logs: {log_path}
 
 def test_sessions_and_continue_conflict_is_reported(tmp_path: Path) -> None:
     share_dir = tmp_path / "share"
-    result = _run_kimi(["--sessions", "--continue"], share_dir=share_dir)
+    result = _run_kimi(["--pick-session", "--continue"], share_dir=share_dir)
     assert result.returncode == snapshot(2)
     assert result.stdout == snapshot("")
     assert _normalize_cli_error_output(result.stderr) == snapshot(
@@ -121,7 +121,7 @@ def test_sessions_and_continue_conflict_is_reported(tmp_path: Path) -> None:
 Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
 Try 'python -m kimi_cli.cli -h' for help.
 Error:
-Invalid value for --continue: Cannot combine --continue, --sessions.
+Invalid value for --continue: Cannot combine --continue, --pick-session.
 """
     )
 
@@ -143,7 +143,7 @@ Invalid value for --session: Cannot combine --session, --list-sessions.
 
 def test_sessions_with_print_mode_is_reported(tmp_path: Path) -> None:
     share_dir = tmp_path / "share"
-    result = _run_kimi(["--sessions", "--print", "--prompt", "hi"], share_dir=share_dir)
+    result = _run_kimi(["--pick-session", "--print", "--prompt", "hi"], share_dir=share_dir)
     assert result.returncode == snapshot(2)
     assert result.stdout == snapshot("")
     assert _normalize_cli_error_output(result.stderr) == snapshot(
@@ -151,7 +151,7 @@ def test_sessions_with_print_mode_is_reported(tmp_path: Path) -> None:
 Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
 Try 'python -m kimi_cli.cli -h' for help.
 Error:
-Invalid value for --sessions: --sessions is only supported for shell UI
+Invalid value for --pick-session: --pick-session is only supported for shell UI
 """
     )
 
