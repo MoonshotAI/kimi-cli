@@ -100,9 +100,6 @@ class TestTriggerOAuthDeviceFlow:
         """Test successful OAuth device flow."""
         from kimi_cli.auth.oauth import OAuthEvent
 
-        # Add __auth__ to sessions so is_real_session is True
-        server_with_conn.sessions["__auth__"] = (MagicMock(), MagicMock())
-
         # Mock login_kimi_code to yield success events
         async def mock_login_kimi_code(config, open_browser=False):
             yield OAuthEvent("verification_url", "Please visit: https://auth.example.com/device?user_code=ABC123", data={"verification_url": "https://auth.example.com/device?user_code=ABC123", "user_code": "ABC123"})
@@ -111,15 +108,13 @@ class TestTriggerOAuthDeviceFlow:
         with patch("kimi_cli.auth.oauth.login_kimi_code", side_effect=mock_login_kimi_code):
             with patch("kimi_cli.acp.server.load_config") as mock_load_config:
                 mock_load_config.return_value = MagicMock()
-                with patch("kimi_cli.acp.server.acp.schema") as mock_schema:
-                    mock_schema.SessionUpdate = MagicMock(return_value=MagicMock())
 
-                    # Call the method
-                    result = await server_with_conn._trigger_oauth_device_flow("__auth__")
+                # Call the method
+                result = await server_with_conn._trigger_oauth_device_flow("__auth__")
 
-                    # Verify
-                    assert result is True
-                    mock_conn.session_update.assert_called()
+                # Verify
+                assert result is True
+                mock_conn.session_update.assert_called()
 
     @pytest.mark.asyncio
     async def test_oauth_device_flow_timeout(self, server_with_conn, mock_conn):
@@ -280,17 +275,11 @@ class TestCancelAuth:
         task = asyncio.create_task(dummy_task())
         server_with_conn._active_auth_sessions["test-session"] = task
 
-        # Mock SessionUpdate
-        mock_update = MagicMock()
-        mock_update.session_update = "auth_progress"
-        
-        with patch("kimi_cli.acp.server.acp.schema") as mock_schema:
-            mock_schema.SessionUpdate = MagicMock(return_value=mock_update)
-            await server_with_conn.cancel_auth("test-session")
+        await server_with_conn.cancel_auth("test-session")
 
-            # Verify
-            assert "test-session" not in server_with_conn._active_auth_sessions
-            mock_conn.session_update.assert_called_once()
+        # Verify
+        assert "test-session" not in server_with_conn._active_auth_sessions
+        mock_conn.session_update.assert_called_once()
 
 
 class TestSendAuthProgress:
@@ -299,24 +288,18 @@ class TestSendAuthProgress:
     @pytest.mark.asyncio
     async def test_send_auth_progress(self, server_with_conn, mock_conn):
         """Test _send_auth_progress method."""
-        # Mock SessionUpdate
-        mock_update = MagicMock()
-        mock_update.session_update = "auth_progress"
-        
-        with patch("kimi_cli.acp.server.acp.schema") as mock_schema:
-            mock_schema.SessionUpdate = MagicMock(return_value=mock_update)
-            await server_with_conn._send_auth_progress(
-                "test-session",
-                "started",
-                "Test message",
-                data={"key": "value"},
-            )
+        await server_with_conn._send_auth_progress(
+            "test-session",
+            "started",
+            "Test message",
+            data={"key": "value"},
+        )
 
-            # Verify
-            mock_conn.session_update.assert_called_once()
-            call_args = mock_conn.session_update.call_args
-            assert call_args.kwargs["session_id"] == "test-session"
-            assert call_args.kwargs["update"].session_update == "auth_progress"
+        # Verify
+        mock_conn.session_update.assert_called_once()
+        call_args = mock_conn.session_update.call_args
+        assert call_args.kwargs["session_id"] == "test-session"
+        assert call_args.kwargs["update"].session_update == "agent_message_chunk"
 
     @pytest.mark.asyncio
     async def test_send_auth_progress_no_connection(self):

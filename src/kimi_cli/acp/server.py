@@ -486,9 +486,6 @@ class ACPServer:
             logger.error("ACP client not connected, cannot trigger OAuth device flow")
             return False
         
-        # Check if this is a real session or a temporary session ID
-        is_real_session = session_id in self.sessions
-        
         try:
             # 直接调用 login_kimi_code 异步生成器
             from kimi_cli.auth.oauth import login_kimi_code
@@ -498,47 +495,39 @@ class ACPServer:
             async for event in login_kimi_code(config, open_browser=False):
                 if event.type == "verification_url":
                     # 发送认证URI给客户端
-                    if is_real_session:
-                        await self._send_auth_progress(
-                            session_id,
-                            "verification_url",
-                            event.message,
-                            data=event.data,
-                        )
-                    else:
-                        logger.info("Please visit: {url}", url=event.data.get("verification_url"))
+                    await self._send_auth_progress(
+                        session_id,
+                        "verification_url",
+                        event.message,
+                        data=event.data,
+                    )
                 
                 elif event.type == "waiting":
                     # 发送等待状态
-                    if is_real_session:
-                        await self._send_auth_progress(
-                            session_id,
-                            "waiting",
-                            event.message,
-                        )
-                    else:
-                        logger.info("Waiting: {message}", message=event.message)
+                    await self._send_auth_progress(
+                        session_id,
+                        "waiting",
+                        event.message,
+                    )
                 
                 elif event.type == "success":
                     # 登录成功
                     logger.info("OAuth device flow completed successfully")
-                    if is_real_session:
-                        await self._send_auth_progress(
-                            session_id,
-                            "completed",
-                            event.message,
-                        )
+                    await self._send_auth_progress(
+                        session_id,
+                        "completed",
+                        event.message,
+                    )
                     return True
                 
                 elif event.type == "error":
                     # 登录失败
                     logger.error("OAuth device flow failed: {error}", error=event.message)
-                    if is_real_session:
-                        await self._send_auth_progress(
-                            session_id,
-                            "failed",
-                            event.message,
-                        )
+                    await self._send_auth_progress(
+                        session_id,
+                        "failed",
+                        event.message,
+                    )
                     return False
             
             # 如果循环结束没有返回成功，则失败
@@ -546,12 +535,11 @@ class ACPServer:
             
         except Exception as e:
             logger.error("Failed to trigger OAuth device flow: {error}", error=e)
-            if is_real_session:
-                await self._send_auth_progress(
-                    session_id,
-                    "failed",
-                    f"Login failed: {e}",
-                )
+            await self._send_auth_progress(
+                session_id,
+                "failed",
+                f"Login failed: {e}",
+            )
             return False
 
     async def _send_auth_progress(
@@ -566,19 +554,21 @@ class ACPServer:
             return
         
         try:
-            notification_data: dict[str, Any] = {
-                "status": status,
-                "message": message,
-            }
-            if data:
-                notification_data["data"] = data
+            # Use AgentMessageChunk which is a valid SessionUpdate subclass.
+            # Encode auth progress info in the text content so the client
+            # can display it to the user.
+            display_message = message
+            if data and "verification_url" in data:
+                display_message = f"{message}\n\nVerification URL: {data['verification_url']}"
             
-            # 使用session_update发送通知
             await self.conn.session_update(
                 session_id=session_id,
-                update=acp.schema.SessionUpdate(
-                    session_update="auth_progress",
-                    **notification_data,
+                update=acp.schema.AgentMessageChunk(
+                    session_update="agent_message_chunk",
+                    content=acp.schema.TextContentBlock(
+                        type="text",
+                        text=display_message,
+                    ),
                 ),
             )
         except Exception as e:
