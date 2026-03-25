@@ -64,6 +64,14 @@ class NotificationManager:
             if updated:
                 self._store.write_delivery(view.event.id, delivery)
 
+    def has_pending_for_sink(self, sink: str) -> bool:
+        """Check whether any notification has a pending delivery for *sink*."""
+        for view in self._store.list_views():
+            sink_state = view.delivery.sinks.get(sink)
+            if sink_state is not None and sink_state.status == "pending":
+                return True
+        return False
+
     def claim_for_sink(self, sink: str, *, limit: int = 8) -> list[NotificationView]:
         self.recover()
         claimed: list[NotificationView] = []

@@ -18,7 +18,7 @@ from rich.text import Text
 
 from kimi_cli import logger
 from kimi_cli.background import list_task_views
-from kimi_cli.notifications import NotificationWatcher
+from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
@@ -60,6 +60,10 @@ class _PromptEvent:
     user_input: UserInput | None = None
 
 
+_MAX_BG_AUTO_TRIGGER_FAILURES = 3
+"""Stop auto-triggering after this many consecutive failures."""
+
+
 class _BackgroundCompletionWatcher:
     """Watches for background task completions and auto-triggers the agent.
 
@@ -70,7 +74,7 @@ class _BackgroundCompletionWatcher:
 
     def __init__(self, soul: Soul) -> None:
         self._event: asyncio.Event | None = None
-        self._notifications: Any = None  # NotificationManager when enabled
+        self._notifications: NotificationManager | None = None
         if isinstance(soul, KimiSoul):
             self._event = soul.runtime.background_tasks.completion_event
             self._notifications = soul.runtime.notifications
@@ -92,7 +96,11 @@ class _BackgroundCompletionWatcher:
         User input always takes priority over background completions.
         """
         if self.enabled and self._has_pending_llm_notifications():
-            return None
+            # Pending notifications exist, but user input still wins.
+            try:
+                return idle_events.get_nowait()
+            except asyncio.QueueEmpty:
+                return None
 
         idle_task = asyncio.create_task(idle_events.get())
         if not self.enabled:
@@ -120,16 +128,12 @@ class _BackgroundCompletionWatcher:
         self._event.clear()
         if self._has_pending_llm_notifications():
             return None
-        # Event fired but no pending notifications (consumed during run)
         return _PromptEvent(kind="bg_noop")
 
     def _has_pending_llm_notifications(self) -> bool:
         if self._notifications is None:
             return False
-        return any(
-            (sink := view.delivery.sinks.get("llm")) and sink.status == "pending"
-            for view in self._notifications.store.list_views()
-        )
+        return self._notifications.has_pending_for_sink("llm")
 
 
 class Shell:
@@ -371,21 +375,34 @@ class Shell:
             bg_watcher = _BackgroundCompletionWatcher(self.soul)
 
             shell_ok = True
+            bg_auto_failures = 0
             try:
                 while True:
                     bg_watcher.clear()
-                    result = await bg_watcher.wait_for_next(idle_events)
+                    if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
+                        result = await idle_events.get()
+                    else:
+                        result = await bg_watcher.wait_for_next(idle_events)
 
                     if result is None:
-                        # Background task completed with pending notifications
                         logger.info("Background task completed while idle, triggering agent")
                         resume_prompt.set()
-                        await self.run_soul_command(
+                        ok = await self.run_soul_command(
                             "<system-reminder>"
-                            "Background tasks completed while you were idle."
+                            "Background tasks completed while you"
+                            " were idle."
                             "</system-reminder>"
                         )
                         console.print()
+                        if not ok:
+                            bg_auto_failures += 1
+                            logger.warning(
+                                "Background auto-trigger failed ({n}/{max})",
+                                n=bg_auto_failures,
+                                max=_MAX_BG_AUTO_TRIGGER_FAILURES,
+                            )
+                        else:
+                            bg_auto_failures = 0
                         if self._exit_after_run:
                             console.print("Bye!")
                             break
@@ -411,6 +428,7 @@ class Shell:
 
                     user_input = event.user_input
                     assert user_input is not None
+                    bg_auto_failures = 0
                     if not user_input:
                         logger.debug("Got empty input, skipping")
                         resume_prompt.set()

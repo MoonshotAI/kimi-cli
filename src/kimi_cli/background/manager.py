@@ -51,7 +51,12 @@ class BackgroundTaskManager:
 
     @property
     def completion_event(self) -> asyncio.Event:
-        """Event set when a background task reaches terminal status."""
+        """Event set when a new terminal notification is published.
+
+        Not set immediately when a task becomes terminal — only after
+        ``reconcile()`` / ``publish_terminal_notifications()`` runs.
+        Deduplicated notifications do not trigger a repeat signal.
+        """
         return self._completion_event
 
     @property
