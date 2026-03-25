@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.46.0 (2026-03-25)
+
+- Google GenAI: Fix `FunctionCall` and `FunctionResponse` wire format — remove `id` field from outbound messages as Gemini API returns HTTP 400 when it is included; internal `tool_call_id` tracking remains unchanged
+- Core: Use `json.loads(strict=False)` when parsing tool call arguments to tolerate unescaped control characters from LLM output
+- Core: Treat `httpx.ProtocolError` as `APIConnectionError` in shared `convert_httpx_error()` mapping so streaming protocol disconnects now participate in existing retry logic
+- Anthropic: Fix `httpx.ReadTimeout` leaking through `_convert_stream_response` during streaming — the exception is now caught and converted to `APITimeoutError`, enabling retry logic that was previously bypassed
+- Anthropic: Fix `_convert_error` ordering — `AnthropicAPITimeoutError` is now checked before `AnthropicAPIConnectionError` to avoid misclassification due to inheritance
+- Core: Add shared `convert_httpx_error()` utility for converting httpx transport errors to `ChatProviderError` subtypes, used by all providers
+- Google GenAI: Add `httpx.HTTPError` catch in `_convert_stream_response` for the httpx fallback transport path
+
 ## 0.45.0 (2026-03-11)
 
 - OpenAI Responses: Fix implicit `reasoning.effort=null` being sent which breaks Responses-compatible endpoints that require reasoning — reasoning parameters are now omitted unless explicitly set

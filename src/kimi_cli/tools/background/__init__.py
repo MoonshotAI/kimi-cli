@@ -5,8 +5,7 @@ from typing import override
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.background import TaskStatus, TaskView, format_task, format_task_list, list_task_views
-from kimi_cli.background.models import TERMINAL_TASK_STATUSES
+from kimi_cli.background import TaskView, format_task, format_task_list, list_task_views
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock
@@ -189,52 +188,25 @@ class TaskOutput(CallableTool2[TaskOutputParams]):
         super().__init__()
         self._runtime = runtime
 
-    def _resolve_output_path(self, task_id: str, *, status: TaskStatus) -> Path:
-        """Return the best output path for the given task.
-
-        For running agent tasks, read directly from the subagent's live output
-        file so that TaskOutput can show real-time progress without waiting for
-        the task to finish.
-        """
-        if status not in TERMINAL_TASK_STATUSES:
-            try:
-                spec = self._runtime.background_tasks.store.read_spec(task_id)
-            except (OSError, Exception):
-                spec = None
-            if spec is not None and spec.kind == "agent" and spec.kind_payload:
-                agent_id = spec.kind_payload.get("agent_id")
-                if isinstance(agent_id, str) and self._runtime.subagent_store is not None:
-                    live_path = self._runtime.subagent_store.output_path(agent_id)
-                    if live_path.exists() and live_path.stat().st_size > 0:
-                        return live_path
-        return self._runtime.background_tasks.store.output_path(task_id)
-
-    def _render_output_preview(
-        self, task_id: str, *, status: TaskStatus
-    ) -> tuple[str, bool, int, int, bool, Path]:
-        output_path = self._resolve_output_path(task_id, status=status)
-        output_available = output_path.exists()
+    def _render_output_preview(self, task_id: str) -> tuple[str, bool, int, int, bool, Path]:
+        manager = self._runtime.background_tasks
+        output_path = manager.resolve_output_path(task_id)
         try:
-            output_size = output_path.stat().st_size
+            output_size = output_path.stat().st_size if output_path.exists() else 0
         except OSError:
             output_size = 0
         preview_offset = max(0, output_size - TASK_OUTPUT_PREVIEW_BYTES)
-        chunk = self._runtime.background_tasks.store.read_output(
+        chunk = manager.read_output(
             task_id,
-            preview_offset,
-            TASK_OUTPUT_PREVIEW_BYTES,
-            status=status,
-            path_override=output_path,
+            offset=preview_offset,
+            max_bytes=TASK_OUTPUT_PREVIEW_BYTES,
         )
-        preview_bytes = chunk.next_offset - chunk.offset
-        preview_text = chunk.text.rstrip("\n")
-        preview_truncated = preview_offset > 0
         return (
-            preview_text,
-            output_available,
+            chunk.text.rstrip("\n"),
+            output_size > 0,
             output_size,
-            preview_bytes,
-            preview_truncated,
+            chunk.next_offset - chunk.offset,
+            preview_offset > 0,
             output_path,
         )
 
@@ -271,10 +243,7 @@ class TaskOutput(CallableTool2[TaskOutputParams]):
             output_preview_bytes,
             output_truncated,
             output_path,
-        ) = self._render_output_preview(
-            params.task_id,
-            status=view.runtime.status,
-        )
+        ) = self._render_output_preview(params.task_id)
         consumer = view.consumer.model_copy(
             update={
                 "last_seen_output_size": output_size,

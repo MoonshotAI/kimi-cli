@@ -15,7 +15,7 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
-from kimi_cli.utils.subprocess_env import get_clean_env
+from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
 MAX_FOREGROUND_TIMEOUT = 5 * 60
 MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
@@ -207,7 +207,11 @@ class Shell(CallableTool2[Params]):
                 else:
                     break
 
-        process = await kaos.exec(*self._shell_args(command), env=get_clean_env())
+        process = await kaos.exec(*self._shell_args(command), env=get_noninteractive_env())
+
+        # Close stdin immediately so interactive prompts (e.g. git password) get
+        # EOF instead of hanging forever waiting for input that will never come.
+        process.stdin.close()
 
         try:
             await asyncio.wait_for(

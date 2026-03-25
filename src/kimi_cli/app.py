@@ -84,7 +84,7 @@ class KimiCLI:
         # Extensions
         agent_file: Path | None = None,
         mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
-        skills_dir: KaosPath | None = None,
+        extra_skills_dirs: list[KaosPath] | None = None,
         # Loop control
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
@@ -105,8 +105,8 @@ class KimiCLI:
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
-            skills_dir (KaosPath | None, optional): Override skills directory discovery. Defaults
-                to None.
+            extra_skills_dirs (list[KaosPath] | None, optional): Additional skills directories
+                appended to default discovery. Defaults to None.
             max_steps_per_turn (int | None, optional): Maximum number of steps in one turn.
                 Defaults to None.
             max_retries_per_step (int | None, optional): Maximum number of retries in one step.
@@ -186,7 +186,14 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
-        runtime = await Runtime.create(config, oauth, llm, session, yolo, skills_dir)
+        runtime = await Runtime.create(
+            config,
+            oauth,
+            llm,
+            session,
+            yolo,
+            extra_skills_dirs=extra_skills_dirs,
+        )
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)

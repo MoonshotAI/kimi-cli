@@ -4,7 +4,18 @@
 
 ## 未发布
 
+## 1.26.0 (2026-03-25)
+
+- Kosong：修复 Google GenAI 提供商在 `FunctionCall`/`FunctionResponse` 中包含 `id` 字段的问题——Gemini API 在包含 `id` 时返回 HTTP 400；从 wire 格式中移除该字段，同时保持内部 `tool_call_id` 跟踪不变
+- Core：修复 MCP 服务器 stderr 污染问题——stderr 重定向现在在 MCP 服务器启动前安装，子进程日志（如 `mcp-remote` 的 OAuth 调试输出）将被捕获到日志文件，而非输出到终端
+- Shell：修复子进程遇到交互式提示时挂起的问题——`Shell` 工具现在会立即关闭 stdin 并设置 `GIT_TERMINAL_PROMPT=0`，使需要凭证的命令（如通过 HTTPS 执行 `git push`）快速失败，而非阻塞至超时
+- Core：修复 LLM 工具调用参数包含未转义控制字符时 JSON 解析失败的问题——在所有 LLM 输出解析路径使用 `json.loads(strict=False)`，防止工具执行失败和会话永久损坏
+- Shell：空闲时自动响应后台任务完成——Shell 现在会检测后台 Bash 命令或 Agent 任务的完成，并自动发起新的 Agent 轮次处理结果，无需等待用户输入
 - Core：修复 Print 模式下 `QuestionRequest` 导致挂起的问题——`AskUserQuestion`、`EnterPlanMode` 和 `ExitPlanMode` 在非交互（yolo）模式下自动处理，避免 `--print` 会话中工具调用无限挂起
+- Core：修复后台 Agent 任务运行期间无法查看输出的问题——`/task` 浏览器和 `TaskOutput` 工具现在可实时显示后台 Agent 任务的输出，通过在执行期间同步写入任务日志替代完成后拷贝的方式实现
+- Core：增强系统提示词以鼓励工具调用——Agent 现在默认优先使用工具执行操作，而非将代码作为纯文本输出
+- Core：修复生成过程中遇到 `httpx.ProtocolError` 或 `504 Gateway Timeout` 时不重试的问题——流式协议断连和瞬时 `504` 响应现在会走既有重试路径，而不是在网络不稳定时直接中断当前轮次
+- Kosong：修复 Anthropic 提供商在流式传输期间 `httpx.ReadTimeout` 异常泄漏的问题——异常现在正确转换为 `APITimeoutError`，使此前被绕过的重试逻辑能够正常触发
 
 ## 1.25.0 (2026-03-23)
 

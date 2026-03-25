@@ -272,14 +272,14 @@ def kimi(
         ),
     ] = None,
     local_skills_dir: Annotated[
-        Path | None,
+        list[Path] | None,
         typer.Option(
             "--skills-dir",
             exists=True,
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Path to the skills directory. Overrides discovery.",
+            help="Additional skills directories (repeatable). Appended to default discovery.",
         ),
     ] = None,
     # Loop control
@@ -337,9 +337,10 @@ def kimi(
 
     from .mcp import get_global_mcp_config_file
 
-    # Don't redirect stderr yet. Our stderr redirector replaces fd=2 with a pipe, which
-    # would swallow Click/Typer startup errors (e.g. config parsing / BadParameter).
-    # We re-enable stderr redirection after KimiCLI.create() succeeds.
+    # Don't redirect stderr during argument parsing. Our stderr redirector
+    # replaces fd=2 with a pipe, which would swallow Click/Typer startup errors.
+    # Redirection is installed later, right before KimiCLI.create(), so that
+    # MCP server stderr noise is captured into logs from the start.
     enable_logging(debug, redirect_stderr=False)
 
     def _emit_fatal_error(message: str) -> None:
@@ -466,9 +467,9 @@ def kimi(
     except json.JSONDecodeError as e:
         raise typer.BadParameter(f"Invalid JSON: {e}", param_hint="--mcp-config") from e
 
-    skills_dir: KaosPath | None = None
-    if local_skills_dir is not None:
-        skills_dir = KaosPath.unsafe_from_local_path(local_skills_dir)
+    extra_skills_dirs: list[KaosPath] | None = None
+    if local_skills_dir:
+        extra_skills_dirs = [KaosPath.unsafe_from_local_path(p) for p in local_skills_dir]
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
@@ -526,6 +527,15 @@ def kimi(
                 if changed:
                     session.save_state()
 
+            # Redirect stderr *before* KimiCLI.create() so that MCP server
+            # subprocesses (e.g. mcp-remote OAuth debug logs) write to the log
+            # file instead of polluting the user's terminal.  CLI argument
+            # parsing has already succeeded at this point, so Typer/Click
+            # startup errors are no longer a concern.  Fatal errors from
+            # create() are still visible because _emit_fatal_error() writes to
+            # the saved original stderr fd.
+            redirect_stderr_to_logger()
+
             instance = await KimiCLI.create(
                 session,
                 config=config,
@@ -534,7 +544,7 @@ def kimi(
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
-                skills_dir=skills_dir,
+                extra_skills_dirs=extra_skills_dirs,
                 max_steps_per_turn=max_steps_per_turn,
                 max_retries_per_step=max_retries_per_step,
                 max_ralph_iterations=max_ralph_iterations,
@@ -542,10 +552,6 @@ def kimi(
                 defer_mcp_loading=ui == "shell" and prompt is None,
             )
             startup_progress.stop()
-
-            # Install stderr redirection only after initialization succeeded, so runtime
-            # stderr noise is captured into logs without hiding startup failures.
-            redirect_stderr_to_logger()
             preserve_background_tasks = False
             try:
                 match ui:

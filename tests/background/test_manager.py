@@ -908,6 +908,70 @@ def test_publish_terminal_notifications_limit_skips_deduped_results(runtime, mon
     assert published == [created_ids[task_ids[1]]]
 
 
+def test_completion_event_set_on_publish(runtime):
+    """completion_event is set when a new terminal notification is published."""
+    manager = runtime.background_tasks
+    store = manager.store
+
+    spec = TaskSpec(
+        id="b3333330",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="event test task",
+        tool_call_id="tool-ev1",
+        command="echo done",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(spec)
+    store.write_runtime(
+        spec.id,
+        TaskRuntime(
+            status="completed",
+            exit_code=0,
+            finished_at=time.time(),
+            updated_at=time.time(),
+        ),
+    )
+
+    assert not manager.completion_event.is_set()
+    manager.publish_terminal_notifications()
+    assert manager.completion_event.is_set()
+
+    # Clear and re-publish — dedupe prevents a second signal
+    manager.completion_event.clear()
+    manager.publish_terminal_notifications()
+    assert not manager.completion_event.is_set()
+
+    # A distinct terminal task triggers the event again
+    spec2 = TaskSpec(
+        id="b3333331",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="event test task 2",
+        tool_call_id="tool-ev2",
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(spec2)
+    store.write_runtime(
+        spec2.id,
+        TaskRuntime(
+            status="failed",
+            failure_reason="boom",
+            finished_at=time.time(),
+            updated_at=time.time(),
+        ),
+    )
+    manager.publish_terminal_notifications()
+    assert manager.completion_event.is_set()
+
+
 @pytest.mark.asyncio
 async def test_manager_launches_real_worker_and_waits(runtime):
     manager = runtime.background_tasks
