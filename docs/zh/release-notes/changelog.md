@@ -4,7 +4,12 @@
 
 ## 未发布
 
+- Shell：空闲时自动响应后台任务完成——Shell 现在会检测后台 Bash 命令或 Agent 任务的完成，并自动发起新的 Agent 轮次处理结果，无需等待用户输入
 - Core：修复 Print 模式下 `QuestionRequest` 导致挂起的问题——`AskUserQuestion`、`EnterPlanMode` 和 `ExitPlanMode` 在非交互（yolo）模式下自动处理，避免 `--print` 会话中工具调用无限挂起
+- Core：修复后台 Agent 任务运行期间无法查看输出的问题——`/task` 浏览器和 `TaskOutput` 工具现在可实时显示后台 Agent 任务的输出，通过在执行期间同步写入任务日志替代完成后拷贝的方式实现
+- Core：增强系统提示词以鼓励工具调用——Agent 现在默认优先使用工具执行操作，而非将代码作为纯文本输出
+- Core：修复生成过程中遇到 `httpx.ProtocolError` 或 `504 Gateway Timeout` 时不重试的问题——流式协议断连和瞬时 `504` 响应现在会走既有重试路径，而不是在网络不稳定时直接中断当前轮次
+- Kosong：修复 Anthropic 提供商在流式传输期间 `httpx.ReadTimeout` 异常泄漏的问题——异常现在正确转换为 `APITimeoutError`，使此前被绕过的重试逻辑能够正常触发
 
 ## 1.25.0 (2026-03-23)
 

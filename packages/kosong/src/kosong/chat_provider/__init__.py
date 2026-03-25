@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 from collections.abc import AsyncIterator, Sequence
-from typing import Literal, Protocol, Self, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel
 
 from kosong.message import ContentPart, Message, ToolCall, ToolCallPart
 from kosong.tooling import Tool
+
+if TYPE_CHECKING:
+    import httpx
 
 
 @runtime_checkable
@@ -24,7 +29,7 @@ class ChatProvider(Protocol):
         ...
 
     @property
-    def thinking_effort(self) -> "ThinkingEffort | None":
+    def thinking_effort(self) -> ThinkingEffort | None:
         """
         The current thinking effort level. Returns None if not explicitly set.
         """
@@ -35,7 +40,7 @@ class ChatProvider(Protocol):
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-    ) -> "StreamedMessage":
+    ) -> StreamedMessage:
         """
         Generate a new message based on the given system prompt, tools, and history.
 
@@ -47,7 +52,7 @@ class ChatProvider(Protocol):
         """
         ...
 
-    def with_thinking(self, effort: "ThinkingEffort") -> Self:
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
         """
         Return a copy of self configured with the given thinking effort.
         If the chat provider does not support thinking, simply return a copy of self.
@@ -86,7 +91,7 @@ class StreamedMessage(Protocol):
         ...
 
     @property
-    def usage(self) -> "TokenUsage | None":
+    def usage(self) -> TokenUsage | None:
         """The token usage of the streamed message."""
         ...
 
@@ -145,3 +150,22 @@ class APIStatusError(ChatProviderError):
 
 class APIEmptyResponseError(ChatProviderError):
     """The error raised when the API returns an empty response."""
+
+
+def convert_httpx_error(error: httpx.HTTPError) -> ChatProviderError:
+    """Convert an httpx transport error to the corresponding ChatProviderError.
+
+    This is a shared utility for all chat providers. SDK-specific exceptions
+    (e.g. AnthropicError, OpenAIError) should be handled by each provider's
+    own conversion logic; only raw httpx exceptions that leak through
+    (typically during streaming) should be routed here.
+    """
+    import httpx
+
+    if isinstance(error, httpx.TimeoutException):
+        return APITimeoutError(str(error))
+    if isinstance(error, (httpx.NetworkError, httpx.RemoteProtocolError)):
+        return APIConnectionError(str(error))
+    if isinstance(error, httpx.HTTPStatusError):
+        return APIStatusError(error.response.status_code, str(error))
+    return ChatProviderError(f"HTTP error: {error}")

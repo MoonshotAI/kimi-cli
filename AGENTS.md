@@ -29,7 +29,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 
 ## Architecture overview
 
-- **CLI entry**: `src/kimi_cli/cli.py` (Typer) parses flags (UI mode, agent spec, config, MCP)
+- **CLI entry**: `src/kimi_cli/cli/__init__.py` (Typer) parses flags (UI mode, agent spec, config, MCP)
   and routes into `KimiCLI` in `src/kimi_cli/app.py`.
 - **App/runtime setup**: `KimiCLI.create` loads config (`src/kimi_cli/config.py`), chooses a
   model/provider (`src/kimi_cli/llm.py`), builds a `Runtime` (`src/kimi_cli/soul/agent.py`),
@@ -102,7 +102,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - Python >=3.12 (ty config uses 3.14); line length 100.
 - Ruff handles lint + format (rules: E, F, UP, B, SIM, I); pyright + ty for type checks.
 - Tests use pytest + pytest-asyncio; files are `tests/test_*.py`.
-- CLI entry points: `kimi` / `kimi-cli` -> `src/kimi_cli/cli.py`.
+- CLI entry points: `kimi` / `kimi-cli` -> `src/kimi_cli/__main__.py` (routes to `src/kimi_cli/cli/__init__.py`).
 - User config: `~/.kimi/config.toml`; logs, sessions, and MCP config live in `~/.kimi/`.
 
 ## Git commit messages

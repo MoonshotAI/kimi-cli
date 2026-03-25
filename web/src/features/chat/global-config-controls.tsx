@@ -207,6 +207,7 @@ export function GlobalConfigControls({
         size="icon"
         className="size-9 border-0"
         aria-label="Attach files"
+        type="button"
         onClick={() => attachments.openFileDialog()}
       >
         <Paperclip className="size-4" />
@@ -221,6 +222,7 @@ export function GlobalConfigControls({
             size="sm"
             className="h-9 max-w-[160px] justify-start gap-2 border-0"
             aria-label="Change global model"
+            type="button"
             disabled={isLoading || isUpdating || !config}
           >
             <Cpu className="size-4 shrink-0" />
@@ -313,6 +315,7 @@ export function GlobalConfigControls({
           className="size-9"
           aria-label="Force restart busy sessions"
           title="Force restart busy sessions"
+          type="button"
           onClick={handleForceRestartBusy}
           disabled={isUpdating}
         >
@@ -327,6 +330,7 @@ export function GlobalConfigControls({
           className="size-9"
           aria-label="Reload global config"
           title="Reload global config"
+          type="button"
           onClick={() => {
             refresh();
           }}
