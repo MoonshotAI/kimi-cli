@@ -263,6 +263,9 @@ class ACPServer:
     ) -> acp.schema.ResumeSessionResponse:
         logger.info("Resuming session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
 
+        # Check authentication before resuming session (consistent with new_session and load_session)
+        await self._check_auth()
+
         if session_id not in self.sessions:
             await self._setup_session(cwd, session_id, mcp_servers)
 
@@ -356,10 +359,8 @@ class ACPServer:
         config.default_model = model_id_conv.model_key
         config.default_thinking = model_id_conv.thinking
         assert config.is_from_default_location, "`kimi acp` must use the default config location"
-        config_for_save = load_config()
-        config_for_save.default_model = model_id_conv.model_key
-        config_for_save.default_thinking = model_id_conv.thinking
-        save_config(config_for_save)
+        # Save the updated config directly (no need to reload)
+        save_config(config)
 
     async def _trigger_login_in_terminal(self, session_id: str) -> bool:
         """
@@ -401,13 +402,13 @@ class ACPServer:
             )
             
             # 等待终端命令执行完成
-            exit_status = await self.conn.wait_for_terminal_exit(
+            await self.conn.wait_for_terminal_exit(
                 session_id=session_id,
                 terminal_id=terminal_id,
             )
             
-            # 获取终端输出
-            output_response = await self.conn.terminal_output(
+            # 获取终端输出（用于日志记录，实际检查通过 load_tokens 验证）
+            await self.conn.terminal_output(
                 session_id=session_id,
                 terminal_id=terminal_id,
             )
@@ -435,8 +436,16 @@ class ACPServer:
             
             return success
                 
+        except acp.RequestError as e:
+            logger.error("ACP request error during terminal login: {error}", error=e)
+            await self._send_auth_progress(
+                session_id,
+                "failed",
+                f"Login failed: {e}",
+            )
+            return False
         except Exception as e:
-            logger.error("Failed to trigger login in terminal: {error}", error=e)
+            logger.error("Unexpected error during terminal login: {error}", error=e, exc_info=True)
             await self._send_auth_progress(
                 session_id,
                 "failed",
@@ -451,8 +460,10 @@ class ACPServer:
                         session_id=session_id,
                         terminal_id=terminal_id,
                     )
+                except acp.RequestError as e:
+                    logger.warning("ACP request error while releasing terminal: {error}", error=e)
                 except Exception as e:
-                    logger.warning("Failed to release terminal: {error}", error=e)
+                    logger.warning("Unexpected error while releasing terminal: {error}", error=e)
 
     async def _trigger_oauth_device_flow(self, session_id: str) -> bool:
         """
@@ -632,9 +643,6 @@ class ACPServer:
                     logger.warning("Authentication failed")
             except asyncio.CancelledError:
                 logger.info("Authentication was cancelled")
-                auth_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await auth_task
                 raise
             finally:
                 # 清理任务
