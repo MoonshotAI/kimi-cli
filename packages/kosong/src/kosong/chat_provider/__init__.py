@@ -164,7 +164,7 @@ def convert_httpx_error(error: httpx.HTTPError) -> ChatProviderError:
 
     if isinstance(error, httpx.TimeoutException):
         return APITimeoutError(str(error))
-    if isinstance(error, (httpx.NetworkError, httpx.ProtocolError)):
+    if isinstance(error, (httpx.NetworkError, httpx.RemoteProtocolError)):
         return APIConnectionError(str(error))
     if isinstance(error, httpx.HTTPStatusError):
         return APIStatusError(error.response.status_code, str(error))
