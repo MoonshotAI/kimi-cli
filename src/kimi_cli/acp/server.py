@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import shlex
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -356,11 +356,17 @@ class ACPServer:
         )
         cli_instance.soul.runtime.llm = new_llm
 
+        assert config.is_from_default_location, "`kimi acp` must use the default config location"
+        # Reload config from disk to avoid overwriting concurrent changes (e.g., from login).
+        # Only apply the two changed fields before saving.
+        config_for_save = load_config()
+        config_for_save.default_model = model_id_conv.model_key
+        config_for_save.default_thinking = model_id_conv.thinking
+        save_config(config_for_save)
+
+        # Update in-memory config to stay in sync
         config.default_model = model_id_conv.model_key
         config.default_thinking = model_id_conv.thinking
-        assert config.is_from_default_location, "`kimi acp` must use the default config location"
-        # Save the updated config directly (no need to reload)
-        save_config(config)
 
     async def _trigger_login_in_terminal(self, session_id: str) -> bool:
         """
@@ -380,10 +386,11 @@ class ACPServer:
         try:
             # 使用ACP协议创建终端并执行登录命令
             # Handle PyInstaller frozen binary case
+            # Use shlex.quote to handle paths with spaces in sys.executable
             if getattr(sys, "frozen", False):
-                login_command = f"{sys.executable} login"
+                login_command = f"{shlex.quote(sys.executable)} login"
             else:
-                login_command = f"{sys.executable} -m kimi_cli login"
+                login_command = f"{shlex.quote(sys.executable)} -m kimi_cli login"
             
             resp = await self.conn.create_terminal(
                 command=login_command,

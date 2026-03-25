@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import acp
 import pytest
 
 from kimi_cli.acp.server import ACPServer
