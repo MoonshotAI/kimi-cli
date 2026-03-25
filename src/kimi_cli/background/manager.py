@@ -266,6 +266,10 @@ class BackgroundTaskManager:
         except (FileNotFoundError, ValueError):
             return None
 
+    def resolve_output_path(self, task_id: str) -> Path:
+        """Return the canonical output path for *task_id*."""
+        return self._store.output_path(task_id)
+
     def read_output(
         self,
         task_id: str,
