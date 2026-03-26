@@ -472,6 +472,9 @@ async def feedback(app: Shell, args: str):
             ):
                 pass
             console.print("[green]Feedback submitted, thank you![/green]")
+        except TimeoutError:
+            console.print("[red]Feedback submission timed out.[/red]")
+            _fallback_to_issues()
         except aiohttp.ClientError as e:
             status = getattr(e, "status", None)
             if status:
