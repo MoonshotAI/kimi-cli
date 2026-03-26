@@ -292,14 +292,14 @@ class _ToolCallBlock:
             lines.append(
                 BulletColumns(
                     sub_text,
-                    bullet_style="green" if not sub_result.is_error else "red",
+                    bullet_style="green" if not sub_result.is_error else "dark_red",
                 )
             )
 
         if self._result is not None:
             for block in self._result.display:
                 if isinstance(block, BriefDisplayBlock):
-                    style = "grey50" if not self._result.is_error else "red"
+                    style = "grey50" if not self._result.is_error else "dark_red"
                     if block.text:
                         lines.append(Markdown(block.text, style=style))
                 elif isinstance(block, TodoDisplayBlock):
@@ -318,7 +318,7 @@ class _ToolCallBlock:
             assert self._result is not None
             return BulletColumns(
                 Group(*lines),
-                bullet_style="green" if not self._result.is_error else "red",
+                bullet_style="green" if not self._result.is_error else "dark_red",
             )
         else:
             return BulletColumns(
