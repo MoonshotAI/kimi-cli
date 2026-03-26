@@ -91,6 +91,34 @@ def test_at_guard_prevents_email_like_fragments(tmp_path: Path):
     assert not texts
 
 
+def test_scoped_walk_finds_late_alphabetical_dirs(tmp_path: Path):
+    """Directories that sort late alphabetically must still be reachable.
+
+    Regression test for #1375: in large repos, ``os.walk`` exhausted the
+    1000-file limit on early directories, making later ones (like ``src/``)
+    invisible.  With scoped search (fragment contains ``/``), the walk starts
+    at the target subtree.
+    """
+    # Create many early-alphabetical directories with files to exhaust a small limit.
+    for i in range(20):
+        d = tmp_path / f"aaa_{i:03d}"
+        d.mkdir()
+        for j in range(10):
+            (d / f"file_{j}.txt").write_text("")
+
+    # The target directory sorts late.
+    target = tmp_path / "zzz_target"
+    target.mkdir()
+    (target / "important.py").write_text("# find me")
+
+    # With a low limit, the old os.walk approach would never reach zzz_target.
+    completer = LocalFileMentionCompleter(tmp_path, limit=50)
+
+    texts = _completion_texts(completer, "@zzz_target/")
+
+    assert "zzz_target/important.py" in texts
+
+
 def test_basename_prefix_is_ranked_first(tmp_path: Path):
     """Prefer basename prefix matches over cross-segment fuzzy matches.
 
