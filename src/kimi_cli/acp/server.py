@@ -647,7 +647,7 @@ class ACPServer:
         Handle authentication requests.
 
         For terminal-based auth, triggers the login flow in a terminal via ACP protocol.
-        Falls back to OAuth Device Flow when terminal auth is not available.
+        Falls back to OAuth Device Flow when terminal auth is not available or fails.
         """
         if method_id == "login":
             ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
@@ -658,26 +658,32 @@ class ACPServer:
                 logger.info("Authentication successful for method: {id}", id=method_id)
                 return acp.AuthenticateResponse()
             
-            # Get session_id - use sentinel string if no session exists
+            # Get session_id from kwargs if provided by client, otherwise use sentinel
             # Note: authenticate is called before session/new, so there may be no session
-            session_id = next(iter(self.sessions.keys()), "__auth__")
+            session_id = kwargs.get("session_id") or next(iter(self.sessions.keys()), "__auth__")
             
             # Create auth task and store in _active_auth_sessions so cancel_auth can cancel it
-            async def _run_auth() -> bool:
+            async def _run_auth(sid: str) -> bool:
                 """Run the authentication task."""
                 # Only use terminal login when there is a real session and client supports terminal
                 # Terminal login requires a real session to call ACP protocol methods
                 if (
-                    session_id != "__auth__"
+                    sid != "__auth__"
                     and self.client_capabilities
                     and self.client_capabilities.terminal
                 ):
-                    return await self._trigger_login_in_terminal(session_id)
-                else:
-                    # Use OAuth Device Flow for other cases
-                    # OAuth device flow does not require session support
-                    logger.info("Using OAuth device flow for authentication")
-                    return await self._trigger_oauth_device_flow(session_id)
+                    terminal_success = await self._trigger_login_in_terminal(sid)
+                    if terminal_success:
+                        return True
+                    # Fall back to device flow if terminal login fails
+                    logger.info(
+                        "Terminal login failed or unavailable, falling back to OAuth device flow"
+                    )
+                
+                # Use OAuth Device Flow for other cases or as fallback
+                # OAuth device flow does not require session support
+                logger.info("Using OAuth device flow for authentication")
+                return await self._trigger_oauth_device_flow(sid)
             
             # Cancel any existing auth task for this session before starting a new one
             existing_task = self._active_auth_sessions.get(session_id)
@@ -687,7 +693,7 @@ class ACPServer:
                     await existing_task
 
             # Create and store the task
-            auth_task = asyncio.create_task(_run_auth())
+            auth_task = asyncio.create_task(_run_auth(session_id))
             self._active_auth_sessions[session_id] = auth_task
 
             try:
