@@ -689,6 +689,9 @@ class LocalFileMentionCompleter(Completer):
         re.IGNORECASE,
     )
 
+    _GIT_LS_FILES_TIMEOUT = 5
+    """Seconds to wait for ``git ls-files`` before falling back to ``os.walk``."""
+
     def __init__(
         self,
         root: Path,
@@ -701,9 +704,11 @@ class LocalFileMentionCompleter(Completer):
         self._limit = limit
         self._cache_time: float = 0.0
         self._cached_paths: list[str] = []
+        self._cache_scope: str | None = None
         self._top_cache_time: float = 0.0
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
+        self._is_git: bool | None = None  # lazily detected
 
         self._word_completer = WordCompleter(
             self._get_paths,
@@ -753,13 +758,103 @@ class LocalFileMentionCompleter(Completer):
         return self._top_cached_paths
 
     def _get_deep_paths(self) -> list[str]:
+        fragment = self._fragment_hint or ""
+
+        # Determine scope: if fragment contains "/", restrict to that subtree.
+        scope: str | None = None
+        if "/" in fragment:
+            scope = fragment.rsplit("/", 1)[0]
+
         now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval:
+        if (
+            now - self._cache_time <= self._refresh_interval
+            and self._cache_scope == scope
+        ):
             return self._cached_paths
+
+        # Try git ls-files first (fast, respects .gitignore, no file-count limit).
+        paths = self._get_git_paths(scope)
+        if paths is None:
+            # Fallback to os.walk for non-git repos.
+            paths = self._walk_paths(scope)
+
+        self._cached_paths = paths
+        self._cache_scope = scope
+        self._cache_time = now
+        return self._cached_paths
+
+    # ------------------------------------------------------------------
+    # git ls-files based discovery (preferred)
+    # ------------------------------------------------------------------
+
+    def _detect_git(self) -> bool:
+        if self._is_git is not None:
+            return self._is_git
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--git-dir"],
+                cwd=self._root,
+                capture_output=True,
+                timeout=2,
+            )
+            self._is_git = result.returncode == 0
+        except Exception:
+            self._is_git = False
+        return self._is_git
+
+    def _get_git_paths(self, scope: str | None) -> list[str] | None:
+        """Return workspace paths via ``git ls-files``, or *None* to fall back."""
+        if not self._detect_git():
+            return None
+
+        try:
+            cmd = [
+                "git",
+                "-c", "core.quotepath=false",
+                "ls-files",
+                "--recurse-submodules",
+            ]
+            if scope:
+                cmd.append(scope + "/")
+            result = subprocess.run(
+                cmd,
+                cwd=self._root,
+                capture_output=True,
+                text=True,
+                timeout=self._GIT_LS_FILES_TIMEOUT,
+            )
+            if result.returncode != 0:
+                return None
+        except Exception:
+            return None
+
+        paths: list[str] = []
+        seen_dirs: set[str] = set()
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # Add parent directories as navigable entries.
+            parts = line.split("/")
+            for i in range(1, len(parts)):
+                dir_path = "/".join(parts[:i]) + "/"
+                if dir_path not in seen_dirs:
+                    seen_dirs.add(dir_path)
+                    paths.append(dir_path)
+            paths.append(line)
+
+        return paths
+
+    # ------------------------------------------------------------------
+    # os.walk based discovery (fallback for non-git repos)
+    # ------------------------------------------------------------------
+
+    def _walk_paths(self, scope: str | None) -> list[str]:
+        walk_root = self._root / scope if scope else self._root
 
         paths: list[str] = []
         try:
-            for current_root, dirs, files in os.walk(self._root):
+            for current_root, dirs, files in os.walk(walk_root):
                 relative_root = Path(current_root).relative_to(self._root)
 
                 # Prevent descending into ignored directories.
@@ -789,11 +884,9 @@ class LocalFileMentionCompleter(Completer):
                 if len(paths) >= self._limit:
                     break
         except OSError:
-            return self._cached_paths
+            pass
 
-        self._cached_paths = paths
-        self._cache_time = now
-        return self._cached_paths
+        return paths
 
     @staticmethod
     def _extract_fragment(text: str) -> str | None:
