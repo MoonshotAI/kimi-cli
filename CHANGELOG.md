@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Enable `trust_env` in aiohttp client session to respect proxy environment variables (`https_proxy`, `http_proxy`, etc.)
+
 ## 1.26.0 (2026-03-25)
 
 - Kosong: Fix Google GenAI provider sending `id` in `FunctionCall`/`FunctionResponse` parts — Gemini API returns HTTP 400 when `id` is included; remove the field from wire format while keeping internal `tool_call_id` tracking unchanged
