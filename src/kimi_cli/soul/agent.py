@@ -61,15 +61,48 @@ class BuiltinSystemPromptArgs:
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
-    paths = [
+    # Load global AGENTS.md from ~/.kimi/AGENTS.md
+    global_paths = [
+        KaosPath.home() / ".kimi" / "AGENTS.md",
+        KaosPath.home() / ".kimi" / "agents.md",
+    ]
+    global_content: str | None = None
+    for path in global_paths:
+        if await path.is_file():
+            logger.info("Loaded global agents.md: {path}", path=path)
+            global_content = (await path.read_text()).strip()
+            break
+    
+    # Load local AGENTS.md from work_dir
+    local_paths = [
         work_dir / "AGENTS.md",
         work_dir / "agents.md",
     ]
-    for path in paths:
+    local_content: str | None = None
+    for path in local_paths:
         if await path.is_file():
-            logger.info("Loaded agents.md: {path}", path=path)
-            return (await path.read_text()).strip()
-    logger.info("No AGENTS.md found in {work_dir}", work_dir=work_dir)
+            logger.info("Loaded local agents.md: {path}", path=path)
+            local_content = (await path.read_text()).strip()
+            break
+    
+    # Merge contents if both exist
+    if global_content and local_content:
+        merged = f"""# Global AGENTS.md (from ~/.kimi/)
+
+{global_content}
+
+---
+
+# Local AGENTS.md (from {work_dir})
+
+{local_content}"""
+        return merged
+    elif global_content:
+        return global_content
+    elif local_content:
+        return local_content
+    
+    logger.info("No AGENTS.md found in {work_dir} or ~/.kimi/", work_dir=work_dir)
     return None
 
 
