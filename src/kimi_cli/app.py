@@ -501,7 +501,7 @@ class KimiCLI:
         command: str | None = None,
         *,
         final_only: bool = False,
-    ) -> bool:
+    ) -> int:
         """Run the Kimi Code CLI instance with print UI."""
         from kimi_cli.ui.print import Print
 

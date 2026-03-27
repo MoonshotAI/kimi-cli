@@ -12,6 +12,19 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Shell: Add `/feedback` command — submit feedback directly from the CLI session; the command falls back to opening GitHub Issues on network errors or timeouts
+- Shell: Redesign diff rendering for tool results — file diffs now display with line numbers, background colors (green/red), syntax highlighting, and inline word-level change markers; approval previews show only changed lines for a compact view; Ctrl-E pager uses the same unified style
+- Shell: Update syntax highlighting theme — replace the magenta-heavy color scheme with a more balanced palette mapped to ANSI colors for terminal compatibility; improved color diversity and readability across dark and light terminal backgrounds
+- Shell: Fix approval panel not visible when multiple subagents are running — approval and question panels are now rendered at the top of the live view, ensuring they remain visible even when tool-call output exceeds the terminal height
+- CLI: Fix `--print` mode returning exit code 0 on errors — print mode now exits with code 1 for permanent failures (auth errors, invalid config, etc.) and code 75 for retryable failures (429 rate limit, 5xx server errors, connection timeouts), enabling CI/eval runners to detect failures and decide whether to retry
+- Plan: Display plan content inline in the chat instead of hiding behind a pager — plans are now rendered as a bordered panel directly in the conversation history, with the plan file path shown for reference
+- Plan: Add "Reject and Exit" option to plan approval — users can now reject a plan and exit plan mode in one step, in addition to the existing Approve, Revise, and Reject options
+- Wire: Add `PlanDisplay` event type (Wire 1.7) — carries plan content and file path for inline rendering by clients
+- Shell: Stream markdown output incrementally — completed markdown blocks (paragraphs, lists, code fences, tables) are now rendered and printed to the terminal as they arrive during streaming, instead of being buffered until the turn ends
+- Shell: Show elapsed time and estimated token count on thinking/composing spinners — the spinner now displays `Thinking... 5s · 312 tokens` with a live-updating counter during generation
+- Shell: Add scrolling preview for thinking content — the last 6 lines of the model's thinking process are shown in real time as a grey italic preview beneath the spinner
+- Shell: Reduce prompt input area reserved space from 10 to 6 lines
+- Glob: Allow `Glob` tool to access skills directories — the tool can now search within discovered skill roots in addition to the workspace
+- Glob: Expand `~` in directory path before validation — the Glob tool now resolves the tilde to the user's home directory before checking path validity
 
 ## 1.26.0 (2026-03-25)
 

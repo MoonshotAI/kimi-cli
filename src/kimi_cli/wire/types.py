@@ -166,6 +166,15 @@ class Notification(BaseModel):
     payload: dict[str, JsonType] = Field(default_factory=dict)
 
 
+class PlanDisplay(BaseModel):
+    """Displays a plan's content inline in the chat with special formatting."""
+
+    content: str
+    """The full markdown content of the plan."""
+    file_path: str
+    """The path to the plan file for reference."""
+
+
 class SubagentEvent(BaseModel):
     """
     An event from a subagent.
@@ -458,6 +467,7 @@ type Event = (
     | ToolResult
     | ApprovalResponse
     | SubagentEvent
+    | PlanDisplay
 )
 """Any event, including control flow and content/tooling events."""
 
@@ -547,6 +557,7 @@ __all__ = [
     "ToolResult",
     "ApprovalResponse",
     "SubagentEvent",
+    "PlanDisplay",
     "ApprovalRequest",
     "ToolCallRequest",
     "QuestionOption",

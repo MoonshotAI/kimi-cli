@@ -194,6 +194,7 @@ def runtime(
         skills={},
         oauth=OAuthManager(config),
         additional_dirs=[],
+        skills_dirs=[],
         role="root",
     )
     rt.labor_market.add_builtin_type(

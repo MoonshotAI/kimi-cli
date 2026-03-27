@@ -129,6 +129,31 @@ echo '{"role":"user","content":"你好"}' | kimi --print --input-format=stream-j
 {"role": "tool", "tool_call_id": "tc_1", "content": "工具执行结果"}
 ```
 
+## 退出码
+
+Print 模式使用退出码表示执行结果，方便脚本和 CI 系统判断是否需要重试：
+
+| 退出码 | 含义 | 说明 |
+| --- | --- | --- |
+| `0` | 成功 | 任务正常完成 |
+| `1` | 失败（不可重试） | 配置错误、认证失败、额度用尽等永久性错误 |
+| `75` | 失败（可重试） | 429 速率限制、5xx 服务端错误、连接超时等暂时性错误 |
+
+示例：根据退出码决定是否重试：
+
+```sh
+kimi --print -p "执行任务"
+code=$?
+if [ $code -eq 75 ]; then
+  echo "遇到暂时性错误，稍后重试..."
+  sleep 10
+  kimi --print -p "执行任务"
+elif [ $code -ne 0 ]; then
+  echo "遇到不可恢复的错误，退出码: $code"
+  exit $code
+fi
+```
+
 ## 使用场景
 
 **CI/CD 集成**

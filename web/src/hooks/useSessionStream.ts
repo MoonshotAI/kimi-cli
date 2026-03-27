@@ -131,6 +131,7 @@ import {
   type QuestionRequestEvent,
   type SessionStatusPayload,
   type SubagentEventWire,
+  type PlanDisplayEvent,
   extractEvent,
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
@@ -1932,6 +1933,23 @@ export function useSessionStream(
           break;
         }
 
+        case "PlanDisplay": {
+          const planPayload = (event as PlanDisplayEvent).payload;
+          const planMessageId = getNextMessageId("assistant");
+          upsertMessage({
+            id: planMessageId,
+            role: "assistant",
+            variant: "text",
+            turnIndex:
+              turnCounterRef.current > 0
+                ? turnCounterRef.current - 1
+                : undefined,
+            content: planPayload.content,
+            isStreaming: false,
+          });
+          break;
+        }
+
         default:
           break;
       }
@@ -1959,7 +1977,7 @@ export function useSessionStream(
       method: "initialize",
       id,
       params: {
-        protocol_version: "1.6",
+        protocol_version: "1.7",
         client: {
           name: "kiwi",
           version: kimiCliVersion,
