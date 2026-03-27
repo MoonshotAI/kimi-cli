@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Redesign diff rendering for tool results — file diffs now display with line numbers, background colors (green/red), syntax highlighting, and inline word-level change markers; approval previews show only changed lines for a compact view; Ctrl-E pager uses the same unified style
+- Shell: Update syntax highlighting theme — replace the magenta-heavy color scheme with a more balanced palette mapped to ANSI colors for terminal compatibility; improved color diversity and readability across dark and light terminal backgrounds
+- Shell: Fix approval panel not visible when multiple subagents are running — approval and question panels are now rendered at the top of the live view, ensuring they remain visible even when tool-call output exceeds the terminal height
 - CLI: Fix `--print` mode returning exit code 0 on errors — print mode now exits with code 1 for permanent failures (auth errors, invalid config, etc.) and code 75 for retryable failures (429 rate limit, 5xx server errors, connection timeouts), enabling CI/eval runners to detect failures and decide whether to retry
 - Plan: Display plan content inline in the chat instead of hiding behind a pager — plans are now rendered as a bordered panel directly in the conversation history, with the plan file path shown for reference
 - Plan: Add "Reject and Exit" option to plan approval — users can now reject a plan and exit plan mode in one step, in addition to the existing Approve, Revise, and Reject options
