@@ -171,6 +171,9 @@ def list_files_git(
     files (respecting ``.gitignore``) are appended via
     ``--others --exclude-standard``.
     """
+    if scope and ".." in scope.split("/"):
+        return None
+
     cmd = [
         "git",
         "-c",
@@ -235,12 +238,20 @@ def list_files_walk(
 
     When *scope* is given, the walk starts from that subdirectory.
     """
-    walk_root = root / scope if scope else root
+    resolved_root = root.resolve()
+    walk_root = (root / scope).resolve() if scope else resolved_root
+
+    # Prevent path traversal outside the workspace (e.g. scope="../").
+    try:
+        if not walk_root.is_relative_to(resolved_root):
+            return []
+    except (OSError, ValueError):
+        return []
 
     paths: list[str] = []
     try:
         for current_root, dirs, files in os.walk(walk_root):
-            relative_root = Path(current_root).relative_to(root)
+            relative_root = Path(current_root).resolve().relative_to(resolved_root)
 
             dirs[:] = sorted(d for d in dirs if not is_ignored(d))
 
