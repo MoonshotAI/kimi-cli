@@ -486,7 +486,7 @@ def kimi(
         Create/load session and run the CLI instance.
 
         Returns:
-            The session and the exit code (0 = success, 1 = failure, 2 = retryable).
+            The session and the exit code (0 = success, 1 = failure, 75 = retryable).
         """
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
         try:
