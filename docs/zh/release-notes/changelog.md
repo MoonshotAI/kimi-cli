@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Plan：计划内容现在直接显示在聊天记录中，而非隐藏在翻页器后——计划以带边框的面板形式渲染在对话历史中，并展示计划文件路径供参考
+- Plan：Plan 审批新增 "Reject and Exit" 选项——用户现在可以一步拒绝计划并退出 Plan 模式，除现有的 Approve、Revise 和 Reject 选项外
+- Wire：新增 `PlanDisplay` 事件类型（Wire 1.7）——携带计划内容和文件路径，供客户端内联渲染
 - Shell：流式输出 Markdown 内容——已完成的 Markdown 块（段落、列表、代码块、表格）现在会在流式传输过程中即时渲染并输出到终端，而非缓冲到整个轮次结束后才显示
 - Shell：在 Thinking/Composing 加载动画上显示耗时和估算 Token 数——加载动画现在会显示 `Thinking... 5s · 312 tokens`，计数在生成过程中实时更新
 - Shell：为 Thinking 内容添加滚动预览——模型思考过程的最后 6 行会以灰色斜体实时显示在加载动画下方

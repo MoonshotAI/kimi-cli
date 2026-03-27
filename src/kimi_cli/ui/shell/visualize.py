@@ -21,6 +21,7 @@ from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyPressEvent
 from rich.console import Group, RenderableType
 from rich.live import Live
+from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text
@@ -68,6 +69,7 @@ from kimi_cli.wire.types import (
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
+    PlanDisplay,
     QuestionRequest,
     StatusUpdate,
     SteerInput,
@@ -925,6 +927,8 @@ class _LiveView:
                 self._reconcile_approval_requests()
             case SubagentEvent():
                 self.handle_subagent_event(msg)
+            case PlanDisplay():
+                self.display_plan(msg)
             case ApprovalRequest():
                 self.request_approval(msg)
             case QuestionRequest():
@@ -971,6 +975,7 @@ class _LiveView:
                     | KeyEvent.NUM_3
                     | KeyEvent.NUM_4
                     | KeyEvent.NUM_5
+                    | KeyEvent.NUM_6
                 ):
                     # Number keys select option in question panel
                     num_map = {
@@ -979,6 +984,7 @@ class _LiveView:
                         KeyEvent.NUM_3: 2,
                         KeyEvent.NUM_4: 3,
                         KeyEvent.NUM_5: 4,
+                        KeyEvent.NUM_6: 5,
                     }
                     idx = num_map[event]
                     panel = self._current_question_panel
@@ -1185,6 +1191,23 @@ class _LiveView:
             if self._current_approval_request_panel is not None:
                 self._current_approval_request_panel = None
                 self.refresh_soon()
+
+    def display_plan(self, msg: PlanDisplay) -> None:
+        """Render plan content inline in the chat with a bordered panel."""
+        self.flush_content()
+        self.flush_finished_tool_calls()
+        plan_body = Markdown(msg.content)
+        subtitle = Text(msg.file_path, style="dim")
+        panel = Panel(
+            plan_body,
+            title="[bold cyan]Plan[/bold cyan]",
+            title_align="left",
+            subtitle=subtitle,
+            subtitle_align="left",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+        console.print(panel)
 
     def request_question(self, request: QuestionRequest) -> None:
         self._question_request_queue.append(request)
