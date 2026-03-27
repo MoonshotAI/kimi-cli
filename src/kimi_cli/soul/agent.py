@@ -35,7 +35,7 @@ from kimi_cli.subagents.registry import LaborMarket
 from kimi_cli.subagents.store import SubagentStore
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import list_directory
+from kimi_cli.utils.path import is_within_directory, list_directory
 from kimi_cli.wire.root_hub import RootWireHub
 
 if TYPE_CHECKING:
@@ -130,7 +130,7 @@ class Runtime:
             extra_skills_dirs=extra_skills_dirs,
         )
         # Canonicalize so symlinked skill directories match resolved paths
-        skills_roots = [r.canonical() for r in skills_roots]
+        skills_roots_canonical = [r.canonical() for r in skills_roots]
         skills = await discover_skills_from_roots(skills_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
@@ -221,7 +221,11 @@ class Runtime:
             ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
-            skills_dirs=skills_roots,
+            # Only expose skills roots outside the workspace for Glob access;
+            # project-level roots are already within work_dir.
+            skills_dirs=[
+                r for r in skills_roots_canonical if not is_within_directory(r, session.work_dir)
+            ],
             subagent_store=SubagentStore(session),
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
