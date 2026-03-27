@@ -190,8 +190,8 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_appends_extra_dirs(tmp_path, monkeypatch):
-    """Extra dirs are appended after user/project, not replacing them."""
+async def test_resolve_skills_roots_extra_dirs_override_discovery(tmp_path, monkeypatch):
+    """Extra dirs override user/project discovery, not append to them."""
     home_dir = tmp_path / "home"
     user_dir = home_dir / ".config" / "agents" / "skills"
     user_dir.mkdir(parents=True)
@@ -216,10 +216,9 @@ async def test_resolve_skills_roots_appends_extra_dirs(tmp_path, monkeypatch):
         ],
     )
 
+    # extra dirs replace user/project discovery
     assert roots == [
         KaosPath.unsafe_from_local_path(get_builtin_skills_dir()),
-        KaosPath.unsafe_from_local_path(user_dir),
-        KaosPath.unsafe_from_local_path(project_dir),
         KaosPath.unsafe_from_local_path(extra_a),
         KaosPath.unsafe_from_local_path(extra_b),
     ]
