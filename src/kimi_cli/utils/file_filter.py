@@ -140,14 +140,36 @@ def git_index_mtime(root: Path) -> float | None:
         return None
 
 
-def _parse_ls_files_output(stdout: str) -> list[str]:
-    """Parse ``git ls-files`` output into paths with synthesised directory entries."""
+def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[str]:
+    """Parse ``git ls-files`` output into paths with synthesised directory entries.
+
+    When *filter_ignored* is *True*, paths whose segments match
+    ``is_ignored()`` are excluded so that tracked ``node_modules/``,
+    ``vendor/``, etc. do not pollute completion candidates.
+    """
     paths: list[str] = []
     seen_dirs: set[str] = set()
+    ignored_prefixes: set[str] = set()
     for line in stdout.splitlines():
         if not line:
             continue
+
         parts = line.split("/")
+
+        if filter_ignored:
+            skip = False
+            for i, part in enumerate(parts):
+                prefix = "/".join(parts[: i + 1]) + "/"
+                if prefix in ignored_prefixes:
+                    skip = True
+                    break
+                if is_ignored(part):
+                    ignored_prefixes.add(prefix)
+                    skip = True
+                    break
+            if skip:
+                continue
+
         for i in range(1, len(parts)):
             dir_path = "/".join(parts[:i]) + "/"
             if dir_path not in seen_dirs:
@@ -155,6 +177,26 @@ def _parse_ls_files_output(stdout: str) -> list[str]:
                 paths.append(dir_path)
         paths.append(line)
     return paths
+
+
+def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
+    """Return the set of tracked files deleted from the working tree."""
+    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "--deleted"]
+    if scope:
+        cmd.append(scope + "/")
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_LS_FILES_TIMEOUT,
+        )
+        if result.returncode == 0:
+            return {line for line in result.stdout.splitlines() if line}
+    except Exception:
+        pass
+    return set()
 
 
 def list_files_git(
@@ -169,6 +211,9 @@ def list_files_git(
     subtree are returned.  When *include_untracked* is *True*, untracked
     files (respecting ``.gitignore``) are appended via
     ``--others --exclude-standard``.
+
+    Deleted working-tree files (``git ls-files --deleted``) are excluded
+    so that renamed / removed files do not appear as stale candidates.
     """
     if scope and ".." in scope.split("/"):
         return None
@@ -195,7 +240,10 @@ def list_files_git(
     except Exception:
         return None
 
+    deleted = _git_deleted_files(root, scope)
     paths = _parse_ls_files_output(result.stdout)
+    if deleted:
+        paths = [p for p in paths if p.endswith("/") or p not in deleted]
 
     if include_untracked:
         others_cmd = [
