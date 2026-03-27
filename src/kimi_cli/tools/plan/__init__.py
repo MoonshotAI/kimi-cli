@@ -285,8 +285,8 @@ class ExitPlanMode(CallableTool2[Params]):
                     display=[BriefDisplayBlock(text=f"Plan approved: {chosen_option}")],
                 )
 
-        # Approve — single-approach
-        chose_approve = any(v == "Approve" for v in answers.values())
+        # Approve — single-approach only (has_options uses option labels, not "Approve")
+        chose_approve = not has_options and any(v == "Approve" for v in answers.values())
         if chose_approve:
             await self._toggle_callback()
             return ToolReturnValue(
