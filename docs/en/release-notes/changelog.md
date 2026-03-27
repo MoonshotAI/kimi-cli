@@ -13,6 +13,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Shell: Add scrolling preview for thinking content — the last 6 lines of the model's thinking process are shown in real time as a grey italic preview beneath the spinner
 - Shell: Reduce prompt input area reserved space from 10 to 6 lines
 - Glob: Allow `Glob` tool to access skills directories — the tool can now search within discovered skill roots in addition to the workspace
+- Glob: Expand `~` in directory path before validation — the Glob tool now resolves the tilde to the user's home directory before checking path validity
 
 ## 1.26.0 (2026-03-25)
 
