@@ -28,6 +28,7 @@ from kimi_cli.wire.types import (
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
+    PlanDisplay,
     QuestionRequest,
     StatusUpdate,
     SteerInput,
@@ -188,6 +189,8 @@ class ACPSession:
                     case ApprovalResponse():
                         pass
                     case SubagentEvent():
+                        pass
+                    case PlanDisplay():
                         pass
                     case ApprovalRequest():
                         await self._handle_approval_request(msg)

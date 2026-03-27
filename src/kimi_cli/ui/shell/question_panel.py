@@ -327,6 +327,7 @@ class QuestionPromptDelegate:
         "3": KeyEvent.NUM_3,
         "4": KeyEvent.NUM_4,
         "5": KeyEvent.NUM_5,
+        "6": KeyEvent.NUM_6,
     }
 
     def __init__(
@@ -410,6 +411,7 @@ class QuestionPromptDelegate:
             "3",
             "4",
             "5",
+            "6",
         }
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
@@ -502,13 +504,21 @@ class QuestionPromptDelegate:
                     self._try_submit()
             case KeyEvent.ENTER:
                 self._try_submit()
-            case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3 | KeyEvent.NUM_4 | KeyEvent.NUM_5:
+            case (
+                KeyEvent.NUM_1
+                | KeyEvent.NUM_2
+                | KeyEvent.NUM_3
+                | KeyEvent.NUM_4
+                | KeyEvent.NUM_5
+                | KeyEvent.NUM_6
+            ):
                 num_map = {
                     KeyEvent.NUM_1: 0,
                     KeyEvent.NUM_2: 1,
                     KeyEvent.NUM_3: 2,
                     KeyEvent.NUM_4: 3,
                     KeyEvent.NUM_5: 4,
+                    KeyEvent.NUM_6: 5,
                 }
                 idx = num_map[event]
                 if panel.select_index(idx):
