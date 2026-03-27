@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -144,4 +145,75 @@ def test_basename_prefix_is_ranked_first(tmp_path: Path):
             "src/kimi_cli/tools/web/fetch.py",
             "src/kimi_cli/tools/file/patch.py",
         ]
+    )
+
+
+def _init_git_repo(work_dir: Path) -> None:
+    """Initialise a git repo, stage all files, and commit."""
+    for cmd in (
+        ["git", "init"],
+        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.name", "Test"],
+        ["git", "add", "-A"],
+        ["git", "commit", "-m", "init"],
+    ):
+        subprocess.run(cmd, cwd=work_dir, capture_output=True, check=True)
+
+
+def test_tracked_ignored_dirs_filtered_in_git_mode(tmp_path: Path):
+    """Tracked ``node_modules/`` and ``vendor/`` must still be filtered.
+
+    Regression test: ``git ls-files`` returns all tracked paths, so
+    directories in ``_IGNORED_NAMES`` were surfacing in completion when
+    they happened to be committed.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("# app")
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    (nm / "index.js").write_text("module.exports = {}")
+    vendor = tmp_path / "vendor"
+    vendor.mkdir()
+    (vendor / "dep.py").write_text("# dep")
+
+    _init_git_repo(tmp_path)
+
+    completer = LocalFileMentionCompleter(tmp_path)
+
+    texts = _completion_texts(completer, "@nod")
+    assert not any("node_modules" in t for t in texts), (
+        f"node_modules should be filtered even if tracked, got: {texts}"
+    )
+
+    texts = _completion_texts(completer, "@ven")
+    assert not any("vendor" in t for t in texts), (
+        f"vendor should be filtered even if tracked, got: {texts}"
+    )
+
+
+def test_unstaged_rename_hides_deleted_path(tmp_path: Path):
+    """After ``mv old.py new.py`` without staging, old.py must not appear.
+
+    Regression test: ``git ls-files`` reads the index, so a file that was
+    moved on disk (but not staged) would still show up as a stale
+    candidate.
+    """
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "old.py").write_text("# original")
+
+    _init_git_repo(tmp_path)
+
+    # Rename without staging.
+    (tmp_path / "src" / "old.py").rename(tmp_path / "src" / "new.py")
+
+    completer = LocalFileMentionCompleter(tmp_path)
+
+    texts = _completion_texts(completer, "@old")
+    assert not any("old.py" in t for t in texts), (
+        f"Deleted old.py should not appear in completion, got: {texts}"
+    )
+
+    texts = _completion_texts(completer, "@new")
+    assert any("new.py" in t for t in texts), (
+        f"Renamed new.py should appear via --others, got: {texts}"
     )
