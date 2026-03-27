@@ -1,10 +1,11 @@
 from kosong.message import Message
+from rich.console import Group
 from rich.text import Text
 
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.ui.shell import Shell
 from kimi_cli.ui.shell.echo import render_user_echo
-from kimi_cli.ui.shell.prompt import PromptMode, UserInput
+from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL, PromptMode, UserInput
 from kimi_cli.utils.slashcmd import SlashCommandCall
 from kimi_cli.wire.types import AudioURLPart, ImageURLPart, TextPart, VideoURLPart
 
@@ -19,16 +20,18 @@ def _make_user_input(command: str, *, mode: PromptMode = PromptMode.AGENT) -> Us
 
 
 def test_echo_agent_input_prints_stringified_user_message(monkeypatch) -> None:
-    printed: list[Text] = []
+    printed: list[Group] = []
     monkeypatch.setattr(shell_module.console, "print", lambda text: printed.append(text))
 
     Shell._echo_agent_input(_make_user_input("hi"))
 
-    assert [text.plain for text in printed] == ["✨ hi"]
+    assert len(printed) == 1
+    # Group contains: user line + separator line
+    assert printed[0].renderables[0].plain == "✨ hi"
 
 
 def test_echo_agent_input_uses_display_command_for_placeholders(monkeypatch) -> None:
-    printed: list[Text] = []
+    printed: list[Group] = []
     monkeypatch.setattr(shell_module.console, "print", lambda text: printed.append(text))
 
     user_input = UserInput(
@@ -40,13 +43,16 @@ def test_echo_agent_input_uses_display_command_for_placeholders(monkeypatch) -> 
 
     Shell._echo_agent_input(user_input)
 
-    assert [text.plain for text in printed] == ["✨ [Pasted text #1 +3 lines]"]
+    assert len(printed) == 1
+    # Group contains: user line + separator line
+    assert printed[0].renderables[0].plain == "✨ [Pasted text #1 +3 lines]"
 
 
 def test_render_user_echo_preserves_literal_brackets() -> None:
     rendered = render_user_echo(Message(role="user", content=[TextPart(text="[brackets]")]))
 
-    assert rendered.plain == "✨ [brackets]"
+    # Group contains: user line + separator line
+    assert rendered.renderables[0].plain == "✨ [brackets]"
 
 
 def test_render_user_echo_preserves_image_placeholder_literal() -> None:
@@ -57,7 +63,8 @@ def test_render_user_echo_preserves_image_placeholder_literal() -> None:
         )
     )
 
-    assert rendered.plain == "✨ [image]"
+    # Group contains: user line + separator line
+    assert rendered.renderables[0].plain == "✨ [image]"
 
 
 def test_render_user_echo_preserves_audio_placeholder_literal() -> None:
@@ -72,7 +79,8 @@ def test_render_user_echo_preserves_audio_placeholder_literal() -> None:
         )
     )
 
-    assert rendered.plain == "✨ [audio:clip]"
+    # Group contains: user line + separator line
+    assert rendered.renderables[0].plain == "✨ [audio:clip]"
 
 
 def test_render_user_echo_preserves_video_placeholder_literal() -> None:
@@ -85,7 +93,8 @@ def test_render_user_echo_preserves_video_placeholder_literal() -> None:
         )
     )
 
-    assert rendered.plain == "✨ [video]"
+    # Group contains: user line + separator line
+    assert rendered.renderables[0].plain == "✨ [video]"
 
 
 def test_render_user_echo_preserves_mixed_content_order() -> None:
@@ -101,7 +110,8 @@ def test_render_user_echo_preserves_mixed_content_order() -> None:
         )
     )
 
-    assert rendered.plain == "✨ look [image][audio][video]"
+    # Group contains: user line + separator line
+    assert rendered.renderables[0].plain == "✨ look [image][audio][video]"
 
 
 def test_should_echo_agent_input_for_plain_agent_message() -> None:
