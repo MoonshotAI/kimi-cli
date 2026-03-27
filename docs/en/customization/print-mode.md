@@ -129,6 +129,31 @@ Assistant message with tool calls:
 {"role": "tool", "tool_call_id": "tc_1", "content": "Tool execution result"}
 ```
 
+## Exit codes
+
+Print mode uses exit codes to indicate execution results, allowing scripts and CI systems to determine whether to retry:
+
+| Exit code | Meaning | Description |
+| --- | --- | --- |
+| `0` | Success | Task completed normally |
+| `1` | Failure (not retryable) | Configuration errors, authentication failures, quota exhaustion, and other permanent errors |
+| `2` | Failure (retryable) | 429 rate limits, 5xx server errors, connection timeouts, and other transient errors |
+
+Example: decide whether to retry based on exit code:
+
+```sh
+kimi --print -p "Run task"
+code=$?
+if [ $code -eq 2 ]; then
+  echo "Transient error encountered, retrying..."
+  sleep 10
+  kimi --print -p "Run task"
+elif [ $code -ne 0 ]; then
+  echo "Unrecoverable error, exit code: $code"
+  exit $code
+fi
+```
+
 ## Use cases
 
 **CI/CD integration**
