@@ -1492,7 +1492,7 @@ class CustomPromptSession:
             # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
             completer=self._agent_mode_completer,
             complete_while_typing=True,
-            reserve_space_for_menu=10,
+            reserve_space_for_menu=6,
             key_bindings=_kb,
             clipboard=clipboard,
             history=history,
@@ -1991,6 +1991,8 @@ class CustomPromptSession:
             )
 
     def _render_bottom_toolbar(self) -> FormattedText:
+        if self._should_show_slash_completion_menu():
+            return FormattedText([])
         app = get_app_or_none()
         assert app is not None
         columns = app.output.get_size().columns
