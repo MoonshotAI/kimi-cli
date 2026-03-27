@@ -466,7 +466,10 @@ async def feedback(app: Shell, args: str):
                 session.post(
                     feedback_url,
                     json=payload,
-                    headers={"Authorization": f"Bearer {api_key}"},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        **(provider.custom_headers or {}),
+                    },
                     raise_for_status=True,
                 ),
             ):
