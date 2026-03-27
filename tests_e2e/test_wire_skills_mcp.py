@@ -78,7 +78,7 @@ def test_skill_prompt_injects_skill_text(tmp_path) -> None:
         config_text=None,
         work_dir=work_dir,
         home_dir=home_dir,
-        skills_dirs=[skill_dir],
+        skills_dir=skill_dir,
         extra_args=["--session", session_id],
         yolo=True,
     )
@@ -165,7 +165,7 @@ def test_flow_skill(tmp_path) -> None:
         config_text=None,
         work_dir=work_dir,
         home_dir=home_dir,
-        skills_dirs=[skill_dir],
+        skills_dir=skill_dir,
         yolo=True,
     )
     try:
