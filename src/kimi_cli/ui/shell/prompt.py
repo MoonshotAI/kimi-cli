@@ -766,10 +766,7 @@ class LocalFileMentionCompleter(Completer):
             scope = fragment.rsplit("/", 1)[0]
 
         now = time.monotonic()
-        if (
-            now - self._cache_time <= self._refresh_interval
-            and self._cache_scope == scope
-        ):
+        if now - self._cache_time <= self._refresh_interval and self._cache_scope == scope:
             return self._cached_paths
 
         # Try git ls-files first (fast, respects .gitignore, no file-count limit).
@@ -810,7 +807,8 @@ class LocalFileMentionCompleter(Completer):
         try:
             cmd = [
                 "git",
-                "-c", "core.quotepath=false",
+                "-c",
+                "core.quotepath=false",
                 "ls-files",
                 "--recurse-submodules",
             ]
