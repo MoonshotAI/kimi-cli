@@ -147,6 +147,27 @@ async def visualize(
 _THINKING_PREVIEW_LINES = 6
 _PENDING_PREVIEW_LINES = 8
 _SELF_CLOSING_BLOCKS = frozenset(("fence", "code_block", "hr", "html_block"))
+_ELLIPSIS = "..."
+
+
+def _truncate_to_display_width(line: str, max_width: int) -> str:
+    """Truncate *line* so its terminal display width fits within *max_width*.
+
+    Uses ``rich.cells.cell_len`` for CJK-aware column width measurement.
+    """
+    from rich.cells import cell_len
+
+    if cell_len(line) <= max_width:
+        return line
+    ellipsis_width = cell_len(_ELLIPSIS)
+    budget = max_width - ellipsis_width
+    width = 0
+    for i, ch in enumerate(line):
+        width += cell_len(ch)
+        if width > budget:
+            return line[:i] + _ELLIPSIS
+    return line
+
 
 # Lazy-initialized markdown-it parser for incremental token commitment.
 _md_parser: MarkdownIt | None = None
@@ -345,9 +366,7 @@ class _ContentBlock:
         max_width = console.width - 2 if console.width else 78
         tail_text = _tail_lines(text, max_lines)
         lines = tail_text.split("\n")
-        return "\n".join(
-            line[: max_width - 3] + "..." if len(line) > max_width else line for line in lines
-        )
+        return "\n".join(_truncate_to_display_width(line, max_width) for line in lines)
 
 
 class _ToolCallBlock:

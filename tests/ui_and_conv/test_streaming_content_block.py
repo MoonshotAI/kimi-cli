@@ -10,6 +10,7 @@ from kimi_cli.ui.shell.visualize import (
     _estimate_tokens,
     _find_committed_boundary,
     _tail_lines,
+    _truncate_to_display_width,
 )
 
 # ---------------------------------------------------------------------------
@@ -147,6 +148,51 @@ class TestFindCommittedBoundary:
         boundary = _find_committed_boundary(text)
         assert boundary is not None
         assert text[:boundary] + text[boundary:] == text
+
+
+# ---------------------------------------------------------------------------
+# _tail_lines
+# ---------------------------------------------------------------------------
+# _truncate_to_display_width
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateToDisplayWidth:
+    def test_short_ascii_unchanged(self):
+        assert _truncate_to_display_width("Hello", 30) == "Hello"
+
+    def test_long_ascii_truncated(self):
+        result = _truncate_to_display_width("A" * 50, 20)
+        from rich.cells import cell_len
+
+        assert cell_len(result) <= 20
+        assert result.endswith("...")
+
+    def test_cjk_truncated_by_display_width(self):
+        """50 CJK chars = 100 columns; should be truncated at max_width=30."""
+        line = "你" * 50
+        result = _truncate_to_display_width(line, 30)
+        from rich.cells import cell_len
+
+        assert cell_len(result) <= 30
+        assert result.endswith("...")
+
+    def test_cjk_short_unchanged(self):
+        assert _truncate_to_display_width("你好", 10) == "你好"
+
+    def test_mixed_cjk_ascii(self):
+        result = _truncate_to_display_width("Hello你好World世界TestTest", 20)
+        from rich.cells import cell_len
+
+        assert cell_len(result) <= 20
+        assert result.endswith("...")
+
+    def test_empty_string(self):
+        assert _truncate_to_display_width("", 10) == ""
+
+    def test_exact_fit(self):
+        """Line that exactly fills max_width should not be truncated."""
+        assert _truncate_to_display_width("abcde", 5) == "abcde"
 
 
 # ---------------------------------------------------------------------------
