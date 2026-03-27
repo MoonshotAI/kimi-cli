@@ -988,7 +988,7 @@ class _LiveView:
         self.flush_content()
         self.flush_finished_tool_calls()
         plan_body = Markdown(msg.content)
-        subtitle = Text.from_markup(f"[dim]{msg.file_path}[/dim]")
+        subtitle = Text(msg.file_path, style="dim")
         panel = Panel(
             plan_body,
             title="[bold cyan]Plan[/bold cyan]",
