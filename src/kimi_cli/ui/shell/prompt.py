@@ -611,82 +611,15 @@ class SlashCommandMenuControl(UIControl):
 
 
 class LocalFileMentionCompleter(Completer):
-    """Offer fuzzy `@` path completion by indexing workspace files."""
+    """Offer fuzzy `@` path completion by indexing workspace files.
+
+    File discovery and ignore rules are delegated to
+    :mod:`kimi_cli.utils.file_filter` so that the web backend can reuse
+    them.
+    """
 
     _FRAGMENT_PATTERN = re.compile(r"[^\s@]+")
     _TRIGGER_GUARDS = frozenset((".", "-", "_", "`", "'", '"', ":", "@", "#", "~"))
-    _IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
-        "vcs_metadata": (".DS_Store", ".bzr", ".git", ".hg", ".svn"),
-        "tooling_caches": (
-            ".build",
-            ".cache",
-            ".coverage",
-            ".fleet",
-            ".gradle",
-            ".idea",
-            ".ipynb_checkpoints",
-            ".pnpm-store",
-            ".pytest_cache",
-            ".pub-cache",
-            ".ruff_cache",
-            ".swiftpm",
-            ".tox",
-            ".venv",
-            ".vs",
-            ".vscode",
-            ".yarn",
-            ".yarn-cache",
-        ),
-        "js_frontend": (
-            ".next",
-            ".nuxt",
-            ".parcel-cache",
-            ".svelte-kit",
-            ".turbo",
-            ".vercel",
-            "node_modules",
-        ),
-        "python_packaging": (
-            "__pycache__",
-            "build",
-            "coverage",
-            "dist",
-            "htmlcov",
-            "pip-wheel-metadata",
-            "venv",
-        ),
-        "java_jvm": (".mvn", "out", "target"),
-        "dotnet_native": ("bin", "cmake-build-debug", "cmake-build-release", "obj"),
-        "bazel_buck": ("bazel-bin", "bazel-out", "bazel-testlogs", "buck-out"),
-        "misc_artifacts": (
-            ".dart_tool",
-            ".serverless",
-            ".stack-work",
-            ".terraform",
-            ".terragrunt-cache",
-            "DerivedData",
-            "Pods",
-            "deps",
-            "tmp",
-            "vendor",
-        ),
-    }
-    _IGNORED_NAMES = frozenset(name for group in _IGNORED_NAME_GROUPS.values() for name in group)
-    _IGNORED_PATTERN_PARTS: tuple[str, ...] = (
-        r".*_cache$",
-        r".*-cache$",
-        r".*\.egg-info$",
-        r".*\.dist-info$",
-        r".*\.py[co]$",
-        r".*\.class$",
-        r".*\.sw[po]$",
-        r".*~$",
-        r".*\.(?:tmp|bak)$",
-    )
-    _IGNORED_PATTERNS = re.compile(
-        "|".join(f"(?:{part})" for part in _IGNORED_PATTERN_PARTS),
-        re.IGNORECASE,
-    )
 
     def __init__(
         self,
@@ -700,9 +633,12 @@ class LocalFileMentionCompleter(Completer):
         self._limit = limit
         self._cache_time: float = 0.0
         self._cached_paths: list[str] = []
+        self._cache_scope: str | None = None
         self._top_cache_time: float = 0.0
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
+        self._is_git: bool | None = None  # lazily detected
+        self._git_index_mtime: float | None = None
 
         self._word_completer = WordCompleter(
             self._get_paths,
@@ -716,14 +652,6 @@ class LocalFileMentionCompleter(Completer):
             pattern=r"^[^\s@]*",
         )
 
-    @classmethod
-    def _is_ignored(cls, name: str) -> bool:
-        if not name:
-            return True
-        if name in cls._IGNORED_NAMES:
-            return True
-        return bool(cls._IGNORED_PATTERNS.fullmatch(name))
-
     def _get_paths(self) -> list[str]:
         fragment = self._fragment_hint or ""
         if "/" not in fragment and len(fragment) < 3:
@@ -731,6 +659,8 @@ class LocalFileMentionCompleter(Completer):
         return self._get_deep_paths()
 
     def _get_top_level_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import is_ignored
+
         now = time.monotonic()
         if now - self._top_cache_time <= self._refresh_interval:
             return self._top_cached_paths
@@ -739,7 +669,7 @@ class LocalFileMentionCompleter(Completer):
         try:
             for entry in sorted(self._root.iterdir(), key=lambda p: p.name):
                 name = entry.name
-                if self._is_ignored(name):
+                if is_ignored(name):
                     continue
                 entries.append(f"{name}/" if entry.is_dir() else name)
                 if len(entries) >= self._limit:
@@ -752,45 +682,45 @@ class LocalFileMentionCompleter(Completer):
         return self._top_cached_paths
 
     def _get_deep_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import (
+            detect_git,
+            git_index_mtime,
+            list_files_git,
+            list_files_walk,
+        )
+
+        fragment = self._fragment_hint or ""
+
+        scope: str | None = None
+        if "/" in fragment:
+            scope = fragment.rsplit("/", 1)[0]
+
         now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval:
+        cache_valid = (
+            now - self._cache_time <= self._refresh_interval and self._cache_scope == scope
+        )
+
+        # Invalidate on .git/index mtime change (like Claude Code).
+        if cache_valid and self._is_git:
+            mtime = git_index_mtime(self._root)
+            if mtime != self._git_index_mtime:
+                cache_valid = False
+
+        if cache_valid:
             return self._cached_paths
 
-        paths: list[str] = []
-        try:
-            for current_root, dirs, files in os.walk(self._root):
-                relative_root = Path(current_root).relative_to(self._root)
+        if self._is_git is None:
+            self._is_git = detect_git(self._root)
 
-                # Prevent descending into ignored directories.
-                dirs[:] = sorted(d for d in dirs if not self._is_ignored(d))
-
-                if relative_root.parts and any(
-                    self._is_ignored(part) for part in relative_root.parts
-                ):
-                    dirs[:] = []
-                    continue
-
-                if relative_root.parts:
-                    paths.append(relative_root.as_posix() + "/")
-                    if len(paths) >= self._limit:
-                        break
-
-                for file_name in sorted(files):
-                    if self._is_ignored(file_name):
-                        continue
-                    relative = (relative_root / file_name).as_posix()
-                    if not relative:
-                        continue
-                    paths.append(relative)
-                    if len(paths) >= self._limit:
-                        break
-
-                if len(paths) >= self._limit:
-                    break
-        except OSError:
-            return self._cached_paths
+        paths: list[str] | None = None
+        if self._is_git:
+            paths = list_files_git(self._root, scope)
+            self._git_index_mtime = git_index_mtime(self._root)
+        if paths is None:
+            paths = list_files_walk(self._root, scope, limit=self._limit)
 
         self._cached_paths = paths
+        self._cache_scope = scope
         self._cache_time = now
         return self._cached_paths
 
