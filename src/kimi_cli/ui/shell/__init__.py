@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 import shlex
+import sys
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
@@ -23,7 +24,12 @@ from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
-from kimi_cli.ui.shell.capture import execute_with_pty_capture, inject_to_context
+from kimi_cli.ui.shell.capture import inject_to_context
+
+if sys.platform != "win32":
+    from kimi_cli.ui.shell.capture import execute_with_pty_capture as _execute_capture
+else:
+    from kimi_cli.ui.shell.capture import execute_with_pipe_capture as _execute_capture
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
@@ -521,7 +527,7 @@ class Shell:
         exit_code: int | None = None
         raw_output: str | None = None
         try:
-            exit_code, raw_output = await execute_with_pty_capture(
+            exit_code, raw_output = await _execute_capture(
                 command, env=get_clean_env(), cwd=os.getcwd()
             )
         except Exception as e:
@@ -544,19 +550,21 @@ class Shell:
         """
         target = args[1] if len(args) > 1 else "~"
 
-        # Expand ~ on Python side so shlex.quote won't suppress tilde expansion.
-        if target.startswith("~"):
-            target = os.path.expanduser(target)
-
         # Provide OLDPWD so `cd -` works across invocations.
         env = get_clean_env()
         old_cwd = os.getcwd()
         if "OLDPWD" not in env:
             env["OLDPWD"] = old_cwd
 
-        # Let the shell resolve -, $HOME, CDPATH, etc.
+        # Use shlex.quote for safety, but NOT for targets that need shell
+        # expansion: ~, -, and $VAR references.  For those we let the real
+        # shell handle expansion directly.
+        needs_shell_expansion = target.startswith("~") or target.startswith("$") or target == "-"
+        quoted_target = target if needs_shell_expansion else shlex.quote(target)
+
+        # Let the shell resolve ~, -, $HOME, CDPATH, etc.
         probe = await asyncio.create_subprocess_shell(
-            f"cd {shlex.quote(target)} && pwd",
+            f"cd {quoted_target} && pwd",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,

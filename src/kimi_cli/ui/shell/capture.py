@@ -163,14 +163,14 @@ async def execute_with_pty_capture(
         # Drain any remaining buffered output after process exits.
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(eof_event.wait(), timeout=0.5)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         # Forward SIGINT to child if it is still running.
-        logger.debug("PTY capture: KeyboardInterrupt, forwarding SIGINT to child")
+        logger.debug("PTY capture: interrupted, forwarding SIGINT to child")
         if proc.returncode is None:
             proc.send_signal(2)  # SIGINT
             try:
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            except (TimeoutError, ProcessLookupError):
+            except (TimeoutError, ProcessLookupError, asyncio.CancelledError):
                 logger.debug("PTY capture: child did not exit after SIGINT, killing")
                 proc.kill()
     finally:
@@ -253,6 +253,10 @@ async def inject_to_context(
     appended as a user message.
     """
     output = clean_output(raw_output)
+
+    # Neutralise any system-reminder tags in the output to prevent injection.
+    output = output.replace("<system-reminder>", "&lt;system-reminder&gt;")
+    output = output.replace("</system-reminder>", "&lt;/system-reminder&gt;")
 
     # Truncate, keeping the tail (usually more informative).
     truncated = False
