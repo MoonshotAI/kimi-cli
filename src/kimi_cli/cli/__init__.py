@@ -39,12 +39,6 @@ InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
 
-def _strip_session_id_suffix(title: str, session_id: str) -> str:
-    """Remove the trailing `` (session_id)`` that `Session.refresh` appends."""
-    suffix = f" ({session_id})"
-    return title.rsplit(suffix, 1)[0] if title.endswith(suffix) else title
-
-
 def _version_callback(value: bool) -> None:
     if value:
         from kimi_cli.constant import get_version
@@ -123,20 +117,6 @@ def kimi(
             "--continue",
             "-C",
             help="Continue the previous session for the working directory. Default: no.",
-        ),
-    ] = False,
-    sessions: Annotated[
-        bool,
-        typer.Option(
-            "--pick-session",
-            help="Interactively select a session to resume for the working directory.",
-        ),
-    ] = False,
-    list_sessions: Annotated[
-        bool,
-        typer.Option(
-            "--list-sessions",
-            help="List all sessions for the working directory and exit.",
         ),
     ] = False,
     config_string: Annotated[
@@ -406,8 +386,6 @@ def kimi(
         {
             "--continue": continue_,
             "--session": session_id is not None,
-            "--pick-session": sessions,
-            "--list-sessions": list_sessions,
         },
         {
             "--config": config_string is not None,
@@ -457,11 +435,6 @@ def kimi(
             "Final-message-only output is only supported for print UI",
             param_hint="--final-message-only",
         )
-    if sessions and ui != "shell":
-        raise typer.BadParameter(
-            "--pick-session is only supported for shell UI",
-            param_hint="--pick-session",
-        )
 
     config: Config | Path | None = None
     if config_string is not None:
@@ -499,32 +472,6 @@ def kimi(
         extra_skills_dirs = [KaosPath.unsafe_from_local_path(p) for p in local_skills_dir]
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
-
-    if list_sessions:
-        from rich.console import Console
-        from rich.table import Table
-
-        from kimi_cli.utils.datetime import format_relative_time
-
-        async def _list():
-            return await Session.list(work_dir)
-
-        all_sessions = asyncio.run(_list())
-        console = Console()
-        if not all_sessions:
-            console.print("[yellow]No sessions found for the working directory.[/yellow]")
-            raise typer.Exit(0)
-
-        table = Table(show_header=True, show_edge=False)
-        table.add_column("ID")
-        table.add_column("Title")
-        table.add_column("Updated")
-        for s in all_sessions:
-            name = _strip_session_id_suffix(s.title, s.id)
-            table.add_row(s.id, name, format_relative_time(s.updated_at))
-
-        console.print(table)
-        raise typer.Exit(0)
 
     async def _run(session_id: str | None) -> tuple[Session, bool]:
         """
@@ -692,43 +639,6 @@ def kimi(
                 return True
         await _post_run(last_session, succeeded)
         return False
-
-    if sessions:
-        from prompt_toolkit.shortcuts.choice_input import ChoiceInput
-        from rich.console import Console
-
-        from kimi_cli.utils.datetime import format_relative_time
-
-        async def _pick_session() -> str:
-            all_sessions = await Session.list(work_dir)
-            if not all_sessions:
-                Console().print("[yellow]No sessions found for the working directory.[/yellow]")
-                raise typer.Exit(0)
-
-            choices: list[tuple[str, str]] = []
-            for s in all_sessions:
-                time_str = format_relative_time(s.updated_at)
-                short_id = s.id[:8]
-                name = _strip_session_id_suffix(s.title, s.id)
-                label = f"{name} ({short_id}), {time_str}"
-                choices.append((s.id, label))
-
-            try:
-                selection = await ChoiceInput(
-                    message="Select a session to resume"
-                    " (↑↓ navigate, Enter select, Ctrl+C cancel):",
-                    options=choices,
-                    default=choices[0][0],
-                ).prompt_async()
-            except (EOFError, KeyboardInterrupt):
-                raise typer.Exit(0) from None
-
-            if not selection:
-                raise typer.Exit(0)
-
-            return selection
-
-        session_id = asyncio.run(_pick_session())
 
     try:
         switch_to_web = asyncio.run(_reload_loop(session_id))

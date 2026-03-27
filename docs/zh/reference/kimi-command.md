@@ -56,10 +56,8 @@ kimi [OPTIONS] COMMAND [ARGS]
 |------|------|------|
 | `--continue` | `-C` | 继续当前工作目录的上一个会话 |
 | `--session ID` | `-S` | 恢复指定 ID 的会话，若不存在则创建新会话 |
-| `--sessions` | | 交互式选择当前工作目录的会话 |
-| `--list-sessions` | | 列出当前工作目录的所有会话并退出 |
 
-`--continue`、`--session`、`--sessions` 和 `--list-sessions` 互斥。
+`--continue` 和 `--session` 互斥。
 
 ## 输入与命令
 

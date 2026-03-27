@@ -4,6 +4,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from textwrap import shorten
 from typing import TYPE_CHECKING, cast
 
 import aiofiles
@@ -13,7 +14,6 @@ from kosong.message import Message
 from kimi_cli.soul.message import is_system_reminder_message, system
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.path import sanitize_cli_path
-from kimi_cli.utils.string import shorten
 from kimi_cli.wire.types import (
     AudioURLPart,
     ContentPart,
@@ -66,12 +66,12 @@ def _extract_tool_call_hint(args_json: str) -> str:
     for key in _HINT_KEYS:
         val = args.get(key)
         if isinstance(val, str) and val.strip():
-            return shorten(val, width=60)
+            return shorten(val, width=60, placeholder="…")
 
     # Fallback: first short string value
     for val in args.values():
         if isinstance(val, str) and 0 < len(val) <= 80:
-            return shorten(val, width=60)
+            return shorten(val, width=60, placeholder="…")
 
     return ""
 
