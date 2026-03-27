@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：新增 `/feedback` 命令——可直接在 CLI 会话中提交反馈，网络错误或超时时自动回退到打开 GitHub Issues 页面
+
 ## 1.26.0 (2026-03-25)
 
 - Kosong：修复 Google GenAI 提供商在 `FunctionCall`/`FunctionResponse` 中包含 `id` 字段的问题——Gemini API 在包含 `id` 时返回 HTTP 400；从 wire 格式中移除该字段，同时保持内部 `tool_call_id` 跟踪不变
