@@ -951,11 +951,12 @@ async def generate_session_title(
     if not user_message:
         return GenerateTitleResponse(title="Untitled")
 
-    from kimi_cli.utils.string import shorten
+    # Fallback title from user message (used if AI generation fails)
+    from textwrap import shorten
 
     user_text = user_message.strip()
     user_text = " ".join(user_text.split())
-    fallback_title = shorten(user_text, width=50) or "Untitled"
+    fallback_title = shorten(user_text, width=50, placeholder="...") or "Untitled"
 
     # If AI generation failed too many times, use fallback and mark as generated
     if metadata.title_generate_attempts >= 3:
@@ -1017,7 +1018,7 @@ Title:"""
                         title = generated_title
                         ai_generated = True
                     elif generated_title:
-                        title = shorten(generated_title, width=50)
+                        title = shorten(generated_title, width=50, placeholder="...")
                         ai_generated = True
 
     except Exception as e:

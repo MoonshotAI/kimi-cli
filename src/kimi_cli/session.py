@@ -7,6 +7,7 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import shorten
 
 from kaos.path import KaosPath
 from kosong.message import Message
@@ -14,7 +15,6 @@ from kosong.message import Message
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.session_state import SessionState, load_session_state, save_session_state
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.string import shorten
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import TurnBegin
 
