@@ -224,6 +224,34 @@ class TestUntrackedFiles:
 # ---------------------------------------------------------------------------
 
 
+class TestSpecialCharFilenames:
+    """Filenames with tab, quotes, or backslash must be handled correctly."""
+
+    def test_tab_in_filename(self, tmp_path: Path) -> None:
+        p = tmp_path / "tab\there.py"
+        p.write_text("")
+        _init_git(tmp_path)
+
+        git = list_files_git(tmp_path) or []
+        assert "tab\there.py" in git
+
+    def test_quote_in_filename(self, tmp_path: Path) -> None:
+        p = tmp_path / 'quote"name.py'
+        p.write_text("")
+        _init_git(tmp_path)
+
+        git = list_files_git(tmp_path) or []
+        assert 'quote"name.py' in git
+
+    def test_backslash_in_filename(self, tmp_path: Path) -> None:
+        p = tmp_path / "back\\slash.py"
+        p.write_text("")
+        _init_git(tmp_path)
+
+        git = list_files_git(tmp_path) or []
+        assert "back\\slash.py" in git
+
+
 class TestPathTraversal:
     """Scope containing ``..`` must be rejected."""
 
