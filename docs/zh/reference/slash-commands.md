@@ -26,7 +26,7 @@
 
 ### `/feedback`
 
-打开 GitHub Issues 页面提交反馈。
+提交反馈以改进 Kimi Code CLI。执行后会提示输入反馈内容并提交。如果网络请求失败或超时，会自动回退到打开 GitHub Issues 页面。
 
 ## 账号与配置
 
