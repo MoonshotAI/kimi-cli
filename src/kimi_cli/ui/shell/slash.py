@@ -468,7 +468,10 @@ async def feedback(app: Shell, args: str):
                 ),
             ):
                 pass
-            console.print("[green]Feedback submitted, thank you![/green]")
+            session_id = soul.runtime.session.id
+            console.print(
+                f"[green]Feedback submitted, thank you! Your session ID is: {session_id}[/green]"
+            )
         except TimeoutError:
             console.print("[red]Feedback submission timed out.[/red]")
             _fallback_to_issues()
