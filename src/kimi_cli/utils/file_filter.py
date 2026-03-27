@@ -184,22 +184,59 @@ def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[
     return paths
 
 
-def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
-    """Return the set of tracked files deleted from the working tree."""
-    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "-z", "--deleted", *_scope_args(scope)]
+def _git_submodule_paths(root: Path) -> list[str]:
+    """Return registered submodule paths, or ``[]`` on failure."""
     try:
         result = subprocess.run(
-            cmd,
+            ["git", "submodule", "status"],
             cwd=root,
             capture_output=True,
             text=True,
             timeout=_GIT_LS_FILES_TIMEOUT,
+        )
+        if result.returncode != 0:
+            return []
+        paths: list[str] = []
+        for line in result.stdout.splitlines():
+            # Format: " <sha> <path> (<desc>)" or "+<sha> <path> (<desc>)"
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                paths.append(parts[1])
+        return paths
+    except Exception:
+        return []
+
+
+def _git_ls_files_z(root: Path, *extra: str) -> set[str]:
+    """Run ``git ls-files -z`` with *extra* flags and return the path set."""
+    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "-z", *extra]
+    try:
+        result = subprocess.run(
+            cmd, cwd=root, capture_output=True, text=True, timeout=_GIT_LS_FILES_TIMEOUT,
         )
         if result.returncode == 0:
             return {e for e in result.stdout.split("\0") if e}
     except Exception:
         pass
     return set()
+
+
+def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
+    """Return the set of tracked files deleted from the working tree.
+
+    Includes deletions inside submodules, since ``--deleted`` does not
+    support ``--recurse-submodules``.
+    """
+    deleted = _git_ls_files_z(root, "--deleted", *_scope_args(scope))
+    for sub in _git_submodule_paths(root):
+        if scope and not sub.startswith(scope + "/") and scope != sub:
+            continue
+        sub_root = root / sub
+        if not sub_root.is_dir():
+            continue
+        for entry in _git_ls_files_z(sub_root, "--deleted"):
+            deleted.add(f"{sub}/{entry}")
+    return deleted
 
 
 def list_files_git(
@@ -249,31 +286,20 @@ def list_files_git(
         paths = [p for p in paths if p.endswith("/") or p not in deleted]
 
     if include_untracked:
-        others_cmd = [
-            "git",
-            "-c",
-            "core.quotepath=false",
-            "ls-files",
-            "-z",
-            "--others",
-            "--exclude-standard",
-            *_scope_args(scope),
-        ]
-        try:
-            others = subprocess.run(
-                others_cmd,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                timeout=_GIT_LS_FILES_TIMEOUT,
-            )
-            if others.returncode == 0:
-                tracked = set(paths)
-                for p in _parse_ls_files_output(others.stdout):
-                    if p not in tracked:
-                        paths.append(p)
-        except Exception:
-            pass
+        untracked = _git_ls_files_z(root, "--others", "--exclude-standard", *_scope_args(scope))
+        for sub in _git_submodule_paths(root):
+            if scope and not sub.startswith(scope + "/") and scope != sub:
+                continue
+            sub_root = root / sub
+            if not sub_root.is_dir():
+                continue
+            for entry in _git_ls_files_z(sub_root, "--others", "--exclude-standard"):
+                untracked.add(f"{sub}/{entry}")
+        if untracked:
+            tracked = set(paths)
+            for p in _parse_ls_files_output("\0".join(sorted(untracked))):
+                if p not in tracked:
+                    paths.append(p)
 
     # Prune directory entries that have no surviving file children.
     if deleted:
