@@ -272,6 +272,16 @@ def list_files_git(
         except Exception:
             pass
 
+    # Prune directory entries that have no surviving file children.
+    if deleted:
+        live_dirs: set[str] = set()
+        for p in paths:
+            if not p.endswith("/"):
+                parts = p.split("/")
+                for i in range(1, len(parts)):
+                    live_dirs.add("/".join(parts[:i]) + "/")
+        paths = [p for p in paths if not p.endswith("/") or p in live_dirs]
+
     return paths
 
 
