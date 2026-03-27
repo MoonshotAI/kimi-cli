@@ -48,9 +48,9 @@ class PlanOption(BaseModel):
     @classmethod
     def label_not_reserved(cls, v: str) -> str:
         if v.strip().lower() in _RESERVED_LABELS:
+            reserved = ", ".join(f"'{w.title()}'" for w in sorted(_RESERVED_LABELS))
             raise ValueError(
-                f"Option label {v!r} is reserved. "
-                "Do not use 'Reject', 'Revise', or 'Approve' as option labels."
+                f"Option label {v!r} is reserved. Do not use {reserved} as option labels."
             )
         return v
 
@@ -63,7 +63,7 @@ class Params(BaseModel):
             "When the plan contains multiple alternative approaches, list them here "
             "so the user can choose which one to execute. 2-3 options. "
             "Each option represents a distinct approach from the plan. "
-            "Do not use 'Reject', 'Revise', or 'Approve' as labels."
+            "Do not use 'Reject', 'Revise', 'Approve', or 'Reject and Exit' as labels."
         ),
     )
 
