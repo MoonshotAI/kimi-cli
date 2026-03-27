@@ -1,10 +1,3 @@
-"""Shared file-discovery utilities for ``@`` file mentions.
-
-Both the shell completer (``prompt.py``) and the web backend
-(``web/api/sessions.py``) use these functions so ignore rules, git
-integration, and limits are maintained in one place.
-"""
-
 from __future__ import annotations
 
 import os
@@ -12,13 +5,15 @@ import re
 import subprocess
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Ignore rules
-# ---------------------------------------------------------------------------
-
-IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
-    "vcs_metadata": (".DS_Store", ".bzr", ".git", ".hg", ".svn"),
-    "tooling_caches": (
+_IGNORED_NAMES: frozenset[str] = frozenset(
+    (
+        # vcs metadata
+        ".DS_Store",
+        ".bzr",
+        ".git",
+        ".hg",
+        ".svn",
+        # tooling caches
         ".build",
         ".cache",
         ".coverage",
@@ -37,8 +32,7 @@ IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
         ".vscode",
         ".yarn",
         ".yarn-cache",
-    ),
-    "js_frontend": (
+        # js / frontend
         ".next",
         ".nuxt",
         ".parcel-cache",
@@ -46,8 +40,7 @@ IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
         ".turbo",
         ".vercel",
         "node_modules",
-    ),
-    "python_packaging": (
+        # python packaging
         "__pycache__",
         "build",
         "coverage",
@@ -55,11 +48,21 @@ IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
         "htmlcov",
         "pip-wheel-metadata",
         "venv",
-    ),
-    "java_jvm": (".mvn", "out", "target"),
-    "dotnet_native": ("bin", "cmake-build-debug", "cmake-build-release", "obj"),
-    "bazel_buck": ("bazel-bin", "bazel-out", "bazel-testlogs", "buck-out"),
-    "misc_artifacts": (
+        # java / jvm
+        ".mvn",
+        "out",
+        "target",
+        # dotnet / native
+        "bin",
+        "cmake-build-debug",
+        "cmake-build-release",
+        "obj",
+        # bazel / buck
+        "bazel-bin",
+        "bazel-out",
+        "bazel-testlogs",
+        "buck-out",
+        # misc artifacts
         ".dart_tool",
         ".serverless",
         ".stack-work",
@@ -70,45 +73,36 @@ IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
         "deps",
         "tmp",
         "vendor",
+    )
+)
+
+_IGNORED_PATTERNS: re.Pattern[str] = re.compile(
+    r"|".join(
+        (
+            r".*_cache$",
+            r".*-cache$",
+            r".*\.egg-info$",
+            r".*\.dist-info$",
+            r".*\.py[co]$",
+            r".*\.class$",
+            r".*\.sw[po]$",
+            r".*~$",
+            r".*\.(?:tmp|bak)$",
+        )
     ),
-}
-
-IGNORED_NAMES: frozenset[str] = frozenset(
-    name for group in IGNORED_NAME_GROUPS.values() for name in group
-)
-
-_IGNORED_PATTERN_PARTS: tuple[str, ...] = (
-    r".*_cache$",
-    r".*-cache$",
-    r".*\.egg-info$",
-    r".*\.dist-info$",
-    r".*\.py[co]$",
-    r".*\.class$",
-    r".*\.sw[po]$",
-    r".*~$",
-    r".*\.(?:tmp|bak)$",
-)
-
-IGNORED_PATTERNS: re.Pattern[str] = re.compile(
-    "|".join(f"(?:{part})" for part in _IGNORED_PATTERN_PARTS),
     re.IGNORECASE,
 )
+
+_GIT_LS_FILES_TIMEOUT = 5
 
 
 def is_ignored(name: str) -> bool:
     """Return *True* if *name* should be excluded from file mention results."""
     if not name:
         return True
-    if name in IGNORED_NAMES:
+    if name in _IGNORED_NAMES:
         return True
-    return bool(IGNORED_PATTERNS.fullmatch(name))
-
-
-# ---------------------------------------------------------------------------
-# Git detection
-# ---------------------------------------------------------------------------
-
-_GIT_LS_FILES_TIMEOUT = 5
+    return bool(_IGNORED_PATTERNS.fullmatch(name))
 
 
 def detect_git(root: Path) -> bool:
@@ -125,27 +119,68 @@ def detect_git(root: Path) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# File listing
-# ---------------------------------------------------------------------------
+def git_index_mtime(root: Path) -> float | None:
+    """Return the mtime of ``.git/index``, or *None* if unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return None
+        git_dir = Path(result.stdout.strip())
+        if not git_dir.is_absolute():
+            git_dir = root / git_dir
+        index = git_dir / "index"
+        return index.stat().st_mtime
+    except Exception:
+        return None
 
 
-def list_files_git(root: Path, scope: str | None = None) -> list[str] | None:
+def _parse_ls_files_output(stdout: str) -> list[str]:
+    """Parse ``git ls-files`` output into paths with synthesised directory entries."""
+    paths: list[str] = []
+    seen_dirs: set[str] = set()
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("/")
+        for i in range(1, len(parts)):
+            dir_path = "/".join(parts[:i]) + "/"
+            if dir_path not in seen_dirs:
+                seen_dirs.add(dir_path)
+                paths.append(dir_path)
+        paths.append(line)
+    return paths
+
+
+def list_files_git(
+    root: Path,
+    scope: str | None = None,
+    *,
+    include_untracked: bool = True,
+) -> list[str] | None:
     """List workspace paths via ``git ls-files``, or *None* on failure.
 
     When *scope* is given (e.g. ``"src/utils"``), only files under that
-    subtree are returned.
+    subtree are returned.  When *include_untracked* is *True*, untracked
+    files (respecting ``.gitignore``) are appended via
+    ``--others --exclude-standard``.
     """
+    cmd = [
+        "git",
+        "-c",
+        "core.quotepath=false",
+        "ls-files",
+        "--recurse-submodules",
+    ]
+    if scope:
+        cmd.append(scope + "/")
     try:
-        cmd = [
-            "git",
-            "-c",
-            "core.quotepath=false",
-            "ls-files",
-            "--recurse-submodules",
-        ]
-        if scope:
-            cmd.append(scope + "/")
         result = subprocess.run(
             cmd,
             cwd=root,
@@ -158,20 +193,34 @@ def list_files_git(root: Path, scope: str | None = None) -> list[str] | None:
     except Exception:
         return None
 
-    paths: list[str] = []
-    seen_dirs: set[str] = set()
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        # Add parent directories as navigable entries.
-        parts = line.split("/")
-        for i in range(1, len(parts)):
-            dir_path = "/".join(parts[:i]) + "/"
-            if dir_path not in seen_dirs:
-                seen_dirs.add(dir_path)
-                paths.append(dir_path)
-        paths.append(line)
+    paths = _parse_ls_files_output(result.stdout)
+
+    if include_untracked:
+        others_cmd = [
+            "git",
+            "-c",
+            "core.quotepath=false",
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+        ]
+        if scope:
+            others_cmd.append(scope + "/")
+        try:
+            others = subprocess.run(
+                others_cmd,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=_GIT_LS_FILES_TIMEOUT,
+            )
+            if others.returncode == 0:
+                tracked = set(paths)
+                for p in _parse_ls_files_output(others.stdout):
+                    if p not in tracked:
+                        paths.append(p)
+        except Exception:
+            pass
 
     return paths
 

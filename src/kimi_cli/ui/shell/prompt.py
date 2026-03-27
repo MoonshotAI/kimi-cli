@@ -639,6 +639,7 @@ class LocalFileMentionCompleter(Completer):
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
         self._is_git: bool | None = None  # lazily detected
+        self._git_index_mtime: float | None = None
 
         self._word_completer = WordCompleter(
             self._get_paths,
@@ -682,26 +683,40 @@ class LocalFileMentionCompleter(Completer):
         return self._top_cached_paths
 
     def _get_deep_paths(self) -> list[str]:
-        from kimi_cli.utils.file_filter import detect_git, list_files_git, list_files_walk
+        from kimi_cli.utils.file_filter import (
+            detect_git,
+            git_index_mtime,
+            list_files_git,
+            list_files_walk,
+        )
 
         fragment = self._fragment_hint or ""
 
-        # Determine scope: if fragment contains "/", restrict to that subtree.
         scope: str | None = None
         if "/" in fragment:
             scope = fragment.rsplit("/", 1)[0]
 
         now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval and self._cache_scope == scope:
+        cache_valid = (
+            now - self._cache_time <= self._refresh_interval and self._cache_scope == scope
+        )
+
+        # Invalidate on .git/index mtime change (like Claude Code).
+        if cache_valid and self._is_git:
+            mtime = git_index_mtime(self._root)
+            if mtime != self._git_index_mtime:
+                cache_valid = False
+
+        if cache_valid:
             return self._cached_paths
 
-        # Try git ls-files first (fast, respects .gitignore, no file-count limit).
         if self._is_git is None:
             self._is_git = detect_git(self._root)
 
         paths: list[str] | None = None
         if self._is_git:
             paths = list_files_git(self._root, scope)
+            self._git_index_mtime = git_index_mtime(self._root)
         if paths is None:
             paths = list_files_walk(self._root, scope, limit=self._limit)
 
