@@ -163,8 +163,12 @@ def _get_md_parser() -> MarkdownIt:
     return _md_parser
 
 
-def _estimate_tokens(text: str) -> int:
+def _estimate_tokens(text: str) -> float:
     """Estimate token count for mixed CJK/Latin text.
+
+    Returns a **float** so that callers can accumulate across small chunks
+    without per-chunk floor truncation (e.g. a 3-char ASCII chunk would
+    yield 0 if truncated to int immediately, but 0.75 as float).
 
     Heuristics based on common BPE tokenizers (cl100k, o200k):
     - CJK ideographs: ~1.5 tokens per character (often split into 2-byte pieces)
@@ -184,7 +188,7 @@ def _estimate_tokens(text: str) -> int:
             cjk += 1
         else:
             other += 1
-    return int(cjk * 1.5 + other / 4)
+    return cjk * 1.5 + other / 4
 
 
 def _find_committed_boundary(text: str) -> int | None:
@@ -251,8 +255,8 @@ class _ContentBlock:
         self.is_think = is_think
         self._spinner = Spinner("dots", "")
         self.raw_text = ""
-        # Accumulated estimate — avoids re-scanning the full text each time.
-        self._token_count = 0
+        # Accumulated float estimate — avoids per-chunk int truncation.
+        self._token_count: float = 0.0
         self._start_time = time.monotonic()
         # Incremental commitment state (composing only).
         self._committed_len = 0
@@ -327,7 +331,7 @@ class _ContentBlock:
         elapsed = time.monotonic() - self._start_time
         label = "Thinking..." if self.is_think else "Composing..."
         elapsed_str = f"{int(elapsed)}s" if elapsed >= 1 else "<1s"
-        count_str = f"{format_token_count(self._token_count)} tokens"
+        count_str = f"{format_token_count(int(self._token_count))} tokens"
 
         self._spinner.text = Text.assemble(
             (label, ""),
