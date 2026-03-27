@@ -660,6 +660,72 @@ async def test_compose_includes_question_panel() -> None:
     assert renderable is not None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("panel_type", ["approval", "question"])
+async def test_compose_panel_rendered_before_tool_calls(panel_type: str) -> None:
+    """Approval/question panels must appear before tool call blocks in compose().
+
+    When multiple subagents produce large amounts of output, prompt_toolkit
+    truncates the bottom of the rendered content.  Interactive panels must be
+    at the top so they stay visible.
+    """
+    from rich.console import Group
+    from rich.panel import Panel
+
+    from kimi_cli.wire.types import ToolCall
+
+    view = _LiveView(StatusUpdate())
+
+    for i in range(5):
+        tc = ToolCall(
+            id=f"tc-{i}",
+            function=ToolCall.FunctionBody(name=f"Tool{i}", arguments="{}"),
+        )
+        view.append_tool_call(tc)
+
+    if panel_type == "approval":
+        view.request_approval(_make_approval_request())
+    else:
+        view.request_question(_make_question_request())
+
+    renderable = view.compose(include_status=False)
+    assert isinstance(renderable, Group)
+    first = renderable._renderables[0]
+    assert isinstance(first, Panel), (
+        f"Expected {panel_type} Panel as first renderable, got {type(first).__name__}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_compose_approval_before_question_when_both_present() -> None:
+    """When both approval and question panels exist, approval comes first."""
+    from rich.console import Group
+    from rich.panel import Panel
+
+    from kimi_cli.wire.types import ToolCall
+
+    view = _LiveView(StatusUpdate())
+
+    for i in range(3):
+        tc = ToolCall(
+            id=f"tc-{i}",
+            function=ToolCall.FunctionBody(name=f"Tool{i}", arguments="{}"),
+        )
+        view.append_tool_call(tc)
+
+    view.request_approval(_make_approval_request())
+    view.request_question(_make_question_request())
+
+    renderable = view.compose(include_status=False)
+    assert isinstance(renderable, Group)
+
+    panels = [r for r in renderable._renderables if isinstance(r, Panel)]
+    assert len(panels) >= 2, "Expected at least 2 Panels (approval + question)"
+    # First two panels: approval (yellow border) then question
+    assert panels[0] is renderable._renderables[0], "Approval panel must be first overall"
+    assert panels[1] is renderable._renderables[1], "Question panel must be second"
+
+
 # ---------------------------------------------------------------------------
 # External message handling
 # ---------------------------------------------------------------------------

@@ -866,8 +866,19 @@ class _LiveView:
         self.refresh_soon()
 
     def compose(self, *, include_status: bool = True) -> RenderableType:
-        """Compose the live view display content."""
+        """Compose the live view display content.
+
+        Approval and question panels are rendered first so they remain visible
+        at the top of the terminal even when tool-call output is long enough
+        to push content beyond the visible area.
+        """
         blocks: list[RenderableType] = []
+        # Approval/question panels first — highest visual priority.
+        if self._current_approval_request_panel:
+            blocks.append(self._current_approval_request_panel.render())
+        if self._current_question_panel:
+            blocks.append(self._current_question_panel.render())
+        # Spinners or content + tool calls.
         if self._mcp_loading_spinner is not None:
             blocks.append(self._mcp_loading_spinner)
         elif self._mooning_spinner is not None:
@@ -879,10 +890,6 @@ class _LiveView:
                 blocks.append(self._current_content_block.compose())
             for tool_call in self._tool_call_blocks.values():
                 blocks.append(tool_call.compose())
-        if self._current_approval_request_panel:
-            blocks.append(self._current_approval_request_panel.render())
-        if self._current_question_panel:
-            blocks.append(self._current_question_panel.render())
         for notification in self._live_notification_blocks:
             blocks.append(notification.compose())
 
