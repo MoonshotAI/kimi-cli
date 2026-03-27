@@ -129,6 +129,8 @@ class Runtime:
             session.work_dir,
             extra_skills_dirs=extra_skills_dirs,
         )
+        # Canonicalize so symlinked skill directories match resolved paths
+        skills_roots = [r.canonical() for r in skills_roots]
         skills = await discover_skills_from_roots(skills_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
