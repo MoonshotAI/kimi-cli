@@ -129,6 +129,8 @@ class Runtime:
             session.work_dir,
             extra_skills_dirs=extra_skills_dirs,
         )
+        # Canonicalize so symlinked skill directories match resolved paths
+        skills_roots_canonical = [r.canonical() for r in skills_roots]
         skills = await discover_skills_from_roots(skills_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
@@ -219,13 +221,10 @@ class Runtime:
             ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
-            # Only expose discovered skill directories outside the workspace
-            # for Glob access. Use skill.dir (not skills roots) so that only
-            # directories with a valid SKILL.md are allowed.
+            # Only expose skills roots outside the workspace for Glob access;
+            # project-level roots are already within work_dir.
             skills_dirs=[
-                skill.dir.canonical()
-                for skill in skills
-                if not is_within_directory(skill.dir.canonical(), session.work_dir)
+                r for r in skills_roots_canonical if not is_within_directory(r, session.work_dir)
             ],
             subagent_store=SubagentStore(session),
             approval_runtime=ApprovalRuntime(),

@@ -267,8 +267,7 @@ async def test_glob_skill_scripts_dir_outside_workspace(
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         skills_root = KaosPath.unsafe_from_local_path(Path(tmpdir).resolve())
-        skill_dir = skills_root / "my-skill"
-        scripts_dir = skill_dir / "scripts"
+        scripts_dir = skills_root / "my-skill" / "scripts"
         await scripts_dir.mkdir(parents=True)
         await (scripts_dir / "helper.py").write_text("pass")
 
@@ -277,46 +276,11 @@ async def test_glob_skill_scripts_dir_outside_workspace(
         assert result.is_error
         assert "outside the workspace" in result.message
 
-        # Register the specific skill dir (not the root) → allowed
-        runtime.skills_dirs.append(skill_dir)
+        # Register the skills root → allowed
+        runtime.skills_dirs.append(skills_root)
         result = await Glob(runtime)(GlobParams(pattern="*.py", directory=str(scripts_dir)))
         assert not result.is_error
         assert "helper.py" in result.output
-
-
-async def test_glob_non_skill_dir_under_root_rejected(
-    runtime: Runtime,
-):
-    """A non-skill directory under the skills root should still be rejected.
-
-    skills_dirs should contain individual skill directories (with SKILL.md),
-    not the entire skills root. Sibling directories without SKILL.md must
-    not be accessible.
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        skills_root = KaosPath.unsafe_from_local_path(Path(tmpdir).resolve())
-
-        # real-skill has SKILL.md → would be discovered
-        real_skill = skills_root / "real-skill"
-        await real_skill.mkdir(parents=True)
-        await (real_skill / "SKILL.md").write_text("---\nname: real\n---\n")
-
-        # scratch has no SKILL.md → not a skill
-        scratch = skills_root / "scratch"
-        await scratch.mkdir(parents=True)
-        await (scratch / "notes.py").write_text("pass")
-
-        # Only register the real skill dir, not the root
-        runtime.skills_dirs.append(real_skill)
-
-        # real-skill → allowed
-        result = await Glob(runtime)(GlobParams(pattern="*.md", directory=str(real_skill)))
-        assert not result.is_error
-
-        # scratch → rejected (not a discovered skill)
-        result = await Glob(runtime)(GlobParams(pattern="*.py", directory=str(scratch)))
-        assert result.is_error
-        assert "outside the workspace" in result.message
 
 
 async def test_subagent_shares_skills_dirs(runtime: Runtime):
