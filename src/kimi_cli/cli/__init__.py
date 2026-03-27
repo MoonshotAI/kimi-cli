@@ -40,7 +40,7 @@ UIMode = Literal["shell", "print", "acp", "wire"]
 class ExitCode:
     SUCCESS = 0
     FAILURE = 1
-    RETRYABLE = 2
+    RETRYABLE = 75  # EX_TEMPFAIL from sysexits.h
 
 
 InputFormat = Literal["text", "stream-json"]

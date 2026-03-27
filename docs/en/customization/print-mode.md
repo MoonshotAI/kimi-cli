@@ -137,14 +137,14 @@ Print mode uses exit codes to indicate execution results, allowing scripts and C
 | --- | --- | --- |
 | `0` | Success | Task completed normally |
 | `1` | Failure (not retryable) | Configuration errors, authentication failures, quota exhaustion, and other permanent errors |
-| `2` | Failure (retryable) | 429 rate limits, 5xx server errors, connection timeouts, and other transient errors |
+| `75` | Failure (retryable) | 429 rate limits, 5xx server errors, connection timeouts, and other transient errors |
 
 Example: decide whether to retry based on exit code:
 
 ```sh
 kimi --print -p "Run task"
 code=$?
-if [ $code -eq 2 ]; then
+if [ $code -eq 75 ]; then
   echo "Transient error encountered, retrying..."
   sleep 10
   kimi --print -p "Run task"
