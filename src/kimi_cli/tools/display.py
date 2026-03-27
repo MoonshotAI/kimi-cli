@@ -11,6 +11,8 @@ class DiffDisplayBlock(DisplayBlock):
     path: str
     old_text: str
     new_text: str
+    old_start: int = 1
+    new_start: int = 1
 
 
 class TodoDisplayItem(BaseModel):

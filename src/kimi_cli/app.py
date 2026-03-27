@@ -484,9 +484,8 @@ class KimiCLI:
             WelcomeInfoItem(
                 name="\nTip",
                 value=(
-                    "Kimi Code Web UI, a GUI version of Kimi Code, is now in technical preview."
-                    "\n"
-                    "     Type /web to switch, or next time run `kimi web` directly."
+                    "Spot a bug or have feedback? Type /feedback right in this session"
+                    " — every report makes Kimi better."
                 ),
                 level=WelcomeInfoItem.Level.INFO,
             )

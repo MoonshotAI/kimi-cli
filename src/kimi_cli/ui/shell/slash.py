@@ -394,14 +394,95 @@ def changelog(app: Shell, args: str):
 
 @registry.command
 @shell_mode_registry.command
-def feedback(app: Shell, args: str):
+async def feedback(app: Shell, args: str):
     """Submit feedback to make Kimi Code CLI better"""
+    import platform
     import webbrowser
 
+    import aiohttp
+
+    from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
+    from kimi_cli.auth.platforms import get_platform_by_id, managed_provider_key
+    from kimi_cli.constant import VERSION
+    from kimi_cli.ui.shell.oauth import current_model_key
+    from kimi_cli.utils.aiohttp import new_client_session
+
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
-    if webbrowser.open(ISSUE_URL):
+
+    def _fallback_to_issues():
+        if not webbrowser.open(ISSUE_URL):
+            console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
+
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        _fallback_to_issues()
         return
-    console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
+
+    kimi_platform = get_platform_by_id(KIMI_CODE_PLATFORM_ID)
+    if kimi_platform is None:
+        _fallback_to_issues()
+        return
+
+    provider = soul.runtime.config.providers.get(managed_provider_key(KIMI_CODE_PLATFORM_ID))
+    if provider is None or provider.oauth is None:
+        _fallback_to_issues()
+        return
+
+    from prompt_toolkit import PromptSession
+
+    prompt_session: PromptSession[str] = PromptSession()
+    try:
+        content = await prompt_session.prompt_async("Enter your feedback: ")
+    except (EOFError, KeyboardInterrupt):
+        console.print("[grey50]Feedback cancelled.[/grey50]")
+        return
+
+    content = content.strip()
+    if not content:
+        console.print("[yellow]Feedback cannot be empty.[/yellow]")
+        return
+
+    api_key = soul.runtime.oauth.resolve_api_key(provider.api_key, provider.oauth)
+    feedback_url = f"{kimi_platform.base_url.rstrip('/')}/feedback"
+
+    payload = {
+        "session_id": soul.runtime.session.id,
+        "content": content,
+        "version": VERSION,
+        "os": f"{platform.system()} {platform.release()}",
+        "model": current_model_key(soul),
+    }
+
+    with console.status("[cyan]Submitting feedback...[/cyan]"):
+        try:
+            async with (
+                new_client_session() as session,
+                session.post(
+                    feedback_url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        **(provider.custom_headers or {}),
+                    },
+                    raise_for_status=True,
+                ),
+            ):
+                pass
+            session_id = soul.runtime.session.id
+            console.print(
+                f"[green]Feedback submitted, thank you! Your session ID is: {session_id}[/green]"
+            )
+        except TimeoutError:
+            console.print("[red]Feedback submission timed out.[/red]")
+            _fallback_to_issues()
+        except aiohttp.ClientError as e:
+            status = getattr(e, "status", None)
+            if status:
+                msg = f"Failed to submit feedback (HTTP {status})."
+            else:
+                msg = "Network error, failed to submit feedback."
+            console.print(f"[red]{msg}[/red]")
+            _fallback_to_issues()
 
 
 @registry.command(aliases=["reset"])

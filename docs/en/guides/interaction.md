@@ -47,6 +47,7 @@ When the AI finishes its plan, it submits it for approval via `ExitPlanMode`. Th
 
 - **Approve / select an approach**: If the plan contains multiple alternative implementation paths, the AI lists 2–3 labeled options (e.g. "Option A", "Option B (Recommended)") for you to choose from — selecting one exits plan mode and tells the AI which path to follow. If the plan has a single path, an **Approve** button is shown instead.
 - **Reject**: Decline the plan, stay in plan mode, and provide feedback via conversation
+- **Reject and Exit**: Decline the plan and exit plan mode in one step
 - **Revise**: Enter revision notes — the AI will update the plan and resubmit
 
 Press `Ctrl-E` to view the full plan content in a fullscreen pager.
