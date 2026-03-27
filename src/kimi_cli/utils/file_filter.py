@@ -96,6 +96,11 @@ _IGNORED_PATTERNS: re.Pattern[str] = re.compile(
 _GIT_LS_FILES_TIMEOUT = 5
 
 
+def _scope_args(scope: str | None) -> list[str]:
+    """Return ``["--", "<scope>/"]`` if *scope* is given, else ``[]``."""
+    return ["--", scope + "/"] if scope else []
+
+
 def is_ignored(name: str) -> bool:
     """Return *True* if *name* should be excluded from file mention results."""
     if not name:
@@ -181,9 +186,7 @@ def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[
 
 def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
     """Return the set of tracked files deleted from the working tree."""
-    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "-z", "--deleted"]
-    if scope:
-        cmd.append(scope + "/")
+    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "-z", "--deleted", *_scope_args(scope)]
     try:
         result = subprocess.run(
             cmd,
@@ -225,9 +228,8 @@ def list_files_git(
         "ls-files",
         "-z",
         "--recurse-submodules",
+        *_scope_args(scope),
     ]
-    if scope:
-        cmd.append(scope + "/")
     try:
         result = subprocess.run(
             cmd,
@@ -255,9 +257,8 @@ def list_files_git(
             "-z",
             "--others",
             "--exclude-standard",
+            *_scope_args(scope),
         ]
-        if scope:
-            others_cmd.append(scope + "/")
         try:
             others = subprocess.run(
                 others_cmd,

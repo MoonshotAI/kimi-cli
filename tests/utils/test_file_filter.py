@@ -271,6 +271,47 @@ class TestPathTraversal:
 
 
 # ---------------------------------------------------------------------------
+# Dash-prefixed directory names (must not be parsed as git options)
+# ---------------------------------------------------------------------------
+
+
+class TestDashPrefixScope:
+    """Directory names starting with ``-`` must not be misinterpreted as git options."""
+
+    def test_git_scoped_dash_prefix(self, tmp_path: Path) -> None:
+        d = tmp_path / "-docs"
+        d.mkdir()
+        (d / "guide.md").write_text("# guide")
+        _init_git(tmp_path)
+
+        result = list_files_git(tmp_path, "-docs")
+        assert result is not None
+        assert "-docs/guide.md" in result
+
+    def test_git_deleted_with_dash_prefix(self, tmp_path: Path) -> None:
+        d = tmp_path / "-data"
+        d.mkdir()
+        (d / "old.csv").write_text("a,b")
+        _init_git(tmp_path)
+        (d / "old.csv").unlink()
+
+        result = list_files_git(tmp_path, "-data")
+        assert result is not None
+        assert not any("old.csv" in p for p in result)
+
+    def test_git_untracked_with_dash_prefix(self, tmp_path: Path) -> None:
+        d = tmp_path / "-src"
+        d.mkdir()
+        (d / "tracked.py").write_text("# tracked")
+        _init_git(tmp_path)
+        (d / "new.py").write_text("# new")
+
+        result = list_files_git(tmp_path, "-src")
+        assert result is not None
+        assert "-src/new.py" in result
+
+
+# ---------------------------------------------------------------------------
 # is_ignored unit tests
 # ---------------------------------------------------------------------------
 
