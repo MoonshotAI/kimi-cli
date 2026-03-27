@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Improve @ file mention discovery with git integration — the shell now uses `git ls-files` as the primary file discovery mechanism, fixing large repositories (e.g., 65k+ files) where the previous 1000-file limit caused late-alphabetical directories to be unreachable; supports scoped search (e.g., `@src/utils/`) for both git and non-git repositories
+- Shell: Prevent path traversal in file mention scope parameter — scope values containing `..` are now rejected to prevent `@../` from escaping the workspace root
+- Web: Restore unfiltered directory listing in file browser API — the web file browser now shows all directory entries including `node_modules`, `build`, `dist`, etc.
+
 ## 1.27.0 (2026-03-28)
 
 - Shell: Add `/feedback` command — submit feedback directly from the CLI session; the command falls back to opening GitHub Issues on network errors or timeouts
