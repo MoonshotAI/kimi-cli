@@ -1500,6 +1500,7 @@ class CustomPromptSession:
             bottom_toolbar=self._render_bottom_toolbar,
             style=Style.from_dict(
                 {
+                    "user-input": "fg:#007AFF",  # User input text - bright blue
                     "bottom-toolbar": "noreverse",
                     "running-prompt-placeholder": "fg:#7c8594 italic",
                     "running-prompt-separator": "fg:#4a5568",
@@ -1589,6 +1590,9 @@ class CustomPromptSession:
         buffer_container.filter = buffer_container.filter & Condition(
             self._should_render_input_buffer
         )
+        # Apply style class to input buffer
+        if hasattr(buffer_container, 'content') and isinstance(buffer_container.content, Window):
+            buffer_container.content.style = "class:user-input"
         self._prompt_buffer_container = buffer_container
 
     def _should_show_slash_completion_menu(self) -> bool:
