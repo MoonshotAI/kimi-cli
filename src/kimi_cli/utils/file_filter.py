@@ -1,0 +1,247 @@
+"""Shared file-discovery utilities for ``@`` file mentions.
+
+Both the shell completer (``prompt.py``) and the web backend
+(``web/api/sessions.py``) use these functions so ignore rules, git
+integration, and limits are maintained in one place.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Ignore rules
+# ---------------------------------------------------------------------------
+
+IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
+    "vcs_metadata": (".DS_Store", ".bzr", ".git", ".hg", ".svn"),
+    "tooling_caches": (
+        ".build",
+        ".cache",
+        ".coverage",
+        ".fleet",
+        ".gradle",
+        ".idea",
+        ".ipynb_checkpoints",
+        ".pnpm-store",
+        ".pytest_cache",
+        ".pub-cache",
+        ".ruff_cache",
+        ".swiftpm",
+        ".tox",
+        ".venv",
+        ".vs",
+        ".vscode",
+        ".yarn",
+        ".yarn-cache",
+    ),
+    "js_frontend": (
+        ".next",
+        ".nuxt",
+        ".parcel-cache",
+        ".svelte-kit",
+        ".turbo",
+        ".vercel",
+        "node_modules",
+    ),
+    "python_packaging": (
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "htmlcov",
+        "pip-wheel-metadata",
+        "venv",
+    ),
+    "java_jvm": (".mvn", "out", "target"),
+    "dotnet_native": ("bin", "cmake-build-debug", "cmake-build-release", "obj"),
+    "bazel_buck": ("bazel-bin", "bazel-out", "bazel-testlogs", "buck-out"),
+    "misc_artifacts": (
+        ".dart_tool",
+        ".serverless",
+        ".stack-work",
+        ".terraform",
+        ".terragrunt-cache",
+        "DerivedData",
+        "Pods",
+        "deps",
+        "tmp",
+        "vendor",
+    ),
+}
+
+IGNORED_NAMES: frozenset[str] = frozenset(
+    name for group in IGNORED_NAME_GROUPS.values() for name in group
+)
+
+_IGNORED_PATTERN_PARTS: tuple[str, ...] = (
+    r".*_cache$",
+    r".*-cache$",
+    r".*\.egg-info$",
+    r".*\.dist-info$",
+    r".*\.py[co]$",
+    r".*\.class$",
+    r".*\.sw[po]$",
+    r".*~$",
+    r".*\.(?:tmp|bak)$",
+)
+
+IGNORED_PATTERNS: re.Pattern[str] = re.compile(
+    "|".join(f"(?:{part})" for part in _IGNORED_PATTERN_PARTS),
+    re.IGNORECASE,
+)
+
+
+def is_ignored(name: str) -> bool:
+    """Return *True* if *name* should be excluded from file mention results."""
+    if not name:
+        return True
+    if name in IGNORED_NAMES:
+        return True
+    return bool(IGNORED_PATTERNS.fullmatch(name))
+
+
+# ---------------------------------------------------------------------------
+# Git detection
+# ---------------------------------------------------------------------------
+
+_GIT_LS_FILES_TIMEOUT = 5
+
+
+def detect_git(root: Path) -> bool:
+    """Return *True* if *root* is inside a git work tree."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=root,
+            capture_output=True,
+            timeout=2,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# File listing
+# ---------------------------------------------------------------------------
+
+
+def list_files_git(root: Path, scope: str | None = None) -> list[str] | None:
+    """List workspace paths via ``git ls-files``, or *None* on failure.
+
+    When *scope* is given (e.g. ``"src/utils"``), only files under that
+    subtree are returned.
+    """
+    try:
+        cmd = [
+            "git",
+            "-c",
+            "core.quotepath=false",
+            "ls-files",
+            "--recurse-submodules",
+        ]
+        if scope:
+            cmd.append(scope + "/")
+        result = subprocess.run(
+            cmd,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_LS_FILES_TIMEOUT,
+        )
+        if result.returncode != 0:
+            return None
+    except Exception:
+        return None
+
+    paths: list[str] = []
+    seen_dirs: set[str] = set()
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Add parent directories as navigable entries.
+        parts = line.split("/")
+        for i in range(1, len(parts)):
+            dir_path = "/".join(parts[:i]) + "/"
+            if dir_path not in seen_dirs:
+                seen_dirs.add(dir_path)
+                paths.append(dir_path)
+        paths.append(line)
+
+    return paths
+
+
+def list_files_walk(
+    root: Path,
+    scope: str | None = None,
+    *,
+    limit: int = 1000,
+) -> list[str]:
+    """List workspace paths via ``os.walk`` (fallback for non-git repos).
+
+    When *scope* is given, the walk starts from that subdirectory.
+    """
+    walk_root = root / scope if scope else root
+
+    paths: list[str] = []
+    try:
+        for current_root, dirs, files in os.walk(walk_root):
+            relative_root = Path(current_root).relative_to(root)
+
+            dirs[:] = sorted(d for d in dirs if not is_ignored(d))
+
+            if relative_root.parts and any(is_ignored(part) for part in relative_root.parts):
+                dirs[:] = []
+                continue
+
+            if relative_root.parts:
+                paths.append(relative_root.as_posix() + "/")
+                if len(paths) >= limit:
+                    break
+
+            for file_name in sorted(files):
+                if is_ignored(file_name):
+                    continue
+                relative = (relative_root / file_name).as_posix()
+                if not relative:
+                    continue
+                paths.append(relative)
+                if len(paths) >= limit:
+                    break
+
+            if len(paths) >= limit:
+                break
+    except OSError:
+        pass
+
+    return paths
+
+
+def list_directory_filtered(directory: Path) -> list[dict[str, str | int]]:
+    """List immediate children of *directory*, filtering ignored entries.
+
+    Returns dicts with ``name``, ``type`` (``"file"``/``"directory"``), and
+    optionally ``size``.  Suitable for the web API response.
+    """
+    result: list[dict[str, str | int]] = []
+    try:
+        for subpath in directory.iterdir():
+            if is_ignored(subpath.name):
+                continue
+            if subpath.is_dir():
+                result.append({"name": subpath.name, "type": "directory"})
+            else:
+                try:
+                    size = subpath.stat().st_size
+                except OSError:
+                    size = 0
+                result.append({"name": subpath.name, "type": "file", "size": size})
+    except OSError:
+        pass
+    result.sort(key=lambda x: (str(x["type"]), str(x["name"])))
+    return result

@@ -611,85 +611,15 @@ class SlashCommandMenuControl(UIControl):
 
 
 class LocalFileMentionCompleter(Completer):
-    """Offer fuzzy `@` path completion by indexing workspace files."""
+    """Offer fuzzy `@` path completion by indexing workspace files.
+
+    File discovery and ignore rules are delegated to
+    :mod:`kimi_cli.utils.file_filter` so that the web backend can reuse
+    them.
+    """
 
     _FRAGMENT_PATTERN = re.compile(r"[^\s@]+")
     _TRIGGER_GUARDS = frozenset((".", "-", "_", "`", "'", '"', ":", "@", "#", "~"))
-    _IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
-        "vcs_metadata": (".DS_Store", ".bzr", ".git", ".hg", ".svn"),
-        "tooling_caches": (
-            ".build",
-            ".cache",
-            ".coverage",
-            ".fleet",
-            ".gradle",
-            ".idea",
-            ".ipynb_checkpoints",
-            ".pnpm-store",
-            ".pytest_cache",
-            ".pub-cache",
-            ".ruff_cache",
-            ".swiftpm",
-            ".tox",
-            ".venv",
-            ".vs",
-            ".vscode",
-            ".yarn",
-            ".yarn-cache",
-        ),
-        "js_frontend": (
-            ".next",
-            ".nuxt",
-            ".parcel-cache",
-            ".svelte-kit",
-            ".turbo",
-            ".vercel",
-            "node_modules",
-        ),
-        "python_packaging": (
-            "__pycache__",
-            "build",
-            "coverage",
-            "dist",
-            "htmlcov",
-            "pip-wheel-metadata",
-            "venv",
-        ),
-        "java_jvm": (".mvn", "out", "target"),
-        "dotnet_native": ("bin", "cmake-build-debug", "cmake-build-release", "obj"),
-        "bazel_buck": ("bazel-bin", "bazel-out", "bazel-testlogs", "buck-out"),
-        "misc_artifacts": (
-            ".dart_tool",
-            ".serverless",
-            ".stack-work",
-            ".terraform",
-            ".terragrunt-cache",
-            "DerivedData",
-            "Pods",
-            "deps",
-            "tmp",
-            "vendor",
-        ),
-    }
-    _IGNORED_NAMES = frozenset(name for group in _IGNORED_NAME_GROUPS.values() for name in group)
-    _IGNORED_PATTERN_PARTS: tuple[str, ...] = (
-        r".*_cache$",
-        r".*-cache$",
-        r".*\.egg-info$",
-        r".*\.dist-info$",
-        r".*\.py[co]$",
-        r".*\.class$",
-        r".*\.sw[po]$",
-        r".*~$",
-        r".*\.(?:tmp|bak)$",
-    )
-    _IGNORED_PATTERNS = re.compile(
-        "|".join(f"(?:{part})" for part in _IGNORED_PATTERN_PARTS),
-        re.IGNORECASE,
-    )
-
-    _GIT_LS_FILES_TIMEOUT = 5
-    """Seconds to wait for ``git ls-files`` before falling back to ``os.walk``."""
 
     def __init__(
         self,
@@ -721,14 +651,6 @@ class LocalFileMentionCompleter(Completer):
             pattern=r"^[^\s@]*",
         )
 
-    @classmethod
-    def _is_ignored(cls, name: str) -> bool:
-        if not name:
-            return True
-        if name in cls._IGNORED_NAMES:
-            return True
-        return bool(cls._IGNORED_PATTERNS.fullmatch(name))
-
     def _get_paths(self) -> list[str]:
         fragment = self._fragment_hint or ""
         if "/" not in fragment and len(fragment) < 3:
@@ -736,6 +658,8 @@ class LocalFileMentionCompleter(Completer):
         return self._get_deep_paths()
 
     def _get_top_level_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import is_ignored
+
         now = time.monotonic()
         if now - self._top_cache_time <= self._refresh_interval:
             return self._top_cached_paths
@@ -744,7 +668,7 @@ class LocalFileMentionCompleter(Completer):
         try:
             for entry in sorted(self._root.iterdir(), key=lambda p: p.name):
                 name = entry.name
-                if self._is_ignored(name):
+                if is_ignored(name):
                     continue
                 entries.append(f"{name}/" if entry.is_dir() else name)
                 if len(entries) >= self._limit:
@@ -757,6 +681,8 @@ class LocalFileMentionCompleter(Completer):
         return self._top_cached_paths
 
     def _get_deep_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import detect_git, list_files_git, list_files_walk
+
         fragment = self._fragment_hint or ""
 
         # Determine scope: if fragment contains "/", restrict to that subtree.
@@ -769,121 +695,19 @@ class LocalFileMentionCompleter(Completer):
             return self._cached_paths
 
         # Try git ls-files first (fast, respects .gitignore, no file-count limit).
-        paths = self._get_git_paths(scope)
+        if self._is_git is None:
+            self._is_git = detect_git(self._root)
+
+        paths: list[str] | None = None
+        if self._is_git:
+            paths = list_files_git(self._root, scope)
         if paths is None:
-            # Fallback to os.walk for non-git repos.
-            paths = self._walk_paths(scope)
+            paths = list_files_walk(self._root, scope, limit=self._limit)
 
         self._cached_paths = paths
         self._cache_scope = scope
         self._cache_time = now
         return self._cached_paths
-
-    # ------------------------------------------------------------------
-    # git ls-files based discovery (preferred)
-    # ------------------------------------------------------------------
-
-    def _detect_git(self) -> bool:
-        if self._is_git is not None:
-            return self._is_git
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--git-dir"],
-                cwd=self._root,
-                capture_output=True,
-                timeout=2,
-            )
-            self._is_git = result.returncode == 0
-        except Exception:
-            self._is_git = False
-        return self._is_git
-
-    def _get_git_paths(self, scope: str | None) -> list[str] | None:
-        """Return workspace paths via ``git ls-files``, or *None* to fall back."""
-        if not self._detect_git():
-            return None
-
-        try:
-            cmd = [
-                "git",
-                "-c",
-                "core.quotepath=false",
-                "ls-files",
-                "--recurse-submodules",
-            ]
-            if scope:
-                cmd.append(scope + "/")
-            result = subprocess.run(
-                cmd,
-                cwd=self._root,
-                capture_output=True,
-                text=True,
-                timeout=self._GIT_LS_FILES_TIMEOUT,
-            )
-            if result.returncode != 0:
-                return None
-        except Exception:
-            return None
-
-        paths: list[str] = []
-        seen_dirs: set[str] = set()
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # Add parent directories as navigable entries.
-            parts = line.split("/")
-            for i in range(1, len(parts)):
-                dir_path = "/".join(parts[:i]) + "/"
-                if dir_path not in seen_dirs:
-                    seen_dirs.add(dir_path)
-                    paths.append(dir_path)
-            paths.append(line)
-
-        return paths
-
-    # ------------------------------------------------------------------
-    # os.walk based discovery (fallback for non-git repos)
-    # ------------------------------------------------------------------
-
-    def _walk_paths(self, scope: str | None) -> list[str]:
-        walk_root = self._root / scope if scope else self._root
-
-        paths: list[str] = []
-        try:
-            for current_root, dirs, files in os.walk(walk_root):
-                relative_root = Path(current_root).relative_to(self._root)
-
-                # Prevent descending into ignored directories.
-                dirs[:] = sorted(d for d in dirs if not self._is_ignored(d))
-
-                if relative_root.parts and any(
-                    self._is_ignored(part) for part in relative_root.parts
-                ):
-                    dirs[:] = []
-                    continue
-
-                if relative_root.parts:
-                    paths.append(relative_root.as_posix() + "/")
-                    if len(paths) >= self._limit:
-                        break
-
-                for file_name in sorted(files):
-                    if self._is_ignored(file_name):
-                        continue
-                    relative = (relative_root / file_name).as_posix()
-                    if not relative:
-                        continue
-                    paths.append(relative)
-                    if len(paths) >= self._limit:
-                        break
-
-                if len(paths) >= self._limit:
-                    break
-        except OSError:
-            pass
-
-        return paths
 
     @staticmethod
     def _extract_fragment(text: str) -> str | None:
