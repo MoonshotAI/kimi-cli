@@ -145,7 +145,6 @@ def _parse_ls_files_output(stdout: str) -> list[str]:
     paths: list[str] = []
     seen_dirs: set[str] = set()
     for line in stdout.splitlines():
-        line = line.strip()
         if not line:
             continue
         parts = line.split("/")
