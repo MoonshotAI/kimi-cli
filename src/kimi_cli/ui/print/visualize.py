@@ -10,6 +10,7 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ContentPart,
     Notification,
+    PlanDisplay,
     StepBegin,
     StepInterrupted,
     ToolCall,
@@ -73,6 +74,10 @@ class JsonPrinter(Printer):
                 self._flush_notifications()
                 message = tool_result_to_message(result)
                 print(message.model_dump_json(exclude_none=True), flush=True)
+            case PlanDisplay() as plan:
+                self._flush_assistant_message()
+                self._flush_notifications()
+                print(plan.model_dump_json(exclude_none=True), flush=True)
             case _:
                 # ignore other messages
                 pass

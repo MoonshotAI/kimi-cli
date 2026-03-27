@@ -35,6 +35,14 @@ LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt""",
 )
 
 UIMode = Literal["shell", "print", "acp", "wire"]
+
+
+class ExitCode:
+    SUCCESS = 0
+    FAILURE = 1
+    RETRYABLE = 75  # EX_TEMPFAIL from sysexits.h
+
+
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
@@ -337,9 +345,10 @@ def kimi(
 
     from .mcp import get_global_mcp_config_file
 
-    # Don't redirect stderr yet. Our stderr redirector replaces fd=2 with a pipe, which
-    # would swallow Click/Typer startup errors (e.g. config parsing / BadParameter).
-    # We re-enable stderr redirection after KimiCLI.create() succeeds.
+    # Don't redirect stderr during argument parsing. Our stderr redirector
+    # replaces fd=2 with a pipe, which would swallow Click/Typer startup errors.
+    # Redirection is installed later, right before KimiCLI.create(), so that
+    # MCP server stderr noise is captured into logs from the start.
     enable_logging(debug, redirect_stderr=False)
 
     def _emit_fatal_error(message: str) -> None:
@@ -472,12 +481,12 @@ def kimi(
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
-    async def _run(session_id: str | None) -> tuple[Session, bool]:
+    async def _run(session_id: str | None) -> tuple[Session, int]:
         """
         Create/load session and run the CLI instance.
 
         Returns:
-            The session and whether the run succeeded.
+            The session and the exit code (0 = success, 1 = failure, 75 = retryable).
         """
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
         try:
@@ -526,6 +535,15 @@ def kimi(
                 if changed:
                     session.save_state()
 
+            # Redirect stderr *before* KimiCLI.create() so that MCP server
+            # subprocesses (e.g. mcp-remote OAuth debug logs) write to the log
+            # file instead of polluting the user's terminal.  CLI argument
+            # parsing has already succeeded at this point, so Typer/Click
+            # startup errors are no longer a concern.  Fatal errors from
+            # create() are still visible because _emit_fatal_error() writes to
+            # the saved original stderr fd.
+            redirect_stderr_to_logger()
+
             instance = await KimiCLI.create(
                 session,
                 config=config,
@@ -542,17 +560,14 @@ def kimi(
                 defer_mcp_loading=ui == "shell" and prompt is None,
             )
             startup_progress.stop()
-
-            # Install stderr redirection only after initialization succeeded, so runtime
-            # stderr noise is captured into logs without hiding startup failures.
-            redirect_stderr_to_logger()
             preserve_background_tasks = False
             try:
                 match ui:
                     case "shell":
-                        succeeded = await instance.run_shell(prompt)
+                        shell_ok = await instance.run_shell(prompt)
+                        exit_code = ExitCode.SUCCESS if shell_ok else ExitCode.FAILURE
                     case "print":
-                        succeeded = await instance.run_print(
+                        exit_code = await instance.run_print(
                             input_format or "text",
                             output_format or "text",
                             prompt,
@@ -562,12 +577,12 @@ def kimi(
                         if prompt is not None:
                             logger.warning("ACP server ignores prompt argument")
                         await instance.run_acp()
-                        succeeded = True
+                        exit_code = ExitCode.SUCCESS
                     case "wire":
                         if prompt is not None:
                             logger.warning("Wire server ignores prompt argument")
                         await instance.run_wire_stdio()
-                        succeeded = True
+                        exit_code = ExitCode.SUCCESS
             except Reload as e:
                 preserve_background_tasks = True
                 if e.session_id is None:
@@ -580,12 +595,12 @@ def kimi(
                 if not preserve_background_tasks:
                     instance.shutdown_background_tasks()
 
-            return session, succeeded
+            return session, exit_code
         finally:
             startup_progress.stop()
 
-    async def _post_run(last_session: Session, succeeded: bool) -> None:
-        if not succeeded:
+    async def _post_run(last_session: Session, exit_code: int) -> None:
+        if exit_code != ExitCode.SUCCESS:
             return
 
         metadata = load_metadata()
@@ -613,14 +628,14 @@ def kimi(
 
         save_metadata(metadata)
 
-    async def _reload_loop(session_id: str | None) -> bool:
+    async def _reload_loop(session_id: str | None) -> tuple[bool, int]:
         """
         Returns:
-            True if should switch to web interface, False otherwise.
+            (switch_to_web, exit_code)
         """
         while True:
             try:
-                last_session, succeeded = await _run(session_id)
+                last_session, exit_code = await _run(session_id)
                 break
             except Reload as e:
                 session_id = e.session_id
@@ -629,13 +644,13 @@ def kimi(
                 if e.session_id is not None:
                     session = await Session.find(work_dir, e.session_id)
                     if session is not None:
-                        await _post_run(session, True)
-                return True
-        await _post_run(last_session, succeeded)
-        return False
+                        await _post_run(session, ExitCode.SUCCESS)
+                return True, ExitCode.SUCCESS
+        await _post_run(last_session, exit_code)
+        return False, exit_code
 
     try:
-        switch_to_web = asyncio.run(_reload_loop(session_id))
+        switch_to_web, exit_code = asyncio.run(_reload_loop(session_id))
     except (typer.BadParameter, typer.Exit):
         # Let Typer/Click format these errors (rich panel + correct exit code).
         raise
@@ -677,6 +692,8 @@ def kimi(
         from kimi_cli.web.app import run_web_server
 
         run_web_server(open_browser=True)
+    elif exit_code != ExitCode.SUCCESS:
+        raise typer.Exit(code=exit_code)
 
 
 @cli.command()

@@ -4,6 +4,21 @@
 
 ## 未发布
 
+- CLI：修复 `--print` 模式在出错时退出码为 0 的问题——Print 模式现在对永久性错误（认证失败、配置无效等）返回退出码 1，对可重试错误（429 速率限制、5xx 服务端错误、连接超时）返回退出码 75，使 CI/Eval 运行器能够检测失败并决定是否重试
+- Plan：计划内容现在直接显示在聊天记录中，而非隐藏在翻页器后——计划以带边框的面板形式渲染在对话历史中，并展示计划文件路径供参考
+- Plan：Plan 审批新增 "Reject and Exit" 选项——用户现在可以一步拒绝计划并退出 Plan 模式，除现有的 Approve、Revise 和 Reject 选项外
+- Wire：新增 `PlanDisplay` 事件类型（Wire 1.7）——携带计划内容和文件路径，供客户端内联渲染
+- Shell：流式输出 Markdown 内容——已完成的 Markdown 块（段落、列表、代码块、表格）现在会在流式传输过程中即时渲染并输出到终端，而非缓冲到整个轮次结束后才显示
+- Shell：在 Thinking/Composing 加载动画上显示耗时和估算 Token 数——加载动画现在会显示 `Thinking... 5s · 312 tokens`，计数在生成过程中实时更新
+- Shell：为 Thinking 内容添加滚动预览——模型思考过程的最后 6 行会以灰色斜体实时显示在加载动画下方
+- Shell：将输入区域预留空间从 10 行缩减至 6 行
+- Glob：`Glob` 工具现在可以访问 Skills 目录——除工作区外，该工具现在还可以搜索已发现的 Skill 根目录
+- Glob：`Glob` 工具现在在验证目录路径前会展开 `~` 为用户主目录
+
+## 1.26.0 (2026-03-25)
+
+- Kosong：修复 Google GenAI 提供商在 `FunctionCall`/`FunctionResponse` 中包含 `id` 字段的问题——Gemini API 在包含 `id` 时返回 HTTP 400；从 wire 格式中移除该字段，同时保持内部 `tool_call_id` 跟踪不变
+- Core：修复 MCP 服务器 stderr 污染问题——stderr 重定向现在在 MCP 服务器启动前安装，子进程日志（如 `mcp-remote` 的 OAuth 调试输出）将被捕获到日志文件，而非输出到终端
 - Shell：修复子进程遇到交互式提示时挂起的问题——`Shell` 工具现在会立即关闭 stdin 并设置 `GIT_TERMINAL_PROMPT=0`，使需要凭证的命令（如通过 HTTPS 执行 `git push`）快速失败，而非阻塞至超时
 - Core：修复 LLM 工具调用参数包含未转义控制字符时 JSON 解析失败的问题——在所有 LLM 输出解析路径使用 `json.loads(strict=False)`，防止工具执行失败和会话永久损坏
 - Shell：空闲时自动响应后台任务完成——Shell 现在会检测后台 Bash 命令或 Agent 任务的完成，并自动发起新的 Agent 轮次处理结果，无需等待用户输入
