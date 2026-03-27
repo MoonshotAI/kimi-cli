@@ -35,9 +35,6 @@ from kimi_cli.ui.shell.approval_panel import (
     ApprovalRequestPanel,
     show_approval_in_pager,
 )
-from kimi_cli.ui.shell.approval_panel import (
-    render_approval_request_for_terminal as render_approval_request_for_terminal,  # noqa: F401 — re-exported
-)
 from kimi_cli.ui.shell.console import console, render_to_ansi
 from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
 from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
@@ -56,6 +53,7 @@ from kimi_cli.ui.shell.question_panel import (
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.rich.columns import BulletColumns
+from kimi_cli.utils.rich.diff_render import collect_diff_hunks, render_diff_panel
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
@@ -66,6 +64,7 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    DiffDisplayBlock,
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
@@ -506,15 +505,33 @@ class _ToolCallBlock:
             )
 
         if self._result is not None:
-            for block in self._result.display:
-                if isinstance(block, BriefDisplayBlock):
+            display = self._result.display
+            idx = 0
+            while idx < len(display):
+                block = display[idx]
+                if isinstance(block, DiffDisplayBlock):
+                    # Collect consecutive same-file diff blocks
+                    path = block.path
+                    diff_blocks: list[DiffDisplayBlock] = []
+                    while idx < len(display):
+                        b = display[idx]
+                        if not isinstance(b, DiffDisplayBlock) or b.path != path:
+                            break
+                        diff_blocks.append(b)
+                        idx += 1
+                    hunks, added_total, removed_total = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        lines.append(render_diff_panel(path, hunks, added_total, removed_total))
+                elif isinstance(block, BriefDisplayBlock):
                     style = "grey50" if not self._result.is_error else "dark_red"
                     if block.text:
                         lines.append(Markdown(block.text, style=style))
+                    idx += 1
                 elif isinstance(block, TodoDisplayBlock):
                     markdown = self._render_todo_markdown(block)
                     if markdown:
                         lines.append(Markdown(markdown, style="grey50"))
+                    idx += 1
                 elif isinstance(block, BackgroundTaskDisplayBlock):
                     lines.append(
                         Markdown(
@@ -522,6 +539,9 @@ class _ToolCallBlock:
                             style="grey50",
                         )
                     )
+                    idx += 1
+                else:
+                    idx += 1
 
         if self.finished:
             assert self._result is not None
