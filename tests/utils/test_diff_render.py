@@ -303,6 +303,20 @@ class TestRenderDiffPreview:
         # header + 1 delete + 1 add
         assert len(renderables) == 3
 
+    def test_multi_hunk_collects_changes_from_all_hunks(self) -> None:
+        """Preview should gather changed lines from ALL hunks, not just the first."""
+        lines = [f"line {i}" for i in range(20)]
+        old = "\n".join(lines)
+        new_lines = lines.copy()
+        new_lines[1] = "CHANGED_NEAR_TOP"
+        new_lines[18] = "CHANGED_NEAR_BOTTOM"
+        hunks, a, r = _collect(old, "\n".join(new_lines))
+        assert len(hunks) == 2  # two distant changes → two hunks
+        renderables, remaining = render_diff_preview("test.py", hunks, a, r)
+        full = "\n".join(_render_to_text(x) for x in renderables)
+        assert "CHANGED_NEAR_TOP" in full
+        assert "CHANGED_NEAR_BOTTOM" in full
+
     def test_truncation_midway_through_paired_block(self) -> None:
         """Truncation may split a paired delete/add block — should not crash."""
         old = "\n".join(f"old_{i}" for i in range(10))
