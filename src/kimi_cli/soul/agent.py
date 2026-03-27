@@ -90,6 +90,7 @@ class Runtime:
     background_tasks: BackgroundTaskManager
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
+    skills_dirs: list[KaosPath]
     subagent_store: SubagentStore | None = None
     approval_runtime: ApprovalRuntime | None = None
     root_wire_hub: RootWireHub | None = None
@@ -218,6 +219,7 @@ class Runtime:
             ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
+            skills_dirs=skills_roots,
             subagent_store=SubagentStore(session),
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
@@ -247,6 +249,7 @@ class Runtime:
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
+            skills_dirs=self.skills_dirs,
             subagent_store=self.subagent_store,
             approval_runtime=self.approval_runtime,
             root_wire_hub=self.root_wire_hub,
