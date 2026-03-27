@@ -111,6 +111,15 @@ class NotificationConfig(BaseModel):
     claim_stale_after_ms: int = Field(default=15_000, ge=1000)
 
 
+class NotificationsConfig(BaseModel):
+    """Notification configuration for desktop alerts."""
+
+    enabled: bool = Field(default=True, description="Whether desktop notifications are enabled")
+    approvals: bool = Field(
+        default=True, description="Whether to show notifications for approval requests"
+    )
+
+
 class MoonshotSearchConfig(BaseModel):
     """Moonshot Search configuration."""
 
@@ -202,6 +211,9 @@ class Config(BaseModel):
     )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    notifications: NotificationsConfig = Field(
+        default_factory=NotificationsConfig, description="Notification settings"
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
