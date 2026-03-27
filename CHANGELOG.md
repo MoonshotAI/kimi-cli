@@ -19,6 +19,7 @@ Only write entries that are worth mentioning to users.
 - Shell: Show elapsed time and estimated token count on thinking/composing spinners — the spinner now displays `Thinking... 5s · 312 tokens` with a live-updating counter during generation
 - Shell: Add scrolling preview for thinking content — the last 6 lines of the model's thinking process are shown in real time as a grey italic preview beneath the spinner
 - Shell: Reduce prompt input area reserved space from 10 to 6 lines
+- Glob: Allow `Glob` tool to access skills directories — the tool can now search within discovered skill roots in addition to the workspace
 
 ## 1.26.0 (2026-03-25)
 

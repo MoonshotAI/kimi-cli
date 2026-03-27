@@ -218,9 +218,7 @@ def runtime_with_skills_dir(runtime: Runtime, skills_dir: KaosPath) -> Runtime:
     return runtime
 
 
-async def test_glob_in_skills_dir(
-    runtime_with_skills_dir: Runtime, skills_dir: KaosPath
-):
+async def test_glob_in_skills_dir(runtime_with_skills_dir: Runtime, skills_dir: KaosPath):
     """Glob should be able to search in a skills directory."""
     glob_tool = Glob(runtime_with_skills_dir)
     await (skills_dir / "read_content.py").write_text("print('read')")
@@ -274,17 +272,13 @@ async def test_glob_skill_scripts_dir_outside_workspace(
         await (scripts_dir / "helper.py").write_text("pass")
 
         # Without skills_dirs → rejected
-        result = await Glob(runtime)(
-            GlobParams(pattern="*.py", directory=str(scripts_dir))
-        )
+        result = await Glob(runtime)(GlobParams(pattern="*.py", directory=str(scripts_dir)))
         assert result.is_error
         assert "outside the workspace" in result.message
 
         # Register the skills root → allowed
         runtime.skills_dirs.append(skills_root)
-        result = await Glob(runtime)(
-            GlobParams(pattern="*.py", directory=str(scripts_dir))
-        )
+        result = await Glob(runtime)(GlobParams(pattern="*.py", directory=str(scripts_dir)))
         assert not result.is_error
         assert "helper.py" in result.output
 
