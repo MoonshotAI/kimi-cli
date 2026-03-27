@@ -141,7 +141,7 @@ def git_index_mtime(root: Path) -> float | None:
 
 
 def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[str]:
-    """Parse ``git ls-files`` output into paths with synthesised directory entries.
+    """Parse NUL-delimited ``git ls-files -z`` output into paths with synthesised dirs.
 
     When *filter_ignored* is *True*, paths whose segments match
     ``is_ignored()`` are excluded so that tracked ``node_modules/``,
@@ -150,11 +150,11 @@ def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[
     paths: list[str] = []
     seen_dirs: set[str] = set()
     ignored_prefixes: set[str] = set()
-    for line in stdout.splitlines():
-        if not line:
+    for entry in stdout.split("\0"):
+        if not entry:
             continue
 
-        parts = line.split("/")
+        parts = entry.split("/")
 
         if filter_ignored:
             skip = False
@@ -175,13 +175,13 @@ def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[
             if dir_path not in seen_dirs:
                 seen_dirs.add(dir_path)
                 paths.append(dir_path)
-        paths.append(line)
+        paths.append(entry)
     return paths
 
 
 def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
     """Return the set of tracked files deleted from the working tree."""
-    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "--deleted"]
+    cmd = ["git", "-c", "core.quotepath=false", "ls-files", "-z", "--deleted"]
     if scope:
         cmd.append(scope + "/")
     try:
@@ -193,7 +193,7 @@ def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
             timeout=_GIT_LS_FILES_TIMEOUT,
         )
         if result.returncode == 0:
-            return {line for line in result.stdout.splitlines() if line}
+            return {e for e in result.stdout.split("\0") if e}
     except Exception:
         pass
     return set()
@@ -223,6 +223,7 @@ def list_files_git(
         "-c",
         "core.quotepath=false",
         "ls-files",
+        "-z",
         "--recurse-submodules",
     ]
     if scope:
@@ -251,6 +252,7 @@ def list_files_git(
             "-c",
             "core.quotepath=false",
             "ls-files",
+            "-z",
             "--others",
             "--exclude-standard",
         ]
