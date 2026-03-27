@@ -557,6 +557,7 @@ __all__ = [
     "ToolResult",
     "ApprovalResponse",
     "SubagentEvent",
+    "PlanDisplay",
     "ApprovalRequest",
     "ToolCallRequest",
     "QuestionOption",
