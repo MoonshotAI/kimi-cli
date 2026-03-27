@@ -1201,6 +1201,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
+        "/feedback: send feedback",
     ]
     if clipboard_available:
         tips.append("ctrl-v: paste clipboard")

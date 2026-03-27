@@ -404,6 +404,7 @@ async def feedback(app: Shell, args: str):
     from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
     from kimi_cli.auth.platforms import get_platform_by_id, managed_provider_key
     from kimi_cli.constant import VERSION
+    from kimi_cli.ui.shell.oauth import current_model_key
     from kimi_cli.utils.aiohttp import new_client_session
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
@@ -414,6 +415,7 @@ async def feedback(app: Shell, args: str):
 
     soul = ensure_kimi_soul(app)
     if soul is None:
+        _fallback_to_issues()
         return
 
     kimi_platform = get_platform_by_id(KIMI_CODE_PLATFORM_ID)
@@ -443,20 +445,12 @@ async def feedback(app: Shell, args: str):
     api_key = soul.runtime.oauth.resolve_api_key(provider.api_key, provider.oauth)
     feedback_url = f"{kimi_platform.base_url.rstrip('/')}/feedback"
 
-    curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
-    curr_model_name: str | None = None
-    if curr_model_cfg is not None:
-        for name, model_cfg in soul.runtime.config.models.items():
-            if model_cfg == curr_model_cfg:
-                curr_model_name = name
-                break
-
     payload = {
         "session_id": soul.runtime.session.id,
         "content": content,
         "version": VERSION,
         "os": f"{platform.system()} {platform.release()}",
-        "model": curr_model_name,
+        "model": current_model_key(soul),
     }
 
     with console.status("[cyan]Submitting feedback...[/cyan]"):
