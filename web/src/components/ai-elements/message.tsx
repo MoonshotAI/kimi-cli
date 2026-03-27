@@ -1,5 +1,6 @@
 "use client";
 
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -167,7 +168,7 @@ export const MessageCopyButton = ({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      await copyToClipboard(content);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), timeout);
     } catch {

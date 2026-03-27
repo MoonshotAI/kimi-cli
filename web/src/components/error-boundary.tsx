@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ErrorBoundary as ReactErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { AlertTriangle, RefreshCw, Copy, Check } from "lucide-react";
 import { Button } from "./ui/button";
@@ -9,7 +10,7 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const copyError = async () => {
     const errorObj = error instanceof Error ? error : new Error(String(error));
     const text = `${errorObj.name}: ${errorObj.message}\n\n${errorObj.stack ?? ""}`;
-    await navigator.clipboard.writeText(text);
+    await copyToClipboard(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

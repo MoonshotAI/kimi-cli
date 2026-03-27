@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { copyToClipboard as copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import {
   CheckIcon,
@@ -508,13 +509,13 @@ export const CodeBlockCopyButton = ({
   const { code } = useContext(CodeBlockContext);
 
   const copyToClipboard = async () => {
-    if (typeof window === "undefined" || !navigator?.clipboard?.writeText) {
+    if (typeof window === "undefined") {
       onError?.(new Error("Clipboard API not available"));
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(code);
+      await copyText(code);
       setIsCopied(true);
       onCopy?.();
       setTimeout(() => setIsCopied(false), timeout);
