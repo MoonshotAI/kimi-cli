@@ -306,12 +306,17 @@ class ExitPlanMode(CallableTool2[Params]):
         for v in answers.values():
             if v not in ("Approve", "Reject", "Reject and Exit"):
                 feedback = v
-        msg = (
-            "User wants to revise the plan. Stay in plan mode. "
-            "Wait for the user's next message with feedback before revising."
-        )
         if feedback:
-            msg += f"\n\nUser feedback: {feedback}"
+            msg = (
+                "User wants to revise the plan. Stay in plan mode. "
+                "Revise based on the feedback below.\n\n"
+                f"User feedback: {feedback}"
+            )
+        else:
+            msg = (
+                "User wants to revise the plan. Stay in plan mode. "
+                "Wait for the user's next message with feedback before revising."
+            )
         return ToolReturnValue(
             is_error=False,
             output=msg,
