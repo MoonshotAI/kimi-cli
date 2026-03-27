@@ -14,6 +14,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
+from kimi_cli.utils.command_security import analyze_command, format_security_notes
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
@@ -82,10 +83,16 @@ class Shell(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
 
+        # Analyze command for security-relevant patterns
+        security_notes = analyze_command(params.command)
+        description = f"Run command `{params.command}`"
+        if security_notes:
+            description += f"\n\n{format_security_notes(security_notes)}"
+
         result = await self._approval.request(
             self.name,
             "run command",
-            f"Run command `{params.command}`",
+            description,
             display=[
                 ShellDisplayBlock(
                     language="powershell" if self._is_powershell else "bash",
@@ -130,10 +137,16 @@ class Shell(CallableTool2[Params]):
                 brief="No tool call context",
             )
 
+        # Analyze command for security-relevant patterns
+        security_notes = analyze_command(params.command)
+        description = f"Run background command `{params.command}`"
+        if security_notes:
+            description += f"\n\n{format_security_notes(security_notes)}"
+
         result = await self._approval.request(
             self.name,
             "run background command",
-            f"Run background command `{params.command}`",
+            description,
             display=[
                 ShellDisplayBlock(
                     language="powershell" if self._is_powershell else "bash",
@@ -154,7 +167,7 @@ class Shell(CallableTool2[Params]):
                 shell_path=str(self._shell_path),
                 cwd=str(self._runtime.session.work_dir),
             )
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             builder = ToolResultBuilder()
             return builder.error(f"Failed to start background task: {exc}", brief="Start failed")
 

@@ -96,7 +96,8 @@ def shorten_home(path: KaosPath) -> KaosPath:
         home = KaosPath.home()
         p = path.relative_to(home)
         return KaosPath("~") / p
-    except Exception:
+    except ValueError:
+        # path is not under home directory
         return path
 
 
