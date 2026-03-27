@@ -36,12 +36,12 @@ def test_initialize_handshake(tmp_path) -> None:
     try:
         resp = send_initialize(wire)
         result = _as_dict(resp.get("result"))
-        assert result.get("protocol_version") == "1.6"
+        assert result.get("protocol_version") == "1.7"
         assert "slash_commands" in result
         assert normalize_response(resp) == snapshot(
             {
                 "result": {
-                    "protocol_version": "1.6",
+                    "protocol_version": "1.7",
                     "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {
@@ -128,7 +128,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
         assert normalize_response(resp) == snapshot(
             {
                 "result": {
-                    "protocol_version": "1.6",
+                    "protocol_version": "1.7",
                     "server": {"name": "Kimi Code CLI", "version": "<VERSION>"},
                     "slash_commands": [
                         {

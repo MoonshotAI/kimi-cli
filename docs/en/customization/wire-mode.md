@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.6`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.7`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -153,13 +153,13 @@ interface ExternalToolsResult {
 **Request example**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.6", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.7", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **Success response example**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.6", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.7", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 If the server does not support the `initialize` method, the client will receive a `-32601 method not found` error and should automatically fall back to no-handshake mode.
@@ -477,6 +477,7 @@ type Event =
   | ApprovalResponse
   | SubagentEvent
   | SteerInput
+  | PlanDisplay
 
 /** Requests: sent via request method, require response */
 type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
@@ -728,6 +729,23 @@ Indicates that the user appended follow-up input to the current running turn. Th
 interface SteerInput {
   /** User input, can be plain text or array of content parts */
   user_input: string | ContentPart[]
+}
+```
+
+### `PlanDisplay`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Plan content display event. When the agent calls `ExitPlanMode` to submit a plan for user approval in plan mode, this event is sent first to display the plan content inline in the chat. Clients should render it as a bordered panel or similar visually distinct element, and show the file path for reference.
+
+```typescript
+interface PlanDisplay {
+  /** Full markdown content of the plan */
+  content: string
+  /** Path to the plan file */
+  file_path: string
 }
 ```
 

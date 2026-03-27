@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
+
+if TYPE_CHECKING:
+    from markdown_it import MarkdownIt
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kosong.message import Message
@@ -17,11 +21,12 @@ from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyPressEvent
 from rich.console import Group, RenderableType
 from rich.live import Live
+from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text
 
-from kimi_cli.soul import format_context_status
+from kimi_cli.soul import format_context_status, format_token_count
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.approval_panel import (
     ApprovalPromptDelegate as ApprovalPromptDelegate,  # noqa: F401 — re-exported
@@ -64,6 +69,7 @@ from kimi_cli.wire.types import (
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
+    PlanDisplay,
     QuestionRequest,
     StatusUpdate,
     SteerInput,
@@ -140,26 +146,229 @@ async def visualize(
             on_view_closed()
 
 
+_THINKING_PREVIEW_LINES = 6
+_PENDING_PREVIEW_LINES = 8
+_SELF_CLOSING_BLOCKS = frozenset(("fence", "code_block", "hr", "html_block"))
+_ELLIPSIS = "..."
+
+
+def _truncate_to_display_width(line: str, max_width: int) -> str:
+    """Truncate *line* so its terminal display width fits within *max_width*.
+
+    Uses ``rich.cells.cell_len`` for CJK-aware column width measurement.
+    """
+    from rich.cells import cell_len
+
+    if cell_len(line) <= max_width:
+        return line
+    ellipsis_width = cell_len(_ELLIPSIS)
+    budget = max_width - ellipsis_width
+    width = 0
+    for i, ch in enumerate(line):
+        width += cell_len(ch)
+        if width > budget:
+            return line[:i] + _ELLIPSIS
+    return line
+
+
+# Lazy-initialized markdown-it parser for incremental token commitment.
+_md_parser: MarkdownIt | None = None
+
+
+def _get_md_parser() -> MarkdownIt:
+    global _md_parser
+    if _md_parser is None:
+        from markdown_it import MarkdownIt
+
+        # Match the extensions used by the rendering path (utils/rich/markdown.py)
+        # so that block boundaries are detected consistently.
+        _md_parser = MarkdownIt().enable("strikethrough").enable("table")
+    return _md_parser
+
+
+def _estimate_tokens(text: str) -> float:
+    """Estimate token count for mixed CJK/Latin text.
+
+    Returns a **float** so that callers can accumulate across small chunks
+    without per-chunk floor truncation (e.g. a 3-char ASCII chunk would
+    yield 0 if truncated to int immediately, but 0.75 as float).
+
+    Heuristics based on common BPE tokenizers (cl100k, o200k):
+    - CJK ideographs: ~1.5 tokens per character (often split into 2-byte pieces)
+    - Latin / ASCII: ~1 token per 4 characters (words average ~4 chars)
+    """
+    cjk = 0
+    other = 0
+    for ch in text:
+        cp = ord(ch)
+        if (
+            0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+            or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+            or 0xF900 <= cp <= 0xFAFF  # CJK Compatibility Ideographs
+            or 0x3000 <= cp <= 0x303F  # CJK Symbols and Punctuation
+            or 0xFF00 <= cp <= 0xFFEF  # Fullwidth Forms
+        ):
+            cjk += 1
+        else:
+            other += 1
+    return cjk * 1.5 + other / 4
+
+
+def _find_committed_boundary(text: str) -> int | None:
+    """Return the character offset up to which *text* can be safely committed.
+
+    Uses the incremental token commitment algorithm: parse text into block-level
+    tokens via ``markdown-it-py``, confirm all blocks except the last one (which
+    may be incomplete due to streaming truncation).
+
+    Returns ``None`` when there are fewer than 2 blocks (nothing to confirm yet).
+    """
+    md = _get_md_parser()
+    tokens = md.parse(text)
+
+    # Collect only TOP-LEVEL block boundaries by tracking nesting depth.
+    # Nested tokens (e.g. list_item_open inside bullet_list_open) must not be
+    # treated as independent blocks — otherwise lists and blockquotes get split.
+    block_maps: list[list[int]] = []
+    depth = 0
+    for t in tokens:
+        if t.nesting == 1:
+            if depth == 0 and t.map is not None:
+                block_maps.append(t.map)
+            depth += 1
+        elif t.nesting == -1:
+            depth -= 1
+        elif depth == 0 and t.type in _SELF_CLOSING_BLOCKS and t.map is not None:
+            block_maps.append(t.map)
+
+    if len(block_maps) < 2:
+        return None
+
+    # Convert end-line number to character offset by scanning newlines.
+    target_line = block_maps[-2][1]
+    offset = 0
+    for _ in range(target_line):
+        offset = text.index("\n", offset) + 1
+    return offset
+
+
+def _tail_lines(text: str, n: int) -> str:
+    """Extract the last *n* lines from *text* via reverse scanning (O(n))."""
+    pos = len(text)
+    for _ in range(n):
+        pos = text.rfind("\n", 0, pos)
+        if pos == -1:
+            return text
+    return text[pos + 1 :]
+
+
 class _ContentBlock:
+    """Streaming content block with incremental markdown commitment.
+
+    For **composing** (``is_think=False``), confirmed markdown blocks are flushed
+    to the terminal permanently via ``console.print()`` as they become complete,
+    giving users real-time streaming output.  Only the unconfirmed tail remains
+    in the transient Rich Live area.
+
+    For **thinking** (``is_think=True``), content stays in the Live area as a
+    scrolling preview until the block is finalized.
+    """
+
     def __init__(self, is_think: bool):
         self.is_think = is_think
-        self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
+        self._spinner = Spinner("dots", "")
         self.raw_text = ""
+        # Accumulated float estimate — avoids per-chunk int truncation.
+        self._token_count: float = 0.0
+        self._start_time = time.monotonic()
+        # Incremental commitment state (composing only).
+        self._committed_len = 0
+        self._has_printed_bullet = False
 
-    def compose(self) -> RenderableType:
-        return self._spinner
-
-    def compose_final(self) -> RenderableType:
-        return BulletColumns(
-            Markdown(
-                self.raw_text,
-                style="grey50 italic" if self.is_think else "",
-            ),
-            bullet_style="grey50" if self.is_think else None,
-        )
+    # -- Public API ----------------------------------------------------------
 
     def append(self, content: str) -> None:
         self.raw_text += content
+        self._token_count += _estimate_tokens(content)
+        # Block boundaries require newlines; skip parse for mid-line chunks.
+        if not self.is_think and "\n" in content:
+            self._flush_committed()
+
+    def compose(self) -> RenderableType:
+        """Render the transient Live area content."""
+        pending = self._pending_text()
+
+        # Thinking: always show spinner + preview.
+        if self.is_think:
+            spinner = self._compose_spinner()
+            if not pending:
+                return spinner
+            preview = self._build_preview(pending)
+            return Group(spinner, Text(preview, style="grey50 italic"))
+
+        # Composing: always show spinner with elapsed time and token count.
+        # Committed blocks are already printed permanently above.
+        return self._compose_spinner()
+
+    def compose_final(self) -> RenderableType:
+        """Render the remaining uncommitted content when the block ends."""
+        remaining = self._pending_text()
+        if not remaining:
+            return Text("")
+        if self.is_think:
+            return BulletColumns(
+                Markdown(remaining, style="grey50 italic"),
+                bullet_style="grey50",
+            )
+        return self._wrap_bullet(Markdown(remaining))
+
+    def has_pending(self) -> bool:
+        """Whether there is uncommitted content to flush."""
+        return bool(self._pending_text())
+
+    # -- Private -------------------------------------------------------------
+
+    def _pending_text(self) -> str:
+        return self.raw_text[self._committed_len :]
+
+    def _wrap_bullet(self, renderable: RenderableType) -> BulletColumns:
+        """First call gets the ``•`` bullet; subsequent calls get a space."""
+        if self._has_printed_bullet:
+            return BulletColumns(renderable, bullet=Text(" "))
+        self._has_printed_bullet = True
+        return BulletColumns(renderable)
+
+    def _flush_committed(self) -> None:
+        """Commit confirmed markdown blocks to permanent terminal output."""
+        pending = self._pending_text()
+        if not pending:
+            return
+        boundary = _find_committed_boundary(pending)
+        if boundary is None:
+            return
+        committed_text = pending[:boundary]
+        console.print(self._wrap_bullet(Markdown(committed_text)))
+        self._committed_len += boundary
+
+    def _compose_spinner(self) -> Spinner:
+        elapsed = time.monotonic() - self._start_time
+        label = "Thinking..." if self.is_think else "Composing..."
+        elapsed_str = f"{int(elapsed)}s" if elapsed >= 1 else "<1s"
+        count_str = f"{format_token_count(int(self._token_count))} tokens"
+
+        self._spinner.text = Text.assemble(
+            (label, ""),
+            (f" {elapsed_str}", "grey50"),
+            (f" · {count_str}", "grey50"),
+        )
+        return self._spinner
+
+    def _build_preview(self, text: str) -> str:
+        max_lines = _THINKING_PREVIEW_LINES if self.is_think else _PENDING_PREVIEW_LINES
+        max_width = console.width - 2 if console.width else 78
+        tail_text = _tail_lines(text, max_lines)
+        lines = tail_text.split("\n")
+        return "\n".join(_truncate_to_display_width(line, max_width) for line in lines)
 
 
 class _ToolCallBlock:
@@ -292,14 +501,14 @@ class _ToolCallBlock:
             lines.append(
                 BulletColumns(
                     sub_text,
-                    bullet_style="green" if not sub_result.is_error else "red",
+                    bullet_style="green" if not sub_result.is_error else "dark_red",
                 )
             )
 
         if self._result is not None:
             for block in self._result.display:
                 if isinstance(block, BriefDisplayBlock):
-                    style = "grey50" if not self._result.is_error else "red"
+                    style = "grey50" if not self._result.is_error else "dark_red"
                     if block.text:
                         lines.append(Markdown(block.text, style=style))
                 elif isinstance(block, TodoDisplayBlock):
@@ -318,7 +527,7 @@ class _ToolCallBlock:
             assert self._result is not None
             return BulletColumns(
                 Group(*lines),
-                bullet_style="green" if not self._result.is_error else "red",
+                bullet_style="green" if not self._result.is_error else "dark_red",
             )
         else:
             return BulletColumns(
@@ -718,6 +927,8 @@ class _LiveView:
                 self._reconcile_approval_requests()
             case SubagentEvent():
                 self.handle_subagent_event(msg)
+            case PlanDisplay():
+                self.display_plan(msg)
             case ApprovalRequest():
                 self.request_approval(msg)
             case QuestionRequest():
@@ -764,6 +975,7 @@ class _LiveView:
                     | KeyEvent.NUM_3
                     | KeyEvent.NUM_4
                     | KeyEvent.NUM_5
+                    | KeyEvent.NUM_6
                 ):
                     # Number keys select option in question panel
                     num_map = {
@@ -772,6 +984,7 @@ class _LiveView:
                         KeyEvent.NUM_3: 2,
                         KeyEvent.NUM_4: 3,
                         KeyEvent.NUM_5: 4,
+                        KeyEvent.NUM_6: 5,
                     }
                     idx = num_map[event]
                     panel = self._current_question_panel
@@ -863,7 +1076,8 @@ class _LiveView:
     def flush_content(self) -> None:
         """Flush the current content block."""
         if self._current_content_block is not None:
-            console.print(self._current_content_block.compose_final())
+            if self._current_content_block.has_pending():
+                console.print(self._current_content_block.compose_final())
             self._current_content_block = None
             self.refresh_soon()
 
@@ -902,6 +1116,7 @@ class _LiveView:
                     self._current_content_block = _ContentBlock(is_think)
                     self.refresh_soon()
                 self._current_content_block.append(text)
+                self.refresh_soon()
             case _:
                 # TODO: support more content part types
                 pass
@@ -976,6 +1191,23 @@ class _LiveView:
             if self._current_approval_request_panel is not None:
                 self._current_approval_request_panel = None
                 self.refresh_soon()
+
+    def display_plan(self, msg: PlanDisplay) -> None:
+        """Render plan content inline in the chat with a bordered panel."""
+        self.flush_content()
+        self.flush_finished_tool_calls()
+        plan_body = Markdown(msg.content)
+        subtitle = Text(msg.file_path, style="dim")
+        panel = Panel(
+            plan_body,
+            title="[bold cyan]Plan[/bold cyan]",
+            title_align="left",
+            subtitle=subtitle,
+            subtitle_align="left",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+        console.print(panel)
 
     def request_question(self, request: QuestionRequest) -> None:
         self._question_request_queue.append(request)
