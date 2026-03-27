@@ -198,3 +198,93 @@ async def test_subagent_shares_additional_dirs(runtime: Runtime):
     runtime.additional_dirs.append(KaosPath("/test/shared"))
     assert KaosPath("/test/shared") in subagent_a.additional_dirs
     assert KaosPath("/test/shared") in subagent_b.additional_dirs
+
+
+# ── Skills directory tests ─────────────────────────────────────────────────
+
+
+@pytest.fixture
+def skills_dir(temp_work_dir: KaosPath) -> Generator[KaosPath]:
+    """Create a temporary skills directory outside the work directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        p = Path(tmpdir).resolve()
+        yield KaosPath.unsafe_from_local_path(p)
+
+
+@pytest.fixture
+def runtime_with_skills_dir(runtime: Runtime, skills_dir: KaosPath) -> Runtime:
+    """Runtime with a skills directory configured."""
+    runtime.skills_dirs.append(skills_dir)
+    return runtime
+
+
+async def test_glob_in_skills_dir(runtime_with_skills_dir: Runtime, skills_dir: KaosPath):
+    """Glob should be able to search in a skills directory."""
+    glob_tool = Glob(runtime_with_skills_dir)
+    await (skills_dir / "read_content.py").write_text("print('read')")
+    await (skills_dir / "utils.py").write_text("print('utils')")
+
+    result = await glob_tool(GlobParams(pattern="*.py", directory=str(skills_dir)))
+    assert not result.is_error
+    assert "read_content.py" in result.output
+    assert "utils.py" in result.output
+
+
+async def test_glob_in_skills_dir_subdirectory(
+    runtime_with_skills_dir: Runtime, skills_dir: KaosPath
+):
+    """Glob should work in a subdirectory of a skills directory."""
+    glob_tool = Glob(runtime_with_skills_dir)
+    await (skills_dir / "feishu" / "scripts").mkdir(parents=True)
+    await (skills_dir / "feishu" / "scripts" / "read_content.py").write_text("pass")
+
+    sub = str(skills_dir / "feishu" / "scripts")
+    result = await glob_tool(GlobParams(pattern="*.py", directory=sub))
+    assert not result.is_error
+    assert "read_content.py" in result.output
+
+
+async def test_glob_outside_skills_and_workspace_rejected(
+    runtime_with_skills_dir: Runtime,
+):
+    """Glob in a directory outside workspace and skills dirs should fail."""
+    glob_tool = Glob(runtime_with_skills_dir)
+    outside = "/tmp/evil" if platform.system() != "Windows" else "C:/tmp/evil"
+
+    result = await glob_tool(GlobParams(pattern="*.py", directory=outside))
+    assert result.is_error
+    assert "outside the workspace" in result.message
+
+
+async def test_glob_skill_scripts_dir_outside_workspace(
+    runtime: Runtime,
+):
+    """Glob in a skill's scripts/ subdirectory should work once skills_dirs is set.
+
+    Before the fix, searching inside a user-level skill directory
+    (e.g. ~/.claude/skills/my-skill/scripts/*.py) returned
+    "Directory outside workspace".
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        skills_root = KaosPath.unsafe_from_local_path(Path(tmpdir).resolve())
+        scripts_dir = skills_root / "my-skill" / "scripts"
+        await scripts_dir.mkdir(parents=True)
+        await (scripts_dir / "helper.py").write_text("pass")
+
+        # Without skills_dirs → rejected
+        result = await Glob(runtime)(GlobParams(pattern="*.py", directory=str(scripts_dir)))
+        assert result.is_error
+        assert "outside the workspace" in result.message
+
+        # Register the skills root → allowed
+        runtime.skills_dirs.append(skills_root)
+        result = await Glob(runtime)(GlobParams(pattern="*.py", directory=str(scripts_dir)))
+        assert not result.is_error
+        assert "helper.py" in result.output
+
+
+async def test_subagent_shares_skills_dirs(runtime: Runtime):
+    """Subagent runtime should share the same skills_dirs list."""
+    runtime.skills_dirs.append(KaosPath("/fake/skills"))
+    subagent = runtime.copy_for_subagent(agent_id="a-sub", subagent_type="coder")
+    assert subagent.skills_dirs is runtime.skills_dirs
