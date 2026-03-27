@@ -20,6 +20,7 @@ def _get_first_renderable_plain(text):
         return getattr(text.renderables[0], "plain", str(text.renderables[0]))
     return getattr(text, "plain", str(text))
 
+
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
 _LiveView = shell_visualize._LiveView
 _PromptLiveView = shell_visualize._PromptLiveView

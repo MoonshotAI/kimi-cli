@@ -1,11 +1,10 @@
 from kosong.message import Message
 from rich.console import Group
-from rich.text import Text
 
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.ui.shell import Shell
 from kimi_cli.ui.shell.echo import render_user_echo
-from kimi_cli.ui.shell.prompt import PROMPT_SYMBOL, PromptMode, UserInput
+from kimi_cli.ui.shell.prompt import PromptMode, UserInput
 from kimi_cli.utils.slashcmd import SlashCommandCall
 from kimi_cli.wire.types import AudioURLPart, ImageURLPart, TextPart, VideoURLPart
 

@@ -1591,7 +1591,7 @@ class CustomPromptSession:
             self._should_render_input_buffer
         )
         # Apply style class to input buffer
-        if hasattr(buffer_container, 'content') and isinstance(buffer_container.content, Window):
+        if hasattr(buffer_container, "content") and isinstance(buffer_container.content, Window):
             buffer_container.content.style = "class:user-input"
         self._prompt_buffer_container = buffer_container
 

@@ -69,6 +69,7 @@ async def test_build_replay_turns_from_wire_keeps_steer_as_user_turn(tmp_path: P
 def _get_first_renderable_plain(text):
     """Extract plain text from first renderable of a Group, or fallback to str."""
     from rich.console import Group
+
     if isinstance(text, Group) and text.renderables:
         return getattr(text.renderables[0], "plain", str(text.renderables[0]))
     return getattr(text, "plain", str(text))
