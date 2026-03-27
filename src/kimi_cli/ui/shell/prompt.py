@@ -1991,7 +1991,11 @@ class CustomPromptSession:
             )
 
     def _render_bottom_toolbar(self) -> FormattedText:
-        if self._should_show_slash_completion_menu():
+        if (
+            hasattr(self, "_session")
+            and self._should_show_slash_completion_menu()
+            and self._session.default_buffer.complete_state is not None
+        ):
             return FormattedText([])
         app = get_app_or_none()
         assert app is not None
