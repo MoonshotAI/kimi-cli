@@ -524,16 +524,21 @@ async def get_session_file(
         )
 
     if file_path.is_dir():
-        from kimi_cli.utils.file_filter import list_directory_filtered
-
-        result = list_directory_filtered(file_path)
-        # Apply additional sensitive-path filtering when in public mode.
-        if restrict_sensitive_apis:
-            result = [
-                entry
-                for entry in result
-                if not _is_sensitive_relative_path(rel_path / str(entry["name"]))
-            ]
+        result: list[dict[str, str | int]] = []
+        for subpath in file_path.iterdir():
+            if restrict_sensitive_apis:
+                rel_subpath = rel_path / subpath.name
+                if _is_sensitive_relative_path(rel_subpath):
+                    continue
+            if subpath.is_dir():
+                result.append({"name": subpath.name, "type": "directory"})
+            else:
+                try:
+                    size = subpath.stat().st_size
+                except OSError:
+                    size = 0
+                result.append({"name": subpath.name, "type": "file", "size": size})
+        result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
         return Response(content=json.dumps(result), media_type="application/json")
 
     content = file_path.read_bytes()
