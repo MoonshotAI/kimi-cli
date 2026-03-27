@@ -4,6 +4,15 @@
 
 ## 未发布
 
+- CLI：修复 `--print` 模式在出错时退出码为 0 的问题——Print 模式现在对永久性错误（认证失败、配置无效等）返回退出码 1，对可重试错误（429 速率限制、5xx 服务端错误、连接超时）返回退出码 75，使 CI/Eval 运行器能够检测失败并决定是否重试
+- Plan：计划内容现在直接显示在聊天记录中，而非隐藏在翻页器后——计划以带边框的面板形式渲染在对话历史中，并展示计划文件路径供参考
+- Plan：Plan 审批新增 "Reject and Exit" 选项——用户现在可以一步拒绝计划并退出 Plan 模式，除现有的 Approve、Revise 和 Reject 选项外
+- Wire：新增 `PlanDisplay` 事件类型（Wire 1.7）——携带计划内容和文件路径，供客户端内联渲染
+- Shell：流式输出 Markdown 内容——已完成的 Markdown 块（段落、列表、代码块、表格）现在会在流式传输过程中即时渲染并输出到终端，而非缓冲到整个轮次结束后才显示
+- Shell：在 Thinking/Composing 加载动画上显示耗时和估算 Token 数——加载动画现在会显示 `Thinking... 5s · 312 tokens`，计数在生成过程中实时更新
+- Shell：为 Thinking 内容添加滚动预览——模型思考过程的最后 6 行会以灰色斜体实时显示在加载动画下方
+- Shell：将输入区域预留空间从 10 行缩减至 6 行
+
 ## 1.26.0 (2026-03-25)
 
 - Kosong：修复 Google GenAI 提供商在 `FunctionCall`/`FunctionResponse` 中包含 `id` 字段的问题——Gemini API 在包含 `id` 时返回 HTTP 400；从 wire 格式中移除该字段，同时保持内部 `tool_call_id` 跟踪不变
