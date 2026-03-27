@@ -1091,6 +1091,7 @@ class _LiveView:
                     self._current_content_block = _ContentBlock(is_think)
                     self.refresh_soon()
                 self._current_content_block.append(text)
+                self.refresh_soon()
             case _:
                 # TODO: support more content part types
                 pass
