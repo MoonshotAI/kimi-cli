@@ -115,6 +115,9 @@ Only write entries that are worth mentioning to users.
 - Shell: Enhance `Ctrl-V` clipboard paste to support video files in addition to images — video file paths are inserted as text, and a crash when clipboard data is `None` is fixed
 - Core: Pass session ID as `user_id` metadata to Anthropic API
 - Web: Preserve slash commands on WebSocket reconnect and add automatic retry logic for session initialization
+- CLI: Add `--sessions` option to interactively select a session to resume
+- CLI: Add `--list-sessions` option to list all sessions for the working directory
+- Core: Add custom `shorten` function for better CJK text support in session titles and exports
 
 ## 1.17.0 (2026-03-03)
 
