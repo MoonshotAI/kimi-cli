@@ -768,6 +768,7 @@ class _LiveView:
                     | KeyEvent.NUM_3
                     | KeyEvent.NUM_4
                     | KeyEvent.NUM_5
+                    | KeyEvent.NUM_6
                 ):
                     # Number keys select option in question panel
                     num_map = {
@@ -776,6 +777,7 @@ class _LiveView:
                         KeyEvent.NUM_3: 2,
                         KeyEvent.NUM_4: 3,
                         KeyEvent.NUM_5: 4,
+                        KeyEvent.NUM_6: 5,
                     }
                     idx = num_map[event]
                     panel = self._current_question_panel
