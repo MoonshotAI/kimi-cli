@@ -90,7 +90,9 @@ class Glob(CallableTool2[Params]):
             if pattern_error:
                 return pattern_error
 
-            dir_path = KaosPath(params.directory) if params.directory else self._work_dir
+            dir_path = (
+                KaosPath(params.directory).expanduser() if params.directory else self._work_dir
+            )
 
             if not dir_path.is_absolute():
                 return ToolError(

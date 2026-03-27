@@ -150,6 +150,17 @@ async def test_glob_with_relative_path(glob_tool: Glob):
     assert "not an absolute path" in result.message
 
 
+async def test_glob_tilde_path_expanded(glob_tool: Glob):
+    """Test that ~ in directory path is expanded, not rejected as relative."""
+    # ~ points to home dir which is outside workspace, so we expect
+    # "outside the workspace" — NOT "not an absolute path".
+    result = await glob_tool(Params(pattern="*", directory="~/"))
+    assert result.is_error
+    assert "outside the workspace" in result.message
+    # Without expanduser() this would fail with "not an absolute path"
+    assert "not an absolute path" not in result.message
+
+
 async def test_glob_outside_work_directory(glob_tool: Glob):
     """Test glob outside working directory (should fail)."""
     dir = "/tmp/outside" if platform.system() != "Windows" else "C:/tmp/outside"
