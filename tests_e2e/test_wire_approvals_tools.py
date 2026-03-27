@@ -740,6 +740,8 @@ def test_display_block_diff_write_file(tmp_path) -> None:
                         "path": "<work_dir>/file.txt",
                         "old_text": "",
                         "new_text": "hello",
+                        "old_start": 1,
+                        "new_start": 1,
                     }
                 ],
             }
@@ -810,6 +812,8 @@ def test_display_block_diff_str_replace(tmp_path) -> None:
                         "path": "<work_dir>/file.txt",
                         "old_text": "hello",
                         "new_text": "hi",
+                        "old_start": 1,
+                        "new_start": 1,
                     }
                 ],
             }
