@@ -7,6 +7,42 @@ import typer
 cli = typer.Typer(help="Manage MCP server configurations.")
 
 
+def create_oauth(mcp_url: str, scopes: list[str] | None = None) -> Any:
+    """Create an OAuth client with workarounds for upstream fastmcp/MCP SDK bugs.
+
+    Works around three issues:
+    - fastmcp strips the URL path, breaking RFC 8707 resource matching
+    - fastmcp's redirect_handler pre-flight GET misinterprets 400 responses
+    - MCP SDK rejects HTTP 201 on token exchange (e.g. Supabase)
+    """
+    import webbrowser
+
+    import httpx
+    from fastmcp.client.auth.oauth import OAuth
+
+    class _PatchedOAuthClient(OAuth):
+        """OAuth client with workarounds for upstream fastmcp/MCP SDK issues.
+
+        FIXME: Remove once upstream fixes land in fastmcp and mcp SDK.
+        """
+
+        def __init__(self, url: str, **kwargs: Any) -> None:
+            super().__init__(url, **kwargs)
+            self.context.server_url = url
+
+        async def redirect_handler(self, authorization_url: str) -> None:
+            # Skip pre-flight GET that misinterprets 400 as "client not found"
+            webbrowser.open(authorization_url)
+
+        async def _handle_token_response(self, response: httpx.Response) -> None:
+            # Accept 200 and 201 for token exchange (Supabase returns 201)
+            if response.status_code in (200, 201):
+                response.status_code = 200
+            await super()._handle_token_response(response)
+
+    return _PatchedOAuthClient(mcp_url, scopes=scopes)
+
+
 def get_global_mcp_config_file() -> Path:
     """Get the global MCP config file path."""
     from kimi_cli.share import get_share_dir
@@ -91,6 +127,10 @@ Transport = Literal["stdio", "http"]
       # Add streamable HTTP server with OAuth authorization:\n
       kimi mcp add --transport http --auth oauth linear https://mcp.linear.app/mcp\n
       \n
+      # Add OAuth server with specific scopes (e.g., Supabase):\n
+      kimi mcp add --transport http --auth oauth supabase https://mcp.supabase.com/mcp \\\n
+        --scope "organizations:read" --scope "projects:read" --scope "database:read"\n
+      \n
       # Add stdio server:\n
       kimi mcp add --transport stdio chrome-devtools -- npx chrome-devtools-mcp@latest
     """.strip(),  # noqa: E501
@@ -139,6 +179,14 @@ def mcp_add(
             help="Authorization type (e.g., 'oauth').",
         ),
     ] = None,
+    scope: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scope",
+            "-s",
+            help="OAuth scope to request. Can be specified multiple times.",
+        ),
+    ] = None,
 ):
     """Add an MCP server."""
     config = _load_mcp_config()
@@ -160,6 +208,9 @@ def mcp_add(
             raise typer.Exit(code=1)
         if auth:
             typer.echo("--auth is only valid for http transport.", err=True)
+            raise typer.Exit(code=1)
+        if scope:
+            typer.echo("--scope is only valid for http transport.", err=True)
             raise typer.Exit(code=1)
         command, *command_args = server_args
         server_config: dict[str, Any] = {"command": command, "args": command_args}
@@ -185,6 +236,11 @@ def mcp_add(
             )
         if auth:
             server_config["auth"] = auth
+        if scope:
+            if auth != "oauth":
+                typer.echo("--scope is only valid with --auth oauth.", err=True)
+                raise typer.Exit(code=1)
+            server_config["scopes"] = scope
 
     if "mcpServers" not in config:
         config["mcpServers"] = {}
@@ -247,6 +303,8 @@ def mcp_list():
             if transport == "streamable-http":
                 transport = "http"
             line = f"{name} ({transport}): {server['url']}"
+            if server.get("scopes") and server.get("auth") == "oauth":
+                line += f" [scopes: {', '.join(server['scopes'])}]"
             if server.get("auth") == "oauth" and not _has_oauth_tokens(server["url"]):
                 line += " [authorization required - run: kimi mcp auth " + name + "]"
         else:
@@ -271,11 +329,20 @@ def mcp_auth(
 
     async def _auth() -> None:
         import fastmcp
+        from fastmcp.client.transports import SSETransport, StreamableHttpTransport
 
         typer.echo(f"Authorizing with '{name}'...")
         typer.echo("A browser window will open for authorization.")
 
-        client = fastmcp.Client({"mcpServers": {name: server}})
+        url = server["url"]
+        scopes = server.get("scopes")
+        headers = server.get("headers", {})
+        transport_type = server.get("transport", "http")
+        transport_cls = SSETransport if transport_type == "sse" else StreamableHttpTransport
+        auth = create_oauth(url, scopes=scopes)
+        transport = transport_cls(url, headers=headers, auth=auth)
+
+        client = fastmcp.Client(transport)
         try:
             async with client:
                 tools = await client.list_tools()
