@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix crash when working directory is removed during session — instead of flooding the terminal with OSError tracebacks, the shell now exits cleanly with a crash report showing the session ID and working directory path, allowing users to restart in a valid directory
+
 ## 1.27.0 (2026-03-28)
 
 - Shell: Add `/feedback` command — submit feedback directly from the CLI session; the command falls back to opening GitHub Issues on network errors or timeouts
