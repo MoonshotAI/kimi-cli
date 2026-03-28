@@ -81,6 +81,10 @@ PROMPT_SYMBOL_THINKING = "💫"
 PROMPT_SYMBOL_PLAN = "📋"
 
 
+class CwdLostError(OSError):
+    """Raised when the working directory no longer exists (e.g. external drive unplugged)."""
+
+
 class SlashCommandCompleter(Completer):
     """
     A completer that:
@@ -2078,7 +2082,15 @@ class CustomPromptSession:
 
         # CWD (truncated from left) + git branch with status badge
         # Degrade gracefully on narrow terminals: full → cwd-only → truncated cwd → skip
-        cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+        try:
+            cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+        except OSError:
+            # CWD no longer exists (e.g. external drive unplugged).  Ask
+            # prompt_toolkit to exit; the raised exception will propagate out
+            # of prompt_async() into the Shell's event router which prints a
+            # crash report with session info and exits cleanly.
+            app.exit(exception=CwdLostError())
+            return FormattedText([])
         branch = _get_git_branch()
         if branch:
             dirty, ahead, behind = _get_git_status()
