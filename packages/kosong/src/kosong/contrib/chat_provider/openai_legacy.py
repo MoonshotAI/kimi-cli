@@ -126,6 +126,17 @@ class OpenAILegacy:
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
 
+        # Some providers (e.g. One API) return reasoning_content by default
+        # and then require reasoning_effort on follow-up requests when the
+        # history already contains reasoning content.  When the user hasn't
+        # explicitly set reasoning_effort but the conversation already has
+        # ThinkParts, auto-enable it so the request stays valid.
+        reasoning_effort: ReasoningEffort | Omit = self._reasoning_effort
+        if isinstance(reasoning_effort, Omit) and any(
+            isinstance(part, ThinkPart) for msg in history for part in msg.content
+        ):
+            reasoning_effort = "high"
+
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -133,7 +144,7 @@ class OpenAILegacy:
                 tools=(tool_to_openai(tool) for tool in tools),
                 stream=self.stream,
                 stream_options={"include_usage": True} if self.stream else omit,
-                reasoning_effort=self._reasoning_effort,
+                reasoning_effort=reasoning_effort,
                 **generation_kwargs,
             )
             return OpenAILegacyStreamedMessage(response, self._reasoning_key)

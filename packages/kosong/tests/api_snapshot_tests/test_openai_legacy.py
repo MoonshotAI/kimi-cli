@@ -306,3 +306,36 @@ async def test_openai_legacy_with_thinking():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["reasoning_effort"] == snapshot("high")
+
+
+async def test_openai_legacy_auto_reasoning_effort_from_history():
+    """When history already has ThinkPart but reasoning_effort is not
+    explicitly set, it should be auto-enabled so providers that require
+    reasoning_effort alongside reasoning_content don't reject the request."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        # No with_thinking() — reasoning_effort is omit by default
+        provider = OpenAILegacy(
+            model="kimi-k2.5",
+            api_key="test-key",
+            stream=False,
+            reasoning_key="reasoning_content",
+        )
+        history = [
+            Message(role="user", content="What is 2+2?"),
+            Message(
+                role="assistant",
+                content=[ThinkPart(think="Let me think..."), TextPart(text="4.")],
+            ),
+            Message(role="user", content="And 3+3?"),
+        ]
+        stream = await provider.generate("", [], history)
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        # reasoning_effort should be auto-set because history has ThinkPart
+        assert body["reasoning_effort"] == snapshot("high")
+        # reasoning_content should still be in the assistant message
+        assert body["messages"][1]["reasoning_content"] == snapshot("Let me think...")
