@@ -26,7 +26,7 @@ Alias: `/release-notes`
 
 ### `/feedback`
 
-Open the GitHub Issues page to submit feedback.
+Submit feedback to help improve Kimi Code CLI. You will be prompted to enter your feedback and submit it. If the network request fails or times out, the command automatically falls back to opening the GitHub Issues page.
 
 ## Account and configuration
 

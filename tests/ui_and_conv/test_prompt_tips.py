@@ -140,6 +140,7 @@ def test_build_toolbar_tips_without_clipboard() -> None:
         "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
+        "/feedback: send feedback",
         "@: mention files",
     ]
 
@@ -150,6 +151,7 @@ def test_build_toolbar_tips_with_clipboard() -> None:
         "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
+        "/feedback: send feedback",
         "ctrl-v: paste clipboard",
         "@: mention files",
     ]

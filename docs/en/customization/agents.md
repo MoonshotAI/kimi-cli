@@ -235,7 +235,7 @@ When `run_in_background=true`, the command is launched as a background task and 
 ### `Glob`
 
 - **Path**: `kimi_cli.tools.file:Glob`
-- **Description**: Match files and directories by pattern. Returns max 1000 matches, patterns starting with `**` not allowed.
+- **Description**: Match files and directories by pattern. Returns max 1000 matches, patterns starting with `**` not allowed. Can also search within discovered skill roots, and `~` in paths is expanded to the user's home directory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
