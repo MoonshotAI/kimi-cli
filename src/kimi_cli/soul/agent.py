@@ -116,7 +116,7 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
-        extra_skills_dirs: list[KaosPath] | None = None,
+        skills_dir_override: KaosPath | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
@@ -125,10 +125,7 @@ class Runtime:
         )
 
         # Discover and format skills
-        skills_roots = await resolve_skills_roots(
-            session.work_dir,
-            extra_skills_dirs=extra_skills_dirs,
-        )
+        skills_roots = await resolve_skills_roots(session.work_dir, skills_dir_override=skills_dir_override)
         # Canonicalize so symlinked skill directories match resolved paths
         skills_roots_canonical = [r.canonical() for r in skills_roots]
         skills = await discover_skills_from_roots(skills_roots)
