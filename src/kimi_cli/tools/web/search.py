@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import override
 
+import aiohttp
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field, ValidationError
 
@@ -65,44 +66,53 @@ class SearchWeb(CallableTool2[Params]):
         tool_call = get_current_tool_call_or_none()
         assert tool_call is not None, "Tool call is expected to be set"
 
-        async with (
-            new_client_session() as session,
-            session.post(
-                self._base_url,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Authorization": f"Bearer {api_key}",
-                    "X-Msh-Tool-Call-Id": tool_call.id,
-                    **self._runtime.oauth.common_headers(),
-                    **self._custom_headers,
-                },
-                json={
-                    "text_query": params.query,
-                    "limit": params.limit,
-                    "enable_page_crawling": params.include_content,
-                    "timeout_seconds": 30,
-                },
-            ) as response,
-        ):
-            if response.status != 200:
-                return builder.error(
-                    (
-                        f"Failed to search. Status: {response.status}. "
-                        "This may indicates that the search service is currently unavailable."
-                    ),
-                    brief="Failed to search",
-                )
+        try:
+            async with (
+                new_client_session() as session,
+                session.post(
+                    self._base_url,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Authorization": f"Bearer {api_key}",
+                        "X-Msh-Tool-Call-Id": tool_call.id,
+                        **self._runtime.oauth.common_headers(),
+                        **self._custom_headers,
+                    },
+                    json={
+                        "text_query": params.query,
+                        "limit": params.limit,
+                        "enable_page_crawling": params.include_content,
+                        "timeout_seconds": 30,
+                    },
+                ) as response,
+            ):
+                if response.status != 200:
+                    return builder.error(
+                        (
+                            f"Failed to search. Status: {response.status}. "
+                            "This may indicate that the search service is currently unavailable."
+                        ),
+                        brief="Failed to search",
+                    )
 
-            try:
-                results = Response(**await response.json()).search_results
-            except ValidationError as e:
-                return builder.error(
-                    (
-                        f"Failed to parse search results. Error: {e}. "
-                        "This may indicates that the search service is currently unavailable."
-                    ),
-                    brief="Failed to parse search results",
-                )
+                try:
+                    results = Response(**await response.json()).search_results
+                except ValidationError as e:
+                    return builder.error(
+                        (
+                            f"Failed to parse search results. Error: {e}. "
+                            "This may indicate that the search service is currently unavailable."
+                        ),
+                        brief="Failed to parse search results",
+                    )
+        except aiohttp.ClientError as e:
+            return builder.error(
+                (
+                    f"Failed to search due to network error: {e}. "
+                    "This may indicate the search service is unreachable."
+                ),
+                brief="Network error",
+            )
 
         for i, result in enumerate(results):
             if i > 0:
