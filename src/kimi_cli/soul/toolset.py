@@ -372,20 +372,11 @@ class KimiToolset:
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
                     oauth_servers[server_name] = server_config.url
 
-                scopes = (
-                    getattr(server_config, "scopes", None)
-                    if isinstance(server_config, RemoteMCPServer)
-                    else None
-                )
-                if (
-                    isinstance(server_config, RemoteMCPServer)
-                    and server_config.auth == "oauth"
-                    and scopes
-                ):
                     from fastmcp.client.transports import SSETransport, StreamableHttpTransport
 
-                    from kimi_cli.cli.mcp import create_oauth
+                    from kimi_cli.oauth import create_oauth
 
+                    scopes = getattr(server_config, "scopes", None)
                     transport_cls = (
                         SSETransport
                         if server_config.transport == "sse"
