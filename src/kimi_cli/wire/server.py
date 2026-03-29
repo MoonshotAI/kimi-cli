@@ -79,6 +79,8 @@ class WireServer:
         # soul running stuffs
         self._soul = soul
         self._cancel_event: asyncio.Event | None = None
+        self._turn_active: bool = False
+        """True only while the soul is actively running a turn (between run_soul start and return)."""
         self._pending_requests: dict[str, Request] = {}
         """Maps JSON RPC message IDs to pending `Request`s."""
         self._client_supports_question: bool = False
@@ -540,6 +542,7 @@ class WireServer:
             )
 
         self._cancel_event = asyncio.Event()
+        self._turn_active = True
         try:
             runtime = self._soul.runtime if isinstance(self._soul, KimiSoul) else None
             await run_soul(
@@ -580,6 +583,9 @@ class WireServer:
                 result={"status": Statuses.CANCELLED},
             )
         finally:
+            # Mark the turn as inactive immediately so concurrent steer/cancel
+            # handlers see the correct state before _cancel_event is cleared.
+            self._turn_active = False
             # Clean up any remaining pending requests from this turn.
             # After run_soul() returns, the soul and all subagents are done,
             # so any unresolved requests are stale.
@@ -609,7 +615,7 @@ class WireServer:
     async def _handle_steer(
         self, msg: JSONRPCSteerMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
-        if not isinstance(self._soul, KimiSoul) or not self._is_streaming:
+        if not isinstance(self._soul, KimiSoul) or not self._turn_active:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(

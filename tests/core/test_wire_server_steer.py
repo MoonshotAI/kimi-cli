@@ -66,6 +66,7 @@ async def test_handle_steer_queues_input_when_streaming(
 
     monkeypatch.setattr(soul, "steer", lambda user_input: queued.append(user_input))
     server._cancel_event = asyncio.Event()
+    server._turn_active = True
 
     response = await server._handle_steer(
         JSONRPCSteerMessage(
@@ -77,6 +78,31 @@ async def test_handle_steer_queues_input_when_streaming(
     assert isinstance(response, JSONRPCSuccessResponse)
     assert response.result == {"status": Statuses.STEERED}
     assert queued == [[TextPart(text="follow-up")]]
+
+
+@pytest.mark.asyncio
+async def test_handle_steer_rejects_after_turn_ends(
+    runtime: Runtime,
+    tmp_path: Path,
+) -> None:
+    """Steer sent after run_soul() returns but before _cancel_event is cleared should be rejected."""
+    soul = _make_soul(runtime, tmp_path)
+    server = WireServer(soul)
+
+    # Simulate the state after run_soul() returns but before finally cleanup:
+    # _cancel_event is still set (not yet None), but _turn_active is False.
+    server._cancel_event = asyncio.Event()
+    server._turn_active = False
+
+    response = await server._handle_steer(
+        JSONRPCSteerMessage(
+            id="1",
+            params=JSONRPCSteerMessage.Params(user_input=[TextPart(text="too late")]),
+        )
+    )
+
+    assert isinstance(response, JSONRPCErrorResponse)
+    assert response.error.code == ErrorCodes.INVALID_STATE
 
 
 @pytest.mark.asyncio
