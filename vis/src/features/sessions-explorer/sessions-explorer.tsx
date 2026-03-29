@@ -1,4 +1,4 @@
-import { type UIEvent, useEffect, useMemo, useState } from "react";
+import { type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionInfo, importSession, listSessions } from "@/lib/api";
 import {
   ExplorerToolbar,
@@ -37,6 +37,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [importing, setImporting] = useState(false);
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Reset display count when filters change
   useEffect(() => {
@@ -127,6 +128,15 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     }
     return arr;
   }, [filtered, sortMode]);
+
+  // Auto-expand when content doesn't fill the container (no scrollbar → onScroll never fires)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || displayCount >= sorted.length) return;
+    if (el.scrollHeight <= el.clientHeight) {
+      setDisplayCount((prev) => Math.min(prev + PAGE_SIZE, sorted.length));
+    }
+  }, [displayCount, sorted.length]);
 
   const groups = useMemo((): ProjectGroupData[] => {
     if (!grouped) return [];
@@ -239,7 +249,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
         importing={importing}
       />
 
-      <div className="flex-1 overflow-auto p-4" onScroll={handleScroll}>
+      <div ref={scrollRef} className="flex-1 overflow-auto p-4" onScroll={handleScroll}>
         {grouped ? (
           displayedGroups.map((g) => (
             <ProjectGroup
