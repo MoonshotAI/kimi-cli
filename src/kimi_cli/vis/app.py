@@ -112,6 +112,49 @@ def _print_banner(lines: list[str]) -> None:
     print(top)
 
 
+def _is_local_host(host: str) -> bool:
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
+def _get_network_addresses() -> list[str]:
+    """Get non-loopback IPv4 addresses for this machine."""
+    import importlib
+
+    addresses: list[str] = []
+
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if isinstance(ip, str) and not ip.startswith("127.") and ip not in addresses:
+                addresses.append(ip)
+    except OSError:
+        pass
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        if ip and not ip.startswith("127.") and ip not in addresses:
+            addresses.append(ip)
+    except OSError:
+        pass
+
+    try:
+        netifaces = importlib.import_module("netifaces")
+        for interface in netifaces.interfaces():
+            addrs = netifaces.ifaddresses(interface)
+            if netifaces.AF_INET in addrs:
+                for addr_info in addrs[netifaces.AF_INET]:
+                    addr = addr_info.get("addr")
+                    if addr and not addr.startswith("127.") and addr not in addresses:
+                        addresses.append(addr)
+    except (ImportError, Exception):
+        pass
+
+    return addresses
+
+
 def run_vis_server(
     host: str = "127.0.0.1",
     port: int = DEFAULT_PORT,
@@ -127,7 +170,21 @@ def run_vis_server(
     if actual_port != port:
         print(f"\nPort {port} is in use, using port {actual_port} instead")
 
-    url = f"http://{host}:{actual_port}"
+    public_mode = not _is_local_host(host)
+
+    # Build display hosts (same logic as kimi web)
+    display_hosts: list[tuple[str, str]] = []
+    if host == "0.0.0.0":
+        display_hosts.append(("Local", "localhost"))
+        for addr in _get_network_addresses():
+            display_hosts.append(("Network", addr))
+    else:
+        label = "Local" if _is_local_host(host) else "Network"
+        display_hosts.append((label, host))
+
+    # Browser should open localhost
+    browser_host = "localhost" if host == "0.0.0.0" else host
+    browser_url = f"http://{browser_host}:{actual_port}"
 
     banner_lines = [
         "<center>██╗  ██╗██╗███╗   ███╗██╗    ██╗   ██╗██╗███████╗",
@@ -141,14 +198,31 @@ def run_vis_server(
         "",
         "<hr>",
         "",
-        f"<nowrap>  ➜  Local    {url}",
-        "",
-        "<hr>",
-        "",
-        "<nowrap>  This feature is in Technical Preview and may be unstable.",
-        "<nowrap>  Please report issues to the kimi-cli team.",
-        "",
     ]
+
+    for label, host_addr in display_hosts:
+        banner_lines.append(f"<nowrap>  ➜  {label:8} http://{host_addr}:{actual_port}")
+
+    banner_lines.append("")
+    banner_lines.append("<hr>")
+    banner_lines.append("")
+
+    if not public_mode:
+        banner_lines.extend(
+            [
+                "<nowrap>  Tips:",
+                "<nowrap>    • Use -n / --network to share on LAN",
+                "",
+            ]
+        )
+    else:
+        banner_lines.extend(
+            [
+                "<nowrap>  This feature is in Technical Preview and may be unstable.",
+                "<nowrap>  Please report issues to the kimi-cli team.",
+                "",
+            ]
+        )
 
     _print_banner(banner_lines)
 
@@ -158,7 +232,7 @@ def run_vis_server(
             import time
 
             time.sleep(1.5)
-            webbrowser.open(url)
+            webbrowser.open(browser_url)
 
         thread = threading.Thread(target=open_browser_after_delay, daemon=True)
         thread.start()

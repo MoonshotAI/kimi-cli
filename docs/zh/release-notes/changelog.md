@@ -4,6 +4,18 @@
 
 ## 未发布
 
+- Vis：新增 `--network / -n` 启动参数——在所有网络接口上启动可视化工具并自动探测和显示 LAN IP 地址，与 `kimi web` 行为一致
+- Vis：新增 `/vis` 斜杠命令——在交互式 Shell 中一步切换到 Tracing 可视化工具，与现有 `/web` 命令对称
+- Vis：改进会话列表性能——后端异步扫描、请求并发限制、无限滚动分页，防止大量会话时浏览器卡顿
+- Vis：补齐 7 个缺失的 Wire 事件类型——`SteerInput`、`MCPLoadingBegin/End`、`Notification`、`PlanDisplay`、`ToolCallRequest` 和 `QuestionRequest` 现在以正确的颜色和摘要显示
+- Vis：StatusUpdate 显示 Token 和缓存详情——每个状态更新现在显示上下文 Token 数、最大 Token 数、输入 Token 分解及缓存命中率、MCP 连接状态
+- Vis：工具调用显示结构化摘要——`ReadFile`、`Shell`、`Glob`、`Grep`、`Agent` 等工具调用直接在行内显示文件路径、命令或搜索模式，而非仅显示函数名
+- Vis：Context Messages 新增 System Prompt 卡片——`_system_prompt` 条目以专用蓝色卡片渲染，显示估算的 Token 数并支持展开查看完整内容
+- Vis：会话头部显示缓存命中率——统计栏现在在 Token 数旁显示整体缓存效率（如 `89% cache`）
+- Vis：高亮慢操作——时间间隔超过 10 秒以琥珀色显示，超过 60 秒以红色显示，使性能瓶颈一目了然
+- Vis：ToolResult 摘要优先显示人类可读的 `message` 字段——结果现在显示如 "Command executed successfully" 等描述性文本，而非原始输出
+- Vis：显示审批拒绝反馈——`ApprovalResponse` 摘要在工具调用被拒绝时包含用户的修正文本
+
 ## 1.27.0 (2026-03-28)
 
 - Shell：新增 `/feedback` 命令——可直接在 CLI 会话中提交反馈，网络错误或超时时自动回退到打开 GitHub Issues 页面

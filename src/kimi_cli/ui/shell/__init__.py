@@ -544,7 +544,7 @@ class Shell:
             remove_sigint()
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
-        from kimi_cli.cli import Reload, SwitchToWeb
+        from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
@@ -570,7 +570,7 @@ class Shell:
             ret = command.func(self, command_call.args)
             if isinstance(ret, Awaitable):
                 await ret
-        except (Reload, SwitchToWeb):
+        except (Reload, SwitchToWeb, SwitchToVis):
             # just propagate
             raise
         except (asyncio.CancelledError, KeyboardInterrupt):
