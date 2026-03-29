@@ -59,11 +59,17 @@ def create_app() -> FastAPI:
     return application
 
 
+def _get_address_family(host: str) -> socket.AddressFamily:
+    """Return AF_INET6 for IPv6 addresses, AF_INET otherwise."""
+    return socket.AF_INET6 if ":" in host else socket.AF_INET
+
+
 def find_available_port(host: str, start_port: int, max_attempts: int = MAX_PORT_ATTEMPTS) -> int:
     """Find an available port starting from start_port."""
+    family = _get_address_family(host)
     for offset in range(max_attempts):
         port = start_port + offset
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        with socket.socket(family, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((host, port))

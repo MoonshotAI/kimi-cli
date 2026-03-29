@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { type UIEvent, useEffect, useMemo, useState } from "react";
 import { type SessionInfo, importSession, listSessions } from "@/lib/api";
-
-const PAGE_SIZE = 30;
 import {
   ExplorerToolbar,
   type FilterMode,
@@ -10,6 +8,8 @@ import {
 } from "./explorer-toolbar";
 import { ProjectGroup } from "./project-group";
 import { SessionCard } from "./session-card";
+
+const PAGE_SIZE = 30;
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -158,7 +158,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
   );
 
   // Infinite scroll handler — called via React onScroll prop
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     // Guard: don't increment if we're already showing everything
     if (displayCount >= sorted.length) return;
     const el = e.currentTarget;

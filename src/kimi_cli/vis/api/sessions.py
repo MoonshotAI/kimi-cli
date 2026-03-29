@@ -119,10 +119,9 @@ def _extract_title_from_wire(wire_path: Path, max_bytes: int = 8192) -> tuple[st
                             first = user_input[0]
                             if isinstance(first, dict):
                                 title = str(first.get("text", ""))[:100]
-                # After extracting the first turn's title, stop reading to save time.
-                # We only need the title from the first TurnBegin; counting all turns
-                # is deferred to the summary endpoint.
-                if turn_count >= 1 and bytes_read > max_bytes:
+                # Stop once we exceed the byte budget — title is extracted from
+                # the first TurnBegin so this is a hard upper bound on I/O.
+                if bytes_read > max_bytes:
                     break
     except Exception:
         pass
@@ -171,17 +170,15 @@ def _scan_session_dir(
         with contextlib.suppress(Exception):
             metadata_info = json.loads(metadata_path.read_text(encoding="utf-8"))
 
-    # Use metadata title when available; only fall back to wire.jsonl parsing
+    # Always extract turn_count from wire.jsonl (cheap — bounded by max_bytes).
+    # Use metadata title if available, falling back to the wire-extracted one.
     title = ""
     turn_count = 0
+    if wire_exists:
+        title, turn_count = _extract_title_from_wire(wire_path)
     metadata_title = (metadata_info or {}).get("title", "")
     if metadata_title and metadata_title != "Untitled Session":
         title = metadata_title
-        # Still need turn_count — but skip the expensive wire parse for listing.
-        # Turn count will be available via the /summary endpoint when needed.
-        turn_count = 0
-    elif wire_exists:
-        title, turn_count = _extract_title_from_wire(wire_path)
 
     # Count sub-agents
     subagent_count = 0
