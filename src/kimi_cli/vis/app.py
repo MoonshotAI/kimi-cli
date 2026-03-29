@@ -24,10 +24,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 GZIP_MINIMUM_SIZE = 1024
 GZIP_COMPRESSION_LEVEL = 6
 DEFAULT_PORT = 5495
+_ENV_RESTRICT_OPEN_IN = "KIMI_VIS_RESTRICT_OPEN_IN"
 
 
 def create_app() -> FastAPI:
     """Create the FastAPI application for the tracing visualizer."""
+    import os
+
+    restrict_open_in = os.environ.get(_ENV_RESTRICT_OPEN_IN, "").strip().lower() in {
+        "1",
+        "true",
+    }
+
     application = FastAPI(
         title="Kimi Agent Tracing Visualizer",
         docs_url=None,
@@ -51,7 +59,8 @@ def create_app() -> FastAPI:
     application.include_router(sessions_router)
     application.include_router(statistics_router)
     application.include_router(system_router)
-    application.include_router(open_in_router)
+    if not restrict_open_in:
+        application.include_router(open_in_router)
 
     @application.get("/healthz")
     async def health_probe() -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
@@ -70,6 +79,7 @@ def run_vis_server(
     open_browser: bool = True,
 ) -> None:
     """Run the visualizer web server."""
+    import os
     import threading
     import webbrowser
 
@@ -80,6 +90,9 @@ def run_vis_server(
         print(f"\nPort {port} is in use, using port {actual_port} instead")
 
     public_mode = not is_local_host(host)
+
+    # Disable open-in API when exposed to the network (security)
+    os.environ[_ENV_RESTRICT_OPEN_IN] = "1" if public_mode else "0"
 
     # Build display hosts (same logic as kimi web)
     display_hosts: list[tuple[str, str]] = []
