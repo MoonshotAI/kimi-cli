@@ -190,7 +190,7 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_extra_dirs_override_discovery(tmp_path, monkeypatch):
+async def test_resolve_skills_roots_skills_dirs_override_discovery(tmp_path, monkeypatch):
     """Extra dirs override user/project discovery, not append to them."""
     home_dir = tmp_path / "home"
     user_dir = home_dir / ".config" / "agents" / "skills"
@@ -210,7 +210,7 @@ async def test_resolve_skills_roots_extra_dirs_override_discovery(tmp_path, monk
 
     roots = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(work_dir),
-        extra_skills_dirs=[
+        skills_dirs=[
             KaosPath.unsafe_from_local_path(extra_a),
             KaosPath.unsafe_from_local_path(extra_b),
         ],
@@ -225,17 +225,17 @@ async def test_resolve_skills_roots_extra_dirs_override_discovery(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_empty_extra_dirs(tmp_path, monkeypatch):
-    """Empty extra_skills_dirs behaves same as None."""
+async def test_resolve_skills_roots_empty_skills_dirs(tmp_path, monkeypatch):
+    """Empty skills_dirs behaves same as None."""
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
     roots_none = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(tmp_path),
-        extra_skills_dirs=None,
+        skills_dirs=None,
     )
     roots_empty = await resolve_skills_roots(
         KaosPath.unsafe_from_local_path(tmp_path),
-        extra_skills_dirs=[],
+        skills_dirs=[],
     )
 
     assert roots_none == roots_empty
