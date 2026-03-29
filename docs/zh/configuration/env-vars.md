@@ -108,6 +108,33 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_API_KEY="sk-xxx"
 ```
 
+## 网络代理
+
+以下环境变量用于配置 HTTP/HTTPS 代理，在有网络限制的环境中使用：
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `HTTPS_PROXY` / `https_proxy` | HTTPS 代理 URL |
+| `HTTP_PROXY` / `http_proxy` | HTTP 代理 URL |
+
+### `HTTPS_PROXY` / `HTTP_PROXY`
+
+设置代理服务器地址，用于所有 HTTP/HTTPS 请求。支持 `http://` 和 `https://` 协议的代理地址。
+
+```sh
+export HTTPS_PROXY="http://proxy.example.com:8080"
+export HTTP_PROXY="http://proxy.example.com:8080"
+```
+
+::: tip 提示
+- 环境变量名称不区分大小写，同时支持 `HTTPS_PROXY` 和 `https_proxy`
+- 如果同时设置了 `HTTPS_PROXY` 和 `HTTP_PROXY`，`HTTPS_PROXY` 优先用于 HTTPS 请求
+:::
+
+::: info 新增
+新增于 1.23 版本。
+:::
+
 ## 其他环境变量
 
 | 环境变量 | 说明 |

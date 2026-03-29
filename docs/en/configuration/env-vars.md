@@ -108,6 +108,33 @@ Overrides the provider's `api_key` field in the configuration file.
 export OPENAI_API_KEY="sk-xxx"
 ```
 
+## Network proxy
+
+The following environment variables are used to configure HTTP/HTTPS proxies for use in network-restricted environments:
+
+| Environment Variable | Description |
+| --- | --- |
+| `HTTPS_PROXY` / `https_proxy` | HTTPS proxy URL |
+| `HTTP_PROXY` / `http_proxy` | HTTP proxy URL |
+
+### `HTTPS_PROXY` / `HTTP_PROXY`
+
+Sets the proxy server address for all HTTP/HTTPS requests. Supports proxy addresses with `http://` and `https://` protocols.
+
+```sh
+export HTTPS_PROXY="http://proxy.example.com:8080"
+export HTTP_PROXY="http://proxy.example.com:8080"
+```
+
+::: tip
+- Environment variable names are case-insensitive; both `HTTPS_PROXY` and `https_proxy` are supported
+- If both `HTTPS_PROXY` and `HTTP_PROXY` are set, `HTTPS_PROXY` takes precedence for HTTPS requests
+:::
+
+::: info Added
+Added in version 1.23.
+:::
+
 ## Other environment variables
 
 | Environment Variable | Description |
