@@ -190,7 +190,7 @@ async def test_resolve_skills_roots_uses_layers(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_extra_dirs_override_discovery(tmp_path, monkeypatch):
+async def test_resolve_skills_roots_skills_dirs_override_discovery(tmp_path, monkeypatch):
     """Extra dirs override user/project discovery, not append to them."""
     home_dir = tmp_path / "home"
     user_dir = home_dir / ".config" / "agents" / "skills"
@@ -225,7 +225,7 @@ async def test_resolve_skills_roots_extra_dirs_override_discovery(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_resolve_skills_roots_empty_extra_dirs(tmp_path, monkeypatch):
+async def test_resolve_skills_roots_empty_skills_dirs(tmp_path, monkeypatch):
     """Empty skills_dirs behaves same as None."""
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
