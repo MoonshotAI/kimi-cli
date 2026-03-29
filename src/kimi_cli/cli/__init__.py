@@ -287,7 +287,7 @@ def kimi(
             file_okay=False,
             dir_okay=True,
             readable=True,
-            help="Additional skills directories (repeatable). Appended to default discovery.",
+            help="Custom skills directories (repeatable). Overrides default discovery.",
         ),
     ] = None,
     # Loop control
