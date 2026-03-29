@@ -85,13 +85,13 @@ async def find_project_skills_dir(work_dir: KaosPath) -> KaosPath | None:
 async def resolve_skills_roots(
     work_dir: KaosPath,
     *,
-    extra_skills_dirs: Sequence[KaosPath] | None = None,
+    skills_dirs: Sequence[KaosPath] | None = None,
 ) -> list[KaosPath]:
     """
     Resolve layered skill roots in priority order.
 
     Built-in skills load first when supported by the active KAOS backend.
-    When extra directories are provided via ``--skills-dir``, they **override**
+    When custom directories are provided via ``--skills-dir``, they **override**
     user/project discovery.  Plugins are always discoverable.
     """
     from kimi_cli.plugin.manager import get_plugins_dir
@@ -99,8 +99,8 @@ async def resolve_skills_roots(
     roots: list[KaosPath] = []
     if _supports_builtin_skills():
         roots.append(KaosPath.unsafe_from_local_path(get_builtin_skills_dir()))
-    if extra_skills_dirs:
-        roots.extend(extra_skills_dirs)
+    if skills_dirs:
+        roots.extend(skills_dirs)
     else:
         if user_dir := await find_user_skills_dir():
             roots.append(user_dir)
