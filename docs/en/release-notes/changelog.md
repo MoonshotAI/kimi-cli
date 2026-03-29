@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
 - Vis: Add `--network / -n` flag — launch the visualizer on all network interfaces with auto-detected LAN IP display, matching `kimi web` behavior
 - Vis: Add `/vis` slash command — switch from the interactive shell to the tracing visualizer in one step, mirroring the existing `/web` command
 - Vis: Improve session list performance — async backend scanning, request concurrency limiting, and infinite-scroll pagination prevent browser freezes on large session stores
