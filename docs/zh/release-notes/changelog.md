@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- ACP：修复通过 `kimi-code` 或 `kimi-cli` 入口启动 ACP 时 `ValueError: list.index(x): x not in list` 崩溃的问题（如 JetBrains AI Assistant 场景）
 - Core：修复压缩前上下文溢出问题——工具结果的 Token 数现在会被估算并纳入自动压缩触发检查，防止大量工具输出在 API 调用间隙将上下文推超模型限制时出现"exceeded model token limit"错误
 - Core：新增 hooks 系统（Beta）——在 `config.toml` 中配置 `[[hooks]]`，可在 13 个生命周期事件（包括 `PreToolUse`、`PostToolUse`、`SessionStart`、`Stop` 等）运行自定义 shell 命令；支持正则匹配、超时处理和通过退出码 2 阻塞操作
 - Shell：新增 `/hooks` 命令——列出所有已配置的 hooks 及其事件计数
