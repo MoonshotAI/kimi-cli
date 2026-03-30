@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Fix context overflow before compaction — tool result tokens are now estimated and included in the auto-compaction trigger check, preventing "exceeded model token limit" errors when large tool outputs push the context beyond the model limit between API calls
 - CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
 - Web: The "Open" button in the workspace header now remembers the last-used application — clicking "Open" directly opens with the previous choice, while the dropdown arrow lets you pick a different app
 - Vis: Add `--network / -n` flag — launch the visualizer on all network interfaces with auto-detected LAN IP display, matching `kimi web` behavior
