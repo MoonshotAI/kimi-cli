@@ -202,6 +202,7 @@ class BackgroundTaskManager:
         description: str,
         tool_call_id: str,
         model_override: str | None,
+        timeout_s: int | None = None,
     ) -> TaskView:
         from .agent_runner import BackgroundAgentRunner
 
@@ -233,6 +234,7 @@ class BackgroundTaskManager:
         runtime.status = "starting"
         runtime.updated_at = time.time()
         self._store.write_runtime(task_id, runtime)
+        effective_timeout = timeout_s or self._config.agent_task_timeout_s
         task = asyncio.create_task(
             BackgroundAgentRunner(
                 runtime=self._runtime,
@@ -242,6 +244,7 @@ class BackgroundTaskManager:
                 subagent_type=subagent_type,
                 prompt=prompt,
                 model_override=model_override,
+                timeout_s=effective_timeout,
             ).run()
         )
         self._live_agent_tasks[task_id] = task
@@ -548,6 +551,18 @@ class BackgroundTaskManager:
         runtime.status = "failed"
         runtime.updated_at = time.time()
         runtime.finished_at = runtime.updated_at
+        runtime.failure_reason = reason
+        self._store.write_runtime(task_id, runtime)
+
+    def _mark_task_timed_out(self, task_id: str, reason: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "failed"
+        runtime.updated_at = time.time()
+        runtime.finished_at = runtime.updated_at
+        runtime.interrupted = True
+        runtime.timed_out = True
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
 

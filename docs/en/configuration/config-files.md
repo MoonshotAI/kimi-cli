@@ -65,6 +65,7 @@ compaction_trigger_ratio = 0.85
 [background]
 max_running_tasks = 4
 keep_alive_on_exit = false
+agent_task_timeout_s = 900
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -135,12 +136,13 @@ capabilities = ["thinking", "image_in"]
 
 ### `background`
 
-`background` controls background task runtime behavior. Background tasks are launched via the `Shell` tool with `run_in_background=true`.
+`background` controls background task runtime behavior. Background tasks are launched via the `Shell` tool or the `Agent` tool with `run_in_background=true`.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | Maximum number of concurrent background tasks |
 | `keep_alive_on_exit` | `boolean` | `false` | Whether to keep background tasks running when CLI exits; default is to terminate all background tasks on exit |
+| `agent_task_timeout_s` | `integer` | `900` | Maximum runtime in seconds for a background agent task; timed-out tasks are marked as failed and the main agent is notified |
 
 ### `services`
 

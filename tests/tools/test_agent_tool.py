@@ -927,3 +927,98 @@ async def test_task_stop_kills_background_agent_waiting_for_approval(
     assert killed_view is not None
     assert killed_view.runtime.status == "killed"
     assert runtime.approval_runtime.list_pending() == []
+
+
+async def test_foreground_agent_explicit_timeout_returns_tool_error(
+    agent_tool, runtime, monkeypatch
+):
+    """When the model passes an explicit timeout for a foreground agent and the
+    subagent exceeds it, the tool should return a ToolError (not hang)."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul_hang(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        # Simulate a subagent that never finishes
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul_hang)
+
+    import time
+
+    params = agent_tool.params(
+        description="slow task",
+        prompt="do something slow",
+        timeout=30,
+    )
+    # Override to a short timeout so the test doesn't actually wait 30s
+    object.__setattr__(params, "timeout", 1)
+
+    start = time.monotonic()
+    result = await agent_tool(params)
+    elapsed = time.monotonic() - start
+
+    # Should be a ToolError, not a hang; and should finish quickly
+    assert result.is_error
+    assert "timed out" in result.message.lower()
+    assert elapsed < 5.0
+
+
+async def test_foreground_agent_internal_timeout_with_explicit_deadline(
+    agent_tool, runtime, monkeypatch
+):
+    """When an explicit timeout IS set but an internal TimeoutError fires first,
+    it should still be reported as a generic failure, not 'Agent timed out after Xs'."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul_internal_timeout(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        raise TimeoutError("aiohttp sock_read timeout")
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul_internal_timeout)
+
+    params = agent_tool.params(
+        description="internal timeout with deadline",
+        prompt="do something",
+        timeout=600,
+    )
+
+    result = await agent_tool(params)
+
+    assert result.is_error
+    # Must be generic failure, NOT "Agent timed out after 600s"
+    assert "timed out" not in result.message.lower()
+    assert "Failed to run agent" in result.message
