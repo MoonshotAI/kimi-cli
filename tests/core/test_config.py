@@ -25,6 +25,7 @@ def test_default_config_dump():
             "default_thinking": False,
             "default_yolo": False,
             "default_editor": "",
+            "theme": "dark",
             "models": {},
             "providers": {},
             "loop_control": {

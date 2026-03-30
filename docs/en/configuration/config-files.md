@@ -28,6 +28,7 @@ The configuration file contains the following top-level configuration items:
 | `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
 | `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
+| `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -42,6 +43,7 @@ default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
 default_editor = ""
+theme = "dark"
 
 [providers.kimi-for-coding]
 type = "kimi"
