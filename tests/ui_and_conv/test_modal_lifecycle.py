@@ -28,6 +28,14 @@ QuestionPromptDelegate = shell_visualize.QuestionPromptDelegate
 # ---------------------------------------------------------------------------
 
 
+class _FakePlaceholderManager:
+    """Minimal placeholder manager stub — serialize_for_history is identity."""
+
+    @staticmethod
+    def serialize_for_history(text: str) -> str:
+        return text
+
+
 def _make_approval_request(request_id: str = "req-1", **kwargs: Any) -> ApprovalRequest:
     defaults = {
         "id": request_id,
@@ -522,6 +530,9 @@ async def test_prompt_live_view_question_modal_attaches_and_detaches() -> None:
         def invalidate(self) -> None:
             pass
 
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
+
     view = _PromptLiveView(
         StatusUpdate(),
         prompt_session=cast(Any, _PromptSession()),
@@ -561,6 +572,9 @@ async def test_prompt_live_view_question_modal_updates_on_advance() -> None:
 
         def invalidate(self) -> None:
             pass
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     view = _PromptLiveView(
         StatusUpdate(),
@@ -612,6 +626,9 @@ async def test_prompt_live_view_cleanup_clears_panel_but_modal_detached_in_final
 
         def invalidate(self) -> None:
             pass
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     view = _PromptLiveView(
         StatusUpdate(),
@@ -835,6 +852,9 @@ async def test_shell_external_approval_response_syncs_modal(
         def invalidate(self) -> None:
             invalidations.append("inv")
 
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
+
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
     # Send both requests
@@ -939,6 +959,7 @@ async def test_prompt_live_view_question_does_not_affect_should_handle_key() -> 
                     "attach_modal": lambda self, d: None,
                     "detach_modal": lambda self, d: None,
                     "invalidate": lambda self: None,
+                    "_get_placeholder_manager": lambda self: _FakePlaceholderManager(),
                 },
             )(),
         ),
@@ -977,6 +998,7 @@ async def test_prompt_live_view_render_body_no_awaiting_other_hint() -> None:
                     "attach_modal": lambda self, d: None,
                     "detach_modal": lambda self, d: None,
                     "invalidate": lambda self: None,
+                    "_get_placeholder_manager": lambda self: _FakePlaceholderManager(),
                 },
             )(),
         ),

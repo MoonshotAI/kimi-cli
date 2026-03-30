@@ -847,6 +847,7 @@ class Shell:
                     if self._prompt_session is not None
                     else ""
                 ),
+                text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )
             self._prompt_session.attach_modal(self._approval_modal)
         else:
