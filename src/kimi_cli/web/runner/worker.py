@@ -47,14 +47,16 @@ async def run_worker(session_id: UUID) -> None:
 
     # Create KimiCLI instance with MCP configuration
     try:
-        kimi_cli = await KimiCLI.create(session, mcp_configs=mcp_configs or None)
+        kimi_cli = await KimiCLI.create(
+            session, mcp_configs=mcp_configs or None, resumed=True
+        )
     except MCPConfigError as exc:
         logger.warning(
             "Invalid MCP config in {path}: {error}. Starting without MCP.",
             path=default_mcp_file,
             error=exc,
         )
-        kimi_cli = await KimiCLI.create(session, mcp_configs=None)
+        kimi_cli = await KimiCLI.create(session, mcp_configs=None, resumed=True)
 
     # Run in wire stdio mode
     await kimi_cli.run_wire_stdio()

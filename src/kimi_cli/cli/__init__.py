@@ -509,6 +509,9 @@ def kimi(
         try:
             startup_progress.update("Preparing session...")
 
+            # Track if we're resuming an existing session (vs creating new)
+            resumed = False
+
             if session_id is not None:
                 session = await Session.find(work_dir, session_id)
                 if session is None:
@@ -517,7 +520,9 @@ def kimi(
                         session_id=session_id,
                     )
                     session = await Session.create(work_dir, session_id)
-                logger.info("Switching to session: {session_id}", session_id=session.id)
+                else:
+                    resumed = True  # Session was actually found
+                    logger.info("Switching to session: {session_id}", session_id=session.id)
             elif continue_:
                 session = await Session.continue_(work_dir)
                 if session is None:
@@ -525,6 +530,7 @@ def kimi(
                         "No previous session found for the working directory",
                         param_hint="--continue",
                     )
+                resumed = True  # Continuing previous session
                 logger.info("Continuing previous session: {session_id}", session_id=session.id)
             else:
                 session = await Session.create(work_dir)
@@ -560,9 +566,6 @@ def kimi(
             # create() are still visible because _emit_fatal_error() writes to
             # the saved original stderr fd.
             redirect_stderr_to_logger()
-
-            # Track if we're resuming an existing session
-            resumed = session_id is not None or continue_
 
             instance = await KimiCLI.create(
                 session,

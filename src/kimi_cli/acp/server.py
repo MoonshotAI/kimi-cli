@@ -155,6 +155,7 @@ class ACPServer:
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
+            resumed=True,  # ACP always loads/resumes existing sessions
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
