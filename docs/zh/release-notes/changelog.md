@@ -3,6 +3,7 @@
 本页面记录 Kimi Code CLI 各版本的变更内容。
 
 ## 未发布
+- Web：WebSocket 重连时持久化滚动位置和选择状态 —— VirtualizedMessageList 将滚动位置保存到 sessionStorage；QuestionDialog 持久化 Plan Preview 滚动位置、Revise 输入文本和选择状态
 
 - CLI：`--skills-dir` 现在支持多个目录并覆盖默认发现——指定后，这些目录将替代用户/项目 Skills 发现（可重复的标志）
 - Vis：新增 `--network / -n` 启动参数——在所有网络接口上启动可视化工具并自动探测和显示 LAN IP 地址，与 `kimi web` 行为一致

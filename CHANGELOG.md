@@ -10,6 +10,7 @@ Only write entries that are worth mentioning to users.
 -->
 
 ## Unreleased
+- Web: Persist scroll position and selection state across WebSocket reconnects — VirtualizedMessageList saves scroll position to sessionStorage; QuestionDialog persists Plan Preview scroll, Revise input, and selection state
 
 - CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
 - Vis: Add `--network / -n` flag — launch the visualizer on all network interfaces with auto-detected LAN IP display, matching `kimi web` behavior

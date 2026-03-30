@@ -67,6 +67,27 @@ export function QuestionDialog({
   // Reset state when the pending question changes
   const questionId = pendingQuestion?.question.id;
   const prevQuestionIdRef = useRef<string | undefined>(undefined);
+  
+  // Storage keys for persisting state across WebSocket reconnects
+  const getReviseStorageKey = useCallback((qid: string, qIndex: number) => 
+    `kimi_question_revise_${qid}_${qIndex}`, []);
+  const getScrollStorageKey = useCallback((qid: string, qIndex: number) => 
+    `kimi_plan_preview_scroll_${qid}_${qIndex}`, []);
+  const getSelectionStorageKey = useCallback((qid: string, qIndex: number) => 
+    `kimi_question_selection_${qid}_${qIndex}`, []);
+  
+  // Refs for Plan Preview scroll restoration
+  const planPreviewRef = useRef<HTMLDivElement>(null);
+  const planPreviewScrollRestoredRef = useRef(false);
+
+  // Compute current question info (needed for effects below)
+  const currentQuestion: QuestionItem | undefined =
+    questions[currentQuestionIndex];
+  const options = currentQuestion?.options ?? [];
+  const isMultiSelect = currentQuestion?.multi_select ?? false;
+  const otherIndex = options.length;
+  
+  // Restore revise text, selection state and scroll position when question changes or on initial load
   useEffect(() => {
     if (questionId !== prevQuestionIdRef.current) {
       prevQuestionIdRef.current = questionId;
@@ -76,14 +97,36 @@ export function QuestionDialog({
       setOtherText("");
       setAnswers({});
       savedSelectionsRef.current.clear();
+      planPreviewScrollRestoredRef.current = false;
+      
+      // Try to restore state for the first question from sessionStorage
+      if (questionId) {
+        // Restore revise text
+        const reviseKey = getReviseStorageKey(questionId, 0);
+        const savedRevise = sessionStorage.getItem(reviseKey);
+        if (savedRevise !== null) {
+          setOtherText(savedRevise);
+        }
+        
+        // Restore selection state (selectedIndex and multiSelected)
+        const selectionKey = getSelectionStorageKey(questionId, 0);
+        const savedSelection = sessionStorage.getItem(selectionKey);
+        if (savedSelection !== null) {
+          try {
+            const { selectedIndex: savedSelectedIndex, multiSelected: savedMultiSelected } = JSON.parse(savedSelection);
+            if (typeof savedSelectedIndex === 'number') {
+              setSelectedIndex(savedSelectedIndex);
+            }
+            if (Array.isArray(savedMultiSelected)) {
+              setMultiSelected(new Set(savedMultiSelected));
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      }
     }
-  }, [questionId]);
-
-  const currentQuestion: QuestionItem | undefined =
-    questions[currentQuestionIndex];
-  const options = currentQuestion?.options ?? [];
-  const isMultiSelect = currentQuestion?.multi_select ?? false;
-  const otherIndex = options.length;
+  }, [questionId, getReviseStorageKey, getSelectionStorageKey]);
 
   // Auto-focus/blur Other input as selectedIndex moves in/out
   useEffect(() => {
@@ -96,6 +139,41 @@ export function QuestionDialog({
       otherInputRef.current?.blur();
     }
   }, [selectedIndex, otherIndex, isMultiSelect, multiSelected]);
+
+  // Restore Plan Preview scroll position after WebSocket reconnect or tab switch
+  useEffect(() => {
+    if (planPreviewRef.current && questionId && !planPreviewScrollRestoredRef.current) {
+      const scrollKey = getScrollStorageKey(questionId, currentQuestionIndex);
+      const savedScroll = sessionStorage.getItem(scrollKey);
+      if (savedScroll !== null) {
+        const scrollTop = parseInt(savedScroll, 10);
+        if (!isNaN(scrollTop) && scrollTop >= 0) {
+          planPreviewRef.current.scrollTop = scrollTop;
+        }
+      }
+      planPreviewScrollRestoredRef.current = true;
+    }
+  }, [questionId, currentQuestionIndex, getScrollStorageKey]);
+
+  // Persist revise text to sessionStorage whenever it changes
+  useEffect(() => {
+    if (questionId) {
+      const reviseKey = getReviseStorageKey(questionId, currentQuestionIndex);
+      sessionStorage.setItem(reviseKey, otherText);
+    }
+  }, [otherText, questionId, currentQuestionIndex, getReviseStorageKey]);
+
+  // Persist selection state (selectedIndex and multiSelected) to sessionStorage
+  useEffect(() => {
+    if (questionId) {
+      const selectionKey = getSelectionStorageKey(questionId, currentQuestionIndex);
+      const selectionData = {
+        selectedIndex,
+        multiSelected: Array.from(multiSelected),
+      };
+      sessionStorage.setItem(selectionKey, JSON.stringify(selectionData));
+    }
+  }, [selectedIndex, multiSelected, questionId, currentQuestionIndex, getSelectionStorageKey]);
 
   const questionPending = questionId
     ? pendingQuestionMap[questionId] === true
@@ -113,6 +191,13 @@ export function QuestionDialog({
       setTimeout(() => otherInputRef.current?.focus(), 0);
     }
   }, []);
+
+  // Handle Plan Preview scroll events - persist scroll position
+  const handlePlanPreviewScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (questionId) {
+      sessionStorage.setItem(getScrollStorageKey(questionId, currentQuestionIndex), String(e.currentTarget.scrollTop));
+    }
+  }, [questionId, currentQuestionIndex, getScrollStorageKey]);
 
   const getCurrentAnswer = useCallback((): string | null => {
     if (isMultiSelect) {
@@ -135,6 +220,44 @@ export function QuestionDialog({
   /** Restore selection state for a given question index. */
   const restoreForQuestion = useCallback(
     (index: number) => {
+      // First try to restore from sessionStorage (for WebSocket reconnect persistence)
+      if (questionId) {
+        // Restore selection state first
+        const selectionKey = getSelectionStorageKey(questionId, index);
+        const savedSelection = sessionStorage.getItem(selectionKey);
+        let hasSelectionFromStorage = false;
+        
+        if (savedSelection !== null) {
+          try {
+            const { selectedIndex: savedSelectedIndex, multiSelected: savedMultiSelected } = JSON.parse(savedSelection);
+            if (typeof savedSelectedIndex === 'number') {
+              setSelectedIndex(savedSelectedIndex);
+              hasSelectionFromStorage = true;
+            }
+            if (Array.isArray(savedMultiSelected)) {
+              setMultiSelected(new Set(savedMultiSelected));
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+        
+        // Restore revise text
+        const reviseKey = getReviseStorageKey(questionId, index);
+        const savedRevise = sessionStorage.getItem(reviseKey);
+        if (savedRevise !== null) {
+          setOtherText(savedRevise);
+          // If we have revise text and no selection was restored, select Other
+          if (savedRevise.trim() && !hasSelectionFromStorage) {
+            const targetQuestion = questions[index];
+            const otherIdx = targetQuestion?.options.length ?? 0;
+            setSelectedIndex(otherIdx);
+            setMultiSelected((prev) => new Set(prev).add(otherIdx));
+          }
+          return;
+        }
+      }
+      
       const saved = savedSelectionsRef.current.get(index);
       if (saved) {
         setSelectedIndex(saved.selectedIndex);
@@ -188,7 +311,7 @@ export function QuestionDialog({
       setMultiSelected(new Set());
       setOtherText("");
     },
-    [questions, answers],
+    [questions, answers, questionId, getReviseStorageKey, getSelectionStorageKey],
   );
 
   /** Core advance logic: save state, record answer, advance or submit all. */
@@ -210,6 +333,14 @@ export function QuestionDialog({
 
       const allAnswered = questions.every((q) => q.question in newAnswers);
       if (allAnswered) {
+        // Clear all persisted state for this question before submitting
+        if (questionId) {
+          for (let i = 0; i < questions.length; i++) {
+            sessionStorage.removeItem(getReviseStorageKey(questionId, i));
+            sessionStorage.removeItem(getScrollStorageKey(questionId, i));
+            sessionStorage.removeItem(getSelectionStorageKey(questionId, i));
+          }
+        }
         try {
           await onQuestionResponse!(pendingQuestion.question.id, newAnswers);
         } catch (error) {
@@ -236,6 +367,10 @@ export function QuestionDialog({
       totalQuestions,
       onQuestionResponse,
       restoreForQuestion,
+      questionId,
+      getReviseStorageKey,
+      getScrollStorageKey,
+      getSelectionStorageKey,
     ],
   );
 
@@ -247,12 +382,20 @@ export function QuestionDialog({
 
   const handleDismiss = useCallback(async () => {
     if (disableActions || !pendingQuestion) return;
+    // Clear all persisted state for this question when dismissing
+    if (questionId) {
+      for (let i = 0; i < questions.length; i++) {
+        sessionStorage.removeItem(getReviseStorageKey(questionId, i));
+        sessionStorage.removeItem(getScrollStorageKey(questionId, i));
+        sessionStorage.removeItem(getSelectionStorageKey(questionId, i));
+      }
+    }
     try {
       await onQuestionResponse!(pendingQuestion.question.id, {});
     } catch (error) {
       console.error("[QuestionDialog] Failed to dismiss", error);
     }
-  }, [disableActions, pendingQuestion, onQuestionResponse]);
+  }, [disableActions, pendingQuestion, onQuestionResponse, questionId, questions, getReviseStorageKey, getScrollStorageKey, getSelectionStorageKey]);
 
   const handleTabClick = useCallback(
     (index: number) => {
@@ -263,10 +406,25 @@ export function QuestionDialog({
         multiSelected,
         otherText,
       });
+      // Persist current question's state to sessionStorage before switching
+      if (questionId) {
+        sessionStorage.setItem(getReviseStorageKey(questionId, currentQuestionIndex), otherText);
+        // Persist selection state
+        const selectionData = {
+          selectedIndex,
+          multiSelected: Array.from(multiSelected),
+        };
+        sessionStorage.setItem(getSelectionStorageKey(questionId, currentQuestionIndex), JSON.stringify(selectionData));
+        // Also persist scroll position
+        if (planPreviewRef.current) {
+          sessionStorage.setItem(getScrollStorageKey(questionId, currentQuestionIndex), String(planPreviewRef.current.scrollTop));
+        }
+      }
       setCurrentQuestionIndex(index);
+      planPreviewScrollRestoredRef.current = false;
       restoreForQuestion(index);
     },
-    [disableActions, currentQuestionIndex, selectedIndex, multiSelected, otherText, restoreForQuestion],
+    [disableActions, currentQuestionIndex, selectedIndex, multiSelected, otherText, restoreForQuestion, questionId, getReviseStorageKey, getScrollStorageKey, getSelectionStorageKey],
   );
 
   const handleOptionClick = useCallback(
@@ -446,7 +604,11 @@ export function QuestionDialog({
               <span>Plan Preview</span>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="border-l-2 border-blue-400/40 pl-3 mt-1 max-h-[360px] overflow-y-auto">
+              <div
+                ref={planPreviewRef}
+                onScroll={handlePlanPreviewScroll}
+                className="border-l-2 border-blue-400/40 pl-3 mt-1 max-h-[360px] overflow-y-auto"
+              >
                 <MessageResponse>{currentQuestion.body}</MessageResponse>
               </div>
             </CollapsibleContent>
@@ -536,7 +698,8 @@ export function QuestionDialog({
                 ref={otherInputRef}
                 value={otherText}
                 onChange={(e) => {
-                  setOtherText(e.target.value);
+                  const newValue = e.target.value;
+                  setOtherText(newValue);
                   if (!isMultiSelect) {
                     setSelectedIndex(otherIndex);
                   } else if (!multiSelected.has(otherIndex)) {

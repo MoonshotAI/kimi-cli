@@ -18,9 +18,11 @@ import type React from "react";
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type ComponentPropsWithoutRef,
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -161,6 +163,8 @@ function VirtualizedMessageListComponent(
 ) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
+  const hasRestoredScrollRef = useRef(false);
+  const prevScrollerAvailableRef = useRef(false);
 
   // Filtered messages list (excluding message-id) aligned with listItems indices
   const filteredMessages = useMemo(
@@ -174,6 +178,25 @@ function VirtualizedMessageListComponent(
     [filteredMessages],
   );
 
+  // Storage key for scroll position (based on session ID from conversationKey)
+  const scrollStorageKey = useMemo(() => {
+    const sessionId = conversationKey.replace("session:", "");
+    return `kimi_chat_scroll_${sessionId}`;
+  }, [conversationKey]);
+  
+  // Check if we have a saved scroll position to restore
+  const hasSavedScrollPosition = useMemo(() => {
+    if (!conversationKey.startsWith("session:")) return false;
+    const saved = sessionStorage.getItem(scrollStorageKey);
+    if (!saved) return false;
+    try {
+      const { scrollTop } = JSON.parse(saved);
+      return typeof scrollTop === 'number' && scrollTop >= 50;
+    } catch {
+      return false;
+    }
+  }, [conversationKey, scrollStorageKey]);
+
   const handleAtBottomChange = useCallback(
     (atBottom: boolean) => {
       onAtBottomChange?.(atBottom);
@@ -181,12 +204,141 @@ function VirtualizedMessageListComponent(
     [onAtBottomChange],
   );
 
+  // Track scroller element availability
+  const [scrollerAvailable, setScrollerAvailable] = useState(false);
+  
   const handleScrollerRef = useCallback(
     (ref: HTMLElement | Window | null) => {
-      scrollerRef.current = ref instanceof HTMLElement ? ref : null;
+      const element = ref instanceof HTMLElement ? ref : null;
+      scrollerRef.current = element;
+      setScrollerAvailable(element !== null);
     },
     [],
   );
+
+  // Save scroll position (pixel scrollTop) to sessionStorage
+  const saveScrollPosition = useCallback(() => {
+    if (!conversationKey.startsWith("session:")) return;
+    
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    
+    // Don't save if scrollHeight is too small (list cleared/rebuilding)
+    // or if scrollTop is 0 (already at top, no need to save)
+    if (scroller.scrollHeight < 500 || scroller.scrollTop < 50) return;
+    
+    const scrollData = {
+      scrollTop: scroller.scrollTop,
+      scrollHeight: scroller.scrollHeight,
+      timestamp: Date.now(),
+    };
+    sessionStorage.setItem(scrollStorageKey, JSON.stringify(scrollData));
+  }, [conversationKey, scrollStorageKey]);
+
+
+
+  // Check if any approval/question is pending (QuestionDialog is showing)
+  const hasPendingQuestion = useMemo(() => {
+    return Object.values(pendingApprovalMap).some(Boolean);
+  }, [pendingApprovalMap]);
+
+  // Save scroll position on scroll (debounced)
+  // Use a longer debounce to avoid saving during rapid changes (list clearing/rebuilding)
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+    let lastSavedScrollTop = 0;
+    
+    const handleScroll = () => {
+      // Don't save if QuestionDialog is showing or restore not done yet
+      if (hasPendingQuestion || !hasRestoredScrollRef.current) return;
+      
+      if (debounceTimeout) {
+        window.clearTimeout(debounceTimeout);
+      }
+      
+      // Debounce: wait for scroll to settle
+      debounceTimeout = window.setTimeout(() => {
+        const currentScrollTop = scroller.scrollTop;
+        const currentScrollHeight = scroller.scrollHeight;
+        
+        // Only save if:
+        // 1. scrollHeight is reasonable (list not cleared)
+        // 2. scrollTop is meaningful (not at very top)
+        // 3. scrollTop changed significantly from last save
+        if (currentScrollHeight > 1000 && 
+            currentScrollTop > 100 && 
+            Math.abs(currentScrollTop - lastSavedScrollTop) > 50) {
+          saveScrollPosition();
+          lastSavedScrollTop = currentScrollTop;
+        }
+        debounceTimeout = null;
+      }, 300); // 300ms debounce
+    };
+
+    scroller.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", handleScroll);
+      if (debounceTimeout) window.clearTimeout(debounceTimeout);
+    };
+  }, [saveScrollPosition, scrollerAvailable, hasPendingQuestion, scrollStorageKey]);
+
+  // Restore scroll position when scroller becomes available
+  // Reset restore flag when scroller becomes available again (e.g., after WebSocket reconnect)
+  useEffect(() => {
+    if (scrollerAvailable && !prevScrollerAvailableRef.current) {
+      // Scroller just became available (re-mount), reset restore flag
+      hasRestoredScrollRef.current = false;
+    }
+    prevScrollerAvailableRef.current = scrollerAvailable;
+  }, [scrollerAvailable]);
+  
+  useEffect(() => {
+    if (!scrollerAvailable || hasRestoredScrollRef.current) return;
+    
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    
+    const saved = sessionStorage.getItem(scrollStorageKey);
+    if (!saved) {
+      hasRestoredScrollRef.current = true;
+      return;
+    }
+    
+    try {
+      const { scrollTop, scrollHeight } = JSON.parse(saved);
+      if (typeof scrollTop !== 'number' || scrollTop < 50) {
+        hasRestoredScrollRef.current = true;
+        return;
+      }
+      
+      // Wait for content to be ready then restore
+      const tryRestore = () => {
+        if (scroller.scrollHeight < 500) {
+          if (!hasRestoredScrollRef.current) {
+            window.setTimeout(tryRestore, 100);
+          }
+          return;
+        }
+        
+        const heightRatio = scrollHeight > 0 ? scroller.scrollHeight / scrollHeight : 1;
+        const adjustedScrollTop = Math.round(scrollTop * heightRatio);
+        scroller.scrollTop = Math.min(adjustedScrollTop, scroller.scrollHeight - scroller.clientHeight);
+        hasRestoredScrollRef.current = true;
+      };
+      
+      window.setTimeout(tryRestore, 100);
+    } catch {
+      hasRestoredScrollRef.current = true;
+    }
+  }, [scrollerAvailable, scrollStorageKey]);
+
+  // Reset scroll restored flag when session changes
+  useEffect(() => {
+    hasRestoredScrollRef.current = false;
+  }, [conversationKey]);
 
   // Use a generous threshold to tolerate height estimation mismatches
   // when blocks are expanded (actual heights >> defaultItemHeight).
@@ -194,6 +346,10 @@ function VirtualizedMessageListComponent(
   // default tight threshold for the scroll-to-bottom button.
   const handleFollowOutput = useCallback(
     (isAtBottom: boolean) => {
+      // Don't auto-follow if we're still restoring scroll position
+      if (!hasRestoredScrollRef.current) {
+        return false;
+      }
       if (isAtBottom) return "auto" as const;
       const scroller = scrollerRef.current;
       if (scroller) {
@@ -205,6 +361,13 @@ function VirtualizedMessageListComponent(
     },
     [],
   );
+
+  // Save before component unmount
+  useEffect(() => {
+    return () => {
+      saveScrollPosition();
+    };
+  }, [saveScrollPosition]);
 
   useImperativeHandle(
     ref,
@@ -245,7 +408,7 @@ function VirtualizedMessageListComponent(
       overscan={200}
       minOverscanItemCount={4}
       atBottomStateChange={handleAtBottomChange}
-      initialTopMostItemIndex={{
+      initialTopMostItemIndex={hasSavedScrollPosition ? undefined : {
         index: Math.max(0, listItems.length - 1),
         align: "end",
       }}
