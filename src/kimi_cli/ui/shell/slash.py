@@ -8,7 +8,7 @@ from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 from kimi_cli import logger
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
-from kimi_cli.cli import Reload, SwitchToWeb
+from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
 from kimi_cli.config import load_config, save_config
 from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
@@ -582,6 +582,14 @@ def web(app: Shell, args: str):
 
 
 @registry.command
+def vis(app: Shell, args: str):
+    """Open Kimi Agent Tracing Visualizer in browser"""
+    soul = ensure_kimi_soul(app)
+    session_id = soul.runtime.session.id if soul else None
+    raise SwitchToVis(session_id=session_id)
+
+
+@registry.command
 async def mcp(app: Shell, args: str):
     """Show MCP servers and tools"""
     from rich.live import Live
@@ -620,6 +628,35 @@ async def mcp(app: Shell, args: str):
         snapshot = soul.status.mcp_status
         if snapshot is not None:
             live.update(render_mcp_console(snapshot), refresh=True)
+
+
+@registry.command
+@shell_mode_registry.command
+def hooks(app: Shell, args: str):
+    """List configured hooks"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    engine = soul.hook_engine
+    if not engine.summary:
+        console.print(
+            "[yellow]No hooks configured. "
+            "Add [[hooks]] sections to your config.toml to set up hooks.[/yellow]"
+        )
+        return
+
+    console.print()
+    console.print("[bold]Configured Hooks:[/bold]")
+    console.print()
+
+    for event, entries in engine.details().items():
+        console.print(f"  [cyan]{event}[/cyan]: {len(entries)} hook(s)")
+        for entry in entries:
+            source_tag = f" [dim]({entry['source']})[/dim]" if entry["source"] == "wire" else ""
+            console.print(f"    [dim]{entry['matcher']}[/dim] {entry['command']}{source_tag}")
+
+    console.print()
 
 
 from . import (  # noqa: E402

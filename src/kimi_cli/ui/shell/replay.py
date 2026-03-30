@@ -10,6 +10,7 @@ from typing import cast
 from kosong.message import ContentPart, Message
 from kosong.tooling import ToolError, ToolOk
 
+from kimi_cli.notifications.llm import is_notification_message
 from kimi_cli.soul.message import is_system_reminder_message
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo
@@ -160,6 +161,8 @@ def _is_user_message(message: Message) -> bool:
     if message.role != "user":
         return False
     if message.extract_text().startswith("<system>CHECKPOINT"):
+        return False
+    if is_notification_message(message):
         return False
     return not is_system_reminder_message(message)
 

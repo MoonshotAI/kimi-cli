@@ -18,10 +18,14 @@ The server automatically opens a browser after startup. The default address is `
 
 If the default port is in use, the server will pick the next available port (by default `5495`–`5504`) and print the access URL in the terminal.
 
+You can also type `/vis` in the interactive shell to switch directly from the current session to the Visualizer.
+
 ## Command-line options
 
 | Option | Short | Description |
 |--------|-------|-------------|
+| `--host TEXT` | `-h` | Bind to a specific IP address |
+| `--network` | `-n` | Enable network access (bind to `0.0.0.0`), auto-detects and displays LAN IP |
 | `--port INTEGER` | `-p` | Port number to bind to (default: `5495`) |
 | `--open / --no-open` | | Automatically open browser (default: `--open`) |
 | `--reload` | | Enable auto-reload (development mode) |
@@ -34,6 +38,9 @@ kimi vis --port 8080
 
 # Don't automatically open browser
 kimi vis --no-open
+
+# Share on LAN (auto-detects and displays LAN IP)
+kimi vis -n
 ```
 
 ## Features

@@ -20,6 +20,14 @@ from kimi_cli.ui.shell import slash as shell_slash
 from kimi_cli.wire.types import ApprovalRequest
 
 
+class _FakePlaceholderManager:
+    """Minimal placeholder manager stub — serialize_for_history is identity."""
+
+    @staticmethod
+    def serialize_for_history(text: str) -> str:
+        return text
+
+
 def _make_shell_app(runtime: Runtime, tmp_path: Path) -> SimpleNamespace:
     agent = Agent(
         name="Test Agent",
@@ -222,6 +230,9 @@ async def test_shell_background_approval_with_prompt_session_uses_prompt_modal(
         def invalidate(self) -> None:
             invalidations.append("invalidate")
 
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
+
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
@@ -286,6 +297,9 @@ async def test_shell_prompt_approval_modal_keeps_current_request_when_new_reques
 
         def invalidate(self) -> None:
             return None
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
@@ -359,6 +373,9 @@ async def test_shell_prompt_approval_modal_advances_fifo_after_current_response(
 
         def invalidate(self) -> None:
             return None
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
@@ -704,6 +721,9 @@ async def test_shell_background_approval_modal_includes_display_blocks(
         def invalidate(self) -> None:
             return None
 
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
+
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
@@ -778,6 +798,9 @@ async def test_shell_background_approval_renders_subagent_metadata(
 
         def invalidate(self) -> None:
             return None
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 

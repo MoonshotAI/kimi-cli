@@ -201,6 +201,8 @@ class ACPSession:
                             "QuestionRequest is unsupported in ACP session; resolving empty answer."
                         )
                         msg.resolve({})
+                    case _:
+                        pass
         except LLMNotSet as e:
             logger.exception("LLM not set:")
             raise acp.RequestError.auth_required() from e

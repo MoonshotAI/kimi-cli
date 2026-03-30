@@ -235,6 +235,14 @@ class KimiCLI:
             await context.write_system_prompt(agent.system_prompt)
 
         soul = KimiSoul(agent, context=context)
+
+        # Create and inject hook engine
+        from kimi_cli.hooks.engine import HookEngine
+
+        hook_engine = HookEngine(config.hooks, cwd=str(session.work_dir))
+        soul.set_hook_engine(hook_engine)
+        runtime.hook_engine = hook_engine
+
         return KimiCLI(soul, runtime, env_overrides)
 
     def __init__(

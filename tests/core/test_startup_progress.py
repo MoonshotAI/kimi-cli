@@ -93,7 +93,15 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
     monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
-    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    class _FakeSoul:
+        def __init__(self, agent, context):
+            pass
+
+        def set_hook_engine(self, engine):
+            pass
+
+    monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
 
     cli = await KimiCLI.create(session, config=config, startup_progress=phases.append)
 
@@ -149,7 +157,15 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
     monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
-    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    class _FakeSoul:
+        def __init__(self, agent, context):
+            pass
+
+        def set_hook_engine(self, engine):
+            pass
+
+    monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
 
     await KimiCLI.create(session, config=config)
 
