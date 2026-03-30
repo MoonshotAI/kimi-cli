@@ -47,10 +47,12 @@ export function isErrorEvent(event: WireEvent): boolean {
   return false;
 }
 
-const TYPE_COLORS: Record<string, string> = {
+export const TYPE_COLORS: Record<string, string> = {
   TurnBegin:
     "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
   TurnEnd: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
+  SteerInput:
+    "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
   StepBegin:
     "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30",
   StepInterrupted:
@@ -59,17 +61,29 @@ const TYPE_COLORS: Record<string, string> = {
     "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30",
   CompactionEnd:
     "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30",
+  MCPLoadingBegin:
+    "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
+  MCPLoadingEnd:
+    "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
   StatusUpdate:
     "bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-500/30",
+  Notification:
+    "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30",
   TextPart: "bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-500/30",
   ThinkPart:
     "bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-500/30",
+  PlanDisplay:
+    "bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30",
   ToolCall:
     "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
   ToolResult:
     "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
   ToolCallPart:
     "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
+  ToolCallRequest:
+    "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
+  QuestionRequest:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
   ApprovalRequest:
     "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
   ApprovalResponse:
@@ -109,43 +123,99 @@ export function formatTimeDelta(current: number, prev: number): string {
   return `+${(delta / 60).toFixed(1)}min`;
 }
 
+/** Return CSS classes for time delta text — highlights slow operations. */
+function timeDeltaColor(deltaSec: number): string {
+  if (deltaSec > 60) return "text-red-500 font-medium";
+  if (deltaSec > 10) return "text-amber-600 dark:text-amber-400 font-medium";
+  return "text-muted-foreground";
+}
+
+/** Return CSS class for gap separator line color. */
+function timeDeltaLineColor(deltaSec: number): string {
+  if (deltaSec > 60) return "bg-red-300 dark:bg-red-700";
+  if (deltaSec > 10) return "bg-amber-300 dark:bg-amber-700";
+  return "bg-border";
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function summarizeUserInput(input: unknown): string {
+  if (typeof input === "string") return truncate(input, 120);
+  if (Array.isArray(input) && input.length > 0) {
+    const first = input[0] as Record<string, unknown>;
+    return truncate(String(first.text ?? ""), 120);
+  }
+  return "";
+}
+
 function getSummary(event: WireEvent): string {
   const p = event.payload;
   switch (event.type) {
-    case "TurnBegin": {
-      const input = p.user_input;
-      if (typeof input === "string") return input.length > 120 ? input.slice(0, 120) + "…" : input;
-      if (Array.isArray(input) && input.length > 0) {
-        const first = input[0] as Record<string, unknown>;
-        const t = String(first.text ?? "");
-        return t.length > 120 ? t.slice(0, 120) + "…" : t;
-      }
-      return "";
-    }
+    case "TurnBegin":
+      return summarizeUserInput(p.user_input);
+    case "SteerInput":
+      return summarizeUserInput(p.user_input);
     case "StepBegin":
       return `Step ${p.n}`;
-    case "TextPart": {
-      const text = String(p.text ?? "");
-      return text.length > 120 ? text.slice(0, 120) + "…" : text;
-    }
-    case "ThinkPart": {
-      const think = String(p.thinking ?? p.think ?? "");
-      return think.length > 120 ? think.slice(0, 120) + "…" : think;
-    }
+    case "TextPart":
+      return truncate(String(p.text ?? ""), 120);
+    case "ThinkPart":
+      return truncate(String(p.think ?? p.thinking ?? ""), 120);
     case "ToolCall": {
       const fn = p.function as Record<string, unknown> | undefined;
-      return fn ? `${fn.name}()` : "";
+      if (!fn) return "";
+      const name = fn.name as string;
+      let detail = "";
+      try {
+        const args = JSON.parse(fn.arguments as string) as Record<string, unknown>;
+        if (name === "ReadFile" || name === "ReadMediaFile" || name === "PlanModeReadFile") {
+          detail = ` ${args.path}`;
+          if (args.line_offset || args.n_lines) detail += ` [${args.line_offset ?? 1}:${(args.n_lines as number) ?? ""}]`;
+        } else if (name === "WriteFile") {
+          detail = ` ${args.path}`;
+        } else if (name === "StrReplaceFile") {
+          detail = ` ${args.path}`;
+        } else if (name === "Shell") {
+          const cmd = String(args.command ?? "");
+          detail = ` ${truncate(cmd, 80)}`;
+          if (args.run_in_background) detail += " [bg]";
+        } else if (name === "Glob") {
+          detail = ` ${args.pattern}`;
+          if (args.directory) detail += ` in ${args.directory}`;
+        } else if (name === "Grep") {
+          detail = ` /${args.pattern}/`;
+          if (args.path) detail += ` in ${args.path}`;
+        } else if (name === "Agent") {
+          detail = ` ${truncate(String(args.description ?? ""), 60)}`;
+          if (args.subagent_type) detail += ` [${args.subagent_type}]`;
+        } else if (name === "SearchWeb" || name === "FetchURL") {
+          detail = ` ${truncate(String(args.query ?? args.url ?? ""), 80)}`;
+        } else if (name === "SetTodoList") {
+          const items = args.items as Array<Record<string, unknown>> | undefined;
+          detail = items ? ` (${items.length} items)` : "";
+        } else if (name === "AskUserQuestion") {
+          detail = ` ${truncate(String(args.question ?? ""), 60)}`;
+        }
+      } catch {
+        // arguments parse failed, just show function name
+      }
+      return `${name}()${detail}`;
     }
-    case "ToolCallPart": {
-      const args = String(p.arguments_part ?? "");
-      return args.length > 80 ? args.slice(0, 80) + "…" : args;
-    }
+    case "ToolCallPart":
+      return truncate(String(p.arguments_part ?? ""), 80);
     case "ToolResult": {
       const rv = p.return_value as Record<string, unknown> | undefined;
       if (rv) {
         const isErr = rv.is_error ? "[error] " : "";
+        // Prefer message (human-readable) over raw output for the summary
+        const message = rv.message as string | undefined;
         const output = rv.output;
-        if (typeof output === "string") return `${isErr}${output.length > 120 ? output.slice(0, 120) + "…" : output}`;
+        if (message && message.length > 0) {
+          return `${isErr}${truncate(message, 120)}`;
+        }
+        if (typeof output === "string") return `${isErr}${truncate(output, 120)}`;
         if (Array.isArray(output)) return `${isErr}${output.length} part(s)`;
         return isErr || "result";
       }
@@ -153,14 +223,66 @@ function getSummary(event: WireEvent): string {
     }
     case "StatusUpdate": {
       const parts: string[] = [];
+      // Context usage percentage
       if (p.context_usage != null)
         parts.push(`ctx: ${((p.context_usage as number) * 100).toFixed(1)}%`);
-      return parts.join(", ");
+      // Context token count
+      if (p.context_tokens != null && p.max_context_tokens != null) {
+        const ct = p.context_tokens as number;
+        const mt = p.max_context_tokens as number;
+        parts.push(`${(ct / 1000).toFixed(1)}k / ${(mt / 1000).toFixed(0)}k tokens`);
+      }
+      // Token usage with cache breakdown
+      const tu = p.token_usage as Record<string, unknown> | undefined;
+      if (tu) {
+        const inputOther = Number(tu.input_other ?? 0);
+        const cacheRead = Number(tu.input_cache_read ?? 0);
+        const cacheCreate = Number(tu.input_cache_creation ?? 0);
+        const output = Number(tu.output ?? 0);
+        const totalInput = inputOther + cacheRead + cacheCreate;
+        if (totalInput > 0) {
+          const cacheRate = totalInput > 0 ? ((cacheRead / totalInput) * 100).toFixed(0) : "0";
+          parts.push(`in: ${(totalInput / 1000).toFixed(1)}k (${cacheRate}% cache)`);
+        }
+        if (output > 0) parts.push(`out: ${(output / 1000).toFixed(1)}k`);
+      }
+      // MCP status
+      const mcp = p.mcp_status as Record<string, unknown> | undefined;
+      if (mcp && mcp.connected != null) {
+        parts.push(`MCP: ${mcp.connected}/${mcp.total} (${mcp.tools} tools)`);
+      }
+      return parts.join("  ·  ");
+    }
+    case "Notification": {
+      const severity = p.severity as string | undefined;
+      const title = String(p.title ?? "");
+      const prefix = severity ? `[${severity}] ` : "";
+      return `${prefix}${truncate(title, 100)}`;
+    }
+    case "PlanDisplay": {
+      const content = String(p.content ?? "");
+      const filePath = p.file_path as string | undefined;
+      return filePath ? `${filePath}: ${truncate(content, 80)}` : truncate(content, 120);
+    }
+    case "ToolCallRequest": {
+      const name = p.name as string | undefined;
+      return name ? `${name}()` : "";
+    }
+    case "QuestionRequest": {
+      const questions = p.questions as Array<Record<string, unknown>> | undefined;
+      if (questions && questions.length > 0) {
+        const first = String(questions[0].text ?? questions[0].question ?? "");
+        return `${questions.length} question(s): ${truncate(first, 80)}`;
+      }
+      return "";
     }
     case "ApprovalRequest":
       return `${p.sender}: ${p.action}`;
-    case "ApprovalResponse":
-      return String(p.response ?? "");
+    case "ApprovalResponse": {
+      const response = String(p.response ?? "");
+      const feedback = p.feedback as string | undefined;
+      return feedback ? `${response}: ${truncate(feedback, 80)}` : response;
+    }
     case "SubagentEvent": {
       const inner = p.event as Record<string, unknown> | undefined;
       const innerType = inner?.type as string | undefined;
@@ -173,7 +295,7 @@ function getSummary(event: WireEvent): string {
         detail = fn ? ` ${fn.name}()` : "";
       } else if (innerType === "TurnBegin" && innerPayload) {
         const inp = innerPayload.user_input;
-        detail = typeof inp === "string" ? ` "${inp.length > 60 ? inp.slice(0, 60) + "…" : inp}"` : "";
+        detail = typeof inp === "string" ? ` "${truncate(inp, 60)}"` : "";
       } else if (innerType) {
         detail = ` ${innerType}`;
       }
@@ -214,12 +336,12 @@ export function WireEventCard({
       className={`border-b py-1.5 ${isTurnBoundary ? "bg-muted/30" : ""} ${isNested ? "border-l-2 border-l-purple-400/50 dark:border-l-purple-500/40" : ""} ${isError ? "bg-red-500/8 border-l-2 border-l-red-500/70" : ""} ${searchMatch ? "bg-yellow-500/10" : ""} ${selected ? "ring-1 ring-primary/50 bg-primary/5" : ""}`}
       style={{ paddingLeft: `${16 + nestLevel * 20}px`, paddingRight: 16 }}
     >
-      {/* Time gap indicator */}
+      {/* Time gap indicator — color-coded for slow operations */}
       {timeDelta && prevEvent && event.timestamp - prevEvent.timestamp > 1 && (
         <div className="flex items-center gap-2 py-1 mb-1">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-[10px] text-muted-foreground">{timeDelta}</span>
-          <div className="h-px flex-1 bg-border" />
+          <div className={`h-px flex-1 ${timeDeltaLineColor(event.timestamp - prevEvent.timestamp)}`} />
+          <span className={`text-[10px] ${timeDeltaColor(event.timestamp - prevEvent.timestamp)}`}>{timeDelta}</span>
+          <div className={`h-px flex-1 ${timeDeltaLineColor(event.timestamp - prevEvent.timestamp)}`} />
         </div>
       )}
 
@@ -292,9 +414,9 @@ export function WireEventCard({
           </span>
         )}
 
-        {/* Time delta */}
+        {/* Time delta — highlight slow operations */}
         {timeDelta && event.timestamp - (prevEvent?.timestamp ?? 0) <= 1 && (
-          <span className="mt-0.5 ml-auto shrink-0 text-[10px] text-muted-foreground">
+          <span className={`mt-0.5 ml-auto shrink-0 text-[10px] ${timeDeltaColor(event.timestamp - (prevEvent?.timestamp ?? 0))}`}>
             {timeDelta}
           </span>
         )}
@@ -543,6 +665,12 @@ function DisplayBlockRenderer({ block }: { block: Record<string, unknown> }) {
   if (type === "todo") {
     return <TodoBlock block={block} />;
   }
+  if (type === "brief") {
+    return <BriefBlock block={block} />;
+  }
+  if (type === "background_task") {
+    return <BackgroundTaskBlock block={block} />;
+  }
 
   // Unknown block type — show JSON
   return (
@@ -643,6 +771,44 @@ function TodoBlock({ block }: { block: Record<string, unknown> }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** Brief display block — simple text message */
+function BriefBlock({ block }: { block: Record<string, unknown> }) {
+  return (
+    <div className="rounded border bg-card px-3 py-2 text-xs text-muted-foreground">
+      {String(block.text ?? "")}
+    </div>
+  );
+}
+
+/** Background task display block */
+function BackgroundTaskBlock({ block }: { block: Record<string, unknown> }) {
+  const status = String(block.status ?? "unknown");
+  const description = String(block.description ?? "");
+  const taskId = String(block.task_id ?? "").slice(0, 12);
+  const kind = String(block.kind ?? "");
+
+  const statusColor =
+    status === "running" ? "text-blue-600 dark:text-blue-400" :
+    status === "completed" ? "text-green-600 dark:text-green-400" :
+    status === "failed" ? "text-red-500" :
+    "text-muted-foreground";
+
+  return (
+    <div className="rounded border bg-card px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Clock size={12} className="text-blue-500 shrink-0" />
+        <span className="text-[10px] font-medium text-muted-foreground">Background Task</span>
+        {kind && <span className="text-[9px] font-mono bg-muted px-1 rounded">{kind}</span>}
+        <span className={`text-[10px] font-medium ${statusColor}`}>{status}</span>
+        <span className="text-[9px] font-mono text-muted-foreground ml-auto">{taskId}</span>
+      </div>
+      {description && (
+        <div className="mt-1 text-xs text-muted-foreground">{description}</div>
+      )}
     </div>
   );
 }

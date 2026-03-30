@@ -8,7 +8,7 @@ from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 from kimi_cli import logger
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
-from kimi_cli.cli import Reload, SwitchToWeb
+from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
 from kimi_cli.config import load_config, save_config
 from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
@@ -579,6 +579,14 @@ def web(app: Shell, args: str):
     soul = ensure_kimi_soul(app)
     session_id = soul.runtime.session.id if soul else None
     raise SwitchToWeb(session_id=session_id)
+
+
+@registry.command
+def vis(app: Shell, args: str):
+    """Open Kimi Agent Tracing Visualizer in browser"""
+    soul = ensure_kimi_soul(app)
+    session_id = soul.runtime.session.id if soul else None
+    raise SwitchToVis(session_id=session_id)
 
 
 @registry.command
