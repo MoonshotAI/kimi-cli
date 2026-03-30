@@ -5,8 +5,15 @@
 ## 未发布
 
 - Core：修复压缩前上下文溢出问题——工具结果的 Token 数现在会被估算并纳入自动压缩触发检查，防止大量工具输出在 API 调用间隙将上下文推超模型限制时出现"exceeded model token limit"错误
+- Core：新增 hooks 系统（Beta）——在 `config.toml` 中配置 `[[hooks]]`，可在 13 个生命周期事件（包括 `PreToolUse`、`PostToolUse`、`SessionStart`、`Stop` 等）运行自定义 shell 命令；支持正则匹配、超时处理和通过退出码 2 阻塞操作
+- Shell：新增 `/hooks` 命令——列出所有已配置的 hooks 及其事件计数
+- Wire：新增 `HookTriggered` 和 `HookResolved` 事件类型（Wire 1.7）——在 hooks 开始和完成执行时通知客户端，包含事件类型、目标、操作（允许/阻塞）和耗时
+- Wire：新增 `HookRequest` 和 `HookResponse` 消息类型——允许 Wire 客户端订阅 hook 事件并提供自己的处理逻辑，返回允许或阻塞的决策
+- Shell：修复通知消息泄漏到会话回放和导出中的问题——后台任务通知标签（`<notification>`、`<task-notification>`）在恢复会话（`/sessions`）以及导出（`/export`）或导入（`/import`）对话历史时现在会被正确过滤
 - CLI：`--skills-dir` 现在支持多个目录并覆盖默认发现——指定后，这些目录将替代用户/项目 Skills 发现（可重复的标志）
 - Web：工作区顶部的 "Open" 按钮现在会记住上次使用的应用——点击 "Open" 直接以上次选择的应用打开，点击下拉箭头可重新选择其他应用
+- Web：修复 Archived 会话计数仅显示已加载页面大小的问题——当存在更多 Archived 会话时，计数标签现在显示 "100+"
+- Shell：修复粘贴文本占位符在模态回答中未展开的问题——粘贴到审批面板或问题面板中的剪贴板内容现在会在发送给模型前正确插值
 - Vis：新增 `--network / -n` 启动参数——在所有网络接口上启动可视化工具并自动探测和显示 LAN IP 地址，与 `kimi web` 行为一致
 - Vis：新增 `/vis` 斜杠命令——在交互式 Shell 中一步切换到 Tracing 可视化工具，与现有 `/web` 命令对称
 - Vis：改进会话列表性能——后端异步扫描、请求并发限制、无限滚动分页，防止大量会话时浏览器卡顿

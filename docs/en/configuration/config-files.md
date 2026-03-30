@@ -176,6 +176,32 @@ When configuring the Kimi Code platform using the `/login` command, search and f
 | --- | --- | --- | --- |
 | `client.tool_call_timeout_ms` | `integer` | `60000` | MCP tool call timeout (milliseconds) |
 
+### `hooks`
+
+`hooks` configures lifecycle hooks (Beta feature). See [Hooks](../customization/hooks.md) for details.
+
+Use the `[[hooks]]` array syntax to define multiple hooks:
+
+```toml
+[[hooks]]
+event = "PreToolUse"
+matcher = "Shell"
+command = ".kimi/hooks/safety-check.sh"
+timeout = 10
+
+[[hooks]]
+event = "PostToolUse"
+matcher = "WriteFile"
+command = "prettier --write"
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `event` | `string` | Yes | Event type, e.g., `PreToolUse`, `Stop`, etc. |
+| `command` | `string` | Yes | Shell command to execute |
+| `matcher` | `string` | No | Regex filter condition |
+| `timeout` | `integer` | No | Timeout in seconds, default 30 |
+
 ## JSON configuration migration
 
 If `~/.kimi/config.toml` doesn't exist but `~/.kimi/config.json` exists, Kimi Code CLI will automatically migrate the JSON configuration to TOML format and backup the original file as `config.json.bak`.
