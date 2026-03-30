@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/theme`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
 :::
 
 ## Help and info
@@ -65,6 +65,18 @@ This command is only available when using the default configuration file. If a c
 
 Set the external editor. When called without arguments, displays an interactive selection interface; you can also specify the editor command directly, e.g., `/editor vim`. After configuration, pressing `Ctrl-O` will open this editor to edit the current input content. See [Keyboard shortcuts](./keyboard.md#external-editor) for details.
 
+### `/theme`
+
+Switch the terminal color theme. Kimi Code CLI provides dark and light color palettes, defaulting to dark.
+
+Usage:
+
+- `/theme`: Show the current theme
+- `/theme dark`: Switch to dark theme
+- `/theme light`: Switch to light theme
+
+After switching, the configuration is saved to `config.toml` and the shell reloads automatically. The light theme adjusts colors for diff highlights, the task browser, the prompt completion menu, the bottom toolbar, and MCP status indicators to work well on light terminal backgrounds. You can also set `theme = "light"` directly in your config file — see [Config files](../configuration/config-files.md).
+
 ### `/reload`
 
 Reload the configuration file without exiting Kimi Code CLI.
@@ -95,6 +107,14 @@ Display currently connected MCP servers and loaded tools. See [Model Context Pro
 Output includes:
 - Server connection status (green indicates connected)
 - List of tools provided by each server
+
+### `/hooks`
+
+Display currently configured hooks. See [Hooks](../customization/hooks.md) for details.
+
+Output includes:
+- Event types and counts of configured hooks
+- Help message (if no hooks are configured)
 
 ## Session management
 

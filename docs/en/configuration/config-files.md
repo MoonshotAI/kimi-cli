@@ -28,6 +28,7 @@ The configuration file contains the following top-level configuration items:
 | `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
 | `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
+| `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -42,6 +43,7 @@ default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
 default_editor = ""
+theme = "dark"
 
 [providers.kimi-for-coding]
 type = "kimi"
@@ -175,6 +177,32 @@ When configuring the Kimi Code platform using the `/login` command, search and f
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `client.tool_call_timeout_ms` | `integer` | `60000` | MCP tool call timeout (milliseconds) |
+
+### `hooks`
+
+`hooks` configures lifecycle hooks (Beta feature). See [Hooks](../customization/hooks.md) for details.
+
+Use the `[[hooks]]` array syntax to define multiple hooks:
+
+```toml
+[[hooks]]
+event = "PreToolUse"
+matcher = "Shell"
+command = ".kimi/hooks/safety-check.sh"
+timeout = 10
+
+[[hooks]]
+event = "PostToolUse"
+matcher = "WriteFile"
+command = "prettier --write"
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `event` | `string` | Yes | Event type, e.g., `PreToolUse`, `Stop`, etc. |
+| `command` | `string` | Yes | Shell command to execute |
+| `matcher` | `string` | No | Regex filter condition |
+| `timeout` | `integer` | No | Timeout in seconds, default 30 |
 
 ## JSON configuration migration
 
