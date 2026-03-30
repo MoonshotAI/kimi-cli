@@ -9,6 +9,8 @@
 - Core：对超大文件（>10000 行）跳过 O(n²) diff 计算——超过阈值的文件现在显示摘要块而非计算完整 diff，未变化的文件会立即短路返回
 - Wire：为 `DiffDisplayBlock` 新增 `is_summary` 字段（Wire 1.8）——标记包含行数摘要而非实际 diff 内容的块，便于客户端做差异化渲染
 - Web：渲染大文件 diff 摘要——当 diff 块标记为 `is_summary` 时，Web UI 显示紧凑的"文件过大无法内联 diff"提示及行数，而非尝试计算 diff
+- Auth：修复 OAuth 用户执行 Skill 或空闲后出现 "incorrect API KEY" 的问题——401 错误现在会显示清晰的 "请 /login" 提示，而不是原始的 API 错误信息；ACP 层会正确触发 VS Code 扩展的重新登录流程
+- Web：修复 OAuth 用户的会话标题生成始终失败的问题——标题生成器现在会使用 OAuth 令牌，并在调用模型前刷新过期令牌
 - Core：为 Agent 工具和 HTTP 请求添加超时保护——所有 `aiohttp` 会话现在默认 120 秒总超时 / 60 秒读取超时；Agent 工具新增可选 `timeout` 参数（前台默认 10 分钟，后台默认 15 分钟）；后台 Agent 任务超时后标记为 `timed_out` 并正确触发通知
 - Grep：修复工具卡死且无法中断的问题——将阻塞的 `ripgrepy.run()` 替换为异步子进程执行；工具现在可响应 Ctrl-C 立即中断，并设有 20 秒超时保护，超时后返回部分结果
 - Grep：新增 Token 效率优化——默认 `head_limit` 为 250 并支持 `offset` 分页、启用 `--hidden` 搜索同时排除 VCS 目录、`files_with_matches` 按修改时间排序、输出相对路径、非 content 模式限制最大列宽 500
