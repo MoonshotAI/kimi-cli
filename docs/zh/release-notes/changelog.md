@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.28.0 (2026-03-30)
+
 - Core：修复文件写入/替换工具冻结事件循环的问题——diff 计算（`build_diff_blocks`）现在通过 `asyncio.to_thread` 转移到线程中执行，防止编辑大文件时 UI 卡死
 - Shell：修复 `_watch_root_wire_hub` 在处理异常时静默退出的问题——观察者现在会捕获并记录异常（与 `wire/server.py` 中的模式一致），并优雅处理 `QueueShutDown`，防止审批流程在会话中途静默中断
 - Core：对超大文件（>10000 行）跳过 O(n²) diff 计算——超过阈值的文件现在显示摘要块而非计算完整 diff，未变化的文件会立即短路返回

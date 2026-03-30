@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.28.0 (2026-03-30)
+
 - Core: Fix file write/replace tools freezing the event loop — diff computation (`build_diff_blocks`) is now offloaded to a thread via `asyncio.to_thread`, preventing the UI from hanging when editing large files
 - Shell: Fix `_watch_root_wire_hub` silently dying on handler exceptions — the watcher now catches and logs exceptions (matching the pattern in `wire/server.py`) and handles `QueueShutDown` gracefully, preventing approval flow from silently breaking mid-session
 - Core: Skip O(n²) diff computation for huge files (>10 000 lines) — files above the threshold now show a summary block instead of computing a full diff, and unchanged files short-circuit immediately
