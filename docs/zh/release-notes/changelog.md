@@ -4,6 +4,10 @@
 
 ## 未发布
 
+- Grep：修复工具卡死且无法中断的问题——将阻塞的 `ripgrepy.run()` 替换为异步子进程执行；工具现在可响应 Ctrl-C 立即中断，并设有 20 秒超时保护，超时后返回部分结果
+- Grep：新增 Token 效率优化——默认 `head_limit` 为 250 并支持 `offset` 分页、启用 `--hidden` 搜索同时排除 VCS 目录、`files_with_matches` 按修改时间排序、输出相对路径、非 content 模式限制最大列宽 500
+- Grep：content 模式的 `line_number`（`-n`）现在默认为 `true`——默认包含行号，以便模型引用精确的代码位置
+- Grep：`count_matches` 模式现在在 message 中包含汇总信息——例如 "Found 30 total occurrences across 10 files."
 - Shell：修复通知消息泄漏到会话回放和导出中的问题——后台任务通知标签（`<notification>`、`<task-notification>`）在恢复会话（`/sessions`）以及导出（`/export`）或导入（`/import`）对话历史时现在会被正确过滤
 - CLI：`--skills-dir` 现在支持多个目录并覆盖默认发现——指定后，这些目录将替代用户/项目 Skills 发现（可重复的标志）
 - Web：工作区顶部的 "Open" 按钮现在会记住上次使用的应用——点击 "Open" 直接以上次选择的应用打开，点击下拉箭头可重新选择其他应用

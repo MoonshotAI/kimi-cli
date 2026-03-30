@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Grep: Fix tool hanging and becoming uninterruptible — replaced blocking `ripgrepy.run()` with async subprocess execution; the tool now responds to Ctrl-C immediately and has a 20-second timeout with partial result return
+- Grep: Add token efficiency improvements — default `head_limit` of 250 with `offset` pagination, `--hidden` search with VCS directory exclusion, `files_with_matches` sorted by modification time, relative path output, and `--max-columns 500` for non-content modes
+- Grep: `line_number` (`-n`) now defaults to `true` in content mode — line numbers are included by default so the model can reference precise code locations
+- Grep: `count_matches` mode now includes a summary in the message — e.g. "Found 30 total occurrences across 10 files."
 - CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
 - Shell: Fix notification messages leaking into session replay and export — background task notification tags (`<notification>`, `<task-notification>`) are now filtered out when resuming a session (`/sessions`) and when exporting (`/export`) or importing (`/import`) conversation history
 - Web: The "Open" button in the workspace header now remembers the last-used application — clicking "Open" directly opens with the previous choice, while the dropdown arrow lets you pick a different app
