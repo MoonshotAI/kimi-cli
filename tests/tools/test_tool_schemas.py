@@ -59,7 +59,7 @@ def test_agent_params_schema(agent_tool: AgentTool):
                         {"type": "null"},
                     ],
                     "default": None,
-                    "description": "Timeout in seconds for the agent task. Foreground default: 600s (10min), max 600s (10min). Background default: 900s (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
+                    "description": "Timeout in seconds for the agent task. Foreground: no default timeout (runs until completion), max 3600s (1hr). Background: default from config (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
                 },
             },
             "required": ["description", "prompt"],
