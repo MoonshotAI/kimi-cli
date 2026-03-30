@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import override
 
@@ -130,8 +131,6 @@ class AgentTool(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
         try:
-            import asyncio
-
             runner = ForegroundSubagentRunner(self._runtime)
             req = ForegroundRunRequest(
                 description=params.description,
@@ -145,8 +144,8 @@ class AgentTool(CallableTool2[Params]):
                 return await asyncio.wait_for(runner.run(req), timeout=timeout)
             return await runner.run(req)
         except TimeoutError as exc:
-            if params.effective_timeout is not None:
-                # Task-level timeout from wait_for
+            if isinstance(exc.__cause__, asyncio.CancelledError):
+                # Task-level timeout from wait_for (it raises TimeoutError from CancelledError)
                 t = params.effective_timeout
                 logger.warning("Foreground agent timed out after {t}s", t=t)
                 return ToolError(

@@ -153,3 +153,49 @@ async def test_background_agent_internal_timeout_not_misreported(runtime):
     assert rt.status == "failed"
     assert rt.timed_out is not True  # Must NOT be marked as timed_out
     assert "aiohttp" in (rt.failure_reason or "")
+
+
+async def test_background_agent_internal_timeout_with_deadline_set(runtime):
+    """Even when timeout_s is set (production path), an internal TimeoutError
+    should NOT be misattributed as a task-level timeout."""
+    manager = runtime.background_tasks
+    manager._runtime = runtime
+
+    task_id = "agent-deadln01"
+    store = manager.store
+    spec = TaskSpec(
+        id=task_id,
+        kind="agent",
+        session_id=runtime.session.id,
+        description="internal timeout with deadline",
+        tool_call_id="tool-id",
+        owner_role="root",
+    )
+    store.create_task(spec)
+
+    runtime.subagent_store = MagicMock()
+    runtime.subagent_store.output_path.return_value = store._root / "output2.txt"
+    runtime.subagent_store.output_path.return_value.parent.mkdir(parents=True, exist_ok=True)
+
+    runner = BackgroundAgentRunner(
+        runtime=runtime,
+        manager=manager,
+        task_id=task_id,
+        agent_id="a_prod",
+        subagent_type="mocker",
+        prompt="test",
+        model_override=None,
+        timeout_s=900,  # Production default — deadline IS set
+    )
+
+    async def _raise_internal_timeout(*args, **kwargs):
+        raise TimeoutError("aiohttp sock_read timeout")
+
+    runner._run_core = _raise_internal_timeout
+    await runner.run()
+
+    # Internal timeout should be generic failure, NOT timed_out
+    rt = store.read_runtime(task_id)
+    assert rt.status == "failed"
+    assert rt.timed_out is not True
+    assert "aiohttp" in (rt.failure_reason or "")

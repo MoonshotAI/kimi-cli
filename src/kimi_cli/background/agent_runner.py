@@ -75,8 +75,8 @@ class BackgroundAgentRunner:
             else:
                 await self._run_core(output)
         except TimeoutError as exc:
-            if self._timeout_s is not None:
-                # Task-level timeout from wait_for
+            if isinstance(exc.__cause__, asyncio.CancelledError):
+                # Task-level timeout from wait_for (it raises TimeoutError from CancelledError)
                 logger.warning(
                     "Background agent task {id} timed out after {t}s",
                     id=self._task_id,
