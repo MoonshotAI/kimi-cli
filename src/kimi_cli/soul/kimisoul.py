@@ -476,10 +476,10 @@ class KimiSoul:
                     prompt=text_input_for_hook,
                 ),
             )
-            for r in hook_results:
-                if r.action == "block":
+            for result in hook_results:
+                if result.action == "block":
                     wire_send(TurnBegin(user_input=user_input))
-                    wire_send(TextPart(text=r.reason or "Prompt blocked by hook."))
+                    wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
                     wire_send(TurnEnd())
                     return
 
@@ -515,11 +515,11 @@ class KimiSoul:
                         stop_hook_active=False,
                     ),
                 )
-                for r in stop_results:
-                    if r.action == "block" and r.reason:
+                for result in stop_results:
+                    if result.action == "block" and result.reason:
                         self._stop_hook_active = True
                         try:
-                            await self._turn(Message(role="user", content=r.reason))
+                            await self._turn(Message(role="user", content=result.reason))
                         finally:
                             self._stop_hook_active = False
                         break
@@ -674,7 +674,7 @@ class KimiSoul:
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
-                _bg = asyncio.create_task(
+                _hook_task = asyncio.create_task(
                     self._hook_engine.trigger(
                         "StopFailure",
                         matcher_value=type(e).__name__,
@@ -686,7 +686,7 @@ class KimiSoul:
                         ),
                     )
                 )
-                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 # break the agent loop
                 raise
 
@@ -726,7 +726,7 @@ class KimiSoul:
                 # --- Notification hook ---
                 from kimi_cli.hooks import events
 
-                _bg = asyncio.create_task(
+                _hook_task = asyncio.create_task(
                     self._hook_engine.trigger(
                         "Notification",
                         matcher_value=view.event.type,
@@ -741,7 +741,7 @@ class KimiSoul:
                         ),
                     )
                 )
-                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             await self._runtime.notifications.deliver_pending(
                 "llm",
@@ -960,7 +960,7 @@ class KimiSoul:
 
         wire_send(CompactionEnd())
 
-        _bg = asyncio.create_task(
+        _hook_task = asyncio.create_task(
             self._hook_engine.trigger(
                 "PostCompact",
                 matcher_value=trigger_reason,
@@ -972,7 +972,7 @@ class KimiSoul:
                 ),
             )
         )
-        _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:

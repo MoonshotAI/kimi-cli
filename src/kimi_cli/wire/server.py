@@ -418,20 +418,23 @@ class WireServer:
 
         from kimi_cli.constant import NAME, VERSION
         from kimi_cli.hooks.config import HOOK_EVENT_TYPES
+        from kimi_cli.hooks.engine import WireHookHandle, WireHookSubscription
+        from kimi_cli.soul import wire_send
         from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
         from kimi_cli.wire.types import HookResolved, HookTriggered
 
-        # Register client hook subscriptions
-        if isinstance(self._soul, KimiSoul) and self._soul.hook_engine and msg.params.hooks:
-            from kimi_cli.hooks.engine import WireHookSubscription as _Sub
+        # Hook engine setup — register wire subscriptions and callbacks
 
-            wire_subs: list[_Sub] = []
+        hook_engine = self._soul.hook_engine
+
+        if msg.params.hooks:
+            wire_subs: list[WireHookSubscription] = []
             for wh in msg.params.hooks:
                 if wh.event not in HOOK_EVENT_TYPES:
                     logger.warning("Ignoring unknown hook event from client: {}", wh.event)
                     continue
                 wire_subs.append(
-                    _Sub(
+                    WireHookSubscription(
                         id=wh.id,
                         event=wh.event,
                         matcher=wh.matcher,
@@ -439,65 +442,57 @@ class WireServer:
                     )
                 )
             if wire_subs:
-                self._soul.hook_engine.add_wire_subscriptions(wire_subs)
+                hook_engine.add_wire_subscriptions(wire_subs)
                 logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
 
-        # Wire up HookTriggered/HookResolved/HookRequest callbacks
-        if isinstance(self._soul, KimiSoul) and self._soul.hook_engine:
-            from kimi_cli.hooks.engine import WireHookHandle
-            from kimi_cli.soul import wire_send
-            from kimi_cli.wire.types import HookRequest
+        def _on_triggered(event: str, target: str, count: int) -> None:
+            wire_send(HookTriggered(event=event, target=target, hook_count=count))
 
-            def _on_triggered(event: str, target: str, count: int) -> None:
-                wire_send(HookTriggered(event=event, target=target, hook_count=count))
-
-            def _on_resolved(
-                event: str,
-                target: str,
-                action: str,
-                reason: str,
-                duration_ms: int,
-            ) -> None:
-                wire_send(
-                    HookResolved(
-                        event=event,
-                        target=target,
-                        action=cast(Literal["allow", "block"], action),
-                        reason=reason,
-                        duration_ms=duration_ms,
-                    )
+        def _on_resolved(
+            event: str,
+            target: str,
+            action: str,
+            reason: str,
+            duration_ms: int,
+        ) -> None:
+            wire_send(
+                HookResolved(
+                    event=event,
+                    target=target,
+                    action=cast(Literal["allow", "block"], action),
+                    reason=reason,
+                    duration_ms=duration_ms,
                 )
-
-            async def _on_wire_hook(handle: WireHookHandle) -> None:
-                """Send HookRequest to client, wire response back to handle."""
-                request = HookRequest(
-                    id=handle.id,
-                    subscription_id=handle.subscription_id,
-                    event=handle.event,
-                    target=handle.target,
-                    input_data=handle.input_data,
-                )
-                self._pending_requests[handle.id] = request
-                await self._send_msg(JSONRPCRequestMessage(id=handle.id, params=request))
-                # Wait for client response (resolved via _handle_response)
-                action, reason = await request.wait()
-                handle.resolve(action, reason)
-
-            self._soul.hook_engine.set_callbacks(
-                on_triggered=_on_triggered,
-                on_resolved=_on_resolved,
-                on_wire_hook=_on_wire_hook,
             )
 
-        hooks_info: dict[str, JsonType] = {}
-        if isinstance(self._soul, KimiSoul) and self._soul.hook_engine:
-            hooks_info = cast(
-                dict[str, JsonType],
-                {
-                    "supported_events": HOOK_EVENT_TYPES,
-                    "configured": self._soul.hook_engine.summary,
-                },
+        async def _on_wire_hook(handle: WireHookHandle) -> None:
+            """Send HookRequest to client, wire response back to handle."""
+            request = HookRequest(
+                id=handle.id,
+                subscription_id=handle.subscription_id,
+                event=handle.event,
+                target=handle.target,
+                input_data=handle.input_data,
             )
+            self._pending_requests[handle.id] = request
+            await self._send_msg(JSONRPCRequestMessage(id=handle.id, params=request))
+            # Wait for client response (resolved via _handle_response)
+            action, reason = await request.wait()
+            handle.resolve(action, reason)
+
+        hook_engine.set_callbacks(
+            on_triggered=_on_triggered,
+            on_resolved=_on_resolved,
+            on_wire_hook=_on_wire_hook,
+        )
+
+        hooks_info: dict[str, JsonType] = cast(
+            dict[str, JsonType],
+            {
+                "supported_events": HOOK_EVENT_TYPES,
+                "configured": hook_engine.summary,
+            },
+        )
 
         result: dict[str, JsonType] = {
             "protocol_version": WIRE_PROTOCOL_VERSION,

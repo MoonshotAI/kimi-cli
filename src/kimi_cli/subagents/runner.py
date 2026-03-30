@@ -255,7 +255,7 @@ class ForegroundSubagentRunner:
             output_writer.stage("run_soul_finished")
 
             # --- SubagentStop hook ---
-            _bg = asyncio.create_task(
+            _hook_task = asyncio.create_task(
                 hook_engine.trigger(
                     "SubagentStop",
                     matcher_value=actual_type,
@@ -267,7 +267,7 @@ class ForegroundSubagentRunner:
                     ),
                 )
             )
-            _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+            _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         except asyncio.CancelledError:
             self._store.update_instance(agent_id, status="killed")
             output_writer.stage("cancelled")

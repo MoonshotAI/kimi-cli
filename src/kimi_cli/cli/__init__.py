@@ -329,6 +329,7 @@ def kimi(
 ):
     """Kimi, your next CLI agent."""
     import asyncio
+    import contextlib
     import json
 
     from kimi_cli.utils.proctitle import init_process_name
@@ -346,6 +347,7 @@ def kimi(
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.config import Config, load_config_from_string
     from kimi_cli.exception import ConfigError
+    from kimi_cli.hooks import events as hook_events
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.ui.shell.startup import ShellStartupProgress
@@ -571,12 +573,10 @@ def kimi(
 
             # --- SessionStart hook ---
             _session_source = "resume" if continue_ else "startup"
-            from kimi_cli.hooks import events
-
             await instance.soul.hook_engine.trigger(
                 "SessionStart",
                 matcher_value=_session_source,
-                input_data=events.session_start(
+                input_data=hook_events.session_start(
                     session_id=session.id,
                     cwd=str(work_dir),
                     source=_session_source,
@@ -622,15 +622,12 @@ def kimi(
                 raise
             finally:
                 # --- SessionEnd hook ---
-                import asyncio as _asyncio
-                import contextlib
-
                 with contextlib.suppress(Exception):
-                    await _asyncio.wait_for(
+                    await asyncio.wait_for(
                         instance.soul.hook_engine.trigger(
                             "SessionEnd",
                             matcher_value="exit",
-                            input_data=events.session_end(
+                            input_data=hook_events.session_end(
                                 session_id=session.id,
                                 cwd=str(work_dir),
                                 reason="exit",

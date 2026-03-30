@@ -159,12 +159,12 @@ class KimiToolset:
                         tool_call_id=tool_call.id,
                     ),
                 )
-                for r in results:
-                    if r.action == "block":
+                for result in results:
+                    if result.action == "block":
                         return ToolResult(
                             tool_call_id=tool_call.id,
                             return_value=ToolError(
-                                message=r.reason or "Blocked by PreToolUse hook",
+                                message=result.reason or "Blocked by PreToolUse hook",
                                 brief="Hook blocked",
                             ),
                         )
@@ -174,7 +174,7 @@ class KimiToolset:
                     ret = await tool.call(arguments)
                 except Exception as e:
                     # --- PostToolUseFailure (fire-and-forget) ---
-                    _bg = asyncio.create_task(
+                    _hook_task = asyncio.create_task(
                         self._hook_engine.trigger(
                             "PostToolUseFailure",
                             matcher_value=tool_call.function.name,
@@ -188,14 +188,16 @@ class KimiToolset:
                             ),
                         )
                     )
-                    _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                    _hook_task.add_done_callback(
+                        lambda t: t.exception() if not t.cancelled() else None
+                    )
                     return ToolResult(
                         tool_call_id=tool_call.id,
                         return_value=ToolRuntimeError(str(e)),
                     )
 
                 # --- PostToolUse (fire-and-forget) ---
-                _bg = asyncio.create_task(
+                _hook_task = asyncio.create_task(
                     self._hook_engine.trigger(
                         "PostToolUse",
                         matcher_value=tool_call.function.name,
@@ -209,7 +211,7 @@ class KimiToolset:
                         ),
                     )
                 )
-                _bg.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 
