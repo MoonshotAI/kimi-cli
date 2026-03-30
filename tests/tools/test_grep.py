@@ -423,15 +423,17 @@ async def test_grep_head_limit_zero_unlimited(grep_tool: Grep):
 async def test_grep_offset_pagination(grep_tool: Grep):
     """offset skips the first N results; combined with head_limit enables pagination."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        for i in range(10):
-            (Path(temp_dir) / f"f{i}.txt").write_text("word\n")
+        # Use a single file with many lines to avoid mtime sort instability
+        (Path(temp_dir) / "data.txt").write_text(
+            "\n".join(f"line{i} word" for i in range(10)) + "\n"
+        )
 
         # Page 1: first 3
         r1 = await grep_tool(
             Params(
                 pattern="word",
                 path=temp_dir,
-                output_mode="files_with_matches",
+                output_mode="content",
                 head_limit=3,
                 offset=0,
             )
@@ -446,7 +448,7 @@ async def test_grep_offset_pagination(grep_tool: Grep):
             Params(
                 pattern="word",
                 path=temp_dir,
-                output_mode="files_with_matches",
+                output_mode="content",
                 head_limit=3,
                 offset=3,
             )
@@ -454,6 +456,7 @@ async def test_grep_offset_pagination(grep_tool: Grep):
         assert isinstance(r2.output, str)
         lines2 = [x for x in r2.output.split("\n") if x.strip()]
         assert len(lines2) == 3
+        # No overlap between pages (content mode has stable line order)
         assert set(lines1).isdisjoint(set(lines2))
 
 
