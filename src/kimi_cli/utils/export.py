@@ -11,6 +11,7 @@ import aiofiles
 from kaos.path import KaosPath
 from kosong.message import Message
 
+from kimi_cli.notifications.llm import is_notification_message
 from kimi_cli.soul.message import is_system_reminder_message, system
 from kimi_cli.utils.message import message_stringify
 from kimi_cli.utils.path import sanitize_cli_path
@@ -45,7 +46,11 @@ def _is_checkpoint_message(msg: Message) -> bool:
 
 def _is_internal_user_message(msg: Message) -> bool:
     """Check if a user message is internal bookkeeping rather than real user input."""
-    return _is_checkpoint_message(msg) or is_system_reminder_message(msg)
+    return (
+        _is_checkpoint_message(msg)
+        or is_system_reminder_message(msg)
+        or is_notification_message(msg)
+    )
 
 
 def _extract_tool_call_hint(args_json: str) -> str:
