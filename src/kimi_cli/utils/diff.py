@@ -130,4 +130,6 @@ async def build_diff_blocks(
     Runs the CPU-bound diff computation in a thread to avoid blocking
     the event loop.
     """
+    if old_text == new_text:
+        return []
     return await asyncio.to_thread(_build_diff_blocks_sync, path, old_text, new_text)
