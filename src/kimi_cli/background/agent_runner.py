@@ -74,17 +74,25 @@ class BackgroundAgentRunner:
                 await asyncio.wait_for(self._run_core(output), timeout=self._timeout_s)
             else:
                 await self._run_core(output)
-        except TimeoutError:
-            logger.warning(
-                "Background agent task {id} timed out after {t}s",
-                id=self._task_id,
-                t=self._timeout_s,
-            )
-            self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
-            self._manager._mark_task_timed_out(
-                self._task_id, f"Agent task timed out after {self._timeout_s}s"
-            )
-            output.error(f"Agent task timed out after {self._timeout_s}s")
+        except TimeoutError as exc:
+            if self._timeout_s is not None:
+                # Task-level timeout from wait_for
+                logger.warning(
+                    "Background agent task {id} timed out after {t}s",
+                    id=self._task_id,
+                    t=self._timeout_s,
+                )
+                self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
+                self._manager._mark_task_timed_out(
+                    self._task_id, f"Agent task timed out after {self._timeout_s}s"
+                )
+                output.error(f"Agent task timed out after {self._timeout_s}s")
+            else:
+                # Internal timeout (e.g. aiohttp request) — treat as generic failure
+                logger.exception("Background agent runner failed")
+                self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
+                self._manager._mark_task_failed(self._task_id, str(exc))
+                output.error(str(exc))
         except asyncio.CancelledError:
             self._runtime.subagent_store.update_instance(self._agent_id, status="killed")
             self._manager._mark_task_killed(self._task_id, "Stopped by TaskStop")

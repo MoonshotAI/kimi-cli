@@ -144,13 +144,18 @@ class AgentTool(CallableTool2[Params]):
             if timeout is not None:
                 return await asyncio.wait_for(runner.run(req), timeout=timeout)
             return await runner.run(req)
-        except TimeoutError:
-            timeout = params.effective_timeout
-            logger.warning("Foreground agent timed out after {t}s", t=timeout)
-            return ToolError(
-                message=f"Agent timed out after {timeout}s.",
-                brief=f"Agent timed out ({timeout}s)",
-            )
+        except TimeoutError as exc:
+            if params.effective_timeout is not None:
+                # Task-level timeout from wait_for
+                t = params.effective_timeout
+                logger.warning("Foreground agent timed out after {t}s", t=t)
+                return ToolError(
+                    message=f"Agent timed out after {t}s.",
+                    brief=f"Agent timed out ({t}s)",
+                )
+            # Internal timeout (e.g. aiohttp request) — treat as generic failure
+            logger.exception("Foreground agent run failed")
+            return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
         except Exception as exc:
             logger.exception("Foreground agent run failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")

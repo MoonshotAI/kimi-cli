@@ -64,7 +64,10 @@ async def usage(app: Shell, args: str):
                 message = "Usage endpoint not available. Try Kimi For Coding."
             console.print(f"[red]{message}[/red]")
             return
-        except (TimeoutError, aiohttp.ClientError) as e:
+        except TimeoutError:
+            console.print("[red]Failed to fetch usage: request timed out.[/red]")
+            return
+        except aiohttp.ClientError as e:
             console.print(f"[red]Failed to fetch usage: {e}[/red]")
             return
 

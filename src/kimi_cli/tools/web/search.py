@@ -92,7 +92,7 @@ class SearchWeb(CallableTool2[Params]):
                     return builder.error(
                         (
                             f"Failed to search. Status: {response.status}. "
-                            "This may indicates that the search service is currently unavailable."
+                            "This may indicate that the search service is currently unavailable."
                         ),
                         brief="Failed to search",
                     )
@@ -103,11 +103,16 @@ class SearchWeb(CallableTool2[Params]):
                     return builder.error(
                         (
                             f"Failed to parse search results. Error: {e}. "
-                            "This may indicates that the search service is currently unavailable."
+                            "This may indicate that the search service is currently unavailable."
                         ),
                         brief="Failed to parse search results",
                     )
-        except (TimeoutError, aiohttp.ClientError) as e:
+        except TimeoutError:
+            return builder.error(
+                "Search request timed out. The search service may be slow or unavailable.",
+                brief="Search request timed out",
+            )
+        except aiohttp.ClientError as e:
             return builder.error(
                 f"Search request failed: {e}. The search service may be unavailable.",
                 brief="Search request failed",
