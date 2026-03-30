@@ -11,6 +11,10 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Grep: Fix tool hanging and becoming uninterruptible — replaced blocking `ripgrepy.run()` with async subprocess execution; the tool now responds to Ctrl-C immediately and has a 20-second timeout with partial result return
+- Grep: Add token efficiency improvements — default `head_limit` of 250 with `offset` pagination, `--hidden` search with VCS directory exclusion, `files_with_matches` sorted by modification time, relative path output, and `--max-columns 500` for non-content modes
+- Grep: `line_number` (`-n`) now defaults to `true` in content mode — line numbers are included by default so the model can reference precise code locations
+- Grep: `count_matches` mode now includes a summary in the message — e.g. "Found 30 total occurrences across 10 files."
 - ACP: Fix `ValueError: list.index(x): x not in list` crash when ACP is launched via `kimi-code` or `kimi-cli` entry-points (e.g. JetBrains AI Assistant)
 - Core: Fix OpenAI-compatible APIs (e.g. One API) returning 400 errors in multi-turn conversations when the server returns `reasoning_content` by default — `reasoning_effort` is now auto-set to `"medium"` when history contains thinking content and `reasoning_key` is configured
 - Shell: Add `/theme` command and dark/light theme support — users with light terminal backgrounds can now switch to a light color palette via `/theme light` or `theme = "light"` in `config.toml`; diff highlights, task browser, prompt UI, and MCP status colors all adapt to the selected theme

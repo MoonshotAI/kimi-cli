@@ -338,8 +338,8 @@ def test_grep_params_schema(grep_tool: Grep):
                     "description": "Number of lines to show before and after each match (the `-C` option). Requires `output_mode` to be `content`.",
                 },
                 "-n": {
-                    "default": False,
-                    "description": "Show line numbers in output (the `-n` option). Requires `output_mode` to be `content`.",
+                    "default": True,
+                    "description": "Show line numbers in output (the `-n` option). Requires `output_mode` to be `content`. Defaults to true.",
                     "type": "boolean",
                 },
                 "-i": {
@@ -353,9 +353,15 @@ def test_grep_params_schema(grep_tool: Grep):
                     "description": "File type to search. Examples: py, rust, js, ts, go, java, etc. More efficient than `glob` for standard file types.",
                 },
                 "head_limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Limit output to first N lines, equivalent to `| head -N`. Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count_matches (limits count entries). By default, no limit is applied.",
+                    "anyOf": [{"minimum": 0, "type": "integer"}, {"type": "null"}],
+                    "default": 250,
+                    "description": "Limit output to first N lines/entries, equivalent to `| head -N`. Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count_matches (limits count entries). Defaults to 250. Pass 0 for unlimited (use sparingly — large result sets waste context).",
+                },
+                "offset": {
+                    "default": 0,
+                    "description": "Skip first N lines/entries before applying head_limit, equivalent to `| tail -n +N | head -N`. Works across all output modes. Defaults to 0.",
+                    "minimum": 0,
+                    "type": "integer",
                 },
                 "multiline": {
                     "default": False,
