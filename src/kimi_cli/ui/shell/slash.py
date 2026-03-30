@@ -574,6 +574,53 @@ async def task(app: Shell, args: str):
 
 
 @registry.command
+@shell_mode_registry.command
+def theme(app: Shell, args: str):
+    """Switch terminal color theme (dark/light)"""
+    from kimi_cli.ui.theme import get_active_theme
+
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    current = get_active_theme()
+    arg = args.strip().lower()
+
+    if not arg:
+        console.print(f"Current theme: [bold]{current}[/bold]")
+        console.print("[grey50]Usage: /theme dark | /theme light[/grey50]")
+        return
+
+    if arg not in ("dark", "light"):
+        console.print(f"[red]Unknown theme: {arg}. Use 'dark' or 'light'.[/red]")
+        return
+
+    if arg == current:
+        console.print(f"[yellow]Already using {arg} theme.[/yellow]")
+        return
+
+    config_file = soul.runtime.config.source_file
+    if config_file is None:
+        console.print(
+            "[yellow]Theme switching requires a config file; "
+            "restart without --config to persist this setting.[/yellow]"
+        )
+        return
+
+    # Persist to disk first — only update in-memory state after success
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.theme = arg  # type: ignore[assignment]
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    console.print(f"[green]Switched to {arg} theme. Reloading...[/green]")
+    raise Reload(session_id=soul.runtime.session.id)
+
+
+@registry.command
 def web(app: Shell, args: str):
     """Open Kimi Code Web UI in browser"""
     soul = ensure_kimi_soul(app)
