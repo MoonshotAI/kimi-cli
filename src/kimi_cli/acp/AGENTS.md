@@ -17,11 +17,11 @@
   - Exposed via the `kimi acp` command in `src/kimi_cli/cli/__init__.py`.
 
 ## Capabilities advertised
-- `prompt_capabilities`: `embedded_context=False`, `image=True`, `audio=False`.
+- `prompt_capabilities`: `embedded_context=True`, `image=True`, `audio=False`.
 - `mcp_capabilities`: `http=True`, `sse=False`.
 - Single-session: `load_session=False`, no session list capabilities.
 - Multi-session: `load_session=True`, `session_capabilities.list` supported.
-- `auth_methods=[]` (no authentication methods advertised).
+- `auth_methods`: includes `login` method with terminal-auth metadata.
 
 ## Session lifecycle (implemented behavior)
 - `session/new`
@@ -73,10 +73,13 @@
   `session/request_permission` with allow-once/allow-always/reject options.
 
 ## Current gaps / not implemented
-- `authenticate` method (not used by current Zed ACP client).
 - `session/set_mode` and `session/set_model` (no multi-mode/model switching in kimi-cli).
 - `ext_method` / `ext_notification` for custom ACP extensions are stubbed.
 - Single-session server does not implement `session/load` or `session/list`.
+
+## Authentication
+- `authenticate` supports terminal login (via ACP `terminal/create`) and OAuth Device Flow as fallback.
+- Auth progress is communicated via `AgentThoughtChunk` session updates (to avoid polluting the conversation stream).
 
 ## Filesystem (ACP client-backed)
 - When the client advertises `fs.readTextFile` / `fs.writeTextFile`, `ACPKaos` routes
