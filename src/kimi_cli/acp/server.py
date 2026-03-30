@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import acp
+from kaos.local import ScopedLocalKaos
 from kaos.path import KaosPath
 
 from kimi_cli.acp.kaos import ACPKaos
@@ -157,7 +158,12 @@ class ACPServer:
             mcp_configs=[mcp_config],
         )
         config = cli_instance.soul.runtime.config
-        acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
+        acp_kaos = ACPKaos(
+            self.conn,
+            session.id,
+            self.client_capabilities,
+            fallback=ScopedLocalKaos(session.work_dir),
+        )
         acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
         model_id_conv = _ModelIDConv(config.default_model, config.default_thinking)
         self.sessions[session.id] = (acp_session, model_id_conv)
@@ -227,7 +233,12 @@ class ACPServer:
             resumed=True,  # _setup_session loads existing sessions
         )
         config = cli_instance.soul.runtime.config
-        acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
+        acp_kaos = ACPKaos(
+            self.conn,
+            session.id,
+            self.client_capabilities,
+            fallback=ScopedLocalKaos(session.work_dir),
+        )
         acp_session = ACPSession(session.id, cli_instance, self.conn, kaos=acp_kaos)
         model_id_conv = _ModelIDConv(config.default_model, config.default_thinking)
         self.sessions[session.id] = (acp_session, model_id_conv)
