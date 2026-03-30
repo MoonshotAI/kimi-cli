@@ -410,17 +410,18 @@ async def test_multiple_update_cycles(tmp_path: Path) -> None:
 
     # Cycle 1: API returns → append tools → pending accumulates
     await ctx.update_token_count(50_000)
-    await ctx.append_message(_msg("tool", "a" * 2000))
-    pending_after_cycle1 = ctx.token_count_with_pending
-    assert pending_after_cycle1 == 50_000 + 2000 // 4
+    tool_msg1 = _msg("tool", "a" * 2000)
+    await ctx.append_message(tool_msg1)
+    assert ctx.token_count_with_pending == 50_000 + estimate_text_tokens([tool_msg1])
 
     # Cycle 2: Next API call → resets pending, new precise count
     await ctx.update_token_count(55_000)
     assert ctx.token_count_with_pending == 55_000  # pending reset
 
     # Append more tool results
-    await ctx.append_message(_msg("tool", "b" * 4000))
-    assert ctx.token_count_with_pending == 55_000 + 4000 // 4
+    tool_msg2 = _msg("tool", "b" * 4000)
+    await ctx.append_message(tool_msg2)
+    assert ctx.token_count_with_pending == 55_000 + estimate_text_tokens([tool_msg2])
 
     # Cycle 3: Another API call
     await ctx.update_token_count(60_000)
