@@ -298,6 +298,12 @@ class KimiCLI:
         finally:
             await kaos.chdir(original_cwd)
 
+    @contextlib.asynccontextmanager
+    async def env(self) -> AsyncGenerator[None]:
+        """Run with the session working directory and refreshed runtime auth."""
+        async with self._env():
+            yield
+
     async def run(
         self,
         user_input: str | list[ContentPart],
@@ -322,7 +328,7 @@ class KimiCLI:
             MaxStepsReached: When the maximum number of steps is reached.
             RunCancelled: When the run is cancelled by the cancel event.
         """
-        async with self._env():
+        async with self.env():
             wire_future = asyncio.Future[WireUISide]()
             stop_ui_loop = asyncio.Event()
             approval_bridge_tasks: dict[str, asyncio.Task[None]] = {}
@@ -513,7 +519,7 @@ class KimiCLI:
                 level=WelcomeInfoItem.Level.INFO,
             )
         )
-        async with self._env():
+        async with self.env():
             shell = Shell(self._soul, welcome_info=welcome_info, prefill_text=prefill_text)
             return await shell.run(command)
 
@@ -528,7 +534,7 @@ class KimiCLI:
         """Run the Kimi Code CLI instance with print UI."""
         from kimi_cli.ui.print import Print
 
-        async with self._env():
+        async with self.env():
             print_ = Print(
                 self._soul,
                 input_format,
@@ -542,7 +548,7 @@ class KimiCLI:
         """Run the Kimi Code CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
 
-        async with self._env():
+        async with self.env():
             acp = ACP(self._soul)
             await acp.run()
 
@@ -550,6 +556,6 @@ class KimiCLI:
         """Run the Kimi Code CLI instance as Wire server over stdio."""
         from kimi_cli.wire.server import WireServer
 
-        async with self._env():
+        async with self.env():
             server = WireServer(self._soul)
             await server.serve()

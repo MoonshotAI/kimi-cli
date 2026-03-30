@@ -143,8 +143,8 @@ class EmbeddedWireWorker(WireServer):
 
     async def _handle_prompt(self, msg):  # type: ignore[override]
         # ``KimiCLI.run_wire_stdio()`` normally keeps the entire wire server inside
-        # ``KimiCLI._env()``. For the embedded worker we scope that environment to
+        # the session environment context. For the embedded worker we scope that environment to
         # each foreground turn and serialize embedded prompts to avoid cross-session
         # cwd races from ``kaos.chdir()``.
-        async with _PROMPT_ENV_LOCK, self._kimi_cli._env():
+        async with _PROMPT_ENV_LOCK, self._kimi_cli.env():
             return await super()._handle_prompt(msg)
