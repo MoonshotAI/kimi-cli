@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Core：修复文件写入/替换工具冻结事件循环的问题——diff 计算（`build_diff_blocks`）现在通过 `asyncio.to_thread` 转移到线程中执行，防止编辑大文件时 UI 卡死
+- Shell：修复 `_watch_root_wire_hub` 在处理异常时静默退出的问题——观察者现在会捕获并记录异常（与 `wire/server.py` 中的模式一致），并优雅处理 `QueueShutDown`，防止审批流程在会话中途静默中断
+- Core：对超大文件（>10000 行）跳过 O(n²) diff 计算——超过阈值的文件现在显示摘要块而非计算完整 diff，未变化的文件会立即短路返回
 - Shell：新增 `/theme` 命令和深色/浅色主题支持——使用浅色终端背景的用户可通过 `/theme light` 或在 `config.toml` 中设置 `theme = "light"` 切换到浅色配色方案；diff 高亮、任务浏览器、提示符 UI 和 MCP 状态颜色均会跟随所选主题自动适配
 - Core：修复压缩前上下文溢出问题——工具结果的 Token 数现在会被估算并纳入自动压缩触发检查，防止大量工具输出在 API 调用间隙将上下文推超模型限制时出现"exceeded model token limit"错误
 - Core：新增 hooks 系统（Beta）——在 `config.toml` 中配置 `[[hooks]]`，可在 13 个生命周期事件（包括 `PreToolUse`、`PostToolUse`、`SessionStart`、`Stop` 等）运行自定义 shell 命令；支持正则匹配、超时处理和通过退出码 2 阻塞操作
