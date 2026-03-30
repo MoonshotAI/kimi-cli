@@ -335,6 +335,14 @@ instance can preserve previous findings and work.
                     "description": "Whether to run the agent in the background. Prefer false unless the task can continue independently and there is a clear benefit to returning control before the result is needed.",
                     "type": "boolean",
                 },
+                "timeout": {
+                    "anyOf": [
+                        {"maximum": 3600, "minimum": 30, "type": "integer"},
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                    "description": "Timeout in seconds for the agent task. Foreground default: 600s (10min), max 600s (10min). Background default: 900s (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
+                },
             },
             "required": ["description", "prompt"],
             "type": "object",

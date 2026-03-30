@@ -76,7 +76,7 @@ async def _get_latest_version(session: aiohttp.ClientSession) -> str | None:
             resp.raise_for_status()
             data = await resp.text()
             return data.strip()
-    except aiohttp.ClientError:
+    except (TimeoutError, aiohttp.ClientError):
         logger.exception("Failed to get latest version:")
         return None
 
@@ -151,7 +151,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
                         async for chunk in resp.content.iter_chunked(1024 * 64):
                             if chunk:
                                 f.write(chunk)
-            except aiohttp.ClientError:
+            except (TimeoutError, aiohttp.ClientError):
                 logger.exception(
                     "Failed to download update from {download_url}",
                     download_url=download_url,

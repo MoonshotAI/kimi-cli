@@ -104,6 +104,8 @@ class BackgroundConfig(BaseModel):
         default=False,
         description="Keep background tasks alive when CLI exits. Default: kill on exit.",
     )
+    agent_task_timeout_s: int = Field(default=900, ge=60)
+    """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
 
 
 class NotificationConfig(BaseModel):

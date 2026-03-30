@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import override
 
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
@@ -12,6 +12,11 @@ from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.logging import logger
 
 NAME = "Agent"
+
+MAX_FOREGROUND_TIMEOUT = 10 * 60  # 10 minutes
+MAX_BACKGROUND_TIMEOUT = 60 * 60  # 1 hour
+DEFAULT_FOREGROUND_TIMEOUT = 10 * 60  # 10 minutes
+DEFAULT_BACKGROUND_TIMEOUT = 15 * 60  # 15 minutes
 
 
 class Params(BaseModel):
@@ -40,6 +45,36 @@ class Params(BaseModel):
             "the result is needed."
         ),
     )
+    timeout: int | None = Field(
+        default=None,
+        description=(
+            "Timeout in seconds for the agent task. "
+            "Foreground default: 600s (10min), max 600s (10min). "
+            "Background default: 900s (15min), max 3600s (1hr). "
+            "The agent is stopped if it exceeds this limit."
+        ),
+        ge=30,
+        le=MAX_BACKGROUND_TIMEOUT,
+    )
+
+    @model_validator(mode="after")
+    def _clamp_timeout(self) -> "Params":
+        if (
+            not self.run_in_background
+            and self.timeout is not None
+            and self.timeout > MAX_FOREGROUND_TIMEOUT
+        ):
+            raise ValueError(
+                f"timeout must be <= {MAX_FOREGROUND_TIMEOUT}s for foreground agents; "
+                f"use run_in_background=true for longer timeouts "
+                f"(up to {MAX_BACKGROUND_TIMEOUT}s)"
+            )
+        return self
+
+    @property
+    def effective_timeout(self) -> int | None:
+        """Return the user-specified timeout, or None to use the system default."""
+        return self.timeout
 
 
 class AgentTool(CallableTool2[Params]):
@@ -111,15 +146,28 @@ class AgentTool(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
         try:
+            import asyncio
+
             runner = ForegroundSubagentRunner(self._runtime)
-            return await runner.run(
-                ForegroundRunRequest(
-                    description=params.description,
-                    prompt=params.prompt,
-                    requested_type=params.subagent_type or "coder",
-                    model=params.model,
-                    resume=params.resume,
-                )
+            timeout = params.effective_timeout or DEFAULT_FOREGROUND_TIMEOUT
+            return await asyncio.wait_for(
+                runner.run(
+                    ForegroundRunRequest(
+                        description=params.description,
+                        prompt=params.prompt,
+                        requested_type=params.subagent_type or "coder",
+                        model=params.model,
+                        resume=params.resume,
+                    )
+                ),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            timeout = params.effective_timeout or DEFAULT_FOREGROUND_TIMEOUT
+            logger.warning("Foreground agent timed out after {t}s", t=timeout)
+            return ToolError(
+                message=f"Agent timed out after {timeout}s.",
+                brief=f"Agent timed out ({timeout}s)",
             )
         except Exception as exc:
             logger.exception("Foreground agent run failed")
@@ -190,6 +238,7 @@ class AgentTool(CallableTool2[Params]):
                     description=params.description.strip(),
                     tool_call_id=tool_call.id,
                     model_override=params.model,
+                    timeout_s=params.effective_timeout,
                 )
             except Exception:
                 if created_instance:

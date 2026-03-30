@@ -70,7 +70,7 @@ class FetchURL(CallableTool2[Params]):
                 if content_type.startswith(("text/plain", "text/markdown")):
                     builder.write(resp_text)
                     return builder.ok("The returned content is the full content of the page.")
-        except aiohttp.ClientError as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             return builder.error(
                 (
                     f"Failed to fetch URL due to network error: {str(e)}. "
@@ -151,7 +151,7 @@ class FetchURL(CallableTool2[Params]):
                 return builder.ok(
                     "The returned content is the main content extracted from the page."
                 )
-        except aiohttp.ClientError as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             return builder.error(
                 (
                     f"Failed to fetch URL via service due to network error: {str(e)}. "

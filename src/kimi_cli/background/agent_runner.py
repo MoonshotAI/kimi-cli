@@ -36,6 +36,7 @@ class BackgroundAgentRunner:
         subagent_type: str,
         prompt: str,
         model_override: str | None,
+        timeout_s: int | None = None,
     ) -> None:
         self._runtime = runtime
         self._manager = manager
@@ -44,6 +45,7 @@ class BackgroundAgentRunner:
         self._subagent_type = subagent_type
         self._prompt = prompt
         self._model_override = model_override
+        self._timeout_s = timeout_s
         self._builder = SubagentBuilder(runtime)
         self._approval_update_tasks: set[asyncio.Task[None]] = set()
 
@@ -68,66 +70,21 @@ class BackgroundAgentRunner:
         )
 
         try:
-            self._manager._mark_task_running(self._task_id)
-            output.stage("runner_started")
-            self._runtime.subagent_store.prompt_path(self._agent_id).write_text(
-                self._prompt,
-                encoding="utf-8",
-            )
-            self._runtime.subagent_store.update_instance(
-                self._agent_id,
-                status="running_background",
-            )
-
-            type_def = self._runtime.labor_market.require_builtin_type(self._subagent_type)
-            record = self._runtime.subagent_store.require_instance(self._agent_id)
-            launch_spec = record.launch_spec
-            if self._model_override is not None:
-                launch_spec = replace(
-                    launch_spec,
-                    model_override=self._model_override,
-                    effective_model=self._model_override,
-                )
-            agent = await self._builder.build_builtin_instance(
-                agent_id=self._agent_id,
-                type_def=type_def,
-                launch_spec=launch_spec,
-            )
-            output.stage("agent_built")
-            context = Context(self._runtime.subagent_store.context_path(self._agent_id))
-            await context.restore()
-            output.stage("context_restored")
-            if context.system_prompt is not None:
-                agent = replace(agent, system_prompt=context.system_prompt)
+            if self._timeout_s is not None:
+                await asyncio.wait_for(self._run_core(output), timeout=self._timeout_s)
             else:
-                await context.write_system_prompt(agent.system_prompt)
-            output.stage("context_ready")
-
-            async def _ui_loop_fn(wire: Wire) -> None:
-                wire_ui = wire.ui_side(merge=True)
-                while True:
-                    msg = await wire_ui.receive()
-                    output.write_wire_message(msg)
-
-            soul = KimiSoul(agent, context=context)
-            output.stage("run_soul_start")
-            final_response, failure = await run_with_summary_continuation(
-                soul,
-                self._prompt,
-                _ui_loop_fn,
-                self._runtime.subagent_store.wire_path(self._agent_id),
+                await self._run_core(output)
+        except TimeoutError:
+            logger.warning(
+                "Background agent task {id} timed out after {t}s",
+                id=self._task_id,
+                t=self._timeout_s,
             )
-            if failure is not None:
-                self._manager._mark_task_failed(self._task_id, failure.message)
-                self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
-                output.stage(f"failed: {failure.brief}")
-                return
-            output.stage("run_soul_finished")
-
-            assert final_response is not None
-            output.summary(final_response)
-            self._runtime.subagent_store.update_instance(self._agent_id, status="idle")
-            self._manager._mark_task_completed(self._task_id)
+            self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
+            self._manager._mark_task_timed_out(
+                self._task_id, f"Agent task timed out after {self._timeout_s}s"
+            )
+            output.error(f"Agent task timed out after {self._timeout_s}s")
         except asyncio.CancelledError:
             self._runtime.subagent_store.update_instance(self._agent_id, status="killed")
             self._manager._mark_task_killed(self._task_id, "Stopped by TaskStop")
@@ -145,8 +102,72 @@ class BackgroundAgentRunner:
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
             self._runtime.approval_runtime.unsubscribe(approval_subscription)
+            self._runtime.approval_runtime.cancel_by_source("background_agent", self._task_id)
             reset_current_approval_source(token)
             self._manager._live_agent_tasks.pop(self._task_id, None)
+
+    async def _run_core(self, output: SubagentOutputWriter) -> None:
+        assert self._runtime.subagent_store is not None
+        self._manager._mark_task_running(self._task_id)
+        output.stage("runner_started")
+        self._runtime.subagent_store.prompt_path(self._agent_id).write_text(
+            self._prompt,
+            encoding="utf-8",
+        )
+        self._runtime.subagent_store.update_instance(
+            self._agent_id,
+            status="running_background",
+        )
+
+        type_def = self._runtime.labor_market.require_builtin_type(self._subagent_type)
+        record = self._runtime.subagent_store.require_instance(self._agent_id)
+        launch_spec = record.launch_spec
+        if self._model_override is not None:
+            launch_spec = replace(
+                launch_spec,
+                model_override=self._model_override,
+                effective_model=self._model_override,
+            )
+        agent = await self._builder.build_builtin_instance(
+            agent_id=self._agent_id,
+            type_def=type_def,
+            launch_spec=launch_spec,
+        )
+        output.stage("agent_built")
+        context = Context(self._runtime.subagent_store.context_path(self._agent_id))
+        await context.restore()
+        output.stage("context_restored")
+        if context.system_prompt is not None:
+            agent = replace(agent, system_prompt=context.system_prompt)
+        else:
+            await context.write_system_prompt(agent.system_prompt)
+        output.stage("context_ready")
+
+        async def _ui_loop_fn(wire: Wire) -> None:
+            wire_ui = wire.ui_side(merge=True)
+            while True:
+                msg = await wire_ui.receive()
+                output.write_wire_message(msg)
+
+        soul = KimiSoul(agent, context=context)
+        output.stage("run_soul_start")
+        final_response, failure = await run_with_summary_continuation(
+            soul,
+            self._prompt,
+            _ui_loop_fn,
+            self._runtime.subagent_store.wire_path(self._agent_id),
+        )
+        if failure is not None:
+            self._manager._mark_task_failed(self._task_id, failure.message)
+            self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
+            output.stage(f"failed: {failure.brief}")
+            return
+        output.stage("run_soul_finished")
+
+        assert final_response is not None
+        output.summary(final_response)
+        self._runtime.subagent_store.update_instance(self._agent_id, status="idle")
+        self._manager._mark_task_completed(self._task_id)
 
     def _on_approval_runtime_event(self, event: ApprovalRuntimeEvent) -> None:
         request = event.request
