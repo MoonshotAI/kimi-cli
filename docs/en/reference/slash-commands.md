@@ -96,6 +96,14 @@ Output includes:
 - Server connection status (green indicates connected)
 - List of tools provided by each server
 
+### `/hooks`
+
+Display currently configured hooks. See [Hooks](../customization/hooks.md) for details.
+
+Output includes:
+- Event types and counts of configured hooks
+- Help message (if no hooks are configured)
+
 ## Session management
 
 ### `/new`
