@@ -89,6 +89,8 @@ interface InitializeParams {
   external_tools?: ExternalTool[]
   /** Client capabilities, optional */
   capabilities?: ClientCapabilities
+  /** Hook subscriptions, optional. Declares hook events the client wants to handle */
+  hooks?: WireHookSubscription[]
 }
 
 interface ClientCapabilities {
@@ -96,6 +98,17 @@ interface ClientCapabilities {
   supports_question?: boolean
   /** Whether the client supports plan mode */
   supports_plan_mode?: boolean
+}
+
+interface WireHookSubscription {
+  /** Subscription ID, referenced in HookRequest */
+  id: string
+  /** Event type to subscribe to, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Regex filter, empty string matches all */
+  matcher?: string
+  /** Timeout for client response in seconds, default 30 */
+  timeout?: number
 }
 
 interface ClientInfo {
@@ -124,6 +137,15 @@ interface InitializeResult {
   external_tools?: ExternalToolsResult
   /** Server capabilities */
   capabilities?: ServerCapabilities
+  /** Hook system info, optional */
+  hooks?: HooksInfo
+}
+
+interface HooksInfo {
+  /** List of all hook event types supported by the server */
+  supported_events: string[]
+  /** Currently configured hooks statistics, key is event type, value is count */
+  configured: Record<string, number>
 }
 
 interface ServerCapabilities {
@@ -478,9 +500,11 @@ type Event =
   | SubagentEvent
   | SteerInput
   | PlanDisplay
+  | HookTriggered
+  | HookResolved
 
 /** Requests: sent via request method, require response */
-type Request = ApprovalRequest | ToolCallRequest | QuestionRequest
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest | HookRequest
 ```
 
 ### `TurnBegin`
@@ -749,6 +773,48 @@ interface PlanDisplay {
 }
 ```
 
+### `HookTriggered`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Hook execution started event. Sent when configured hooks are triggered and begin executing, to notify the client that hooks are running.
+
+```typescript
+interface HookTriggered {
+  /** Hook event type, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Target of the hook: tool name for tool hooks, agent name for subagent hooks, etc. */
+  target: string
+  /** Number of matched hooks running in parallel */
+  hook_count: number
+}
+```
+
+### `HookResolved`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Hook execution completed event. Sent when hooks finish executing, containing the result and duration information.
+
+```typescript
+interface HookResolved {
+  /** Hook event type, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Same as HookTriggered.target */
+  target: string
+  /** Aggregate decision: 'block' if any hook blocked, 'allow' otherwise */
+  action: "allow" | "block"
+  /** Reason for blocking, empty if allowed */
+  reason: string
+  /** Wall-clock time for the entire batch in milliseconds */
+  duration_ms: number
+}
+```
+
 ### `ApprovalRequest`
 
 ::: info Changed
@@ -901,6 +967,46 @@ If the client does not support structured questions or the user dismisses the qu
 
 ```json
 {"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {}}}
+```
+
+### `HookRequest`
+
+::: info Added
+Added in Wire 1.7.
+:::
+
+Hook handling request, sent via `request` method. When a Wire client subscribes to hook events, the server sends this request to let the client handle the hook logic and return an allow/block decision.
+
+This feature requires capability negotiation: the server only sends corresponding `HookRequest` messages after the client declares subscriptions via `hooks` in `initialize`.
+
+```typescript
+interface HookRequest {
+  /** Request ID, used when responding */
+  id: string
+  /** Subscription ID, identifies which subscription triggered this request */
+  subscription_id: string
+  /** Hook event type, e.g., 'PreToolUse', 'Stop' */
+  event: string
+  /** Target that triggered the hook: tool name, agent name, etc. */
+  target: string
+  /** Full event payload (same as what shell hooks receive on stdin) */
+  input_data: object
+}
+```
+
+**Response format**
+
+The client should return a `HookResponse` as the response result:
+
+```typescript
+interface HookResponse {
+  /** Corresponding request ID */
+  request_id: string
+  /** Decision: allow or block */
+  action: "allow" | "block"
+  /** Reason for blocking */
+  reason: string
+}
 ```
 
 ### `DisplayBlock`
