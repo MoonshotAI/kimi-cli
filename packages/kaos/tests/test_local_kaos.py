@@ -201,7 +201,7 @@ async def test_exec_wait_timeout(local_kaos: LocalKaos):
 @pytest.fixture
 def scoped_local_kaos(tmp_path: Path) -> Generator[ScopedLocalKaos]:
     """Set a scoped local Kaos as current without mutating process cwd."""
-    scoped = ScopedLocalKaos(tmp_path)
+    scoped = ScopedLocalKaos(str(tmp_path))
     token = set_current_kaos(scoped)
     try:
         yield scoped
