@@ -7,7 +7,7 @@ from contextvars import ContextVar
 import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kaos import Kaos, reset_current_kaos, set_current_kaos
-from kosong.chat_provider import ChatProviderError
+from kosong.chat_provider import APIStatusError, ChatProviderError
 
 from kimi_cli.acp.convert import (
     acp_blocks_to_content_parts,
@@ -208,6 +208,12 @@ class ACPSession:
             raise acp.RequestError.auth_required() from e
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
+            raise acp.RequestError.internal_error({"error": str(e)}) from e
+        except APIStatusError as e:
+            if e.status_code == 401:
+                logger.warning("Authentication failed (401), prompting re-login")
+                raise acp.RequestError.auth_required() from e
+            logger.exception("LLM API status error:")
             raise acp.RequestError.internal_error({"error": str(e)}) from e
         except ChatProviderError as e:
             logger.exception("LLM provider error:")

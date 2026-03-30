@@ -977,6 +977,7 @@ async def generate_session_title(
         from kosong import generate
         from kosong.message import Message
 
+        from kimi_cli.auth.oauth import OAuthManager
         from kimi_cli.config import load_config
         from kimi_cli.llm import create_llm
 
@@ -988,7 +989,9 @@ async def generate_session_title(
             provider_config = config.providers.get(model_config.provider)
 
             if provider_config:
-                llm = create_llm(provider_config, model_config)
+                oauth = OAuthManager(config)
+                await oauth.ensure_fresh()
+                llm = create_llm(provider_config, model_config, oauth=oauth)
 
                 if llm:
                     system_prompt = (

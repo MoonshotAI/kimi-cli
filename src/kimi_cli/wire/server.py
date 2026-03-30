@@ -7,7 +7,7 @@ from typing import Any, Literal, cast
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
-from kosong.chat_provider import ChatProviderError
+from kosong.chat_provider import APIStatusError, ChatProviderError
 from kosong.tooling import ToolError, ToolResult
 from kosong.utils.typing import JsonType
 
@@ -645,6 +645,22 @@ class WireServer:
             return JSONRPCErrorResponse(
                 id=msg.id,
                 error=JSONRPCErrorObject(code=ErrorCodes.LLM_NOT_SUPPORTED, message=str(e)),
+            )
+        except APIStatusError as e:
+            if e.status_code == 401:
+                return JSONRPCErrorResponse(
+                    id=msg.id,
+                    error=JSONRPCErrorObject(
+                        code=ErrorCodes.AUTH_EXPIRED,
+                        message=(
+                            "Authentication failed. Your login session may have expired. "
+                            'Please run "/login" to sign in again.'
+                        ),
+                    ),
+                )
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(code=ErrorCodes.CHAT_PROVIDER_ERROR, message=str(e)),
             )
         except ChatProviderError as e:
             return JSONRPCErrorResponse(

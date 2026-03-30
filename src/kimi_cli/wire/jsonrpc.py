@@ -248,6 +248,8 @@ class ErrorCodes:
     """The specified LLM is not supported."""
     CHAT_PROVIDER_ERROR = -32003
     """There was an error from the chat provider."""
+    AUTH_EXPIRED = -32004
+    """Authentication has expired; user should re-login."""
 
 
 class Statuses:

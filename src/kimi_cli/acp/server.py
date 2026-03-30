@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -107,13 +108,23 @@ class ACPServer:
             agent_info=acp.schema.Implementation(name=NAME, version=VERSION),
         )
 
-    def _check_auth(self) -> None:
-        """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
+    @staticmethod
+    def _check_token_usable() -> str | None:
+        """Return ``None`` if the persisted OAuth token is usable, else a reason string."""
         ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
         token = load_tokens(ref)
 
         if token is None or not token.access_token:
-            # Build AUTH_REQUIRED error data for clients
+            return "no valid token found"
+        if token.expires_at and token.expires_at < time.time() and not token.refresh_token:
+            # Token expired and no refresh token — background refresh cannot help.
+            return "token expired and no refresh token available"
+        return None
+
+    def _check_auth(self) -> None:
+        """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
+        reason = self._check_token_usable()
+        if reason:
             auth_methods_data: list[dict[str, Any]] = []
             for m in self._auth_methods:
                 if m.field_meta and "terminal-auth" in m.field_meta:
@@ -129,7 +140,7 @@ class ACPServer:
                         }
                     )
 
-            logger.warning("Authentication required, no valid token found")
+            logger.warning("Authentication required, {reason}", reason=reason)
             raise acp.RequestError.auth_required({"authMethods": auth_methods_data})
 
     async def new_session(
@@ -359,14 +370,16 @@ class ACPServer:
         (user completes auth in terminal). Implement for completeness.
         """
         if method_id == "login":
-            ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
-            token = load_tokens(ref)
-
-            if token and token.access_token:
+            reason = self._check_token_usable()
+            if reason is None:
                 logger.info("Authentication successful for method: {id}", id=method_id)
                 return acp.AuthenticateResponse()
             else:
-                logger.warning("Authentication not complete for method: {id}", id=method_id)
+                logger.warning(
+                    "Authentication not complete for method: {id} ({reason})",
+                    id=method_id,
+                    reason=reason,
+                )
                 raise acp.RequestError.auth_required(
                     {
                         "message": "Please complete login in terminal first",
