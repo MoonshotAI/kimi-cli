@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
@@ -16,6 +16,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.mcp_status import render_mcp_console
 from kimi_cli.ui.shell.task_browser import TaskBrowserApp
+from kimi_cli.ui.shell.theme import get_current_theme, set_theme
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
@@ -620,6 +621,88 @@ async def mcp(app: Shell, args: str):
         snapshot = soul.status.mcp_status
         if snapshot is not None:
             live.update(render_mcp_console(snapshot), refresh=True)
+
+
+@registry.command
+@shell_mode_registry.command
+async def theme(app: Shell, args: str):
+    """Switch between dark and light theme"""
+    from rich.text import Text
+
+    from kimi_cli.config import load_config, save_config
+
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    config = soul.runtime.config
+
+    # Check if config can be persisted
+    if not config.is_from_default_location:
+        console.print(
+            "[yellow]Theme switching requires the default config file; "
+            "restart without --config/--config-file.[/yellow]"
+        )
+        return
+
+    original_theme = get_current_theme()
+
+    console.print()
+    console.print(Text("Theme", style="bold"))
+    console.print()
+    console.print("Choose the text style that looks best with your terminal")
+    console.print()
+
+    # Build choices with markers
+    dark_marker = " ✔" if original_theme == "dark" else ""
+    light_marker = " ✔" if original_theme == "light" else ""
+
+    choices: list[tuple[str, str]] = [
+        ("dark", f"Dark mode{dark_marker}"),
+        ("light", f"Light mode{light_marker}"),
+    ]
+
+    try:
+        selection = await ChoiceInput(
+            message="Select a theme (↑↓ navigate, Enter select, Ctrl+C cancel):",
+            options=choices,
+            default=original_theme,
+        ).prompt_async()
+    except (EOFError, KeyboardInterrupt):
+        console.print("[grey50]Theme picker dismissed[/grey50]")
+        return
+
+    if not selection:
+        console.print("[grey50]Theme picker dismissed[/grey50]")
+        return
+
+    if selection == original_theme:
+        console.print(f"[yellow]Theme is already set to {selection} mode[/yellow]")
+        return
+
+    # Cast to Literal for type safety
+    new_theme: Literal["dark", "light"] = selection  # type: ignore[assignment]
+
+    # Apply theme and persist immediately
+    set_theme(new_theme)
+
+    # Invalidate prompt session to refresh UI with new theme colors
+    # Access protected member for internal use within the same package
+    prompt_session = getattr(app, "_prompt_session", None)
+    if prompt_session is not None:
+        prompt_session.invalidate()
+
+    # Persist to config file
+    try:
+        config_for_save = load_config()
+        config_for_save.ui.theme = new_theme  # type: ignore[assignment]
+        save_config(config_for_save)
+        console.print(f"[green]Theme set to {new_theme}[/green]")
+    except (Exception, OSError) as exc:
+        # Revert on save failure
+        set_theme(original_theme)
+        if prompt_session is not None:
+            prompt_session.invalidate()
+        console.print(f"[red]Failed to save config: {exc}[/red]")
 
 
 from . import (  # noqa: E402

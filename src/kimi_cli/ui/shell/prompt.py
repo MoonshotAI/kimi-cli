@@ -62,6 +62,7 @@ from kimi_cli.ui.shell.placeholders import (
     normalize_pasted_text,
     sanitize_surrogates,
 )
+from kimi_cli.ui.shell.theme import get_prompt_toolkit_style, get_theme_colors
 from kimi_cli.utils.clipboard import (
     grab_media_from_clipboard,
     is_clipboard_available,
@@ -1498,21 +1499,7 @@ class CustomPromptSession:
             clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
-            style=Style.from_dict(
-                {
-                    "bottom-toolbar": "noreverse",
-                    "running-prompt-placeholder": "fg:#7c8594 italic",
-                    "running-prompt-separator": "fg:#4a5568",
-                    "slash-completion-menu": "",
-                    "slash-completion-menu.separator": "fg:#4a5568",
-                    "slash-completion-menu.marker": "fg:#4a5568",
-                    "slash-completion-menu.marker.current": "fg:#4f9fff",
-                    "slash-completion-menu.command": "fg:#a6adba",
-                    "slash-completion-menu.meta": "fg:#7c8594",
-                    "slash-completion-menu.command.current": "fg:#6fb7ff bold",
-                    "slash-completion-menu.meta.current": "fg:#56a4ff",
-                }
-            ),
+            style=Style.from_dict(get_prompt_toolkit_style()),
         )
         self._session.default_buffer.read_only = Condition(
             lambda: (
@@ -1775,8 +1762,9 @@ class CustomPromptSession:
 
     def _render_agent_prompt_label(self) -> FormattedText:
         status = self._status_provider()
+        colors = get_theme_colors()
         if status.plan_mode:
-            return FormattedText([("fg:#00aaff", f"{PROMPT_SYMBOL_PLAN} ")])
+            return FormattedText([(f"fg:{colors.prompt_plan_mode}", f"{PROMPT_SYMBOL_PLAN} ")])
         symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
         return FormattedText([("", f"{symbol} ")])
 
@@ -2004,7 +1992,8 @@ class CustomPromptSession:
 
         fragments: list[tuple[str, str]] = []
 
-        fragments.append(("fg:#4d4d4d", "─" * columns))
+        colors = get_theme_colors()
+        fragments.append((f"fg:{colors.toolbar_border}", "─" * columns))
         fragments.append(("", "\n"))
 
         remaining = columns
@@ -2017,11 +2006,12 @@ class CustomPromptSession:
 
         # Status flags: yolo / plan
         status = self._status_provider()
+        colors = get_theme_colors()
         if status.yolo_enabled:
-            fragments.extend([("bold fg:#ffff00", "yolo"), ("", "  ")])
+            fragments.extend([("bold " + colors.status_yolo, "yolo"), ("", "  ")])
             remaining -= 6  # "yolo" = 4, "  " = 2
         if status.plan_mode:
-            fragments.extend([("bold fg:#00aaff", "plan"), ("", "  ")])
+            fragments.extend([("bold " + colors.status_plan, "plan"), ("", "  ")])
             remaining -= 6
 
         # Mode indicator (agent / shell) + model name + thinking indicator.
@@ -2059,7 +2049,7 @@ class CustomPromptSession:
             cwd_text = _truncate_right(cwd, max(0, remaining - 2))
             cwd_w = _display_width(cwd_text)
         if cwd_text and remaining >= cwd_w + 2:
-            fragments.extend([("fg:#666666", cwd_text), ("", "  ")])
+            fragments.extend([(f"fg:{colors.status_cwd}", cwd_text), ("", "  ")])
             remaining -= cwd_w + 2
 
         # Active background bash task count
@@ -2070,7 +2060,7 @@ class CustomPromptSession:
             bg_text = f"⚙ bash: {bg_count}"
             bg_width = _display_width(bg_text)
             if remaining >= bg_width + 2:
-                fragments.extend([("fg:#888888", bg_text), ("", "  ")])
+                fragments.extend([(f"fg:{colors.status_bg_task}", bg_text), ("", "  ")])
                 remaining -= bg_width + 2
 
         # Tips fill remaining space on line 1
@@ -2078,7 +2068,7 @@ class CustomPromptSession:
         if tip_text and _display_width(tip_text) > remaining:
             tip_text = self._get_one_rotating_tip()
         if tip_text and _display_width(tip_text) <= remaining:
-            fragments.append(("fg:#555555", tip_text))
+            fragments.append((f"fg:{colors.status_tips}", tip_text))
 
         # ── line 2: toast (left) + context (right) — always rendered ──────
         fragments.append(("", "\n"))

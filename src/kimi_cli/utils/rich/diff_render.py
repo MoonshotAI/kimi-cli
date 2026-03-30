@@ -25,10 +25,37 @@ from kimi_cli.utils.rich.syntax import KimiSyntax
 # Style constants
 # ---------------------------------------------------------------------------
 
-_ADD_BG = Style(bgcolor="#12261e")
-_DEL_BG = Style(bgcolor="#2d1214")
-_ADD_HL = Style(bgcolor="#1a4a2e")  # deeper green for inline word-level changes
-_DEL_HL = Style(bgcolor="#5c1a1d")  # deeper red for inline word-level changes
+# Note: These are evaluated lazily to avoid circular imports
+# and to support runtime theme switching.
+# Colors are retrieved from theme.py for consistency.
+
+
+def _get_theme_colors():
+    """Get theme colors, importing lazily to avoid circular imports."""
+    from kimi_cli.ui.shell.theme import get_theme_colors
+
+    return get_theme_colors()
+
+
+def _get_add_bg() -> Style:
+    """Get background style for added lines."""
+    return Style(bgcolor=_get_theme_colors().diff_add_bg)
+
+
+def _get_del_bg() -> Style:
+    """Get background style for deleted lines."""
+    return Style(bgcolor=_get_theme_colors().diff_del_bg)
+
+
+def _get_add_hl() -> Style:
+    """Get highlight style for inline additions."""
+    return Style(bgcolor=_get_theme_colors().diff_add_hl)
+
+
+def _get_del_hl() -> Style:
+    """Get highlight style for inline deletions."""
+    return Style(bgcolor=_get_theme_colors().diff_del_hl)
+
 
 _INLINE_DIFF_MIN_RATIO = 0.5  # skip inline diff when lines are too dissimilar
 
@@ -172,9 +199,9 @@ def _apply_inline_diff(
         new_text = _highlight(highlighter, new_code)
         for op, i1, i2, j1, j2 in sm.get_opcodes():
             if op in ("delete", "replace"):
-                old_text.stylize(_DEL_HL, i1, i2)
+                old_text.stylize(_get_del_hl(), i1, i2)
             if op in ("insert", "replace"):
-                new_text.stylize(_ADD_HL, j1, j2)
+                new_text.stylize(_get_add_hl(), j1, j2)
         del_lines[j].content = old_text
         del_lines[j].is_inline_paired = True
         add_lines[j].content = new_text
@@ -183,6 +210,10 @@ def _apply_inline_diff(
 
 def _highlight_hunk(highlighter: KimiSyntax, hunk: list[DiffLine]) -> None:
     """Highlight all lines in a hunk, applying inline diff for paired -/+ blocks."""
+    # Clear cached content to ensure theme colors are re-applied
+    for dl in hunk:
+        dl.content = None
+
     # First pass: find consecutive -/+ blocks and apply inline diff
     i = 0
     while i < len(hunk):
@@ -303,24 +334,27 @@ def render_diff_panel(
         for dl in hunk:
             assert dl.content is not None
             if dl.kind == DiffLineKind.ADD:
+                bg_style = _get_add_bg()
                 table.add_row(
                     Text(str(dl.new_num)),
                     Text(" + ", style="green"),
                     dl.content,
-                    style=_ADD_BG,
+                    style=bg_style,
                 )
             elif dl.kind == DiffLineKind.DELETE:
+                bg_style = _get_del_bg()
                 table.add_row(
                     Text(str(dl.old_num)),
                     Text(" - ", style="red"),
                     dl.content,
-                    style=_DEL_BG,
+                    style=bg_style,
                 )
             else:
                 table.add_row(
                     Text(str(dl.new_num), style="dim"),
                     Text("   "),
                     dl.content,
+                    style=Style(),
                 )
 
     return Panel(
@@ -329,6 +363,7 @@ def render_diff_panel(
         title_align="left",
         border_style="dim",
         padding=(0, 1),
+        style=Style(),
     )
 
 
@@ -374,16 +409,33 @@ def render_diff_preview(
 
     result: list[RenderableType] = [_build_diff_header(path, added, removed)]
 
-    for dl in shown:
-        assert dl.content is not None
-        line = Text()
-        ln = dl.old_num if dl.kind == DiffLineKind.DELETE else dl.new_num
-        line.append(str(ln).rjust(num_width), style="dim")
-        marker_style = "green" if dl.kind == DiffLineKind.ADD else "red"
-        marker_char = "+" if dl.kind == DiffLineKind.ADD else "-"
-        line.append(f" {marker_char} ", style=marker_style)
-        line.append_text(dl.content)
-        result.append(line)
+    if shown:
+        # Use Table to ensure background color fills entire row (like render_diff_panel)
+        table = Table(
+            show_header=False,
+            box=None,
+            padding=(0, 0),
+            show_edge=False,
+            expand=True,
+        )
+        table.add_column(justify="right", width=num_width, no_wrap=True)
+        table.add_column(width=3, no_wrap=True)
+        table.add_column(ratio=1)
+
+        for dl in shown:
+            assert dl.content is not None
+            bg_style = _get_add_bg() if dl.kind == DiffLineKind.ADD else _get_del_bg()
+            line_num = dl.new_num if dl.kind == DiffLineKind.ADD else dl.old_num
+            sign = " + " if dl.kind == DiffLineKind.ADD else " - "
+            sign_style = "green" if dl.kind == DiffLineKind.ADD else "red"
+            table.add_row(
+                Text(str(line_num)),
+                Text(sign, style=sign_style),
+                dl.content,
+                style=bg_style,
+            )
+
+        result.append(table)
 
     if remaining > 0:
         result.append(Text(f"... {remaining} more lines (ctrl-e to expand)", style="dim italic"))

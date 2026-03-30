@@ -15,6 +15,7 @@ from rich.text import Text
 
 from kimi_cli.ui.shell.console import console, render_to_ansi
 from kimi_cli.ui.shell.keyboard import KeyEvent
+from kimi_cli.ui.shell.theme import get_theme_colors
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire.types import QuestionRequest
 
@@ -118,12 +119,14 @@ class QuestionRequestPanel:
                 elif qi.question in self._answers:
                     icon, style = "\u2713", "green"
                 else:
-                    icon, style = "\u25cb", "grey50"
+                    icon, style = "\u25cb", "dim"
                 tab_parts.append(f"[{style}]({icon}) {label}[/{style}]")
             lines.append(Text.from_markup("  ".join(tab_parts)))
             lines.append(Text(""))
 
-        lines.append(Text.from_markup(f"[yellow]? {escape(q.question)}[/yellow]"))
+        colors = get_theme_colors()
+        markup = f"[{colors.message_warning}]? {escape(q.question)}[/{colors.message_warning}]"
+        lines.append(Text.from_markup(markup))
         if q.multi_select:
             lines.append(Text("  (SPACE to toggle, ENTER to submit)", style="dim italic"))
         lines.append(Text(""))
@@ -144,23 +147,32 @@ class QuestionRequestPanel:
             if q.multi_select:
                 checked = "\u2713" if i in self._multi_selected else " "
                 prefix = f"\\[{checked}]"
+                colors = get_theme_colors()
                 if i == self._selected_index:
-                    option_line = Text.from_markup(f"[cyan]{prefix} {escape(label)}[/cyan]")
+                    markup = f"[{colors.highlight}]{prefix} {escape(label)}[/{colors.highlight}]"
+                    option_line = Text.from_markup(markup)
                 else:
-                    option_line = Text.from_markup(f"[grey50]{prefix} {escape(label)}[/grey50]")
+                    option_line = Text.from_markup(f"[dim]{prefix} {escape(label)}[/dim]")
             else:
+                colors = get_theme_colors()
                 if i == self._selected_index:
                     if is_other and show_inline_input:
                         input_display = escape(other_input_text) if other_input_text else ""
-                        option_line = Text.from_markup(
-                            f"[cyan]\u2192 \\[{num}] {escape(label)}: {input_display}\u2588[/cyan]"
+                        markup = (
+                            f"[{colors.highlight}]\u2192 \\[{num}] "
+                            f"{escape(label)}: {input_display}\u2588"
+                            f"[/{colors.highlight}]"
                         )
+                        option_line = Text.from_markup(markup)
                     else:
-                        option_line = Text.from_markup(
-                            f"[cyan]\u2192 \\[{num}] {escape(label)}[/cyan]"
+                        markup = (
+                            f"[{colors.highlight}]\u2192 \\[{num}] "
+                            f"{escape(label)}"
+                            f"[/{colors.highlight}]"
                         )
+                        option_line = Text.from_markup(markup)
                 else:
-                    option_line = Text.from_markup(f"[grey50]  \\[{num}] {escape(label)}[/grey50]")
+                    option_line = Text.from_markup(f"[dim]  \\[{num}] {escape(label)}[/dim]")
             lines.append(option_line)
 
             if description and not (is_other and show_inline_input):
@@ -181,10 +193,11 @@ class QuestionRequestPanel:
                 )
             )
 
+        colors = get_theme_colors()
         return Panel(
             Group(*lines),
-            border_style="bold cyan",
-            title="[bold cyan]? QUESTION[/bold cyan]",
+            border_style=f"bold {colors.highlight}",
+            title=f"[bold {colors.highlight}]? QUESTION[/bold {colors.highlight}]",
             title_align="left",
             padding=(0, 1),
         )
@@ -292,15 +305,20 @@ class QuestionRequestPanel:
 
 
 def show_question_body_in_pager(panel: QuestionRequestPanel) -> None:
+    colors = get_theme_colors()
     with console.screen(), console.pager(styles=True):
-        console.print(Text.from_markup(f"[yellow]? {escape(panel.current_question_text)}[/yellow]"))
+        text = panel.current_question_text
+        markup = f"[{colors.message_warning}]? {escape(text)}[/{colors.message_warning}]"
+        console.print(Text.from_markup(markup))
         console.print()
         for renderable in panel.render_full_body():
             console.print(renderable)
 
 
 async def prompt_other_input(question_text: str) -> str:
-    console.print(Text.from_markup(f"\n[yellow]? {escape(question_text)}[/yellow]"))
+    colors = get_theme_colors()
+    markup = f"\n[{colors.message_warning}]? {escape(question_text)}[/{colors.message_warning}]"
+    console.print(Text.from_markup(markup))
     console.print(Text("  Enter your answer:", style="dim"))
     try:
         session: PromptSession[str] = PromptSession()

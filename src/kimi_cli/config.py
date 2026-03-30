@@ -169,6 +169,15 @@ class MCPConfig(BaseModel):
     )
 
 
+class UIConfig(BaseModel):
+    """UI configuration."""
+
+    theme: Literal["dark", "light", "auto"] = Field(
+        default="dark",
+        description="Color theme for the UI. Options: 'dark', 'light', 'auto'",
+    )
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -202,6 +211,7 @@ class Config(BaseModel):
     )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    ui: UIConfig = Field(default_factory=UIConfig, description="UI configuration")
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

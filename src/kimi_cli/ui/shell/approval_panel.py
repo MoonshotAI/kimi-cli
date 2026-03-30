@@ -16,6 +16,7 @@ from rich.text import Text
 
 from kimi_cli.ui.shell.console import console, render_to_ansi
 from kimi_cli.ui.shell.keyboard import KeyEvent
+from kimi_cli.ui.shell.theme import get_theme_colors
 from kimi_cli.utils.rich.diff_render import (
     collect_diff_hunks,
     render_diff_panel,
@@ -123,15 +124,17 @@ class ApprovalRequestPanel:
             elif isinstance(block, BriefDisplayBlock) and block.text:
                 text = block.text.rstrip("\n")
                 line_count = text.count("\n") + 1
+                style = get_theme_colors().approval_metadata
                 self._content_blocks.append(
-                    ApprovalContentBlock(text=text, lines=line_count, style="grey50")
+                    ApprovalContentBlock(text=text, lines=line_count, style=style)
                 )
                 if non_diff_budget > 0:
                     truncated = text
                     if line_count > non_diff_budget:
                         truncated = "\n".join(text.split("\n")[:non_diff_budget])
                         self._non_diff_truncated = True
-                    self._preview_renderables.append(Text(truncated, style="grey50"))
+                    style = get_theme_colors().approval_metadata
+                    self._preview_renderables.append(Text(truncated, style=style))
                     non_diff_budget -= min(line_count, non_diff_budget)
                 else:
                     self._non_diff_truncated = True
@@ -145,11 +148,12 @@ class ApprovalRequestPanel:
 
     def render(self, *, feedback_text: str | None = None) -> RenderableType:
         """Render the approval menu as a bordered panel."""
+        colors = get_theme_colors()
         content_lines: list[RenderableType] = [
             Text.from_markup(
-                "[yellow]"
+                f"[{colors.approval_warning}]"
                 f"{escape(self.request.sender)} is requesting approval to "
-                f"{escape(self.request.action)}:[/yellow]"
+                f"{escape(self.request.action)}:[/{colors.approval_warning}]"
             )
         ]
         content_lines.extend(self._render_source_metadata_lines())
@@ -158,8 +162,10 @@ class ApprovalRequestPanel:
         # Render preview (diff + non-diff in original display order)
         content_lines.extend(self._preview_renderables)
 
+        colors = get_theme_colors()
         if self.has_expandable_content and self._non_diff_truncated:
-            content_lines.append(Text("... (truncated, ctrl-e to expand)", style="dim italic"))
+            msg = "... (truncated, ctrl-e to expand)"
+            content_lines.append(Text(msg, style=f"{colors.dim} italic"))
 
         lines: list[RenderableType] = []
         if content_lines:
@@ -169,6 +175,7 @@ class ApprovalRequestPanel:
         show_inline_feedback = feedback_text is not None and self.is_feedback_selected
 
         # Add menu options with number key labels
+        colors = get_theme_colors()
         if lines:
             lines.append(Text(""))
         for i, (option_text, _) in enumerate(self.options):
@@ -177,17 +184,21 @@ class ApprovalRequestPanel:
             if i == self.selected_index:
                 if is_feedback_option and show_inline_feedback:
                     input_display = escape(feedback_text) if feedback_text else ""
-                    lines.append(
-                        Text.from_markup(
-                            f"[cyan]\u2192 \\[{num}] Reject: {input_display}\u2588[/cyan]"
-                        )
+                    markup = (
+                        f"[{colors.approval_selected}]\u2192 \\[{num}] "
+                        f"Reject: {input_display}\u2588"
+                        f"[/{colors.approval_selected}]"
                     )
+                    lines.append(Text.from_markup(markup))
                 else:
-                    lines.append(Text(f"\u2192 [{num}] {option_text}", style="cyan"))
+                    style = colors.approval_selected
+                    lines.append(Text(f"\u2192 [{num}] {option_text}", style=style))
             else:
-                lines.append(Text(f"  [{num}] {option_text}", style="grey50"))
+                style = colors.approval_unselected
+                lines.append(Text(f"  [{num}] {option_text}", style=style))
 
         # Keyboard hints
+        colors = get_theme_colors()
         lines.append(Text(""))
         if show_inline_feedback:
             hint = "  Type your feedback, then press Enter to submit."
@@ -195,12 +206,13 @@ class ApprovalRequestPanel:
             hint = "  \u25b2/\u25bc select  1/2/3/4 choose  \u21b5 confirm"
             if self.has_expandable_content:
                 hint += "  ctrl-e expand"
-        lines.append(Text(hint, style="dim"))
+        lines.append(Text(hint, style=colors.approval_hint))
 
+        colors = get_theme_colors()
         return Panel(
             Group(*lines),
-            border_style="bold yellow",
-            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
+            border_style=colors.approval_border,
+            title=f"[{colors.approval_title}]\u26a0 ACTION REQUIRED[/{colors.approval_title}]",
             title_align="left",
             padding=(0, 1),
         )
@@ -231,9 +243,11 @@ class ApprovalRequestPanel:
             else:
                 assert self.request.agent_id is not None
                 subagent_text = self.request.agent_id
-            lines.append(Text(f"Subagent: {subagent_text}", style="grey50"))
+            style = get_theme_colors().approval_metadata
+            lines.append(Text(f"Subagent: {subagent_text}", style=style))
         if self.request.source_description:
-            lines.append(Text(f"Task: {self.request.source_description}", style="grey50"))
+            style = get_theme_colors().approval_metadata
+            lines.append(Text(f"Task: {self.request.source_description}", style=style))
         return lines
 
     def move_up(self):
@@ -255,12 +269,13 @@ class ApprovalRequestPanel:
 
 def show_approval_in_pager(panel: ApprovalRequestPanel) -> None:
     """Show the full approval request content in a pager."""
+    colors = get_theme_colors()
     with console.screen(), console.pager(styles=True):
         console.print(
             Text.from_markup(
-                "[yellow]⚠ "
+                f"[{colors.approval_warning}]⚠ "
                 f"{escape(panel.request.sender)} is requesting approval to "
-                f"{escape(panel.request.action)}:[/yellow]"
+                f"{escape(panel.request.action)}:[/{colors.approval_warning}]"
             )
         )
         console.print()
@@ -289,7 +304,8 @@ def show_approval_in_pager(panel: ApprovalRequestPanel) -> None:
                 rendered_any = True
                 idx += 1
             elif isinstance(block, BriefDisplayBlock) and block.text:
-                console.print(Text(block.text.rstrip("\n"), style="grey50"))
+                style = get_theme_colors().approval_metadata
+                console.print(Text(block.text.rstrip("\n"), style=style))
                 rendered_any = True
                 idx += 1
             else:

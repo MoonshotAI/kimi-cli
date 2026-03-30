@@ -481,6 +481,33 @@ def _task_timing_label(view: TaskView, *, now: float | None = None) -> str | Non
 
 
 def _task_browser_style() -> Style:
+    from kimi_cli.ui.shell.theme import is_light_theme
+
+    if is_light_theme():
+        # Light theme styles
+        return Style.from_dict(
+            {
+                "header": "bg:#e5e7eb #1f2937",
+                "header.title": "bg:#e5e7eb #0066cc bold",
+                "header.meta": "bg:#e5e7eb #6b7280",
+                "status.running": "bg:#e5e7eb #15803d bold",
+                "status.success": "bg:#e5e7eb #15803d",
+                "status.warning": "bg:#e5e7eb #b45309",
+                "status.error": "bg:#e5e7eb #dc2626",
+                "status.info": "bg:#e5e7eb #2563eb",
+                "task-list": "bg:#f3f4f6 #374151",
+                "task-list.checked": "bg:#dbeafe #1e40af bold",
+                "frame.border": "#3b82f6",
+                "frame.label": "bg:#f9fafb #0066cc bold",
+                "footer": "bg:#f3f4f6 #4b5563",
+                "footer.key": "bg:#f3f4f6 #0066cc bold",
+                "footer.text": "bg:#f3f4f6 #4b5563",
+                "footer.warning": "bg:#fee2e2 #991b1b bold",
+                "footer.meta": "bg:#f3f4f6 #6b7280",
+            }
+        )
+
+    # Dark theme styles (default)
     return Style.from_dict(
         {
             "header": "bg:#1f2937 #e5e7eb",

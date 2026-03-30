@@ -19,6 +19,7 @@ from kimi_cli.config import LLMModel
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import registry
+from kimi_cli.ui.shell.theme import get_theme_colors
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.datetime import format_duration
 
@@ -226,10 +227,13 @@ def _to_int(value: Any) -> int | None:
 
 
 def _build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Panel:
+    colors = get_theme_colors()
     rows = ([summary] if summary else []) + limits
     if not rows:
         return Panel(
-            Text("No usage data", style="grey50"), title="API Usage", border_style="wheat4"
+            Text("No usage data", style=colors.usage_dim),
+            title="API Usage",
+            border_style=colors.usage_border,
         )
 
     # Calculate label width for alignment
@@ -240,27 +244,29 @@ def _build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Pane
     for row in rows:
         lines.append(_format_row(row, label_width))
 
+    colors = get_theme_colors()
     return Panel(
         Group(*lines),
         title="API Usage",
-        border_style="wheat4",
+        border_style=colors.usage_border,
         padding=(0, 2),
         expand=False,
     )
 
 
 def _format_row(row: UsageRow, label_width: int) -> RenderableType:
+    colors = get_theme_colors()
     ratio = (row.limit - row.used) / row.limit if row.limit > 0 else 0
     color = _ratio_color(ratio)
 
-    label = Text(f"{row.label:<{label_width}}  ", style="cyan")
+    label = Text(f"{row.label:<{label_width}}  ", style=colors.usage_label)
     bar = ProgressBar(total=row.limit or 1, completed=row.used, width=20, complete_style=color)
 
     detail = Text()
     percent = ratio * 100
     detail.append(f"  {percent:.0f}% left", style="bold")
     if row.reset_hint:
-        detail.append(f"  ({row.reset_hint})", style="grey50")
+        detail.append(f"  ({row.reset_hint})", style=colors.usage_dim)
 
     t = Table.grid(padding=0)
     t.add_column(width=label_width + 2)

@@ -25,7 +25,9 @@ from rich.style import Style
 from rich.syntax import ANSISyntaxTheme, Syntax, SyntaxTheme
 
 KIMI_ANSI_THEME_NAME = "kimi-ansi"
-KIMI_ANSI_THEME = ANSISyntaxTheme(
+
+# Dark theme (default) - uses terminal's default foreground (white/light gray on dark bg)
+KIMI_ANSI_THEME_DARK = ANSISyntaxTheme(
     {
         PygmentsToken: Style(color="default"),
         PygmentsText: Style(color="default"),
@@ -77,17 +79,77 @@ KIMI_ANSI_THEME = ANSISyntaxTheme(
     }
 )
 
+# Light theme - uses dark colors for visibility on light backgrounds
+KIMI_ANSI_THEME_LIGHT = ANSISyntaxTheme(
+    {
+        PygmentsToken: Style(color="black"),
+        PygmentsText: Style(color="black"),
+        Comment: Style(color="grey50", italic=True),
+        Keyword: Style(color="dark_magenta"),
+        Keyword.Constant: Style(color="dark_cyan"),
+        Keyword.Declaration: Style(color="dark_magenta"),
+        Keyword.Namespace: Style(color="dark_magenta"),
+        Keyword.Pseudo: Style(color="dark_magenta"),
+        Keyword.Reserved: Style(color="dark_magenta"),
+        Keyword.Type: Style(color="dark_magenta"),
+        Name: Style(color="black"),
+        Name.Attribute: Style(color="dark_cyan"),
+        Name.Builtin: Style(color="dark_orange3"),
+        Name.Builtin.Pseudo: Style(color="dark_cyan"),
+        Name.Builtin.Type: Style(color="dark_orange3", bold=True),
+        Name.Class: Style(color="dark_orange3", bold=True),
+        Name.Constant: Style(color="dark_cyan"),
+        Name.Decorator: Style(color="dark_cyan", bold=True),
+        Name.Entity: Style(color="dark_orange3"),
+        Name.Exception: Style(color="dark_orange3", bold=True),
+        Name.Function: Style(color="dark_cyan", bold=True),
+        Name.Label: Style(color="dark_cyan"),
+        Name.Namespace: Style(color="dark_magenta"),
+        Name.Other: Style(color="dark_cyan", bold=True),
+        Name.Property: Style(color="dark_cyan"),
+        Name.Tag: Style(color="dark_green"),
+        Name.Variable: Style(color="dark_orange3"),
+        PygmentsLiteral: Style(color="dark_blue"),
+        PygmentsLiteral.Date: Style(color="dark_blue"),
+        String: Style(color="dark_blue"),
+        String.Doc: Style(color="dark_blue", italic=True),
+        String.Interpol: Style(color="dark_blue"),
+        String.Affix: Style(color="dark_cyan"),
+        Number: Style(color="dark_cyan"),
+        Operator: Style(color="black"),
+        Operator.Word: Style(color="dark_magenta"),
+        Punctuation: Style(color="black"),
+        Generic.Deleted: Style(color="dark_red"),
+        Generic.Emph: Style(italic=True),
+        Generic.Error: Style(color="red", bold=True),
+        Generic.Heading: Style(color="dark_cyan", bold=True),
+        Generic.Inserted: Style(color="dark_green"),
+        Generic.Output: Style(color="grey50"),
+        Generic.Prompt: Style(color="dark_cyan"),
+        Generic.Strong: Style(bold=True),
+        Generic.Subheading: Style(color="dark_cyan"),
+        Generic.Traceback: Style(color="red", bold=True),
+    }
+)
+
+# Backward compatibility alias
+KIMI_ANSI_THEME = KIMI_ANSI_THEME_DARK
+
 
 def resolve_code_theme(theme: str | SyntaxTheme) -> str | SyntaxTheme:
     if isinstance(theme, str) and theme.lower() == KIMI_ANSI_THEME_NAME:
-        return KIMI_ANSI_THEME
+        from kimi_cli.ui.shell.theme import is_light_theme
+
+        return KIMI_ANSI_THEME_LIGHT if is_light_theme() else KIMI_ANSI_THEME_DARK
     return theme
 
 
 class KimiSyntax(Syntax):
     def __init__(self, code: str, lexer: str, **kwargs: Any) -> None:
         if "theme" not in kwargs or kwargs["theme"] is None:
-            kwargs["theme"] = KIMI_ANSI_THEME
+            from kimi_cli.ui.shell.theme import is_light_theme
+
+            kwargs["theme"] = KIMI_ANSI_THEME_LIGHT if is_light_theme() else KIMI_ANSI_THEME_DARK
         super().__init__(code, lexer, **kwargs)
 
 

@@ -34,6 +34,7 @@ from kimi_cli.ui.shell.prompt import (
 from kimi_cli.ui.shell.replay import replay_recent_history
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.slash import shell_mode_registry
+from kimi_cli.ui.shell.theme import detect_terminal_theme, get_theme_colors, set_theme
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import (
     ApprovalPromptDelegate,
@@ -153,6 +154,13 @@ class Shell:
             **{cmd.name: cmd for cmd in soul.available_slash_commands},
             **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
         }
+        # Initialize theme from config
+        if isinstance(soul, KimiSoul):
+            theme = soul.runtime.config.ui.theme
+            if theme == "auto":
+                set_theme(detect_terminal_theme())
+            else:
+                set_theme(theme)
         """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
 
     @property
@@ -414,7 +422,9 @@ class Shell:
                         continue
 
                     if event.kind == "interrupt":
-                        console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
+                        colors = get_theme_colors()
+                        msg = "Tip: press Ctrl-D or send 'exit' to quit"
+                        console.print(f"[{colors.message_info}]{msg}[/{colors.message_info}]")
                         resume_prompt.set()
                         continue
 
@@ -938,8 +948,13 @@ class WelcomeInfoItem:
 
 
 def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
+    colors = get_theme_colors()
     head = Text.from_markup("Welcome to Kimi Code CLI!")
-    help_text = Text.from_markup("[grey50]Send /help for help information.[/grey50]")
+    help_text = Text.from_markup(
+        f"[{colors.toolbar_text_secondary}]"
+        f"Send /help for help information."
+        f"[/{colors.toolbar_text_secondary}]"
+    )
 
     # Use Table for precise width control
     logo = Text.from_markup(_LOGO)

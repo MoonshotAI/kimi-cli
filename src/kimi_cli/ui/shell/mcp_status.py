@@ -7,6 +7,7 @@ from rich.console import Group, RenderableType
 from rich.spinner import Spinner
 from rich.text import Text
 
+from kimi_cli.ui.shell.theme import get_theme_colors
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.wire.types import MCPServerSnapshot, MCPStatusSnapshot
 
@@ -25,16 +26,16 @@ def render_mcp_console(snapshot: MCPStatusSnapshot) -> RenderableType:
         color = _status_color(server.status)
         server_text = f"[{color}]{server.name}[/{color}]"
         if server.status == "unauthorized":
-            server_text += f" [grey50](unauthorized - run: kimi mcp auth {server.name})[/grey50]"
+            server_text += f" [dim](unauthorized - run: kimi mcp auth {server.name})[/dim]"
         elif server.status != "connected":
-            server_text += f" [grey50]({server.status})[/grey50]"
+            server_text += f" [dim]({server.status})[/dim]"
 
         lines: list[RenderableType] = [Text.from_markup(server_text)]
         for tool_name in server.tools:
             lines.append(
                 BulletColumns(
-                    Text.from_markup(f"[grey50]{tool_name}[/grey50]"),
-                    bullet_style="grey50",
+                    Text.from_markup(f"[dim]{tool_name}[/dim]"),
+                    bullet_style="dim",
                 )
             )
         renderables.append(BulletColumns(Group(*lines), bullet_style=color))
@@ -46,11 +47,12 @@ def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) 
     if not snapshot.loading:
         return FormattedText([])
 
+    colors = get_theme_colors()
     fragments: list[tuple[str, str]] = []
     prefix = f"{_spinner_frame(now)} " if snapshot.loading else ""
     fragments.append(
         (
-            "fg:#d4d4d4",
+            f"fg:{colors.toolbar_text}",
             (
                 f"{prefix}MCP Servers: "
                 f"{snapshot.connected}/{snapshot.total} connected, {snapshot.tools} tools"
@@ -63,7 +65,7 @@ def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) 
         fragments.append((_prompt_status_style(server.status), f"• {server.name}"))
         detail = _prompt_server_detail(server)
         if detail:
-            fragments.append(("fg:#7c8594", detail))
+            fragments.append((f"fg:{colors.prompt_placeholder}", detail))
         fragments.append(("", "\n"))
 
     return FormattedText(fragments)
