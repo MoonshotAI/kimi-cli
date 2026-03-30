@@ -56,6 +56,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    application.state.restrict_open_in = restrict_open_in
+
     application.include_router(sessions_router)
     application.include_router(statistics_router)
     application.include_router(system_router)
