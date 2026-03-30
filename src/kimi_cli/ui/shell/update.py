@@ -101,7 +101,9 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
         _print("[red]Failed to detect target platform.[/red]")
         return UpdateResult.UNSUPPORTED
 
-    async with new_client_session() as session:
+    # Version check is fast, but the binary download can be large on slow links.
+    download_timeout = aiohttp.ClientTimeout(total=600, sock_read=60, sock_connect=15)
+    async with new_client_session(timeout=download_timeout) as session:
         logger.info("Checking for updates...")
         _print("Checking for updates...")
         latest_version = await _get_latest_version(session)

@@ -43,8 +43,10 @@ class FetchURL(CallableTool2[Params]):
     async def fetch_with_http_get(params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder(max_line_length=None)
         try:
+            # Fetching arbitrary web pages can take a while on large/slow sites.
+            fetch_timeout = aiohttp.ClientTimeout(total=180, sock_read=60, sock_connect=15)
             async with (
-                new_client_session() as session,
+                new_client_session(timeout=fetch_timeout) as session,
                 session.get(
                     params.url,
                     headers={

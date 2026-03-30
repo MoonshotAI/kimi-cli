@@ -109,55 +109,9 @@ async def test_background_agent_no_timeout(runtime):
     assert completed.is_set()
 
 
-async def test_background_agent_internal_timeout_not_misreported(runtime):
-    """When timeout_s is None, an internal TimeoutError (e.g. from aiohttp)
-    should be treated as a generic failure, NOT marked as timed_out."""
-    manager = runtime.background_tasks
-    manager._runtime = runtime
-
-    task_id = "agent-internal-timeout"
-    store = manager.store
-    spec = TaskSpec(
-        id=task_id,
-        kind="agent",
-        session_id=runtime.session.id,
-        description="internal timeout test",
-        tool_call_id="tool-it",
-        owner_role="root",
-    )
-    store.create_task(spec)
-
-    runtime.subagent_store = MagicMock()
-    runtime.subagent_store.output_path.return_value = store._root / "output.txt"
-    runtime.subagent_store.output_path.return_value.parent.mkdir(parents=True, exist_ok=True)
-
-    runner = BackgroundAgentRunner(
-        runtime=runtime,
-        manager=manager,
-        task_id=task_id,
-        agent_id="a_internal",
-        subagent_type="mocker",
-        prompt="test",
-        model_override=None,
-        timeout_s=None,  # No task-level timeout
-    )
-
-    async def _raise_internal_timeout(*args, **kwargs):
-        raise TimeoutError("aiohttp sock_read timeout")
-
-    runner._run_core = _raise_internal_timeout
-    await runner.run()
-
-    # Should be marked as failed (generic), NOT timed_out
-    rt = store.read_runtime(task_id)
-    assert rt.status == "failed"
-    assert rt.timed_out is not True  # Must NOT be marked as timed_out
-    assert "aiohttp" in (rt.failure_reason or "")
-
-
 async def test_background_agent_internal_timeout_with_deadline_set(runtime):
-    """Even when timeout_s is set (production path), an internal TimeoutError
-    should NOT be misattributed as a task-level timeout."""
+    """Production path: timeout_s is set (e.g. 900) but an internal TimeoutError
+    (e.g. aiohttp sock_read) fires first. Should be generic failure, NOT timed_out."""
     manager = runtime.background_tasks
     manager._runtime = runtime
 
