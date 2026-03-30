@@ -39,7 +39,7 @@ _SECURITY_PATTERNS: list[tuple[re.Pattern[str], RiskLevel, str]] = [
         RiskLevel.MEDIUM,
         "Multiple commands chained with ; && ||",
     ),
-    (re.compile(r"\|"), RiskLevel.MEDIUM, "Pipe to another command"),
+    (re.compile(r"(?<!\|)\|(?!\|)"), RiskLevel.MEDIUM, "Pipe to another command"),
     (re.compile(r"[<>]|>>|<<"), RiskLevel.MEDIUM, "File redirection"),
     # Command substitution (high risk — arbitrary code execution)
     (re.compile(r"`[^`]+`"), RiskLevel.HIGH, "Backtick command substitution"),

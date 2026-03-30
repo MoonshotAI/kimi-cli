@@ -40,6 +40,13 @@ class TestAnalyzeCommand:
         assert any(n.description == "Pipe to another command" for n in notes)
         assert all(n.risk == RiskLevel.MEDIUM for n in notes)
 
+    def test_logical_or_does_not_trigger_pipe_note(self) -> None:
+        """|| (logical OR) should not trigger 'Pipe to another command'."""
+        notes = analyze_command("git add . || echo fail")
+        descriptions = [n.description for n in notes]
+        assert "Pipe to another command" not in descriptions
+        assert any("chained" in d.lower() for d in descriptions)
+
     def test_redirection_detected(self) -> None:
         """File redirections are detected."""
         notes = analyze_command("echo hello > file.txt")

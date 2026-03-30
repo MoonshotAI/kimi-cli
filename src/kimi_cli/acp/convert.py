@@ -120,6 +120,12 @@ def tool_result_to_acp_content(
             # return early to indicate no output should be shown
             return []
 
+        if isinstance(block, BriefDisplayBlock):
+            # Brief messages are UI-only summaries ("Plan approved", etc.);
+            # they were previously dropped here and should not be forwarded
+            # to ACP clients as content blocks.
+            continue
+
         content = display_block_to_acp_content(block)
         if content is not None:
             contents.append(content)
