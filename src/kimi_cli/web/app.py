@@ -7,7 +7,7 @@ import webbrowser
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.parse import quote
 
 import scalar_fastapi
@@ -63,6 +63,8 @@ ENV_ALLOWED_ORIGINS = "KIMI_WEB_ALLOWED_ORIGINS"
 ENV_ENFORCE_ORIGIN = "KIMI_WEB_ENFORCE_ORIGIN"
 ENV_RESTRICT_SENSITIVE_APIS = "KIMI_WEB_RESTRICT_SENSITIVE_APIS"
 ENV_MAX_PUBLIC_PATH_DEPTH = "KIMI_WEB_MAX_PUBLIC_PATH_DEPTH"
+ENV_RUNTIME = "KIMI_WEB_RUNTIME"
+RuntimeMode = Literal["process", "embedded"]
 
 # Cache durations
 _IMMUTABLE_MAX_AGE = 365 * 24 * 3600  # 1 year for content-hashed assets
@@ -109,6 +111,18 @@ def _load_env_flag(key: str) -> bool:
     return os.environ.get(key, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _load_runtime_mode() -> RuntimeMode:
+    runtime = os.environ.get(ENV_RUNTIME, "process").strip().lower() or "process"
+    if runtime not in {"process", "embedded"}:
+        logger.warning(
+            "Invalid {env}={value}, falling back to process",
+            env=ENV_RUNTIME,
+            value=runtime,
+        )
+        return "process"
+    return cast(RuntimeMode, runtime)
+
+
 ENV_LAN_ONLY = "KIMI_WEB_LAN_ONLY"
 
 
@@ -131,6 +145,7 @@ def create_app(
         int(env_max_depth_str) if env_max_depth_str and env_max_depth_str.isdigit() else None
     )
     env_lan_only = _load_env_flag(ENV_LAN_ONLY)
+    env_runtime = _load_runtime_mode()
 
     session_token = session_token if session_token is not None else env_token
     allowed_origins = allowed_origins if allowed_origins is not None else env_origins
@@ -154,7 +169,7 @@ def create_app(
         app.state.lan_only = lan_only
 
         # Start KimiCLI runner
-        runner = KimiCLIRunner()
+        runner = KimiCLIRunner(runtime_mode=env_runtime)
         app.state.runner = runner
         runner.start()
 

@@ -14,6 +14,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid4
 
 from kosong.message import ContentPart, ImageURLPart, TextPart
@@ -325,36 +326,33 @@ class SessionProcess:
                     else:
                         continue
 
-                await self._broadcast(line.decode("utf-8").rstrip("\n"))
-
-                # Handle out message
-                try:
-                    msg = json.loads(line)
-                    match msg.get("method"):
-                        case "event":
-                            msg["params"] = deserialize_wire_message(msg["params"])
-                            await self._handle_out_message(JSONRPCEventMessage.model_validate(msg))
-                        case "request":
-                            msg["params"] = deserialize_wire_message(msg["params"])
-                            await self._handle_out_message(
-                                JSONRPCRequestMessage.model_validate(msg)
-                            )
-                        case _:
-                            if msg.get("error"):
-                                await self._handle_out_message(
-                                    JSONRPCErrorResponse.model_validate(msg)
-                                )
-                            else:
-                                await self._handle_out_message(
-                                    JSONRPCSuccessResponse.model_validate(msg)
-                                )
-                except json.JSONDecodeError:
-                    logger.error(f"Invalid JSONRPC out message: {line}")
+                await self._process_worker_output_line(line.decode("utf-8").rstrip("\n"))
 
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.warning(f"Unexpected error in read loop: {e.__class__.__name__} {e}")
+
+    async def _process_worker_output_line(self, message: str) -> None:
+        """Broadcast and process one JSON-RPC line from a worker."""
+        await self._broadcast(message)
+
+        try:
+            msg = json.loads(message)
+            match msg.get("method"):
+                case "event":
+                    msg["params"] = deserialize_wire_message(msg["params"])
+                    await self._handle_out_message(JSONRPCEventMessage.model_validate(msg))
+                case "request":
+                    msg["params"] = deserialize_wire_message(msg["params"])
+                    await self._handle_out_message(JSONRPCRequestMessage.model_validate(msg))
+                case _:
+                    if msg.get("error"):
+                        await self._handle_out_message(JSONRPCErrorResponse.model_validate(msg))
+                    else:
+                        await self._handle_out_message(JSONRPCSuccessResponse.model_validate(msg))
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSONRPC out message: {message}")
 
     async def _handle_out_message(self, message: JSONRPCOutMessage) -> None:
         """Handle outbound message from worker."""
@@ -659,8 +657,9 @@ class SessionProcess:
 class KimiCLIRunner:
     """Manages multiple session processes."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, runtime_mode: Literal["process", "embedded"] = "process") -> None:
         """Initialize the runner."""
+        self._runtime_mode = runtime_mode
         self._sessions: dict[UUID, SessionProcess] = {}
         self._lock = asyncio.Lock()
 
@@ -685,8 +684,15 @@ class KimiCLIRunner:
         """Get or create a session process."""
         async with self._lock:
             if session_id not in self._sessions:
-                self._sessions[session_id] = SessionProcess(session_id)
+                self._sessions[session_id] = self._create_session_process(session_id)
             return self._sessions[session_id]
+
+    def _create_session_process(self, session_id: UUID) -> SessionProcess:
+        if self._runtime_mode == "embedded":
+            from kimi_cli.web.runner.embedded_process import EmbeddedSessionProcess
+
+            return EmbeddedSessionProcess(session_id)
+        return SessionProcess(session_id)
 
     def get_session(self, session_id: UUID) -> SessionProcess | None:
         """Get a session process if it exists."""
