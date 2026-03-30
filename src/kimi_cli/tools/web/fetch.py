@@ -102,9 +102,7 @@ class FetchURL(CallableTool2[Params]):
             # trafilatura unavailable (e.g. charset-normalizer binary
             # incompatible with current Python), return raw HTML trimmed
             builder.write(resp_text[:50000])
-            return builder.ok(
-                "trafilatura is not available; returning raw page content."
-            )
+            return builder.ok("trafilatura is not available; returning raw page content.")
 
         extracted_text = trafilatura.extract(
             resp_text,
