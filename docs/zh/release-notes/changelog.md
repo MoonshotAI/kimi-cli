@@ -5,6 +5,12 @@
 ## 未发布
 
 - Core：为 Agent 工具和 HTTP 请求添加超时保护——所有 `aiohttp` 会话现在默认 120 秒总超时 / 60 秒读取超时；Agent 工具新增可选 `timeout` 参数（前台默认 10 分钟，后台默认 15 分钟）；后台 Agent 任务超时后标记为 `timed_out` 并正确触发通知
+- Grep：修复工具卡死且无法中断的问题——将阻塞的 `ripgrepy.run()` 替换为异步子进程执行；工具现在可响应 Ctrl-C 立即中断，并设有 20 秒超时保护，超时后返回部分结果
+- Grep：新增 Token 效率优化——默认 `head_limit` 为 250 并支持 `offset` 分页、启用 `--hidden` 搜索同时排除 VCS 目录、`files_with_matches` 按修改时间排序、输出相对路径、非 content 模式限制最大列宽 500
+- Grep：content 模式的 `line_number`（`-n`）现在默认为 `true`——默认包含行号，以便模型引用精确的代码位置
+- Grep：`count_matches` 模式现在在 message 中包含汇总信息——例如 "Found 30 total occurrences across 10 files."
+- ACP：修复通过 `kimi-code` 或 `kimi-cli` 入口启动 ACP 时 `ValueError: list.index(x): x not in list` 崩溃的问题（如 JetBrains AI Assistant 场景）
+- Core：修复 OpenAI 兼容 API（如 One API）在多轮对话中返回 400 错误的问题——当服务端默认返回 `reasoning_content` 时，现在会在历史消息包含思考内容且配置了 `reasoning_key` 的情况下自动设置 `reasoning_effort` 为 `"medium"`
 - Shell：新增 `/theme` 命令和深色/浅色主题支持——使用浅色终端背景的用户可通过 `/theme light` 或在 `config.toml` 中设置 `theme = "light"` 切换到浅色配色方案；diff 高亮、任务浏览器、提示符 UI 和 MCP 状态颜色均会跟随所选主题自动适配
 - Core：修复压缩前上下文溢出问题——工具结果的 Token 数现在会被估算并纳入自动压缩触发检查，防止大量工具输出在 API 调用间隙将上下文推超模型限制时出现"exceeded model token limit"错误
 - Core：新增 hooks 系统（Beta）——在 `config.toml` 中配置 `[[hooks]]`，可在 13 个生命周期事件（包括 `PreToolUse`、`PostToolUse`、`SessionStart`、`Stop` 等）运行自定义 shell 命令；支持正则匹配、超时处理和通过退出码 2 阻塞操作

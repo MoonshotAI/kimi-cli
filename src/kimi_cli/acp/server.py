@@ -59,11 +59,7 @@ class ACPServer:
 
         # get command and args of current process for terminal-auth
         command = sys.argv[0]
-        if command.endswith("kimi"):
-            args = []
-        else:
-            idx = sys.argv.index("kimi")
-            args = sys.argv[1 : idx + 1]
+        args: list[str] = []
 
         # Build terminal auth data for error response
         terminal_args = args + ["login"]
