@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionInfo, importSession, listSessions } from "@/lib/api";
 import {
   ExplorerToolbar,
@@ -8,6 +8,8 @@ import {
 } from "./explorer-toolbar";
 import { ProjectGroup } from "./project-group";
 import { SessionCard } from "./session-card";
+
+const PAGE_SIZE = 30;
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -34,6 +36,13 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [importing, setImporting] = useState(false);
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Reset display count when filters change
+  useEffect(() => {
+    setDisplayCount(PAGE_SIZE);
+  }, [search, sortMode, filterMode, grouped]);
 
   const refreshSessions = async () => {
     try {
@@ -120,6 +129,15 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     return arr;
   }, [filtered, sortMode]);
 
+  // Auto-expand when content doesn't fill the container (no scrollbar → onScroll never fires)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || displayCount >= sorted.length) return;
+    if (el.scrollHeight <= el.clientHeight) {
+      setDisplayCount((prev) => Math.min(prev + PAGE_SIZE, sorted.length));
+    }
+  }, [displayCount, sorted.length]);
+
   const groups = useMemo((): ProjectGroupData[] => {
     if (!grouped) return [];
     const map = new Map<string, SessionInfo[]>();
@@ -148,6 +166,39 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
     () => sessions.reduce((sum, s) => sum + s.total_size, 0),
     [sessions],
   );
+
+  // Infinite scroll handler — called via React onScroll prop
+  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
+    // Guard: don't increment if we're already showing everything
+    if (displayCount >= sorted.length) return;
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+      setDisplayCount((prev) => Math.min(prev + PAGE_SIZE, sorted.length));
+    }
+  };
+
+  // Paginated sessions for flat views
+  const displayedSessions = useMemo(
+    () => sorted.slice(0, displayCount),
+    [sorted, displayCount],
+  );
+
+  // Paginated groups
+  const displayedGroups = useMemo((): ProjectGroupData[] => {
+    if (!grouped) return [];
+    // Show groups but limit total sessions rendered
+    let remaining = displayCount;
+    const result: ProjectGroupData[] = [];
+    for (const g of groups) {
+      if (remaining <= 0) break;
+      const sliced = g.sessions.slice(0, remaining);
+      result.push({ workDir: g.workDir, sessions: sliced });
+      remaining -= sliced.length;
+    }
+    return result;
+  }, [groups, grouped, displayCount]);
+
+  const hasMore = sorted.length > displayCount;
 
   if (loading) {
     return (
@@ -198,9 +249,9 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
         importing={importing}
       />
 
-      <div className="flex-1 overflow-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-auto p-4" onScroll={handleScroll}>
         {grouped ? (
-          groups.map((g) => (
+          displayedGroups.map((g) => (
             <ProjectGroup
               key={g.workDir}
               workDir={g.workDir}
@@ -213,7 +264,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
           ))
         ) : viewMode === "compact" ? (
           <div>
-            {sorted.map((s) => (
+            {displayedSessions.map((s) => (
               <SessionCard
                 key={`${s.session_id}-${s.work_dir_hash}`}
                 session={s}
@@ -226,7 +277,7 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {sorted.map((s) => (
+            {displayedSessions.map((s) => (
               <SessionCard
                 key={`${s.session_id}-${s.work_dir_hash}`}
                 session={s}
@@ -235,6 +286,13 @@ export function SessionsExplorer({ onSelectSession }: SessionsExplorerProps) {
                 onDeleted={handleSessionDeleted}
               />
             ))}
+          </div>
+        )}
+
+        {/* Infinite scroll indicator */}
+        {hasMore && (
+          <div className="flex justify-center py-4 text-xs text-muted-foreground">
+            Loading more sessions... ({displayCount} / {sorted.length})
           </div>
         )}
 

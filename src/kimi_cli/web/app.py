@@ -1,9 +1,7 @@
 """Kimi Code CLI Web UI application."""
 
-import importlib
 import os
 import secrets
-import socket
 import sys
 import webbrowser
 from collections.abc import Callable
@@ -20,6 +18,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import HTMLResponse
 
 from kimi_cli import logger
+from kimi_cli.utils.server import (
+    find_available_port,
+    format_url,
+    get_network_addresses,
+    is_local_host,
+)
 from kimi_cli.web.api import (
     config_router,
     open_in_router,
@@ -59,21 +63,6 @@ ENV_RESTRICT_SENSITIVE_APIS = "KIMI_WEB_RESTRICT_SENSITIVE_APIS"
 ENV_MAX_PUBLIC_PATH_DEPTH = "KIMI_WEB_MAX_PUBLIC_PATH_DEPTH"
 
 
-def _is_local_host(host: str) -> bool:
-    return host in {"127.0.0.1", "localhost", "::1"}
-
-
-def _get_address_family(host: str) -> socket.AddressFamily:
-    """Determine the socket address family for a given host.
-
-    Returns AF_INET6 for IPv6 addresses, AF_INET for IPv4 and hostnames.
-    """
-    # Check for IPv6 address patterns
-    if ":" in host:
-        return socket.AF_INET6
-    return socket.AF_INET
-
-
 def _get_private_addresses(addresses: list[str]) -> list[str]:
     """Filter addresses to only include private IPs."""
     return [ip for ip in addresses if is_private_ip(ip)]
@@ -81,55 +70,6 @@ def _get_private_addresses(addresses: list[str]) -> list[str]:
 
 def _load_env_flag(key: str) -> bool:
     return os.environ.get(key, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _get_network_addresses() -> list[str]:
-    """Get all non-loopback IPv4 addresses for this machine.
-
-    Uses multiple methods to ensure we get all addresses across platforms.
-    """
-    addresses: list[str] = []
-
-    # Method 1: Try using socket.getaddrinfo with the hostname
-    try:
-        hostname = socket.gethostname()
-        addr_infos = socket.getaddrinfo(hostname, None, socket.AF_INET)
-        for info in addr_infos:
-            ip = info[4][0]
-            if isinstance(ip, str) and not ip.startswith("127.") and ip not in addresses:
-                addresses.append(ip)
-    except OSError:
-        pass
-
-    # Method 2: Try connecting to external address to get local interface
-    try:
-        # This doesn't actually send any data, just determines routing
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        if ip and not ip.startswith("127.") and ip not in addresses:
-            addresses.append(ip)
-    except OSError:
-        pass
-
-    # Method 3: Try netifaces if available (most comprehensive)
-    try:
-        netifaces = importlib.import_module("netifaces")
-
-        for interface in netifaces.interfaces():
-            addrs = netifaces.ifaddresses(interface)
-            if netifaces.AF_INET in addrs:
-                for addr_info in addrs[netifaces.AF_INET]:
-                    addr = addr_info.get("addr")
-                    if addr and not addr.startswith("127.") and addr not in addresses:
-                        addresses.append(addr)
-    except ImportError:
-        pass
-    except Exception:
-        pass
-
-    return addresses
 
 
 ENV_LAN_ONLY = "KIMI_WEB_LAN_ONLY"
@@ -246,44 +186,6 @@ def create_app(
     return application
 
 
-def find_available_port(host: str, start_port: int, max_attempts: int = MAX_PORT_ATTEMPTS) -> int:
-    """Find an available port starting from start_port.
-
-    Args:
-        host: Host address to bind to
-        start_port: Starting port number (1-65535)
-        max_attempts: Maximum number of ports to try (must be positive)
-
-    Returns:
-        An available port number
-
-    Raises:
-        ValueError: If parameters are invalid
-        RuntimeError: If no available port is found within the range
-    """
-    if max_attempts <= 0:
-        raise ValueError("max_attempts must be positive")
-    if start_port < 1 or start_port > 65535:
-        raise ValueError("start_port must be between 1 and 65535")
-
-    family = _get_address_family(host)
-    for offset in range(max_attempts):
-        port = start_port + offset
-        with socket.socket(family, socket.SOCK_STREAM) as s:
-            # Set SO_REUSEADDR to allow reusing ports in TIME_WAIT state.
-            # This matches uvicorn's behavior and prevents false positives
-            # when checking port availability after a recent shutdown.
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind((host, port))
-                return port
-            except OSError:
-                continue
-    raise RuntimeError(
-        f"Cannot find available port in range {start_port}-{start_port + max_attempts - 1}"
-    )
-
-
 def run_web_server(
     host: str = "127.0.0.1",
     port: int = DEFAULT_PORT,
@@ -297,48 +199,13 @@ def run_web_server(
 ) -> None:
     """Run the web server."""
     import sys
-    import textwrap
     import threading
 
     import uvicorn
 
-    def print_banner(lines: list[str]) -> None:
-        # Process lines, respecting special tags
-        processed: list[str] = []
-        for line in lines:
-            if line == "<hr>":
-                processed.append(line)
-            elif not line:
-                processed.append("")
-            elif line.startswith("<center>") or line.startswith("<nowrap>"):
-                # Don't wrap these lines
-                processed.append(line)
-            else:
-                processed.extend(textwrap.wrap(line, width=78))
+    from kimi_cli.utils.server import print_banner
 
-        # Calculate width based on content (strip tags for measurement)
-        def strip_tags(s: str) -> str:
-            return s.removeprefix("<center>").removeprefix("<nowrap>")
-
-        content_lines = [strip_tags(line) for line in processed if line != "<hr>"]
-        width = max(60, *(len(line) for line in content_lines))
-        top = "+" + "=" * (width + 2) + "+"
-
-        print(top)
-        for line in processed:
-            if line == "<hr>":
-                print("|" + "-" * (width + 2) + "|")
-            elif line.startswith("<center>"):
-                content = line.removeprefix("<center>")
-                print(f"| {content.center(width)} |")
-            elif line.startswith("<nowrap>"):
-                content = line.removeprefix("<nowrap>")
-                print(f"| {content.ljust(width)} |")
-            else:
-                print(f"| {line.ljust(width)} |")
-        print(top)
-
-    public_mode = not _is_local_host(host)
+    public_mode = not is_local_host(host)
     parsed_allowed_origins = normalize_allowed_origins(allowed_origins)
     auto_populate_origins = public_mode and not parsed_allowed_origins
 
@@ -389,12 +256,12 @@ def run_web_server(
         ]
         if host == "0.0.0.0":
             # Binding to all interfaces: add all network addresses
-            network_addrs = _get_network_addresses()
+            network_addrs = get_network_addresses()
             for addr in network_addrs:
-                auto_origins.append(f"http://{addr}:{actual_port}")
+                auto_origins.append(format_url(addr, actual_port))
         else:
             # Explicit host specified: only add that host
-            auto_origins.append(f"http://{host}:{actual_port}")
+            auto_origins.append(format_url(host, actual_port))
         parsed_allowed_origins = auto_origins
 
     if parsed_allowed_origins:
@@ -411,7 +278,7 @@ def run_web_server(
     if host == "0.0.0.0":
         # Show localhost as "Local" and network interfaces
         display_hosts.append(("Local", "localhost"))
-        network_addrs = _get_network_addresses()
+        network_addrs = get_network_addresses()
 
         # In lan_only mode, only show private IPs
         if lan_only:
@@ -421,13 +288,13 @@ def run_web_server(
             display_hosts.append(("Network", addr))
     else:
         # Show the specified host
-        label = "Local" if _is_local_host(host) else "Network"
+        label = "Local" if is_local_host(host) else "Network"
         display_hosts.append((label, host))
 
     # Build URLs with token if needed
     def make_url(host_addr: str) -> tuple[str, str]:
         """Returns (url, browser_url) tuple."""
-        url = f"http://{host_addr}:{actual_port}"
+        url = format_url(host_addr, actual_port)
         browser_url = f"{url}/?token={quote(session_token)}" if session_token else url
         return url, browser_url
 
@@ -542,4 +409,4 @@ def run_web_server(
     )
 
 
-__all__ = ["create_app", "find_available_port", "run_web_server"]
+__all__ = ["create_app", "run_web_server"]
