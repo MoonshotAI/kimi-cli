@@ -179,6 +179,13 @@ def kimi(
             help="Automatically approve all actions. Default: no.",
         ),
     ] = False,
+    plan: Annotated[
+        bool,
+        typer.Option(
+            "--plan",
+            help="Start in plan mode. Default: no.",
+        ),
+    ] = False,
     prompt: Annotated[
         str | None,
         typer.Option(
@@ -554,12 +561,17 @@ def kimi(
             # the saved original stderr fd.
             redirect_stderr_to_logger()
 
+            # Track if we're resuming an existing session
+            resumed = session_id is not None or continue_
+
             instance = await KimiCLI.create(
                 session,
                 config=config,
                 model_name=model_name,
                 thinking=thinking,
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
+                plan_mode=plan,
+                resumed=resumed,
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
                 skills_dirs=skills_dirs,
