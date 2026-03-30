@@ -742,6 +742,7 @@ def test_display_block_diff_write_file(tmp_path) -> None:
                         "new_text": "hello",
                         "old_start": 1,
                         "new_start": 1,
+                        "is_summary": False,
                     }
                 ],
             }
@@ -814,6 +815,7 @@ def test_display_block_diff_str_replace(tmp_path) -> None:
                         "new_text": "hi",
                         "old_start": 1,
                         "new_start": 1,
+                        "is_summary": False,
                     }
                 ],
             }

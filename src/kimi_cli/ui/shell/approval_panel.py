@@ -20,6 +20,8 @@ from kimi_cli.utils.rich.diff_render import (
     collect_diff_hunks,
     render_diff_panel,
     render_diff_preview,
+    render_diff_summary_panel,
+    render_diff_summary_preview,
 )
 from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire.types import (
@@ -94,16 +96,20 @@ class ApprovalRequestPanel:
                         break
                     diff_blocks.append(b)
                     idx += 1
-                hunks, added, removed = collect_diff_hunks(diff_blocks)
-                if hunks:
+                if any(b.is_summary for b in diff_blocks):
                     self._has_diff = True
-                    renderables, _remaining = render_diff_preview(
-                        path,
-                        hunks,
-                        added,
-                        removed,
-                    )
-                    self._preview_renderables.extend(renderables)
+                    self._preview_renderables.extend(render_diff_summary_preview(path, diff_blocks))
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        self._has_diff = True
+                        renderables, _remaining = render_diff_preview(
+                            path,
+                            hunks,
+                            added,
+                            removed,
+                        )
+                        self._preview_renderables.extend(renderables)
             elif isinstance(block, ShellDisplayBlock):
                 text = block.command.rstrip("\n")
                 line_count = text.count("\n") + 1
@@ -280,10 +286,14 @@ def show_approval_in_pager(panel: ApprovalRequestPanel) -> None:
                         break
                     diff_blocks.append(b)
                     idx += 1
-                hunks, added, removed = collect_diff_hunks(diff_blocks)
-                if hunks:
-                    console.print(render_diff_panel(path, hunks, added, removed))
+                if any(b.is_summary for b in diff_blocks):
+                    console.print(render_diff_summary_panel(path, diff_blocks))
                     rendered_any = True
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        console.print(render_diff_panel(path, hunks, added, removed))
+                        rendered_any = True
             elif isinstance(block, ShellDisplayBlock):
                 console.print(KimiSyntax(block.command.rstrip("\n"), block.language))
                 rendered_any = True

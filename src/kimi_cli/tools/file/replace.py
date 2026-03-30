@@ -144,8 +144,8 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="No replacements made",
                 )
 
-            diff_blocks: list[DisplayBlock] = list(
-                build_diff_blocks(str(p), original_content, content)
+            diff_blocks: list[DisplayBlock] = await build_diff_blocks(
+                str(p), original_content, content
             )
 
             action = (

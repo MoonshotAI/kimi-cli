@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.text import Text
 
 from kimi_cli.tools.display import DiffDisplayBlock
-from kimi_cli.utils.diff import build_diff_blocks
+from kimi_cli.utils.diff import _build_diff_blocks_sync as build_diff_blocks
 from kimi_cli.utils.rich.diff_render import (
     DiffLineKind,
     _build_diff_header,
@@ -362,12 +362,16 @@ class TestLineNumberOffsets:
         new_lines[18] = "CHANGED"
         blocks = build_diff_blocks("test.py", old_text, "\n".join(new_lines))
         assert len(blocks) == 2
+        b0 = blocks[0]
+        b1 = blocks[1]
+        assert isinstance(b0, DiffDisplayBlock)
+        assert isinstance(b1, DiffDisplayBlock)
         # First block starts near the beginning
-        assert blocks[0].old_start == 1
-        assert blocks[0].new_start == 1
+        assert b0.old_start == 1
+        assert b0.new_start == 1
         # Second block starts later — NOT at 1
-        assert blocks[1].old_start > 1
-        assert blocks[1].new_start > 1
+        assert b1.old_start > 1
+        assert b1.new_start > 1
 
 
 # ---------------------------------------------------------------------------
