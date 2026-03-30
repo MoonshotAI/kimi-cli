@@ -3,7 +3,7 @@
 斜杠命令是 Kimi Code CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
-部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
+部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/theme`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
 :::
 
 ## 帮助与信息
@@ -64,6 +64,18 @@
 ### `/editor`
 
 设置外部编辑器。不带参数调用时，显示交互式选择界面；也可以直接指定编辑器命令，如 `/editor vim`。配置后按 `Ctrl-O` 会使用此编辑器打开当前输入内容。详见 [键盘快捷键](./keyboard.md#外部编辑器)。
+
+### `/theme`
+
+切换终端配色主题。Kimi Code CLI 提供深色（`dark`）和浅色（`light`）两套配色方案，默认使用深色主题。
+
+用法：
+
+- `/theme`：显示当前主题
+- `/theme dark`：切换到深色主题
+- `/theme light`：切换到浅色主题
+
+切换后配置会保存到 `config.toml` 并自动重新加载。浅色主题会调整 Diff 高亮、任务浏览器、提示符补全菜单、底部工具栏和 MCP 状态等所有 UI 组件的颜色，以适配浅色终端背景。也可以直接在配置文件中设置 `theme = "light"`，详见 [配置文件](../configuration/config-files.md)。
 
 ### `/reload`
 
