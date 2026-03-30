@@ -17,7 +17,7 @@ def test_runner_creates_embedded_session_process() -> None:
     assert isinstance(session_process, EmbeddedSessionProcess)
 
 
-def test_create_app_uses_embedded_runtime_from_env(monkeypatch) -> None:
+def test_create_app_defaults_to_embedded_runtime(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
     class FakeRunner:
@@ -30,7 +30,6 @@ def test_create_app_uses_embedded_runtime_from_env(monkeypatch) -> None:
         async def stop(self) -> None:
             pass
 
-    monkeypatch.setenv(web_app.ENV_RUNTIME, "embedded")
     monkeypatch.setattr(web_app, "KimiCLIRunner", FakeRunner)
 
     with TestClient(web_app.create_app()) as client:
@@ -40,7 +39,30 @@ def test_create_app_uses_embedded_runtime_from_env(monkeypatch) -> None:
     assert captured["runtime_mode"] == "embedded"
 
 
-def test_create_app_invalid_runtime_falls_back_to_process(monkeypatch) -> None:
+def test_create_app_explicit_process_runtime(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeRunner:
+        def __init__(self, *, runtime_mode: str) -> None:
+            captured["runtime_mode"] = runtime_mode
+
+        def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
+
+    monkeypatch.setenv(web_app.ENV_RUNTIME, "process")
+    monkeypatch.setattr(web_app, "KimiCLIRunner", FakeRunner)
+
+    with TestClient(web_app.create_app()) as client:
+        response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert captured["runtime_mode"] == "process"
+
+
+def test_create_app_invalid_runtime_falls_back_to_embedded(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
     class FakeRunner:
@@ -60,4 +82,4 @@ def test_create_app_invalid_runtime_falls_back_to_process(monkeypatch) -> None:
         response = client.get("/healthz")
 
     assert response.status_code == 200
-    assert captured["runtime_mode"] == "process"
+    assert captured["runtime_mode"] == "embedded"

@@ -112,14 +112,14 @@ def _load_env_flag(key: str) -> bool:
 
 
 def _load_runtime_mode() -> RuntimeMode:
-    runtime = os.environ.get(ENV_RUNTIME, "process").strip().lower() or "process"
+    runtime = os.environ.get(ENV_RUNTIME, "embedded").strip().lower() or "embedded"
     if runtime not in {"process", "embedded"}:
         logger.warning(
-            "Invalid {env}={value}, falling back to process",
+            "Invalid {env}={value}, falling back to embedded",
             env=ENV_RUNTIME,
             value=runtime,
         )
-        return "process"
+        return "embedded"
     return cast(RuntimeMode, runtime)
 
 

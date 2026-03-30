@@ -657,7 +657,7 @@ class SessionProcess:
 class KimiCLIRunner:
     """Manages multiple session processes."""
 
-    def __init__(self, *, runtime_mode: Literal["process", "embedded"] = "process") -> None:
+    def __init__(self, *, runtime_mode: Literal["process", "embedded"] = "embedded") -> None:
         """Initialize the runner."""
         self._runtime_mode = runtime_mode
         self._sessions: dict[UUID, SessionProcess] = {}
