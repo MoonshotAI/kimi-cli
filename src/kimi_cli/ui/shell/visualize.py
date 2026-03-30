@@ -962,6 +962,8 @@ class _LiveView:
                 self.request_question(msg)
             case ToolCallRequest():
                 logger.warning("Unexpected ToolCallRequest in shell UI: {msg}", msg=msg)
+            case _:
+                pass
 
     def _try_submit_question(self) -> None:
         """Submit the current question answer; if all done, resolve and advance."""
@@ -1475,6 +1477,7 @@ class _PromptLiveView(_LiveView):
                 on_advance=self._advance_question,
                 on_invalidate=self._flush_prompt_refresh,
                 buffer_text_provider=lambda: self._prompt_session._session.default_buffer.text,  # pyright: ignore[reportPrivateUsage]
+                text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )
             self._prompt_session.attach_modal(self._question_modal)
         else:

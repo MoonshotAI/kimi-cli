@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import acp  # type: ignore[reportMissingTypeStubs]
 import pydantic
@@ -23,6 +23,8 @@ from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    HookRequest,
+    HookResponse,
     QuestionNotSupported,
     QuestionRequest,
     QuestionResponse,
@@ -298,6 +300,8 @@ class WireServer:
                     )
                 case QuestionRequest():
                     request.resolve({})
+                case HookRequest():
+                    request.resolve("allow")
         self._pending_requests.clear()
 
         if self._cancel_event is not None:
@@ -413,7 +417,82 @@ class WireServer:
             )
 
         from kimi_cli.constant import NAME, VERSION
+        from kimi_cli.hooks.config import HOOK_EVENT_TYPES
+        from kimi_cli.hooks.engine import WireHookHandle, WireHookSubscription
+        from kimi_cli.soul import wire_send
         from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
+        from kimi_cli.wire.types import HookResolved, HookTriggered
+
+        # Hook engine setup — register wire subscriptions and callbacks
+
+        hook_engine = self._soul.hook_engine
+
+        if msg.params.hooks:
+            wire_subs: list[WireHookSubscription] = []
+            for wh in msg.params.hooks:
+                if wh.event not in HOOK_EVENT_TYPES:
+                    logger.warning("Ignoring unknown hook event from client: {}", wh.event)
+                    continue
+                wire_subs.append(
+                    WireHookSubscription(
+                        id=wh.id,
+                        event=wh.event,
+                        matcher=wh.matcher,
+                        timeout=wh.timeout,
+                    )
+                )
+            if wire_subs:
+                hook_engine.add_wire_subscriptions(wire_subs)
+                logger.info("Registered {} wire hook subscriptions from client", len(wire_subs))
+
+        def _on_triggered(event: str, target: str, count: int) -> None:
+            wire_send(HookTriggered(event=event, target=target, hook_count=count))
+
+        def _on_resolved(
+            event: str,
+            target: str,
+            action: str,
+            reason: str,
+            duration_ms: int,
+        ) -> None:
+            wire_send(
+                HookResolved(
+                    event=event,
+                    target=target,
+                    action=cast(Literal["allow", "block"], action),
+                    reason=reason,
+                    duration_ms=duration_ms,
+                )
+            )
+
+        async def _on_wire_hook(handle: WireHookHandle) -> None:
+            """Send HookRequest to client, wire response back to handle."""
+            request = HookRequest(
+                id=handle.id,
+                subscription_id=handle.subscription_id,
+                event=handle.event,
+                target=handle.target,
+                input_data=handle.input_data,
+            )
+            self._pending_requests[handle.id] = request
+            await self._send_msg(JSONRPCRequestMessage(id=handle.id, params=request))
+            # Wait for client response (resolved via _handle_response)
+            action, reason = await request.wait()
+            handle.resolve(action, reason)
+
+        hook_engine.set_callbacks(
+            on_triggered=_on_triggered,
+            on_resolved=_on_resolved,
+            on_wire_hook=_on_wire_hook,
+        )
+
+        hooks_info: dict[str, JsonType] = cast(
+            dict[str, JsonType],
+            {
+                "supported_events": HOOK_EVENT_TYPES,
+                "configured": hook_engine.summary,
+            },
+        )
 
         result: dict[str, JsonType] = {
             "protocol_version": WIRE_PROTOCOL_VERSION,
@@ -428,6 +507,9 @@ class WireServer:
                     "rejected": rejected,
                 },
             )
+
+        if hooks_info:
+            result["hooks"] = cast(JsonType, hooks_info)
 
         self._apply_wire_client_info(msg.params.client)
 
@@ -604,6 +686,11 @@ class WireServer:
                     case QuestionRequest():
                         self._pending_requests.pop(msg_id, None)
                         request.resolve({})
+                    case HookRequest():
+                        self._pending_requests.pop(msg_id, None)
+                        request.resolve("allow")
+                    case _:
+                        pass
             self._cancel_event = None
 
     async def _handle_steer(
@@ -845,6 +932,29 @@ class WireServer:
                         response_id=result.request_id,
                     )
                 request.resolve(result.answers)
+            case HookRequest():
+                if isinstance(msg, JSONRPCErrorResponse):
+                    request.resolve("allow")
+                    return
+
+                try:
+                    result = HookResponse.model_validate(msg.result)
+                except pydantic.ValidationError as e:
+                    logger.error(
+                        "Invalid hook response for request id={id}: {error}",
+                        id=msg.id,
+                        error=e,
+                    )
+                    request.resolve("allow")
+                    return
+
+                if result.request_id != request.id:
+                    logger.warning(
+                        "Hook response id mismatch: request={request_id}, response={response_id}",
+                        request_id=request.id,
+                        response_id=result.request_id,
+                    )
+                request.resolve(result.action, result.reason)
 
     async def _stream_wire_messages(self, wire: Wire) -> None:
         wire_ui = wire.ui_side(merge=False)
@@ -857,6 +967,8 @@ class WireServer:
                     await self._request_external_tool(msg)
                 case QuestionRequest():
                     await self._request_question(msg)
+                case HookRequest():
+                    pass  # handled via hook engine callbacks
                 case _:
                     await self._send_msg(JSONRPCEventMessage(method="event", params=msg))
 

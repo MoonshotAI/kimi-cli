@@ -6,6 +6,18 @@ This page documents the changes in each Kimi Code CLI release.
 
 - CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
 - Shell: Fix notification messages leaking into session replay and export — background task notification tags (`<notification>`, `<task-notification>`) are now filtered out when resuming a session (`/sessions`) and when exporting (`/export`) or importing (`/import`) conversation history
+- Web: The "Open" button in the workspace header now remembers the last-used application — clicking "Open" directly opens with the previous choice, while the dropdown arrow lets you pick a different app
+- Vis: Add `--network / -n` flag — launch the visualizer on all network interfaces with auto-detected LAN IP display, matching `kimi web` behavior
+- Vis: Add `/vis` slash command — switch from the interactive shell to the tracing visualizer in one step, mirroring the existing `/web` command
+- Vis: Improve session list performance — async backend scanning, request concurrency limiting, and infinite-scroll pagination prevent browser freezes on large session stores
+- Vis: Add 7 missing wire event types — `SteerInput`, `MCPLoadingBegin/End`, `Notification`, `PlanDisplay`, `ToolCallRequest`, and `QuestionRequest` now display with proper colors and summaries
+- Vis: Show token and cache details in StatusUpdate — each status update now displays context token count, max tokens, input token breakdown with cache hit rate, and MCP connection status
+- Vis: Show structured tool call summaries — `ReadFile`, `Shell`, `Glob`, `Grep`, `Agent`, and other tool calls display file paths, commands, or patterns inline instead of just the function name
+- Vis: Add System Prompt card in Context Messages — the `_system_prompt` entry is rendered as a dedicated blue card showing estimated token count and expandable full content
+- Vis: Show cache hit rate in session header — the stats bar now displays overall cache efficiency (e.g., `89% cache`) alongside token counts
+- Vis: Highlight slow operations — time deltas exceeding 10 s appear in amber and those exceeding 60 s in red, making performance bottlenecks immediately visible
+- Vis: Prefer human-readable `message` field in ToolResult summaries — results now show descriptive text like "Command executed successfully" instead of raw output
+- Vis: Show approval rejection feedback — `ApprovalResponse` summaries include the user's correction text when a tool call is rejected
 
 ## 1.27.0 (2026-03-28)
 

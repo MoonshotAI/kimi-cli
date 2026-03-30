@@ -337,12 +337,14 @@ class QuestionPromptDelegate:
         on_advance: Callable[[], QuestionRequestPanel | None],
         on_invalidate: Callable[[], None],
         buffer_text_provider: Callable[[], str] | None = None,
+        text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel: QuestionRequestPanel | None = panel
         self._awaiting_other_input = False
         self._on_advance = on_advance
         self._on_invalidate = on_invalidate
         self._buffer_text_provider = buffer_text_provider
+        self._text_expander = text_expander
 
     @property
     def panel(self) -> QuestionRequestPanel | None:
@@ -543,6 +545,8 @@ class QuestionPromptDelegate:
             self._awaiting_other_input = False
             return
         text = buffer.text.strip()
+        if self._text_expander is not None:
+            text = self._text_expander(text)
         self._clear_buffer(buffer)
         self._awaiting_other_input = False
         all_done = self._panel.submit_other(text)
