@@ -12,6 +12,8 @@ from kimi_cli.wire.types import (
     TextPart,
     ToolReturnValue,
 )
+from kosong.tooling import BriefDisplayBlock
+from kimi_cli.tools.display import ShellDisplayBlock
 
 
 def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPart]:
@@ -52,13 +54,25 @@ def acp_blocks_to_content_parts(prompt: list[ACPContentBlock]) -> list[ContentPa
 
 def display_block_to_acp_content(
     block: DisplayBlock,
-) -> acp.schema.FileEditToolCallContent | None:
+) -> acp.schema.FileEditToolCallContent | acp.schema.ContentToolCallContent | None:
     if isinstance(block, DiffDisplayBlock):
         return acp.schema.FileEditToolCallContent(
             type="diff",
             path=block.path,
             old_text=block.old_text,
             new_text=block.new_text,
+        )
+
+    if isinstance(block, ShellDisplayBlock):
+        return acp.schema.ContentToolCallContent(
+            type="content",
+            content=acp.schema.TextContentBlock(type="text", text=block.command),
+        )
+
+    if isinstance(block, BriefDisplayBlock) and block.text:
+        return acp.schema.ContentToolCallContent(
+            type="content",
+            content=acp.schema.TextContentBlock(type="text", text=block.text),
         )
 
     return None
