@@ -323,10 +323,12 @@ class ApprovalPromptDelegate:
         *,
         on_response: Callable[[ApprovalRequest, ApprovalResponse.Kind, str], None],
         buffer_text_provider: Callable[[], str] | None = None,
+        text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel = ApprovalRequestPanel(request)
         self._on_response = on_response
         self._buffer_text_provider = buffer_text_provider
+        self._text_expander = text_expander
         self._feedback_draft: str = ""
 
     @property
@@ -392,6 +394,8 @@ class ApprovalPromptDelegate:
             if key == "enter" or mapped == KeyEvent.ENTER:
                 text = event.current_buffer.text.strip()
                 if text:
+                    if self._text_expander is not None:
+                        text = self._text_expander(text)
                     self._clear_buffer(event.current_buffer)
                     self._feedback_draft = ""
                     self._panel.request.resolve("reject")
