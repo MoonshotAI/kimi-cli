@@ -65,6 +65,7 @@ compaction_trigger_ratio = 0.85
 [background]
 max_running_tasks = 4
 keep_alive_on_exit = false
+agent_task_timeout_s = 900
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -135,12 +136,13 @@ capabilities = ["thinking", "image_in"]
 
 ### `background`
 
-`background` 控制后台任务的运行行为。后台任务通过 `Shell` 工具的 `run_in_background=true` 参数启动。
+`background` 控制后台任务的运行行为。后台任务通过 `Shell` 工具的 `run_in_background=true` 或 `Agent` 工具的 `run_in_background=true` 参数启动。
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | 同时运行的最大后台任务数 |
 | `keep_alive_on_exit` | `boolean` | `false` | CLI 退出时是否保留后台任务运行；默认退出时终止所有后台任务 |
+| `agent_task_timeout_s` | `integer` | `900` | 后台 Agent 任务的最大运行时间（秒）；超时后任务标记为失败并通知主 Agent |
 
 ### `services`
 

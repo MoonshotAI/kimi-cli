@@ -194,7 +194,9 @@ async def _download_and_install_rg(bin_name: str) -> Path:
     share_bin_dir.mkdir(parents=True, exist_ok=True)
     destination = share_bin_dir / bin_name
 
-    async with new_client_session() as session:
+    # Downloading the ripgrep binary can be slow on constrained networks.
+    download_timeout = aiohttp.ClientTimeout(total=600, sock_read=60, sock_connect=15)
+    async with new_client_session(timeout=download_timeout) as session:
         with tempfile.TemporaryDirectory(prefix="kimi-rg-") as tmpdir:
             tar_path = Path(tmpdir) / filename
 
