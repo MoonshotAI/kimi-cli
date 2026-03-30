@@ -7,10 +7,19 @@ from typing import Any, cast
 import pytest
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
+from rich.console import Group
 from rich.text import Text
 
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
 from kimi_cli.wire.types import ApprovalRequest, StatusUpdate, SteerInput, TextPart
+
+
+def _get_first_renderable_plain(text):
+    """Extract plain text from first renderable of a Group, or fallback to str."""
+    if isinstance(text, Group) and text.renderables:
+        return getattr(text.renderables[0], "plain", str(text.renderables[0]))
+    return getattr(text, "plain", str(text))
+
 
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
 _LiveView = shell_visualize._LiveView
@@ -157,7 +166,7 @@ def test_live_view_renders_steer_input_as_user_echo(monkeypatch) -> None:
     monkeypatch.setattr(
         shell_visualize.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="A steer follow-up")]))
@@ -175,7 +184,7 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
     monkeypatch.setattr(
         shell_visualize.console,
         "print",
-        lambda text: order.append(("print", getattr(text, "plain", str(text)))),
+        lambda text: order.append(("print", _get_first_renderable_plain(text))),
     )
 
     view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="A steer follow-up")]))
@@ -499,7 +508,7 @@ def test_handle_local_input_echoes_placeholder_display_text_but_steers_expanded_
     monkeypatch.setattr(
         shell_visualize.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     view.handle_local_input(

@@ -66,6 +66,15 @@ async def test_build_replay_turns_from_wire_keeps_steer_as_user_turn(tmp_path: P
     assert turns[1].n_steps == 2
 
 
+def _get_first_renderable_plain(text):
+    """Extract plain text from first renderable of a Group, or fallback to str."""
+    from rich.console import Group
+
+    if isinstance(text, Group) and text.renderables:
+        return getattr(text.renderables[0], "plain", str(text.renderables[0]))
+    return getattr(text, "plain", str(text))
+
+
 @pytest.mark.asyncio
 async def test_replay_recent_history_falls_back_to_history_when_wire_misses_steer(
     tmp_path: Path,
@@ -86,7 +95,7 @@ async def test_replay_recent_history_falls_back_to_history_when_wire_misses_stee
     monkeypatch.setattr(
         replay_module.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     async def fake_visualize(*_args, **_kwargs) -> None:
@@ -156,7 +165,7 @@ async def test_replay_recent_history_falls_back_to_history_when_duplicate_text_s
     monkeypatch.setattr(
         replay_module.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        lambda text: printed.append(_get_first_renderable_plain(text)),
     )
 
     async def fake_visualize(*_args, **_kwargs) -> None:
