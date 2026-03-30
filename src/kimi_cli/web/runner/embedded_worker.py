@@ -22,8 +22,6 @@ from kimi_cli.wire.jsonrpc import (
 )
 from kimi_cli.wire.server import WireServer
 
-_PROMPT_ENV_LOCK = asyncio.Lock()
-
 
 class EmbeddedWireWorker(WireServer):
     """Run the wire protocol against a local ``KimiCLI`` instance."""
@@ -142,9 +140,5 @@ class EmbeddedWireWorker(WireServer):
             await self._emit_json(payload)
 
     async def _handle_prompt(self, msg):  # type: ignore[override]
-        # ``KimiCLI.run_wire_stdio()`` normally keeps the entire wire server inside
-        # the session environment context. For the embedded worker we scope that environment to
-        # each foreground turn and serialize embedded prompts to avoid cross-session
-        # cwd races from ``kaos.chdir()``.
-        async with _PROMPT_ENV_LOCK, self._kimi_cli.env():
+        async with self._kimi_cli.env():
             return await super()._handle_prompt(msg)

@@ -5,6 +5,7 @@ import os
 from asyncio.subprocess import Process as AsyncioProcess
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
+from stat import S_ISDIR
 from typing import TYPE_CHECKING, Literal
 
 if os.name == "nt":
@@ -171,6 +172,128 @@ class LocalKaos:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        return self.Process(process)
+
+
+class ScopedLocalKaos(LocalKaos):
+    """Local KAOS backend with an instance-local working directory."""
+
+    def __init__(self, cwd: StrOrKaosPath | None = None) -> None:
+        base_cwd = Path.cwd()
+        self._cwd = self._normalize_local_path(
+            self._coerce_local_path(cwd) if cwd is not None else base_cwd,
+            base=base_cwd,
+        )
+
+    @staticmethod
+    def _coerce_local_path(path: StrOrKaosPath) -> Path:
+        return path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
+
+    def _normalize_local_path(self, path: Path, *, base: Path | None = None) -> Path:
+        if not path.is_absolute():
+            path = (base or self._cwd) / path
+        return Path(pathmodule.normpath(str(path)))
+
+    def _resolve_local_path(self, path: StrOrKaosPath) -> Path:
+        return self._normalize_local_path(self._coerce_local_path(path))
+
+    def _resolve_kaos_path(self, path: StrOrKaosPath) -> KaosPath:
+        return KaosPath.unsafe_from_local_path(self._resolve_local_path(path))
+
+    def getcwd(self) -> KaosPath:
+        return KaosPath.unsafe_from_local_path(self._cwd)
+
+    async def chdir(self, path: StrOrKaosPath) -> None:
+        local_path = self._resolve_local_path(path)
+        st = await aiofiles.os.stat(local_path)
+        if not S_ISDIR(st.st_mode):
+            raise NotADirectoryError(str(local_path))
+        self._cwd = local_path
+
+    async def stat(self, path: StrOrKaosPath, *, follow_symlinks: bool = True) -> StatResult:
+        return await super().stat(self._resolve_kaos_path(path), follow_symlinks=follow_symlinks)
+
+    async def iterdir(self, path: StrOrKaosPath) -> AsyncGenerator[KaosPath]:
+        async for entry in super().iterdir(self._resolve_kaos_path(path)):
+            yield entry
+
+    async def glob(
+        self, path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
+    ) -> AsyncGenerator[KaosPath]:
+        async for entry in super().glob(
+            self._resolve_kaos_path(path),
+            pattern,
+            case_sensitive=case_sensitive,
+        ):
+            yield entry
+
+    async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
+        return await super().readbytes(self._resolve_kaos_path(path), n=n)
+
+    async def readtext(
+        self,
+        path: str | KaosPath,
+        *,
+        encoding: str = "utf-8",
+        errors: Literal["strict", "ignore", "replace"] = "strict",
+    ) -> str:
+        return await super().readtext(
+            self._resolve_kaos_path(path),
+            encoding=encoding,
+            errors=errors,
+        )
+
+    async def readlines(
+        self,
+        path: str | KaosPath,
+        *,
+        encoding: str = "utf-8",
+        errors: Literal["strict", "ignore", "replace"] = "strict",
+    ) -> AsyncGenerator[str]:
+        async for line in super().readlines(
+            self._resolve_kaos_path(path),
+            encoding=encoding,
+            errors=errors,
+        ):
+            yield line
+
+    async def writebytes(self, path: StrOrKaosPath, data: bytes) -> int:
+        return await super().writebytes(self._resolve_kaos_path(path), data)
+
+    async def writetext(
+        self,
+        path: str | KaosPath,
+        data: str,
+        *,
+        mode: Literal["w"] | Literal["a"] = "w",
+        encoding: str = "utf-8",
+        errors: Literal["strict", "ignore", "replace"] = "strict",
+    ) -> int:
+        return await super().writetext(
+            self._resolve_kaos_path(path),
+            data,
+            mode=mode,
+            encoding=encoding,
+            errors=errors,
+        )
+
+    async def mkdir(
+        self, path: StrOrKaosPath, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        await super().mkdir(self._resolve_kaos_path(path), parents=parents, exist_ok=exist_ok)
+
+    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
+        if not args:
+            raise ValueError("At least one argument (the program to execute) is required.")
+
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(self._cwd),
             env=env,
         )
         return self.Process(process)

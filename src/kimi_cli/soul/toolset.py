@@ -8,9 +8,9 @@ import json
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, overload
 
+from kaos.path import KaosPath
 from kosong.tooling import (
     CallableTool,
     CallableTool2,
@@ -153,7 +153,7 @@ class KimiToolset:
                     matcher_value=tool_call.function.name,
                     input_data=events.pre_tool_use(
                         session_id=_get_session_id(),
-                        cwd=str(Path.cwd()),
+                        cwd=str(KaosPath.cwd()),
                         tool_name=tool_call.function.name,
                         tool_input=tool_input_dict,
                         tool_call_id=tool_call.id,
@@ -180,7 +180,7 @@ class KimiToolset:
                             matcher_value=tool_call.function.name,
                             input_data=events.post_tool_use_failure(
                                 session_id=_get_session_id(),
-                                cwd=str(Path.cwd()),
+                                cwd=str(KaosPath.cwd()),
                                 tool_name=tool_call.function.name,
                                 tool_input=tool_input_dict,
                                 error=str(e),
@@ -203,7 +203,7 @@ class KimiToolset:
                         matcher_value=tool_call.function.name,
                         input_data=events.post_tool_use(
                             session_id=_get_session_id(),
-                            cwd=str(Path.cwd()),
+                            cwd=str(KaosPath.cwd()),
                             tool_name=tool_call.function.name,
                             tool_input=tool_input_dict,
                             tool_output=str(ret)[:2000],

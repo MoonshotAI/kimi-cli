@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kaos.path import KaosPath
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolReturnValue
 
@@ -257,7 +258,7 @@ class ForegroundSubagentRunner:
                 matcher_value=actual_type,
                 input_data=hook_events.subagent_start(
                     session_id=self._runtime.session.id,
-                    cwd=str(Path.cwd()),
+                    cwd=str(KaosPath.cwd()),
                     agent_name=actual_type,
                     prompt=req.prompt[:500],
                 ),
@@ -283,7 +284,7 @@ class ForegroundSubagentRunner:
                     matcher_value=actual_type,
                     input_data=hook_events.subagent_stop(
                         session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
+                        cwd=str(KaosPath.cwd()),
                         agent_name=actual_type,
                         response=(final_response or "")[:500],
                     ),

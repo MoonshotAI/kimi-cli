@@ -8,7 +8,8 @@ from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import kaos
+from kaos import get_current_kaos, reset_current_kaos, set_current_kaos
+from kaos.local import ScopedLocalKaos, local_kaos
 from kaos.path import KaosPath
 from pydantic import SecretStr
 
@@ -256,17 +257,19 @@ class KimiCLI:
         soul.set_hook_engine(hook_engine)
         runtime.hook_engine = hook_engine
 
-        return KimiCLI(soul, runtime, env_overrides)
+        return KimiCLI(soul, runtime, env_overrides, ScopedLocalKaos(session.work_dir))
 
     def __init__(
         self,
         _soul: KimiSoul,
         _runtime: Runtime,
         _env_overrides: dict[str, str],
+        _kaos_backend: ScopedLocalKaos | None = None,
     ) -> None:
         self._soul = _soul
         self._runtime = _runtime
         self._env_overrides = _env_overrides
+        self._kaos_backend = _kaos_backend or ScopedLocalKaos(_runtime.session.work_dir)
 
     @property
     def soul(self) -> KimiSoul:
@@ -288,15 +291,17 @@ class KimiCLI:
 
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:
-        original_cwd = KaosPath.cwd()
-        await kaos.chdir(self._runtime.session.work_dir)
+        kaos_token = None
+        if get_current_kaos() is local_kaos:
+            kaos_token = set_current_kaos(self._kaos_backend)
         try:
             # to ignore possible warnings from dateparser
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             async with self._runtime.oauth.refreshing(self._runtime):
                 yield
         finally:
-            await kaos.chdir(original_cwd)
+            if kaos_token is not None:
+                reset_current_kaos(kaos_token)
 
     @contextlib.asynccontextmanager
     async def env(self) -> AsyncGenerator[None]:

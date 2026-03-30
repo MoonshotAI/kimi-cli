@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import pytest
 
 from kaos import reset_current_kaos, set_current_kaos
-from kaos.local import LocalKaos
+from kaos.local import LocalKaos, ScopedLocalKaos
 from kaos.path import KaosPath
 
 
@@ -196,3 +196,45 @@ async def test_exec_wait_timeout(local_kaos: LocalKaos):
         if process.returncode is None:
             await process.kill()
         await process.wait()
+
+
+@pytest.fixture
+def scoped_local_kaos(tmp_path: Path) -> Generator[ScopedLocalKaos]:
+    """Set a scoped local Kaos as current without mutating process cwd."""
+    scoped = ScopedLocalKaos(tmp_path)
+    token = set_current_kaos(scoped)
+    try:
+        yield scoped
+    finally:
+        reset_current_kaos(token)
+
+
+async def test_scoped_local_kaos_tracks_cwd_without_process_chdir(
+    scoped_local_kaos: ScopedLocalKaos,
+):
+    original_cwd = Path.cwd()
+    initial_scoped_cwd = str(scoped_local_kaos.getcwd())
+    await scoped_local_kaos.mkdir("nested")
+
+    await scoped_local_kaos.chdir("nested")
+
+    assert Path.cwd() == original_cwd
+    assert str(scoped_local_kaos.getcwd()) == str(Path(initial_scoped_cwd) / "nested")
+
+
+async def test_scoped_local_kaos_exec_respects_scoped_cwd(scoped_local_kaos: ScopedLocalKaos):
+    await scoped_local_kaos.mkdir("nested")
+    await scoped_local_kaos.chdir("nested")
+
+    process = await scoped_local_kaos.exec(
+        *(
+            sys.executable,
+            "-c",
+            "from pathlib import Path; print(Path.cwd()); Path('scoped.txt').write_text('ok')",
+        )
+    )
+
+    stdout_data = await process.stdout.read()
+    assert await process.wait() == 0
+    assert stdout_data.decode("utf-8").strip() == str(scoped_local_kaos.getcwd())
+    assert await (scoped_local_kaos.getcwd() / "scoped.txt").is_file()
