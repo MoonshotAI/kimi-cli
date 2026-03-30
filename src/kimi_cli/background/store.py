@@ -16,7 +16,7 @@ from .models import (
     TaskView,
 )
 
-_VALID_TASK_ID = re.compile(r"^[a-z0-9]{2,20}$")
+_VALID_TASK_ID = re.compile(r"^[a-z0-9][a-z0-9\-]{1,24}$")
 
 
 def _validate_task_id(task_id: str) -> None:
