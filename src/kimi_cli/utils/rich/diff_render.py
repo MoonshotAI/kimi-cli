@@ -14,21 +14,12 @@ from enum import Enum, auto
 
 from rich.console import RenderableType
 from rich.panel import Panel
-from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
 from kimi_cli.tools.display import DiffDisplayBlock
+from kimi_cli.ui.theme import get_diff_colors
 from kimi_cli.utils.rich.syntax import KimiSyntax
-
-# ---------------------------------------------------------------------------
-# Style constants
-# ---------------------------------------------------------------------------
-
-_ADD_BG = Style(bgcolor="#12261e")
-_DEL_BG = Style(bgcolor="#2d1214")
-_ADD_HL = Style(bgcolor="#1a4a2e")  # deeper green for inline word-level changes
-_DEL_HL = Style(bgcolor="#5c1a1d")  # deeper red for inline word-level changes
 
 _INLINE_DIFF_MIN_RATIO = 0.5  # skip inline diff when lines are too dissimilar
 
@@ -161,6 +152,7 @@ def _apply_inline_diff(
 
     Modifies DiffLine.content in place for paired lines.
     """
+    colors = get_diff_colors()
     paired = min(len(del_lines), len(add_lines))
     for j in range(paired):
         old_code = del_lines[j].code
@@ -172,9 +164,9 @@ def _apply_inline_diff(
         new_text = _highlight(highlighter, new_code)
         for op, i1, i2, j1, j2 in sm.get_opcodes():
             if op in ("delete", "replace"):
-                old_text.stylize(_DEL_HL, i1, i2)
+                old_text.stylize(colors.del_hl, i1, i2)
             if op in ("insert", "replace"):
-                new_text.stylize(_ADD_HL, j1, j2)
+                new_text.stylize(colors.add_hl, j1, j2)
         del_lines[j].content = old_text
         del_lines[j].is_inline_paired = True
         add_lines[j].content = new_text
@@ -296,6 +288,7 @@ def render_diff_panel(
     table.add_column(width=3, no_wrap=True)
     table.add_column(ratio=1)
 
+    colors = get_diff_colors()
     for hunk_idx, hunk in enumerate(hunks):
         if hunk_idx > 0:
             table.add_row(Text("⋮", style="dim"), Text(""), Text(""))
@@ -307,14 +300,14 @@ def render_diff_panel(
                     Text(str(dl.new_num)),
                     Text(" + ", style="green"),
                     dl.content,
-                    style=_ADD_BG,
+                    style=colors.add_bg,
                 )
             elif dl.kind == DiffLineKind.DELETE:
                 table.add_row(
                     Text(str(dl.old_num)),
                     Text(" - ", style="red"),
                     dl.content,
-                    style=_DEL_BG,
+                    style=colors.del_bg,
                 )
             else:
                 table.add_row(

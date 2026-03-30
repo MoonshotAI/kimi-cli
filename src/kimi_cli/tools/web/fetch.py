@@ -43,8 +43,10 @@ class FetchURL(CallableTool2[Params]):
     async def fetch_with_http_get(params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder(max_line_length=None)
         try:
+            # Fetching arbitrary web pages can take a while on large/slow sites.
+            fetch_timeout = aiohttp.ClientTimeout(total=180, sock_read=60, sock_connect=15)
             async with (
-                new_client_session() as session,
+                new_client_session(timeout=fetch_timeout) as session,
                 session.get(
                     params.url,
                     headers={
@@ -70,10 +72,15 @@ class FetchURL(CallableTool2[Params]):
                 if content_type.startswith(("text/plain", "text/markdown")):
                     builder.write(resp_text)
                     return builder.ok("The returned content is the full content of the page.")
+        except TimeoutError:
+            return builder.error(
+                "Failed to fetch URL: request timed out. The server may be slow or unreachable.",
+                brief="Request timed out",
+            )
         except aiohttp.ClientError as e:
             return builder.error(
                 (
-                    f"Failed to fetch URL due to network error: {str(e)}. "
+                    f"Failed to fetch URL due to network error: {e}. "
                     "This may indicate the URL is invalid or the server is unreachable."
                 ),
                 brief="Network error",
@@ -151,10 +158,15 @@ class FetchURL(CallableTool2[Params]):
                 return builder.ok(
                     "The returned content is the main content extracted from the page."
                 )
+        except TimeoutError:
+            return builder.error(
+                "Failed to fetch URL via service: request timed out.",
+                brief="Service request timed out",
+            )
         except aiohttp.ClientError as e:
             return builder.error(
                 (
-                    f"Failed to fetch URL via service due to network error: {str(e)}. "
+                    f"Failed to fetch URL via service due to network error: {e}. "
                     "This may indicate the service is unreachable."
                 ),
                 brief="Network error when calling fetch service",

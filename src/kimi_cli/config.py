@@ -104,6 +104,8 @@ class BackgroundConfig(BaseModel):
         default=False,
         description="Keep background tasks alive when CLI exits. Default: kill on exit.",
     )
+    agent_task_timeout_s: int = Field(default=900, ge=60)
+    """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
 
 
 class NotificationConfig(BaseModel):
@@ -189,6 +191,10 @@ class Config(BaseModel):
     default_editor: str = Field(
         default="",
         description="Default external editor command (e.g. 'vim', 'code --wait')",
+    )
+    theme: Literal["dark", "light"] = Field(
+        default="dark",
+        description="Terminal color theme. Use 'light' for light terminal backgrounds.",
     )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(

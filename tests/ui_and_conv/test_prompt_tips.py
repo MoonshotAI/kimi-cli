@@ -141,6 +141,7 @@ def test_build_toolbar_tips_without_clipboard() -> None:
         "ctrl-o: editor",
         "ctrl-j: newline",
         "/feedback: send feedback",
+        "/theme: switch dark/light",
         "@: mention files",
     ]
 
@@ -152,6 +153,7 @@ def test_build_toolbar_tips_with_clipboard() -> None:
         "ctrl-o: editor",
         "ctrl-j: newline",
         "/feedback: send feedback",
+        "/theme: switch dark/light",
         "ctrl-v: paste clipboard",
         "@: mention files",
     ]
