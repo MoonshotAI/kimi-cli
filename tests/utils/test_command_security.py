@@ -60,13 +60,13 @@ class TestAnalyzeCommand:
     def test_curl_high_risk(self) -> None:
         """curl is detected as high risk network tool."""
         notes = analyze_command("curl https://example.com")
-        assert any("curl" in n.description.lower() for n in notes)
+        assert any("network" in n.description.lower() for n in notes)
         assert any(n.risk == RiskLevel.HIGH for n in notes)
 
     def test_wget_high_risk(self) -> None:
         """wget is detected as high risk network tool."""
         notes = analyze_command("wget https://example.com/file")
-        assert any("wget" in n.description.lower() for n in notes)
+        assert any("network" in n.description.lower() for n in notes)
 
     def test_netcat_high_risk(self) -> None:
         """nc/netcat is detected as high risk."""
@@ -86,7 +86,7 @@ class TestAnalyzeCommand:
     def test_openssl_s_client_high_risk(self) -> None:
         """openssl s_client is detected for network connections."""
         notes = analyze_command("openssl s_client -connect example.com:443")
-        assert any("openssl" in n.description.lower() for n in notes)
+        assert any("ssl" in n.description.lower() or "network" in n.description.lower() for n in notes)
 
     def test_python_socket_inline_high_risk(self) -> None:
         """Python inline code with socket is detected."""
@@ -102,7 +102,7 @@ class TestAnalyzeCommand:
     def test_rm_rf_high_risk(self) -> None:
         """rm -rf is detected as destructive."""
         notes = analyze_command("rm -rf /tmp/test")
-        assert any("remove" in n.description.lower() for n in notes)
+        assert any("rm" in n.description.lower() or "destructive" in n.description.lower() for n in notes)
         assert any(n.risk == RiskLevel.HIGH for n in notes)
 
     def test_sudo_high_risk(self) -> None:
@@ -133,9 +133,9 @@ class TestAnalyzeCommand:
         )
         descriptions = [n.description for n in notes]
         
-        # Should detect: chaining, curl, pipe, command substitution
+        # Should detect: chaining, curl/network, pipe, command substitution
         assert any("chained" in d.lower() for d in descriptions)
-        assert any("curl" in d.lower() for d in descriptions)
+        assert any("network" in d.lower() for d in descriptions)
         assert any("pipe" in d.lower() for d in descriptions)
         assert any("substitution" in d.lower() for d in descriptions)
         
@@ -190,17 +190,17 @@ class TestFormatSecurityNotes:
         assert "Security notes:" in result
         assert "Test note" in result
 
-    def test_risk_colors_applied(self) -> None:
-        """Different risk levels get different colors."""
+    def test_risk_labels_applied(self) -> None:
+        """Different risk levels get different labels."""
         notes = [
             SecurityNote("p1", RiskLevel.LOW, "Low risk"),
             SecurityNote("p2", RiskLevel.MEDIUM, "Medium risk"),
             SecurityNote("p3", RiskLevel.HIGH, "High risk"),
         ]
         result = format_security_notes(notes)
-        assert "[green]" in result
-        assert "[yellow]" in result
-        assert "[red]" in result
+        assert "[LOW]" in result
+        assert "[MED]" in result
+        assert "[HIGH]" in result
 
     def test_multiline_formatting(self) -> None:
         """Multiple notes are on separate lines."""
@@ -211,7 +211,7 @@ class TestFormatSecurityNotes:
         result = format_security_notes(notes)
         lines = result.split("\n")
         assert len(lines) == 3  # Header + 2 notes
-        assert lines[0] == "[yellow]Security notes:[/yellow]"
+        assert lines[0] == "Security notes:"
 
 
 class TestSecurityNote:

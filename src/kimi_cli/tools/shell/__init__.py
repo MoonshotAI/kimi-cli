@@ -5,7 +5,7 @@ from typing import Self, override
 
 import kaos
 from kaos import AsyncReadable
-from kosong.tooling import CallableTool2, ToolReturnValue
+from kosong.tooling import BriefDisplayBlock, CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field, model_validator
 
 from kimi_cli.background import TaskView, format_task
@@ -85,20 +85,20 @@ class Shell(CallableTool2[Params]):
 
         # Analyze command for security-relevant patterns
         security_notes = analyze_command(params.command)
-        description = f"Run command `{params.command}`"
+        display: list[ShellDisplayBlock | BriefDisplayBlock] = [
+            ShellDisplayBlock(
+                language="powershell" if self._is_powershell else "bash",
+                command=params.command,
+            )
+        ]
         if security_notes:
-            description += f"\n\n{format_security_notes(security_notes)}"
+            display.append(BriefDisplayBlock(text=format_security_notes(security_notes)))
 
         result = await self._approval.request(
             self.name,
             "run command",
-            description,
-            display=[
-                ShellDisplayBlock(
-                    language="powershell" if self._is_powershell else "bash",
-                    command=params.command,
-                )
-            ],
+            f"Run command `{params.command}`",
+            display=display,
         )
         if not result:
             return result.rejection_error()
@@ -139,20 +139,20 @@ class Shell(CallableTool2[Params]):
 
         # Analyze command for security-relevant patterns
         security_notes = analyze_command(params.command)
-        description = f"Run background command `{params.command}`"
+        bg_display: list[ShellDisplayBlock | BriefDisplayBlock] = [
+            ShellDisplayBlock(
+                language="powershell" if self._is_powershell else "bash",
+                command=params.command,
+            )
+        ]
         if security_notes:
-            description += f"\n\n{format_security_notes(security_notes)}"
+            bg_display.append(BriefDisplayBlock(text=format_security_notes(security_notes)))
 
         result = await self._approval.request(
             self.name,
             "run background command",
-            description,
-            display=[
-                ShellDisplayBlock(
-                    language="powershell" if self._is_powershell else "bash",
-                    command=params.command,
-                )
-            ],
+            f"Run background command `{params.command}`",
+            display=bg_display,
         )
         if not result:
             return result.rejection_error()

@@ -35,7 +35,7 @@ class SecurityNote:
 _SECURITY_PATTERNS: list[tuple[re.Pattern[str], RiskLevel, str]] = [
     # Command chaining and redirection (medium risk — common but powerful)
     (
-        re.compile(r"[;&|]\s*\w+"),
+        re.compile(r"(?:;|&&|\|\|)\s*\w+"),
         RiskLevel.MEDIUM,
         "Multiple commands chained with ; && ||",
     ),
@@ -77,7 +77,7 @@ _SECURITY_PATTERNS: list[tuple[re.Pattern[str], RiskLevel, str]] = [
         "Ruby inline code with network primitives",
     ),
     # Destructive operations (high risk)
-    (re.compile(r"\brm\s+-[rf]*[rf]"), RiskLevel.HIGH, "Recursive force remove"),
+    (re.compile(r"\brm\s+-[rf]*[rf]"), RiskLevel.HIGH, "Destructive rm with -r or -f flags"),
     (re.compile(r"\bdd\s+if="), RiskLevel.HIGH, "Disk write with dd"),
     (re.compile(r">\s+/\w+"), RiskLevel.HIGH, "Write to system path"),
     # Privilege escalation
@@ -150,11 +150,9 @@ def format_security_notes(notes: list[SecurityNote]) -> str:
     if not notes:
         return ""
 
-    lines = ["[yellow]Security notes:[/yellow]"]
+    risk_prefix = {RiskLevel.LOW: "LOW", RiskLevel.MEDIUM: "MED", RiskLevel.HIGH: "HIGH"}
+    lines = ["Security notes:"]
     for note in notes:
-        risk_color = {RiskLevel.LOW: "green", RiskLevel.MEDIUM: "yellow", RiskLevel.HIGH: "red"}[
-            note.risk
-        ]
-        lines.append(f"  [{risk_color}]• {note.description}[/{risk_color}]")
+        lines.append(f"  [{risk_prefix[note.risk]}] {note.description}")
 
     return "\n".join(lines)
