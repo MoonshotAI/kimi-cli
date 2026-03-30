@@ -10,9 +10,6 @@ from kimi_cli.tools.display import DiffDisplayBlock
 
 N_CONTEXT_LINES = 3
 
-_LARGE_FILE_THRESHOLD = 2000
-"""Line count above which autojunk is enabled for faster (less precise) diff."""
-
 _HUGE_FILE_THRESHOLD = 10000
 """Line count above which diff computation is skipped entirely."""
 
@@ -85,20 +82,23 @@ def _build_diff_blocks_sync(
 
     # Huge files: skip diff entirely, return a summary block
     if max_lines > _HUGE_FILE_THRESHOLD:
+        old_desc = f"({len(old_lines)} lines)"
+        if len(old_lines) == len(new_lines):
+            new_desc = f"({len(new_lines)} lines, modified)"
+        else:
+            new_desc = f"({len(new_lines)} lines)"
         return [
             DiffDisplayBlock(
                 path=path,
-                old_text=f"({len(old_lines)} lines)",
-                new_text=f"({len(new_lines)} lines)",
+                old_text=old_desc,
+                new_text=new_desc,
                 old_start=1,
                 new_start=1,
                 is_summary=True,
             )
         ]
 
-    # Large files: enable autojunk for faster matching (less precise)
-    use_autojunk = max_lines > _LARGE_FILE_THRESHOLD
-    matcher = SequenceMatcher(None, old_lines, new_lines, autojunk=use_autojunk)
+    matcher = SequenceMatcher(None, old_lines, new_lines, autojunk=False)
 
     blocks: list[DisplayBlock] = []
     for group in matcher.get_grouped_opcodes(n=N_CONTEXT_LINES):

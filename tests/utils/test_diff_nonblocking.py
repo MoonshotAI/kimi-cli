@@ -9,7 +9,6 @@ from kosong.tooling import DisplayBlock
 
 from kimi_cli.utils.diff import (
     _HUGE_FILE_THRESHOLD,
-    _LARGE_FILE_THRESHOLD,
     _build_diff_blocks_sync,
     build_diff_blocks,
 )
@@ -56,10 +55,10 @@ async def test_build_diff_blocks_delegates_to_thread() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_large_file_diff_contains_change() -> None:
-    """Files above _LARGE_FILE_THRESHOLD should still produce a correct diff
-    that includes the actual changed content."""
-    n = _LARGE_FILE_THRESHOLD + 100
+async def test_large_file_diff_is_precise() -> None:
+    """Files below _HUGE_FILE_THRESHOLD should produce a precise diff
+    (autojunk=False) that includes the actual changed content."""
+    n = 3000
     old = _make_lines(n)
     changed_line = f"Changed {n // 2}"
     new = old.replace(f"Line {n // 2}", changed_line)
@@ -75,16 +74,16 @@ async def test_huge_file_returns_summary() -> None:
     for both modification and creation scenarios."""
     n = _HUGE_FILE_THRESHOLD + 100
 
-    # Scenario 1: modify existing huge file
+    # Scenario 1: modify existing huge file (different line counts)
     old = _make_lines(n)
-    new = _make_lines(n, prefix="Changed")
+    new = _make_lines(n + 50, prefix="Changed")
     diff_blocks = _as_diff(await build_diff_blocks("/tmp/huge.txt", old, new))
 
     assert len(diff_blocks) == 1
     block = diff_blocks[0]
     assert block.is_summary is True
     assert f"{n}" in block.old_text and "lines" in block.old_text
-    assert f"{n}" in block.new_text and "lines" in block.new_text
+    assert f"{n + 50}" in block.new_text and "lines" in block.new_text
 
     # Scenario 2: create new huge file (old is empty)
     diff_blocks = _as_diff(await build_diff_blocks("/tmp/huge_new.txt", "", new))
@@ -95,20 +94,24 @@ async def test_huge_file_returns_summary() -> None:
     assert "0" in diff_blocks[0].old_text or "lines" in diff_blocks[0].old_text
 
 
-async def test_threshold_boundaries() -> None:
-    """Files with exactly threshold line counts should stay on the
-    non-degraded side (thresholds use strict '>', not '>=')."""
-    # Exactly _LARGE_FILE_THRESHOLD lines: should use autojunk=False (precise)
-    n = _LARGE_FILE_THRESHOLD
+async def test_huge_file_same_line_count_shows_modified() -> None:
+    """When a huge file is modified but line count stays the same,
+    the summary must convey 'modified' to avoid looking like no change."""
+    n = _HUGE_FILE_THRESHOLD + 100
     old = _make_lines(n)
-    changed_line = f"Changed {n // 2}"
-    new = old.replace(f"Line {n // 2}", changed_line)
+    new = _make_lines(n, prefix="Changed")
 
-    diff_blocks = _as_diff(await build_diff_blocks("/tmp/boundary_large.txt", old, new))
-    assert len(diff_blocks) > 0
-    assert any(changed_line in b.new_text for b in diff_blocks)
+    diff_blocks = _as_diff(await build_diff_blocks("/tmp/huge_same.txt", old, new))
 
-    # Exactly _HUGE_FILE_THRESHOLD lines: should still produce normal diff, not summary
+    assert len(diff_blocks) == 1
+    block = diff_blocks[0]
+    assert block.is_summary is True
+    assert "modified" in block.new_text
+
+
+async def test_threshold_boundary() -> None:
+    """Files with exactly _HUGE_FILE_THRESHOLD lines should produce a normal diff,
+    not a summary (threshold uses strict '>')."""
     n = _HUGE_FILE_THRESHOLD
     old = _make_lines(n)
     changed_line = f"Changed {n // 2}"
@@ -116,8 +119,8 @@ async def test_threshold_boundaries() -> None:
 
     diff_blocks = _as_diff(await build_diff_blocks("/tmp/boundary_huge.txt", old, new))
     assert len(diff_blocks) > 0
-    # Must be a real diff, not a summary
-    assert all("lines)" not in b.old_text for b in diff_blocks)
+    assert all(not b.is_summary for b in diff_blocks)
+    assert any(changed_line in b.new_text for b in diff_blocks)
 
 
 async def test_unchanged_huge_file_returns_empty() -> None:
