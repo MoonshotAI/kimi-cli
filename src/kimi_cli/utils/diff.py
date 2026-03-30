@@ -92,6 +92,7 @@ def _build_diff_blocks_sync(
                 new_text=f"({len(new_lines)} lines)",
                 old_start=1,
                 new_start=1,
+                is_summary=True,
             )
         ]
 

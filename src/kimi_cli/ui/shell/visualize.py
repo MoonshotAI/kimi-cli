@@ -53,7 +53,11 @@ from kimi_cli.ui.shell.question_panel import (
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.rich.columns import BulletColumns
-from kimi_cli.utils.rich.diff_render import collect_diff_hunks, render_diff_panel
+from kimi_cli.utils.rich.diff_render import (
+    collect_diff_hunks,
+    render_diff_panel,
+    render_diff_summary_panel,
+)
 from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
@@ -519,9 +523,12 @@ class _ToolCallBlock:
                             break
                         diff_blocks.append(b)
                         idx += 1
-                    hunks, added_total, removed_total = collect_diff_hunks(diff_blocks)
-                    if hunks:
-                        lines.append(render_diff_panel(path, hunks, added_total, removed_total))
+                    if any(b.is_summary for b in diff_blocks):
+                        lines.append(render_diff_summary_panel(path, diff_blocks))
+                    else:
+                        hunks, added_total, removed_total = collect_diff_hunks(diff_blocks)
+                        if hunks:
+                            lines.append(render_diff_panel(path, hunks, added_total, removed_total))
                 elif isinstance(block, BriefDisplayBlock):
                     style = "grey50" if not self._result.is_error else "dark_red"
                     if block.text:

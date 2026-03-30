@@ -372,6 +372,7 @@ type DiffDisplayData = {
   path: string;
   old_text: string;
   new_text: string;
+  is_summary?: boolean;
 };
 
 /**
@@ -492,6 +493,23 @@ const DiffContent = ({ data }: { data: DiffDisplayData }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const { old_text: oldText, new_text: newText, path: filePath } = data;
+
+  // Summary mode: file too large for inline diff, show a compact summary instead
+  if (data.is_summary) {
+    return (
+      <div className="my-2 rounded-md border border-border/40 bg-card/20 px-3 py-2">
+        <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+          <span className="truncate flex-1">{filePath || "diff"}</span>
+          <span className="shrink-0 text-yellow-600 dark:text-yellow-400">
+            File too large for inline diff
+          </span>
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {oldText} → {newText}
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;

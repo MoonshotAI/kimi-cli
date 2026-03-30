@@ -82,6 +82,7 @@ async def test_huge_file_returns_summary() -> None:
 
     assert len(diff_blocks) == 1
     block = diff_blocks[0]
+    assert block.is_summary is True
     assert f"{n}" in block.old_text and "lines" in block.old_text
     assert f"{n}" in block.new_text and "lines" in block.new_text
 
@@ -89,6 +90,7 @@ async def test_huge_file_returns_summary() -> None:
     diff_blocks = _as_diff(await build_diff_blocks("/tmp/huge_new.txt", "", new))
 
     assert len(diff_blocks) == 1
+    assert diff_blocks[0].is_summary is True
     assert "lines" in diff_blocks[0].new_text
     assert "0" in diff_blocks[0].old_text or "lines" in diff_blocks[0].old_text
 
@@ -128,3 +130,56 @@ async def test_unchanged_huge_file_returns_empty() -> None:
     blocks = await build_diff_blocks("/tmp/unchanged_huge.txt", content, content)
 
     assert blocks == [], "Unchanged content must produce no diff blocks"
+
+
+# ---------------------------------------------------------------------------
+# Summary block rendering
+# ---------------------------------------------------------------------------
+
+
+def test_summary_panel_renders_modification() -> None:
+    """Summary panel for modifying a huge file should show line count transition."""
+    from rich.panel import Panel
+
+    from kimi_cli.utils.rich.diff_render import render_diff_summary_panel
+
+    block = DiffDisplayBlock(
+        path="huge.py",
+        old_text="(10000 lines)",
+        new_text="(10100 lines)",
+        is_summary=True,
+    )
+    panel = render_diff_summary_panel("huge.py", [block])
+    assert isinstance(panel, Panel)
+
+
+def test_summary_panel_renders_new_file() -> None:
+    """Summary panel for creating a huge file should say 'New file'."""
+    from kimi_cli.utils.rich.diff_render import _summary_description
+
+    block = DiffDisplayBlock(
+        path="huge.py",
+        old_text="(0 lines)",
+        new_text="(10100 lines)",
+        is_summary=True,
+    )
+    desc = _summary_description([block])
+    assert "New file" in desc
+    assert "10100" in desc
+
+
+def test_summary_preview_returns_renderables() -> None:
+    """Summary preview should return compact renderables for approval panel."""
+    from kimi_cli.utils.rich.diff_render import render_diff_summary_preview
+
+    block = DiffDisplayBlock(
+        path="huge.py",
+        old_text="(5000 lines)",
+        new_text="(5100 lines)",
+        is_summary=True,
+    )
+    renderables = render_diff_summary_preview("huge.py", [block])
+    assert len(renderables) == 2
+    # Second line should contain the description
+    text = str(renderables[1])
+    assert "too large" in text.lower() or "inline diff" in text.lower()

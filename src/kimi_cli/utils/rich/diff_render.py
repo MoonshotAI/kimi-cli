@@ -382,3 +382,55 @@ def render_diff_preview(
         result.append(Text(f"... {remaining} more lines (ctrl-e to expand)", style="dim italic"))
 
     return result, remaining
+
+
+# ---------------------------------------------------------------------------
+# Public: summary renderers for huge files
+# ---------------------------------------------------------------------------
+
+
+def _summary_description(blocks: list[DiffDisplayBlock]) -> str:
+    """Build a human-readable size description from summary blocks."""
+    block = blocks[0]
+    if block.old_text == "(0 lines)":
+        return f"New file with {block.new_text.strip('()')}"
+    if block.old_text == block.new_text:
+        return block.old_text.strip("()")
+    return f"{block.old_text.strip('()')} \u2192 {block.new_text.strip('()')}"
+
+
+def render_diff_summary_panel(
+    path: str,
+    blocks: list[DiffDisplayBlock],
+) -> RenderableType:
+    """Render a summary panel for files too large for inline diff."""
+    title = Text()
+    title.append(" ")
+    title.append(path)
+    title.append(" ")
+
+    body = Text()
+    body.append("File too large for inline diff", style="dim italic")
+    body.append("\n")
+    body.append(_summary_description(blocks), style="dim")
+
+    return Panel(
+        body,
+        title=title,
+        title_align="left",
+        border_style="dim",
+        padding=(1, 2),
+    )
+
+
+def render_diff_summary_preview(
+    path: str,
+    blocks: list[DiffDisplayBlock],
+) -> list[RenderableType]:
+    """Render a compact summary preview for approval panels."""
+    header = Text()
+    header.append(path)
+    desc = Text()
+    summary = _summary_description(blocks)
+    desc.append(f"  File too large for inline diff ({summary})", style="dim italic")
+    return [header, desc]
