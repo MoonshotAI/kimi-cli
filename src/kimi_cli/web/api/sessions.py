@@ -604,7 +604,12 @@ async def update_session(
 
     # Update title if provided
     if request.title is not None:
-        metadata = metadata.model_copy(update={"title": request.title})
+        metadata = metadata.model_copy(
+            update={
+                "title": request.title,
+                "title_generated": True,  # Prevent auto-title from overwriting manual rename
+            }
+        )
 
     # Update archived status if provided
     if request.archived is not None:
