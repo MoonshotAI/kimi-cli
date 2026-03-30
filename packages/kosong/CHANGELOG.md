@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.47.0 (2026-03-30)
+
+- OpenAI: Fix implicit `reasoning_effort` causing 400 errors — auto-set `reasoning_effort` to `"medium"` when history contains `ThinkPart` and the parameter wasn't explicitly set
+
 ## 0.46.0 (2026-03-25)
 
 - Google GenAI: Fix `FunctionCall` and `FunctionResponse` wire format — remove `id` field from outbound messages as Gemini API returns HTTP 400 when it is included; internal `tool_call_id` tracking remains unchanged
