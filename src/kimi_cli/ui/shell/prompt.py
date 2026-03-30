@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 import os
+import random
 import re
 import shlex
 import subprocess
@@ -48,7 +49,6 @@ from prompt_toolkit.layout.controls import BufferControl, UIContent, UIControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
 from pydantic import BaseModel, ValidationError
 
@@ -62,6 +62,7 @@ from kimi_cli.ui.shell.placeholders import (
     normalize_pasted_text,
     sanitize_surrogates,
 )
+from kimi_cli.ui.theme import get_prompt_style, get_toolbar_colors
 from kimi_cli.utils.clipboard import (
     grab_media_from_clipboard,
     is_clipboard_available,
@@ -1202,6 +1203,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-o: editor",
         "ctrl-j: newline",
         "/feedback: send feedback",
+        "/theme: switch dark/light",
     ]
     if clipboard_available:
         tips.append("ctrl-v: paste clipboard")
@@ -1246,7 +1248,6 @@ class CustomPromptSession:
         self._placeholder_manager = PromptPlaceholderManager()
         # Keep the old attribute for test compatibility and for any external imports.
         self._attachment_cache = self._placeholder_manager.attachment_cache
-        self._tip_rotation_index: int = 0
         self._last_tip_rotate_time: float = time.monotonic()
         self._last_submission_was_running = False
         self._running_prompt_previous_mode: PromptMode | None = None
@@ -1257,6 +1258,7 @@ class CustomPromptSession:
         self._suspended_buffer_document: Document | None = None
         clipboard_available = is_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available)
+        self._tip_rotation_index: int = random.randrange(len(self._tips)) if self._tips else 0
 
         history_entries = _load_history_entries(self._history_file)
         history = InMemoryHistory()
@@ -1498,21 +1500,7 @@ class CustomPromptSession:
             clipboard=clipboard,
             history=history,
             bottom_toolbar=self._render_bottom_toolbar,
-            style=Style.from_dict(
-                {
-                    "bottom-toolbar": "noreverse",
-                    "running-prompt-placeholder": "fg:#7c8594 italic",
-                    "running-prompt-separator": "fg:#4a5568",
-                    "slash-completion-menu": "",
-                    "slash-completion-menu.separator": "fg:#4a5568",
-                    "slash-completion-menu.marker": "fg:#4a5568",
-                    "slash-completion-menu.marker.current": "fg:#4f9fff",
-                    "slash-completion-menu.command": "fg:#a6adba",
-                    "slash-completion-menu.meta": "fg:#7c8594",
-                    "slash-completion-menu.command.current": "fg:#6fb7ff bold",
-                    "slash-completion-menu.meta.current": "fg:#56a4ff",
-                }
-            ),
+            style=get_prompt_style(),
         )
         self._session.default_buffer.read_only = Condition(
             lambda: (
@@ -1776,7 +1764,7 @@ class CustomPromptSession:
     def _render_agent_prompt_label(self) -> FormattedText:
         status = self._status_provider()
         if status.plan_mode:
-            return FormattedText([("fg:#00aaff", f"{PROMPT_SYMBOL_PLAN} ")])
+            return FormattedText([(get_toolbar_colors().plan_prompt, f"{PROMPT_SYMBOL_PLAN} ")])
         symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
         return FormattedText([("", f"{symbol} ")])
 
@@ -2003,8 +1991,9 @@ class CustomPromptSession:
         columns = app.output.get_size().columns
 
         fragments: list[tuple[str, str]] = []
+        tc = get_toolbar_colors()
 
-        fragments.append(("fg:#4d4d4d", "─" * columns))
+        fragments.append((tc.separator, "─" * columns))
         fragments.append(("", "\n"))
 
         remaining = columns
@@ -2018,10 +2007,10 @@ class CustomPromptSession:
         # Status flags: yolo / plan
         status = self._status_provider()
         if status.yolo_enabled:
-            fragments.extend([("bold fg:#ffff00", "yolo"), ("", "  ")])
+            fragments.extend([(tc.yolo_label, "yolo"), ("", "  ")])
             remaining -= 6  # "yolo" = 4, "  " = 2
         if status.plan_mode:
-            fragments.extend([("bold fg:#00aaff", "plan"), ("", "  ")])
+            fragments.extend([(tc.plan_label, "plan"), ("", "  ")])
             remaining -= 6
 
         # Mode indicator (agent / shell) + model name + thinking indicator.
@@ -2059,7 +2048,7 @@ class CustomPromptSession:
             cwd_text = _truncate_right(cwd, max(0, remaining - 2))
             cwd_w = _display_width(cwd_text)
         if cwd_text and remaining >= cwd_w + 2:
-            fragments.extend([("fg:#666666", cwd_text), ("", "  ")])
+            fragments.extend([(tc.cwd, cwd_text), ("", "  ")])
             remaining -= cwd_w + 2
 
         # Active background bash task count
@@ -2070,7 +2059,7 @@ class CustomPromptSession:
             bg_text = f"⚙ bash: {bg_count}"
             bg_width = _display_width(bg_text)
             if remaining >= bg_width + 2:
-                fragments.extend([("fg:#888888", bg_text), ("", "  ")])
+                fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
                 remaining -= bg_width + 2
 
         # Tips fill remaining space on line 1
@@ -2078,7 +2067,7 @@ class CustomPromptSession:
         if tip_text and _display_width(tip_text) > remaining:
             tip_text = self._get_one_rotating_tip()
         if tip_text and _display_width(tip_text) <= remaining:
-            fragments.append(("fg:#555555", tip_text))
+            fragments.append((tc.tip, tip_text))
 
         # ── line 2: toast (left) + context (right) — always rendered ──────
         fragments.append(("", "\n"))
