@@ -329,6 +329,7 @@ def kimi(
 ):
     """Kimi, your next CLI agent."""
     import asyncio
+    import contextlib
     import json
 
     from kimi_cli.utils.proctitle import init_process_name
@@ -346,6 +347,7 @@ def kimi(
     from kimi_cli.app import KimiCLI, enable_logging
     from kimi_cli.config import Config, load_config_from_string
     from kimi_cli.exception import ConfigError
+    from kimi_cli.hooks import events as hook_events
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.ui.shell.startup import ShellStartupProgress
@@ -568,6 +570,22 @@ def kimi(
                 defer_mcp_loading=ui == "shell" and prompt is None,
             )
             startup_progress.stop()
+
+            # --- SessionStart hook ---
+            _session_source = "resume" if continue_ else "startup"
+            await instance.soul.hook_engine.trigger(
+                "SessionStart",
+                matcher_value=_session_source,
+                input_data=hook_events.session_start(
+                    session_id=session.id,
+                    cwd=str(work_dir),
+                    source=_session_source,
+                ),
+            )
+
+            # Install stderr redirection only after initialization succeeded, so runtime
+            # stderr noise is captured into logs without hiding startup failures.
+            redirect_stderr_to_logger()
             preserve_background_tasks = False
             try:
                 match ui:
@@ -603,6 +621,21 @@ def kimi(
                 preserve_background_tasks = True
                 raise
             finally:
+                # --- SessionEnd hook ---
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(
+                        instance.soul.hook_engine.trigger(
+                            "SessionEnd",
+                            matcher_value="exit",
+                            input_data=hook_events.session_end(
+                                session_id=session.id,
+                                cwd=str(work_dir),
+                                reason="exit",
+                            ),
+                        ),
+                        timeout=5,
+                    )
+
                 if not preserve_background_tasks:
                     instance.shutdown_background_tasks()
 

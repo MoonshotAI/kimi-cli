@@ -962,6 +962,8 @@ class _LiveView:
                 self.request_question(msg)
             case ToolCallRequest():
                 logger.warning("Unexpected ToolCallRequest in shell UI: {msg}", msg=msg)
+            case _:
+                pass
 
     def _try_submit_question(self) -> None:
         """Submit the current question answer; if all done, resolve and advance."""

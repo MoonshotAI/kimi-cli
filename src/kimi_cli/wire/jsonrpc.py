@@ -91,11 +91,25 @@ class ClientCapabilities(BaseModel):
     """Whether the client supports plan mode (EnterPlanMode / ExitPlanMode)."""
 
 
+class WireHookSubscription(BaseModel):
+    """Hook event subscription from the wire client."""
+
+    id: str
+    """Unique subscription ID — referenced in HookRequest."""
+    event: str
+    """Which event to subscribe to."""
+    matcher: str = ""
+    """Regex filter. Empty matches everything."""
+    timeout: int = 30
+    """Seconds to wait for client response."""
+
+
 class JSONRPCInitializeMessage(_MessageBase):
     class Params(BaseModel):
         protocol_version: str
         client: ClientInfo | None = None
         external_tools: list[ExternalTool] | None = None
+        hooks: list[WireHookSubscription] | None = None
         capabilities: ClientCapabilities | None = None
 
     method: Literal["initialize"] = "initialize"
