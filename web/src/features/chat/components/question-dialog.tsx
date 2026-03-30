@@ -333,16 +333,16 @@ export function QuestionDialog({
 
       const allAnswered = questions.every((q) => q.question in newAnswers);
       if (allAnswered) {
-        // Clear all persisted state for this question before submitting
-        if (questionId) {
-          for (let i = 0; i < questions.length; i++) {
-            sessionStorage.removeItem(getReviseStorageKey(questionId, i));
-            sessionStorage.removeItem(getScrollStorageKey(questionId, i));
-            sessionStorage.removeItem(getSelectionStorageKey(questionId, i));
-          }
-        }
         try {
           await onQuestionResponse!(pendingQuestion.question.id, newAnswers);
+          // Clear persisted state only after successful submit
+          if (questionId) {
+            for (let i = 0; i < questions.length; i++) {
+              sessionStorage.removeItem(getReviseStorageKey(questionId, i));
+              sessionStorage.removeItem(getScrollStorageKey(questionId, i));
+              sessionStorage.removeItem(getSelectionStorageKey(questionId, i));
+            }
+          }
         } catch (error) {
           console.error("[QuestionDialog] Failed to respond", error);
         }
@@ -351,6 +351,7 @@ export function QuestionDialog({
           const idx = (currentQuestionIndex + offset) % totalQuestions;
           if (!(questions[idx].question in newAnswers)) {
             setCurrentQuestionIndex(idx);
+            planPreviewScrollRestoredRef.current = false;
             restoreForQuestion(idx);
             break;
           }
@@ -382,16 +383,16 @@ export function QuestionDialog({
 
   const handleDismiss = useCallback(async () => {
     if (disableActions || !pendingQuestion) return;
-    // Clear all persisted state for this question when dismissing
-    if (questionId) {
-      for (let i = 0; i < questions.length; i++) {
-        sessionStorage.removeItem(getReviseStorageKey(questionId, i));
-        sessionStorage.removeItem(getScrollStorageKey(questionId, i));
-        sessionStorage.removeItem(getSelectionStorageKey(questionId, i));
-      }
-    }
     try {
       await onQuestionResponse!(pendingQuestion.question.id, {});
+      // Clear persisted state only after successful dismiss
+      if (questionId) {
+        for (let i = 0; i < questions.length; i++) {
+          sessionStorage.removeItem(getReviseStorageKey(questionId, i));
+          sessionStorage.removeItem(getScrollStorageKey(questionId, i));
+          sessionStorage.removeItem(getSelectionStorageKey(questionId, i));
+        }
+      }
     } catch (error) {
       console.error("[QuestionDialog] Failed to dismiss", error);
     }
