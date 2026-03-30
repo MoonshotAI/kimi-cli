@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Add timeout protection for Agent tool and HTTP requests — all `aiohttp` sessions now default to 120 s total / 60 s read timeout; the Agent tool gains an optional `timeout` parameter (foreground default 10 min, background default 15 min); background agent tasks are marked `timed_out` on expiry with proper notification semantics
 - CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
 - Vis: Add `--network / -n` flag — launch the visualizer on all network interfaces with auto-detected LAN IP display, matching `kimi web` behavior
 - Vis: Add `/vis` slash command — switch from the interactive shell to the tracing visualizer in one step, mirroring the existing `/web` command

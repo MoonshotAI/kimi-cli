@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：为 Agent 工具和 HTTP 请求添加超时保护——所有 `aiohttp` 会话现在默认 120 秒总超时 / 60 秒读取超时；Agent 工具新增可选 `timeout` 参数（前台默认 10 分钟，后台默认 15 分钟）；后台 Agent 任务超时后标记为 `timed_out` 并正确触发通知
 - CLI：`--skills-dir` 现在支持多个目录并覆盖默认发现——指定后，这些目录将替代用户/项目 Skills 发现（可重复的标志）
 - Vis：新增 `--network / -n` 启动参数——在所有网络接口上启动可视化工具并自动探测和显示 LAN IP 地址，与 `kimi web` 行为一致
 - Vis：新增 `/vis` 斜杠命令——在交互式 Shell 中一步切换到 Tracing 可视化工具，与现有 `/web` 命令对称
