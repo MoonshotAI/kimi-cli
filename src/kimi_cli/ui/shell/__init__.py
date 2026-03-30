@@ -39,6 +39,7 @@ from kimi_cli.ui.shell.visualize import (
     ApprovalPromptDelegate,
     visualize,
 )
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
@@ -673,8 +674,14 @@ class Shell:
         queue = self.soul.runtime.root_wire_hub.subscribe()
         try:
             while True:
-                msg = await queue.get()
-                await self._handle_root_hub_message(msg)
+                try:
+                    msg = await queue.get()
+                except QueueShutDown:
+                    return
+                try:
+                    await self._handle_root_hub_message(msg)
+                except Exception:
+                    logger.exception("Failed to handle root hub message:")
         finally:
             self.soul.runtime.root_wire_hub.unsubscribe(queue)
 

@@ -127,12 +127,10 @@ class WriteFile(CallableTool2[Params]):
             new_text = (
                 params.content if params.mode == "overwrite" else (old_text or "") + params.content
             )
-            diff_blocks: list[DisplayBlock] = list(
-                build_diff_blocks(
-                    str(p),
-                    old_text or "",
-                    new_text,
-                )
+            diff_blocks: list[DisplayBlock] = await build_diff_blocks(
+                str(p),
+                old_text or "",
+                new_text,
             )
 
             # Plan file writes are auto-approved; other writes need approval
