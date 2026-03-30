@@ -257,6 +257,12 @@ class Shell:
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
     async def run(self, command: str | None = None) -> bool:
+        # Initialize theme from config
+        if isinstance(self.soul, KimiSoul):
+            from kimi_cli.ui.theme import set_active_theme
+
+            set_active_theme(self.soul.runtime.config.theme)
+
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
