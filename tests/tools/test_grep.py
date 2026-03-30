@@ -583,7 +583,7 @@ async def test_grep_relative_paths(grep_tool: Grep, temp_test_files, output_mode
             path_part = line.split(":")[0]
         else:
             path_part = line
-        assert not path_part.startswith("/"), f"Expected relative path, got: {line}"
+        assert not Path(path_part).is_absolute(), f"Expected relative path, got: {line}"
 
 
 async def test_grep_content_default_line_numbers(grep_tool: Grep):
@@ -660,7 +660,7 @@ async def test_grep_content_with_context_lines(grep_tool: Grep):
         # ALL lines (match and context) should have relative paths
         for line in result.output.split("\n"):
             if line.strip() and line != "--":
-                assert not line.startswith("/"), f"Line has absolute path: {line}"
+                assert not Path(line).is_absolute(), f"Line has absolute path: {line}"
 
 
 async def test_grep_single_file_relative_path(grep_tool: Grep):
@@ -674,7 +674,7 @@ async def test_grep_single_file_relative_path(grep_tool: Grep):
         assert isinstance(result.output, str)
         for line in result.output.split("\n"):
             if line.strip() and not line.startswith("--"):
-                assert not line.startswith("/"), f"Expected relative path, got: {line}"
+                assert not Path(line).is_absolute(), f"Expected relative path, got: {line}"
 
 
 # === Unit tests for internal functions ===

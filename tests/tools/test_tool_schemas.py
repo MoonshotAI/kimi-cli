@@ -353,13 +353,14 @@ def test_grep_params_schema(grep_tool: Grep):
                     "description": "File type to search. Examples: py, rust, js, ts, go, java, etc. More efficient than `glob` for standard file types.",
                 },
                 "head_limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    "anyOf": [{"minimum": 0, "type": "integer"}, {"type": "null"}],
                     "default": 250,
                     "description": "Limit output to first N lines/entries, equivalent to `| head -N`. Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count_matches (limits count entries). Defaults to 250. Pass 0 for unlimited (use sparingly — large result sets waste context).",
                 },
                 "offset": {
                     "default": 0,
                     "description": "Skip first N lines/entries before applying head_limit, equivalent to `| tail -n +N | head -N`. Works across all output modes. Defaults to 0.",
+                    "minimum": 0,
                     "type": "integer",
                 },
                 "multiline": {

@@ -104,6 +104,7 @@ class Params(BaseModel):
             "Pass 0 for unlimited (use sparingly — large result sets waste context)."
         ),
         default=250,
+        ge=0,
     )
     offset: int = Field(
         description=(
@@ -112,6 +113,7 @@ class Params(BaseModel):
             "Works across all output modes. Defaults to 0."
         ),
         default=0,
+        ge=0,
     )
     multiline: bool = Field(
         description=(
@@ -304,11 +306,22 @@ def _build_rg_args(rg_path: str, params: Params, *, single_threaded: bool = Fals
     return args
 
 
-async def _read_stream(stream: asyncio.StreamReader, buffer: bytearray, limit: int) -> bool:
+async def _read_stream(
+    stream: asyncio.StreamReader,
+    buffer: bytearray,
+    limit: int,
+    truncated_flag: list[bool] | None = None,
+) -> bool:
     """Incrementally read from stream into buffer, up to limit bytes.
 
     After hitting the limit, continues draining the pipe (discarding data)
     so the child process doesn't block on a full pipe buffer.
+
+    Args:
+        truncated_flag: If provided, truncated_flag[0] is set to True at the
+            moment truncation occurs (synchronously, before the next await).
+            This ensures the flag is available even if the coroutine is
+            cancelled by asyncio.wait_for timeout.
 
     Returns True if output was truncated (exceeded limit).
     """
@@ -322,8 +335,12 @@ async def _read_stream(stream: asyncio.StreamReader, buffer: bytearray, limit: i
             buffer.extend(chunk[:needed])
             if len(chunk) > needed:
                 truncated = True
+                if truncated_flag is not None:
+                    truncated_flag[0] = True
         else:
             truncated = True
+            if truncated_flag is not None:
+                truncated_flag[0] = True
     return truncated
 
 
@@ -376,19 +393,20 @@ class Grep(CallableTool2[Params]):
             stdout_buf = bytearray()
             stderr_buf = bytearray()
             timed_out = False
-            buffer_truncated = False
+            stdout_truncated_flag: list[bool] = [False]
 
             try:
                 assert process.stdout is not None
                 assert process.stderr is not None
-                stdout_truncated, _ = await asyncio.wait_for(
+                await asyncio.wait_for(
                     asyncio.gather(
-                        _read_stream(process.stdout, stdout_buf, RG_MAX_BUFFER),
+                        _read_stream(
+                            process.stdout, stdout_buf, RG_MAX_BUFFER, stdout_truncated_flag
+                        ),
                         _read_stream(process.stderr, stderr_buf, RG_MAX_BUFFER),
                     ),
                     timeout=RG_TIMEOUT,
                 )
-                buffer_truncated = stdout_truncated
                 await process.wait()
             except asyncio.CancelledError:
                 await _kill_process(process)
@@ -400,11 +418,15 @@ class Grep(CallableTool2[Params]):
             output = stdout_buf.decode("utf-8", errors="replace")
             stderr_str = stderr_buf.decode("utf-8", errors="replace")
 
+            # truncated_flag is set synchronously inside _read_stream at
+            # the moment of truncation, so it's available even after timeout.
+            buffer_truncated = stdout_truncated_flag[0]
+
             # Drop last incomplete line if buffer was truncated
             if buffer_truncated:
                 last_nl = output.rfind("\n")
                 output = output[:last_nl] if last_nl >= 0 else ""
-                message = "Output exceeded buffer limit. Some results omitted"
+                message = "Output exceeded buffer limit. Some results omitted."
 
             # Timeout: return partial results if available, otherwise error
             if timed_out:
@@ -416,7 +438,8 @@ class Grep(CallableTool2[Params]):
                         ),
                         brief="Grep timed out",
                     )
-                message = f"Grep timed out after {RG_TIMEOUT}s. Partial results returned"
+                timeout_msg = f"Grep timed out after {RG_TIMEOUT}s. Partial results returned."
+                message = f"{message} {timeout_msg}" if message else timeout_msg
 
             # rg exit codes: 0=matches found, 1=no matches, 2+=error
             if not timed_out and process.returncode not in (0, 1):
