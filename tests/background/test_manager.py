@@ -33,7 +33,7 @@ def test_create_bash_task_persists_starting_state(runtime, monkeypatch):
         cwd=str(runtime.session.work_dir),
     )
 
-    assert view.spec.id.startswith("b")
+    assert view.spec.id.startswith("bash-")
     assert view.runtime.status == "starting"
     assert view.runtime.worker_pid == 4242
 
@@ -157,7 +157,7 @@ async def test_create_agent_task_persists_starting_state(runtime, monkeypatch):
         model_override=None,
     )
 
-    assert view.spec.id.startswith("a")
+    assert view.spec.id.startswith("agent-")
     assert view.spec.kind == "agent"
     assert view.runtime.status == "starting"
     assert view.spec.kind_payload["agent_id"] == "a1234567"
