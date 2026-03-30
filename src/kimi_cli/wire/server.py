@@ -66,6 +66,19 @@ from .jsonrpc import (
 STDIO_BUFFER_LIMIT = 100 * 1024 * 1024
 
 
+def _is_oauth_session(runtime: Any) -> bool:
+    """Return True if the current session uses OAuth-based authentication."""
+    if runtime is None:
+        return False
+    llm = getattr(runtime, "llm", None)
+    if llm is None:
+        return False
+    provider_config = getattr(llm, "provider_config", None)
+    if provider_config is None:
+        return False
+    return getattr(provider_config, "oauth", None) is not None
+
+
 class WireServer:
     def __init__(self, soul: Soul):
         self._reader: asyncio.StreamReader | None = None
@@ -622,8 +635,8 @@ class WireServer:
             )
 
         self._cancel_event = asyncio.Event()
+        runtime = self._soul.runtime if isinstance(self._soul, KimiSoul) else None
         try:
-            runtime = self._soul.runtime if isinstance(self._soul, KimiSoul) else None
             await run_soul(
                 self._soul,
                 msg.params.user_input,
@@ -647,7 +660,7 @@ class WireServer:
                 error=JSONRPCErrorObject(code=ErrorCodes.LLM_NOT_SUPPORTED, message=str(e)),
             )
         except APIStatusError as e:
-            if e.status_code == 401:
+            if e.status_code == 401 and _is_oauth_session(runtime):
                 return JSONRPCErrorResponse(
                     id=msg.id,
                     error=JSONRPCErrorObject(

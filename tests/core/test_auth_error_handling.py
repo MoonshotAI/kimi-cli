@@ -26,8 +26,10 @@ from kosong.message import Message
 from kosong.message import TextPart as MessageTextPart
 from kosong.tooling import Tool
 from kosong.tooling.simple import SimpleToolset
+from pydantic import SecretStr
 
 from kimi_cli.acp.session import ACPSession
+from kimi_cli.config import LLMProvider, OAuthRef
 from kimi_cli.llm import LLM
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Agent, Runtime
@@ -194,11 +196,26 @@ class SuccessProvider:
 # ---------------------------------------------------------------------------
 
 
-def _runtime_with_provider(runtime: Runtime, provider) -> Runtime:
+_OAUTH_PROVIDER_CONFIG = LLMProvider(
+    type="kimi",
+    base_url="https://api.test/v1",
+    api_key=SecretStr(""),
+    oauth=OAuthRef(storage="file", key="oauth/kimi-code"),
+)
+
+_API_KEY_PROVIDER_CONFIG = LLMProvider(
+    type="openai_legacy",
+    base_url="https://api.openai.com/v1",
+    api_key=SecretStr("sk-test"),
+)
+
+
+def _runtime_with_provider(runtime: Runtime, provider, *, oauth: bool = False) -> Runtime:
     llm = LLM(
         chat_provider=provider,
         max_context_size=100_000,
         capabilities=set(),
+        provider_config=_OAUTH_PROVIDER_CONFIG if oauth else _API_KEY_PROVIDER_CONFIG,
     )
     return Runtime(
         config=runtime.config,
@@ -219,8 +236,8 @@ def _runtime_with_provider(runtime: Runtime, provider) -> Runtime:
     )
 
 
-def _make_soul(runtime: Runtime, provider, tmp_path: Path) -> KimiSoul:
-    rt = _runtime_with_provider(runtime, provider)
+def _make_soul(runtime: Runtime, provider, tmp_path: Path, *, oauth: bool = False) -> KimiSoul:
+    rt = _runtime_with_provider(runtime, provider, oauth=oauth)
     agent = Agent(
         name="Auth Error Test Agent",
         system_prompt="Test prompt.",
@@ -272,9 +289,11 @@ async def test_403_propagates_as_api_status_error(runtime: Runtime, tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_wire_server_returns_auth_expired_for_401(runtime: Runtime, tmp_path: Path) -> None:
-    """Wire server should return AUTH_EXPIRED error code for 401 errors."""
-    soul = _make_soul(runtime, Auth401Provider(), tmp_path)
+async def test_wire_server_returns_auth_expired_for_401_with_oauth(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """Wire server should return AUTH_EXPIRED for 401 when using an OAuth provider."""
+    soul = _make_soul(runtime, Auth401Provider(), tmp_path, oauth=True)
     server = WireServer(soul)
 
     response = await server._handle_prompt(
@@ -287,6 +306,29 @@ async def test_wire_server_returns_auth_expired_for_401(runtime: Runtime, tmp_pa
     assert isinstance(response, JSONRPCErrorResponse)
     assert response.error.code == ErrorCodes.AUTH_EXPIRED
     assert "login" in response.error.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_wire_server_returns_chat_provider_error_for_401_without_oauth(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """Wire server should return CHAT_PROVIDER_ERROR (not AUTH_EXPIRED) for 401
+    when using a non-OAuth provider (e.g. OpenAI API key), since "/login" would
+    be misleading.
+    """
+    soul = _make_soul(runtime, Auth401Provider(), tmp_path, oauth=False)
+    server = WireServer(soul)
+
+    response = await server._handle_prompt(
+        JSONRPCPromptMessage(
+            id="1",
+            params=JSONRPCPromptMessage.Params(user_input="hello"),
+        )
+    )
+
+    assert isinstance(response, JSONRPCErrorResponse)
+    assert response.error.code == ErrorCodes.CHAT_PROVIDER_ERROR
+    assert response.error.code != ErrorCodes.AUTH_EXPIRED
 
 
 @pytest.mark.asyncio
@@ -371,27 +413,47 @@ async def test_wire_server_returns_success_for_normal_prompt(
 # ---------------------------------------------------------------------------
 
 
-def _make_acp_session_with_error(error: BaseException) -> ACPSession:
+def _make_acp_session_with_error(error: BaseException, *, oauth: bool = True) -> ACPSession:
     """Create an ACPSession whose cli.run() raises the given error."""
 
     async def _failing_run(*args, **kwargs):
         raise error
-        # Make it an async generator that raises immediately
-        yield  # pragma: no cover — unreachable, but needed for generator type
+        yield  # pragma: no cover — needed for async generator type
+
+    mock_llm = MagicMock()
+    mock_llm.provider_config = _OAUTH_PROVIDER_CONFIG if oauth else _API_KEY_PROVIDER_CONFIG
+
+    mock_runtime = MagicMock()
+    mock_runtime.llm = mock_llm
+
+    mock_soul = MagicMock()
+    mock_soul.runtime = mock_runtime
 
     mock_cli = MagicMock()
     mock_cli.run = _failing_run
+    mock_cli.soul = mock_soul
+
     mock_conn = AsyncMock()
     return ACPSession(id="test-session", cli=mock_cli, acp_conn=mock_conn)
 
 
 @pytest.mark.asyncio
-async def test_acp_session_returns_auth_required_for_401() -> None:
-    """ACP session should raise auth_required for 401 APIStatusError."""
-    session = _make_acp_session_with_error(APIStatusError(401, "incorrect API KEY"))
+async def test_acp_session_returns_auth_required_for_401_with_oauth() -> None:
+    """ACP session should raise auth_required for 401 when using OAuth provider."""
+    session = _make_acp_session_with_error(APIStatusError(401, "incorrect API KEY"), oauth=True)
 
     with pytest.raises(acp.RequestError) as exc_info:
         await session.prompt([acp.schema.TextContentBlock(type="text", text="hello")])
 
-    # AUTH_REQUIRED error code
-    assert exc_info.value.code == -32000
+    assert exc_info.value.code == -32000  # AUTH_REQUIRED
+
+
+@pytest.mark.asyncio
+async def test_acp_session_returns_internal_error_for_401_without_oauth() -> None:
+    """ACP session should raise internal_error for 401 when using API key provider."""
+    session = _make_acp_session_with_error(APIStatusError(401, "incorrect API KEY"), oauth=False)
+
+    with pytest.raises(acp.RequestError) as exc_info:
+        await session.prompt([acp.schema.TextContentBlock(type="text", text="hello")])
+
+    assert exc_info.value.code != -32000  # NOT auth_required
