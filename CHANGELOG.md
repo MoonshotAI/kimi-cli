@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Explore: Enhance explore agent with specialist role, thoroughness levels, and automatic environment context — explore agents now gather repository environment information at launch to improve investigation quality; the main agent is guided to prefer explore for codebase research and plan mode encourages explore-first investigation
 - Web: Fix auto-title overwriting manual session rename — when a user renames a session through the web UI, the new title is now preserved and no longer replaced by the auto-generated title
 ## 1.28.0 (2026-03-30)
 
