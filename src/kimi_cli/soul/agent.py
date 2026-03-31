@@ -58,6 +58,10 @@ class BuiltinSystemPromptArgs:
     """Formatted information about available skills."""
     KIMI_ADDITIONAL_DIRS_INFO: str
     """Formatted information about additional directories in the workspace."""
+    KIMI_OS: str
+    """The operating system kind, e.g. 'Windows', 'macOS', 'Linux'."""
+    KIMI_SHELL: str
+    """The shell executable used by the Shell tool, e.g. 'bash (`/bin/bash`)'."""
 
 
 async def load_agents_md(work_dir: KaosPath) -> str | None:
@@ -210,6 +214,8 @@ class Runtime:
                 KIMI_AGENTS_MD=agents_md or "",
                 KIMI_SKILLS=skills_formatted or "No skills found.",
                 KIMI_ADDITIONAL_DIRS_INFO=additional_dirs_info,
+                KIMI_OS=environment.os_kind,
+                KIMI_SHELL=f"{environment.shell_name} (`{environment.shell_path}`)",
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(state=approval_state),
