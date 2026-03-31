@@ -216,6 +216,13 @@ class AgentTool(CallableTool2[Params]):
                 )
                 created_instance = True
 
+            # Mark running_background synchronously before dispatching the
+            # async task so that concurrent resume attempts see the guard
+            # immediately (asyncio.create_task only queues the coroutine).
+            self._runtime.subagent_store.update_instance(
+                agent_id,
+                status="running_background",
+            )
             try:
                 view = self._runtime.background_tasks.create_agent_task(
                     agent_id=agent_id,
@@ -225,8 +232,13 @@ class AgentTool(CallableTool2[Params]):
                     tool_call_id=tool_call.id,
                     model_override=params.model,
                     timeout_s=params.effective_timeout,
+                    resumed=params.resume is not None,
                 )
             except Exception:
+                self._runtime.subagent_store.update_instance(
+                    agent_id,
+                    status="idle",
+                )
                 if created_instance:
                     self._runtime.subagent_store.delete_instance(agent_id)
                 raise
