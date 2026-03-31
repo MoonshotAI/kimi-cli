@@ -142,8 +142,9 @@ class EnterPlanMode(CallableTool2[Params]):
 
         if not answers:
             return ToolReturnValue(
-                is_error=False,
-                output="User dismissed without choosing. Proceed with implementation directly.",
+                is_error=True,
+                output="User dismissed the plan mode prompt without choosing. "
+                "Do NOT proceed with implementation. Stop and wait for the user's next message.",
                 message="Dismissed",
                 display=[BriefDisplayBlock(text="Dismissed")],
             )
