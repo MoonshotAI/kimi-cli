@@ -57,6 +57,9 @@ build-backend = "uv_build"
 module-name = ["kimi_cli"]
 source-exclude = ["examples/**/*", "tests/**/*", "src/kimi_cli/deps/**/*"]
 
+[tool.hatch.build.targets.wheel]
+include = ["src/kimi_cli/web/static/**/*"]
+
 [tool.uv.workspace]
 members = [
     "packages/kosong",
