@@ -140,7 +140,7 @@ def test_shell_params_schema(shell_tool: Shell):
         {
             "properties": {
                 "command": {
-                    "description": "The bash command to execute.",
+                    "description": "The command to execute.",
                     "type": "string",
                 },
                 "timeout": {
