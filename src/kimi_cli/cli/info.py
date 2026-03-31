@@ -45,6 +45,55 @@ def _emit_info(json_output: bool) -> None:
         typer.echo(line)
 
 
+def sdk_setup_text() -> str:
+    """Return Kimi Agent SDK / Wire setup instructions."""
+    text = """
+Welcome to Kimi Code CLI!
+
+# Wire SDK Setup
+## Prerequisites
+```
+pip install kimi-cli-agent-sdk
+```
+Or install from GitHub for the latest development version:
+```
+pip install git+https://github.com/moonshotai/kimi-sdk.git
+```
+
+## Usage example
+```python
+from kimi_cli.agent import KimiCLI
+
+async def main():
+    async with KimiCLI.connect() as wire:
+        # Send commands to Kimi CLI
+        await wire.send_message({
+            "method": "chat",
+            "params": {
+                "messages": [{"role": "user", "content": "Hello, Kimi!"}]
+            }
+        })
+        
+        # Wait for responses
+        async for response in wire.messages():
+            print(response)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+```
+
+For more information, check out the official documentation.
+""".strip()
+    return text
+
+
+@cli.command()
+def print_sdk_setup():
+    """Print Kimi Agent SDK / Wire setup instructions"""
+    typer.echo(sdk_setup_text())
+
+
 cli = typer.Typer(help="Show version and protocol information.")
 
 
