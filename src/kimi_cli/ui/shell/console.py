@@ -38,7 +38,7 @@ _NEUTRAL_MARKDOWN_THEME = NEUTRAL_MARKDOWN_THEME
 class _KimiPager(Pager):
     """Pager that ignores MANPAGER to avoid garbled output.
 
-    ``pydoc.get_pager()`` reads ``MANPAGER`` before ``PAGER``.  When the user
+    ``pydoc.getpager()`` reads ``MANPAGER`` before ``PAGER``.  When the user
     sets ``MANPAGER`` to a man-specific pipeline (e.g.
     ``sh -c 'col -bx | bat -l man -p'``), that pipeline mangles the ANSI
     rich-text we emit.  This pager strips ``MANPAGER`` from the subprocess

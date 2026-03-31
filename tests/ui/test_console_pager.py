@@ -14,7 +14,7 @@ from kimi_cli.ui.shell.console import _KimiPager, console
 class TestConsolePagerIgnoresManpager:
     """Verify that console.pager() does not use MANPAGER env var.
 
-    MANPAGER is intended for the ``man`` command; pydoc.get_pager() reads it
+    MANPAGER is intended for the ``man`` command; pydoc.getpager() reads it
     by default, which causes garbled output when MANPAGER is set to a
     man-specific pipeline such as ``sh -c 'col -bx | bat -l man -p'``.
     """
@@ -33,15 +33,13 @@ class TestConsolePagerIgnoresManpager:
         """When MANPAGER is set, _KimiPager must strip it before calling pydoc.pager()."""
         pager = _KimiPager()
 
-        with patch("pydoc.pager") as mock_pydoc_pager:
+        def assert_no_manpager(content: str) -> None:
+            assert "MANPAGER" not in os.environ, "MANPAGER must be stripped during pydoc.pager()"
+
+        with patch("pydoc.pager", side_effect=assert_no_manpager) as mock_pydoc_pager:
             pager.show("test content")
 
             mock_pydoc_pager.assert_called_once_with("test content")
-            # MANPAGER must not be visible to pydoc.pager()
-            assert (
-                "MANPAGER" not in os.environ
-                or os.environ["MANPAGER"] == "sh -c 'col -bx | bat -l man -p'"
-            )
 
     @patch.dict(os.environ, {"MANPAGER": "bat -l man -p"})
     def test_manpager_restored_after_pager_call(self):
