@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from urllib.parse import urlparse
 
 import kaos
 from kaos.path import KaosPath
@@ -68,7 +69,7 @@ async def collect_git_context(work_dir: KaosPath) -> str:
     if log_raw:
         log_lines = [line for line in log_raw.splitlines() if line.strip()]
         if log_lines:
-            body = "\n".join(f"  {line}" for line in log_lines)
+            body = "\n".join(f"  {line[:200]}" for line in log_lines)
             sections.append(f"Recent commits:\n{body}")
 
     if len(sections) <= 1:
@@ -109,19 +110,42 @@ async def _run_git(args: list[str], cwd: str, timeout: float = _TIMEOUT) -> str 
         return None
 
 
+# Well-known public hosts whose remote URLs are safe to surface and
+# recognizable enough for the model to infer project ecosystem context.
+_ALLOWED_HOSTS = (
+    "github.com",
+    "gitlab.com",
+    "gitee.com",
+    "bitbucket.org",
+    "codeberg.org",
+    "sr.ht",
+)
+
+
 def _sanitize_remote_url(remote_url: str) -> str | None:
-    """Return the remote URL only if it points to github.com, with credentials stripped.
+    """Return the remote URL if it points to a well-known public host.
 
-    Returns ``None`` for non-GitHub remotes or URLs that cannot be sanitized.
+    Credentials are stripped from HTTPS URLs.
+
+    Recognizable remote URLs help orient the agent within the broader project
+    ecosystem (e.g. issue tracker conventions, CI patterns).  Self-hosted or
+    unrecognized hosts are excluded to avoid leaking internal infrastructure.
     """
-    # SSH format: git@github.com:owner/repo.git — no credentials possible
-    if re.match(r"^git@github\.com:", remote_url):
-        return remote_url
+    # SSH format: git@host:owner/repo.git — no credentials possible
+    for host in _ALLOWED_HOSTS:
+        if re.match(rf"^git@{re.escape(host)}:", remote_url):
+            return remote_url
 
-    # HTTPS format: strip userinfo and only allow github.com
-    m = re.match(r"^https?://(?:[^@]+@)?(github\.com/.+)$", remote_url)
-    if m:
-        return f"https://{m.group(1)}"
+    # HTTPS format: parse hostname exactly, strip userinfo
+    try:
+        parsed = urlparse(remote_url)
+        _ = parsed.port  # raises ValueError on malformed port like :443.evil
+    except ValueError:
+        return None
+    if parsed.hostname in _ALLOWED_HOSTS:
+        # Rebuild without userinfo: https://host[:port]/path
+        port_part = f":{parsed.port}" if parsed.port else ""
+        return f"https://{parsed.hostname}{port_part}{parsed.path}"
 
     return None
 

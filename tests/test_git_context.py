@@ -81,11 +81,58 @@ class TestSanitizeRemoteUrl:
             == "https://github.com/user/repo.git"
         )
 
-    def test_non_github_returns_none(self) -> None:
-        assert _sanitize_remote_url("git@gitlab.com:org/project.git") is None
+    def test_gitlab_ssh(self) -> None:
+        assert (
+            _sanitize_remote_url("git@gitlab.com:org/project.git")
+            == "git@gitlab.com:org/project.git"
+        )
 
-    def test_non_github_https_returns_none(self) -> None:
-        assert _sanitize_remote_url("https://gitlab.com/org/project.git") is None
+    def test_gitlab_https(self) -> None:
+        assert (
+            _sanitize_remote_url("https://gitlab.com/org/project.git")
+            == "https://gitlab.com/org/project.git"
+        )
+
+    def test_gitee_ssh(self) -> None:
+        assert (
+            _sanitize_remote_url("git@gitee.com:org/project.git") == "git@gitee.com:org/project.git"
+        )
+
+    def test_gitee_https_strips_token(self) -> None:
+        assert (
+            _sanitize_remote_url("https://token@gitee.com/org/project.git")
+            == "https://gitee.com/org/project.git"
+        )
+
+    def test_bitbucket_ssh(self) -> None:
+        assert (
+            _sanitize_remote_url("git@bitbucket.org:team/repo.git")
+            == "git@bitbucket.org:team/repo.git"
+        )
+
+    def test_self_hosted_returns_none(self) -> None:
+        assert _sanitize_remote_url("git@git.internal.corp.com:team/repo.git") is None
+
+    def test_self_hosted_https_returns_none(self) -> None:
+        assert _sanitize_remote_url("https://git.internal.corp.com/team/repo.git") is None
+
+    def test_lookalike_host_returns_none(self) -> None:
+        assert _sanitize_remote_url("https://github.com.evil/repo.git") is None
+
+    def test_lookalike_host_subdomain_returns_none(self) -> None:
+        assert _sanitize_remote_url("https://github.com.internal.corp/team/repo.git") is None
+
+    def test_fake_port_returns_none(self) -> None:
+        assert _sanitize_remote_url("https://github.com:443.evil/user/repo.git") is None
+
+    def test_non_numeric_port_returns_none(self) -> None:
+        assert _sanitize_remote_url("https://github.com:abc/user/repo.git") is None
+
+    def test_valid_port_allowed(self) -> None:
+        assert (
+            _sanitize_remote_url("https://github.com:443/user/repo.git")
+            == "https://github.com:443/user/repo.git"
+        )
 
     def test_empty_returns_none(self) -> None:
         assert _sanitize_remote_url("") is None
@@ -243,8 +290,8 @@ class TestCollectGitContext:
         assert "Project: testorg/testrepo" in result
 
     @pytest.mark.asyncio
-    async def test_non_github_remote_hides_url(self, tmp_path: Path) -> None:
-        """Non-github remote: Remote line hidden, but Project still extracted."""
+    async def test_self_hosted_remote_hides_url(self, tmp_path: Path) -> None:
+        """Self-hosted remote: Remote line hidden, but Project still extracted."""
         proc = await asyncio.create_subprocess_exec(
             "git",
             "init",
@@ -260,7 +307,7 @@ class TestCollectGitContext:
                 "remote",
                 "add",
                 "origin",
-                "https://gitlab.com/testorg/testrepo.git",
+                "https://git.internal.corp.com/testorg/testrepo.git",
                 cwd=tmp_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
