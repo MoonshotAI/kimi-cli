@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from rich.console import Console, RenderableType
+import os
+import pydoc
+
+from rich.console import Console, PagerContext, RenderableType
+from rich.pager import Pager
 from rich.theme import Theme
 
 NEUTRAL_MARKDOWN_THEME = Theme(
@@ -29,7 +33,42 @@ NEUTRAL_MARKDOWN_THEME = Theme(
 )
 
 _NEUTRAL_MARKDOWN_THEME = NEUTRAL_MARKDOWN_THEME
-console = Console(highlight=False, theme=NEUTRAL_MARKDOWN_THEME)
+
+
+class _KimiPager(Pager):
+    """Pager that ignores MANPAGER to avoid garbled output.
+
+    ``pydoc.getpager()`` reads ``MANPAGER`` before ``PAGER``.  When the user
+    sets ``MANPAGER`` to a man-specific pipeline (e.g.
+    ``sh -c 'col -bx | bat -l man -p'``), that pipeline mangles the ANSI
+    rich-text we emit.  This pager strips ``MANPAGER`` from the subprocess
+    environment so only ``PAGER`` (or the default ``less``) is used.
+    """
+
+    def show(self, content: str) -> None:
+        saved = os.environ.pop("MANPAGER", None)
+        try:
+            pydoc.pager(content)
+        finally:
+            if saved is not None:
+                os.environ["MANPAGER"] = saved
+
+
+class _KimiConsole(Console):
+    """Console subclass that defaults to :class:`_KimiPager`."""
+
+    def pager(
+        self,
+        pager: Pager | None = None,
+        styles: bool = False,
+        links: bool = False,
+    ) -> PagerContext:
+        if pager is None:
+            pager = _KimiPager()
+        return super().pager(pager=pager, styles=styles, links=links)
+
+
+console = _KimiConsole(highlight=False, theme=NEUTRAL_MARKDOWN_THEME)
 
 
 def render_to_ansi(renderable: RenderableType, *, columns: int) -> str:
