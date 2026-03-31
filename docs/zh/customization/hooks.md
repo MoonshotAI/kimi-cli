@@ -66,16 +66,42 @@ command = "osascript -e 'display notification \"Kimi needs attention\" with titl
 [[hooks]]
 event = "Stop"
 command = ".kimi/hooks/check-complete.sh"
+
+# 每次用户提示时注入上下文（无需 shell 命令的简单替代方案）
+[[hooks]]
+event = "UserPromptSubmit"
+inject_prompt = "Always write tests first."
+timeout = 5
+
+# 或从文件加载
+[[hooks]]
+event = "UserPromptSubmit"
+inject_prompt = "~/.kimi/prompts/coding-guidelines.md"
+timeout = 5
 ```
+
+### `inject_prompt` 字段
+
+对于只需要注入静态文本或文件内容到对话上下文的简单场景，可以使用 `inject_prompt` 替代 `command`：
+
+- **静态文本**：直接将内容写为字符串
+- **文件路径**：指定以 `.md` 或 `.txt` 结尾的路径，或包含 `/` 或 `\` 的路径，将读取文件内容并注入
+- **路径展开**：`~` 会被展开为用户主目录
+- **相对路径**：相对于当前工作目录解析
+
+内容会在处理每个匹配的用户提示前作为系统提醒消息注入。
 
 ### 配置字段
 
 | 字段 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
 | `event` | 是 | — | 事件类型，必须是上述 13 种之一 |
-| `command` | 是 | — | 要执行的 shell 命令，通过 stdin 接收 JSON 上下文 |
+| `command` | 是* | — | 要执行的 shell 命令，通过 stdin 接收 JSON 上下文 |
+| `inject_prompt` | 是* | — | 要注入为上下文的静态提示内容或文件路径 |
 | `matcher` | 否 | `""` | 正则表达式过滤，空字符串匹配所有 |
 | `timeout` | 否 | `30` | 超时时间（秒），超时后按 fail-open 处理 |
+
+*必须指定 `command` 或 `inject_prompt` 其中之一，但不能同时指定两者。
 
 ## 通信协议
 
@@ -116,6 +142,25 @@ Hook 命令从标准输入接收 JSON 格式的上下文信息，包含通用字
 ```
 
 当 `permissionDecision` 为 `deny` 时，会阻止操作并将 `permissionDecisionReason` 反馈给 LLM。
+
+### 注入额外上下文
+
+Hooks 还可以返回 `additionalContext` 来将内容作为系统提醒注入对话：
+
+```json
+{
+  "hookSpecificOutput": {
+    "additionalContext": "修改前请先查看相关文档。"
+  }
+}
+```
+
+这在以下场景很有用：
+- 根据当前任务动态加载 Skill 内容
+- 注入项目特定的指导原则
+- 提醒 AI 遵循代码规范
+
+使用 `inject_prompt`（而非 `command`）时，内容会自动注入，无需返回 JSON。
 
 ## Hook 脚本示例
 

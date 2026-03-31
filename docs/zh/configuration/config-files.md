@@ -198,9 +198,12 @@ command = "prettier --write"
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `event` | `string` | 是 | 事件类型，如 `PreToolUse`、`Stop` 等 |
-| `command` | `string` | 是 | 要执行的 shell 命令 |
+| `command` | `string` | 条件* | 要执行的 shell 命令 |
+| `inject_prompt` | `string` | 条件* | 要注入的静态提示内容或文件路径 |
 | `matcher` | `string` | 否 | 正则表达式过滤条件 |
 | `timeout` | `integer` | 否 | 超时时间（秒），默认 30 |
+
+*必须指定 `command` 或 `inject_prompt` 其中之一，但不能同时指定。使用 `inject_prompt` 时，内容会作为系统提醒注入对话上下文，无需执行 shell 命令。
 
 ## JSON 配置迁移
 

@@ -198,9 +198,12 @@ command = "prettier --write"
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `event` | `string` | Yes | Event type, e.g., `PreToolUse`, `Stop`, etc. |
-| `command` | `string` | Yes | Shell command to execute |
+| `command` | `string` | Cond* | Shell command to execute |
+| `inject_prompt` | `string` | Cond* | Static prompt content or file path to inject |
 | `matcher` | `string` | No | Regex filter condition |
 | `timeout` | `integer` | No | Timeout in seconds, default 30 |
+
+*Either `command` or `inject_prompt` must be specified, but not both. When using `inject_prompt`, the content is injected into the conversation context as a system reminder without executing a shell command.
 
 ## JSON configuration migration
 
