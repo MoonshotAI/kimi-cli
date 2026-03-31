@@ -537,6 +537,146 @@ async def test_agent_tool_background_rejects_resume_when_instance_is_already_run
     assert called is False
 
 
+async def test_agent_tool_background_resume_marks_running_before_dispatch(
+    agent_tool, runtime, monkeypatch
+):
+    """The instance must be running_background *before* create_agent_task returns
+    so that a concurrent resume sees the guard immediately."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="aconcurr",
+        description="concurrency test",
+        launch_spec=AgentLaunchSpec(
+            agent_id="aconcurr",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+
+    status_during_create: list[str] = []
+
+    def fake_create_agent_task(**kwargs):
+        # Capture instance status at the moment create_agent_task is called.
+        record = runtime.subagent_store.require_instance("aconcurr")
+        status_during_create.append(record.status)
+        return SimpleNamespace(
+            spec=SimpleNamespace(id="a-task-c", kind="agent", description=kwargs["description"]),
+            runtime=SimpleNamespace(status="starting"),
+        )
+
+    monkeypatch.setattr(runtime.background_tasks, "create_agent_task", fake_create_agent_task)
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="concurrent resume",
+                prompt="do work",
+                resume="aconcurr",
+                run_in_background=True,
+            )
+        )
+
+    assert not result.is_error
+    # Instance must already be running_background when create_agent_task is called
+    assert status_during_create == ["running_background"]
+
+
+async def test_agent_tool_background_new_instance_marks_running_before_dispatch(
+    agent_tool, runtime, monkeypatch
+):
+    """A fresh (non-resume) background instance must also be running_background
+    before create_agent_task is called."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    status_during_create: list[str] = []
+    agent_ids_seen: list[str] = []
+
+    def fake_create_agent_task(**kwargs):
+        agent_id = kwargs["agent_id"]
+        agent_ids_seen.append(agent_id)
+        record = runtime.subagent_store.require_instance(agent_id)
+        status_during_create.append(record.status)
+        return SimpleNamespace(
+            spec=SimpleNamespace(id="a-task-n", kind="agent", description=kwargs["description"]),
+            runtime=SimpleNamespace(status="starting"),
+        )
+
+    monkeypatch.setattr(runtime.background_tasks, "create_agent_task", fake_create_agent_task)
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="fresh bg",
+                prompt="do work",
+                run_in_background=True,
+            )
+        )
+
+    assert not result.is_error
+    assert status_during_create == ["running_background"]
+
+
+async def test_agent_tool_background_rolls_back_status_on_dispatch_failure(
+    agent_tool, runtime, monkeypatch
+):
+    """If create_agent_task raises for a resumed instance, the instance status
+    must be rolled back to idle (not left as running_background)."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="arollbk1",
+        description="rollback test",
+        launch_spec=AgentLaunchSpec(
+            agent_id="arollbk1",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+
+    def fake_create_agent_task(**kwargs):
+        raise RuntimeError("Too many background tasks are already running.")
+
+    monkeypatch.setattr(runtime.background_tasks, "create_agent_task", fake_create_agent_task)
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="rollback resume",
+                prompt="continue work",
+                resume="arollbk1",
+                run_in_background=True,
+            )
+        )
+
+    assert result.is_error
+    # Instance must still exist (not deleted — it was a resume, not new)
+    record = runtime.subagent_store.require_instance("arollbk1")
+    # Status must be rolled back to idle, not stuck at running_background
+    assert record.status == "idle"
+
+
 async def test_agent_tool_background_rejects_missing_resume_instance(agent_tool, runtime):
     with tool_call_context("Agent"):
         result = await agent_tool(
