@@ -22,7 +22,7 @@ MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
 
 
 class Params(BaseModel):
-    command: str = Field(description="The bash command to execute.")
+    command: str = Field(description="The command to execute.")
     timeout: int = Field(
         description=(
             "The timeout in seconds for the command to execute. "

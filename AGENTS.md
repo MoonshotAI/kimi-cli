@@ -38,7 +38,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
   Specs can `extend` base agents, select tools by import path, and register builtin subagent
   types via the `subagents` field. Subagent instances are persisted separately under the session
   directory and can be resumed by `agent_id`. System prompts live alongside specs; builtin args
-  include `KIMI_NOW`, `KIMI_WORK_DIR`, `KIMI_WORK_DIR_LS`, `KIMI_AGENTS_MD`, `KIMI_SKILLS`
+  include `KIMI_NOW`, `KIMI_WORK_DIR`, `KIMI_WORK_DIR_LS`, `KIMI_AGENTS_MD`, `KIMI_SKILLS`, `KIMI_OS`, `KIMI_SHELL`
   (this file is injected via `KIMI_AGENTS_MD`).
 - **Tooling**: `src/kimi_cli/soul/toolset.py` loads tools by import path, injects dependencies,
   and runs tool calls. Built-in tools live in `src/kimi_cli/tools/` (agent, shell, file, web,
