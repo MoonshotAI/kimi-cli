@@ -14,10 +14,10 @@ from kimi_cli.approval_runtime import (
     set_current_approval_source,
 )
 from kimi_cli.soul import MaxStepsReached, UILoopFn, get_wire_or_none, run_soul
-from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.subagents.builder import SubagentBuilder
+from kimi_cli.subagents.core import SubagentRunSpec, prepare_soul
 from kimi_cli.subagents.models import AgentInstanceRecord, AgentLaunchSpec
 from kimi_cli.subagents.output import SubagentOutputWriter
 from kimi_cli.subagents.store import SubagentStore
@@ -180,39 +180,26 @@ class ForegroundSubagentRunner:
         output_writer = SubagentOutputWriter(self._store.output_path(agent_id))
         output_writer.stage("runner_started")
 
-        agent = await self._builder.build_builtin_instance(
+        spec = SubagentRunSpec(
             agent_id=agent_id,
             type_def=type_def,
             launch_spec=launch_spec,
+            prompt=req.prompt,
+            resumed=resumed,
         )
-        output_writer.stage("agent_built")
+        soul, prompt = await prepare_soul(
+            spec,
+            self._runtime,
+            self._builder,
+            self._store,
+            on_stage=output_writer.stage,
+        )
 
-        context = Context(self._store.context_path(agent_id))
-        await context.restore()
-        output_writer.stage("context_restored")
-        if context.system_prompt is not None:
-            agent = replace(agent, system_prompt=context.system_prompt)
-        else:
-            await context.write_system_prompt(agent.system_prompt)
-        output_writer.stage("context_ready")
-
-        # For new (non-resumed) explore agents, prepend git context to the prompt.
-        prompt = req.prompt
-        if actual_type == "explore" and not resumed:
-            from kimi_cli.subagents.git_context import collect_git_context
-
-            git_ctx = await collect_git_context(self._runtime.builtin_args.KIMI_WORK_DIR)
-            if git_ctx:
-                prompt = f"{git_ctx}\n\n{prompt}"
-
-        self._store.prompt_path(agent_id).write_text(prompt, encoding="utf-8")
         self._store.update_instance(
             agent_id,
             status="running_foreground",
             description=req.description.strip(),
         )
-
-        soul = KimiSoul(agent, context=context)
         # Propagate hook engine from parent runtime to subagent soul
         if self._runtime.hook_engine is not None:
             soul.set_hook_engine(self._runtime.hook_engine)

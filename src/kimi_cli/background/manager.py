@@ -203,6 +203,7 @@ class BackgroundTaskManager:
         tool_call_id: str,
         model_override: str | None,
         timeout_s: int | None = None,
+        resumed: bool = False,
     ) -> TaskView:
         from .agent_runner import BackgroundAgentRunner
 
@@ -245,6 +246,7 @@ class BackgroundTaskManager:
                 prompt=prompt,
                 model_override=model_override,
                 timeout_s=effective_timeout,
+                resumed=resumed,
             ).run()
         )
         self._live_agent_tasks[task_id] = task
