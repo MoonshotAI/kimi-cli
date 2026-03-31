@@ -82,9 +82,9 @@ def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_wi
     assert os_kind in prompt
     assert shell in prompt
     if expect_windows_warning:
-        assert "Do NOT use Unix/Linux commands" in prompt
+        assert "Many common Unix commands are not available" in prompt
     else:
-        assert "Do NOT use Unix/Linux commands" not in prompt
+        assert "Many common Unix commands are not available" not in prompt
 
 
 def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):
