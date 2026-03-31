@@ -20,6 +20,8 @@ from kimi_cli.utils.rich.diff_render import (
     collect_diff_hunks,
     render_diff_panel,
     render_diff_preview,
+    render_diff_summary_panel,
+    render_diff_summary_preview,
 )
 from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire.types import (
@@ -94,16 +96,20 @@ class ApprovalRequestPanel:
                         break
                     diff_blocks.append(b)
                     idx += 1
-                hunks, added, removed = collect_diff_hunks(diff_blocks)
-                if hunks:
+                if any(b.is_summary for b in diff_blocks):
                     self._has_diff = True
-                    renderables, _remaining = render_diff_preview(
-                        path,
-                        hunks,
-                        added,
-                        removed,
-                    )
-                    self._preview_renderables.extend(renderables)
+                    self._preview_renderables.extend(render_diff_summary_preview(path, diff_blocks))
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        self._has_diff = True
+                        renderables, _remaining = render_diff_preview(
+                            path,
+                            hunks,
+                            added,
+                            removed,
+                        )
+                        self._preview_renderables.extend(renderables)
             elif isinstance(block, ShellDisplayBlock):
                 text = block.command.rstrip("\n")
                 line_count = text.count("\n") + 1
@@ -280,10 +286,14 @@ def show_approval_in_pager(panel: ApprovalRequestPanel) -> None:
                         break
                     diff_blocks.append(b)
                     idx += 1
-                hunks, added, removed = collect_diff_hunks(diff_blocks)
-                if hunks:
-                    console.print(render_diff_panel(path, hunks, added, removed))
+                if any(b.is_summary for b in diff_blocks):
+                    console.print(render_diff_summary_panel(path, diff_blocks))
                     rendered_any = True
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        console.print(render_diff_panel(path, hunks, added, removed))
+                        rendered_any = True
             elif isinstance(block, ShellDisplayBlock):
                 console.print(KimiSyntax(block.command.rstrip("\n"), block.language))
                 rendered_any = True
@@ -323,10 +333,12 @@ class ApprovalPromptDelegate:
         *,
         on_response: Callable[[ApprovalRequest, ApprovalResponse.Kind, str], None],
         buffer_text_provider: Callable[[], str] | None = None,
+        text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel = ApprovalRequestPanel(request)
         self._on_response = on_response
         self._buffer_text_provider = buffer_text_provider
+        self._text_expander = text_expander
         self._feedback_draft: str = ""
 
     @property
@@ -392,6 +404,8 @@ class ApprovalPromptDelegate:
             if key == "enter" or mapped == KeyEvent.ENTER:
                 text = event.current_buffer.text.strip()
                 if text:
+                    if self._text_expander is not None:
+                        text = self._text_expander(text)
                     self._clear_buffer(event.current_buffer)
                     self._feedback_draft = ""
                     self._panel.request.resolve("reject")

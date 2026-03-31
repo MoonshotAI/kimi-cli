@@ -39,6 +39,7 @@ from kimi_cli.ui.shell.visualize import (
     ApprovalPromptDelegate,
     visualize,
 )
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
@@ -257,6 +258,12 @@ class Shell:
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
     async def run(self, command: str | None = None) -> bool:
+        # Initialize theme from config
+        if isinstance(self.soul, KimiSoul):
+            from kimi_cli.ui.theme import set_active_theme
+
+            set_active_theme(self.soul.runtime.config.theme)
+
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
@@ -667,8 +674,14 @@ class Shell:
         queue = self.soul.runtime.root_wire_hub.subscribe()
         try:
             while True:
-                msg = await queue.get()
-                await self._handle_root_hub_message(msg)
+                try:
+                    msg = await queue.get()
+                except QueueShutDown:
+                    return
+                try:
+                    await self._handle_root_hub_message(msg)
+                except Exception:
+                    logger.exception("Failed to handle root hub message:")
         finally:
             self.soul.runtime.root_wire_hub.unsubscribe(queue)
 
@@ -847,6 +860,7 @@ class Shell:
                     if self._prompt_session is not None
                     else ""
                 ),
+                text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )
             self._prompt_session.attach_modal(self._approval_modal)
         else:

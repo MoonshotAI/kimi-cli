@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
@@ -125,6 +126,11 @@ class Soul(Protocol):
     @property
     def status(self) -> StatusSnapshot:
         """The current status of the soul. The returned value is immutable."""
+        ...
+
+    @property
+    def hook_engine(self) -> HookEngine:
+        """The hook engine for this soul."""
         ...
 
     @property

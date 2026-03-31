@@ -28,6 +28,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `default_thinking` | `boolean` | 默认是否开启 Thinking 模式（默认为 `false`） |
 | `default_yolo` | `boolean` | 默认是否开启 YOLO（自动审批）模式（默认为 `false`） |
 | `default_editor` | `string` | 默认外部编辑器命令（如 `"vim"`、`"code --wait"`），为空时自动检测 |
+| `theme` | `string` | 终端配色主题，可选 `"dark"` 或 `"light"`（默认为 `"dark"`） |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -42,6 +43,7 @@ default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
 default_editor = ""
+theme = "dark"
 
 [providers.kimi-for-coding]
 type = "kimi"
@@ -63,6 +65,7 @@ compaction_trigger_ratio = 0.85
 [background]
 max_running_tasks = 4
 keep_alive_on_exit = false
+agent_task_timeout_s = 900
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -133,12 +136,13 @@ capabilities = ["thinking", "image_in"]
 
 ### `background`
 
-`background` 控制后台任务的运行行为。后台任务通过 `Shell` 工具的 `run_in_background=true` 参数启动。
+`background` 控制后台任务的运行行为。后台任务通过 `Shell` 工具的 `run_in_background=true` 或 `Agent` 工具的 `run_in_background=true` 参数启动。
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | 同时运行的最大后台任务数 |
 | `keep_alive_on_exit` | `boolean` | `false` | CLI 退出时是否保留后台任务运行；默认退出时终止所有后台任务 |
+| `agent_task_timeout_s` | `integer` | `900` | 后台 Agent 任务的最大运行时间（秒）；超时后任务标记为失败并通知主 Agent |
 
 ### `services`
 
@@ -175,6 +179,32 @@ capabilities = ["thinking", "image_in"]
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `client.tool_call_timeout_ms` | `integer` | `60000` | MCP 工具调用超时时间（毫秒） |
+
+### `hooks`
+
+`hooks` 配置生命周期 hook（Beta 功能）。详见 [Hooks](../customization/hooks.md)。
+
+使用 `[[hooks]]` 数组语法定义多个 hook：
+
+```toml
+[[hooks]]
+event = "PreToolUse"
+matcher = "Shell"
+command = ".kimi/hooks/safety-check.sh"
+timeout = 10
+
+[[hooks]]
+event = "PostToolUse"
+matcher = "WriteFile"
+command = "prettier --write"
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `event` | `string` | 是 | 事件类型，如 `PreToolUse`、`Stop` 等 |
+| `command` | `string` | 是 | 要执行的 shell 命令 |
+| `matcher` | `string` | 否 | 正则表达式过滤条件 |
+| `timeout` | `integer` | 否 | 超时时间（秒），默认 30 |
 
 ## JSON 配置迁移
 
