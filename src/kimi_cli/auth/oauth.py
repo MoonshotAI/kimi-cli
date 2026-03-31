@@ -209,7 +209,7 @@ def _common_headers() -> dict[str, str]:
         "X-Msh-Version": VERSION,
         "X-Msh-Device-Name": device_name,
         "X-Msh-Device-Model": device_model,
-        "X-Msh-Os-Version": platform.version(),
+        "X-Msh-Os-Version": f"{platform.system()} {platform.release()}",
         "X-Msh-Device-Id": get_device_id(),
     }
     return {key: _ascii_header_value(value) for key, value in headers.items()}
