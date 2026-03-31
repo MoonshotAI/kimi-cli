@@ -153,8 +153,11 @@ def _sanitize_remote_url(remote_url: str) -> str | None:
 def _parse_project_name(remote_url: str) -> str | None:
     """Extract ``owner/repo`` from a git remote URL.
 
-    Supports both SSH (``git@github.com:owner/repo.git``) and HTTPS
-    (``https://github.com/owner/repo.git``) formats.
+    Supports typical SSH (e.g. ``git@github.com:owner/repo.git``,
+    ``git@gitlab.com:owner/repo.git``) and HTTPS (e.g.
+    ``https://github.com/owner/repo.git``,
+    ``https://gitee.com/owner/repo.git``) formats by taking the
+    trailing ``owner/repo`` component regardless of host.
     """
     # SSH format: git@host:owner/repo.git
     m = re.search(r":([^/]+/[^/]+?)(?:\.git)?$", remote_url)
