@@ -23,7 +23,8 @@ When NOT to use:
 
 ## What Happens in Plan Mode
 In plan mode, you will:
-1. Explore the codebase using Glob, Grep, ReadFile (read-only)
-2. Design an implementation approach
-3. Write your plan to a plan file
-4. Present your plan to the user via ExitPlanMode for approval
+1. Identify 2-3 key questions about the codebase that are critical to your plan. If you are not confident about the codebase structure or relevant code paths, use `Agent(subagent_type="explore")` to investigate these questions first — this is strongly recommended for non-trivial tasks.
+2. Explore the codebase using Glob, Grep, ReadFile (read-only) for any remaining quick lookups
+3. Design an implementation approach based on your findings
+4. Write your plan to a plan file
+5. Present your plan to the user via ExitPlanMode for approval
