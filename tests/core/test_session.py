@@ -173,3 +173,97 @@ async def test_create_named_session(isolated_share_dir: Path, work_dir: KaosPath
     found = await Session.find(work_dir, session_id)
     assert found is not None
     assert found.id == session_id
+
+
+async def test_custom_title_overrides_wire_title(isolated_share_dir: Path, work_dir: KaosPath):
+    """custom_title in SessionState takes precedence over wire-derived title."""
+    from kimi_cli.session_state import save_session_state
+
+    session = await Session.create(work_dir)
+    _write_wire_turn(session.dir, "wire derived title")
+
+    session.state.custom_title = "My Custom Title"
+    save_session_state(session.state, session.dir)
+
+    await session.refresh()
+    assert session.title == f"My Custom Title ({session.id})"
+
+
+async def test_custom_title_makes_session_non_empty(isolated_share_dir: Path, work_dir: KaosPath):
+    """A session with custom_title but no messages should not be considered empty."""
+    from kimi_cli.session_state import save_session_state
+
+    session = await Session.create(work_dir)
+    assert session.is_empty()
+
+    session.state.custom_title = "Named Session"
+    save_session_state(session.state, session.dir)
+
+    assert not session.is_empty()
+
+
+async def test_custom_title_persists_across_find(isolated_share_dir: Path, work_dir: KaosPath):
+    """custom_title should persist when session is loaded via Session.find()."""
+    from kimi_cli.session_state import save_session_state
+
+    session = await Session.create(work_dir)
+    _write_context_message(session.context_file, "a message")
+
+    session.state.custom_title = "Persisted Title"
+    save_session_state(session.state, session.dir)
+
+    found = await Session.find(work_dir, session.id)
+    assert found is not None
+    assert found.title == f"Persisted Title ({found.id})"
+
+
+async def test_save_state_preserves_external_title(isolated_share_dir: Path, work_dir: KaosPath):
+    """save_state() should not overwrite title changes made externally (e.g., web PATCH)."""
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    session = await Session.create(work_dir)
+
+    # Simulate web PATCH writing title directly to disk
+    state_on_disk = load_session_state(session.dir)
+    state_on_disk.custom_title = "Web Renamed"
+    state_on_disk.title_generated = True
+    save_session_state(state_on_disk, session.dir)
+
+    # Worker's in-memory state still has no title
+    assert session.state.custom_title is None
+
+    # Worker changes plan_mode and saves
+    session.state.plan_mode = True
+    session.save_state()
+
+    # The web rename should be preserved, not overwritten
+    reloaded = load_session_state(session.dir)
+    assert reloaded.custom_title == "Web Renamed"
+    assert reloaded.title_generated is True
+    assert reloaded.plan_mode is True
+
+
+async def test_save_state_preserves_external_archive(isolated_share_dir: Path, work_dir: KaosPath):
+    """save_state() should not overwrite archive changes made externally."""
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    session = await Session.create(work_dir)
+
+    # Simulate web PATCH archiving the session
+    state_on_disk = load_session_state(session.dir)
+    state_on_disk.archived = True
+    state_on_disk.archived_at = 12345.0
+    save_session_state(state_on_disk, session.dir)
+
+    # Worker's in-memory state still has archived=False
+    assert session.state.archived is False
+
+    # Worker toggles yolo and saves
+    session.state.approval.yolo = True
+    session.save_state()
+
+    # The archive should be preserved
+    reloaded = load_session_state(session.dir)
+    assert reloaded.archived is True
+    assert reloaded.archived_at == 12345.0
+    assert reloaded.approval.yolo is True

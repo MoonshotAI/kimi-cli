@@ -26,6 +26,9 @@ class TestSessionState:
         assert state.version == 1
         assert state.approval.yolo is False
         assert state.approval.auto_approve_actions == set()
+        assert state.custom_title is None
+        assert state.title_generated is False
+        assert state.title_generate_attempts == 0
 
     def test_save_and_load_roundtrip(self, state_dir: Path):
         state_dir.mkdir(parents=True)
@@ -81,6 +84,75 @@ class TestSessionState:
         loaded = load_session_state(state_dir)
         assert loaded.approval.yolo is True
         assert loaded.approval.auto_approve_actions == {"Shell", "WriteFile"}
+
+    def test_custom_title_roundtrip(self, state_dir: Path):
+        state_dir.mkdir(parents=True)
+        state = SessionState(
+            custom_title="My Session",
+            title_generated=True,
+            title_generate_attempts=1,
+        )
+        save_session_state(state, state_dir)
+
+        loaded = load_session_state(state_dir)
+        assert loaded.custom_title == "My Session"
+        assert loaded.title_generated is True
+        assert loaded.title_generate_attempts == 1
+
+    def test_migrate_legacy_metadata(self, state_dir: Path):
+        """Legacy metadata.json fields are migrated into state.json on load."""
+        state_dir.mkdir(parents=True)
+        metadata_file = state_dir / "metadata.json"
+        metadata_file.write_text(
+            json.dumps(
+                {
+                    "session_id": "test-id",
+                    "title": "Legacy Title",
+                    "title_generated": True,
+                    "title_generate_attempts": 2,
+                    "wire_mtime": 1234.5,
+                    "archived": True,
+                    "archived_at": 9999.0,
+                    "auto_archive_exempt": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = load_session_state(state_dir)
+        assert loaded.custom_title == "Legacy Title"
+        assert loaded.title_generated is True
+        assert loaded.title_generate_attempts == 2
+        assert loaded.wire_mtime == 1234.5
+        assert loaded.archived is True
+        assert loaded.archived_at == 9999.0
+        assert loaded.auto_archive_exempt is True
+        # metadata.json should be deleted after migration
+        assert not metadata_file.exists()
+        # state.json should have been written
+        assert (state_dir / "state.json").exists()
+
+    def test_migrate_legacy_metadata_does_not_overwrite_state(self, state_dir: Path):
+        """Migration does not overwrite values already set in state.json."""
+        state_dir.mkdir(parents=True)
+        state = SessionState(custom_title="Already Set", title_generated=True)
+        save_session_state(state, state_dir)
+
+        metadata_file = state_dir / "metadata.json"
+        metadata_file.write_text(
+            json.dumps(
+                {
+                    "session_id": "test-id",
+                    "title": "Old Metadata Title",
+                    "title_generated": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = load_session_state(state_dir)
+        assert loaded.custom_title == "Already Set"
+        assert not metadata_file.exists()
 
     def test_legacy_removed_subagent_field_is_ignored(self, state_dir: Path):
         state_dir.mkdir(parents=True)

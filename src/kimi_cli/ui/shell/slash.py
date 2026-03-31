@@ -512,6 +512,31 @@ async def new(app: Shell, args: str):
     raise Reload(session_id=session.id)
 
 
+@registry.command(name="title", aliases=["rename"])
+async def title(app: Shell, args: str):
+    """Set or show the session title"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    session = soul.runtime.session
+    if not args.strip():
+        console.print(f"Session title: [bold]{session.title}[/bold]")
+        return
+
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    new_title = args.strip()[:200]
+    # Read-modify-write: load fresh state to avoid overwriting concurrent web changes
+    fresh = load_session_state(session.dir)
+    fresh.custom_title = new_title
+    fresh.title_generated = True
+    save_session_state(fresh, session.dir)
+    session.state.custom_title = new_title
+    session.state.title_generated = True
+    session.title = f"{new_title} ({session.id})"
+    console.print(f"[green]Session title set to: {new_title}[/green]")
+
+
 @registry.command(name="sessions", aliases=["resume"])
 async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""

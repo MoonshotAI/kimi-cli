@@ -60,7 +60,9 @@ class Session:
         return path
 
     def is_empty(self) -> bool:
-        """Whether the session has any context history."""
+        """Whether the session has any context history or a custom title."""
+        if self.state.custom_title:
+            return False
         if not self.wire_file.is_empty():
             return False
         try:
@@ -80,7 +82,18 @@ class Session:
         return True
 
     def save_state(self) -> None:
-        """Persist the session state to disk."""
+        """Persist the session state to disk.
+
+        Reloads externally-mutable fields (title, archive) from disk first
+        to avoid overwriting concurrent changes made by the web API.
+        """
+        fresh = load_session_state(self.dir)
+        self.state.custom_title = fresh.custom_title
+        self.state.title_generated = fresh.title_generated
+        self.state.title_generate_attempts = fresh.title_generate_attempts
+        self.state.archived = fresh.archived
+        self.state.archived_at = fresh.archived_at
+        self.state.auto_archive_exempt = fresh.auto_archive_exempt
         save_session_state(self.state, self.dir)
 
     async def delete(self) -> None:
@@ -93,6 +106,10 @@ class Session:
     async def refresh(self) -> None:
         self.title = f"Untitled ({self.id})"
         self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
+
+        if self.state.custom_title:
+            self.title = f"{self.state.custom_title} ({self.id})"
+            return
 
         try:
             async for record in self.wire_file.iter_records():

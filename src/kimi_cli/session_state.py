@@ -20,21 +20,87 @@ class SessionState(BaseModel):
     version: int = 1
     approval: ApprovalStateData = Field(default_factory=ApprovalStateData)
     additional_dirs: list[str] = Field(default_factory=list)
+    custom_title: str | None = None
+    title_generated: bool = False
+    title_generate_attempts: int = 0
     plan_mode: bool = False
     plan_session_id: str | None = None
     plan_slug: str | None = None
+    # Archive state (previously in metadata.json)
+    wire_mtime: float | None = None
+    archived: bool = False
+    archived_at: float | None = None
+    auto_archive_exempt: bool = False
+
+
+_LEGACY_METADATA_FILENAME = "metadata.json"
+
+
+def _migrate_legacy_metadata(session_dir: Path, state: SessionState) -> bool:
+    """Migrate fields from legacy metadata.json into SessionState.
+
+    Returns True if migration happened and state was updated.
+    """
+    metadata_file = session_dir / _LEGACY_METADATA_FILENAME
+    if not metadata_file.exists():
+        return False
+    try:
+        data = json.loads(metadata_file.read_text(encoding="utf-8"))
+    except Exception:
+        # Leave the file intact for future retry — it may be temporarily unreadable
+        return False
+
+    changed = False
+
+    # Migrate title fields (only if state has defaults)
+    if state.custom_title is None and data.get("title") and data["title"] != "Untitled":
+        state.custom_title = data["title"]
+        changed = True
+    if not state.title_generated and data.get("title_generated"):
+        state.title_generated = True
+        changed = True
+    if state.title_generate_attempts == 0 and data.get("title_generate_attempts", 0) > 0:
+        state.title_generate_attempts = data["title_generate_attempts"]
+        changed = True
+
+    # Migrate archive fields
+    if not state.archived and data.get("archived"):
+        state.archived = True
+        changed = True
+    if state.archived_at is None and data.get("archived_at") is not None:
+        state.archived_at = data["archived_at"]
+        changed = True
+    if not state.auto_archive_exempt and data.get("auto_archive_exempt"):
+        state.auto_archive_exempt = True
+        changed = True
+
+    # Migrate wire_mtime
+    if state.wire_mtime is None and data.get("wire_mtime") is not None:
+        state.wire_mtime = data["wire_mtime"]
+        changed = True
+
+    # Remove legacy file
+    metadata_file.unlink(missing_ok=True)
+    return changed
 
 
 def load_session_state(session_dir: Path) -> SessionState:
     state_file = session_dir / STATE_FILE_NAME
     if not state_file.exists():
-        return SessionState()
-    try:
-        with open(state_file, encoding="utf-8") as f:
-            return SessionState.model_validate(json.load(f))
-    except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
-        logger.warning("Corrupted state file, using defaults: {path}", path=state_file)
-        return SessionState()
+        state = SessionState()
+    else:
+        try:
+            with open(state_file, encoding="utf-8") as f:
+                state = SessionState.model_validate(json.load(f))
+        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
+            logger.warning("Corrupted state file, using defaults: {path}", path=state_file)
+            state = SessionState()
+
+    # One-time migration from legacy metadata.json
+    if _migrate_legacy_metadata(session_dir, state):
+        save_session_state(state, session_dir)
+
+    return state
 
 
 def save_session_state(state: SessionState, session_dir: Path) -> None:
