@@ -118,10 +118,7 @@ class BackgroundAgentRunner:
         assert self._runtime.subagent_store is not None
         self._manager._mark_task_running(self._task_id)
         output.stage("runner_started")
-        self._runtime.subagent_store.prompt_path(self._agent_id).write_text(
-            self._prompt,
-            encoding="utf-8",
-        )
+
         self._runtime.subagent_store.update_instance(
             self._agent_id,
             status="running_background",
@@ -151,6 +148,21 @@ class BackgroundAgentRunner:
             await context.write_system_prompt(agent.system_prompt)
         output.stage("context_ready")
 
+        # For new (non-resumed) explore agents, prepend git context to the prompt.
+        prompt = self._prompt
+        is_resumed = bool(context.history)
+        if self._subagent_type == "explore" and not is_resumed:
+            from kimi_cli.subagents.git_context import collect_git_context
+
+            git_ctx = await collect_git_context(self._runtime.builtin_args.KIMI_WORK_DIR)
+            if git_ctx:
+                prompt = f"{git_ctx}\n\n{prompt}"
+
+        self._runtime.subagent_store.prompt_path(self._agent_id).write_text(
+            prompt,
+            encoding="utf-8",
+        )
+
         async def _ui_loop_fn(wire: Wire) -> None:
             wire_ui = wire.ui_side(merge=True)
             while True:
@@ -161,7 +173,7 @@ class BackgroundAgentRunner:
         output.stage("run_soul_start")
         final_response, failure = await run_with_summary_continuation(
             soul,
-            self._prompt,
+            prompt,
             _ui_loop_fn,
             self._runtime.subagent_store.wire_path(self._agent_id),
         )

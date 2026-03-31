@@ -196,7 +196,16 @@ class ForegroundSubagentRunner:
             await context.write_system_prompt(agent.system_prompt)
         output_writer.stage("context_ready")
 
-        self._store.prompt_path(agent_id).write_text(req.prompt, encoding="utf-8")
+        # For new (non-resumed) explore agents, prepend git context to the prompt.
+        prompt = req.prompt
+        if actual_type == "explore" and not resumed:
+            from kimi_cli.subagents.git_context import collect_git_context
+
+            git_ctx = await collect_git_context(self._runtime.builtin_args.KIMI_WORK_DIR)
+            if git_ctx:
+                prompt = f"{git_ctx}\n\n{prompt}"
+
+        self._store.prompt_path(agent_id).write_text(prompt, encoding="utf-8")
         self._store.update_instance(
             agent_id,
             status="running_foreground",
@@ -237,14 +246,14 @@ class ForegroundSubagentRunner:
                     session_id=self._runtime.session.id,
                     cwd=str(Path.cwd()),
                     agent_name=actual_type,
-                    prompt=req.prompt[:500],
+                    prompt=prompt[:500],
                 ),
             )
 
             output_writer.stage("run_soul_start")
             final_response, failure = await run_with_summary_continuation(
                 soul,
-                req.prompt,
+                prompt,
                 ui_loop_fn,
                 self._store.wire_path(agent_id),
             )
