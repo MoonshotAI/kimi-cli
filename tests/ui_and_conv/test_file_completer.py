@@ -91,6 +91,53 @@ def test_at_guard_prevents_email_like_fragments(tmp_path: Path):
     assert not texts
 
 
+def test_scoped_walk_finds_deep_files_in_large_repos(tmp_path: Path):
+    """In large repos, scoped walk should find files under the typed directory.
+
+    Regression test for #1375: when the total file count exceeds the limit,
+    files in later directories (alphabetically) become unreachable. Scoping
+    the walk to the typed directory prefix avoids this.
+    """
+    limit = 20
+
+    # Create many files in early directories to exhaust a small limit
+    for i in range(15):
+        d = tmp_path / f"aaa_dir_{i:02d}"
+        d.mkdir()
+        (d / "file.txt").write_text("x")
+
+    # Target files are in a directory that would be unreachable with flat walk
+    target = tmp_path / "zzz_target" / "nested"
+    target.mkdir(parents=True)
+    (target / "important.py").write_text("# important")
+    (target / "helper.py").write_text("# helper")
+
+    completer = LocalFileMentionCompleter(tmp_path, limit=limit)
+
+    # Without scoping, "zzz_target/" would never appear because the limit
+    # is exhausted by aaa_dir_* entries. With scoping, typing the directory
+    # prefix narrows the walk to just that subtree.
+    texts = _completion_texts(completer, "@zzz_target/")
+
+    assert "zzz_target/nested/" in texts
+    assert "zzz_target/nested/important.py" in texts
+    assert "zzz_target/nested/helper.py" in texts
+
+
+def test_scoped_walk_with_partial_filename(tmp_path: Path):
+    """Scoped walk works when fragment includes a partial filename after slash."""
+    src = tmp_path / "src" / "utils"
+    src.mkdir(parents=True)
+    (src / "helpers.py").write_text("")
+    (src / "config.py").write_text("")
+
+    completer = LocalFileMentionCompleter(tmp_path)
+
+    texts = _completion_texts(completer, "@src/utils/hel")
+
+    assert "src/utils/helpers.py" in texts
+
+
 def test_basename_prefix_is_ranked_first(tmp_path: Path):
     """Prefer basename prefix matches over cross-segment fuzzy matches.
 
