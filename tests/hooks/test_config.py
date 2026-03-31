@@ -52,3 +52,36 @@ command = "prettier --write"
 def test_config_without_hooks():
     config = Config.model_validate({"default_model": ""})
     assert config.hooks == []
+
+
+def test_inject_prompt_only():
+    h = HookDef(event="UserPromptSubmit", inject_prompt="use TDD")
+    assert h.inject_prompt == "use TDD"
+    assert h.command == ""
+
+
+def test_command_or_inject_required():
+    with pytest.raises(ValidationError):
+        HookDef(event="UserPromptSubmit")
+
+
+def test_command_and_inject_mutually_exclusive():
+    with pytest.raises(ValidationError):
+        HookDef(event="UserPromptSubmit", command="echo test", inject_prompt="test")
+
+
+def test_config_with_inject_prompt():
+    toml_str = """
+default_model = ""
+
+[[hooks]]
+event = "UserPromptSubmit"
+inject_prompt = "use TDD"
+timeout = 10
+"""
+    data = tomlkit.parse(toml_str)
+    config = Config.model_validate(data)
+    assert len(config.hooks) == 1
+    assert config.hooks[0].event == "UserPromptSubmit"
+    assert config.hooks[0].inject_prompt == "use TDD"
+    assert config.hooks[0].command == ""
