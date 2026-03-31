@@ -69,9 +69,18 @@ async def prepare_soul(
     if on_stage:
         on_stage("context_ready")
 
-    # 4. Write prompt snapshot (debugging aid)
-    store.prompt_path(spec.agent_id).write_text(spec.prompt, encoding="utf-8")
+    # 4. For new (non-resumed) explore agents, prepend git context to the prompt
+    prompt = spec.prompt
+    if spec.type_def.name == "explore" and not spec.resumed:
+        from kimi_cli.subagents.git_context import collect_git_context
 
-    # 5. Create soul
+        git_ctx = await collect_git_context(runtime.builtin_args.KIMI_WORK_DIR)
+        if git_ctx:
+            prompt = f"{git_ctx}\n\n{prompt}"
+
+    # 5. Write prompt snapshot (debugging aid)
+    store.prompt_path(spec.agent_id).write_text(prompt, encoding="utf-8")
+
+    # 6. Create soul
     soul = KimiSoul(agent, context=context)
-    return soul, spec.prompt
+    return soul, prompt

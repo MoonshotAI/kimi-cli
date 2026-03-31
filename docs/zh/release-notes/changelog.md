@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Shell：修复设置 `MANPAGER`（如 `bat`）后分页器输出乱码的问题——控制台分页器现在忽略 `MANPAGER`，委托给 `pydoc.pager()` 处理，保留 `PAGER` 及所有平台特定的回退逻辑
+- Explore：增强 explore Agent 的专家角色、搜索深度等级和自动环境上下文——explore Agent 启动时会自动获取仓库环境信息以提升调研质量；主 Agent 被引导优先使用 explore 进行代码库研究，Plan 模式鼓励先用 explore 调研再制定方案
+- Shell：修复工具调用显示中出现原始 OSC 8 转义字节（如 `8;id=391551;https://…`）的问题——超链接序列现在被包装为零宽转义以兼容 prompt_toolkit，在支持的终端中保留可点击链接
 - Core：在系统提示词中添加操作系统和 Shell 信息——模型现在能感知当前运行平台，Windows 上会收到优先使用内置工具而非 Shell 命令的指引，避免在 PowerShell 中执行 Linux 命令导致报错
 - Shell：修复 `command` 参数描述在所有平台上都写着 "bash command" 的问题——描述现在与平台无关
 - Web：修复自动标题覆盖手动会话重命名的问题——用户通过 Web UI 重命名会话后，新标题现在会被保留，不再被自动生成的标题替换

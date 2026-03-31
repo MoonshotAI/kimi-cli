@@ -233,7 +233,7 @@ class ForegroundSubagentRunner:
                     session_id=self._runtime.session.id,
                     cwd=str(Path.cwd()),
                     agent_name=actual_type,
-                    prompt=prompt[:500],
+                    prompt=req.prompt[:500],
                 ),
             )
 
