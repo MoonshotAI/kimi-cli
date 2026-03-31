@@ -147,7 +147,7 @@ class HookEngine:
                     {
                         "matcher": h.matcher or "(all)",
                         "source": "server",
-                        "command": h.command,
+                        "command": h.command or h.inject_prompt or "(no command)",
                     }
                 )
         for event, subs in self._wire_by_event.items():
